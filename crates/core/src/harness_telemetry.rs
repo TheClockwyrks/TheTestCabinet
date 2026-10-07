@@ -512,6 +512,17 @@ pub fn harness_telemetry(slug: HarnessSlug) -> HarnessTelemetry {
         HarnessSlug::Antigravity => {
             HarnessTelemetry::Unsupported("Antigravity exposes no telemetry export of any kind.")
         }
+        // gg is not a third-party CLI to configure with `OTEL_*` env/config: it is
+        // The Test Cabinet's own executor, instrumented directly (its primary
+        // channel is the custom first-party `GgTelemetryEvent` stream, and it can
+        // export OpenTelemetry via `test-cabinet-telemetry` like the rest of our
+        // processes). So there is nothing for this per-harness OTel-injection layer
+        // to do for a gg run.
+        HarnessSlug::Gg => HarnessTelemetry::Unsupported(
+            "gg is a first-party executor instrumented directly (custom telemetry \
+             stream plus test-cabinet-telemetry); it needs no third-party CLI OTel \
+             environment injection.",
+        ),
     }
 }
 

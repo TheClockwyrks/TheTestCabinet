@@ -21,7 +21,7 @@ import { createServer } from "vite";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE_ROOT = path.join(HERE, "capture");
 // The baked stills live beside the fallback that consumes them, so every host
-// that bundles `@test-cabinet/ui` (site, web console, desktop) emits them
+// that bundles `@clockwyrks/ui` (site, web console) emits them
 // automatically.
 const OUTPUT_DIR = path.resolve(
   HERE,
@@ -81,7 +81,8 @@ function configurePlaywrightHostPlatformOverride() {
     return;
   }
   const isUbuntu2604 =
-    /^ID=ubuntu$/m.test(osRelease) && /^VERSION_ID="?26\.04"?$/m.test(osRelease);
+    /^ID=ubuntu$/m.test(osRelease) &&
+    /^VERSION_ID="?26\.04"?$/m.test(osRelease);
   if (process.platform !== "linux" || !isUbuntu2604) {
     return;
   }

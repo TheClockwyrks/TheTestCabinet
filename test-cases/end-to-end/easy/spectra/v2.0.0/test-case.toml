@@ -1,0 +1,3507 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+#
+# THE ORDER OF THIS FILE MATTERS. Every ROOT key — `variants`, `assets`,
+# `packages`, `init`, `max_runtime_hours` and `engines`, together with the
+# metadata above them — must precede the first table header. A root key written
+# after a header such as `[instrumentation]` parses as a member of THAT table
+# (`instrumentation.assets`), and the case then resolves declaring no assets and
+# no variants at all. The layout below is Refract's, Fathom's and Wireworm's, key
+# for key.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "spectra"
+
+# Human-readable display name for this test case.
+name = "Spectra"
+
+# Relative difficulty of this case, surfaced on the site. Spectra asks for a
+# fixed-position formation shooter whose cannon is also its shield, three drone
+# kinds that each probe the band system differently, a resonance meter and a
+# screen-clearing discharge, a spectral inversion that swaps the whole field, a
+# stage ladder with challenge flyovers, and seven screens around it. It is a lot
+# of machinery, but every piece is a rule stated over one 1280x720 stage: there is
+# no physics beyond straight-line integration, no opponent to model, and nothing
+# that has to be tuned by feel. Difficulty rates how demanding the THINKING is,
+# not how long the build takes — `max_runtime_hours` below is where the size of
+# the job is accounted for. So easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "shooter", "space"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A fixed-position formation shooter whose cannon is also its shield: a shot only \
+kills a drone of the band you are tuned to, and the swarm always fires both."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version. The site aggregates every
+# version's entry, newest first, into the case's changelog. Like `description`,
+# it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Spectra is a substantial build — the two-band polarity
+# system and the effective-band composition beneath it, three drone kinds with
+# their own rules, the wave choreography and its dive clock, the resonance meter
+# and its discharge, a stage ladder with challenge flyovers and four scaling
+# formulas, seven screens, nine cues, the seeded sprite art and the particle
+# burst, and, under the engineless run, the whole runtime layer beneath all of it.
+# Five hours is comfortably more than a healthy build of that size needs while
+# still catching a session that never terminates.
+max_runtime_hours = 5
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, the vendored particle runtime,
+# and, on an engine run, the vendored engine — and downloads the Playwright
+# Chromium build (the base image ships the OS libraries Chromium links against,
+# but not the browser binary), so the model can build the game and look at it in a
+# browser without any further setup.
+init = "npm install && npx playwright install chromium"
+
+# The seeded art and the seeded effect, each kept at its path relative to this
+# version folder when seeded, so `assets/shard.png` lands at `assets/shard.png` in
+# the run. Every build renders the game from the SAME art and differs only in the
+# code around it, which is what makes two runs of this case comparable to look at.
+# `specs/assets.md` is the contract for what each file depicts, the canvas it is
+# drawn on, and how the other band-state is derived from it. The ship's bullets,
+# the HUD, the starfield, the discharge wave and every screen are still drawn in
+# code.
+#
+# `assets` is a root key, so it must precede the first table header.
+assets = [
+  "assets/fighter.png",     # the player's ship
+  "assets/shard.png",       # the fixed-band Shard
+  "assets/flux.png",        # the oscillating Flux
+  "assets/prism.png",       # the two-layer Prism
+  "assets/drone-burst.json",# the particle system a destroyed drone pops with
+]
+
+# The Test Cabinet runtime libraries the build imports, by npm name. Each is
+# staged into the run from the host package store and declared in every seeded
+# workspace's `package.json` by its in-repo `file:` spec under `.vendor/packages/`.
+# Spectra needs one: the particle runtime plays `assets/drone-burst.json`, so the
+# case ships the effect and the runtime that simulates it rather than asking every
+# build to write a particle system of its own and then comparing the results.
+#
+# `packages` is a root key, so it must precede the first table header.
+packages = ["@clockwyrks/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Spectra declares TWO, and they differ in exactly one rule — what a MISMATCHED
+# shot does to the drone it hits. Under `base` (Sortie) it does nothing: the shot
+# is wasted. Under `overload` it charges the drone, and the third charge overloads
+# it into a reaction that differs per kind. That one rule is worth a variant
+# because it inverts the risk of a wrong-band shot, and only `specs/mode.md.hbs`
+# branches on it.
+#
+# The three DRONE KINDS are not variants, and neither are the stages: they are what
+# a single build already contains. A variant is a difference in the game a run is
+# asked to BUILD.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/overload.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the input
+# actions a player drives it with, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering and the gameplay framework the game
+# is written inside. It is a *run dimension*, chosen per run alongside the model,
+# the harness and the variant, and recorded on the run; it is not a property of the
+# game.
+#
+# Spectra supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the frame loop, the canvas fit, the keyboard input, the
+#                     audio, the debug overlay, the `window.__spectra` surface, and
+#                     every figure the specification fixes, from the specs alone.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules around
+#                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
+#                     stub the build replaces, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes the
+#                     whole of `src/game.ts` — the game definition, its mode, its
+#                     live state and its actors — and the debug surface its
+#                     instance's `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to THIS game under it —
+# which surfaces the build still supplies, Spectra's action list, and Spectra's cue
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+# ---- Tables begin here. No root key may follow. -----------------------------
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and a `vite.config.ts` that serves the seeded `assets/` tree
+# in development and copies it into `dist/` at build. What differs is how much of
+# the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     keyboard input, audio, debug overlay and `window.__spectra`
+#                     surface, and every figure the specification fixes, from the
+#                     specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them),
+#                     `src/main.ts` (the browser entry) and the `src/game.ts` stub
+#                     the build replaces.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds `src/constants.ts` and `src/main.ts`. It seeds NO
+#                     `src/game.ts`: `src/main.ts` imports one, so a freshly seeded
+#                     workspace fails `npx tsc --noEmit` on the missing module.
+#                     That failure is the starting point, and `src/main.ts` says so
+#                     in its header.
+#
+# The two engine workspaces are per VARIANT as well as per engine, because the
+# seeded `src/constants.ts` differs: the overload variant's carries the overload
+# group (`OVERLOAD_AT` and the three reactions' figures), its own `TITLE_ITEMS`,
+# and a tenth cue. `none` needs only one directory, because it seeds no `src/` at
+# all. This table names the BASE variant's pair; `variants/overload.toml` REPLACES
+# the whole table with the overload pair, since a variant's `[workspaces]` replaces
+# rather than layers.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`.
+# `npm ci` is deliberate — it requires the build to commit a `package-lock.json`,
+# so the validated build installs exactly what the deploy will. Both commands are
+# required; there are no defaults, so every case states exactly how its
+# implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint . --max-warnings 0"
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its
+# scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__spectra` once the game has initialized, so
+# the handle is what a person opening the console of such a build finds. An engine
+# run has NO global at all: the build writes the surface, its `initialize` returns
+# it — beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view, its
+# surface is written in the shape of `update` — a pose takes the current state and
+# returns the next, applied through `engine.apply`, and a reading takes the state
+# and returns what it read, called with `engine.state`. `structured-2d` holds the
+# world live, so its poses take only their own arguments and act on it at the call,
+# and its readings return plain data. One handle, three ways to reach the same
+# operations.
+#
+# There is deliberately no `tick_hz`. Spectra mandates no fixed timestep: every
+# rate is per second and integrated against the delta time the frame hands the
+# game. What the specification DOES fix is a sub-step ceiling — a frame is divided
+# into `n = max(1, ceil(dt / SUBSTEP_MAX))` sub-steps of `h = dt / n` — which is a
+# rule about how a frame is subdivided rather than a rate the harness could sample
+# at, so the key stays absent. It is optional precisely so a case modelled this way
+# omits it.
+[instrumentation]
+handle = "__spectra"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. Neither variant declares one
+# of its own: the mode is `specs/mode.md.hbs`, branched on the variant slug and
+# seeded commonly, so a run receives one description of one mode and no seeded text
+# mentions the sibling.
+#
+# The specification is decomposed by concern, and EACH RULE LIVES IN EXACTLY ONE
+# FILE. Each file is self-contained enough to be read on its own while naming its
+# siblings, by file name in plain text, where a fact lives elsewhere.
+#
+# Every `.hbs` source is rendered before it lands, and two axes are branched on:
+# `engine.slug`, which selects what the build is handed and what it must write, and
+# `variant.slug`, which selects the mode. A spec's `dest` defaults to its `source`
+# with a trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md`
+# path and a plain `.md` source is seeded verbatim.
+
+# What the game is and what the finished build must be: the premise, the hard
+# requirements, the free choices, the fixed 1280x720 stage and the centre
+# convention every reported (x, y) uses, the stage-fit requirement, and the
+# legibility table — what a player must be able to read at a glance, which is all
+# this case fixes about the look. It names specs/field.md as where the geometry
+# lives and specs/simulation.md as where the frame is defined, and restates
+# neither. It branches on the engine for what the runtime supplies against what the
+# build writes.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The geometry of the stage: the two HUD strips and the play field between them,
+# SOLE OWNERSHIP of the ship's lane and its clamp, the formation slot grid and the
+# slotX/slotY map, the sway as a rigid translation of the whole block, where a
+# drone enters and where a bullet leaves, where each HUD readout sits, and the
+# starfield behind the field. Seeded verbatim: nothing in it differs by engine.
+[[spec]]
+source = "specs/field.md"
+
+# How a frame advances: every rate is per second and integrated against the delta
+# time the frame hands the game, the sub-step rule and the order a sub-step
+# resolves in, where each random draw the game makes is stated, and SOLE
+# OWNERSHIP of the contact model. Seeded verbatim.
+[[spec]]
+source = "specs/simulation.md"
+
+# The two bands and what a band decides: EFFECTIVE band and the three swaps that
+# produce it, match-to-destroy, that a mismatched shot is consumed and destroys
+# nothing, the dual-use shield, the flip and its lockout, and the spectral
+# inversion's own rules. What a mismatch does to the DRONE is deferred to
+# specs/mode.md by name. Seeded verbatim.
+[[spec]]
+source = "specs/bands.md"
+
+# The ship and its cannon: its footprint and half-extent, how it moves and stops,
+# where a shot spawns and how fast it climbs, the fire interval and the bullet cap,
+# the band a shot carries, and what blocks firing. Seeded verbatim.
+[[spec]]
+source = "specs/ship.md"
+
+# The resonance meter and the discharge: what fills the meter and by how much, that
+# it caps and does not decay and survives a death, that a discharge is available
+# exactly at full, and what the burst takes and what it spares. Seeded verbatim.
+[[spec]]
+source = "specs/resonance.md"
+
+# How any drone behaves: the four phases, the staggered entrance and its speed, the
+# formation hold and the sway, the wave's dive clock and the dive it launches, that
+# only divers fire and where a diver fires, and what a standard wave is made of.
+# Seeded verbatim.
+[[spec]]
+source = "specs/swarm.md"
+
+# The three drone kinds and what each one asks of the band system: the fixed-band
+# Shard, the Flux's held window and shimmer, and the Prism's two layers, its escort,
+# its two-band burst and the inversion it triggers at the bottom. Seeded verbatim.
+[[spec]]
+source = "specs/drones.md"
+
+# The stage sequence: that a standard stage is one wave, the level-clear rule stated
+# as a MOMENT (so a wave that never held a drone is playing rather than cleared),
+# the challenge stage and everything that makes it a flyover rather than a wave, and
+# the four scaling formulas with their caps and floors. Seeded verbatim.
+[[spec]]
+source = "specs/stages.md"
+
+# Lives and the run: the starting lives, what costs one and what does not, the ready
+# hold and the respawn, the extra life and the latch that pays it once, and the game
+# over. Seeded verbatim.
+[[spec]]
+source = "specs/progression.md"
+
+# Every score figure the game pays, in one place, including which figure a drone
+# destroyed out of formation is worth. Seeded verbatim.
+[[spec]]
+source = "specs/scoring.md"
+
+# The playable mode. THE ONE FILE THAT BRANCHES ON THE VARIANT: under `base` it is
+# Sortie, whose mismatched shot is wasted; under `overload` it is Overload, whose
+# mismatched shot charges the drone, with the telegraph, the three overload
+# reactions and their figures, and the tenth cue. It owns ONLY what a mismatch does
+# to the DRONE — that the bullet is consumed is specs/bands.md's rule under either
+# mode and is not restated here.
+[[spec]]
+source = "specs/mode.md.hbs"
+
+# The keys: every action the game answers to and the keys bound to it, menu
+# navigation and confirm, back, pause, mute, and the overlay toggle. It branches on
+# the engine because an engine run registers NAMED ACTIONS against the bindings
+# src/constants.ts fixes and reads them from the engine, while an engineless build
+# listens to the keyboard itself and reads KeyboardEvent.code.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The screens, the HUD and the audio: the seven screens and what each shows, the
+# five HUD readouts, the mute indicator and the inversion overlay, and the nine cues
+# with the mute requirement stated at SOURCE strength. It branches on the engine
+# because cues are defined and played through the engine's audio bus on an engine
+# run and the mute bit is the engine's, while under `none` the build synthesizes
+# them with the Web Audio API and owns the mute toggle.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The seeded art and the seeded effect: the four PNGs, their canvas and straight
+# alpha, which band-state each depicts, the ring/diamond glyph convention, how the
+# other band-state is derived, how a shimmer and a broken shell are drawn, and the
+# drone-burst system and how it is played. It branches on the engine because the
+# engine resolves every path under the fixed `assets/` root while an engineless
+# build loads both itself, page-relative, so the site runs at any base path.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# The shape of the game's state. Three shapes, one per engine: under `none` a list
+# of what the state must carry, because the build owns the shape; under `simple-2d`
+# the exact `SpectraState` declaration to write into `src/game.ts`; under
+# `structured-2d` the equivalent live class extending the engine's `GameState`. It
+# branches on the variant too, for the drone's `charge` field.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the three world
+# gates and the three per-drone faculty switches among them; the snapshot shape; and
+# a read-only debug overlay. Framed as an ordinary developer affordance of the game.
+# It branches on the engine for where the surface is reached, the operation shape,
+# and the two clock operations only an engineless build owns, and on the variant for
+# `setDroneCharge` and the drone's `charge` field.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured — a gzipped recording from the engine's own draw-command
+# recorder on an engine run, a short clip under `none`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`.
+#
+# Spectra v2.0.0 deliberately fixes NO palette, no typeface and no styling: the
+# specification seeds the sprite art and states what a player must be able to read
+# at a glance (specs/overview.md's legibility table), and everything else about the
+# look is the build's own design. A reference view is a picture a build is compared
+# AGAINST, so there is no honest one to seed here — every build is expected to look
+# different, and a screenshot diff would score the build that copied the mockup best
+# rather than the build that designed the best field. v1.0.0 seeded reference
+# mockups, an eleven-entry canonical palette and a monospace requirement; dropping
+# all three is one of the things this major bump is for.
+#
+# `[[proof]]` is likewise empty: no proof media is asked of the build, and
+# `specs/proof.md` is gone with it. Every piece of media a reviewer sees beside a
+# verdict is captured by this case's own validation suites, from scenarios the case
+# controls. The showcase spec above does ask for media, but as the game's own
+# store-page presentation rather than as evidence any point is judged on. The
+# automated load check still runs.
+
+# Scoring domains. This case is on the engine format, so it is validator-rated:
+# each domain's FUNCTIONAL rating is decided by the validators behind the point
+# checklist below (every point names the domains its failure lowers and how far —
+# see `domains` / `failure_cap` there), and the run's overall functional rating is
+# the WORST across the domains — an immaculate arcade frame cannot mask a discharge
+# that never fires. The reviewer's judgement lives in the separate AESTHETIC
+# rating: the look, the polish and the feel, everything this case fixes no picture
+# of.
+#
+# Four domains, cut where a build can plausibly get one right and another wrong:
+# the polarity system that is this case's signature, the swarm that is its subject,
+# the arcade frame around both, and the presentation this case hands entirely to the
+# build.
+[[domain]]
+id = "polarity"
+name = "Polarity & Survival"
+description = "The signature: the two bands, match-to-destroy and what a mismatch does, the dual-use shield, the flip and its lockout, the resonance meter and the screen-clearing discharge, and the spectral inversion that swaps the field."
+
+[[domain]]
+id = "swarm"
+name = "The Swarm"
+description = "The choreographed entrances, the swaying formation, the dives and their fire, and the three drones — the fixed-band Shard, the oscillating Flux, and the two-band Prism."
+
+[[domain]]
+id = "arcade"
+name = "Ship, Stages & Run"
+description = "The arcade frame around the polarity: the ship and its cannon, the stages and their challenge flyovers, the lives, the respawn, the scoring, and the screens a run moves through."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "What the game looks and sounds like: the screens and their menus, the HUD, the seeded sprite art and the drone-burst, whether the palette the build chose is legible and its states told apart, and the audio cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
+# each item entry under it is one graded review item, worth one point (the default
+# weight), so a category is worth the number of items it holds. ONE item declares a
+# `weight` — `showcase.exists`, at three — because the showcase is a deliverable of
+# the build rather than a behavior of the game, and the comment over that category
+# argues the figure. Every other observable behavior on this checklist counts the
+# same, and the relative importance of a failure is carried by `failure_cap` rather
+# than by arithmetic.
+#
+# A category carries no prose of its own; each item states in `description` the
+# claim its validator checks. The eighteen categories here are COMMON to every run.
+# Each variant declares ONE category of its own — `sortie` in `variants/base.toml`,
+# `overload` in `variants/overload.toml` — because the two modes genuinely disagree
+# about what a mismatched shot does, and a claim that is true under one and false
+# under the other cannot be stated commonly. A base run's checklist is therefore
+# 294 points and an overload run's is 312: 288 common behaviors of the game, the
+# showcase's three, and the variant's own three or twenty-one. The whole of it is
+# reporter-side material — never seeded into a run, so the model never sees it.
+# Every item restates a requirement the seeded specification already states, in
+# the spec's own vocabulary and naming the spec's own constants, and every
+# threshold a validator asserts is derived from a figure or rule in the specs plus
+# a numeric tolerance stated in the item.
+#
+# EVERY point carries a validation script, and every point is ONE OBSERVABLE
+# BEHAVIOR, so a build fails exactly the rule it breaks: the key that starts a
+# discharge and the meter that discharge spends are two points, not one, and a
+# wrapping dive's continuity and its return home are two more. Each script is a
+# vitest suite under `validation/<engine>/<category>/<item id>.test.ts`. The
+# `<engine>` level is the ENGINE the suite is written against — a validator speaks
+# one engine's vocabulary, so this case, which supports three, ships one directory
+# per engine. `validation/none/` drives the build in Chromium through
+# `window.__spectra`, with a page-injected 2D-context recorder for the draws and an
+# injected audio shim for the cues; `validation/simple-2d/` and
+# `validation/structured-2d/` each run in process against their vendored engine,
+# posing scenarios through the surface `engine.debug` returns, reading state back
+# from the snapshot, audio from the engine's `cue:played` event, and drawing from
+# the canvas pixels or the engine's own draw-command recorder. The three are the
+# same scenarios; only how they reach the build differs. The directory for the run's
+# engine is what gets staged into the built workspace at `validation/`. Both
+# variant categories' directories ship in every engine's project; resolution runs
+# one variant at a time, so the other simply does not run.
+#
+# EVERY SCENARIO IS POSED, AND POSED EMPTY. The shared harness's `startPosed`
+# clears the drones, bullets and bursts, turns the four world gates off, and opens
+# a live wave — so a validator's world holds only what its requirement concerns and
+# nothing it did not ask for enters, launches, ends the stage, or costs a life. An
+# empty wave then stays a live one however the field empties, so a point that
+# destroys the one drone it posed reads what the kill did rather than what a stage
+# end did, and no point has to stand a bystander in a corner to hold the wave open.
+# Turning a gate back on is the exception, and the point that does it is the point
+# whose requirement the gate is.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. `kind` is decided ONCE here and serves all three engines —
+# `validation = { script, outputs }` is a per-item key, there is no per-engine
+# `outputs`, and the extension an output is served under is fixed by its kind, so a
+# kind that varied by engine would serve one engine's file under another's name.
+# `image` is the default: a single captured frame, which is the right evidence for
+# a posed field read once. `replay` is the exception, declared on the nineteen
+# points whose requirement IS motion — an entrance, the sway, a dive, the discharge
+# wave, a Flux's cycle, a challenge flyover, an overloaded Shard's plunge — where a
+# reviewer wants to scrub. There is no `video` anywhere. `showcase.exists` is the
+# one point whose still is not rendered from a posed scenario: it drives no game at
+# all, so its `image` is a `.png` copied out of the build's own showcase.
+#
+# ONE OUTPUT PER POINT, with a closed list of exceptions. An output is evidence
+# beside the verdict, not part of it, so a point that reads two subjects INSIDE ONE
+# RENDER — two drones of opposite bands side by side, a whole Prism beside a
+# shell-broken one — declares ONE output, the render its assertion turns on. The
+# pair is declared only where the evidence is one subject in two states that cannot
+# both appear in a single render, and that list is exactly four:
+# `screens.hud-resonance-ready`, `screens.hud-polarity-indicator`,
+# `screens.mute-indicator` and `screens.inversion-overlay`.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a band point lowers
+# `polarity`, a point about the drone that band decides the fate of lowers `swarm`
+# as well, and an instrumentation point, which every suite in every domain drives
+# through, lowers all four. `failure_cap` is the highest functional rating those
+# domains may reach while the point fails; each domain gets the LOWEST cap among its
+# failing points, and a domain with no failing point is flawless. The caps are graded
+# by how much of the game a failure takes away: `broken` where the game cannot be
+# played as intended (no debug surface, a shot that ignores bands, a wave that never
+# assembles, a run that cannot be opened); `scuffed` where an optional path is
+# unplayable or normal play is unpleasant (a control with no alternate binding, a
+# screen that misreports the run); `passable` where it affects play without breaking
+# it (a tolerance, an edge case, a cue); and `great` where the standard flow is
+# untouched. No point caps at `flawless`: a failure always costs. Three rules resolve
+# the cases this case argues about — a rate that is wrong but playable is `passable`
+# rather than `broken` unless the wrong figure removes a whole mechanic; a control
+# with an alternate binding is `passable` and one with a single binding is `scuffed`;
+# and a point whose failure only lowers `presentation` is at most `scuffed`.
+[review]
+format = 2
+
+# --- Instrumentation -------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and every other suite on this checklist
+# poses its scenario through it. These points check that it is really there, really
+# wired to the running game, really stepped by elapsed time, and that each pose
+# reads back — a
+# surface that reports a plausible-looking object unconnected to what is on screen
+# is the failure mode worth naming.
+#
+# Six of them are the three WORLD GATES and the three per-drone FACULTY switches. A
+# validator poses a world holding only what its requirement concerns, and Spectra's
+# own figures fly a wave in the moment a stage intro gives way and launch a dive two
+# seconds after a formation assembles, so without the gates a posed scenario would
+# be joined by traffic it never asked for. `setWaveEntry`, `setDiveLaunching` and
+# `setShipContact` each gate ONE faculty and nothing else; `setDroneTravel`,
+# `setDroneOscillation` and `setDroneFire` do the same per drone. Each has a point
+# here because a gate the rest of the suite leans on has to be known to work before
+# anything leaning on it means anything.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug surface is present and complete"
+description = "Every operation specs/instrumentation.md names is a function on the surface, version is SPECTRA_DEBUG_VERSION (1), and the surface is live: a posed drone reads back and a posed ship moves under a held key."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "live", name = "The posed drone and the moved ship the surface drove", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed field carrying a drone of each kind, a bullet each way, a live burst and a live discharge, every field the snapshot shape lists is present with its documented type."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "posed", name = "The posed field the snapshot reports", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back"
+title = "Every pose is reported by the snapshot"
+description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the four world gates, the dive clock and the dive gap. Mute is not in the list: there is no setMuted."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
+  { id = "posed", name = "Every posed value standing on the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores-title"
+title = "reset returns the game to its title values"
+description = "After a run has been posed with score, lives, stage, drones, bullets and bursts, reset() restores every declared field to the title value the spec lists and leaves muted untouched."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
+  { id = "title", name = "The title values reset restored", kind = "image" },
+] }
+# The one point about the division of a frame itself. Every other point drives the
+# game at one frame rate; this one spends the same posed second at three of them and
+# holds each to the figures the specification states for that second.
+[[review.categories.items]]
+id = "elapsed-time-steps"
+title = "The simulation advances on elapsed time alone"
+description = "One second of game time covered as 1 frame, as 60 frames and as 120 frames resolves the same way at each division, because every frame runs in whole SUBSTEP_MAX sub-steps: a shot fired under a Shard destroys it, a Flux posed short of its window's end flips its band with the remainder carried into the next window, an enemy bullet falls ENEMY_BULLET_SPEED units, and simTime reads the second."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/elapsed-time-steps.test.ts", outputs = [
+  { id = "stepped", name = "The field one second of game time reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-drones"
+title = "clearDrones empties the drones alone"
+description = "clearDrones() removes every drone and leaves the bullets and bursts standing."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-drones.test.ts", outputs = [
+  { id = "cleared", name = "The bullets and bursts left standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-player-bullets"
+title = "clearPlayerBullets removes the player's bullets alone"
+description = "It removes every friendly bullet and leaves the enemy bullets, the drones and the bursts standing."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-player-bullets.test.ts", outputs = [
+  { id = "cleared", name = "The enemy bullets, drones and bursts left standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-enemy-bullets"
+title = "clearEnemyBullets removes the enemy bullets alone"
+description = "It removes every enemy bullet and leaves the player's bullets, the drones and the bursts standing."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-enemy-bullets.test.ts", outputs = [
+  { id = "cleared", name = "The friendly bullets, drones and bursts left standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-bursts"
+title = "clearBursts removes the live bursts alone"
+description = "It removes every playing drone-burst and leaves the drones and bullets standing."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-bursts.test.ts", outputs = [
+  { id = "cleared", name = "The drones and bullets left standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-drone"
+title = "removeDrone removes one drone"
+description = "It removes the drone with that id and leaves every other drone standing with its id unchanged."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-drone.test.ts", outputs = [
+  { id = "removed", name = "The field with one drone taken off it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-bullet"
+title = "removeBullet removes one bullet"
+description = "It removes the bullet with that id, of either kind, and leaves every other bullet standing."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-bullet.test.ts", outputs = [
+  { id = "removed", name = "The field with one bullet taken off it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-burst"
+title = "removeBurst removes one burst"
+description = "It removes the burst with that id and leaves every other burst playing."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-burst.test.ts", outputs = [
+  { id = "removed", name = "The field with one burst taken off it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entity-ids"
+title = "Every entity carries a distinct, stable id"
+description = "Each drone, bullet and burst added takes an id distinct from every other live entity's, appears last in its roster, and keeps that id across frames and across a phase change."
+domains = ["polarity", "swarm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/entity-ids.test.ts", outputs = [
+  { id = "roster", name = "The field whose rosters the ids were read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drone-travel-gate"
+title = "Travel off holds a drone still"
+description = "A drone with setDroneTravel(id, false) reports the same centre after a second of game time; a second drone with travel on has moved."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/drone-travel-gate.test.ts", outputs = [
+  { id = "held", name = "The held drone beside the one still travelling", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drone-oscillation-gate"
+title = "Oscillation off holds a Flux's band"
+description = "At stage 1, a Flux with setDroneOscillation(id, false) reports the same band, band clock and shimmer after a full fluxCycle(1) of game time, while travelling as usual."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "instrumentation/drone-oscillation-gate.test.ts", outputs = [
+  { id = "held", name = "The Flux whose band the closed gate holds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drone-fire-gate"
+title = "Fire off leaves a dive silent"
+description = "A diving drone with setDroneFire(id, false) puts no enemy bullet on the field across its whole dive; a second diver with fire on does."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/drone-fire-gate.test.ts", outputs = [
+  { id = "silent", name = "The silent dive beside the firing one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-entry-gate"
+title = "Wave entry off keeps the wave's drones away"
+description = "With setWaveEntry(false), a stage entered brings no drone in over ten seconds, its first group included; with it on, drones arrive."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/wave-entry-gate.test.ts", outputs = [
+  { id = "empty", name = "The field the closed gate kept empty", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-launching-gate"
+title = "Dive launching off launches no dive"
+description = "With setDiveLaunching(false) and the dive clock posed past DIVE_FIRST_DELAY plus DIVE_GAP_MAX, an assembled formation launches no dive over three seconds; with it on, one launches."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/dive-launching-gate.test.ts", outputs = [
+  { id = "holding", name = "The formation the closed gate never launched", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-contact-gate"
+title = "Ship contact off costs no life"
+description = "With setShipContact(false), an opposite-band enemy bullet reaching the ship leaves lives unchanged and the phase still live; with it on, the same scenario costs a life."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/ship-contact-gate.test.ts", outputs = [
+  { id = "unharmed", name = "The bullet reaching the ship at no cost", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-clearing-gate"
+title = "Stage clearing off ends no stage"
+description = "With setStageClearing(false), destroying the last drone of the game's own wave leaves the screen inWave, the phase live and no SCORE_STAGE_CLEAR paid; with the gate as reset leaves it, the same kill ends the wave."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/stage-clearing-gate.test.ts", outputs = [
+  { id = "carrying-on", name = "The wave still live after its last drone fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-score-grants-no-life"
+title = "Posing the score grants no extra life"
+description = "setScore across EXTRA_LIFE_AT leaves lives exactly as it was: the award belongs to the scoring path, and a pose is a precondition."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-score-grants-no-life.test.ts", outputs = [
+  { id = "posed", name = "The posed score beside the unchanged lives", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-stage-derives"
+title = "Posing the stage moves the derived figures"
+description = "setStage(n) leaves the drone, bullet and burst rosters untouched and moves droneSpeedScale, bulletSpeedScale, diveGapScale, fluxHold and isChallenge to the values the stage's formulas give."
+domains = ["swarm", "arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-stage-derives.test.ts", outputs = [
+  { id = "derived", name = "The rosters untouched by the posed stage", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "Toggling the overlay over a posed field draws the facts specs/instrumentation.md lists, and the snapshot is identical before and after."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay.test.ts", outputs = [
+  { id = "overlay", name = "The overlay reporting the posed field", kind = "image" },
+] }
+
+# --- The stage -------------------------------------------------------------
+# The geometry specs/field.md fixes, read off the running game: the two HUD strips
+# and the play field between them, the ship's lane, the formation slot grid and the
+# sway that translates the whole block, the bounds a bullet leaves through, and the
+# starfield behind it all. How BRIGHT the starfield reads is deliberately not here —
+# that is a row of specs/overview.md's legibility table, reviewed from the captured
+# image rather than asserted, because it is not a question pixels can decide without
+# fixing a look the case leaves to the build.
+[[review.categories]]
+id = "field"
+title = "The stage"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The whole stage stays visible and centred"
+description = "The entire 1280x720 stage — both HUD strips, the whole play field and all four edges — is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "field/stage-fit.test.ts", outputs = [
+  { id = "fitted", name = "The whole stage fitted and centred", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-strips-clear"
+title = "Play stays out of the HUD strips"
+description = "With a formation posed and no drone in transit, nothing of the ship, the drones or the bullets is drawn inside y in [0, HUD_TOP_H] or y in [HUD_BOTTOM_TOP, STAGE_H]."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "field/hud-strips-clear.test.ts", outputs = [
+  { id = "strips", name = "The HUD strips with no play drawn into them", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ship-lane"
+title = "The ship holds its lane"
+description = "The ship's centre stays at SHIP_Y through a second of movement in each direction."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/ship-lane.test.ts", outputs = [
+  { id = "lane", name = "The ship holding its lane across the sweep", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slot-grid"
+title = "A formation slot sits where the grid puts it"
+description = "Every drone of the build's own stage-1 wave, once settled, rests on a slot of the specified grid: its centre sits at slotX(col), slotY(row) plus the block's single sway offset, within one unit."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "field/slot-grid.test.ts", outputs = [
+  { id = "grid", name = "The wave settled onto the grid's slots", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sway-amplitude"
+title = "The formation swings the full amplitude"
+description = "A formation drone's absolute x swings SWAY_AMP either side of its slot across a full SWAY_PERIOD, within 10%."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "field/sway-amplitude.test.ts", outputs = [
+  { id = "swing", name = "The formation swinging its full amplitude", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sway-period"
+title = "The sway's period is the stated one"
+description = "The sway's two extremes sit SWAY_PERIOD/2 apart, within 10%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "field/sway-period.test.ts", outputs = [
+  { id = "period", name = "The formation at one extreme of its sway", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sway-together"
+title = "The formation sways as one body"
+description = "Every formation drone carries the same sway offset at the same instant, within one unit, across a whole period."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "field/sway-together.test.ts", outputs = [
+  { id = "together", name = "The formation carrying one sway offset", kind = "image" },
+] }
+[[review.categories.items]]
+id = "player-bullet-leaves-field"
+title = "A player bullet leaves the field at the top"
+description = "A player bullet climbing past FIELD_TOP leaves the roster."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/player-bullet-leaves-field.test.ts", outputs = [
+  { id = "left", name = "The field the climbing bullet left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enemy-bullet-leaves-field"
+title = "An enemy bullet leaves the field at the bottom"
+description = "An enemy bullet falling past FIELD_BOTTOM leaves the roster."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/enemy-bullet-leaves-field.test.ts", outputs = [
+  { id = "left", name = "The field the falling bullet left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "starfield"
+title = "A starfield sits behind the play field"
+description = "An empty play field carries at least STARFIELD_MIN marks distinct from the background they are drawn on. How bright the starfield reads against a drone is a row of the legibility table and is reviewed from the captured image, not asserted."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "field/starfield.test.ts", outputs = [
+  { id = "starfield", name = "The empty play field and the stars behind it", kind = "image" },
+] }
+
+# --- The ship and its cannon -----------------------------------------------
+# The ship and its cannon, from specs/ship.md: it moves left and right only, it
+# stops promptly, it clamps at both bounds, and every figure of its fire — where a
+# shot leaves, how fast it climbs, how often it may be fired, how many may be alive,
+# what band it carries, and the lockout a flip costs. Each is its own point, so a
+# build with a correct cannon and a wrong cadence loses one point rather than the
+# group.
+[[review.categories]]
+id = "ship"
+title = "The ship and its cannon"
+[[review.categories.items]]
+id = "move-left"
+title = "Holding left moves the ship left"
+description = "Holding the left action for one second moves the ship SHIP_SPEED units left, within 5%."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "ship/move-left.test.ts", outputs = [
+  { id = "moved", name = "The ship at the end of a second held left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "move-right"
+title = "Holding right moves the ship right"
+description = "Holding the right action for one second moves the ship SHIP_SPEED units right, within 5%."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "ship/move-right.test.ts", outputs = [
+  { id = "moved", name = "The ship at the end of a second held right", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stops-on-release"
+title = "The ship stops promptly"
+description = "Releasing the direction leaves the ship within one unit of where it stood a tenth of a second later, so there is no drift or inertia."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/stops-on-release.test.ts", outputs = [
+  { id = "stopped", name = "The ship standing where the release left it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clamp-left"
+title = "The ship stops at the left bound"
+description = "Held left from 120 units inside SHIP_X_MIN, the ship comes to rest at SHIP_X_MIN and does not wrap."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/clamp-left.test.ts", outputs = [
+  { id = "clamped", name = "The ship at rest on the left bound", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clamp-right"
+title = "The ship stops at the right bound"
+description = "Held right from 120 units inside SHIP_X_MAX, the ship comes to rest at SHIP_X_MAX and does not wrap."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/clamp-right.test.ts", outputs = [
+  { id = "clamped", name = "The ship at rest on the right bound", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-spawns-bullet"
+title = "The fire action puts a bullet on the field"
+description = "One press of the fire action adds exactly one friendly bullet."
+domains = ["arcade", "polarity"]
+failure_cap = "broken"
+validation = { script = "ship/fire-spawns-bullet.test.ts", outputs = [
+  { id = "fired", name = "The one bullet the press put on the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-spawn-point"
+title = "A shot leaves the ship's nose"
+description = "A fired bullet appears at the ship's centre x, within 4 units, above SHIP_Y."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/bullet-spawn-point.test.ts", outputs = [
+  { id = "nose", name = "The shot standing at the ship's nose", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-travels-up"
+title = "A player bullet climbs at its speed"
+description = "A player bullet's centre rises PLAYER_BULLET_SPEED units in a second of game time, within 5%."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/bullet-travels-up.test.ts", outputs = [
+  { id = "climb", name = "The height a second of climbing carried the bullet to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-cadence"
+title = "Held fire is spaced by the cadence"
+description = "Fire held for two seconds spaces successive shots FIRE_INTERVAL apart, within 10%."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/fire-cadence.test.ts", outputs = [
+  { id = "cadence", name = "Held fire spacing its shots", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fire-cap"
+title = "Player bullets are capped"
+description = "However long fire is held, at most MAX_PLAYER_BULLETS friendly bullets are alive at once."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/fire-cap.test.ts", outputs = [
+  { id = "capped", name = "The capped bullets held fire allows", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-carries-band"
+title = "A shot carries the ship's band"
+description = "A shot fired on cyan is a cyan bullet and a shot fired on magenta is a magenta bullet."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "ship/bullet-carries-band.test.ts", outputs = [
+  { id = "bands", name = "A cyan shot and a magenta shot in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-band-fixed"
+title = "A bullet in flight keeps its band"
+description = "A bullet already in flight keeps its band when the ship flips."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "ship/bullet-band-fixed.test.ts", outputs = [
+  { id = "kept", name = "The bullet keeping its band through the flip", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lockout-blocks-fire"
+title = "The lockout blocks firing"
+description = "With the fire lockout posed at FLIP_LOCKOUT, the fire action adds no bullet."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "ship/lockout-blocks-fire.test.ts", outputs = [
+  { id = "blocked", name = "The empty field the locked-out fire left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lockout-expires"
+title = "Firing works once the lockout elapses"
+description = "With the lockout posed at FLIP_LOCKOUT and FLIP_LOCKOUT seconds of game time run, the fire action adds a bullet."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "ship/lockout-expires.test.ts", outputs = [
+  { id = "fired", name = "The shot the expired lockout allowed", kind = "image" },
+] }
+# The movement edge case specs/ship.md writes out because the speed rule above does
+# not decide it: with both directions held, a build that adds the two requests, that
+# takes the first pressed, or that takes the last reported is each a consistent
+# reading. Nothing else on the checklist presses two opposing keys at once.
+[[review.categories.items]]
+id = "opposing-keys-hold"
+title = "Both directions at once holds the ship still"
+description = "With the ship posed well inside its lane and both direction actions held for a second, its centre never moves from where it stood."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/opposing-keys-hold.test.ts", outputs = [
+  { id = "still", name = "The ship standing still under both directions", kind = "image" },
+] }
+
+# --- The two bands ---------------------------------------------------------
+# Spectra's signature, from specs/bands.md: a band decides what a shot destroys,
+# what the shield stops, and what an inversion swaps. EFFECTIVE band is the idea the
+# whole case turns on — a stored band put through two swaps, the Prism's broken shell
+# and the spectral inversion, which compose as toggles rather than additively — so
+# the two swaps are graded apart and their composition is graded on its own.
+#
+# What a MISMATCHED shot does to the drone is not here: the bullet being consumed is
+# specs/bands.md's rule under either mode and is graded commonly, and what happens to
+# the DRONE is specs/mode.md's and is graded by whichever variant category is
+# running.
+[[review.categories]]
+id = "bands"
+title = "The two bands"
+[[review.categories.items]]
+id = "match-destroys"
+title = "A matching shot destroys a drone"
+description = "A player bullet whose effective band equals a Shard's effective band destroys it on contact."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/match-destroys.test.ts", outputs = [
+  { id = "destroyed", name = "The field the matching shot cleared", kind = "image" },
+] }
+# It asserts only that the drone is NOT DESTROYED. What else a mismatched shot
+# does to the drone is specs/mode.md's and differs by mode, so
+# `sortie.mismatch-wasted` owns "unchanged, in its phase, at its slot" for the one
+# variant where that is the rule, and the overload category owns the charge for the
+# other. Splitting it this way is what lets the destroy half be graded commonly.
+[[review.categories.items]]
+id = "mismatch-spares"
+title = "An opposite-band shot never destroys"
+description = "A player bullet whose effective band differs from a Shard's leaves the Shard on the field."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/mismatch-spares.test.ts", outputs = [
+  { id = "spared", name = "The Shard the opposite-band shot left standing", kind = "image" },
+] }
+# This is specs/bands.md's rule and holds under either mode, which is what lets
+# the item be common.
+[[review.categories.items]]
+id = "mismatch-consumes-bullet"
+title = "An opposite-band shot is consumed"
+description = "The opposite-band bullet leaves the roster on contact rather than passing through."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "bands/mismatch-consumes-bullet.test.ts", outputs = [
+  { id = "consumed", name = "The Shard standing with no bullet past it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shield-absorbs"
+title = "A same-band enemy bullet is absorbed"
+description = "An enemy bullet of the ship's own band reaching the ship costs no life and leaves the roster."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/shield-absorbs.test.ts", outputs = [
+  { id = "absorbed", name = "The ship with the same-band bullet absorbed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shield-opposite-lethal"
+title = "An opposite-band enemy bullet costs a life"
+description = "An enemy bullet of the band opposite the ship's costs exactly one life on contact."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/shield-opposite-lethal.test.ts", outputs = [
+  { id = "hit", name = "The ship struck by the opposite-band bullet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body-always-lethal-same-band"
+title = "A same-band drone body still costs a life"
+description = "A drone of the ship's own band reaching the ship costs a life, so a body is never mistaken for a shield."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/body-always-lethal-same-band.test.ts", outputs = [
+  { id = "hit", name = "The same-band body reaching the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body-always-lethal-opposite"
+title = "An opposite-band drone body costs a life"
+description = "A drone of the opposite band reaching the ship costs a life."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/body-always-lethal-opposite.test.ts", outputs = [
+  { id = "hit", name = "The opposite-band body reaching the ship", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-instant"
+title = "The flip changes band at once"
+description = "The flip action changes the ship's band in the frame it is delivered, with no delay."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/flip-instant.test.ts", outputs = [
+  { id = "flipped", name = "The ship on its new band in the frame it flipped", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-starts-lockout"
+title = "The flip starts the fire lockout"
+description = "A flip sets the ship's lockout to FLIP_LOCKOUT, within 10%."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/flip-starts-lockout.test.ts", outputs = [
+  { id = "lockout", name = "The lockout standing after the flip", kind = "image" },
+] }
+# The boundary the rule above does not settle: what a SECOND flip does to a lockout
+# the first one started. specs/bands.md writes it out because "the flip starts a
+# lockout" admits a reading on which a standing one is left alone.
+[[review.categories.items]]
+id = "flip-restarts-lockout"
+title = "A flip restarts a standing lockout"
+description = "A flip taken two thirds of the way through a standing FLIP_LOCKOUT puts the lockout back to the full FLIP_LOCKOUT, within 10%, rather than leaving the remainder."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "bands/flip-restarts-lockout.test.ts", outputs = [
+  { id = "restarted", name = "The lockout the second flip put back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion-swaps-drone"
+title = "An inversion swaps a drone's band"
+description = "With an inversion posed, a stored-cyan drone reports magenta as its effective band."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/inversion-swaps-drone.test.ts", outputs = [
+  { id = "swapped", name = "The stored-cyan drone reading magenta", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion-swaps-enemy-bullet"
+title = "An inversion swaps an enemy bullet's band"
+description = "With an inversion posed, a stored-cyan enemy bullet reports magenta as its effective band."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/inversion-swaps-enemy-bullet.test.ts", outputs = [
+  { id = "swapped", name = "The stored-cyan enemy bullet reading magenta", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion-spares-player-bullet"
+title = "A player bullet is never inverted"
+description = "With an inversion posed, a player bullet's effective band equals its stored band."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/inversion-spares-player-bullet.test.ts", outputs = [
+  { id = "kept", name = "The player's bullet holding its stored band", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion-changes-outcome"
+title = "An inversion changes what a shot destroys"
+description = "With an inversion posed, a cyan player bullet destroys a stored-magenta Shard and a magenta one does not."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/inversion-changes-outcome.test.ts", outputs = [
+  { id = "outcome", name = "The inverted field the two shots were fired into", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion-expires"
+title = "An inversion ends after its time"
+description = "INVERSION_TIME after it begins, inversionActive is false and a stored-cyan drone reads cyan again."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "bands/inversion-expires.test.ts", outputs = [
+  { id = "expired", name = "The field with the bands back as they were", kind = "image" },
+] }
+# `setInversion` is the precondition and is never the trigger under test: calling
+# it twice would satisfy the refresh rule by the operation's own contract whatever
+# the build's trigger does, which is a tautology and the shape the precondition
+# guardrail rules out. So the trigger is a real diving Prism.
+[[review.categories.items]]
+id = "inversion-refreshes"
+title = "A second trigger refreshes the inversion"
+description = "A partial inversion is posed with setInversion(t) for some 0 < t < INVERSION_TIME, then a diving Prism is run across PRISM_INVERT_Y in the posture drones.prism-triggers-inversion uses. inversion then reads INVERSION_TIME, within tolerance, rather than INVERSION_TIME + t."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "bands/inversion-refreshes.test.ts", outputs = [
+  { id = "refreshed", name = "The Prism refreshing the running inversion", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-shell-flips-effective-band"
+title = "A broken shell exposes the opposite band"
+description = "A Prism whose shell has been broken reports the opposite of its stored band as its effective band."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "bands/prism-shell-flips-effective-band.test.ts", outputs = [
+  { id = "exposed", name = "The broken shell exposing the opposite band", kind = "image" },
+] }
+# The two swaps compose as TOGGLES, not additively, which is the point of stating
+# effective band as one definition applied twice.
+[[review.categories.items]]
+id = "inversion-cancels-two-swaps"
+title = "Two swaps cancel"
+description = "With an inversion posed, a stored-cyan Prism whose shell has been broken reports cyan as its effective band, and a cyan player bullet destroys its exposed core."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "bands/inversion-cancels-two-swaps.test.ts", outputs = [
+  { id = "cancelled", name = "The twice-swapped Prism reading its stored band", kind = "image" },
+] }
+
+# --- Resonance & discharge -------------------------------------------------
+# The meter and the discharge, from specs/resonance.md. The meter's rules — what
+# fills it, by how much, that it caps, that it neither decays nor resets on a death —
+# are one point each, and the discharge is graded by what it takes and what it
+# spares, one roster at a time: divers, entering drones, returning drones, the
+# formation it must NOT take, the enemy fire it clears, and the player's own bullets
+# it must not.
+[[review.categories]]
+id = "resonance"
+title = "Resonance & discharge"
+[[review.categories.items]]
+id = "absorb-fills"
+title = "Absorbing a bullet fills the meter"
+description = "Absorbing one same-band enemy bullet raises the meter by exactly RESONANCE_ABSORB."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/absorb-fills.test.ts", outputs = [
+  { id = "filled", name = "The meter after one absorbed bullet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "kill-fills"
+title = "A matching kill fills the meter"
+description = "Destroying a Shard with a matching shot raises the meter by exactly RESONANCE_KILL."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/kill-fills.test.ts", outputs = [
+  { id = "filled", name = "The meter after one matching kill", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shell-fills-nothing"
+title = "Breaking a Prism's shell fills nothing"
+description = "Breaking a Prism's shell leaves the meter unchanged."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/shell-fills-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The meter unchanged by the broken shell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "core-fills"
+title = "A Prism's core kill fills the meter"
+description = "Destroying a Prism's exposed core raises the meter by RESONANCE_KILL."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/core-fills.test.ts", outputs = [
+  { id = "filled", name = "The meter after the core kill", kind = "image" },
+] }
+[[review.categories.items]]
+id = "caps-at-max"
+title = "The meter caps"
+description = "With the meter posed one point below RESONANCE_MAX, a kill worth more leaves it at exactly RESONANCE_MAX."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/caps-at-max.test.ts", outputs = [
+  { id = "capped", name = "The meter standing at its cap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-decay"
+title = "The meter does not decay"
+description = "The meter posed at half is unchanged after ten seconds of live play."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/no-decay.test.ts", outputs = [
+  { id = "held", name = "The meter still half full ten seconds on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "kept-on-death"
+title = "The meter survives a life loss"
+description = "The meter is unchanged by losing a life."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/kept-on-death.test.ts", outputs = [
+  { id = "kept", name = "The meter carried through the life loss", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ready-at-full"
+title = "A discharge is ready exactly at full"
+description = "dischargeReady is false one point below RESONANCE_MAX and true at RESONANCE_MAX."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/ready-at-full.test.ts", outputs = [
+  { id = "ready", name = "The full meter reporting itself ready", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-spends"
+title = "A discharge spends the whole meter"
+description = "With the meter full, the discharge action leaves it at zero."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "resonance/discharge-spends.test.ts", outputs = [
+  { id = "spent", name = "The emptied meter the discharge left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-locked"
+title = "A discharge needs a full meter"
+description = "With the meter one point short of full, the discharge action spends nothing and starts no wave."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "resonance/discharge-locked.test.ts", outputs = [
+  { id = "locked", name = "The short meter and the field it did not clear", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-clears-divers"
+title = "A discharge destroys every diver"
+description = "Every drone in phase diving is gone once the wave has run."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "resonance/discharge-clears-divers.test.ts", outputs = [
+  { id = "cleared", name = "The discharge wave taking the divers", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "discharge-clears-entering"
+title = "A discharge destroys every entering drone"
+description = "Every drone in phase entering is gone once the wave has run."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "resonance/discharge-clears-entering.test.ts", outputs = [
+  { id = "cleared", name = "The field cleared of its entering drones", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-clears-returning"
+title = "A discharge destroys every returning drone"
+description = "Every drone in phase returning is gone once the wave has run."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/discharge-clears-returning.test.ts", outputs = [
+  { id = "cleared", name = "The field cleared of its returning drones", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-spares-formation"
+title = "A discharge spares the formation"
+description = "Every drone in phase formation is still standing once the wave has run."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "resonance/discharge-spares-formation.test.ts", outputs = [
+  { id = "spared", name = "The formation still standing after the wave", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-clears-enemy-bullets"
+title = "A discharge clears the enemy fire"
+description = "Every enemy bullet on the field is gone once the wave has run."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "resonance/discharge-clears-enemy-bullets.test.ts", outputs = [
+  { id = "cleared", name = "The field cleared of enemy fire", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-spares-player-bullets"
+title = "A discharge spares the player's bullets"
+description = "Every friendly bullet on the field is still in flight once the wave has run."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/discharge-spares-player-bullets.test.ts", outputs = [
+  { id = "spared", name = "The friendly bullets still in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-band-blind"
+title = "A discharge ignores bands"
+description = "A discharge destroys divers of both bands whatever band the ship holds."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "resonance/discharge-band-blind.test.ts", outputs = [
+  { id = "blind", name = "Divers of both bands taken by one wave", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-kills-prism-outright"
+title = "A discharge destroys a diving Prism whole"
+description = "A diving Prism with its shell intact is removed entirely rather than losing only its shell."
+domains = ["polarity", "swarm"]
+failure_cap = "scuffed"
+validation = { script = "resonance/discharge-kills-prism-outright.test.ts", outputs = [
+  { id = "whole", name = "The diving Prism removed whole", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-duration"
+title = "The discharge wave runs its span"
+description = "discharge.active is true for DISCHARGE_TIME after the action and false after, within 10%."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "resonance/discharge-duration.test.ts", outputs = [
+  { id = "span", name = "The wave running its span", kind = "replay" },
+] }
+
+# --- The swarm -------------------------------------------------------------
+# How any drone behaves, from specs/swarm.md: the wave's field starts empty, the
+# drones fly in in staggered groups, the entrance is continuous and ends in a slot,
+# the assembled block sways as one body, dives launch off the wave's own dive clock,
+# a dive bends toward the ship and either loops back or wraps, only divers fire, and
+# a survivor comes home.
+#
+# The four DIVE-TIMING points each pose a block of the formation, pose the dive
+# clock, and only then open the dive-launching gate. Without the posed clock there is
+# no assembly moment for a hidden timer to start from, and the points would be
+# undecidable against a build that starts its delay at the assembly transition; the
+# clock is declared state precisely so the pose is well defined.
+[[review.categories]]
+id = "swarm"
+title = "The swarm"
+[[review.categories.items]]
+id = "wave-empty-at-start"
+title = "A wave begins with an empty field"
+description = "The instant a stage's live wave opens, no drone stands on the field."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "swarm/wave-empty-at-start.test.ts", outputs = [
+  { id = "empty", name = "The empty field a wave opens on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drones-enter"
+title = "Drones fly in from above"
+description = "Within two seconds of a wave opening, drones are on the field in phase entering, having crossed FIELD_TOP from above."
+domains = ["swarm"]
+failure_cap = "broken"
+validation = { script = "swarm/drones-enter.test.ts", outputs = [
+  { id = "entering", name = "The wave crossing into the field", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "entry-group-gap"
+title = "Entry groups are staggered"
+description = "Successive groups of entering drones begin ENTER_GROUP_GAP apart, within 20%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/entry-group-gap.test.ts", outputs = [
+  { id = "stagger", name = "The staggered groups arriving", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "entrance-speed"
+title = "An entrance runs at its speed"
+description = "An entering drone's path length over one second is ENTER_SPEED times droneSpeedScale(stage), within 10%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/entrance-speed.test.ts", outputs = [
+  { id = "speed", name = "The ground one second of entrance covers", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entrance-continuous"
+title = "An entrance path is continuous"
+description = "Sampled every frame, an entering drone never moves more than one frame's travel between samples."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/entrance-continuous.test.ts", outputs = [
+  { id = "path", name = "The unbroken entrance path", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "assembles"
+title = "Every entering drone settles into its slot"
+description = "Every drone of a wave reaches phase formation at its slot within twelve seconds of the wave opening."
+domains = ["swarm"]
+failure_cap = "broken"
+validation = { script = "swarm/assembles.test.ts", outputs = [
+  { id = "assembled", name = "The wave settled into its slots", kind = "image" },
+] }
+[[review.categories.items]]
+id = "both-bands"
+title = "The formation holds both bands"
+description = "An assembled formation holds at least one drone of each effective band."
+domains = ["polarity", "swarm"]
+failure_cap = "broken"
+validation = { script = "swarm/both-bands.test.ts", outputs = [
+  { id = "bands", name = "The assembled formation holding both bands", kind = "image" },
+] }
+[[review.categories.items]]
+id = "formation-symmetric"
+title = "The formation is mirror-symmetric"
+description = "For every filled slot at x, a slot at 2 * FORM_CENTER_X - x is filled, within one unit."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/formation-symmetric.test.ts", outputs = [
+  { id = "mirror", name = "The formation mirrored about its centre", kind = "image" },
+] }
+[[review.categories.items]]
+id = "formation-holds-slot"
+title = "A formation drone holds its slot"
+description = "A formation drone's centre equals its slot plus the sway offset, within one unit, across a whole period."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/formation-holds-slot.test.ts", outputs = [
+  { id = "holding", name = "A formation drone holding its slot through the sway", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "dive-first-delay"
+title = "The first dive waits its delay"
+description = "Over a posed complete formation with the dive clock posed at 0, the first dive launches DIVE_FIRST_DELAY after dive launching is turned on, within 20%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/dive-first-delay.test.ts", outputs = [
+  { id = "first", name = "The first dive, launched after its delay", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-cadence"
+title = "Later dives keep their cadence"
+description = "Over a posed formation block with the dive clock posed just short of DIVE_FIRST_DELAY and dive launching on, every gap between successive dive launches lies between DIVE_GAP_MIN and DIVE_GAP_MAX times diveGapScale(stage), within 20%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/dive-cadence.test.ts", outputs = [
+  { id = "cadence", name = "Successive dives keeping their cadence", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "dive-leaves-slot"
+title = "A dive leaves the formation"
+description = "A launched dive puts the drone in phase diving and carries it away from its slot."
+domains = ["swarm"]
+failure_cap = "broken"
+validation = { script = "swarm/dive-leaves-slot.test.ts", outputs = [
+  { id = "diving", name = "The drone away from its slot and diving", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-speed"
+title = "A dive runs at its speed"
+description = "A diving drone's path length over one second is DIVE_SPEED times droneSpeedScale(stage), within 10%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/dive-speed.test.ts", outputs = [
+  { id = "speed", name = "The ground one second of diving covers", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-bends-toward-player"
+title = "A dive bends toward the ship"
+description = "The same dive flown with the ship parked far left and again far right comes nearer the parked ship each time, by at least the ship's own width, and closes on it, which a fixed track cannot do."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "swarm/dive-bends-toward-player.test.ts", outputs = [
+  { id = "bent", name = "The dive bending toward the parked ship", kind = "replay" },
+] }
+# A wrapping dive is CORRECT, not a fault, and this is where v1.0.0 learned it:
+# at most one discontinuity, and only as a bottom-to-top wrap, with a tolerance
+# either side of the field edges because the two endpoints come from samples a
+# couple of frames apart.
+[[review.categories.items]]
+id = "dive-continuous"
+title = "A dive path is continuous"
+description = "A dive holds at most one discontinuity, and only as a bottom-to-top wrap whose endpoints lie within 40 units of FIELD_BOTTOM and FIELD_TOP."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/dive-continuous.test.ts", outputs = [
+  { id = "path", name = "The unbroken dive path", kind = "replay" },
+] }
+# The re-settle alone, split off from `dive-continuous` so a build that wraps
+# honestly but never comes home is named for that and nothing else.
+[[review.categories.items]]
+id = "dive-returns"
+title = "A surviving diver comes home"
+description = "A drone that survives its dive reaches phase formation back at its slot."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "swarm/dive-returns.test.ts", outputs = [
+  { id = "home", name = "The surviving diver back in its slot", kind = "image" },
+] }
+[[review.categories.items]]
+id = "looping-dive-stays-in-field"
+title = "A looping dive turns before the bottom"
+description = "A dive that loops back rather than wrapping turns above FIELD_BOTTOM and never enters the bottom HUD strip."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/looping-dive-stays-in-field.test.ts", outputs = [
+  { id = "turned", name = "The looping dive turning above the field's floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "only-divers-fire"
+title = "Only divers fire"
+description = "An assembled formation with no dive puts no enemy bullet on the field over ten seconds; a launched dive does."
+domains = ["swarm"]
+failure_cap = "broken"
+validation = { script = "swarm/only-divers-fire.test.ts", outputs = [
+  { id = "silent", name = "The silent formation beside the firing dive", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-fire-point"
+title = "A diver fires as it crosses the fire line"
+description = "A diving drone's first shot appears in the frame its centre first crosses DIVE_FIRE_Y."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/dive-fire-point.test.ts", outputs = [
+  { id = "shot", name = "The shot fired as the diver crosses the fire line", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enemy-bullet-speed"
+title = "Enemy fire falls at its speed"
+description = "An enemy bullet's centre falls ENEMY_BULLET_SPEED times bulletSpeedScale(stage) units in a second, within 5%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "swarm/enemy-bullet-speed.test.ts", outputs = [
+  { id = "fall", name = "The ground one second of enemy fire covers", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enemy-bullet-band"
+title = "A diver's bullet carries its band"
+description = "The bullet a diving Shard fires carries the Shard's effective band at the shot."
+domains = ["polarity", "swarm"]
+failure_cap = "broken"
+validation = { script = "swarm/enemy-bullet-band.test.ts", outputs = [
+  { id = "band", name = "The bullet carrying the Shard's band", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-composition"
+title = "A wave is built of all three kinds"
+description = "A standard wave's formation holds at least two Fluxes, at least one Prism, and Shards of both bands as the rest."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "swarm/wave-composition.test.ts", outputs = [
+  { id = "composition", name = "The standard wave and the kinds it is built of", kind = "image" },
+] }
+
+# --- The three drones ------------------------------------------------------
+# The three kinds, from specs/drones.md, each of which tests the polarity system a
+# different way: the Shard holds one band for its life, the Flux oscillates through a
+# held window and a shimmer in which nothing can destroy it, and the Prism is two
+# layers of opposite bands that must be broken shell-first and inverts the whole field
+# if it reaches the bottom alive. Each rule is its own point, so a build with a
+# correct Shard and a broken Flux is named for the Flux.
+[[review.categories]]
+id = "drones"
+title = "The three drones"
+[[review.categories.items]]
+id = "shard-band-fixed"
+title = "A Shard holds one band"
+description = "At stage 1, a Shard's stored band is unchanged after a full fluxCycle(1) of live play with its oscillation gate on."
+domains = ["polarity", "swarm"]
+failure_cap = "passable"
+validation = { script = "drones/shard-band-fixed.test.ts", outputs = [
+  { id = "fixed", name = "The Shard holding one band through a full cycle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shard-fires-one"
+title = "A diving Shard fires one shot"
+description = "A Shard's whole dive puts exactly one enemy bullet on the field."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "drones/shard-fires-one.test.ts", outputs = [
+  { id = "one", name = "The one bullet a Shard's dive leaves", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-cycle-holds"
+title = "A Flux holds a band for its hold time"
+description = "A Flux posed at the start of a held window keeps that band for fluxHold(stage) seconds, within 10%, before shimmering."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "drones/flux-cycle-holds.test.ts", outputs = [
+  { id = "hold", name = "The Flux holding its band through the window", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flux-shimmer-duration"
+title = "The shimmer lasts its telegraph"
+description = "shimmer is true for FLUX_SHIMMER seconds, within 10%."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "drones/flux-shimmer-duration.test.ts", outputs = [
+  { id = "shimmer", name = "The Flux mid-shimmer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-emerges-opposite"
+title = "A Flux emerges on the other band"
+description = "After a shimmer the Flux holds the band opposite the one it entered with."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "drones/flux-emerges-opposite.test.ts", outputs = [
+  { id = "emerged", name = "The Flux emerging on the other band", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flux-shimmer-immune"
+title = "No shot destroys a shimmering Flux"
+description = "A shot of either band during the shimmer leaves the Flux alive."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "drones/flux-shimmer-immune.test.ts", outputs = [
+  { id = "immune", name = "The shimmering Flux alive after both shots", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-held-killable"
+title = "A matching shot in a held window destroys a Flux"
+description = "A shot of the held band during a held window destroys the Flux."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "drones/flux-held-killable.test.ts", outputs = [
+  { id = "killed", name = "The field the matching shot cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-silent-in-shimmer"
+title = "A shimmering Flux fires nothing"
+description = "A Flux diving through a shimmer puts no enemy bullet on the field while shimmer is true."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "drones/flux-silent-in-shimmer.test.ts", outputs = [
+  { id = "silent", name = "The shimmering Flux firing nothing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-fires-held-band"
+title = "A diving Flux fires its held band"
+description = "The bullet a diving Flux fires carries the band it holds at the shot."
+domains = ["polarity", "swarm"]
+failure_cap = "passable"
+validation = { script = "drones/flux-fires-held-band.test.ts", outputs = [
+  { id = "band", name = "The bullet carrying the Flux's held band", kind = "image" },
+] }
+# The Flux's counterpart to `shard-fires-one` and `prism-fires-two-bands`. The item
+# above reads the BAND of the bullet and says so; without this one a build whose
+# diving Flux sprays loses no point.
+[[review.categories.items]]
+id = "flux-fires-one"
+title = "A diving Flux fires one shot"
+description = "A Flux held on a band through its whole dive puts exactly one enemy bullet on the field."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "drones/flux-fires-one.test.ts", outputs = [
+  { id = "one", name = "The one bullet a held Flux's dive leaves", kind = "image" },
+] }
+# The deferred shot, which is the half of specs/drones.md's shimmer sentence the two
+# items above deliberately never reach: one pins the drone mid-shimmer so it never
+# settles, the other freezes the clock in the held part so the crossing is never made
+# in shimmer. This is the only point that lets the window elapse under a diving Flux.
+[[review.categories.items]]
+id = "flux-defers-shot"
+title = "A shimmering Flux takes its shot when it settles"
+description = "A Flux that crosses DIVE_FIRE_Y while shimmering fires nothing until the shimmer ends, then takes its one shot within a frame or two of settling, still diving."
+domains = ["polarity", "swarm"]
+failure_cap = "passable"
+validation = { script = "drones/flux-defers-shot.test.ts", outputs = [
+  { id = "deferred", name = "The shot the settled Flux finally took", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-shell-breaks-to-shell-band"
+title = "The shell falls to the shell's band"
+description = "A shot of the shell's band breaks the shell and leaves the Prism alive with its core exposed."
+domains = ["polarity", "swarm"]
+failure_cap = "broken"
+validation = { script = "drones/prism-shell-breaks-to-shell-band.test.ts", outputs = [
+  { id = "broken", name = "The Prism alive with its core exposed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-shell-survives-mismatch"
+title = "The shell holds against the other band"
+description = "A shot of the core's band leaves the shell intact and the Prism unchanged."
+domains = ["polarity", "swarm"]
+failure_cap = "broken"
+validation = { script = "drones/prism-shell-survives-mismatch.test.ts", outputs = [
+  { id = "intact", name = "The Prism unchanged behind its shell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-core-survives-shell-band"
+title = "The core holds against the shell's band"
+description = "With the shell gone, a shot of the shell's band destroys nothing."
+domains = ["polarity", "swarm"]
+failure_cap = "broken"
+validation = { script = "drones/prism-core-survives-shell-band.test.ts", outputs = [
+  { id = "survived", name = "The exposed core standing after the shot", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-core-destroys"
+title = "The core falls to its own band"
+description = "With the shell gone, a shot of the core's band destroys the Prism."
+domains = ["polarity", "swarm"]
+failure_cap = "broken"
+validation = { script = "drones/prism-core-destroys.test.ts", outputs = [
+  { id = "destroyed", name = "The field the core shot cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-breakable-in-formation"
+title = "A Prism can be broken in formation"
+description = "A Prism sitting in the formation loses its shell to a shot of the shell's band."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "drones/prism-breakable-in-formation.test.ts", outputs = [
+  { id = "broken", name = "The formation Prism with its shell gone", kind = "image" },
+] }
+# 320 units is v1.0.0's own hardened figure and the reasoning is carried with it:
+# a quarter of the field's width is comfortably "alongside" for any entrance
+# choreography, and nowhere near loose enough to sweep in a drone entering on the
+# other side of the stage. No spec statement fixes an escort radius, so this is an
+# honest tolerance on "enters alongside" rather than an asserted figure, and it must
+# not be tightened — at ENTER_SPEED a trio flown single-file 0.7 s apart sits 182
+# units apart and satisfies every stated requirement. The whole entrance is swept
+# rather than read at one instant, which is the v1.0.0 defect this carries the fix
+# for: counting at a chosen frame passed a build that lists a whole wave as
+# entering and failed a build that staggers its groups.
+[[review.categories.items]]
+id = "prism-escort"
+title = "A Prism enters with two Shards"
+description = "Sweeping the whole entrance, a Prism is accompanied by two Shards of opposite bands that are both in motion and within 320 units of it at the same instant."
+domains = ["swarm"]
+failure_cap = "scuffed"
+validation = { script = "drones/prism-escort.test.ts", outputs = [
+  { id = "escort", name = "The Prism entering between its two Shards", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "prism-fires-two-bands"
+title = "A diving Prism fires both bands"
+description = "A Prism's dive puts exactly one cyan and one magenta enemy bullet on the field."
+domains = ["polarity", "swarm"]
+failure_cap = "scuffed"
+validation = { script = "drones/prism-fires-two-bands.test.ts", outputs = [
+  { id = "both", name = "One cyan and one magenta bullet from one dive", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-triggers-inversion"
+title = "A Prism reaching the bottom inverts the field"
+description = "A diving Prism whose centre crosses PRISM_INVERT_Y with a layer still intact begins a spectral inversion."
+domains = ["polarity", "swarm"]
+failure_cap = "scuffed"
+validation = { script = "drones/prism-triggers-inversion.test.ts", outputs = [
+  { id = "inverted", name = "The field inverted by the Prism's crossing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-survives-bottom"
+title = "That Prism is not destroyed"
+description = "The Prism that triggered the inversion is still on the field afterwards and heads back toward its slot."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "drones/prism-survives-bottom.test.ts", outputs = [
+  { id = "survived", name = "The Prism heading back toward its slot", kind = "image" },
+] }
+
+# --- Stages ----------------------------------------------------------------
+# The stage sequence, from specs/stages.md: a standard stage is one wave, it clears
+# on the MOMENT its last drone is destroyed, and clearing it advances the number. The
+# challenge stage is graded as the flyover it is stated to be — single-band groups,
+# alternating, non-firing, harmless, and sweeping off the field — with a group read as
+# what a player sees (inside the field on BOTH axes, adjacent same-band waves merged)
+# rather than as what a single frame happens to list.
+#
+# The four scaling formulas are each graded twice, once inside the ramp and once at
+# the cap or floor, because a formula asserted only where it saturates leaves the ramp
+# itself ungraded.
+[[review.categories]]
+id = "stages"
+title = "Stages"
+# This drives the game's OWN stage-1 wave — flown in, raked to its last drone, and
+# that drone shot — rather than posing a drone into a cleared field. Posing it was
+# the v1.0.0 defect: it made the verdict rest on an unwritten side effect (whether
+# a debug clear leaves the wave live) and failed builds whose progression is
+# correct in play.
+[[review.categories.items]]
+id = "clears-on-last-drone"
+title = "A wave clears when its last drone dies"
+description = "Destroying the last drone of the game's own stage-1 wave clears the wave in that frame."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "stages/clears-on-last-drone.test.ts", outputs = [
+  { id = "cleared", name = "The wave cleared on its last drone", kind = "image" },
+] }
+# The other half of that fix, and the reason it is a point in its own right:
+# specs/stages.md states that a stage clears on the MOMENT its last drone is
+# destroyed, so a wave that never held a drone is playing rather than cleared. That
+# stated rule is what makes the shared harness's empty posed wave safe for every
+# common point that poses a field, so a build that breaks it breaks the whole
+# checklist's premise.
+[[review.categories.items]]
+id = "empty-wave-does-not-clear"
+title = "An empty wave is playing, not cleared"
+description = "A live wave that never held a drone stays on the in-wave screen over ten seconds and does not clear."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "stages/empty-wave-does-not-clear.test.ts", outputs = [
+  { id = "playing", name = "The empty wave still playing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-stage"
+title = "A cleared stage advances"
+description = "The stage number is one higher once a cleared stage's interstitial has given way."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "stages/advances-stage.test.ts", outputs = [
+  { id = "advanced", name = "The stage number one higher", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-cleared-screen"
+title = "Clearing a stage shows its interstitial"
+description = "Clearing the game's own stage-1 wave opens the stage-cleared screen."
+domains = ["arcade", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "stages/stage-cleared-screen.test.ts", outputs = [
+  { id = "screen", name = "The stage-cleared screen the wave opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-every-third"
+title = "Every third stage is a challenge stage"
+description = "isChallenge is true exactly on the stages divisible by CHALLENGE_EVERY, checked across stages 1 to 12."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "stages/challenge-every-third.test.ts", outputs = [
+  { id = "schedule", name = "A stage the challenge schedule names", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-groups"
+title = "A challenge stage sends its groups"
+description = "A challenge stage puts CHALLENGE_TOTAL drones on the field, arriving in CHALLENGE_GROUPS groups of CHALLENGE_PER_GROUP."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "stages/challenge-groups.test.ts", outputs = [
+  { id = "groups", name = "The challenge stage sending its groups", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "challenge-single-band-groups"
+title = "Each challenge group is one band"
+description = "Reading each drone's band as it arrives inside the field on both axes and merging adjacent same-band waves, no group mixes the two bands."
+domains = ["polarity", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "stages/challenge-single-band-groups.test.ts", outputs = [
+  { id = "bands", name = "A challenge group arriving on one band", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-alternates"
+title = "Challenge groups alternate bands"
+description = "Those merged groups alternate bands from the first to the last."
+domains = ["polarity", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "stages/challenge-alternates.test.ts", outputs = [
+  { id = "alternating", name = "Successive groups alternating bands", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "challenge-non-firing"
+title = "A challenge stage never fires"
+description = "No enemy bullet appears across a whole challenge stage."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "stages/challenge-non-firing.test.ts", outputs = [
+  { id = "silent", name = "The challenge stage with no enemy fire on it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-contact-harmless"
+title = "A challenge drone costs no life"
+description = "A challenge drone reaching the ship costs no life."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "stages/challenge-contact-harmless.test.ts", outputs = [
+  { id = "harmless", name = "The challenge drone reaching the ship at no cost", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-drones-exit"
+title = "A challenge group sweeps across and leaves"
+description = "Every drone of an undestroyed challenge group leaves the field rather than settling into a formation slot."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "stages/challenge-drones-exit.test.ts", outputs = [
+  { id = "swept", name = "The group sweeping across and leaving", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "challenge-does-not-scale"
+title = "A challenge stage does not scale"
+description = "A challenge flyover at stage 9 runs at the same speeds as one at stage 3."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "stages/challenge-does-not-scale.test.ts", outputs = [
+  { id = "unscaled", name = "The late challenge flyover at its stage-one speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-built-at-intro"
+title = "The wave is built as the intro gives way"
+description = "No drone exists during the stage-intro hold, and the wave's drones exist once it has given way."
+domains = ["swarm", "arcade"]
+failure_cap = "passable"
+validation = { script = "stages/wave-built-at-intro.test.ts", outputs = [
+  { id = "built", name = "The wave standing as the intro gives way", kind = "image" },
+] }
+# Stage 5 is inside the ramp: the formula saturates at its 1.50 cap by stage 10,
+# where this item would assert the same figure its cap sibling does and the
+# per-stage ramp would go ungraded. Both legs are read ABSOLUTELY, against the
+# figure specs/stages.md fixes for their own stage, because a ratio between two
+# stages cancels a ramp that runs one step out — 318 against 300 and 390 against
+# 372 are the same ratio to within a percent — and that is the model this item is
+# best placed to name.
+[[review.categories.items]]
+id = "scaling-drone-speed"
+title = "Drones are faster at a later stage"
+description = "The game reports droneSpeedScale(5) as 1.24 exactly, and a posed dive covers DIVE_SPEED * droneSpeedScale(stage) units of path a second — 300 at stage 1 and 372 at stage 5 — each within 3%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-drone-speed.test.ts", outputs = [
+  { id = "faster", name = "The ground a stage-five dive covers in a second", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scaling-drone-speed-cap"
+title = "The drone-speed scale caps"
+description = "droneSpeedScale is 1.50 at stage 20 and at stage 40."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-drone-speed-cap.test.ts", outputs = [
+  { id = "capped", name = "The capped drone speed at a late stage", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scaling-bullet-speed"
+title = "Enemy fire is faster at a later stage"
+description = "The game reports bulletSpeedScale(10) as 1.36 exactly, and enemy fire falls at ENEMY_BULLET_SPEED * bulletSpeedScale(stage) units a second — 320 at stage 1 and 435.2 at stage 10 — both for the shot a diver takes as it crosses DIVE_FIRE_Y and for a bullet addEnemyBullet places, each within 1.5%."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-bullet-speed.test.ts", outputs = [
+  { id = "faster", name = "The shot a stage-ten diver took, half a second on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scaling-bullet-speed-cap"
+title = "The bullet-speed scale caps"
+description = "bulletSpeedScale is 1.40 at stage 20 and at stage 40."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
+  { id = "capped", name = "The capped bullet speed at a late stage", kind = "image" },
+] }
+# Stage 7 is inside the ramp — the formula reaches its 0.55 floor at stage 10, where
+# this item would assert the same figure its floor sibling does. The gap is a DRAWN
+# quantity, so the item reads it twice. The cadence runs the wave on its own clock
+# over one posed gap and two it drew, each launch held to the diveGap the wave
+# reported, which ties the drawn figure to the launch it times. Two dozen drawn
+# gaps are then bracketed against the window itself, [DIVE_GAP_MIN, DIVE_GAP_MAX] *
+# 0.70 = [0.98, 1.82] s, by posing the wave's own dive clock either side of it, and
+# must show at least two distinct figures among them, since the gap is drawn. That
+# is a sample held to the window, not a measurement of the ramp: a build drawing
+# from a wider window is named by the first draw that lands outside it, and a
+# window sitting wholly inside the stated one is the reviewer's to judge from the
+# replay.
+[[review.categories.items]]
+id = "scaling-dive-gap"
+title = "Dives come faster at a later stage"
+description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed formation block with dive launching on, a stage-7 wave left to run on its own clock launches each dive within two frames of the diveGap it was carrying, over one gap posed at 0.98 s and two the build drew; and each of two dozen drawn gaps read off the wave sits inside [0.98, 1.82] s, at least two of them distinct, with none launching with the wave's clock under 0.98 s or failing to launch with it past 1.82 s."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [
+  { id = "tighter", name = "The tighter stage-seven dive cadence", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scaling-dive-gap-floor"
+title = "The dive-gap scale has a floor"
+description = "diveGapScale is 0.55 at stage 20 and at stage 40."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-dive-gap-floor.test.ts", outputs = [
+  { id = "floor", name = "The dive-gap floor at a late stage", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scaling-flux-hold"
+title = "A Flux flips faster at a later stage"
+description = "The game reports fluxHold(10) as 1.15 s exactly, a Flux's held window at stage 10 runs that long within 2%, and the Flux reports shimmer false with its band clock posed at 1.13 s and true with it posed at 1.17 s."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-flux-hold.test.ts", outputs = [
+  { id = "shorter", name = "The shorter stage-ten Flux hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scaling-flux-hold-floor"
+title = "The Flux hold has a floor"
+description = "fluxHold is 1.0 at stage 20 and at stage 40."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "stages/scaling-flux-hold-floor.test.ts", outputs = [
+  { id = "floor", name = "The Flux-hold floor at a late stage", kind = "image" },
+] }
+
+# --- Lives and the run -----------------------------------------------------
+# Lives and the run, from specs/progression.md: what costs a life and what does not,
+# the ready hold and the respawn, that the wave persists across a life loss, the extra
+# life at the threshold and the latch that pays it once, and the game over.
+[[review.categories]]
+id = "progression"
+title = "Lives and the run"
+[[review.categories.items]]
+id = "starts-with-lives"
+title = "A run starts with three lives"
+description = "A run opened from the title reports START_LIVES."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "progression/starts-with-lives.test.ts", outputs = [
+  { id = "lives", name = "The run opening on its three lives", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullet-costs-life"
+title = "An opposite-band bullet costs one life"
+description = "Exactly one life is lost, not two, when an opposite-band enemy bullet reaches the ship."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/bullet-costs-life.test.ts", outputs = [
+  { id = "cost", name = "The one life the opposite-band bullet cost", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body-costs-life"
+title = "A drone body costs one life"
+description = "Exactly one life is lost when a drone body reaches the ship."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/body-costs-life.test.ts", outputs = [
+  { id = "cost", name = "The one life the drone body cost", kind = "image" },
+] }
+[[review.categories.items]]
+id = "absorb-costs-nothing"
+title = "An absorbed bullet costs nothing"
+description = "A same-band enemy bullet reaching the ship leaves the lives unchanged."
+domains = ["arcade", "polarity"]
+failure_cap = "broken"
+validation = { script = "progression/absorb-costs-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The lives unchanged by the absorbed bullet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ready-hold"
+title = "Losing a life holds for the ready beat"
+description = "Losing a life with lives to spare enters phase ready for READY_HOLD, within 20%, then returns to live."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "progression/ready-hold.test.ts", outputs = [
+  { id = "ready", name = "The ready hold the lost life opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-centres-ship"
+title = "The ship returns to the centre"
+description = "After the ready hold the ship's centre is at the centre of its lane."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-centres-ship.test.ts", outputs = [
+  { id = "centred", name = "The ship back at the centre of its lane", kind = "image" },
+] }
+# The other half of the same sentence. The item above reads the x and says outright
+# that the band is not its reading; which band the ship comes back on decides what it
+# can destroy and what it can absorb on the first frame back, so it is graded here.
+[[review.categories.items]]
+id = "respawn-keeps-band"
+title = "The ship returns holding its band"
+description = "A ship tuned to magenta before it is hit is still holding magenta on the first frame after the ready hold, which reset's cyan title value would not give it."
+domains = ["polarity", "arcade"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-keeps-band.test.ts", outputs = [
+  { id = "band", name = "The band the returned ship still holds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-persists"
+title = "The wave survives a life loss"
+description = "Every drone standing before a life is lost is still standing, in its phase and at its slot, after the ready hold."
+domains = ["arcade", "swarm"]
+failure_cap = "broken"
+validation = { script = "progression/wave-persists.test.ts", outputs = [
+  { id = "persisted", name = "The wave standing through the life loss", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-life-lost-during-ready"
+title = "The ready hold is safe"
+description = "An enemy bullet reaching the ship's lane during the ready hold costs no further life."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/no-life-lost-during-ready.test.ts", outputs = [
+  { id = "safe", name = "The ready hold costing no further life", kind = "image" },
+] }
+[[review.categories.items]]
+id = "extra-life-awarded"
+title = "An extra life is awarded at the threshold"
+description = "With setExtraLifeAwarded(false) posed and the score posed just below EXTRA_LIFE_AT, a real kill that carries the score across the threshold adds exactly one life and leaves the latch true."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/extra-life-awarded.test.ts", outputs = [
+  { id = "awarded", name = "The extra life the threshold awarded", kind = "image" },
+] }
+# Posing the latch rather than lowering the score is what lets a build that holds
+# a boolean latch and a build that compares the pre- and post-scoring score both
+# pass, since the two are indistinguishable in play.
+[[review.categories.items]]
+id = "extra-life-once"
+title = "The extra life is awarded once"
+description = "With setExtraLifeAwarded(true) posed and the score posed just below EXTRA_LIFE_AT, a real kill that carries the score across the threshold adds no further life."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/extra-life-once.test.ts", outputs = [
+  { id = "once", name = "The lives unchanged by the second crossing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-at-zero"
+title = "Losing the last life ends the game"
+description = "Losing a life with one life left opens the game-over screen."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/game-over-at-zero.test.ts", outputs = [
+  { id = "over", name = "The game-over screen the last life opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-reports-run"
+title = "The game-over screen reports the run"
+description = "The game-over screen draws the final score and the stage reached."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "progression/game-over-reports-run.test.ts", outputs = [
+  { id = "report", name = "The game-over screen reporting the run", kind = "image" },
+] }
+
+# --- Scoring ---------------------------------------------------------------
+# Every scoring event from specs/scoring.md, one point per figure, plus the three
+# rules that decide WHICH figure is paid: a drone destroyed while entering, diving or
+# returning — a discharge kill included — scores its diving value.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "shard-formation"
+title = "A formation Shard pays its figure"
+description = "Destroying a Shard in phase formation adds exactly SCORE_SHARD_FORM."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/shard-formation.test.ts", outputs = [
+  { id = "paid", name = "The score after the formation Shard fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shard-diving"
+title = "A diving Shard pays its figure"
+description = "Destroying a Shard in phase diving adds exactly SCORE_SHARD_DIVE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/shard-diving.test.ts", outputs = [
+  { id = "paid", name = "The score after the diving Shard fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-formation"
+title = "A formation Flux pays its figure"
+description = "Destroying a Flux in phase formation adds exactly SCORE_FLUX_FORM."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/flux-formation.test.ts", outputs = [
+  { id = "paid", name = "The score after the formation Flux fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-diving"
+title = "A diving Flux pays its figure"
+description = "Destroying a Flux in phase diving adds exactly SCORE_FLUX_DIVE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/flux-diving.test.ts", outputs = [
+  { id = "paid", name = "The score after the diving Flux fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-shell"
+title = "A Prism's shell pays its figure"
+description = "Breaking a Prism's shell adds exactly SCORE_PRISM_SHELL."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/prism-shell.test.ts", outputs = [
+  { id = "paid", name = "The score after the shell broke", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-core"
+title = "A Prism's core pays its figure"
+description = "Destroying a Prism's exposed core adds exactly SCORE_PRISM_CORE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/prism-core.test.ts", outputs = [
+  { id = "paid", name = "The score after the core fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-drone"
+title = "A challenge drone pays its figure"
+description = "Destroying one challenge drone adds exactly SCORE_CHALLENGE_DRONE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/challenge-drone.test.ts", outputs = [
+  { id = "paid", name = "The score after the challenge drone fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "perfect-bonus"
+title = "A perfect challenge stage pays its bonus"
+description = "Destroying all CHALLENGE_TOTAL drones adds SCORE_PERFECT_BONUS above the per-drone total."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "scoring/perfect-bonus.test.ts", outputs = [
+  { id = "bonus", name = "The bonus a whole challenge stage paid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-perfect-bonus-when-missed"
+title = "A missed drone pays no bonus"
+description = "Leaving one challenge drone alive pays the per-drone total and no bonus."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/no-perfect-bonus-when-missed.test.ts", outputs = [
+  { id = "missed", name = "The score the surviving drone left unpaid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-clear-bonus"
+title = "Clearing a standard stage pays its bonus"
+description = "Clearing a standard wave adds SCORE_STAGE_CLEAR."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/stage-clear-bonus.test.ts", outputs = [
+  { id = "bonus", name = "The bonus the cleared wave paid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-pays-no-stage-bonus"
+title = "A challenge stage pays no stage bonus"
+description = "Finishing a challenge stage adds no SCORE_STAGE_CLEAR."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/challenge-pays-no-stage-bonus.test.ts", outputs = [
+  { id = "none", name = "The challenge stage paying no clear bonus", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entering-scores-diving"
+title = "An entering drone pays the diving figure"
+description = "Destroying a Shard in phase entering adds exactly SCORE_SHARD_DIVE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/entering-scores-diving.test.ts", outputs = [
+  { id = "paid", name = "The score after the entering Shard fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "returning-scores-diving"
+title = "A returning drone pays the diving figure"
+description = "Destroying a Shard in phase returning adds exactly SCORE_SHARD_DIVE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/returning-scores-diving.test.ts", outputs = [
+  { id = "paid", name = "The score after the returning Shard fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-scores-diving"
+title = "A discharge kill pays the diving figure"
+description = "Each drone a discharge destroys adds its diving figure."
+domains = ["arcade", "polarity"]
+failure_cap = "passable"
+validation = { script = "scoring/discharge-scores-diving.test.ts", outputs = [
+  { id = "paid", name = "The score the discharge's kills paid", kind = "image" },
+] }
+
+# --- Controls --------------------------------------------------------------
+# Each point drives ONE binding through the real input path and reads its effect
+# back. Caps follow the case's rule without exception: a binding with an alternate is
+# `passable`, and a binding that is the only way to reach its action is `scuffed`. That
+# is why `back-escape`, `mute-m` and `overlay-backquote` are `scuffed` — Escape is
+# back's only key and missing it strands the player on the how-to screen; KeyM is
+# mute's only key; Backquote is the overlay's. Nothing here is capped `great`: the caps
+# are what the functional rating is computed from, and a table that contradicts its own
+# stated rule would be implemented inconsistently.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "left-arrow"
+title = "Move left on the Left arrow"
+description = "Holding ArrowLeft moves the ship left."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/left-arrow.test.ts", outputs = [
+  { id = "moved", name = "The ship moved by the Left arrow", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-a"
+title = "Move left on A"
+description = "Holding KeyA moves the ship left."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/key-a.test.ts", outputs = [
+  { id = "moved", name = "The ship moved by A", kind = "image" },
+] }
+[[review.categories.items]]
+id = "right-arrow"
+title = "Move right on the Right arrow"
+description = "Holding ArrowRight moves the ship right."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/right-arrow.test.ts", outputs = [
+  { id = "moved", name = "The ship moved by the Right arrow", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-d"
+title = "Move right on D"
+description = "Holding KeyD moves the ship right."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/key-d.test.ts", outputs = [
+  { id = "moved", name = "The ship moved by D", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-space"
+title = "Fire on Space"
+description = "Pressing Space in a live wave adds a friendly bullet."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/fire-space.test.ts", outputs = [
+  { id = "fired", name = "The bullet Space put on the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-up"
+title = "Fire on the Up arrow"
+description = "Pressing ArrowUp in a live wave adds a friendly bullet."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/fire-up.test.ts", outputs = [
+  { id = "fired", name = "The bullet the Up arrow put on the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-w"
+title = "Fire on W"
+description = "Pressing KeyW in a live wave adds a friendly bullet."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/fire-w.test.ts", outputs = [
+  { id = "fired", name = "The bullet W put on the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-autorepeats"
+title = "Held fire repeats"
+description = "Fire held for a second adds more than one bullet over that second."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/fire-autorepeats.test.ts", outputs = [
+  { id = "repeat", name = "The bullets a held fire key repeated", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-f"
+title = "Flip on F"
+description = "Pressing KeyF flips the ship's band."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "controls/flip-f.test.ts", outputs = [
+  { id = "flipped", name = "The band F flipped", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-shift-left"
+title = "Flip on Left Shift"
+description = "Pressing ShiftLeft flips the ship's band."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "controls/flip-shift-left.test.ts", outputs = [
+  { id = "flipped", name = "The band Left Shift flipped", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-shift-right"
+title = "Flip on Right Shift"
+description = "Pressing ShiftRight flips the ship's band."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "controls/flip-shift-right.test.ts", outputs = [
+  { id = "flipped", name = "The band Right Shift flipped", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-no-autorepeat"
+title = "A held flip acts once"
+description = "Holding the flip key for a second flips the band exactly once."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "controls/flip-no-autorepeat.test.ts", outputs = [
+  { id = "once", name = "The band flipped exactly once by the held key", kind = "image" },
+] }
+# The key and nothing else. That the meter is spent is
+# `resonance.discharge-spends`: one behavior is graded once, and v1.0.0 cost a
+# build a controls point for a meter fault though its key was wired correctly.
+[[review.categories.items]]
+id = "discharge-x"
+title = "Discharge on X"
+description = "With the meter full, pressing KeyX starts the discharge wave."
+domains = ["polarity"]
+failure_cap = "scuffed"
+validation = { script = "controls/discharge-x.test.ts", outputs = [
+  { id = "discharge", name = "The wave X released", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Pause on Escape"
+description = "Pressing Escape in a live wave opens the paused screen."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/pause-escape.test.ts", outputs = [
+  { id = "paused", name = "The paused screen Escape opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "Pause on P"
+description = "Pressing KeyP in a live wave opens the paused screen."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/pause-p.test.ts", outputs = [
+  { id = "paused", name = "The paused screen P opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-resumes"
+title = "Pause again resumes"
+description = "Pressing the pause key on the paused screen returns to the live wave."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The live wave the second press returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-up-arrow"
+title = "Menu up on the Up arrow"
+description = "ArrowUp moves the title menu's selection up."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/menu-up-arrow.test.ts", outputs = [
+  { id = "moved", name = "The title selection the Up arrow moved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-up-w"
+title = "Menu up on W"
+description = "KeyW moves the title menu's selection up."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/menu-up-w.test.ts", outputs = [
+  { id = "moved", name = "The title selection W moved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-down-arrow"
+title = "Menu down on the Down arrow"
+description = "ArrowDown moves the title menu's selection down."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/menu-down-arrow.test.ts", outputs = [
+  { id = "moved", name = "The title selection the Down arrow moved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-down-s"
+title = "Menu down on S"
+description = "KeyS moves the title menu's selection down."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/menu-down-s.test.ts", outputs = [
+  { id = "moved", name = "The title selection S moved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-enter"
+title = "Confirm on Enter"
+description = "Enter confirms the highlighted title-menu item."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/confirm-enter.test.ts", outputs = [
+  { id = "confirmed", name = "The screen Enter confirmed into", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-space"
+title = "Confirm on Space"
+description = "Space confirms the highlighted title-menu item."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "controls/confirm-space.test.ts", outputs = [
+  { id = "confirmed", name = "The screen Space confirmed into", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-escape"
+title = "Back on Escape"
+description = "Escape on the how-to-play screen returns to the title. Escape is back's only binding."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/back-escape.test.ts", outputs = [
+  { id = "returned", name = "The title screen Escape returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-m"
+title = "Mute on M"
+description = "KeyM sets muted true, and a second press sets it false. KeyM is mute's only binding."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/mute-m.test.ts", outputs = [
+  { id = "muted", name = "The muted game M toggled", kind = "image" },
+] }
+# Scoped to `none`, where the overlay and its toggle are the build's own runtime
+# layer (specs/controls.md). Under an engine the key, the panel and its start state
+# are the engine's, so the check would return the same verdict for every build.
+[[review.categories.items]]
+id = "overlay-backquote"
+title = "The overlay toggles on the backtick"
+description = "Backquote shows the debug overlay and a second press hides it. Backquote is the overlay's only binding."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/overlay-backquote.test.ts", engines = ["none"], outputs = [
+  { id = "overlay", name = "The overlay the backtick showed", kind = "image" },
+] }
+
+# --- Pointer ---------------------------------------------------------------
+# specs/ui.md drives every menu screen with a mouse as well as with the keyboard,
+# over item regions the BUILD lays out and reports through `menuItemRect`. The case
+# fixes no menu geometry, so each point below asks the build where it put the item
+# and drives the real pointer at the middle of that region: any layout passes, and a
+# build that reports a region it does not answer on fails.
+#
+# THREE BEHAVIORS, ON EACH OF THE THREE MENU SCREENS. specs/ui.md drives `title`,
+# `paused` and `gameOver` with the pointer, and each point below decides ONE of the
+# three behaviors specs/ui.md gives it — a move selects; a press and its release
+# inside one item confirms that item; two edges that fall in different items confirm
+# nothing — on ONE of those screens. Nine points, not three, because whether a
+# screen's menu is in the hit test, whether a gesture's confirm reaches that screen's
+# own entry table, and whether that screen pairs the two edges are three things a
+# build decides separately per screen. A build that laid out the title, wired the
+# mouse to it, then added the pause overlay and the game-over card without
+# registering their regions is an ordinary half-finished build; graded on the title
+# alone it loses nothing, and it must not score what a build that wired all three
+# scores. The case never tells a build how to divide its input code, so it must not
+# grade as though the build had divided it one way.
+#
+# EACH CANCEL POINT DECIDES A DIRECTION. A cancel is a negative claim, and a build
+# that reads no pointer at all on that screen would satisfy it for free. So each
+# cancel point presses the item the highlight is ALREADY on, travels to another and
+# releases there, reading back both that the screen did not change and that the
+# highlight followed — the pair of readings a build with no mouse code cannot produce.
+#
+# WHAT IS NOT HERE. The keyboard's own edges are the `controls` category's points.
+# specs/ui.md's fourth confirm clause — an edge that falls outside every region
+# confirms nothing — and its rule that neither a pointer nor a contact does anything
+# on the four screens that show no menu are not graded by this category. All nine
+# are `passable`: the keyboard reaches every menu, so a build with no mouse is
+# playable and merely awkward.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "title-hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to that item, with screen still title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-hover-selects"
+title = "Moving the pointer onto a pause-menu item selects it"
+description = "On the paused screen with menuIndex 0 on RESUME, moving the pointer onto the region menuItemRect reports for QUIT TO MENU sets menuIndex to that item, with screen still paused."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The pause menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-hover-selects"
+title = "Moving the pointer onto a game-over-menu item selects it"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, moving the pointer onto the region menuItemRect reports for MENU sets menuIndex to that item, with screen still gameOver."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/game-over-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The game-over menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen a click opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-click-confirms"
+title = "A press and release inside one pause-menu item confirms it"
+description = "On the paused screen with menuIndex 0 on RESUME, pressing and releasing the pointer inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-click-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a click on QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-click-confirms"
+title = "A press and release inside one game-over-menu item confirms it"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, pressing and releasing the pointer inside the region menuItemRect reports for MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/game-over-click-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a click on MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title with menuIndex 0 on the mode entry, pressing the pointer inside the mode entry's region, travelling onto the region menuItemRect reports for HOW TO PLAY while held and releasing there leaves screen at title and menuIndex on HOW TO PLAY, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing, its highlight on the item the pointer ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-slide-off-cancels"
+title = "A press and release in different pause-menu items confirms nothing"
+description = "On the paused screen with menuIndex 0 on RESUME, pressing the pointer inside RESUME's region and releasing it inside QUIT TO MENU's leaves screen at paused with menuIndex on QUIT TO MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-slide-off-cancels.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still showing, its highlight on the item the pointer ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-slide-off-cancels"
+title = "A press and release in different game-over-menu items confirms nothing"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, pressing the pointer inside PLAY AGAIN's region and releasing it inside MENU's leaves screen at gameOver with menuIndex on MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/game-over-slide-off-cancels.test.ts", outputs = [
+  { id = "over", name = "The game-over screen still showing, its highlight on the item the pointer ended over", kind = "image" },
+] }
+
+# --- Touch -----------------------------------------------------------------
+# specs/ui.md gives every menu screen a finger as well as the keyboard and the mouse,
+# and a finger is not a small mouse: it never hovers, so the first the build hears of
+# it is the contact LANDING, and the landing is what selects. Each point below drives
+# one real touch contact at the middle of the region the build reports through
+# `menuItemRect`, so any layout passes and only the handling is graded.
+#
+# THREE BEHAVIORS, ON EACH OF THE THREE MENU SCREENS. specs/ui.md drives `title`,
+# `paused` and `gameOver` by touch, and each point below decides ONE of the three
+# behaviors specs/ui.md gives a contact — a landing selects; a lift inside the region
+# it landed in confirms that item; a lift in a different region confirms nothing
+# while the selection follows the finger — on ONE of those screens. Nine points, not
+# three, because whether a screen's menu is in the hit test, whether a gesture's
+# confirm reaches that screen's own entry table, and whether that screen pairs the
+# two edges are three things a build decides separately per screen. A build that
+# wired the title's regions to its touch handler and never registered the pause
+# overlay's or the game-over card's is an ordinary half-finished build; graded on the
+# title alone it loses nothing, and it must not score what a build that wired all
+# three scores. The case never tells a build how to divide its input code, so it must
+# not grade as though the build had divided it one way.
+#
+# EACH CANCEL POINT DECIDES A DIRECTION. A cancel is a negative claim, and a build
+# that reads no touch at all on that screen would satisfy it for free. So each cancel
+# point lands on the item the highlight is ALREADY on, travels to another and lifts
+# there, reading back both that the screen did not change and that the highlight
+# followed — the pair of readings a build with no touch code cannot produce.
+#
+# WHAT IS NOT HERE. The mouse's own edges are the `pointer` category's points, and
+# the keyboard's the `controls` category's. specs/ui.md's fourth confirm clause — an
+# edge that falls outside every region confirms nothing — and its rule that neither a
+# pointer nor a contact does anything on the four screens that show no menu are not
+# graded by this category. All nine are `passable`: the keyboard reaches every menu,
+# so a build with no touch is playable and merely awkward.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "title-landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to that item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/title-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-landing-selects"
+title = "A touch contact selects the pause-menu item it lands on"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing inside the region menuItemRect reports for QUIT TO MENU, and not lifted, sets menuIndex to that item, with screen still paused."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The pause menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-landing-selects"
+title = "A touch contact selects the game-over-menu item it lands on"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, a touch contact landing inside the region menuItemRect reports for MENU, and not lifted, sets menuIndex to that item, with screen still gameOver."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/game-over-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The game-over menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/title-tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen a tap opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-tap-confirms"
+title = "A contact that lifts where it landed confirms that pause-menu item"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing and lifting inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a tap on QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-tap-confirms"
+title = "A contact that lifts where it landed confirms that game-over-menu item"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, a touch contact landing and lifting inside the region menuItemRect reports for MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/game-over-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a tap on MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-drag-cancels"
+title = "A contact that lifts in another item confirms nothing"
+description = "On the title with menuIndex 0 on the mode entry, a touch contact landing inside the mode entry's region, travelling onto the region menuItemRect reports for HOW TO PLAY while held and lifting there leaves screen at title and menuIndex on HOW TO PLAY, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/title-drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing, its highlight on the item the contact ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-drag-cancels"
+title = "A contact that lifts in another pause-menu item confirms nothing"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing inside RESUME's region and lifting inside QUIT TO MENU's leaves screen at paused with menuIndex on QUIT TO MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-drag-cancels.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still showing, its highlight on the item the contact ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-drag-cancels"
+title = "A contact that lifts in another game-over-menu item confirms nothing"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, a touch contact landing inside PLAY AGAIN's region and lifting inside MENU's leaves screen at gameOver with menuIndex on MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/game-over-drag-cancels.test.ts", outputs = [
+  { id = "over", name = "The game-over screen still showing, its highlight on the item the contact ended over", kind = "image" },
+] }
+
+# --- Screens & HUD ---------------------------------------------------------
+# The seven screens of specs/ui.md and the five HUD readouts, graded for reachability,
+# content, navigation and what they report. The HUD points that assert a DIFFERENCE —
+# the ready meter, the polarity indicator, the mute indicator and the inversion overlay
+# — declare a pair of outputs, because one still cannot show one region in two states.
+[[review.categories]]
+id = "screens"
+title = "Screens & HUD"
+[[review.categories.items]]
+id = "title-copy"
+title = "The title screen names the game"
+description = "The title screen draws TITLE_TEXT and TAGLINE_TEXT."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-copy.test.ts", outputs = [
+  { id = "title", name = "The title screen and its copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-items"
+title = "The title menu lists its items"
+description = "The title menu draws each entry of TITLE_ITEMS, in order."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-menu-items.test.ts", outputs = [
+  { id = "menu", name = "The title menu and its entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-selection"
+title = "The highlighted item follows the index"
+description = "The item drawn as highlighted is the one menuIndex names, for each index."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/title-menu-selection.test.ts", outputs = [
+  { id = "highlight", name = "The highlighted entry the index names", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-reachable"
+title = "How to play opens"
+description = "Confirming the how-to entry opens the how-to-play screen."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/howto-reachable.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen the entry opened", kind = "image" },
+] }
+# Nothing else on the screen is asserted: whether the rules prose "names the
+# discharge" is not a question a script can decide, so it is reviewed from the
+# captured image.
+[[review.categories.items]]
+id = "howto-content"
+title = "The how-to screen names the keys and the bands"
+description = "Among the how-to-play screen's draws, a standalone token — matched at word boundaries — names the movement keys and the fire key by the words specs/ui.md fixes for them (ARROWS, AD and SPACE), and each of the two BAND_LABELS (CYAN, MAGENTA)."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-content.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen and the tokens it draws", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns"
+title = "How to play returns to the title"
+description = "The back action on the how-to-play screen returns to the title."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/howto-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen the back action returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns-selection"
+title = "Returning from how to play selects HOW TO PLAY"
+description = "Leaving the how-to-play screen with the back action returns to the title with menuIndex on the HOW TO PLAY entry, the entry that led away from the title."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/howto-returns-selection.test.ts", outputs = [
+  { id = "title", name = "The title menu's highlight on arriving back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "start-enters-stage-intro"
+title = "Starting the mode opens stage one"
+description = "Confirming the mode entry opens the stage-intro screen at stage 1."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "screens/start-enters-stage-intro.test.ts", outputs = [
+  { id = "intro", name = "The stage-one intro the mode entry opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-intro-names-stage"
+title = "The stage intro names the stage"
+description = "The stage-intro screen draws HUD_STAGE_LABEL and the stage number."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/stage-intro-names-stage.test.ts", outputs = [
+  { id = "intro", name = "The stage intro naming its stage", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-banner"
+title = "A challenge stage announces itself"
+description = "A challenge stage's intro draws CHALLENGE_BANNER."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/challenge-banner.test.ts", outputs = [
+  { id = "banner", name = "The challenge stage's banner", kind = "image" },
+] }
+[[review.categories.items]]
+id = "intro-gives-way"
+title = "The stage intro gives way"
+description = "The stage-intro hold lasts STAGE_INTRO_HOLD, within 20%, then opens the live wave."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/intro-gives-way.test.ts", outputs = [
+  { id = "wave", name = "The live wave the intro gave way to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes"
+title = "The pause holds the field still"
+description = "Every drone, bullet and the ship report the same position after ten seconds on the paused screen."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes.test.ts", outputs = [
+  { id = "frozen", name = "The field held still by the pause", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu-items"
+title = "The pause menu lists its items"
+description = "The paused screen draws each entry of PAUSE_ITEMS."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/pause-menu-items.test.ts", outputs = [
+  { id = "menu", name = "The pause menu and its entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-resume"
+title = "Resume returns to the live wave"
+description = "Confirming RESUME returns to inWave in the live phase, with the score, the lives and the stage exactly as they were."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-resume.test.ts", outputs = [
+  { id = "resumed", name = "The wave the resume returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-restart"
+title = "Restart begins a fresh run"
+description = "Confirming RESTART returns the score to zero, the lives to START_LIVES and the stage to 1."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/pause-restart.test.ts", outputs = [
+  { id = "restarted", name = "The fresh run restart began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit"
+title = "Quit returns to the title"
+description = "Confirming QUIT TO MENU opens the title screen."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/pause-quit.test.ts", outputs = [
+  { id = "title", name = "The title screen quit returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-cleared-hold"
+title = "The stage-cleared screen gives way"
+description = "The stage-cleared screen holds for STAGE_CLEARED_HOLD, within 20%, then opens the next stage's intro."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/stage-cleared-hold.test.ts", outputs = [
+  { id = "next", name = "The next stage's intro the hold gave way to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-perfect-result"
+title = "A perfect challenge stage says so"
+description = "The stage-cleared screen after a challenge stage in which every drone was destroyed draws PERFECT_TEXT."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/challenge-perfect-result.test.ts", outputs = [
+  { id = "perfect", name = "The perfect result the challenge stage drew", kind = "image" },
+] }
+[[review.categories.items]]
+id = "challenge-hit-count"
+title = "An imperfect challenge stage reports its count"
+description = "The stage-cleared screen after a challenge stage in which a drone survived draws the count of drones destroyed."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/challenge-hit-count.test.ts", outputs = [
+  { id = "count", name = "The count the imperfect challenge stage drew", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-menu-items"
+title = "The game-over screen lists its items"
+description = "The game-over screen draws each entry of GAME_OVER_ITEMS."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/game-over-menu-items.test.ts", outputs = [
+  { id = "menu", name = "The game-over screen and its entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-play-again"
+title = "Play again begins a fresh run"
+description = "Confirming PLAY AGAIN returns the score to zero, the lives to START_LIVES and the stage to 1."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/game-over-play-again.test.ts", outputs = [
+  { id = "restarted", name = "The fresh run play again began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-menu-returns"
+title = "Menu returns to the title"
+description = "Confirming MENU opens the title screen with the highlight on the mode entry."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/game-over-menu-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen the menu entry returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-score"
+title = "The HUD reports the score"
+description = "The score is drawn in the top strip and the drawn digits follow the score."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/hud-score.test.ts", outputs = [
+  { id = "score", name = "The score the HUD draws", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-stage"
+title = "The HUD reports the stage"
+description = "The stage label is drawn in the top strip and follows the stage."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/hud-stage.test.ts", outputs = [
+  { id = "stage", name = "The stage the HUD draws", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-lives"
+title = "The HUD reports the lives"
+description = "The lives readout in the bottom strip changes with the lives remaining."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/hud-lives.test.ts", outputs = [
+  { id = "lives", name = "The lives the HUD draws", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-resonance"
+title = "The HUD reports the meter"
+description = "The resonance meter's filled extent grows with the meter, sampled at zero, half and full."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/hud-resonance.test.ts", outputs = [
+  { id = "meter", name = "The meter drawn at zero, half and full", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-resonance-ready"
+title = "The meter reads differently when ready"
+description = "The meter drawn at full differs from the meter drawn one point below full."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/hud-resonance-ready.test.ts", outputs = [
+  { id = "full", name = "The meter drawn at full", kind = "image" },
+  { id = "short", name = "The meter drawn one point below full", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-polarity-indicator"
+title = "The indicator reports the band"
+description = "The polarity indicator's region differs between the ship's two bands and follows a flip."
+domains = ["presentation", "polarity"]
+failure_cap = "scuffed"
+validation = { script = "screens/hud-polarity-indicator.test.ts", outputs = [
+  { id = "cyan", name = "The indicator with the ship on cyan", kind = "image" },
+  { id = "magenta", name = "The indicator with the ship on magenta", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-indicator"
+title = "Mute is shown, not just held"
+description = "A mute indicator appears in the bottom strip while muted and is gone when unmuted, and nothing else about the HUD changes."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/mute-indicator.test.ts", outputs = [
+  { id = "muted", name = "The bottom strip while muted", kind = "image" },
+  { id = "unmuted", name = "The same strip unmuted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion-overlay"
+title = "An inversion marks the whole field"
+description = "While an inversion is active the play field carries a mark that is absent otherwise: more of the field is repainted than the field repaints on its own across one frame."
+domains = ["presentation", "polarity"]
+failure_cap = "scuffed"
+validation = { script = "screens/inversion-overlay.test.ts", outputs = [
+  { id = "inverted", name = "The field while an inversion runs", kind = "image" },
+  { id = "plain", name = "The same field with no inversion", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ready-banner"
+title = "The ready hold is announced"
+description = "The ready phase draws READY_TEXT over the field."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/ready-banner.test.ts", outputs = [
+  { id = "ready", name = "The READY banner over the field", kind = "image" },
+] }
+
+# --- Art & legibility ------------------------------------------------------
+# Each point samples what the build actually DRAWS — the sources it hands `drawImage`
+# and the pixels it leaves on the canvas — so a build cannot pass by reporting a value
+# it does not render.
+#
+# NO POINT ASSERTS ANYTHING ABOUT HOW THE BUILD LOOKS. Spectra v2.0.0 fixes no
+# palette and no typeface, and specs/overview.md's legibility table states the
+# relationships a player must be able to read rather than any figure. So a point
+# here decides only that a thing WAS DRAWN where the specification says something
+# is drawn, or that the source handed to a draw is the seeded art at the seeded
+# footprint. Whether the palette the build chose reads well, and whether its
+# states are told apart at a glance, are the reviewer's presentation rating.
+[[review.categories]]
+id = "presentation"
+title = "Art & legibility"
+[[review.categories.items]]
+id = "fighter-from-sprite"
+title = "The ship is drawn from the seeded fighter"
+description = "The image source drawn centred on the ship carries assets/fighter.png's alpha silhouette, matching at or above 99% of its pixels once scaled to SPRITE_SIZE."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/fighter-from-sprite.test.ts", outputs = [
+  { id = "ship", name = "The ship drawn from the seeded fighter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shard-from-sprite"
+title = "A Shard is drawn from the seeded Shard"
+description = "The image source drawn centred on a Shard carries assets/shard.png's alpha silhouette."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/shard-from-sprite.test.ts", outputs = [
+  { id = "shard", name = "The Shard drawn from the seeded art", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flux-from-sprite"
+title = "A Flux is drawn from the seeded Flux"
+description = "The image source drawn centred on a Flux carries assets/flux.png's alpha silhouette."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/flux-from-sprite.test.ts", outputs = [
+  { id = "flux", name = "The Flux drawn from the seeded art", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-from-sprite"
+title = "A Prism is drawn from the seeded Prism"
+description = "The image source drawn centred on a Prism carries assets/prism.png's alpha silhouette."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/prism-from-sprite.test.ts", outputs = [
+  { id = "prism", name = "The Prism drawn from the seeded art", kind = "image" },
+] }
+[[review.categories.items]]
+id = "both-bands-one-silhouette"
+title = "Both bands share one silhouette"
+description = "A cyan Shard and a magenta Shard are drawn from sources carrying the same alpha silhouette, so the second band is the provided art re-tinted."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/both-bands-one-silhouette.test.ts", outputs = [
+  { id = "pair", name = "A cyan Shard beside a magenta one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drone-scaled-to-footprint"
+title = "Each drone is drawn at its footprint"
+description = "The destination box drawn for a Shard, a Flux and a Prism matches SHARD_SIZE, FLUX_SIZE and PRISM_SIZE within 15%."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/drone-scaled-to-footprint.test.ts", outputs = [
+  { id = "footprints", name = "The three drones at their footprints", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-core-alone"
+title = "A broken Prism draws only its core"
+description = "The destination box drawn for a Prism with its shell gone matches PRISM_CORE_SIZE within 15%."
+domains = ["presentation", "swarm"]
+failure_cap = "passable"
+validation = { script = "presentation/prism-core-alone.test.ts", outputs = [
+  { id = "pair", name = "A whole Prism beside a shell-broken one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cyan-vs-field"
+title = "A cyan drone is drawn on the field"
+description = "A cyan drone paints pixels the same square of the same field does not carry with the drone gone."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/cyan-vs-field.test.ts", outputs = [
+  { id = "cyan", name = "A cyan drone against the empty field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "magenta-vs-field"
+title = "A magenta drone is drawn on the field"
+description = "A magenta drone paints pixels the same square of the same field does not carry with the drone gone."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/magenta-vs-field.test.ts", outputs = [
+  { id = "magenta", name = "A magenta drone against the empty field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bullets-code-drawn"
+title = "Bullets are drawn in code"
+description = "A cyan bullet and a magenta bullet in flight each paint pixels the same box of the same field does not carry without them, with no seeded frame drawn at either position."
+domains = ["polarity", "presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/bullets-code-drawn.test.ts", outputs = [
+  { id = "bullet", name = "A bullet of each band drawn in flight", kind = "image" },
+] }
+# --- The drone-burst -------------------------------------------------------
+# The seeded drone-burst, from specs/assets.md: it plays where a drone died, it is the
+# system the case shipped rather than one the build wrote, it is scaled to the drone that
+# died, it ends, and it is capped.
+[[review.categories]]
+id = "bursts"
+title = "The drone-burst"
+[[review.categories.items]]
+id = "spawns-on-kill"
+title = "A pop plays the burst"
+description = "Destroying a drone with a matching shot adds exactly one burst at that drone's centre, within its footprint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "bursts/spawns-on-kill.test.ts", outputs = [
+  { id = "burst", name = "The burst the kill started", kind = "image" },
+] }
+[[review.categories.items]]
+id = "from-provided-system"
+title = "The provided system is what plays"
+description = "A burst a tenth of a second old holds a live particle count consistent with assets/drone-burst.json's own emitters, within 20%."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "bursts/from-provided-system.test.ts", outputs = [
+  { id = "system", name = "The seeded system a tenth of a second in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scaled-to-drone"
+title = "The burst is scaled to the drone"
+description = "A Prism's burst reports a larger size than a Shard's, each within 25% of that kind's footprint."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "bursts/scaled-to-drone.test.ts", outputs = [
+  { id = "pair", name = "A Prism's burst beside a Shard's", kind = "image" },
+] }
+[[review.categories.items]]
+id = "prism-twice"
+title = "A Prism detonates twice"
+description = "Breaking a Prism's shell adds one burst and destroying its core adds a second."
+domains = ["presentation", "swarm"]
+failure_cap = "passable"
+validation = { script = "bursts/prism-twice.test.ts", outputs = [
+  { id = "twice", name = "The second burst the core left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge-pops"
+title = "A discharge pops each drone it destroys"
+description = "A discharge that destroys three divers adds three bursts."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "bursts/discharge-pops.test.ts", outputs = [
+  { id = "pops", name = "The three bursts the discharge left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "one-shot-ends"
+title = "A burst is a one-shot"
+description = "A burst leaves the roster within BURST_DURATION, within 20%, and nothing lingers."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "bursts/one-shot-ends.test.ts", outputs = [
+  { id = "ended", name = "The field the burst left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drawn"
+title = "A burst is drawn where it plays"
+description = "A live burst paints pixels distinct from the field within its footprint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "bursts/drawn.test.ts", outputs = [
+  { id = "drawn", name = "The burst painted over the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "capped"
+title = "Live bursts are capped"
+description = "Destroying more than MAX_BURSTS drones at once leaves at most MAX_BURSTS bursts playing."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "bursts/capped.test.ts", outputs = [
+  { id = "capped", name = "The capped bursts a mass kill leaves", kind = "image" },
+] }
+
+# --- Audio -----------------------------------------------------------------
+# The nine cues of specs/ui.md, one point each, plus the two rules about silence. Mute
+# is graded at SOURCE strength because that is how specs/ui.md states it, and no sound
+# starts before the player's first interaction.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "fire"
+title = "A cue plays on a shot"
+description = "A distinct cue plays when the ship fires."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/fire.test.ts", outputs = [
+  { id = "shot", name = "The shot the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip"
+title = "A cue plays on a flip"
+description = "A distinct cue plays when the ship flips its band."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/flip.test.ts", outputs = [
+  { id = "flip", name = "The flip the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "absorb"
+title = "A cue plays on an absorb"
+description = "A distinct cue plays when the shield absorbs a same-band bullet."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/absorb.test.ts", outputs = [
+  { id = "absorb", name = "The absorb the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "kill"
+title = "A cue plays on a matching kill"
+description = "A distinct cue plays when a matching shot destroys a drone."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/kill.test.ts", outputs = [
+  { id = "kill", name = "The kill the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "A cue plays on a discharge"
+description = "A distinct cue plays when a discharge is released."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/discharge.test.ts", outputs = [
+  { id = "discharge", name = "The discharge the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inversion"
+title = "A cue plays on an inversion"
+description = "A distinct cue plays when a Prism triggers a spectral inversion."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/inversion.test.ts", outputs = [
+  { id = "inversion", name = "The inversion the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hit"
+title = "A cue plays on a hit"
+description = "A distinct cue plays when the ship loses a life."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/hit.test.ts", outputs = [
+  { id = "hit", name = "The hit the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-clear"
+title = "A cue plays on a stage clear"
+description = "A distinct cue plays when a stage is cleared."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/stage-clear.test.ts", outputs = [
+  { id = "clear", name = "The stage clear the cue played on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu"
+title = "A cue plays on a menu move"
+description = "A distinct cue plays when a menu selection moves."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/menu.test.ts", outputs = [
+  { id = "menu", name = "The menu move the cue played on", kind = "image" },
+] }
+# specs/ui.md states the mute rule at SOURCE strength — while sound is muted the
+# game starts no sound at all; a muted cue is not played and then silenced, it is
+# not played — so this traces to a stated rule under every engine. Under an engine
+# no `cue:played` reaches the bus while muted; under `none` the page-side audio shim
+# reports no source started. A build that mutes by riding a gain node to zero still
+# starts its sources, and is failing the stated rule rather than being caught by an
+# unstated one.
+[[review.categories.items]]
+id = "mute-silences"
+title = "Mute silences the game"
+description = "With mute on, firing, flipping and killing emit no sound."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/mute-silences.test.ts", outputs = [
+  { id = "muted", name = "The muted game the three events ran in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-autoplay"
+title = "Nothing sounds before the first input"
+description = "No sound is emitted between the page loading and the first key the player presses."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/no-autoplay.test.ts", outputs = [
+  { id = "loaded", name = "The loaded page before the first key", kind = "image" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ---------
+# The showcase is the store-page presentation of the finished game: a player-facing
+# description and an ordered carousel of captured media, shipped in a `showcase/`
+# directory at the root of the produced repository, which `specs/showcase.md`
+# defines and `specs/overview.md` lists among the things the build ships. It is
+# worth THREE points rather than one, because it is a deliverable of its own — a
+# whole file of the specification, and the one piece of a run a person meets before
+# they meet the game — where every other point on this checklist is one behavior of
+# the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase flies exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of play untouched. The weight and the cap say different things on
+# purpose — how much of the score the point carries, and how far a failure may drag
+# the ratings down.
+#
+# It lowers `presentation` and nothing else. What the showcase is, is what the game
+# looks like to someone who has not flown it yet, and that is this case's
+# presentation domain by its own description; a build that shipped no showcase has
+# said nothing about its bands, its swarm, or its arcade frame, so those three
+# domains have nothing to lower here.
+#
+# It is declared COMMONLY rather than in either variant's file. The showcase is the
+# same deliverable under Sortie and under Overload — the same two files at the same
+# two addresses — and the same suite decides it, so a per-variant declaration would
+# make one deliverable into two different points.
+#
+# ONE ITEM, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to fly, whether the carousel opens on the strongest
+# view of live play, and whether the media is worth looking at is a reviewer's
+# judgement, and belongs to the AESTHETIC half of the rating rather than to an
+# assertion. The validator's whole verdict is that the two files are there and that
+# the carousel points at a file that is there with them: not a dimension, not a
+# byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is a
+# `.png` copied out of the build's own showcase, so a reviewer sees the picture the
+# build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }

@@ -6,13 +6,16 @@
 //! case's identity, type, and difficulty are declared in its manifest, not
 //! inferred from its location. Each version is self-contained and immutable.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use semver::Version;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::engine::{BUILT_IN_SLUGS, EngineCatalog, EngineSelection, NONE_SLUG};
 use crate::error::{Error, Result};
+use crate::review::FailureCap;
 
 /// The on-disk `test-case.toml` manifest for a single version.
 ///
@@ -101,6 +104,15 @@ struct Manifest {
     /// an asset-generation case; an explicit value on any other type is rejected.
     #[serde(default)]
     asset_kind: AssetKind,
+    /// Within a full-stack case, which of the two full-stack run images the run
+    /// executes in — and so which asset-authoring binaries are on the model's `PATH`.
+    /// Defaults to [`AssetDimension::TwoD`] so every manifest that predates the key
+    /// keeps resolving onto `test-cabinet-full-stack-2d` unchanged; a case whose assets
+    /// include voxel models or 3D particle effects declares `asset_dimension = "3d"`.
+    /// Only valid for a full-stack case; an explicit value on any other type is
+    /// rejected.
+    #[serde(default)]
+    asset_dimension: AssetDimension,
     /// The frame grid and named animation sequences of a sprite-sheet case (the
     /// `[sheet]` table). Required for — and only for — `asset_kind =
     /// "sprite-sheet"`; forbidden otherwise.
@@ -130,9 +142,12 @@ struct Manifest {
     /// `"particle-3d"`).
     #[serde(default)]
     particle: Option<ManifestParticle>,
-    /// The output format of an audio case's clip (the `[audio]` table). Required for
-    /// — and only for — the three audio kinds (`asset_kind = "sfx-synth"` /
-    /// `"sfx-sample"` / `"music"`).
+    /// The audio packs a run may reach and, on an audio case, its clip's output
+    /// format (the `[audio]` table). Required for — and only for — the three audio
+    /// kinds (`asset_kind = "sfx-synth"` / `"sfx-sample"` / `"music"`), where it
+    /// carries both halves; **optional** on a full-stack case and a game jam, which
+    /// produce their own sound during the run and so declare `packs` alone; rejected
+    /// on every other type and kind.
     #[serde(default)]
     audio: Option<ManifestAudio>,
     /// The commands the validator runs to build the produced implementation as a
@@ -141,6 +156,17 @@ struct Manifest {
     /// [`Self::test_type`] at resolution rather than defaulted.
     #[serde(default)]
     build: Option<ManifestBuild>,
+    /// The TypeScript commands run over the produced implementation (the
+    /// `[toolchain]` table): a required `typecheck` and the optional `lint`,
+    /// `format` and `test`. Valid only for the types that ship a TypeScript build
+    /// (end-to-end, full-stack, game jam).
+    ///
+    /// Optional on disk even though the manifest format calls it required, because
+    /// every case version frozen before the table existed declares none and a frozen
+    /// version cannot be edited. A case that declares none is not toolchain-checked
+    /// and not gated.
+    #[serde(default)]
+    toolchain: Option<ManifestToolchain>,
     /// The image an asset-generation case's model draws on (the `[canvas]`
     /// table). Required for asset-generation, forbidden otherwise.
     #[serde(default)]
@@ -182,14 +208,29 @@ struct Manifest {
     /// `[[spec]]` tables.
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
-    /// Optional starter **workspace** directory, relative to the version folder.
+    /// Optional starter **workspace** directory, relative to the version folder —
+    /// the [engineless](crate::engine::NONE_SLUG) spelling, and illegal for a case
+    /// that names an engine.
+    ///
     /// Its contents are copied into the root of the run's workspace before the
     /// specs are seeded, giving every run a baseline project to build on (for
     /// example a `package.json`). A variant may override it with its own
     /// directory (see [`ManifestVariant::workspace`]). `None` seeds no starter
-    /// files.
+    /// files. A case naming one directory supports no engine, so it is the
+    /// engineless run's project and resolution files it under
+    /// [`NONE_SLUG`].
     #[serde(default)]
     workspace: Option<PathBuf>,
+    /// The starter **workspace directory per engine**, relative to the version
+    /// folder — the per-engine spelling, and illegal alongside `workspace`.
+    ///
+    /// Keyed by [engine](crate::engine) slug, and it must name exactly the engines
+    /// the case supports: naming one it does not support is a typo, and omitting one
+    /// it does would leave a run of that engine with nothing to seed. A variant may
+    /// replace the whole table with one of its own (see
+    /// [`ManifestVariant::workspaces`]).
+    #[serde(default)]
+    workspaces: BTreeMap<String, PathBuf>,
     /// Optional **init** command, run inside the run container once the workspace
     /// and specs are seeded and before the harness starts. It can be a plain
     /// command (for example `npm install`) or invoke a file the workspace
@@ -200,8 +241,8 @@ struct Manifest {
     #[serde(default)]
     assets: Vec<PathBuf>,
     /// The Test Cabinet runtime libraries this case's build `import`s — the repo's
-    /// own `@test-cabinet/*` packages, named by npm name (for example
-    /// `@test-cabinet/particle-runtime`). Each is baked into the run image under
+    /// own `@clockwyrks/*` packages, named by npm name (for example
+    /// `@clockwyrks/particle-runtime`). Each is baked into the run image under
     /// [`TCAB_PACKAGES_DIR`], and the case's own workspace `package.json` already
     /// declares it as the matching `file:` dependency (see
     /// [`tcab_package_file_dep`]) — the harness does not modify `package.json`, so
@@ -214,6 +255,39 @@ struct Manifest {
     /// packages.
     #[serde(default)]
     packages: Vec<String>,
+    /// The [engines](crate::engine) this version supports — the runtimes a run of
+    /// it may be built on, named by slug (for example `simple-2d`).
+    ///
+    /// This is a **compatibility gate, not a description**. An engine is a run
+    /// dimension selected independently of the case, and it documents itself from
+    /// its own package, so this list says only "a run of this version may select
+    /// that engine" — the case's specs never restate what the engine provides.
+    ///
+    /// [`NONE_SLUG`] — no runtime at all — is supported
+    /// by every case whether it is listed or not, because it asks nothing of the
+    /// case; the resolved
+    /// [`TestCaseVersion::engines`] therefore always carries it, first. Listing it
+    /// explicitly is the readable form and is not an error. Every other entry must
+    /// be a slug the catalogue knows, and a case that names one must ship a
+    /// workspace `package.json`, because the engine's dependency is written into
+    /// that file at seed time. Both are checked when the version resolves, so a
+    /// mistake fails before a run is spent. Empty (the default) means the version
+    /// runs only without an engine.
+    #[serde(default)]
+    engines: Vec<String>,
+    /// The engines this version supports **with a version range**, declared as
+    /// repeated `[[engine]]` tables — the second of the two forms the grammar
+    /// offers, and the one a case uses when its specification and its validators
+    /// were written against a particular engine contract.
+    ///
+    /// The bare [`Self::engines`] list is the same statement without a range, so
+    /// the two are merged at resolution into one set of
+    /// [`EngineSupport`] entries and a slug may appear in only
+    /// one of them. Both forms are kept because the bare list is what every
+    /// shipped (frozen) case declares and what a case pinning nothing should still
+    /// be able to write.
+    #[serde(default, rename = "engine")]
+    engine_tables: Vec<ManifestEngine>,
     /// The variants this case offers, each as a path to a standalone variant
     /// manifest (a `[[variant]]`-shaped [`ManifestVariant`] in its own file, by
     /// convention under `variants/`), relative to the version folder. Listed in
@@ -341,6 +415,10 @@ struct GameJamManifest {
     /// [`Manifest::workspace`].
     #[serde(default)]
     workspace: Option<PathBuf>,
+    /// The starter workspace directory per engine, the engines-format spelling of
+    /// [`Self::workspace`]. See [`Manifest::workspaces`].
+    #[serde(default)]
+    workspaces: BTreeMap<String, PathBuf>,
     /// Optional init command run once after the workspace is seeded and before the
     /// harness starts. See [`Manifest::init`].
     #[serde(default)]
@@ -349,6 +427,17 @@ struct GameJamManifest {
     /// [`Manifest::packages`]).
     #[serde(default)]
     packages: Vec<String>,
+    /// The engines a run of this jam may be built on (see [`Manifest::engines`]).
+    /// A jam ships a playable build like an end-to-end case does, so the same
+    /// engine selection applies to it.
+    #[serde(default)]
+    engines: Vec<String>,
+    /// The audio packs a run of this jam may reach (see [`Manifest::audio`]). A jam
+    /// produces its own sound during the run exactly as a full-stack case does, so it
+    /// takes the identical table: `packs` alone, ordered, first of each kind the
+    /// default.
+    #[serde(default)]
+    audio: Option<ManifestAudio>,
     /// How the validator (and the per-run deploy) builds the produced game into a
     /// served static site — the same fixed build interface a full-stack case uses
     /// (the `[build]` table). **Required**: every jam ships a playable build.
@@ -397,8 +486,11 @@ impl GameJamManifest {
             test_type: TestType::GameJam,
             experimental: self.experimental,
             workspace: self.workspace,
+            workspaces: self.workspaces,
             init: self.init,
             packages: self.packages,
+            engines: self.engines,
+            audio: self.audio,
             build: Some(self.build),
             review_items: self.review_items,
             ..Manifest::default()
@@ -409,6 +501,31 @@ impl GameJamManifest {
         };
         (manifest, variant)
     }
+}
+
+/// One `[[engine]]` table in the manifest: an engine this version supports,
+/// together with the range of engine versions it supports.
+///
+/// The version-carrying half of the engine grammar; the bare `engines` list is the
+/// other. `min_version` is required because a table exists precisely to state one
+/// — a case with nothing to pin belongs in the bare list — and `max_version` is
+/// optional because a range is unbounded above by default: a case that names only
+/// a floor accepts every later engine version the catalogue offers. Both are
+/// authored as strings and parsed into [`semver::Version`] at resolution, so a
+/// malformed version costs a `tcab validate` rather than a run.
+///
+/// Unknown keys are rejected: a misspelled `max-version` that silently did nothing
+/// would leave a case pinned by a ceiling it believes it declared.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestEngine {
+    /// The engine slug, which must be one the catalogue knows.
+    slug: String,
+    /// The lowest engine version a run of this case may select, **inclusive**.
+    min_version: String,
+    /// The version support stops at, **exclusive**. Unbounded when omitted.
+    #[serde(default)]
+    max_version: Option<String>,
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -430,6 +547,27 @@ struct ManifestBuild {
     /// an end-to-end build emits a static site and declares none.
     #[serde(default)]
     module: Option<PathBuf>,
+}
+
+/// The `[toolchain]` table in the manifest: the TypeScript commands validation runs
+/// over the produced implementation once its dependencies are installed.
+///
+/// `typecheck` gates the run; the other three are recorded. Each is a shell line run
+/// verbatim from the implementation's repository root, exactly like the `[build]`
+/// commands beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestToolchain {
+    /// The gating typecheck (for example `npx tsc --noEmit`). Required.
+    typecheck: String,
+    /// The optional lint command (for example `npx eslint .`).
+    #[serde(default)]
+    lint: Option<String>,
+    /// The optional format check (for example `npx prettier --check .`).
+    #[serde(default)]
+    format: Option<String>,
+    /// The optional test command (for example `npx vitest run --coverage`).
+    #[serde(default)]
+    test: Option<String>,
 }
 
 /// The `[contract]` table of an adversarial or performance case: the interface
@@ -733,7 +871,7 @@ struct ManifestAnimation {
     auto_play: bool,
 }
 
-/// The serde default for [`ManifestAnimation::r#loop`] — most animations loop.
+/// The serde default for [`ManifestAnimation`]'s `loop` field — most animations loop.
 fn default_true() -> bool {
     true
 }
@@ -820,22 +958,79 @@ struct ManifestParticle {
     background: String,
 }
 
-/// The `[audio]` table of an audio asset-generation case: the rendered clip's output
-/// format and (for the sample/instrument kinds) the baked palette it draws from.
+/// The audio packs a full-stack case or game jam that declares **no** `[audio]`
+/// table receives.
+///
+/// Fixed, in code, at the set those versions were authored and reviewed against —
+/// the four packs the full-stack run image baked when audio was delivered by the
+/// image rather than by the run. It is a version-pinned literal and never a scan of
+/// `containers/sample-packs/`, so publishing a new pack cannot change what an
+/// already frozen version is given; that silent widening is
+/// precisely the defect that moving delivery into the run fixes, and a growable
+/// default would reintroduce it.
+///
+/// Only a version that predates the key can reach it: `scripts/ci/audio-packs-check.mjs`
+/// requires an explicit `packs` on every non-frozen full-stack version and on every
+/// jam, on the commit hook and in CI. Growing or reordering this list is therefore a
+/// deliberate edit, and `crates/core/src/test_case.audio.test.rs` asserts its exact
+/// contents and order so it fails a gate.
+pub const DEFAULT_AUDIO_PACKS: [&str; 4] = [
+    "combat-core@0.1.0",
+    "gm-lite@0.1.0",
+    "cinematic@0.1.0",
+    "synthwave@0.1.0",
+];
+
+/// Whether one half of a `name@version` audio pack ref is usable.
+///
+/// Each half names a directory of the tree a run is staged with
+/// (`packs/<name>@<version>/`), so a half is held to plain name characters and may not
+/// be a dot segment: a ref carrying a separator or a `..` would place a pack's manifest
+/// somewhere other than the staged tree.
+pub fn is_pack_ref_half(half: &str) -> bool {
+    !half.is_empty()
+        && !half.starts_with('.')
+        && half
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+/// The `[audio]` table: the audio packs a run may reach and, on an audio
+/// asset-generation case, the rendered clip's output format.
+///
+/// The table means slightly different things to the two kinds of case that may
+/// declare it, and each rejects the other's keys (see [`resolve_audio_format`] and
+/// [`resolve_audio_packs`]). An **audio asset-generation** case emits exactly one
+/// clip, so it states that clip's format and names the single pack its binary plays
+/// (none, for `sfx-synth`). A **full-stack case or game jam** emits as many clips as
+/// its game needs, in whatever format each call asks for, so it declares only
+/// `packs`.
+///
+/// Unknown keys are rejected, which is what turns a stale `sample_pack` /
+/// `instrument_bank` (the two keys `packs` replaced) into a loud parse error rather
+/// than a silently ignored line leaving a case pointing at a palette it never
+/// receives.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ManifestAudio {
-    /// Output sample rate in Hz.
-    sample_rate: u32,
-    /// Channel layout: `mono` or `stereo`.
-    channels: String,
-    /// Cap on the rendered clip's length in milliseconds.
-    max_duration_ms: u32,
-    /// For `sfx-sample`: the baked sample pack (`name@version`) the clip mixes over.
+    /// Output sample rate in Hz. Required on an audio asset-generation case,
+    /// rejected on a full-stack case or jam.
     #[serde(default)]
-    sample_pack: Option<String>,
-    /// For `music`: the baked instrument bank (`name@version`) the clip plays.
+    sample_rate: Option<u32>,
+    /// Channel layout: `mono` or `stereo`. Required on an audio asset-generation
+    /// case, rejected on a full-stack case or jam.
     #[serde(default)]
-    instrument_bank: Option<String>,
+    channels: Option<String>,
+    /// Cap on the rendered clip's length in milliseconds. Required on an audio
+    /// asset-generation case, rejected on a full-stack case or jam.
+    #[serde(default)]
+    max_duration_ms: Option<u32>,
+    /// The audio packs a run of this case may reach, as ordered `name@version` refs.
+    /// The run container is staged with these packs and nothing else, so this is the
+    /// boundary of what `list-samples` and `list-instruments` can browse, and the
+    /// first entry of each kind is that kind's default for a tool config naming none.
+    #[serde(default)]
+    packs: Vec<String>,
 }
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
@@ -882,11 +1077,24 @@ struct ManifestVariant {
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
     /// Optional starter **workspace** directory for this variant, relative to the
-    /// version folder. When present it **replaces** the case's common workspace
-    /// for runs of this variant (it is not additive), so a variant can ship a
-    /// different baseline project. `None` falls back to the common workspace.
+    /// version folder — the [engineless](crate::engine::NONE_SLUG) spelling, and
+    /// illegal in a case that names an engine.
+    ///
+    /// When present it **replaces** the case's common workspace for runs of this
+    /// variant (it is not additive), so a variant can ship a different baseline
+    /// project. `None` falls back to the common workspace.
     #[serde(default)]
     workspace: Option<PathBuf>,
+    /// The starter **workspace directory per engine** for this variant — the
+    /// per-engine spelling, and illegal in a case that names one `workspace`.
+    ///
+    /// When present it **replaces** the case's whole `[workspaces]` table for runs
+    /// of this variant, so it must itself name exactly the engines the case
+    /// supports; a variant cannot override one engine's project and inherit
+    /// another's, because the two halves would be different baselines of the same
+    /// variant. Empty falls back to the case's table.
+    #[serde(default)]
+    workspaces: BTreeMap<String, PathBuf>,
     /// Reference views this variant declares in addition to the common
     /// references. Declared as a `reference` array of inline `{ view, path }`
     /// tables. A variant-specific reference lets one view (for example the title
@@ -941,12 +1149,52 @@ struct ManifestVariant {
     /// existing `[build]` install/build commands, run from this directory, the
     /// static output landing in the same `dist/`|`build/`|`out/` a run's build
     /// produces) and deployed like a published run build, then shown on the case's
-    /// "Reference" tab as the authored answer. The value is a bare directory path;
-    /// resolution validates it exists and stays inside the version folder. `None`
-    /// leaves the variant with no reference build. It is the case-variant analogue
-    /// of a run record's `links.playableBuild`.
+    /// "Reference" tab as the authored answer. Every named directory is validated
+    /// to exist inside the version folder at resolution. `None` leaves the variant
+    /// with no reference build. It is the case-variant analogue of a run record's
+    /// `links.playableBuild`.
+    ///
+    /// Either a bare path (one implementation, standing for every engine the case
+    /// supports) or a table keyed by [engine](crate::engine) slug — see
+    /// [`ManifestReferenceImplementation`].
     #[serde(default)]
-    reference_implementation: Option<PathBuf>,
+    reference_implementation: Option<ManifestReferenceImplementation>,
+    /// Optional **showcase**: a directory, relative to the version folder, holding
+    /// the authored presentation of this variant — `showcase.md` (a description)
+    /// plus `showcase.toml` (an ordered media carousel in the same `[[media]]`
+    /// shape a run's produced showcase uses) and the media files themselves, flat.
+    /// The media are captured from the reference implementation, so like it they
+    /// are **never seeded into a run** — the showcase is site-facing material the
+    /// catalog and case pages present. `None` leaves the variant with no showcase.
+    /// See [`Variant::showcase`] for the resolved form and the validation applied.
+    #[serde(default)]
+    showcase: Option<PathBuf>,
+}
+
+/// A variant's `reference_implementation` key, in either of the two forms the
+/// manifest accepts.
+///
+/// The [engine](crate::engine) is a run dimension, and the build a reference
+/// implementation demonstrates genuinely differs by engine: under an engine the
+/// build hands its frame loop, input, audio, assets, and diagnostics to the
+/// runtime and keeps only the game, while the engineless build writes all of that
+/// itself. One directory cannot be both — so a case supporting more than one
+/// engine names one directory per engine.
+///
+/// Untagged, because the two forms are distinguished by TOML shape alone: a
+/// string is the shared form and a table is the per-engine form, so the readable
+/// single-engine spelling stays exactly what it always was.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum ManifestReferenceImplementation {
+    /// One implementation, standing for **every** engine the case supports. It is
+    /// the right form for a case whose reference build does not vary by engine,
+    /// which includes every case supporting only `none`.
+    Shared(PathBuf),
+    /// One implementation per engine slug. Must name exactly the engines the case
+    /// declares support for: naming one it does not support is a typo, and omitting
+    /// one it does would leave a run of that engine with no authored answer to show.
+    PerEngine(BTreeMap<String, PathBuf>),
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -1078,6 +1326,20 @@ struct ManifestReviewItem {
     /// handle. Reporter-side and never seeded. `None` for a human-judged item.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
+    /// The highest functional rating the item's `domains` may reach while its
+    /// validator fails (see [`FailureCap`]). **Required** on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version for an item
+    /// graded as a whole (an item with `sub_item`s declares it per sub-item);
+    /// **rejected** on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The scoring domains a failure of this item lowers, by id. **Required**
+    /// (non-empty) on a validator-rated version for an item graded as a whole;
+    /// **rejected** on a legacy version. Each must name a domain in the item's
+    /// effective set (common domains for a common item; common or the variant's
+    /// own for a variant item).
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// The `validation` sub-table of a `[[review_item]]`: the reporter-side automation
@@ -1092,8 +1354,24 @@ struct ManifestReviewItem {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestReviewValidation {
     /// The debug-driver script path, relative to the version folder (by convention
-    /// `validation/<item>.mjs`). Reporter-side — never seeded into a run.
+    /// `validation/<item>.mjs`) for an engineless case, or relative to the engine's
+    /// validator project (for example `gameplay/serve-speed.test.ts`) for a case
+    /// that names one `[workspaces]` directory per engine and ships one validator
+    /// project per engine, where the same-named suite decides the point in the
+    /// project of every engine [`Self::engines`] covers, and ships in no other.
+    /// Reporter-side — never seeded into a run.
     script: PathBuf,
+    /// The engines this validator decides its point on, by slug. Empty (the
+    /// default) leaves it active on every engine the case supports, which is what a
+    /// case that draws no distinction between them means. A non-empty list names a
+    /// subset: the point is meaningful under the engines it names and is dropped
+    /// from the checklist of a run on any other, so the same surface may be the
+    /// model's own code under one engine and the engine's under another. Each entry
+    /// must name an engine the case supports and none may repeat. Legal only on a
+    /// case that names one `[workspaces]` directory per engine — a case with a
+    /// single `workspace` has no engine to scope to.
+    #[serde(default)]
+    engines: Vec<String>,
     /// The media outputs the script produces, each captured from both the model's
     /// build and the reference implementation for the reviewer's side-by-side.
     /// Declared as an inline array of `{ id, name, kind }` tables.
@@ -1108,9 +1386,14 @@ struct ManifestReviewOutput {
     id: String,
     /// Human-readable display name. Defaults to a humanized form of `id`.
     name: Option<String>,
-    /// Whether this output is an `image` (a still the script screenshots) or a
-    /// `video` (a clip recorded across the script's drive). A script may declare at
-    /// most one `video` output.
+    /// Whether this output is an `image` (a still the script screenshots), a
+    /// `video` (a clip recorded across the script's drive), or a `replay` (the
+    /// draw-command recording a validator takes off the engine). A script may
+    /// declare at most one `video` output — a browser drive records one screen
+    /// capture per script and there is only one of it. That limit does not extend
+    /// to `replay`: a recording is armed and disarmed by the suite itself, so one
+    /// suite may hand back a recording per scenario it walks through, and each is a
+    /// separate output of its own.
     kind: MediaKind,
 }
 
@@ -1137,6 +1420,16 @@ struct ManifestSubReviewItem {
     /// sub-item, so each point gets its own script and its own proof media.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
+    /// The highest functional rating the sub-item's `domains` may reach while its
+    /// validator fails (see [`FailureCap`]). **Required** on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version; **rejected**
+    /// on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The scoring domains a failure of this sub-item lowers, by id. **Required**
+    /// (non-empty) on a validator-rated version; **rejected** on a legacy version.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// The `[review]` table: the opt-in **categories** review grammar
@@ -1222,6 +1515,22 @@ struct ManifestReviewCategoryItem {
     /// drive at most one item across the whole checklist.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
+    /// The highest functional rating the item's `domains` may reach while its
+    /// validator fails — one of `broken`, `scuffed`, `passable`, `great` (see
+    /// [`FailureCap`]; `flawless` is never a cap, a failure always costs
+    /// something). **Required** on a [validator-rated](TestCaseVersion::validator_rated)
+    /// version, where every graded point is decided by its validator and the
+    /// build's functional rating is the lowest cap among its failing points;
+    /// **rejected** on a legacy version, whose rating the reviewer gives.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The scoring domains a failure of this item lowers, by id (for example
+    /// `["single-player", "versus"]`). **Required** (non-empty) on a
+    /// validator-rated version; **rejected** on a legacy version. Each must name a
+    /// domain in the item's effective set: a common item may name only a common
+    /// domain, a variant item a common domain or one of that variant's own.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
@@ -1366,20 +1675,47 @@ fn manifest_file_for(folder: &str) -> &'static str {
 /// the produced game.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 
+/// The host **audio store** every published audio pack is baked into on the driver
+/// image, and which a run's declared packs are staged out of at container start (see
+/// [`crate::audio_stage`]). Overridden by `TCAB_AUDIO_STORE` for a local checkout,
+/// which fetches the same store with `scripts/fetch-audio-store.sh`. Unlike
+/// [`TCAB_PACKAGES_DIR`], nothing from it is vendored into the run repository: the
+/// clips are staged outside the workspace, and the workspace is the tree collected as
+/// the run's result.
+pub const TCAB_AUDIO_STORE_DIR: &str = "/opt/tcab-audio";
+
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
 /// vendored into at seed time (relative to the run root). The case's workspace
 /// `package.json` depends on each via an in-repo relative `file:` path pointing
 /// here (see `tcab_package_file_dep`), so the dependency resolves identically
 /// wherever the tree lives — the run container, the validation host, and any clone
 /// of the published repository — with no absolute path to break when it moves.
-pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
+pub const TCAB_VENDOR_DIR: &str = ".vendor/packages";
 
-/// One of the Test Cabinet's own `@test-cabinet/*` runtime libraries a case may
+/// The in-repository directory the selected [engine](crate::engine)'s runtime is
+/// vendored into at seed time (relative to the run root), when the run selects an
+/// engine that provides one. Like [`TCAB_VENDOR_DIR`], the seeded workspace
+/// depends on it through an in-repo relative `file:` path, so the tree resolves
+/// the same wherever it ends up.
+///
+/// It is deliberately **separate** from [`TCAB_VENDOR_DIR`] because the two
+/// arrive by opposite routes. A case *declares* its packages, and its own
+/// workspace `package.json` — authored in this repository and frozen with the
+/// version — already names each one; the seeder only fills the vendored copies
+/// in. An engine is a **run dimension the case never names**: it is chosen per
+/// run, so nothing in the case's tree can mention it and the seeder is what
+/// writes the dependency into `package.json`. Keeping the two trees apart keeps
+/// that distinction legible in the produced repository (and in its diff): what is
+/// under `.vendor/packages` is the case's, what is under `.vendor/engine` is the
+/// run's.
+pub const TCAB_ENGINE_DIR: &str = ".vendor/engine";
+
+/// One of the Test Cabinet's own `@clockwyrks/*` runtime libraries a case may
 /// ship into a run via the manifest's `packages` key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShippablePackage {
     /// The npm package name a case declares in `packages` (for example
-    /// `@test-cabinet/particle-runtime`).
+    /// `@clockwyrks/particle-runtime`).
     pub name: &'static str,
     /// A short, human-readable description of what the package does, surfaced in
     /// the Inputs UI beside the case's declared packages. This is **UI-only**: it
@@ -1389,7 +1725,7 @@ pub struct ShippablePackage {
     pub description: &'static str,
 }
 
-/// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
+/// The Test Cabinet's own `@clockwyrks/*` runtime libraries an end-to-end case
 /// may request via the manifest's `packages` key. Each is baked into the host
 /// package store ([`TCAB_PACKAGES_DIR`]) and, at seed time, vendored into the run
 /// repository under [`TCAB_VENDOR_DIR`], which the case's workspace `package.json`
@@ -1399,21 +1735,29 @@ pub struct ShippablePackage {
 ///
 /// This list is the allowlist a case's `packages` names are validated against
 /// (see [`is_shippable_package`]), and it also carries each package's UI-only
-/// description (see [`shippable_package_description`]). Its **names** **must stay
-/// in lockstep** with the shippable list in `scripts/stage-tcab-packages.mjs`,
-/// which bakes exactly these into the image: a name here but not there resolves to
-/// a missing dependency at run time, and a name there but not here can never be
-/// requested. (The descriptions are UI metadata and live only here.)
+/// description (see [`shippable_package_description`]). Every name here **must
+/// also appear** in the shippable list in `scripts/stage-tcab-packages.mjs`, which
+/// is what bakes a package into the image: a name here but not there resolves to a
+/// missing dependency at run time. (The descriptions are UI metadata and live only
+/// here.)
+///
+/// The staging list is the **wider** of the two, and deliberately so: it also
+/// stages every [engine](crate::engine) runtime into the same host store, and an
+/// engine may **not** be requested through `packages`. An engine is a run
+/// dimension the case never names — it is vendored under [`TCAB_ENGINE_DIR`] and
+/// written into the seeded `package.json` by the seeder — so a name staged for an
+/// engine must stay out of this list, or a case could pin a runtime that the run's
+/// own engine selection is supposed to choose.
 pub const SHIPPABLE_PACKAGES: &[ShippablePackage] = &[
     ShippablePackage {
-        name: "@test-cabinet/particle-runtime",
+        name: "@clockwyrks/particle-runtime",
         description: "The particle runtime the review UI plays produced effects with. A build \
                       imports its `/canvas` binding to load a seeded particle `system.json` and \
                       simulate it live on a canvas, so a produced burst plays the same way the \
                       gallery plays it.",
     },
     ShippablePackage {
-        name: "@test-cabinet/voxel-runtime",
+        name: "@clockwyrks/voxel-runtime",
         description: "The voxel runtime the review UI poses and renders a produced voxel rig \
                       with. A build imports it to load a produced rig and play its authored \
                       animations in-game the same way the gallery's viewer does.",
@@ -1749,6 +2093,39 @@ impl std::fmt::Display for TestType {
     }
 }
 
+/// Within a full-stack case, which dimension of asset tooling the run image carries.
+///
+/// A full-stack run builds a program *and* produces the assets it ships with, so the
+/// image it executes in has to have the authoring binaries baked in — and there are two
+/// such images, because the 3D tooling is a great deal heavier than the 2D tooling and
+/// most cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D
+/// binaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);
+/// `3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`
+/// and `particle-3d`. See [`crate::resolve_run_image`].
+///
+/// Like [`AssetKind`] this is a property of the **whole version**, not a per-variant
+/// choice: every variant of a case runs in one image. It is declared by the
+/// `asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written
+/// before the key existed — and every full-stack case that only draws sprites and plays
+/// sound — resolves unchanged. It is meaningful only for a full-stack case; an explicit
+/// value on any other type is rejected rather than silently ignored, because on those
+/// types nothing consults it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum AssetDimension {
+    /// The 2D full-stack image: sprites, sprite sheets, 2D particle effects, and audio.
+    /// The default, and what every full-stack case that predates the key resolves to.
+    #[default]
+    #[serde(rename = "2d")]
+    TwoD,
+    /// The 3D full-stack image: everything the 2D image carries, plus the voxel-model
+    /// (`voxel`, `voxel-anim`) and 3D-particle (`particle-3d`) tooling. The meshed/SDF
+    /// families and the Blender toolchain are deliberately not in it — they are a far
+    /// heavier toolchain and no case needs them yet.
+    #[serde(rename = "3d")]
+    ThreeD,
+}
+
 /// Within an asset-generation case, the shape of the asset the model draws.
 ///
 /// A case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D
@@ -1838,10 +2215,11 @@ pub enum AssetKind {
     /// Declares an `[audio]` table. Judged on the emitted `clip.wav`.
     SfxSynth,
     /// A sample-library sound effect authored with the `sfx-sample` binary. Declares
-    /// an `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.
+    /// an `[audio]` table (naming its one pack in `audio.packs`). Judged on the
+    /// emitted `clip.wav`.
     SfxSample,
     /// A short piece of music authored with the `music` sequencer binary. Declares an
-    /// `[audio]` table (naming its `instrument_bank`). Judged on the emitted
+    /// `[audio]` table (naming its one pack in `audio.packs`). Judged on the emitted
     /// `clip.wav` (and portable `clip.mid`).
     Music,
     /// A rigged, animated **skinned character** authored by driving **headless Blender**
@@ -2099,7 +2477,8 @@ impl AssetKind {
 }
 
 /// The kind of a piece of media — used for both reference media and proof
-/// artifacts so a UI knows whether to render an `<img>` or a `<video>`.
+/// artifacts so a UI knows whether to render an `<img>`, a `<video>`, or a
+/// player that redraws a recording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2110,16 +2489,50 @@ pub enum MediaKind {
     /// Playwright records natively; the public snapshot transcodes it to `.mp4`
     /// for universal (incl. iOS/Safari) playback.
     Video,
+    /// A draw-command recording (`json.gz`): the list of operations a build issued
+    /// against its 2D context, frame by frame, which a player re-issues against a
+    /// canvas of its own to reproduce the picture the build drew.
+    ///
+    /// It is evidence of a different quality from a clip. A clip is a re-shoot of
+    /// the build at whatever rate the recorder managed; a recording *is* the build's
+    /// own drawing, so it replays at any size, seeks to any frame without replaying
+    /// the frames before it, and can be scrubbed in step beside the same recording
+    /// taken from the reference implementation.
+    ///
+    /// It is stored gzipped, and the redundancy that makes that so effective is the
+    /// same property that makes a frame independently drawable: each frame restates
+    /// the drawing state it inherited and issues very nearly the operations its
+    /// neighbours did. The document a player reads is the JSON inside; the
+    /// compression is how it travels.
+    ///
+    /// Unlike the other two kinds it needs no transcode — the captured `.json.gz` is
+    /// what the live console serves and what the public snapshot publishes.
+    Replay,
 }
 
 impl MediaKind {
-    /// Infer the media kind from a path's file extension. Returns `None` for an
-    /// extension that is neither a supported image nor a supported video.
+    /// Infer the media kind from a path's file name. Returns `None` for a name that
+    /// is none of a supported image, video, or recording.
+    ///
+    /// A recording is stored gzipped, so it carries two extensions and
+    /// [`Path::extension`] answers `gz` for it rather than `json.gz`. The compound
+    /// suffix is therefore matched against the whole file name, before the single
+    /// extension is consulted at all. A bare `.json` still resolves to a recording:
+    /// compression is how a recording travels rather than part of what it is, so a
+    /// name that states only the document format still names the same kind of media.
     pub fn from_path(path: &Path) -> Option<Self> {
+        let name = path.file_name()?.to_str()?.to_ascii_lowercase();
+        if name
+            .strip_suffix(".json.gz")
+            .is_some_and(|stem| !stem.is_empty())
+        {
+            return Some(Self::Replay);
+        }
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         match ext.as_str() {
             "png" | "jpg" | "jpeg" | "webp" | "gif" => Some(Self::Image),
             "webm" | "mp4" => Some(Self::Video),
+            "json" => Some(Self::Replay),
             _ => None,
         }
     }
@@ -2240,6 +2653,64 @@ pub struct WorkspaceFile {
     /// Destination path relative to the run's workspace root, where the file is
     /// seeded.
     pub dest: PathBuf,
+}
+
+/// The starter workspace files a case seeds, **keyed by [engine](crate::engine)
+/// slug**.
+///
+/// A starter project is written against a runtime: its `package.json` declares the
+/// engine's dependency, and the case-owned modules it ships are written against
+/// that engine's API. One directory therefore cannot stand for two engines, so a
+/// case that supports more than one ships one project per engine and this is the
+/// resolved form of that. Resolution guarantees the keys are exactly
+/// [`TestCaseVersion::engines`], so a run of any supported engine finds an entry;
+/// read one with [`TestCaseVersion::workspace_for`] rather than indexing.
+///
+/// An engineless case names one directory and supports no engine, so its files
+/// land under [`NONE_SLUG`] and the map has exactly that one key — which is why
+/// nothing downstream needs to know which spelling a case was authored with.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EngineWorkspaces(BTreeMap<String, Vec<WorkspaceFile>>);
+
+impl EngineWorkspaces {
+    /// The files seeded for `engine`, or an empty slice when the case seeds none
+    /// for it.
+    pub fn get(&self, engine: &str) -> &[WorkspaceFile] {
+        self.0.get(engine).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether no engine has any starter file — the case seeds no workspace at all.
+    pub fn is_empty(&self) -> bool {
+        self.0.values().all(Vec::is_empty)
+    }
+
+    /// Every file of every engine, in engine order. The set a fetch or a rewrite
+    /// walks, where which engine a file belongs to does not matter.
+    pub fn files(&self) -> impl Iterator<Item = &WorkspaceFile> {
+        self.0.values().flatten()
+    }
+
+    /// Every file of every engine, mutably, in engine order.
+    pub fn files_mut(&mut self) -> impl Iterator<Item = &mut WorkspaceFile> {
+        self.0.values_mut().flatten()
+    }
+
+    /// The engine slugs this carries an entry for, in slug order.
+    pub fn engines(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(String::as_str)
+    }
+
+    /// Record `files` as the project seeded for `engine`.
+    pub fn insert(&mut self, engine: impl Into<String>, files: Vec<WorkspaceFile>) {
+        self.0.insert(engine.into(), files);
+    }
+}
+
+impl FromIterator<(String, Vec<WorkspaceFile>)> for EngineWorkspaces {
+    fn from_iter<I: IntoIterator<Item = (String, Vec<WorkspaceFile>)>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
 }
 
 /// The commands the validator runs to build a produced implementation into a
@@ -2583,8 +3054,12 @@ pub struct ParticleSpec {
 // rendered, never a hash key, so a manual `Eq` is sound — matching `SheetSequence`.
 impl Eq for ParticleSpec {}
 
-/// The resolved `[audio]` of an audio asset-generation case: the rendered clip's
-/// output format and (for the sample/instrument kinds) the baked palette.
+/// The resolved `[audio]` of an audio asset-generation case: the output format of
+/// the single clip it emits.
+///
+/// The palette such a case plays is **not** here: a pack declaration is not an
+/// asset-generation concept (a full-stack case and a game jam declare one too), so
+/// it lives on [`TestCaseVersion::audio_packs`] for every test type alike.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2595,24 +3070,22 @@ pub struct AudioSpec {
     pub channels: String,
     /// Cap on the rendered clip's length in milliseconds.
     pub max_duration_ms: u32,
-    /// For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub sample_pack: Option<String>,
-    /// For `music`: the baked instrument bank (`name@version`). `None` otherwise.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub instrument_bank: Option<String>,
 }
 
 /// The resolved `[model]` of a voxel-animation case: the rig the model must
 /// produce — named parts in a parent/child hierarchy and the named joints a
-/// consuming game (or an auto-play clip) drives. This is the **required** contract
-/// (the scoring targets and the stable, game-facing joint interface); at run time
-/// the model may add further parts and joints of its own, which are recorded in
-/// the produced `rig.json` but are not required here. Carried into the run record
-/// (see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know
-/// the joint interface without a separate catalog lookup.
+/// consuming game (or an auto-play clip) drives. This is the **required**
+/// interface, the parts and joints a consuming game may rely on by name; a
+/// produced rig may carry further parts and joints of its own, which `rig.json`
+/// records and nothing here requires.
+//
+// Note for maintainers, deliberately NOT a doc comment: this type is emitted into
+// `@clockwyrks/asset-contract`, which is vendored into a model's own workspace, and
+// `ts_rs` copies doc comments through verbatim. Anything written above with `///`
+// is read by the model. So the internal half lives here instead: the spec is
+// carried into the run record on `crate::validation::VoxelGenResult`, which is how
+// the review and viewer UIs know the joint interface without a catalog lookup.
+// `scripts/ci/seeded-contract-check.sh` is the gate that keeps the two apart.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2849,12 +3322,13 @@ pub struct Variant {
     pub description: Option<String>,
     /// Specs this variant seeds in addition to the case's common specs.
     pub specs: Vec<SpecFile>,
-    /// Starter workspace files for this variant, when it overrides the case's
-    /// common workspace. `Some` **replaces** the common workspace for this
-    /// variant (it is not additive); `None` falls back to
+    /// Starter workspace files for this variant, per [engine](crate::engine), when
+    /// it overrides the case's common workspace. `Some` **replaces** the common
+    /// workspace for this variant (it is not additive, and it replaces the whole
+    /// per-engine table rather than one engine's entry); `None` falls back to
     /// [`TestCaseVersion::common_workspace`]. Resolve the effective set for a
-    /// variant with [`TestCaseVersion::workspace_for`].
-    pub workspace: Option<Vec<WorkspaceFile>>,
+    /// variant and engine with [`TestCaseVersion::workspace_for`].
+    pub workspace: Option<EngineWorkspaces>,
     /// Reference views this variant declares in addition to the case's common
     /// references. Rendered and seeded only when this variant is selected, so a
     /// view such as the title menu can differ per variant.
@@ -2880,18 +3354,68 @@ pub struct Variant {
     /// Resolve the effective volume for a variant with
     /// [`TestCaseVersion::voxel_for`].
     pub voxel: Option<VoxelSpec>,
-    /// The reference implementation's source directory on the host, when this
-    /// variant declares a `reference_implementation`: an absolute path inside the
+    /// The reference implementation's source directories on the host, keyed by
+    /// [engine](crate::engine) slug, when this variant declares a
+    /// `reference_implementation`. Each value is an absolute path inside the
     /// version folder holding a buildable static web project that is the *correct*
-    /// build of this variant. Stored as a resolved host path exactly like a
-    /// [`ReferenceView::source_path`] or a workspace source is — and, like a
-    /// reference mockup's source, it is **never seeded into a run**: it is the
+    /// build of this variant **on that engine**. Stored as resolved host paths
+    /// exactly like a [`ReferenceView::source_path`] or a workspace source is —
+    /// and, like a reference mockup's source, never seeded into a run: this is the
     /// authored answer the "Reference" tab shows, not model input. The build and
-    /// deploy that turn it into a hosted URL happen out-of-band (see the CLI's
+    /// deploy that turn one into a hosted URL happen out-of-band (see the CLI's
     /// `publish-reference` subcommand), so nothing here reads its contents; the
-    /// path is carried purely so the publisher knows which directory to build.
-    /// `None` when the variant declares no reference implementation.
-    pub reference_impl: Option<PathBuf>,
+    /// paths are carried purely so the publisher knows which directory to build.
+    ///
+    /// Keyed by engine because the engine is a run dimension and the build a
+    /// reference demonstrates differs under each. Resolution guarantees the keys
+    /// are exactly [`TestCaseVersion::engines`], so a run of any supported engine
+    /// finds an entry; read it with [`TestCaseVersion::reference_impl_for`] rather
+    /// than indexing. Empty when the variant declares no reference implementation.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reference_impls: BTreeMap<String, PathBuf>,
+    /// The authored showcase for this variant, when it declares one — the
+    /// description and media carousel (captured from the reference implementation)
+    /// the catalog and case pages present. Like the reference implementation it is
+    /// authored material that is **never seeded into a run**. `None` when the
+    /// variant declares no `showcase`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub showcase: Option<CaseShowcase>,
+}
+
+/// A test-case variant's authored showcase: the case-side counterpart of a run's
+/// produced showcase (see `RunShowcase`), presenting the *case* rather than one
+/// model's attempt at it.
+///
+/// Resolved from the directory a variant's `showcase` key names — `showcase.md`
+/// (the description) plus `showcase.toml` (the ordered media carousel, in the
+/// same `[[media]]` shape the run showcase uses). Unlike the run-side capture,
+/// which is model-written at run time and degrades leniently, this showcase is
+/// authored and committed, so every problem hard-fails resolution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaseShowcase {
+    /// The showcase description — `showcase.md`'s contents, verbatim.
+    pub description: String,
+    /// The media carousel, in declared order. Always 1–10 entries.
+    pub media: Vec<CaseShowcaseMedia>,
+}
+
+/// One entry of a [`CaseShowcase`]'s media carousel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaseShowcaseMedia {
+    /// The media file's name in the showcase directory itself (a plain file name —
+    /// no subdirectories).
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// The kind of media the file holds, inferred from its name (see
+    /// [`MediaKind::from_path`]).
+    pub kind: MediaKind,
+    /// Absolute host path to the media file inside the version folder, carried —
+    /// like a [`ReferenceView::source_path`] — so a publisher or server knows
+    /// which file's bytes to ship.
+    pub source_path: PathBuf,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -3030,14 +3554,37 @@ pub struct Instrumentation {
 /// once from the model's build and once from the reference implementation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewValidation {
-    /// Absolute host path to the debug-driver script (resolved inside the version
-    /// folder from the manifest's relative `script`).
-    pub script: PathBuf,
-    /// The version-folder-relative script path, kept for display in the run's
-    /// script list (for example `validation/ball-spin.mjs`).
+    /// Absolute host path to the debug-driver script, for a case that has one —
+    /// an engineless case, whose single script is driven in a browser.
+    ///
+    /// `None` for a case that declares its validators **per engine**: the
+    /// same-named suite decides the point in the validator project of every engine
+    /// [`Self::engines`] covers, so which file on the host decides it is a property
+    /// of the run's engine rather than of the case, and the validator resolves it
+    /// from [`Self::script_rel`] against the project it staged.
+    pub script: Option<PathBuf>,
+    /// The script path as the case declared it, kept for display in the run's
+    /// script list: version-folder-relative for an engineless case (for example
+    /// `validation/ball-spin.mjs`), and relative to the engine's validator project
+    /// for a per-engine case (for example `gameplay/serve-speed.test.ts`).
     pub script_rel: String,
+    /// The engines this validator is active on, in declared order. Empty when the
+    /// case declares no restriction, which is every engine it supports.
+    pub engines: Vec<String>,
     /// The media outputs the script produces, in declared order.
     pub outputs: Vec<ReviewOutput>,
+}
+
+impl ReviewValidation {
+    /// Whether this validator decides its point on a run built on `engine`.
+    ///
+    /// A point this returns `false` for is not part of that run's checklist at all:
+    /// it is not driven, no verdict is recorded against it, it is not shown to the
+    /// reviewer, and it carries no weight in the score (see
+    /// [`TestCaseVersion::review_items_for_engine`]).
+    pub fn covers(&self, engine: &str) -> bool {
+        self.engines.is_empty() || self.engines.iter().any(|slug| slug == engine)
+    }
 }
 
 /// A resolved media output of a [`ReviewValidation`] script.
@@ -3142,6 +3689,19 @@ pub struct ReviewItem {
     /// is correct — auto-validation only runs from a freshly resolved manifest.
     #[serde(skip)]
     pub validation: Option<ReviewValidation>,
+    /// The [`FailureCap`] of an item graded as a whole on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version: the highest
+    /// functional rating its [`Self::domains`] may reach while its validator fails.
+    /// `None` on a legacy version, and on a category (whose points carry their own
+    /// caps; see [`SubReviewItem::failure_cap`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domain ids a failure of this whole-item point lowers, on a
+    /// validator-rated version. Empty on a legacy version and on a category. This
+    /// is the scoring rule's input; [`Self::domain`] is the legacy display grouping
+    /// and is left as is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 impl ReviewItem {
@@ -3297,6 +3857,8 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
             sub_items: Vec::new(),
             scored: true,
             validation: None,
+            failure_cap: None,
+            domains: Vec::new(),
         })
         .collect()
 }
@@ -3360,6 +3922,17 @@ pub struct SubReviewItem {
     /// sub-items, since item-level validation is forbidden once sub-items exist.
     #[serde(skip)]
     pub validation: Option<ReviewValidation>,
+    /// The [`FailureCap`] of this point on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version: the highest
+    /// functional rating its [`Self::domains`] may reach while its validator fails
+    /// (see [`crate::review::validator_domain_ratings`]). Always `Some` on a
+    /// validator-rated version; `None` on a legacy version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domain ids a failure of this point lowers, on a validator-rated
+    /// version — never empty there, and empty on a legacy version.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 /// A scoring domain a test case declares.
@@ -3443,6 +4016,130 @@ pub struct Erratum {
 // never arithmetic'd, so treating them as `Eq` is sound here.
 impl Eq for CheckAction {}
 
+/// One engine a test case version supports, with the range of engine versions it
+/// supports.
+///
+/// The resolved form of both manifest spellings: a bare entry in the `engines`
+/// list resolves to an *unbounded* support (no floor, no ceiling — any version the
+/// catalogue offers), and an `[[engine]]` table resolves to one carrying its
+/// range. Merging the two forms here rather than keeping them apart is what lets
+/// every consumer — [`TestCaseVersion::supports_engine`], the run gate, the CLI —
+/// ask one question of one set.
+///
+/// The range is half-open by design: `min_version` is **inclusive** (the earliest
+/// contract the case's specs and validators were written against, which the case
+/// does support) and `max_version` is **exclusive** (the version whose behaviour
+/// changed, which it does not). That is the shape a case actually means when it
+/// pins a runtime, and it makes two adjacent case versions tile without a gap or
+/// an overlap.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineSupport {
+    /// The engine slug, one the [catalogue](crate::engine::EngineCatalog) knows.
+    pub slug: String,
+    /// The lowest engine version a run may select, **inclusive**. `None` when the
+    /// case declared the engine as a bare slug and pinned no floor.
+    pub min_version: Option<Version>,
+    /// The version support stops at, **exclusive**. `None` when the range is
+    /// unbounded above, which is the default.
+    pub max_version: Option<Version>,
+}
+
+impl EngineSupport {
+    /// Support for `slug` at any version — the bare `engines`-list form, and the
+    /// implicit entry every case carries for [`NONE_SLUG`].
+    pub fn unbounded(slug: impl Into<String>) -> Self {
+        Self {
+            slug: slug.into(),
+            min_version: None,
+            max_version: None,
+        }
+    }
+
+    /// Whether this entry constrains the version at all.
+    ///
+    /// The run gate reads it to decide whether it needs a version to check
+    /// against: an unbounded entry accepts whatever the catalogue staged, so a
+    /// store it cannot read a version out of costs it nothing, while a bounded one
+    /// cannot answer without the number and refuses rather than guessing.
+    pub fn is_bounded(&self) -> bool {
+        self.min_version.is_some() || self.max_version.is_some()
+    }
+
+    /// Whether `version` falls inside this entry's range: at or above the
+    /// inclusive minimum and strictly below the exclusive maximum.
+    pub fn accepts(&self, version: &Version) -> bool {
+        self.min_version.as_ref().is_none_or(|min| version >= min)
+            && self.max_version.as_ref().is_none_or(|max| version < max)
+    }
+
+    /// The range in the words a person can act on, for an error message: the
+    /// half-open interval, or the fact that there is no constraint at all.
+    pub fn range_display(&self) -> String {
+        match (&self.min_version, &self.max_version) {
+            (Some(min), Some(max)) => format!(">= {min}, < {max}"),
+            (Some(min), None) => format!(">= {min}"),
+            (None, Some(max)) => format!("< {max}"),
+            (None, None) => "any version".to_string(),
+        }
+    }
+}
+
+/// The wire shape of a bounded [`EngineSupport`]: the table form, in the
+/// `camelCase` every other resolved type is serialized in.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EngineSupportRepr {
+    slug: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min_version: Option<Version>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_version: Option<Version>,
+}
+
+/// Either spelling of an engine entry on the wire: a bare slug or the table.
+///
+/// An entry that pins no range is written as the bare slug the case authored, so
+/// the stored form stays as small as the declaration it came from; only an entry
+/// carrying a range needs the table. Reading both spellings here is the same
+/// accommodation resolution makes for the manifest, and it costs one enum.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EngineSupportWire {
+    Slug(String),
+    Table(EngineSupportRepr),
+}
+
+impl Serialize for EngineSupport {
+    /// An unbounded entry serializes back to the bare slug it was read from, so a
+    /// case that pins nothing round-trips through the definition store unchanged.
+    /// Only an entry that actually carries a range needs the table.
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        if self.is_bounded() {
+            EngineSupportRepr {
+                slug: self.slug.clone(),
+                min_version: self.min_version.clone(),
+                max_version: self.max_version.clone(),
+            }
+            .serialize(serializer)
+        } else {
+            serializer.serialize_str(&self.slug)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EngineSupport {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        Ok(match EngineSupportWire::deserialize(deserializer)? {
+            EngineSupportWire::Slug(slug) => Self::unbounded(slug),
+            EngineSupportWire::Table(repr) => Self {
+                slug: repr.slug,
+                min_version: repr.min_version,
+                max_version: repr.max_version,
+            },
+        })
+    }
+}
+
 /// A resolved, exact test case version.
 ///
 /// Holds the on-disk location and the manifest of what the version contains.
@@ -3500,6 +4197,14 @@ pub struct TestCaseVersion {
     /// visibility filter and has no effect on how a run executes.
     #[serde(default)]
     pub experimental: bool,
+    /// Whether this version is authored on the **engine format** — the per-engine
+    /// manifest spelling (`[workspaces]` / `engines` / `[[engine]]`) rather than the
+    /// legacy single `workspace`. Set at resolution. Together with the test type it
+    /// decides whether the version is [validator-rated](Self::validator_rated).
+    /// Always present on the wire (a payload lacking it is one no resolution wrote,
+    /// and reads as legacy — the behaviour every frozen version has).
+    #[serde(default)]
+    pub engine_format: bool,
     /// The commands the validator runs to build the produced implementation into
     /// a served static site (from the manifest's `[build]` table). `Some` for an
     /// end-to-end case, `None` for any other type. Kept as a top-level optional
@@ -3507,6 +4212,13 @@ pub struct TestCaseVersion {
     /// serialized shape is unchanged apart from the new discriminator.
     #[serde(default)]
     pub build: Option<BuildCommands>,
+    /// The TypeScript toolchain commands run over the produced implementation
+    /// (from the manifest's `[toolchain]` table). `Some` only for a case that
+    /// declares the table; `None` — the case for every version frozen before it
+    /// existed — means the run is neither toolchain-checked nor
+    /// [gated](crate::toolchain::ToolchainSummary::gates).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolchain: Option<crate::toolchain::ToolchainCommands>,
     /// The case's debug-API contract — the `window` handle every build installs its
     /// automation surface on — when the case mandates
     /// [instrumentation](Instrumentation). Host-only and **not serialized**
@@ -3553,6 +4265,11 @@ pub struct TestCaseVersion {
     /// (always `Sprite` for any other type).
     #[serde(default)]
     pub asset_kind: AssetKind,
+    /// Which of the two full-stack run images this version's runs execute in.
+    /// Defaults to [`AssetDimension::TwoD`]; meaningful only for full-stack (always
+    /// `TwoD` for any other type, whose image is selected by the type alone).
+    #[serde(default)]
+    pub asset_dimension: AssetDimension,
     /// The frame grid and named sequences of a sprite-sheet case. `Some` only when
     /// [`Self::asset_kind`] is [`AssetKind::SpriteSheet`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3582,27 +4299,68 @@ pub struct TestCaseVersion {
     /// kinds ([`AssetKind::SfxSynth`] / [`AssetKind::SfxSample`] / [`AssetKind::Music`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order
+    /// (`name@version` refs from the manifest's `[audio] packs`).
+    ///
+    /// This is the whole of what a run's audio binaries can reach: the run container
+    /// is staged with these packs and no others, so it is also the boundary
+    /// `list-samples` and `list-instruments` browse. **Order is meaningful** — the
+    /// first entry of each pack kind is that kind's default for a tool config that
+    /// names no pack, which is every full-stack and game-jam run, since the model
+    /// writes its own config.
+    ///
+    /// Populated for every test type. Empty for a version that declares no audio —
+    /// an end-to-end, adversarial, or performance case (which may not declare the
+    /// table at all), a non-audio asset-generation case, a `sfx-synth` case, and a
+    /// full-stack case or jam that deliberately declares `packs = []`. A full-stack
+    /// case or jam carrying **no** `[audio]` table at all instead receives
+    /// [`DEFAULT_AUDIO_PACKS`], the pinned set the frozen versions predating the key
+    /// were authored against.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_packs: Vec<String>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
     /// the workspace (the common set, enumerated from the manifest's `workspace`
-    /// directory). Empty when the case declares no workspace. A variant may
-    /// replace these with its own (see [`Variant::workspace`]); the effective set
-    /// for a variant is [`Self::workspace_for`].
-    pub common_workspace: Vec<WorkspaceFile>,
+    /// directory or its `[workspaces]` table), keyed by [engine](crate::engine)
+    /// slug. Empty when the case declares no workspace. A variant may replace these
+    /// with its own (see [`Variant::workspace`]); the effective set for a variant
+    /// and engine is [`Self::workspace_for`].
+    #[serde(default)]
+    pub common_workspace: EngineWorkspaces,
     /// The command run inside the run container once the workspace and specs are
     /// seeded and before the harness starts (the manifest's `init`). `None` when
     /// the case declares no init step. See [`crate::RunEngine::execute`].
     pub init: Option<String>,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
-    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this
+    /// The Test Cabinet runtime libraries (`@clockwyrks/*` npm names) this
     /// case's build consumes, from the manifest's `packages` key. The case's
     /// workspace `package.json` declares each as a `file:` dependency resolving
     /// under [`TCAB_PACKAGES_DIR`]; the harness does not modify that file. Empty
     /// when the case declares none. Validated against [`SHIPPABLE_PACKAGES`], and
     /// that the shipped `package.json` declares each, at resolution.
     pub packages: Vec<String>,
+    /// The [engines](crate::engine) a run of this version may be built on, each
+    /// with the range of engine versions this version supports — from the
+    /// manifest's `engines` list and its `[[engine]]` tables, in declared order.
+    /// Never empty: a version declaring nothing resolves to exactly unbounded
+    /// support for [`NONE_SLUG`], the engineless run. A version that declares any
+    /// engine supports exactly what it declares, so one built against a runtime
+    /// may leave the engineless run out.
+    ///
+    /// It is the **compatibility gate** a run's `--engine` is checked against
+    /// (see [`Self::supports_engine`] for the slug and
+    /// [`Self::engine_support`] for the range), before any container work — not a
+    /// description of what any engine provides, which the engine documents from
+    /// its own package.
+    ///
+    /// Always present on the wire: resolution never produces an empty set — it
+    /// always leads with [`NONE_SLUG`] — so a payload without the field is one no
+    /// resolution wrote, and reading it as the engineless case would quietly
+    /// refuse every engine-backed run of that version. Each entry is written as a
+    /// bare slug when it pins no range and as a table when it does.
+    pub engines: Vec<EngineSupport>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
     pub variants: Vec<Variant>,
@@ -3646,6 +4404,17 @@ pub struct TestCaseVersion {
 }
 
 impl TestCaseVersion {
+    /// Whether runs of this version are **validator-rated**: their functional
+    /// rating and score are decided entirely by the validators (see
+    /// [`crate::review::validator_domain_ratings`]) and reviewers rate aesthetics
+    /// only. True iff the version is on the [engine format](Self::engine_format)
+    /// and is not a [game jam](TestType::GameJam) (a jam is graded, never
+    /// validated). Every version on the legacy spelling behaves exactly as it
+    /// always has: reviewer-rated, with no aesthetic channel.
+    pub fn validator_rated(&self) -> bool {
+        self.engine_format && self.test_type != TestType::GameJam
+    }
+
     /// Resolve a variant by its slug.
     pub fn variant(&self, slug: &str) -> Result<&Variant> {
         self.variants
@@ -3658,16 +4427,80 @@ impl TestCaseVersion {
             })
     }
 
-    /// The starter workspace files seeded for a variant: the variant's own set
-    /// when it overrides the workspace, otherwise the case's common workspace.
-    /// Unlike specs, a variant's workspace **replaces** the common one rather
-    /// than layering on top, so this returns one or the other rather than a
+    /// Whether a run of this version may select the engine `slug`.
+    ///
+    /// The gate a run's `--engine` is checked against, before any container is
+    /// started (see
+    /// [`Error::EngineUnsupportedForCase`]).
+    /// [`NONE_SLUG`] always passes, because resolution
+    /// puts it in [`Self::engines`] whether the manifest declared it or not.
+    ///
+    /// The slug is not resolved against the catalogue here: this answers only what
+    /// *this case* allows. An unknown slug is not supported by any case, so it
+    /// answers `false` — but the caller resolves the engine first, so an
+    /// unresolvable slug is reported as the unknown engine it is rather than as an
+    /// unsupported one.
+    pub fn supports_engine(&self, slug: &str) -> bool {
+        self.engine_support(slug).is_some()
+    }
+
+    /// This version's support entry for the engine `slug` — its declared version
+    /// range — or `None` when the version does not support that engine at all.
+    ///
+    /// The range half of the gate [`Self::supports_engine`] answers the slug half
+    /// of. A caller that has already resolved the engine reads the entry once and
+    /// asks it both questions, which is what keeps "unsupported engine" and "engine
+    /// version outside the declared range" two distinct, separately-worded refusals
+    /// rather than one vague one.
+    pub fn engine_support(&self, slug: &str) -> Option<&EngineSupport> {
+        self.engines.iter().find(|engine| engine.slug == slug)
+    }
+
+    /// The slugs of every engine this version supports, in resolved order.
+    ///
+    /// What a refusal names so the fix is one step, and what a listing shows. The
+    /// ranges are deliberately left out: a caller that needs one asks
+    /// [`Self::engine_support`] for the engine it is actually holding.
+    pub fn engine_slugs(&self) -> Vec<String> {
+        self.engines
+            .iter()
+            .map(|engine| engine.slug.clone())
+            .collect()
+    }
+
+    /// The starter workspace files seeded for a variant on `engine`: the variant's
+    /// own set when it overrides the workspace, otherwise the case's common
+    /// workspace. Unlike specs, a variant's workspace **replaces** the common one
+    /// rather than layering on top, so this returns one or the other rather than a
     /// concatenation.
-    pub fn workspace_for<'a>(&'a self, variant: &'a Variant) -> &'a [WorkspaceFile] {
+    ///
+    /// Keyed by engine because a starter project is written against a runtime, so a
+    /// case supporting more than one engine ships one project per engine. Empty when
+    /// the case seeds no workspace, and empty for an engine this case does not
+    /// support — resolution guarantees an entry for every one it does.
+    pub fn workspace_for<'a>(&'a self, variant: &'a Variant, engine: &str) -> &'a [WorkspaceFile] {
         variant
             .workspace
-            .as_deref()
+            .as_ref()
             .unwrap_or(&self.common_workspace)
+            .get(engine)
+    }
+
+    /// The reference implementation for `variant` on the engine named by `engine`:
+    /// the authored, *correct* build the case's "Reference" tab shows for that
+    /// combination.
+    ///
+    /// Keyed by engine rather than by variant alone because the build a reference
+    /// demonstrates differs under each engine — the engineless build writes its own
+    /// frame loop, input, audio, and diagnostics, while the same game on an engine
+    /// hands all four to the runtime. A variant that names a single directory has
+    /// it standing for every supported engine, so this returns that one path for
+    /// each; a variant that names a table gets that engine's own directory.
+    ///
+    /// `None` when the variant declares no reference implementation at all, or when
+    /// `engine` is not one this case supports.
+    pub fn reference_impl_for<'a>(&self, variant: &'a Variant, engine: &str) -> Option<&'a Path> {
+        variant.reference_impls.get(engine).map(PathBuf::as_path)
     }
 
     /// The effective bounding volume for a run of `variant`: the variant's own
@@ -3727,6 +4560,44 @@ impl TestCaseVersion {
     pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
         let mut items = merge_review_items(&self.common_review_items, &variant.review_items);
         apply_score_exclusions(&mut items, &self.excluded_verdict_ids(variant));
+        items
+    }
+
+    /// The reviewer checklist for a run of `variant` built on `engine`:
+    /// [`Self::review_items_for`] with every point whose validator does not cover
+    /// the run's engine removed (see [`ReviewValidation::covers`]).
+    ///
+    /// Three things are dropped. A whole item whose own `validation` does not cover
+    /// `engine`. A sub-item whose `validation` does not cover `engine`, from its
+    /// parent. And a parent that declared sub-items and has none left once its own
+    /// are filtered, which would otherwise be a category with nothing under it.
+    ///
+    /// A dropped point is not part of the run at all: it is not driven, no verdict
+    /// is recorded against it, it is not shown to the reviewer, and it contributes
+    /// no weight to the score. That is what keeps a
+    /// [validator-rated](Self::validator_rated) case coherent — every graded point a
+    /// run carries is still decided by a validator, even when a point the case
+    /// declares is meaningless under the engine the run was built on. Use
+    /// [`Self::review_items_for`] instead wherever the question is what the case
+    /// declares rather than what one run answers for: a catalog listing, a case page.
+    pub fn review_items_for_engine(&self, variant: &Variant, engine: &str) -> Vec<ReviewItem> {
+        let mut items = self.review_items_for(variant);
+        items.retain_mut(|item| {
+            if item
+                .validation
+                .as_ref()
+                .is_some_and(|validation| !validation.covers(engine))
+            {
+                return false;
+            }
+            let declared_sub_items = !item.sub_items.is_empty();
+            item.sub_items.retain(|sub| {
+                sub.validation
+                    .as_ref()
+                    .is_none_or(|validation| validation.covers(engine))
+            });
+            !declared_sub_items || !item.sub_items.is_empty()
+        });
         items
     }
 
@@ -3857,6 +4728,15 @@ impl TestCaseCatalog {
 
     /// The version subdirectories of a folder, newest first. An error only when the
     /// folder is unreadable; a folder with no versions yields an empty list.
+    ///
+    /// A subdirectory only counts as a version if it actually holds the folder's
+    /// manifest (`test-case.toml`, or `game-jam.toml` for a jam). A version's build
+    /// artifacts (a `reference-impl/` with its `node_modules/`, `dist/`, …) can
+    /// linger on disk after the manifest itself has moved to another branch, and a
+    /// version whose only contents are those leftovers is not a version at all —
+    /// counting it would make the whole catalog fail to `list()` the moment
+    /// resolution tried to read a manifest that isn't there. So a directory with no
+    /// manifest is silently skipped rather than surfaced as a broken version.
     fn version_names(&self, folder: &str) -> Result<Vec<String>> {
         let dir = self.root.join(folder);
         if !dir.is_dir() {
@@ -3864,7 +4744,11 @@ impl TestCaseCatalog {
                 slug: folder.to_string(),
             });
         }
-        let mut versions = read_dir_names(&dir)?;
+        let manifest_file = manifest_file_for(folder);
+        let mut versions: Vec<String> = read_dir_names(&dir)?
+            .into_iter()
+            .filter(|version| dir.join(version).join(manifest_file).is_file())
+            .collect();
         // Newest first. Versions are compared component-wise so `v1.10.0` sorts
         // after `v1.9.0` rather than lexically before it.
         versions.sort_by_key(|v| std::cmp::Reverse(version_key(v)));
@@ -4027,6 +4911,28 @@ impl TestCaseCatalog {
             )));
         }
 
+        // The two spellings of the starter project, and the one rule that decides
+        // between them. A case says which project a run is seeded with in exactly one
+        // way: `workspace` names one directory for the whole case and admits no
+        // engine, and `[workspaces]` names one directory PER ENGINE. A starter project
+        // is written against a runtime — its `package.json` depends on the engine, its
+        // case-owned modules are written against that engine's API — so one directory
+        // cannot stand for two engines, which makes the per-engine table the only way
+        // a case may name an [engine](crate::engine) at all. Mixing the two would be
+        // two answers to one question, and reading a key the case's shape does not
+        // admit would be reading a declaration the author did not make, so each is
+        // refused by name here rather than silently ignored.
+        let declares_engine = !manifest.engines.is_empty() || !manifest.engine_tables.is_empty();
+        let per_engine = !manifest.workspaces.is_empty() || declares_engine;
+        if manifest.workspace.is_some() && per_engine {
+            return Err(invalid(
+                "`workspace` names one directory for the whole case, so it may not be declared \
+                 alongside `[workspaces]` or an engine; a starter project is written against a \
+                 runtime, so declare one directory per engine in a `[workspaces]` table instead"
+                    .to_string(),
+            ));
+        }
+
         // Every declared path must stay inside the version folder, keeping the
         // version self-contained.
         let resolve_inside = |rel: &Path, kind: &str| -> Result<PathBuf> {
@@ -4060,6 +4966,26 @@ impl TestCaseCatalog {
             ));
         }
 
+        let test_type = manifest.test_type;
+
+        // `asset_dimension` picks between the two full-stack run images, and full-stack
+        // is the only type with two images to pick between: every other type's image is
+        // selected by the type alone (or, for asset generation, by its `asset_kind`).
+        // So an `asset_dimension` anywhere else selects nothing, and silently ignoring
+        // it would leave an author believing they had chosen the image their case runs
+        // in when they had not — the kind of mistake whose only symptom is a missing
+        // binary inside the container. It is checked up here, before any per-type table
+        // validation, for two reasons: the per-type match below rejects the
+        // asset-generation-only keys in the very arm full-stack shares, and asset
+        // generation reaches that match through several `asset_kind`-guarded arms, every
+        // one of which would otherwise need the same check repeated.
+        if test_type != TestType::FullStack && manifest.asset_dimension != AssetDimension::TwoD {
+            return Err(invalid(format!(
+                "`asset_dimension` is only valid for a full-stack case (this case is \
+                 `type = \"{test_type}\"`)"
+            )));
+        }
+
         // The test type selects which tables are required and which are
         // forbidden. The `[build]` table is required for — and only for — an
         // end-to-end case: it must state exactly how its implementation is built
@@ -4068,7 +4994,6 @@ impl TestCaseCatalog {
         // skip a build step, so reject that too. An asset-generation case has no
         // build at all (it produces an action log, not a static site), so a
         // `[build]` table on one is a mistake worth rejecting rather than ignoring.
-        let test_type = manifest.test_type;
         let build = match test_type {
             TestType::EndToEnd | TestType::FullStack | TestType::GameJam => {
                 let build = manifest
@@ -4137,6 +5062,51 @@ impl TestCaseCatalog {
             }
         };
 
+        // The `[toolchain]` table declares the TypeScript checks run over the
+        // produced implementation. It belongs to the types that ship a TypeScript
+        // build; a wasm or asset-generation submission has no TypeScript to check,
+        // so declaring one there is a mistake worth rejecting rather than ignoring.
+        //
+        // It is accepted as ABSENT for every type: the manifest format calls it
+        // required, but every case version frozen before it existed declares none
+        // and a frozen version cannot be edited. Absence means "not checked and not
+        // gated", which is what those versions have always been.
+        let toolchain = match manifest.toolchain {
+            None => None,
+            Some(toolchain) => {
+                if !matches!(
+                    test_type,
+                    TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+                ) {
+                    return Err(invalid(
+                        "the [toolchain] table is only valid for a case that ships a \
+                         TypeScript build"
+                            .to_string(),
+                    ));
+                }
+                // A blank command would silently skip the check it names — and for
+                // `typecheck`, silently ungate the run — so each declared one must
+                // say something.
+                if toolchain.typecheck.trim().is_empty() {
+                    return Err(invalid("toolchain.typecheck must not be empty".to_string()));
+                }
+                let optional = |value: Option<String>, key: &str| -> Result<Option<String>> {
+                    match value {
+                        Some(command) if command.trim().is_empty() => Err(invalid(format!(
+                            "toolchain.{key} must not be empty when declared"
+                        ))),
+                        other => Ok(other),
+                    }
+                };
+                Some(crate::toolchain::ToolchainCommands {
+                    typecheck: toolchain.typecheck,
+                    lint: optional(toolchain.lint, "lint")?,
+                    format: optional(toolchain.format, "format")?,
+                    test: optional(toolchain.test, "test")?,
+                })
+            }
+        };
+
         // Variants live in their own files (by convention `variants/<slug>.toml`),
         // listed in order by the `variants` array — the first is the default — and
         // a case must offer at least one. Each file is a standalone
@@ -4174,6 +5144,28 @@ impl TestCaseCatalog {
             }
             variant_manifests
         };
+
+        // The same gate again, over the variant files: a variant spells its own
+        // starter project the same way its case does, so a variant reaching for the
+        // other spelling is refused by name exactly as the case would be.
+        for variant in &variant_manifests {
+            if per_engine {
+                if variant.workspace.is_some() {
+                    return Err(invalid(format!(
+                        "variant `{}` declares `workspace`, but the case names one directory \
+                         per engine; declare the variant's own directories in a `[workspaces]` \
+                         table instead",
+                        variant.slug
+                    )));
+                }
+            } else if !variant.workspaces.is_empty() {
+                return Err(invalid(format!(
+                    "variant `{}` declares `[workspaces]`, but the case names one `workspace` \
+                     for the whole case and runs engineless",
+                    variant.slug
+                )));
+            }
+        }
 
         // Resolve one scoring domain: a reviewer rates each independently and the
         // run's overall rating is the worst across them. The id keys a recorded
@@ -4384,15 +5376,28 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                // As are the painted / particle / audio tables.
+                // As are the painted and particle tables.
                 if manifest.ui.is_some()
                     || manifest.material.is_some()
                     || manifest.particle.is_some()
-                    || manifest.audio.is_some()
                 {
                     return Err(invalid(
-                        "the [ui], [material], [particle], and [audio] tables are only valid for \
+                        "the [ui], [material], and [particle] tables are only valid for \
                          an asset-generation case"
+                            .to_string(),
+                    ));
+                }
+                // The `[audio]` table is the exception: a full-stack case and a jam
+                // produce their own sound during the run, so they declare the packs
+                // that sound may draw on (`packs` alone — see `resolve_audio_packs`,
+                // which runs for every type below). The three types that produce no
+                // audio at all still reject it.
+                if manifest.audio.is_some()
+                    && !matches!(test_type, TestType::FullStack | TestType::GameJam)
+                {
+                    return Err(invalid(
+                        "the [audio] table is only valid for an asset-generation, full-stack \
+                         or game-jam case"
                             .to_string(),
                     ));
                 }
@@ -4859,7 +5864,7 @@ impl TestCaseCatalog {
                     ));
                 }
                 let (tool, output) = resolve_tool_output()?;
-                let audio = resolve_audio(manifest.audio.as_ref(), manifest.asset_kind, &invalid)?;
+                let audio = resolve_audio_format(manifest.audio.as_ref(), &invalid)?;
                 (
                     None,
                     Some(tool),
@@ -5012,6 +6017,18 @@ impl TestCaseCatalog {
                 )
             }
         };
+
+        // The packs a run of this version may reach are resolved for every test
+        // type, not just the audio asset-generation kinds: a full-stack case and a
+        // jam produce their own sound during the run and declare the same `packs`
+        // list, and the arms above have already rejected the table on the types that
+        // produce none (which leaves those with an empty list here).
+        let audio_packs = resolve_audio_packs(
+            manifest.audio.as_ref(),
+            test_type,
+            manifest.asset_kind,
+            &invalid,
+        )?;
 
         // Resolve the contract/sandbox tables and (for adversarial) the
         // `[simulation]`/`[match]`/`[replay]` tables, or (for performance) the
@@ -5356,6 +6373,130 @@ impl TestCaseCatalog {
             }
         };
 
+        // Engines: the runtimes a run of this version may be built on. This is a
+        // compatibility *gate* rather than a dependency declaration — the engine is
+        // chosen per run and its package is vendored by the seeder, not by the case
+        // — but it is validated here, beside `packages`, and for the same reason: a
+        // slug that names nothing should cost a `tcab validate`, never a run.
+        //
+        // A version that declares no engine at all supports `none` alone — the
+        // engineless run every case was before engines existed, which is what keeps
+        // every version predating this key resolving unchanged. Once a version
+        // declares *any* engine, its supported set is exactly what it declares: a
+        // case whose workspace is written against a runtime (its `package.json`
+        // depending on the vendored engine) could not build engineless at all, so
+        // being held to offering that run would be a promise the case cannot keep.
+        // A case that genuinely builds both ways lists `none` alongside.
+        let (engines, engines_vendor_runtime) = {
+            if (!manifest.engines.is_empty() || !manifest.engine_tables.is_empty())
+                && !matches!(
+                    test_type,
+                    TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+                )
+            {
+                return Err(invalid(
+                    "`engines` is only valid for an end-to-end, full-stack, or game-jam case"
+                        .to_string(),
+                ));
+            }
+            let catalog = EngineCatalog::new();
+            let declares_nothing = manifest.engines.is_empty() && manifest.engine_tables.is_empty();
+            let mut engines = if declares_nothing {
+                vec![EngineSupport::unbounded(NONE_SLUG)]
+            } else {
+                Vec::new()
+            };
+            let mut declared = HashSet::new();
+            // Whether any declared engine actually vendors a runtime. Only then does
+            // the seeder have a dependency to write, and only then does the case owe
+            // a `package.json` for it to be written into.
+            let mut vendors_runtime = false;
+            // The two spellings are one declaration: a bare slug is support at any
+            // version, an `[[engine]]` table is support over a range. Resolution
+            // merges them into one set, checks each slug against the closed
+            // catalogue once, and holds a slug to appearing in only one of them —
+            // two entries for one engine would be two answers to the same question.
+            let declarations = manifest
+                .engines
+                .iter()
+                .map(|slug| (slug.as_str(), None))
+                .chain(
+                    manifest
+                        .engine_tables
+                        .iter()
+                        .map(|table| (table.slug.as_str(), Some(table))),
+                );
+            for (slug, table) in declarations {
+                // The catalogue is closed and embedded at build time, so an unknown
+                // slug is an authoring mistake in the manifest, not a missing
+                // install. Name the slugs that would have worked so the fix is one
+                // step, exactly as an unknown `packages` name does.
+                let engine = catalog.resolve(&EngineSelection::new(slug)).map_err(|_| {
+                    invalid(format!(
+                        "engine `{slug}` is not a known engine; valid engines are: {}",
+                        BUILT_IN_SLUGS.join(", ")
+                    ))
+                })?;
+                if !declared.insert(slug) {
+                    return Err(invalid(format!(
+                        "engine `{slug}` is declared more than once across `engines` and \
+                         `[[engine]]`"
+                    )));
+                }
+                vendors_runtime |= engine.provides_runtime();
+                let support = match table {
+                    None => EngineSupport::unbounded(slug),
+                    Some(table) => {
+                        // `none` supplies no runtime, so there is no package and no
+                        // version for a range to be about. A `[[engine]]` table
+                        // always carries a `min_version`, so naming `none` in one is
+                        // always a range over nothing: refuse it and point at the
+                        // spelling that says what the author meant.
+                        if slug == NONE_SLUG {
+                            return Err(invalid(
+                                "engine `none` supplies no runtime and therefore carries no \
+                                 version, so it cannot declare a version range; list it in \
+                                 `engines` instead"
+                                    .to_string(),
+                            ));
+                        }
+                        let min = parse_engine_version(slug, "min_version", &table.min_version)
+                            .map_err(&invalid)?;
+                        let max = table
+                            .max_version
+                            .as_deref()
+                            .map(|raw| parse_engine_version(slug, "max_version", raw))
+                            .transpose()
+                            .map_err(&invalid)?;
+                        // The ceiling is exclusive, so a `max_version` equal to the
+                        // floor admits nothing at all and one below it is worse than
+                        // nothing. Either is an authoring slip that would otherwise
+                        // surface as every run of the case being refused.
+                        if let Some(max) = &max
+                            && max <= &min
+                        {
+                            return Err(invalid(format!(
+                                "engine `{slug}` declares `max_version` {max}, which is not \
+                                 above its inclusive `min_version` {min}; the maximum is \
+                                 exclusive, so the range supports no version at all"
+                            )));
+                        }
+                        EngineSupport {
+                            slug: slug.to_string(),
+                            min_version: Some(min),
+                            max_version: max,
+                        }
+                    }
+                };
+                engines.push(support);
+            }
+            (engines, vendors_runtime)
+        };
+        // The supported *slugs*, in resolved order — what a per-engine table is
+        // held against and what a refusal lists. The ranges are irrelevant to both:
+        // a reference implementation answers for an engine, not for a version of it.
+        let engine_slugs: Vec<String> = engines.iter().map(|engine| engine.slug.clone()).collect();
+
         // Resolve a starter workspace directory into the list of files it seeds.
         // The directory must exist inside the version folder; each file's `dest`
         // is its path relative to that directory, so `workspaces/base/package.json`
@@ -5378,10 +6519,90 @@ impl TestCaseCatalog {
             files.sort_by(|a, b| a.dest.cmp(&b.dest));
             Ok(files)
         };
-        let common_workspace = match &manifest.workspace {
-            Some(dir) => resolve_workspace(dir, "workspace")?,
-            None => Vec::new(),
+
+        // Resolve a `[workspaces]` table: one starter directory per engine. The table
+        // must name **exactly** the engines the case supports — naming one it does not
+        // is a typo, and omitting one it does would leave a run of that engine with
+        // nothing to seed — so both halves are checked here rather than discovered by
+        // a run. An empty table declares no starter project at all, which is the
+        // engines-format spelling of an absent `workspace`. `owner` names a variant
+        // when the table is a variant's own, and is `None` for the case's.
+        let resolve_engine_workspaces = |table: &BTreeMap<String, PathBuf>,
+                                         supported: &[String],
+                                         kind: &str,
+                                         owner: Option<&str>|
+         -> Result<EngineWorkspaces> {
+            let where_ = match owner {
+                Some(variant) => format!("variant `{variant}` "),
+                None => String::new(),
+            };
+            if table.is_empty() {
+                return Ok(EngineWorkspaces::default());
+            }
+            for slug in table.keys() {
+                if !supported.contains(slug) {
+                    return Err(invalid(format!(
+                        "{where_}`{kind}` names engine `{slug}`, which this case does not \
+                         support (supported: {})",
+                        supported.join(", ")
+                    )));
+                }
+            }
+            let mut resolved = EngineWorkspaces::default();
+            for slug in supported {
+                let dir = table.get(slug).ok_or_else(|| {
+                    invalid(format!(
+                        "{where_}`{kind}` names no workspace for engine `{slug}`; the table \
+                         must cover every engine the case supports ({})",
+                        supported.join(", ")
+                    ))
+                })?;
+                resolved.insert(slug.clone(), resolve_workspace(dir, kind)?);
+            }
+            Ok(resolved)
         };
+        // The starter project, per engine. A project is written against a runtime,
+        // so the two spellings resolve differently and resolution reads whichever the
+        // case declared (the gate above has already refused the other one):
+        //
+        //   * An engineless case names one `workspace` directory and supports `none`
+        //     alone, so its files land under that slug and nothing downstream needs
+        //     to know which spelling the case was authored in.
+        //   * A per-engine case names a `[workspaces]` table covering exactly the
+        //     engines it supports, and each entry resolves the same way.
+        //
+        // Either way an absent declaration seeds nothing, which is a case that hands
+        // the model a bare repository.
+        let common_workspace: EngineWorkspaces = if per_engine {
+            resolve_engine_workspaces(&manifest.workspaces, &engine_slugs, "workspaces", None)?
+        } else {
+            match &manifest.workspace {
+                Some(dir) => EngineWorkspaces::from_iter([(
+                    NONE_SLUG.to_string(),
+                    resolve_workspace(dir, "workspace")?,
+                )]),
+                None => EngineWorkspaces::default(),
+            }
+        };
+
+        // The engine's `file:` dependency is written into the seeded workspace's
+        // `package.json` at seed time — the one place seeding edits that file — so a
+        // case supporting an engine with a runtime must ship one for the seeder to
+        // edit. Check the common workspace only: a variant's workspace *replaces* it,
+        // and the engine is a case-wide claim, so a case-wide file is what has to be
+        // there.
+        if engines_vendor_runtime
+            && !common_workspace
+                .files()
+                .any(|file| file.dest == Path::new("package.json"))
+        {
+            return Err(invalid(
+                "a case that declares an engine providing a runtime must ship a workspace \
+                 containing a `package.json` at its root (the file the engine dependency is \
+                 written into when the run is seeded)"
+                    .to_string(),
+            ));
+        }
 
         // The init command, when declared, runs in the container after seeding; a
         // blank string would be a no-op the author almost certainly did not mean,
@@ -5464,7 +6685,7 @@ impl TestCaseCatalog {
                 ));
             }
             let package_json = common_workspace
-                .iter()
+                .files()
                 .find(|file| file.dest == Path::new("package.json"))
                 .ok_or_else(|| {
                     invalid(
@@ -5525,6 +6746,19 @@ impl TestCaseCatalog {
                     let kind = match kind {
                         MediaKind::Image => ReferenceKind::Image,
                         MediaKind::Video => ReferenceKind::Video,
+                        // A reference view is what a reviewer looks at beside the
+                        // build: a committed picture or clip of the intended result.
+                        // A recording is not that — it carries no picture of its own,
+                        // only the operations some build issued, so it is synthesized
+                        // per validation rather than committed as a mockup.
+                        MediaKind::Replay => {
+                            return Err(invalid(format!(
+                                "reference media `{}` for view `{}` is a draw-command \
+                                 recording; a reference view is an image or .mp4",
+                                media.display(),
+                                reference.view
+                            )));
+                        }
                     };
                     (media, kind)
                 }
@@ -5575,7 +6809,7 @@ impl TestCaseCatalog {
             let kind = MediaKind::from_path(&proof.dest).ok_or_else(|| {
                 invalid(format!(
                     "proof `{}` dest `{}` has an unsupported extension \
-                     (expected an image or .mp4)",
+                     (expected an image, .mp4, or a .json recording)",
                     proof.id,
                     proof.dest.display()
                 ))
@@ -5710,23 +6944,116 @@ impl TestCaseCatalog {
                          pass/fail verdict to decide"
                     )));
                 }
-                let script = resolve_inside(&v.script, "review_item validation script")?;
-                if !script.is_file() {
-                    return Err(invalid(format!(
-                        "{label} validation script `{}` is not a file",
-                        v.script.display()
-                    )));
-                }
+                // Which engines this validator decides its point on. Empty is the
+                // whole supported set: a case that draws no distinction between its
+                // engines validates the point on all of them. A named subset is a
+                // point that means something under one engine and nothing under
+                // another — a surface the model writes itself in an engineless build
+                // and the engine draws for it otherwise — so the point leaves the
+                // checklist of a run on any engine it does not name. Scoping needs
+                // engines to scope to, so it is refused by name on a case that
+                // names one `workspace` and no engine.
+                let engines = if v.engines.is_empty() {
+                    Vec::new()
+                } else {
+                    if !per_engine {
+                        return Err(invalid(format!(
+                            "{label} scopes its `validation` to engines, but only a case on the \
+                             engine format (`[workspaces]` / `engines`) has engines to scope to; \
+                             drop `engines` so the validator decides its point on the case's one \
+                             build"
+                        )));
+                    }
+                    let mut seen = std::collections::BTreeSet::new();
+                    for slug in &v.engines {
+                        if !engine_slugs.contains(slug) {
+                            return Err(invalid(format!(
+                                "{label} scopes its `validation` to engine `{slug}`, which this \
+                                 case does not support; name engines it supports ({})",
+                                engine_slugs.join(", ")
+                            )));
+                        }
+                        if !seen.insert(slug.clone()) {
+                            return Err(invalid(format!(
+                                "{label} names engine `{slug}` twice in its `validation` \
+                                 `engines`; each engine a validator covers is named once"
+                            )));
+                        }
+                    }
+                    v.engines.clone()
+                };
+                // Where the declared script lives depends on how the case is
+                // authored, because what it declares does. An engineless case names
+                // one script under the version folder and a browser drives it. A
+                // per-engine case names a suite inside a validator project, and it
+                // ships one project per engine, so the declaration must resolve in
+                // the project of every engine the validator covers, and in no other:
+                // a suite sitting in an engine the validator does not name is a file
+                // nothing will ever run.
+                let script = if per_engine {
+                    if escapes_folder(&v.script) {
+                        return Err(invalid(format!(
+                            "{label} validation script `{}` escapes the version folder",
+                            v.script.display()
+                        )));
+                    }
+                    let project_file = crate::vitest_validator::VITEST_CONFIG_FILE;
+                    for engine in &engine_slugs {
+                        let project = root
+                            .join(crate::validator::VALIDATION_SCRIPT_DIR)
+                            .join(engine);
+                        if !project.join(project_file).is_file() {
+                            return Err(invalid(format!(
+                                "{label} declares a `validation` script, so the case must ship a \
+                                 `{dir}/{engine}/{project_file}` validator project for every \
+                                 engine it supports",
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                        let covered = engines.is_empty() || engines.contains(engine);
+                        let present = project.join(&v.script).is_file();
+                        if covered && !present {
+                            return Err(invalid(format!(
+                                "{label} validation script `{}` is not a file in engine \
+                                 `{engine}`'s validator project (`{dir}/{engine}/`)",
+                                v.script.display(),
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                        if !covered && present {
+                            return Err(invalid(format!(
+                                "{label} validation script `{}` is a file in engine \
+                                 `{engine}`'s validator project (`{dir}/{engine}/`), which its \
+                                 `engines` does not name; a scoped validator ships only in the \
+                                 projects of the engines it covers ({})",
+                                v.script.display(),
+                                engines.join(", "),
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                    }
+                    None
+                } else {
+                    let script = resolve_inside(&v.script, "review_item validation script")?;
+                    if !script.is_file() {
+                        return Err(invalid(format!(
+                            "{label} validation script `{}` is not a file",
+                            v.script.display()
+                        )));
+                    }
+                    Some(script)
+                };
                 // Every automated validation must produce proof: at least one media
-                // output (a screenshot or clip) a reviewer can see, synthesized
-                // side-by-side against the reference baseline. A `validation` with no
-                // `outputs` decides a verdict a reviewer cannot visually corroborate,
-                // so it is rejected here rather than silently allowed.
+                // output (a screenshot, a clip, or a recording) a reviewer can see,
+                // synthesized side-by-side against the reference baseline. A
+                // `validation` with no `outputs` decides a verdict a reviewer cannot
+                // visually corroborate, so it is rejected here rather than silently
+                // allowed.
                 if v.outputs.is_empty() {
                     return Err(invalid(format!(
                         "{label} declares a `validation` script but no `outputs`; every \
                          automated validation must produce at least one proof output \
-                         (a screenshot or clip)"
+                         (a screenshot, a clip, or a recording)"
                     )));
                 }
                 let mut outputs = Vec::with_capacity(v.outputs.len());
@@ -5744,6 +7071,13 @@ impl TestCaseCatalog {
                             out.id
                         )));
                     }
+                    // A screen capture is a property of the drive, not of a moment
+                    // inside it: one script is recorded end to end, so a second
+                    // `video` output names a clip that does not exist. This counts
+                    // `Video` alone — a `Replay` is armed and disarmed by the
+                    // validator around whichever stretch of its scenario it wants
+                    // evidence of, so a suite may declare as many recordings as it
+                    // has scenarios.
                     if out.kind == MediaKind::Video {
                         video_count += 1;
                         if video_count > 1 {
@@ -5762,9 +7096,84 @@ impl TestCaseCatalog {
                 Ok(ReviewValidation {
                     script,
                     script_rel: v.script.to_string_lossy().replace('\\', "/"),
+                    engines,
                     outputs,
                 })
             };
+        // Whether this version is validator-rated: the per-engine manifest format on
+        // any type but a game jam (see [`TestCaseVersion::validator_rated`]). On such
+        // a version behaviour is decided entirely by the validators, so EVERY graded
+        // point must say which domains a failure lowers and how far (`domains` +
+        // `failure_cap`) and must carry the `validation` that decides it. On a legacy
+        // version those two keys are meaningless — the reviewer gives the rating — so
+        // they are refused by name rather than silently carried.
+        let validator_rated = per_engine && test_type != TestType::GameJam;
+        let resolve_point_rating = |label: &str,
+                                    failure_cap: Option<FailureCap>,
+                                    point_domains: &[String],
+                                    has_validation: bool,
+                                    allowed_domains: &[Domain]|
+         -> Result<(Option<FailureCap>, Vec<String>)> {
+            if !validator_rated {
+                if failure_cap.is_some() {
+                    return Err(invalid(format!(
+                        "{label} declares `failure_cap`, but only a case on the engine format \
+                         (`[workspaces]` / `engines`) declares a failure cap; a legacy case's \
+                         rating is the reviewer's to give"
+                    )));
+                }
+                if !point_domains.is_empty() {
+                    return Err(invalid(format!(
+                        "{label} declares `domains`, but only a case on the engine format \
+                         (`[workspaces]` / `engines`) declares the domains a failure lowers; a \
+                         legacy case's rating is the reviewer's to give"
+                    )));
+                }
+                return Ok((None, Vec::new()));
+            }
+            let Some(cap) = failure_cap else {
+                return Err(invalid(format!(
+                    "{label} declares no `failure_cap`; on a validator-rated case every graded \
+                     point states the highest rating its domains may reach while it fails \
+                     (one of broken, scuffed, passable, great)"
+                )));
+            };
+            if point_domains.is_empty() {
+                return Err(invalid(format!(
+                    "{label} declares no `domains`; on a validator-rated case every graded \
+                     point names the scoring domains a failure lowers"
+                )));
+            }
+            if !has_validation {
+                return Err(invalid(format!(
+                    "{label} declares no `validation`; on a validator-rated case every graded \
+                     point is decided by a validator"
+                )));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for domain in point_domains {
+                if !allowed_domains
+                    .iter()
+                    .any(|resolved| &resolved.id == domain)
+                {
+                    return Err(invalid(format!(
+                        "{label} names domain `{domain}` in `domains`, which is not declared \
+                         for this scope (declared: {})",
+                        allowed_domains
+                            .iter()
+                            .map(|d| d.id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )));
+                }
+                if !seen.insert(domain.as_str()) {
+                    return Err(invalid(format!(
+                        "{label} names domain `{domain}` twice in `domains`"
+                    )));
+                }
+            }
+            Ok((Some(cap), point_domains.to_vec()))
+        };
         let resolve_review_item =
             |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
                 if item.id.trim().is_empty() {
@@ -5897,6 +7306,29 @@ impl TestCaseCatalog {
                     }
                     None => None,
                 };
+                // The failure cap and domains attach to the graded unit exactly as
+                // validation does: an item graded as a whole carries them itself; a
+                // sub-divided item carries them per sub-item, so item-level keys
+                // beside `sub_items` are refused rather than silently ignored.
+                let (failure_cap, point_domains) = if item.sub_items.is_empty() {
+                    resolve_point_rating(
+                        &format!("review_item `{}`", item.id),
+                        item.failure_cap,
+                        &item.domains,
+                        validation.is_some(),
+                        allowed_domains,
+                    )?
+                } else {
+                    if item.failure_cap.is_some() || !item.domains.is_empty() {
+                        return Err(invalid(format!(
+                            "review_item `{}` declares `sub_items` alongside an item-level \
+                             `failure_cap`/`domains`; a sub-divided item is rated per sub-item, \
+                             so move them onto each sub-item",
+                            item.id
+                        )));
+                    }
+                    (None, Vec::new())
+                };
                 // Each sub-item resolves its own optional validation driver (only ever
                 // present here, since item-level validation is forbidden above once
                 // sub-items exist). The name/uniqueness of the sub-items themselves were
@@ -5912,6 +7344,13 @@ impl TestCaseCatalog {
                             )?),
                             None => None,
                         };
+                        let (failure_cap, domains) = resolve_point_rating(
+                            &format!("review_item `{}` sub-item `{}`", item.id, sub.id),
+                            sub.failure_cap,
+                            &sub.domains,
+                            validation.is_some(),
+                            allowed_domains,
+                        )?;
                         Ok(SubReviewItem {
                             id: sub.id.clone(),
                             title: sub.title.clone(),
@@ -5926,6 +7365,8 @@ impl TestCaseCatalog {
                             proof: None,
                             scored: true,
                             validation,
+                            failure_cap,
+                            domains,
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -5943,6 +7384,8 @@ impl TestCaseCatalog {
                     sub_items,
                     scored: true,
                     validation,
+                    failure_cap,
+                    domains: point_domains,
                 })
             };
 
@@ -6019,8 +7462,13 @@ impl TestCaseCatalog {
         // review items; it carries no prose (`text` is empty), no domain, and no
         // paired media of its own, and its weight is the sum of its items'
         // weights. A category needs at least one item, item ids are unique within
-        // it, and each item's optional `validation` resolves like any other.
-        let resolve_review_category = |cat: &ManifestReviewCategory| -> Result<ReviewItem> {
+        // it, and each item's optional `validation` resolves like any other. On a
+        // validator-rated version each item's `failure_cap` + `domains` are required
+        // and its domains are checked against `allowed_domains` (the common domains
+        // for the case's own categories, the effective set for a variant's).
+        let resolve_review_category = |cat: &ManifestReviewCategory,
+                                       allowed_domains: &[Domain]|
+         -> Result<ReviewItem> {
             if cat.id.trim().is_empty() {
                 return Err(invalid(
                     "review category `id` must not be empty".to_string(),
@@ -6086,6 +7534,13 @@ impl TestCaseCatalog {
                     )?),
                     None => None,
                 };
+                let (failure_cap, domains) = resolve_point_rating(
+                    &format!("review category `{}` item `{}`", cat.id, it.id),
+                    it.failure_cap,
+                    &it.domains,
+                    validation.is_some(),
+                    allowed_domains,
+                )?;
                 sub_items.push(SubReviewItem {
                     id: it.id.clone(),
                     title: it.title.clone(),
@@ -6095,6 +7550,8 @@ impl TestCaseCatalog {
                     proof: it.proof.clone(),
                     scored: true,
                     validation,
+                    failure_cap,
+                    domains,
                 });
             }
             Ok(ReviewItem {
@@ -6111,6 +7568,8 @@ impl TestCaseCatalog {
                 sub_items,
                 scored: true,
                 validation: None,
+                failure_cap: None,
+                domains: Vec::new(),
             })
         };
 
@@ -6119,7 +7578,7 @@ impl TestCaseCatalog {
         let mut common_review_items = if let Some(review) = &manifest.review {
             let mut items = Vec::with_capacity(review.categories.len());
             for cat in &review.categories {
-                items.push(resolve_review_category(cat)?);
+                items.push(resolve_review_category(cat, &domains)?);
             }
             items
         } else {
@@ -6206,10 +7665,28 @@ impl TestCaseCatalog {
             }
             let variant_domains: Vec<Domain> = effective_domains[domains.len()..].to_vec();
             // A variant's workspace, when declared, replaces the common workspace
-            // for this variant rather than layering on top of it.
-            let workspace = match &variant.workspace {
-                Some(dir) => Some(resolve_workspace(dir, "variant workspace")?),
-                None => None,
+            // for this variant rather than layering on top of it — and in a
+            // per-engine case it replaces the whole per-engine table, so a variant
+            // that declares one covers every engine the case supports.
+            let workspace = if per_engine {
+                if variant.workspaces.is_empty() {
+                    None
+                } else {
+                    Some(resolve_engine_workspaces(
+                        &variant.workspaces,
+                        &engine_slugs,
+                        "workspaces",
+                        Some(&variant.slug),
+                    )?)
+                }
+            } else {
+                match &variant.workspace {
+                    Some(dir) => Some(EngineWorkspaces::from_iter([(
+                        NONE_SLUG.to_string(),
+                        resolve_workspace(dir, "variant workspace")?,
+                    )])),
+                    None => None,
+                }
             };
 
             // A variant's reference implementation, when declared, is the authored
@@ -6221,17 +7698,67 @@ impl TestCaseCatalog {
             // reference screenshot, nor a proof), so the finished game never lands in
             // a run tree. The resolved host path is carried on the `Variant` purely
             // so the publisher knows which directory to build and deploy.
-            let reference_impl = match &variant.reference_implementation {
-                Some(dir) => {
-                    let path = resolve_inside(dir, "variant reference implementation")?;
-                    if !path.is_dir() {
-                        return Err(invalid(format!(
-                            "variant `{}` reference implementation `{}` is not a directory",
-                            variant.slug,
-                            dir.display()
-                        )));
+            //
+            // It is keyed by engine, because the engine is a run dimension and the
+            // build a reference demonstrates differs under each. The bare-path form
+            // means "this build, for every engine the case supports"; the table form
+            // names one directory per engine and must cover the supported set
+            // exactly — an engine the case does not support is a typo, and a missing
+            // one would leave a run on that engine with no authored answer to show.
+            let mut reference_impls: BTreeMap<String, PathBuf> = BTreeMap::new();
+            let resolve_reference_impl = |dir: &PathBuf| -> Result<PathBuf> {
+                let path = resolve_inside(dir, "variant reference implementation")?;
+                if !path.is_dir() {
+                    return Err(invalid(format!(
+                        "variant `{}` reference implementation `{}` is not a directory",
+                        variant.slug,
+                        dir.display()
+                    )));
+                }
+                Ok(path)
+            };
+            match &variant.reference_implementation {
+                Some(ManifestReferenceImplementation::Shared(dir)) => {
+                    let path = resolve_reference_impl(dir)?;
+                    for engine in &engine_slugs {
+                        reference_impls.insert(engine.clone(), path.clone());
                     }
-                    Some(path)
+                }
+                Some(ManifestReferenceImplementation::PerEngine(by_engine)) => {
+                    for slug in by_engine.keys() {
+                        if !engine_slugs.contains(slug) {
+                            return Err(invalid(format!(
+                                "variant `{}` declares a reference implementation for engine                                  `{slug}`, which this case does not support (supported: {})",
+                                variant.slug,
+                                engine_slugs.join(", ")
+                            )));
+                        }
+                    }
+                    for engine in &engine_slugs {
+                        let dir = by_engine.get(engine).ok_or_else(|| {
+                            invalid(format!(
+                                "variant `{}` declares reference implementations per engine but                                  names none for `{engine}`; a per-engine table must cover every                                  engine the case supports ({})",
+                                variant.slug,
+                                engine_slugs.join(", ")
+                            ))
+                        })?;
+                        reference_impls.insert(engine.clone(), resolve_reference_impl(dir)?);
+                    }
+                }
+                None => {}
+            }
+
+            // A variant's showcase, when declared, is the authored presentation of
+            // the case — a description plus a small media carousel captured from
+            // the reference implementation. Like the reference implementation it is
+            // host-side material that never seeds into a run (it takes no part in
+            // the seed-dest `claim`s below), so resolving it costs a run nothing;
+            // it is hard-validated here so a typo, a malformed manifest, or an
+            // oversized file fails resolution rather than a later publish.
+            let showcase = match &variant.showcase {
+                Some(rel) => {
+                    let dir = resolve_inside(rel, "variant showcase")?;
+                    Some(resolve_showcase(&variant.slug, rel, &dir, &invalid)?)
                 }
                 None => None,
             };
@@ -6316,9 +7843,13 @@ impl TestCaseCatalog {
             // tree. Two of them landing on the same dest would clobber each other,
             // so any collision across them — for example a workspace that ships a
             // file at a spec's `dest` — is rejected here rather than silently
-            // resolved at seed time. The effective workspace is the variant's own
-            // when it overrides, otherwise the case's common workspace.
-            let workspace_files = workspace.as_deref().unwrap_or(&common_workspace);
+            // resolved at seed time.
+            //
+            // Everything but the workspace is the same whichever engine a run
+            // selects, so those claims are made once here and the workspace — which
+            // is one project per engine, of which a run seeds exactly one — is
+            // checked against them per engine below.
+            let workspaces = workspace.as_ref().unwrap_or(&common_workspace);
             let mut seeded_dests: std::collections::BTreeMap<PathBuf, &'static str> =
                 std::collections::BTreeMap::new();
             let mut claim = |dest: PathBuf, kind: &'static str| -> Result<()> {
@@ -6331,9 +7862,6 @@ impl TestCaseCatalog {
                 }
                 Ok(())
             };
-            for file in workspace_files {
-                claim(file.dest.clone(), "workspace")?;
-            }
             for spec in common_specs.iter().chain(specs.iter()) {
                 claim(spec.dest.clone(), "spec")?;
             }
@@ -6455,15 +7983,31 @@ impl TestCaseCatalog {
                     "tool config",
                 )?;
             }
+            // A run seeds one engine's starter project, so each project is checked
+            // against everything else the run seeds on its own. Two engines' projects
+            // sharing a dest is not a collision — they never land in the same tree.
+            for engine in workspaces.engines() {
+                let mut with_workspace = seeded_dests.clone();
+                for file in workspaces.get(engine) {
+                    if let Some(prev) = with_workspace.insert(file.dest.clone(), "workspace") {
+                        return Err(invalid(format!(
+                            "variant `{}` on engine `{engine}` seeds two entries ({prev} and \
+                             workspace) to the same dest `{}`",
+                            variant.slug,
+                            file.dest.display()
+                        )));
+                    }
+                }
+            }
 
             // The variant's own review entries, in whichever grammar the case
             // uses (enforced consistent above). A legacy variant item may name a
             // common domain or one of this variant's own, so it is resolved
-            // against the effective set; a categories variant drops domains.
+            // against the effective set — in either grammar.
             let review_items = if let Some(review) = &variant.review {
                 let mut items = Vec::with_capacity(review.categories.len());
                 for cat in &review.categories {
-                    items.push(resolve_review_category(cat)?);
+                    items.push(resolve_review_category(cat, &effective_domains)?);
                 }
                 items
             } else {
@@ -6573,7 +8117,8 @@ impl TestCaseCatalog {
                 review_items,
                 domains: variant_domains,
                 voxel,
-                reference_impl,
+                reference_impls,
+                showcase,
             });
         }
 
@@ -6729,7 +8274,9 @@ impl TestCaseCatalog {
             max_runtime_seconds: crate::runtime_hours_to_seconds(manifest.max_runtime_hours),
             test_type,
             experimental: manifest.experimental,
+            engine_format: per_engine,
             build,
+            toolchain,
             instrumentation,
             canvas,
             tool,
@@ -6740,6 +8287,7 @@ impl TestCaseCatalog {
             r#match,
             replay,
             asset_kind: manifest.asset_kind,
+            asset_dimension: manifest.asset_dimension,
             sheet,
             voxel,
             model,
@@ -6747,11 +8295,13 @@ impl TestCaseCatalog {
             material,
             particle,
             audio,
+            audio_packs,
             common_specs,
             common_workspace,
             init: manifest.init,
             asset_paths,
             packages: manifest.packages,
+            engines,
             variants,
             common_references,
             common_proofs,
@@ -6881,6 +8431,24 @@ fn default_max_runtime_hours() -> f64 {
     1.0
 }
 
+/// Parse one authored engine version out of an `[[engine]]` table, reporting the
+/// engine and the key when it is not a semantic version.
+///
+/// Returns the failure *detail* rather than an `Error` so the caller wraps it in
+/// its own `InvalidTestCase`, which already carries the case slug and version.
+/// The message quotes what was written and names the shape expected, because the
+/// usual mistake is a two-component `"1.0"` or a `"v1.0.0"` — both of which npm
+/// tolerates in places and semver does not.
+fn parse_engine_version(slug: &str, key: &str, raw: &str) -> std::result::Result<Version, String> {
+    Version::parse(raw).map_err(|err| {
+        format!(
+            "engine `{slug}` declares `{key} = \"{raw}\"`, which is not a semantic version \
+             ({err}); engine versions are the versions of the engine's npm package, so they \
+             carry all three components (for example `1.0.0`)"
+        )
+    })
+}
+
 /// The default `[canvas] background` applied when an asset-generation manifest
 /// omits it: a fully transparent canvas.
 fn default_background() -> String {
@@ -6898,6 +8466,136 @@ fn spec_default_dest(source: &Path) -> PathBuf {
     } else {
         source.to_path_buf()
     }
+}
+
+/// Resolve a variant's authored showcase directory (the `showcase` key — see
+/// [`ManifestVariant::showcase`]) into a [`CaseShowcase`].
+///
+/// `rel` is the directory as the manifest declared it (for error messages) and
+/// `dir` its resolved host path inside the version folder. The directory holds
+/// `showcase.md` (the description), `showcase.toml` (the ordered media carousel,
+/// parsed with the shared [`crate::ShowcaseManifest`] so the case-side and
+/// run-side showcases stay one format), and the media files themselves, flat.
+///
+/// Unlike the run-side capture in `lib.rs` — which reads a *model-written*
+/// showcase at run time and therefore degrades leniently, truncating and
+/// dropping — this showcase is authored and committed, so every problem is a
+/// manifest error: a missing or empty description, a description over
+/// [`crate::MAX_SHOWCASE_DESCRIPTION_BYTES`], an unparsable manifest, an empty
+/// carousel or one over [`crate::MAX_SHOWCASE_MEDIA_ENTRIES`], an entry that does
+/// not name a plain existing file in the directory, a file named by more than
+/// one entry, a file over
+/// [`crate::MAX_SHOWCASE_MEDIA_FILE_BYTES`], or a name whose extension names no
+/// known [`MediaKind`] all hard-fail resolution.
+fn resolve_showcase(
+    variant_slug: &str,
+    rel: &Path,
+    dir: &Path,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<CaseShowcase> {
+    let invalid = |detail: String| {
+        invalid(format!(
+            "variant `{variant_slug}` showcase `{}`: {detail}",
+            rel.display()
+        ))
+    };
+    if !dir.is_dir() {
+        return Err(invalid("the directory does not exist".to_string()));
+    }
+
+    let description = match std::fs::read_to_string(dir.join("showcase.md")) {
+        Ok(text) => text,
+        Err(err) => {
+            return Err(invalid(format!("showcase.md could not be read: {err}")));
+        }
+    };
+    if description.trim().is_empty() {
+        return Err(invalid("showcase.md is empty".to_string()));
+    }
+    if description.len() > crate::MAX_SHOWCASE_DESCRIPTION_BYTES {
+        return Err(invalid(format!(
+            "showcase.md is {} bytes, over the {}-byte cap",
+            description.len(),
+            crate::MAX_SHOWCASE_DESCRIPTION_BYTES
+        )));
+    }
+
+    let manifest = match std::fs::read_to_string(dir.join("showcase.toml")) {
+        Ok(text) => text,
+        Err(err) => {
+            return Err(invalid(format!("showcase.toml could not be read: {err}")));
+        }
+    };
+    let manifest: crate::ShowcaseManifest = toml::from_str(&manifest)
+        .map_err(|err| invalid(format!("showcase.toml could not be parsed: {err}")))?;
+
+    if manifest.media.is_empty() {
+        return Err(invalid(
+            "showcase.toml declares no [[media]] entries; a showcase carries at least one"
+                .to_string(),
+        ));
+    }
+    if manifest.media.len() > crate::MAX_SHOWCASE_MEDIA_ENTRIES {
+        return Err(invalid(format!(
+            "showcase.toml declares {} [[media]] entries, over the cap of {}",
+            manifest.media.len(),
+            crate::MAX_SHOWCASE_MEDIA_ENTRIES
+        )));
+    }
+    let mut media = Vec::with_capacity(manifest.media.len());
+    for entry in manifest.media {
+        // An entry names a plain file in the showcase directory itself — no
+        // subdirectories, no traversal — which is also the invariant that keeps
+        // every downstream serving route for it a flat namespace. The `..` check
+        // matches the run showcase's (any name *containing* `..` is refused).
+        if entry.file.is_empty() || entry.file.contains(['/', '\\']) || entry.file.contains("..") {
+            return Err(invalid(format!(
+                "media entry `{}` does not name a plain file in the showcase directory",
+                entry.file
+            )));
+        }
+        if media
+            .iter()
+            .any(|resolved: &CaseShowcaseMedia| resolved.file == entry.file)
+        {
+            return Err(invalid(format!(
+                "showcase.toml declares media file `{}` more than once",
+                entry.file
+            )));
+        }
+        let source_path = dir.join(&entry.file);
+        let metadata = match std::fs::metadata(&source_path) {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => {
+                return Err(invalid(format!(
+                    "media file `{}` does not exist in the showcase directory",
+                    entry.file
+                )));
+            }
+        };
+        if metadata.len() > crate::MAX_SHOWCASE_MEDIA_FILE_BYTES {
+            return Err(invalid(format!(
+                "media file `{}` is {} bytes, over the {}-byte cap",
+                entry.file,
+                metadata.len(),
+                crate::MAX_SHOWCASE_MEDIA_FILE_BYTES
+            )));
+        }
+        let Some(kind) = MediaKind::from_path(Path::new(&entry.file)) else {
+            return Err(invalid(format!(
+                "media file `{}` has an extension naming no known media kind \
+                 (png/jpg/jpeg/webp/gif, webm/mp4, or json.gz)",
+                entry.file
+            )));
+        };
+        media.push(CaseShowcaseMedia {
+            file: entry.file,
+            name: entry.name,
+            kind,
+            source_path,
+        });
+    }
+    Ok(CaseShowcase { description, media })
 }
 
 /// Resolve and validate a sprite-sheet case's `[sheet]` table.
@@ -7311,81 +9009,149 @@ fn resolve_particle(
     })
 }
 
-/// Resolve and validate an audio case's required `[audio]` table into an
-/// [`AudioSpec`]. `sample_rate` must be positive; `channels` must be `mono` or
-/// `stereo`; `max_duration_ms` must be positive. A `sfx-sample`
-/// case requires `sample_pack` (and no `instrument_bank`); a `music` case requires
-/// `instrument_bank` (and no `sample_pack`); a `sfx-synth` case names neither.
+/// Resolve and validate an audio asset-generation case's clip output format out of
+/// its required `[audio]` table.
+///
+/// `sample_rate`, `channels`, and `max_duration_ms` are all required here — they fix
+/// the single clip the case emits — and each is checked: the rate and the cap must be
+/// positive, and the layout must be `mono` or `stereo`. The packs the case plays are
+/// resolved separately by [`resolve_audio_packs`], which every test type runs.
 /// `invalid` is the resolver's error constructor.
-fn resolve_audio(
+fn resolve_audio_format(
     audio: Option<&ManifestAudio>,
-    kind: AssetKind,
     invalid: &impl Fn(String) -> Error,
 ) -> Result<AudioSpec> {
     let audio =
         audio.ok_or_else(|| invalid("an audio case requires the [audio] table".to_string()))?;
-    if audio.sample_rate == 0 {
+    // The three format fields are `Option` on the manifest because a full-stack case
+    // and a jam declare the same table without them; an audio case states all three.
+    let (Some(sample_rate), Some(channels), Some(max_duration_ms)) = (
+        audio.sample_rate,
+        audio.channels.as_deref(),
+        audio.max_duration_ms,
+    ) else {
+        return Err(invalid(
+            "an audio asset-generation case requires audio.sample_rate, audio.channels \
+             and audio.max_duration_ms"
+                .to_string(),
+        ));
+    };
+    if sample_rate == 0 {
         return Err(invalid(
             "audio.sample_rate must be greater than zero".to_string(),
         ));
     }
-    if audio.channels != "mono" && audio.channels != "stereo" {
+    if channels != "mono" && channels != "stereo" {
         return Err(invalid(format!(
-            "audio.channels `{}` must be `mono` or `stereo`",
-            audio.channels
+            "audio.channels `{channels}` must be `mono` or `stereo`"
         )));
     }
-    if audio.max_duration_ms == 0 {
+    if max_duration_ms == 0 {
         return Err(invalid(
             "audio.max_duration_ms must be greater than zero".to_string(),
         ));
     }
-    // Each audio kind draws from a different palette: `sfx-sample` mixes over a baked
-    // sample pack, `music` plays a baked instrument bank, and `sfx-synth`
-    // synthesizes from oscillators alone. Require exactly the palette the kind uses
-    // and reject the other so a mistyped `[audio]` is caught here.
-    match kind {
-        AssetKind::SfxSample => {
-            if audio.sample_pack.is_none() {
-                return Err(invalid(
-                    "a `sfx-sample` case requires audio.sample_pack".to_string(),
-                ));
-            }
-            if audio.instrument_bank.is_some() {
-                return Err(invalid(
-                    "audio.instrument_bank is only valid for a `music` case".to_string(),
-                ));
-            }
+    Ok(AudioSpec {
+        sample_rate,
+        channels: channels.to_string(),
+        max_duration_ms,
+    })
+}
+
+/// Resolve and validate the audio packs a version's runs are staged with, out of the
+/// `[audio]` table's `packs` list.
+///
+/// This runs for **every** test type, because a pack declaration is not an
+/// asset-generation concept: a full-stack case and a game jam declare one too, and
+/// the resolved list is the whole of what their runs can reach. Every entry must be a
+/// fully pinned `name@version` ref, so a run's palette identity is checkable when the
+/// tool loads it, and no pack may be named twice, because a run carries one version of
+/// a pack.
+///
+/// How many packs are legal follows from the case. An audio asset-generation case
+/// emits one clip with one binary, so `sfx-sample` and `music` each declare exactly
+/// one pack and `sfx-synth` declares none (it synthesizes from oscillators alone). A
+/// full-stack case or jam produces as many sounds as its game needs and so declares
+/// any number of either kind — including none, deliberately — and, when it carries no
+/// `[audio]` table at all, receives [`DEFAULT_AUDIO_PACKS`].
+///
+/// Whether a *declared* ref names a pack that exists, at a version that exists, of the
+/// right kind, whose clips are published, is not checkable here: resolution also runs
+/// at backend ingest, where `containers/sample-packs/` is not present. That is
+/// `scripts/ci/audio-packs-check.mjs`'s job, on the commit hook and in CI, and staging
+/// then checks it a second time against the host audio store.
+///
+/// `invalid` is the resolver's error constructor.
+fn resolve_audio_packs(
+    audio: Option<&ManifestAudio>,
+    test_type: TestType,
+    kind: AssetKind,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<Vec<String>> {
+    // A full-stack case and a jam produce their own sound during the run; the other
+    // types that may declare the table are the audio asset-generation kinds.
+    let produces_own_sound = matches!(test_type, TestType::FullStack | TestType::GameJam);
+    let Some(audio) = audio else {
+        return Ok(if produces_own_sound {
+            DEFAULT_AUDIO_PACKS.iter().map(|r| r.to_string()).collect()
+        } else {
+            Vec::new()
+        });
+    };
+    if produces_own_sound
+        && (audio.sample_rate.is_some()
+            || audio.channels.is_some()
+            || audio.max_duration_ms.is_some())
+    {
+        return Err(invalid(format!(
+            "a {} case's [audio] table declares only `packs`; sample_rate, channels and \
+             max_duration_ms describe an asset-generation case's single clip",
+            test_type.as_str()
+        )));
+    }
+    let mut names: Vec<&str> = Vec::with_capacity(audio.packs.len());
+    for (index, pack) in audio.packs.iter().enumerate() {
+        // Both halves are required: a version-less ref would leave the loaded pack's
+        // identity uncheckable, which is the whole point of pinning one. Both are also
+        // path components of the tree a run is staged with, so each is held to plain
+        // name characters rather than merely being non-empty.
+        let (name, version) = pack.split_once('@').unwrap_or((pack.as_str(), ""));
+        if !is_pack_ref_half(name) || !is_pack_ref_half(version) {
+            return Err(invalid(format!(
+                "audio.packs[{index}] `{pack}`: a pack ref must be `name@version`"
+            )));
         }
-        AssetKind::Music => {
-            if audio.instrument_bank.is_none() {
-                return Err(invalid(
-                    "a `music` case requires audio.instrument_bank".to_string(),
-                ));
-            }
-            if audio.sample_pack.is_some() {
-                return Err(invalid(
-                    "audio.sample_pack is only valid for a `sfx-sample` case".to_string(),
-                ));
-            }
+        if names.contains(&name) {
+            return Err(invalid(format!(
+                "audio.packs names `{name}` twice; a run carries one version of a pack"
+            )));
         }
-        // `sfx-synth` synthesizes from oscillators alone.
-        _ => {
-            if audio.sample_pack.is_some() || audio.instrument_bank.is_some() {
+        names.push(name);
+    }
+    if test_type == TestType::AssetGeneration {
+        let count = audio.packs.len();
+        match kind {
+            AssetKind::SfxSample if count != 1 => {
+                return Err(invalid(format!(
+                    "a `sfx-sample` case declares exactly one pack in audio.packs, not {count}"
+                )));
+            }
+            AssetKind::Music if count != 1 => {
+                return Err(invalid(format!(
+                    "a `music` case declares exactly one pack in audio.packs, not {count}"
+                )));
+            }
+            AssetKind::SfxSynth if count != 0 => {
                 return Err(invalid(
-                    "a `sfx-synth` case names neither audio.sample_pack nor audio.instrument_bank"
+                    "a `sfx-synth` case declares no audio.packs: it synthesizes from \
+                     oscillators alone"
                         .to_string(),
                 ));
             }
+            _ => {}
         }
     }
-    Ok(AudioSpec {
-        sample_rate: audio.sample_rate,
-        channels: audio.channels.clone(),
-        max_duration_ms: audio.max_duration_ms,
-        sample_pack: audio.sample_pack.clone(),
-        instrument_bank: audio.instrument_bank.clone(),
-    })
+    Ok(audio.packs.clone())
 }
 
 /// Recursively enumerate the files under a workspace directory into
@@ -7424,13 +9190,19 @@ fn forward_slash_path(rel: &Path) -> PathBuf {
 /// - `.cargo` — Cargo build configuration (`.cargo/config.toml`, e.g. the default
 ///   `wasm32-unknown-unknown` build target) a Rust case's build and local
 ///   iteration rely on.
+/// - `.prettierrc.json` and `.prettierignore` — the formatting configuration a
+///   case's `format` toolchain command (`npx prettier --check .`) checks the
+///   produced code against.
 ///
 /// This is the single source of truth for both local seeding
 /// (`collect_workspace_files`) and backend ingest (`copy_tree`), so the two
 /// always seed the same set. Matching is by the entry's own name, so a `.cargo`
 /// directory is descended into and its (non-hidden) contents seeded.
 pub fn is_seeded_dotfile(name: &str) -> bool {
-    matches!(name, ".gitignore" | ".cargo")
+    matches!(
+        name,
+        ".gitignore" | ".cargo" | ".prettierrc.json" | ".prettierignore"
+    )
 }
 
 fn collect_workspace_files(
@@ -7512,3 +9284,19 @@ fn escapes_folder(rel: &Path) -> bool {
 #[cfg(test)]
 #[path = "test_case.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "test_case.engines.test.rs"]
+mod engine_tests;
+
+#[cfg(test)]
+#[path = "test_case.toolchain.test.rs"]
+mod toolchain_tests;
+
+#[cfg(test)]
+#[path = "test_case.showcase.test.rs"]
+mod showcase_tests;
+
+#[cfg(test)]
+#[path = "test_case.audio.test.rs"]
+mod audio_tests;

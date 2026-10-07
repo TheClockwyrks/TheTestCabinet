@@ -107,3 +107,10 @@
   font-size: t.$font-lg;
   color: t.$color-text-muted;
 }
+
+// A review's badges (functional and/or aesthetic), side by side.
+.reviewBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

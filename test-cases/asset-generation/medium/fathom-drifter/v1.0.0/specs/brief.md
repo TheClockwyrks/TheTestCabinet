@@ -34,9 +34,9 @@ One **sway loop** — the same drifting jellyfish in every frame, its skirt and
 tendrils rippling a little from frame to frame so playing `0`→`7` reads as a gentle,
 continuous drift:
 
-| Frames | Contents |
-| --- | --- |
-| 0–7 | the amber jellyfish drifting — the bell steady up top, the frilled skirt and hanging tendrils swaying a pixel or two across the loop |
+| Frames | Contents                                                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 0–7    | the amber jellyfish drifting — the bell steady up top, the frilled skirt and hanging tendrils swaying a pixel or two across the loop |
 
 - The jellyfish is **directionless** — it reads the same whichever way it drifts —
   so this is a **single loop**, not four-direction swim pairs. Do not draw a leading
@@ -66,12 +66,12 @@ skirt, tendrils).
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Amber bell (bulb) | `#ffd166` |
-| Bell core / highlight (bright) | `#fff3c4` |
+| Role                                 | Hex       |
+| ------------------------------------ | --------- |
+| Amber bell (bulb)                    | `#ffd166` |
+| Bell core / highlight (bright)       | `#fff3c4` |
 | Tendrils & frilled skirt (dim amber) | `#d99a3a` |
-| Outline / shadow (darkest) | `#0e1622` |
+| Outline / shadow (darkest)           | `#0e1622` |
 
 The bell (`#ffd166` with a `#fff3c4` core) is the bright anchor; the skirt and
 tendrils are the dimmer amber (`#d99a3a`); a near-black (`#0e1622`) reads the shape

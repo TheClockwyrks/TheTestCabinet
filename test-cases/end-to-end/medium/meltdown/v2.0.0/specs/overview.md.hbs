@@ -1,0 +1,391 @@
+# Meltdown
+
+## Overview
+
+Meltdown is an open-field tower-defense game for the browser, played on the floor
+of a reactor. Waves of surge intruders pour in through vents cut into the casing
+wall and cross the floor toward the exhausts, and the player stops them by
+building emitter towers on the open floor.
+
+Every tower is also a wall, so there is no fixed path. The player builds the maze
+the surge walks, winding it the long way round so the emitters have time to burn
+it down.
+
+Meltdown's defining idea is heat as power. An emitter fires harder the hotter it
+runs, climbing to full power at its own redline and holding it there, and an
+emitter carried all the way to the top of the scale trips offline to cool,
+leaving a hole in the defense. A tower sheds heat only through the faces that
+touch open air, so a tight block of guns bakes its own core, and each tower's
+radiator faces are aimed by rotating it before it is placed. Two structures
+sculpt the heat, a thermostatic Forge that warms its neighbours toward a setpoint
+and a Sink that draws heat out through a face nothing else can cool through, and
+the cryo Rime runs the rule backward and slows hardest when it is cold.
+
+Meltdown has its own name, look, and rules, and its branding and design are
+original to it.
+
+The specification spans several files under `specs/`. `specs/floor.md` gives the
+reactor floor's geometry and the tile-to-stage map; `specs/mazing.md` how towers
+wall the floor and how the surge crosses it; `specs/heat.md` the heat model, the
+damage curve, and the trip; `specs/towers.md` the eight towers as data;
+`specs/combat.md` what an emitter does to a surge unit; `specs/building.md` what
+a player does to a tower; `specs/surge.md` the six intruder types;
+`specs/waves.md` the run of phases and waves; `specs/economy.md` money and score;
+`specs/modes.md` the five modes and the three difficulties;
+`specs/controls.md` the pointer and the keys; `specs/hud.md` the build panel and
+the on-floor reads; `specs/screens.md` the eight screens and their menus;
+`specs/audio.md` the cues and mute; `specs/state.md` what the game's state
+carries; `specs/instrumentation.md` the debug and automation surface; and
+`specs/showcase.md` the showcase the finished build ships. Read all of them and
+build the game they describe as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, keyboard and pointer
+input, audio cues, and the debug overlay. Where this specification speaks of the
+runtime it means that layer, and it states only what Meltdown needs from it. How
+the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the menus are driven by, the
+pointer position in logical stage units, audio cues, the canvas fit, and the
+debug overlay. Read its documentation before you start. This specification states
+only what is specific to Meltdown.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework as
+much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed order.
+It owns the frame loop and the delta time the game is given, rendering and the
+camera, the canvas fit, the input actions the menus are driven by, the pointer
+position in logical stage units, audio cues, and the debug overlay. Read its
+documentation before you start. This specification states only what is specific
+to Meltdown.
+
+The logical design field handed to the engine is the stage, and the game leaves
+the camera at rest, so world units and the stage's logical units coincide and
+every position in this specification is both.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested with
+Vitest, linted with ESLint, and formatted with Prettier. That toolchain is fixed
+and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, keyboard and pointer input, audio, the debug overlay, the debug and
+automation surface, the figures this specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification does
+not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test drives the game over its own clock for a counted number of frames,
+so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
+a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<MeltdownState, MeltdownDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a read-only
+view (`DeepReadonly<MeltdownState>`) and returns the next state, advanced against
+the frame's delta time in seconds, and `render` is handed that next state,
+read-only again, and draws it. The engine holds the state by value and replaces
+it with what each `update` returns, so a frame builds the next state from the
+current one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them.
+
+`src/game.ts` also declares and exports `MeltdownState` and the types it is built
+from, exactly as `specs/state.md` states them, and `MeltdownDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the reactor
+itself. The seeded stub exports a placeholder; replace it with the color your
+reactor uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances
+the game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The file does
+not exist yet, and `src/main.ts` imports it, so the project does not compile
+until you create it.
+
+`src/game.ts` exports `game`, a `GameDefinition<MeltdownDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its game
+state live for the whole session. The instance's `initialize` registers the
+actions, defines the cues, and returns the debug surface. The level's game mode
+runs the screens and the rules, and it adds a single player in its `beginPlay`,
+possessing nothing; that player's controller is where the actions and the pointer
+are read. The mode's `gameStateClass` is `MeltdownState`, so the world's game
+state is the state `specs/state.md` declares. The actors, components, and
+controllers you write draw that state and drive it.
+
+`src/game.ts` also declares and exports `MeltdownState` and the types it is built
+from, exactly as `specs/state.md` states them, and `MeltdownDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the reactor
+itself.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything
+this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of frames
+with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served as-is
+from any static file server, at any base path. The scripts that do this are
+already in `package.json`.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser. Aim
+for a game a person would enjoy playing: tense, readable, and deliberate.
+
+The build ships the whole game: the walled floor and its four openings, the eight
+towers, the heat model and the trip, the six surge types, the wave progression
+and its economy, the five modes, the eight screens, and the build panel. Every
+other spec file states one part of it.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard and pointer input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
+  the pointer, audio, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, the pointer, audio, and the debug overlay from it, and writing
+  the game inside its framework of game modes, actors, components, and
+  controllers.
+{{/if}}
+- Render real graphics on the canvas. A text-only or ASCII rendering does not
+  satisfy this requirement.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `MeltdownState`, as `specs/state.md` declares
+  it.
+{{else if (eq engine.slug "structured-2d")}}
+- Hold the game's whole authoritative state in `MeltdownState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Play with the pointer and with a touchscreen. Every action and every menu is
+  reachable by pointer alone, with the keys of `specs/controls.md` alongside it.
+- Expose the debug and automation surface `specs/instrumentation.md` specifies,
+  and the read-only debug overlay it describes, backed by the render-free core
+  that file requires. This is a required part of the build.
+- Ship the showcase `specs/showcase.md` describes, at the root of this
+  repository.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions, sizes, speeds, and ranges in this specification are given in the
+game's own logical units on a fixed stage of `STAGE_W x STAGE_H`
+(`1280 x 720`, 16:9). The origin `(0, 0)` is the top-left; `x` increases to the
+right and `y` increases downward. Every rate is per second and every duration is
+in seconds, integrated against the delta time each update is handed.
+
+An entity's position is its centre. Wherever a tower or a surge unit is given,
+taken, or reported as an `(x, y)` pair, that pair is the centre of the entity
+rather than the top-left corner of its footprint or its sprite. The floor is a
+grid of tiles, and the tile an entity occupies is the one containing its centre.
+The tile-to-stage map and its inverse are in `specs/floor.md`, which owns them.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's work: the uniform scale that preserves the
+  aspect ratio, the letterboxed centering, and the device pixel ratio. The
+  complete stage is therefore on screen at every window size, on load and at any
+  pixel density, with the whole floor, the whole build panel, and all four edges
+  visible and nothing clipped.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale.
+
+## The screens the build has
+
+The build carries eight screens, and the game is on exactly one of them at a
+time: `title`, `modeselect`, `difficultyselect`, `howto`, `playing`, `paused`,
+`victory`, and `gameover`. The `playing` screen runs in three sub-phases,
+`opening`, `building`, and `wave`. `specs/screens.md` defines what each screen
+shows and where each one leads, and `specs/waves.md` defines the phases.
+
+## What the stage shows
+
+While the game is being played, the floor carries the tile grid, every tower
+standing on it at its own heat, every surge unit crossing it, the held build
+preview and its range ring, and the range ring of a selected tower. The build
+panel down the right-hand strip carries the readouts, the shop, the inspector,
+and the wave controls. `specs/floor.md` gives the extent of each region and
+`specs/hud.md` the readouts.
+
+## Visual design
+
+The reactor is dark and industrial, and the action is lit by heat. Choose the
+colors and the typography, decide how the casing, the floor, a tower, a surge
+unit, and the build panel are drawn, and decide what a heat ramp looks like.
+
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
+| --- | --- |
+| Heat | An emitter's drawn color tracks its heat along a ramp, and the cold end and the near-redline end read plainly apart. |
+| A tripped tower | A tripped tower is unmistakable and reads apart from an online tower at the same heat. |
+| The heat read | Every tower carries a heat read on its footprint with a marker at its redline, so a tower sitting in its plateau is told from one that is cold or about to trip. |
+| Radiator faces | A tower's radiator faces are drawn distinctly from its plain faces, so the player can see which sides shed heat. |
+| Towers against the floor | A tower reads apart from the floor behind it. |
+| The surge | Ground units, flyers, and the boss read apart from one another, from the floor, and from every color a tower shows anywhere on its heat ramp. |
+| The casing and its openings | The casing reads as a solid wall enclosing the floor; a vent and an exhaust read apart from each other and from the casing, and an exhaust reads as dangerous. |
+| The grid | The tile grid is visible on the floor at all times, including with no tower placed. |
+| The build preview | A valid footprint and an invalid one read plainly apart, and the held preview and a selected tower draw a range ring. |
+| The build zone | A mode that restricts building draws the zone it restricts building to. |
+| Text | Every readout and every screen's text is legible against its background at the logical stage size. |
+
+The palette, the type, the glow, and every other aspect of the look are yours.
+
+Every row of that table is about the FINISHED PICTURE, so each of them fixes a
+step a player can see. Two colors read apart, and a thing is visible against what
+is behind it, when they differ by at least `8` out of the `441` an RGB distance
+spans — under two per cent of the scale, and the least a step can be and still be
+a step rather than a shade. A grid line, a tower, a unit or a floor drawn under an
+overlay at less than that is drawn where a player cannot see it, which the rows
+above ask for the opposite of.
+
+## Out of scope
+
+- Network play, and any progress saved or persisted between sessions.
+- Gamepad input. This build takes the pointer, touch, and the keyboard.
+- A floor editor, a second floor, or a generated one. This build is the one fixed
+  floor of `specs/floor.md`.
+- A research or tech tree beyond the per-tower upgrades of `specs/building.md`.

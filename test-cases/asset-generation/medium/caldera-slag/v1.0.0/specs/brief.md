@@ -79,12 +79,12 @@ the Slag and deforms convincingly.
 
 Use only these opaque colors (skinned material has no alpha):
 
-| Role | Hex |
-| --- | --- |
+| Role                                     | Hex       |
+| ---------------------------------------- | --------- |
 | Molten core (incandescent orange-yellow) | `#ffb42a` |
-| Hottest seams (bright yellow) | `#ffe27a` |
-| Fissures (deep red) | `#8f1d14` |
-| Basalt crust (near-black) | `#17151a` |
+| Hottest seams (bright yellow)            | `#ffe27a` |
+| Fissures (deep red)                      | `#8f1d14` |
+| Basalt crust (near-black)                | `#17151a` |
 
 Let the near-black crust dominate the outer surface as cracked cooling rock, with the
 incandescent core, the bright hottest seams, and the deep-red fissures glowing through

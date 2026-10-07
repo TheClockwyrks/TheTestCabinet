@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { AnimationSpec, ModelSpec } from "@clockwyrks/run-record";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import { FullscreenViewport } from "./FullscreenViewport";
 import type { VoxelViewMode } from "./VoxelViewer";

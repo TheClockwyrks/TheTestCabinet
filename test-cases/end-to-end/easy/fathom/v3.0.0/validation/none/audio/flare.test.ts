@@ -1,0 +1,150 @@
+// audio/flare — the flare cue.
+//
+// `specs/progression.md` fixes `CUES.flare` (`"flare"`) as the cue played when "a
+// Flarefish's bloom begins", and governs all seven with one sentence: "Each is
+// played on the tick its event happens, and at most once on that tick." This
+// point's own claim adds the near miss: the cue belongs to the BLOOM, not to the
+// charge-up that precedes it.
+//
+// `specs/predators/flarefish.md` puts a `FLARE_CHARGE` (`0.5 s`) charge-up glow
+// in front of every `FLARE_BLOOM` (`1 s`) bloom, on a `FLARE_INTERVAL` (`7 s`)
+// cadence, and `specs/state.md` reports the two separately as `flareCharging` and
+// `flaring`. So the watch marks the tick the charge began and reads the cue
+// against the tick the bloom did — and because the whole run of ticks before the
+// bloom has to be silent, the charge-up's own tick is inside the window this
+// check requires nothing to have sounded on.
+//
+// THE FLARE IS EARNED, NOT POSED. `specs/instrumentation.md` gives the surface no
+// operation that starts a bloom, so the hunter is set wandering and the check
+// waits out its cadence. `poseApart` lays down two sealed rooms — the forager's,
+// and a ring across solid rock for the hunter to patrol — because a Flarefish
+// that finds the forager chases instead, and `flarefish/chase-like-lanternjaw`
+// has it neither charge nor bloom while it does.
+//
+// WHAT THIS ENGINE CANNOT SEE. The cue's NAME, and how many sources one cue is
+// made of. `validation/audio/cues.ts` states why, and what these checks assert
+// instead.
+//
+// WHAT THIS DOES NOT DECIDE. The cadence and the charge-then-bloom shape, which
+// is `flarefish/flare-cadence`'s; what the bloom reveals, which is
+// `flarefish/flare-reveals`'s.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { FLARE_CHARGE, FLARE_INTERVAL, ticksFor } from "../constants";
+import { poseApart, spawnPredator } from "../fixtures";
+import {
+  captureReplay,
+  createHarness,
+  type FathomSnapshot,
+  type Harness,
+  startPlaying,
+} from "../harness";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
+import {
+  LEAD_POLL,
+  soundsBeforeEvent,
+  soundsOnEvent,
+  watchForEvent,
+} from "./cues";
+
+/**
+ * How far the hunter's sealed ring sits from the forager's room, in tiles.
+ *
+ * Eight tiles is `256` logical units, past the `FLARE_RADIUS` (`192`) the bloom
+ * lights and past `LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN` (`320`)'s dark end,
+ * so the hunter wanders and blooms harmlessly instead of taking a fix.
+ */
+const APART_TILES = 8;
+
+/**
+ * The ceiling on the watch, in ticks.
+ *
+ * `FLARE_INTERVAL` is `7 s` and `FLARE_CHARGE` a further `0.5 s` in front of the
+ * bloom, so a wandering Flarefish blooms inside `7.5 s`. Two and a half seconds
+ * over that is a hard window: a build whose hunter never blooms fails on the
+ * bound rather than leaving the point inconclusive.
+ */
+const FLARE_TICKS = ticksFor(FLARE_INTERVAL + FLARE_CHARGE + 2.5);
+
+/** Ticks run past the reading, purely so the clip shows the bloom burning. */
+const TAIL_TICKS = ticksFor(1);
+
+let h: Harness;
+
+beforeEach(async () => {
+  // ARMED, because this check reads what the build SOUNDED: an engineless build
+  // owns its own audio layer and is entitled to open it on the player's first
+  // interaction alone (`specs/progression.md`), so a cue driven before one would
+  // leave a perfectly good build silent. The harness makes that interaction — a
+  // real press of the key this case arms with, which is bound to nothing — before
+  // its opening `reset`, so it is spent and behind the restore by the time the
+  // check is handed the game, while the user activation it bought is not state
+  // and no reset undoes it. Asked for here rather than handed to every harness,
+  // so a fault in the gesture can only reach the points that are about sound.
+  h = await createHarness({ armAudio: true });
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("sounds on the tick a Flarefish's bloom begins, and not on its charge-up", async () => {
+  await startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES);
+  // The bloom runs off its own cadence, which is its mind; where it stands while
+  // the cue plays is nothing to this point, so its travel is held.
+  const flarefish = await spawnPredator(h, "flarefish", rooms.far, {
+    state: "wander",
+    travel: false,
+  });
+  await parkForager(h, rooms.near);
+  const guard = await sceneGuard(h);
+
+  const watch = await captureReplay(h, "flare", async () => {
+    const charging = (s: FathomSnapshot): boolean =>
+      s.predators[flarefish]?.flareCharging === true;
+    const seen = await watchForEvent(
+      h,
+      (s) => s.predators[flarefish]?.flaring === true,
+      FLARE_TICKS,
+      {
+        mark: charging,
+        // The seven seconds of wandering in front of the charge-up are covered a
+        // step at a time rather than a tick at a time; from the charge-up on —
+        // which is the whole of what this point's near miss is about — every tick
+        // is stepped on its own. `validation/audio/cues.ts` states what the lead
+        // reads and what it does not.
+        lead: { poll: LEAD_POLL, until: charging },
+      },
+    );
+    // Past the reading, so the clip shows the bloom burning. Nothing after this
+    // line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return seen;
+  });
+
+  requireSceneHeld(await h.snapshot(), guard);
+
+  assertEqual(
+    watch.hit,
+    true,
+    `the wandering Flarefish's bloom began inside ${String(FLARE_TICKS)} ticks, ` +
+      `which is its FLARE_INTERVAL (${String(FLARE_INTERVAL)} s) cadence and its ` +
+      `FLARE_CHARGE (${String(FLARE_CHARGE)} s) charge-up with room to spare`,
+  );
+  assertEqual(
+    soundsBeforeEvent(watch),
+    0,
+    `sounds the build emitted over every step before the one the bloom began ` +
+      `on, which is the first ${String(watch.at - 1)} ticks of the watch and ` +
+      `includes tick ${String(watch.marked)}, where the charge-up began — on a ` +
+      "board where nothing else is happening (specs/progression.md)",
+  );
+  assertGreaterThanOrEqual(
+    soundsOnEvent(watch),
+    1,
+    "sounds the build emitted on the tick the Flarefish's bloom began, which is " +
+      "the tick CUES.flare is played on (specs/progression.md)",
+  );
+});

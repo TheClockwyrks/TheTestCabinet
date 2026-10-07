@@ -41,7 +41,8 @@ export class Audio {
     }
     const AC =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
@@ -72,7 +73,10 @@ export class Audio {
     if (!this.muted) this.startBeds();
   }
 
-  private loopBed(name: AudioName, dest: GainNode): AudioBufferSourceNode | null {
+  private loopBed(
+    name: AudioName,
+    dest: GainNode,
+  ): AudioBufferSourceNode | null {
     if (!this.ctx) return null;
     const buf = this.buffers.get(name);
     if (!buf) return null;
@@ -86,8 +90,10 @@ export class Audio {
 
   private startBeds(): void {
     if (!this.ctx || !this.musicGain || !this.ambientGain) return;
-    if (!this.musicSource) this.musicSource = this.loopBed("music", this.musicGain);
-    if (!this.ambientSource) this.ambientSource = this.loopBed("ambient", this.ambientGain);
+    if (!this.musicSource)
+      this.musicSource = this.loopBed("music", this.musicGain);
+    if (!this.ambientSource)
+      this.ambientSource = this.loopBed("ambient", this.ambientGain);
   }
 
   // Raid landed / cleared: lift or settle the beds (a smooth cross-fade).
@@ -96,14 +102,26 @@ export class Audio {
     this.raid = active;
     if (!this.ctx || !this.musicGain || !this.ambientGain) return;
     const t = this.ctx.currentTime;
-    this.musicGain.gain.setTargetAtTime(active ? MUSIC_RAID : MUSIC_CALM, t, 0.4);
-    this.ambientGain.gain.setTargetAtTime(active ? AMBIENT_RAID : AMBIENT_CALM, t, 0.4);
+    this.musicGain.gain.setTargetAtTime(
+      active ? MUSIC_RAID : MUSIC_CALM,
+      t,
+      0.4,
+    );
+    this.ambientGain.gain.setTargetAtTime(
+      active ? AMBIENT_RAID : AMBIENT_CALM,
+      t,
+      0.4,
+    );
   }
 
   toggleMute(): void {
     this.muted = !this.muted;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : MASTER_GAIN, this.ctx.currentTime, 0.02);
+      this.master.gain.setTargetAtTime(
+        this.muted ? 0 : MASTER_GAIN,
+        this.ctx.currentTime,
+        0.02,
+      );
     }
     if (!this.muted && this.started) this.startBeds();
   }

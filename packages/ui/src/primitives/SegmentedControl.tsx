@@ -15,6 +15,11 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   /** Accessible label for the group. */
   ariaLabel?: string;
+  /**
+   * Render the whole track inert — how a read-only form shows a choice that was made
+   * elsewhere. The selection still reads (and still slides), it simply cannot be moved.
+   */
+  disabled?: boolean;
 }
 
 // A compact two-or-more-way toggle: every option sits inside one shared border,
@@ -27,6 +32,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   ariaLabel,
+  disabled = false,
 }: SegmentedControlProps<T>) {
   const index = Math.max(
     0,
@@ -35,9 +41,10 @@ export function SegmentedControl<T extends string>({
 
   return (
     <div
-      className={styles.control}
+      className={`${styles.control}${disabled ? ` ${styles.disabled}` : ""}`}
       role="radiogroup"
       aria-label={ariaLabel}
+      aria-disabled={disabled || undefined}
       style={
         {
           "--seg-count": options.length,
@@ -53,6 +60,7 @@ export function SegmentedControl<T extends string>({
           role="radio"
           aria-checked={option.value === value}
           className={styles.segment}
+          disabled={disabled}
           onClick={() => onChange(option.value)}
         >
           {option.label}

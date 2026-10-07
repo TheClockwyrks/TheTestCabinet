@@ -1,60 +1,150 @@
+# The container every workspace of this project is developed in.
+#
+# devcontainer.json names this file and the service below rather than the
+# Dockerfile, because a compose file states what a container is run with for
+# every service it comes to hold rather than for the one the JSON knew about: a
+# project that grows a database, a queue or a second container beside the
+# workspace declares it here and nothing about how the first one starts has to
+# move first.
+#
+# Every tool version the image installs is pinned in the anchor below, which
+# the dev service's build arguments merge. A version is decided in one place,
+# so a script that asserts one reads it from here rather than carrying a copy
+# of it. `build_arg` in scripts/ci/lib.sh reads one value out of the anchor for
+# a script, and ci/images/build-args.sh reads out the set one CI image consumes
+# and hands it to that image's build, so the images the gates run inside are
+# built from these same pins.
 x-devcontainer-build-args: &devcontainer-build-args
-  USERNAME: ${DEVCONTAINER_USERNAME:-vscode}
+  USERNAME: dev
+  # The host user's ids, so a file the container writes into the mounted
+  # checkout belongs to the developer outside it rather than to root.
   USER_UID: ${DEVCONTAINER_UID:-1000}
   USER_GID: ${DEVCONTAINER_GID:-1000}
-  DOCKER_GID: ${DOCKER_GID:-999}
+  # Whether system/cuda.sh installs the CUDA toolkit, which is several GB. Off
+  # unless something in this checkout compiles CUDA sources; a host with an
+  # NVIDIA GPU behind its runtime turns it on in `.env`. See "GPU access" in
+  # README.md.
+  INSTALL_CUDA: ${INSTALL_CUDA:-false}
+  # No argument names the group that owns the host's runtime socket. Which
+  # group that is differs per host and is known only once the socket is bound
+  # in, and an argument the tool starting the container decides would build
+  # one image per tool that starts it, so tools/docker-socket-access.sh aligns
+  # the socket with the container user at every start instead.
+  # The two coding-agent CLIs (ai/claude.sh, ai/codex.sh). Both publish often
+  # and both install from an endpoint that serves the current release by
+  # default, so a pin here is what keeps a rebuild reproducible.
+  CLAUDE_CODE_VERSION: 2.1.236
+  CODEX_VERSION: 0.153.4
   LAZYGIT_VERSION: 0.61.1
   NODE_VERSION: 24.16.0
+  # Playwright, which installs the browser engines the web app's tests run in
+  # and resolves the system libraries they need (tools/browsers.sh and
+  # system/browser-deps.sh). The version decides which build of each engine
+  # lands in the image, and apps/web/package.json's `playwright` decides which
+  # build the tests ask for, so the two move together;
+  # ci/gates/web-browser-test.py reads this line and fails with both
+  # values when they disagree.
+  PLAYWRIGHT_VERSION: 1.63.0
+  # cargo-nextest (languages/rust/cargo-nextest.sh), which installs from the
+  # release's archive for this architecture's triple and checks it before
+  # taking anything out of it. The version and the two checksums move together:
+  # each checksum is the `sha256sum` of the release's archive for that triple,
+  # x86_64-unknown-linux-musl on amd64 and aarch64-unknown-linux-gnu on arm64.
   NEXTEST_VERSION: 0.9.140
+  NEXTEST_SHA256_AMD64: bc2a998567816eef7b087b920036f49fb89aa2a8a603f6a3d84098be160b62c5
+  NEXTEST_SHA256_ARM64: 8b3f4d4560b6b0f83774fecc6be07e47716dbad0eb0bb6c3890f478f4affe4b6
+  # mold (languages/rust/mold.sh), the linker cargo links the two glibc targets
+  # with, which installs from the release's archive for this architecture and
+  # checks it before taking anything out of it. The version and the two
+  # checksums move together: each checksum is the `sha256sum` of the release's
+  # archive for that machine, x86_64 on amd64 and aarch64 on arm64.
+  MOLD_VERSION: 2.40.4
+  MOLD_SHA256_AMD64: 4c999e19ffa31afa5aa429c679b665d5e2ca5a6b6832ad4b79668e8dcf3d8ec1
+  MOLD_SHA256_ARM64: c799b9ccae8728793da2186718fbe53b76400a9da396184fac0c64aa3298ec37
+  # The compiler the image installs, which rust-toolchain.toml pins for every
+  # checkout. The two name the same channel or the image ships a compiler
+  # nothing builds with.
   RUST_VERSION: 1.97.1
-  TZ: ${TZ:-UTC}
+  # wrangler (tools/wrangler.sh), the Cloudflare CLI `tcab publish` shells out
+  # to. npm serves the current release by default, so this pin is what keeps a
+  # rebuild reproducible.
+  #
+  # gg's program-language toolchains, which languages/gg/install.sh bakes into
+  # the image, are pinned elsewhere on purpose: each arm's
+  # packages/gg-sandbox-*/<lang>-version.sh is the one pin the pipeline, the
+  # run images and this image all install from, and the Rust arm's defers to
+  # rust-toolchain.toml.
+  WRANGLER_VERSION: 4.144.0
+
+# The pod podman-compose would put this project's services in, which it is told
+# not to create. podman-compose from 1.1.0 on creates one for every project
+# unless told otherwise, and Podman refuses a container created in a pod under a
+# user namespace of its own, so the dev service's `keep-id` mapping on a
+# rootless Podman host fails `up` with `--userns and --pod cannot be set
+# together` before any container exists. The choice is stated here rather than
+# in PODMAN_COMPOSE_IN_POD, because an editor's Reopen in Container sets no
+# environment of its own. A compose provider that is not podman-compose ignores
+# a top-level `x-` key, so Docker Compose starts the same containers either way.
+x-podman:
+  in_pod: false
 
 services:
-  # Devcontainer used by VS Code.
+  # The container an editor's Reopen in Container and `devcontainer up` start.
   dev:
     build:
+      # The repository root rather than this directory. The image's last layer
+      # installs gg's program-language toolchains with the repository's own
+      # installers, scripts/ci/install-gg-toolchains.sh and
+      # scripts/ci/install-gg-build-toolchains.sh, which read their pins from
+      # beside the arms under packages/, so the build has to see them. The root
+      # .dockerignore is an allowlist and decides what it sees; every COPY in
+      # the Dockerfile is written from the root. See "The build context" in
+      # README.md.
+      context: ..
+      dockerfile: ./.devcontainer/ubuntu.dockerfile
       args:
         <<: *devcontainer-build-args
-      context: .
-      dockerfile: ./ubuntu.dockerfile
-    # Keep the container alive after the build's entrypoint exits.
+    # Keeps the container alive after the build's entrypoint exits. A compose
+    # service runs the command it declares, where a container built from a
+    # Dockerfile alone took one the devcontainer CLI substituted for it.
     command: sleep infinity
+    # An init process, which reaps the processes the container's tools leave
+    # behind.
     init: true
+    # The user namespace. Rootless Podman maps the host user to root inside the
+    # container unless told otherwise, and a checkout written through that
+    # mapping comes out owned by root on the host, so such a host answers with
+    # `keep-id:uid=<uid>,gid=<gid>` here. See "Host runtime access" in
+    # README.md.
+    userns_mode: ${DEVCONTAINER_USERNS:-host}
     environment:
-      - TZ=${TZ:-UTC}
-      # Cargo's target dir lives on a native named volume (the `cargo-target`
-      # volume below), NOT under the host-mounted workspace. On a macOS host
-      # (e.g. OrbStack) the workspace is a virtiofs mount, and concurrent rustc
-      # jobs writing crate metadata there race on file visibility, causing
-      # intermittent "E0463: can't find crate" failures at high parallelism; a
-      # coherent filesystem eliminates the race so builds run at full -j.
-      - CARGO_TARGET_DIR=/cargo-target/the-test-cabinet
+      # The socket the docker and podman clients in here drive, which is where
+      # tools/host-runtime.sh publishes the host's runtime.
+      - CONTAINER_HOST=unix:///var/run/docker.sock
+      # Where that publisher and tools/ssh-agent.sh reach the host when no
+      # socket can be bound in, which is what a Mac running Podman is. Unset is
+      # the ordinary case, and each publisher then publishes nothing rather
+      # than bridging.
+      - DEVCONTAINER_RUNTIME_TCP=${DEVCONTAINER_RUNTIME_TCP:-}
+      # The credential a host guarding that endpoint states this container,
+      # which the publisher presents on every connection. It is given to this
+      # service alone, so no other service reaches the runtime through it.
+      - DEVCONTAINER_RUNTIME_CREDENTIAL=${DEVCONTAINER_RUNTIME_CREDENTIAL:-}
+      - DEVCONTAINER_SSH_AGENT_TCP=${DEVCONTAINER_SSH_AGENT_TCP:-}
     extra_hosts:
-      # Gives the devcontainer a route to the host's loopback. The local service
-      # stack stands up its k3d cluster on the HOST daemon (Docker-outside-of-
-      # Docker, below), so the cluster's API server is published on a host port;
-      # `kubectl` in here reaches it at host.docker.internal:<port> (the
-      # deployments/local Makefile repoints the kubeconfig at that address).
+      # A route to the host's loopback. `k3d` stands a cluster up on the HOST
+      # container runtime, so its API server is published on a host port, and
+      # `kubectl` in here reaches it at host.docker.internal:<port>.
       - "host.docker.internal:host-gateway"
-    stdin_open: true
-    tty: true
     volumes:
+      # The checkout, at the folder devcontainer.json works in. The two are one
+      # path built from the project's slug, so they agree whatever the checkout
+      # directory on the machine is named; mounting it anywhere else starts a
+      # container whose working directory does not exist.
       - ..:/workspaces/the-test-cabinet:rw
-      # Off-virtiofs cargo target dir (see CARGO_TARGET_DIR above).
-      - cargo-target:/cargo-target
-      # Docker-outside-of-Docker: bind the host's container-runtime socket in so
-      # the local service stack drives the HOST daemon. This is what lets `k3d`
-      # create its cluster (its node containers are siblings on that same daemon),
-      # and the deployments/local Makefile's `docker` calls reach a daemon at all:
-      # building/saving the service images, and inspecting this devcontainer to
-      # resolve the HOST path of the workspace it mounts into the k3d node (so the
-      # backend can ingest the catalog from a read-only /repo). Override the source
-      # for a non-default socket (e.g. rootless Podman at
-      # /run/user/1000/podman/podman.sock) with DOCKER_SOCKET in .env. Access is
-      # granted at container start by tools/docker-socket-access.sh.
-      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
-
-volumes:
-  # Cargo build artifacts, kept off the host-mounted workspace; survives
-  # container restarts and rebuilds.
-  cargo-target:
+      # The host's container runtime and its SSH agent, which
+      # tools/host-runtime.sh and tools/ssh-agent.sh publish inside at every
+      # start. A host that can bind neither leaves both at the default
+      # /dev/null and bridges them over the two TCP variables above.
+      - ${DEVCONTAINER_RUNTIME_SOCKET:-/var/run/docker.sock}:/run/host/runtime.sock
+      - ${DEVCONTAINER_SSH_AUTH_SOCK:-/dev/null}:/run/host/ssh-agent.sock

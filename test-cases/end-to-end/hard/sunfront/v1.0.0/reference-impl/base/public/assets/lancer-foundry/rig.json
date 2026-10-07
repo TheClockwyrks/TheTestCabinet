@@ -2,29 +2,17 @@
   "parts": [
     {
       "name": "base",
-      "pivot": [
-        23,
-        40,
-        23
-      ]
+      "pivot": [23, 40, 23]
     },
     {
       "name": "rail_arm",
       "parent": "base",
-      "pivot": [
-        23,
-        29,
-        23
-      ]
+      "pivot": [23, 29, 23]
     },
     {
       "name": "focus_ring",
       "parent": "base",
-      "pivot": [
-        23,
-        76,
-        23
-      ]
+      "pivot": [23, 76, 23]
     }
   ],
   "joints": [
@@ -33,11 +21,7 @@
       "part": "rail_arm",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        23,
-        29,
-        23
-      ],
+      "pivot": [23, 29, 23],
       "min": 0.0,
       "max": 26.0,
       "rest": 0.0,
@@ -48,11 +32,7 @@
       "part": "focus_ring",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        23,
-        76,
-        23
-      ],
+      "pivot": [23, 76, 23],
       "min": 0.0,
       "max": 6.2832,
       "rest": 0.0,

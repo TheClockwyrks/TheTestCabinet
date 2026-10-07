@@ -22,3 +22,21 @@
 .section {
   min-height: 16rem;
 }
+
+// A box that already has a size — a fixed-aspect media stage the pending media
+// will play on. Nothing is reserved (the box owns the geometry) and nothing is
+// padded away from it; the wrap simply spans the box and hands the mark, which
+// the caller has fitted, a container to scale against. `inline-size` rather than
+// `size` on purpose: a size container takes its height from the box instead of
+// its content, which would collapse the wrap wherever the surrounding box grows
+// to fit what is in it (the run detail page's showcase figure) rather than
+// standing at a height of its own.
+.fill {
+  container-type: inline-size;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  // A hair of room so the cabinet's glow isn't shaved off by the stage's clip.
+  padding: clamp(0.25rem, 2cqi, #{t.$space-sm});
+}

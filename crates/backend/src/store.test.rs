@@ -8,8 +8,23 @@ fn temp_store() -> (TempDir, DefinitionStore) {
     (dir, store)
 }
 
+/// Give `slug`'s `version` directory a modification time of `unix_secs` seconds past the epoch.
+///
+/// For the tests that assert ordering is *not* taken from the filesystem: a test that wants two
+/// directories in a known mtime order has to say so, rather than write them in one order and hope
+/// the clock moved far enough between the writes to make the difference visible.
+fn stamp_mtime(store: &DefinitionStore, slug: &str, version: &str, unix_secs: u64) {
+    let dir = store.version_dir(slug, version);
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(unix_secs);
+    std::fs::File::open(&dir)
+        .and_then(|handle| handle.set_modified(when))
+        .unwrap_or_else(|error| panic!("stamping {}: {error}", dir.display()));
+}
+
 fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
     StoredManifest {
+        toolchain: None,
+        engine_format: false,
         slug: slug.to_string(),
         version: version.to_string(),
         name: "Sample".to_string(),
@@ -20,6 +35,9 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -36,6 +54,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
+        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -43,6 +62,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         prompt_template: "build it".to_string(),
         common_specs: vec![StoredSpec {
             source: "specs/overview.hbs".to_string(),
@@ -50,10 +70,13 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             template: true,
             kind: Default::default(),
         }],
-        workspace: vec![StoredWorkspaceFile {
-            source: "workspaces/base/package.json".to_string(),
-            dest: "package.json".to_string(),
-        }],
+        workspace: StoredWorkspace(std::collections::BTreeMap::from([(
+            "none".to_string(),
+            vec![StoredWorkspaceFile {
+                source: "workspaces/base/package.json".to_string(),
+                dest: "package.json".to_string(),
+            }],
+        )])),
         init: Some("npm install".to_string()),
         assets: vec![],
         packages: vec![],
@@ -76,11 +99,14 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 weight: 1,
                 graded: false,
                 domain: None,
+                failure_cap: None,
+                domains: vec![],
                 sub_items: vec![],
                 validation: None,
             }],
             domains: vec![],
             voxel: None,
+            showcase: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
@@ -100,11 +126,15 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             weight: 2,
             graded: false,
             domain: Some("single-player".to_string()),
+            failure_cap: None,
+            domains: vec![],
             sub_items: vec![],
             // An auto-validated item so the manifest round-trip (write → read) covers
             // the reporter-side validation driver.
             validation: Some(StoredReviewValidation {
                 script: "validation/ball-spin.mjs".to_string(),
+                per_engine: false,
+                engines: vec![],
                 outputs: vec![StoredReviewOutput {
                     id: "spin".to_string(),
                     name: "Spin".to_string(),
@@ -154,29 +184,78 @@ fn missing_version_is_not_found() {
 }
 
 #[test]
-fn a_fresh_store_is_not_populated() {
+fn a_fresh_store_is_not_servable() {
     // The state a pod with an ephemeral /state boots into: the readiness latch must
     // read this as "do not serve yet".
     let (_dir, store) = temp_store();
-    assert!(!store.is_populated());
+    assert!(!store.holds_versions());
+    assert!(!store.is_servable());
+    // Nothing to rewrite, so this is a store to fill rather than one to repair.
+    assert!(!store.needs_reingest());
 }
 
 #[test]
-fn a_store_with_a_version_is_populated() {
+fn a_stamped_store_with_a_version_is_servable() {
     let (_dir, store) = temp_store();
     store
         .write_manifest(&sample_manifest("pong", "v1.0.0"))
         .unwrap();
-    assert!(store.is_populated());
+    store.set_store_format().unwrap();
+    assert!(store.holds_versions());
+    assert!(store.is_servable());
+    assert!(!store.needs_reingest());
 }
 
 #[test]
-fn a_slug_directory_without_a_manifest_is_not_populated() {
+fn a_store_written_in_another_record_format_needs_reingesting() {
+    // What a backend meets after a build changed the stored shapes: the versions are
+    // all there and none of them can be read, which must not read as servable.
+    let (dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    std::fs::create_dir_all(dir.path().join(".tcab")).unwrap();
+    std::fs::write(dir.path().join(".tcab").join("store-format"), "999").unwrap();
+    assert!(store.holds_versions());
+    assert!(!store.is_servable());
+    assert!(store.needs_reingest());
+}
+
+#[test]
+fn an_unstamped_store_with_a_version_needs_reingesting() {
+    // Nothing has claimed the versions are in a format this build reads, so they are
+    // treated as though they are not.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    assert!(!store.is_servable());
+    assert!(store.needs_reingest());
+}
+
+#[test]
+fn a_slug_directory_without_a_manifest_holds_no_version() {
     // `list_versions` only counts a version with a manifest, so a half-built or
     // pruned-empty slug shell must not read as a servable catalog.
     let (dir, store) = temp_store();
     std::fs::create_dir_all(dir.path().join("test-cases").join("pong").join("v1.0.0")).unwrap();
-    assert!(!store.is_populated());
+    store.set_store_format().unwrap();
+    assert!(!store.holds_versions());
+    assert!(!store.is_servable());
+}
+
+#[test]
+fn a_manifest_from_another_record_format_reads_as_an_internal_error() {
+    // Distinct from a missing version: the file is there, and what it says cannot be
+    // turned into a record this build holds.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    std::fs::write(store.manifest_path("pong", "v1.0.0"), "{\"slug\":\"pong\"}").unwrap();
+    let err = store.read_manifest("pong", "v1.0.0").unwrap_err();
+    assert!(matches!(err, BackendError::Internal(_)), "{err:?}");
+    assert!(err.to_string().contains("re-ingest"), "{err}");
 }
 
 #[test]
@@ -258,10 +337,14 @@ fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
     // The template renders for the selected variant — its branch resolved, no
     // handlebars left — and differs between variants.
     let base = store
-        .read_rendered_spec("pong", "v1.0.0", &template, "base", "Base", None, None)
+        .read_rendered_spec(
+            "pong", "v1.0.0", &template, "base", "Base", None, None, None,
+        )
         .unwrap();
     let gyre = store
-        .read_rendered_spec("pong", "v1.0.0", &template, "gyre", "Gyre", None, None)
+        .read_rendered_spec(
+            "pong", "v1.0.0", &template, "gyre", "Gyre", None, None, None,
+        )
         .unwrap();
     assert_eq!(base, "# Field\nstatic\n");
     assert_eq!(gyre, "# Field\nrotating\n");
@@ -269,9 +352,57 @@ fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
     // A plain spec is returned verbatim — never run through the engine, so a
     // brace-y body that is not a real template is untouched.
     let overview = store
-        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None)
+        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None, None)
         .unwrap();
     assert_eq!(overview, "# Overview {{not touched}}\n");
+}
+
+#[test]
+fn a_template_spec_renders_for_the_selected_engine() {
+    // A spec branches on the selected engine wherever the deliverable differs under
+    // it, so the body a reader is shown is only the body a run received when the
+    // read names that run's engine.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    let dir = store.version_dir("pong", "v1.0.0");
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/loop.md.hbs"),
+        "{{#if (eq engine.slug \"none\")}}Write the frame loop.{{else}}Use {{engine.name}}.{{/if}}\n",
+    )
+    .unwrap();
+    let spec = StoredSpec {
+        source: "specs/loop.md.hbs".to_string(),
+        dest: "specs/loop.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    };
+    let simple_2d = test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+        .resolve(&test_cabinet_core::engine::EngineSelection::new(
+            "simple-2d",
+        ))
+        .unwrap();
+
+    let engineless = store
+        .read_rendered_spec("pong", "v1.0.0", &spec, "base", "Base", None, None, None)
+        .unwrap();
+    let engined = store
+        .read_rendered_spec(
+            "pong",
+            "v1.0.0",
+            &spec,
+            "base",
+            "Base",
+            None,
+            None,
+            Some(&simple_2d),
+        )
+        .unwrap();
+
+    assert_eq!(engineless, "Write the frame loop.\n");
+    assert_eq!(engined, "Use Simple 2D.\n");
 }
 
 #[test]
@@ -295,40 +426,146 @@ fn reference_scope_and_view_are_validated() {
 fn validation_baseline_reads_committed_case_scoped_media() {
     let (_dir, store) = temp_store();
     // The committed baseline media lives under the version folder at
-    // `validation-baseline/<variant>/<item>__<output>.<ext>` (copied into the store
-    // at ingest like any other definition file). Serving reads it straight back.
+    // `validation-baseline/<engine>/<variant>/<item>__<output>.<ext>` (copied into
+    // the store at ingest like any other definition file). Serving reads it straight
+    // back.
     let baseline_dir = store
         .version_dir("pong", "v1.0.0")
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join("simple-2d")
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("ball-spin__spin.webm"), b"clip").unwrap();
 
     assert_eq!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "ball-spin__spin.webm")
+            .read_validation_baseline(
+                "pong",
+                "v1.0.0",
+                "simple-2d",
+                "base",
+                "ball-spin__spin.webm"
+            )
             .unwrap(),
         b"clip",
     );
-    // A missing file 404s (NotFound), and a traversal-y variant or file is rejected.
+    // The engine is part of the address, not decoration: the same variant under
+    // another engine is a different reference build, and its media is not this one's.
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "nope.png")
+            .read_validation_baseline("pong", "v1.0.0", "none", "base", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    // A missing file 404s (NotFound), and a traversal-y engine, variant or file is
+    // rejected.
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "nope.png")
             .unwrap_err(),
         BackendError::NotFound(_)
     ));
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "..", "ball-spin__spin.webm")
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "..", "ball-spin__spin.webm")
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "a/b")
+            .read_validation_baseline("pong", "v1.0.0", "..", "base", "ball-spin__spin.webm")
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "a/b")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}
+
+#[test]
+fn case_showcase_serves_only_manifest_listed_media() {
+    let (_dir, store) = temp_store();
+    // A variant showcase persisted the way ingest writes it: the description and
+    // carousel on the manifest, the media bytes in the copied version tree under
+    // the entries' store-relative keys.
+    let mut manifest = sample_manifest("pong", "v1.0.0");
+    manifest.variants[0].showcase = Some(StoredShowcase {
+        description: "A demo game.".to_string(),
+        media: vec![StoredShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "The title screen".to_string(),
+            kind: test_cabinet_core::MediaKind::Image,
+            key: "showcase/base/title.png".to_string(),
+        }],
+    });
+    store.write_manifest(&manifest).unwrap();
+    let media_path = store
+        .version_dir("pong", "v1.0.0")
+        .join("showcase/base/title.png");
+    std::fs::create_dir_all(media_path.parent().unwrap()).unwrap();
+    std::fs::write(&media_path, b"png:title").unwrap();
+    // A neighbouring file in the same directory that the carousel does not list —
+    // present on disk, but not addressable through the showcase route.
+    std::fs::write(media_path.with_file_name("outtake.png"), b"png:outtake").unwrap();
+
+    assert_eq!(
+        store
+            .read_case_showcase("pong", "v1.0.0", "base", "title.png")
+            .unwrap(),
+        b"png:title",
+    );
+    // The manifest is the gate: an unlisted file, an unknown variant, and a variant
+    // with no showcase all 404 even when bytes happen to sit on disk.
+    assert!(matches!(
+        store
+            .read_case_showcase("pong", "v1.0.0", "base", "outtake.png")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(matches!(
+        store
+            .read_case_showcase("pong", "v1.0.0", "gyre", "title.png")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+}
+
+#[test]
+fn case_showcase_rejects_unsafe_segments_and_the_manifest_file() {
+    let (_dir, store) = temp_store();
+    for (variant, file) in [
+        ("..", "title.png"),
+        ("base", ".."),
+        ("base", "a/b.png"),
+        // The showcase manifest is authoring input, mirroring the run-side rule
+        // that `showcase.toml` is never served.
+        ("base", "showcase.toml"),
+    ] {
+        assert!(
+            matches!(
+                store
+                    .read_case_showcase("pong", "v1.0.0", variant, file)
+                    .unwrap_err(),
+                BackendError::BadRequest(_)
+            ),
+            "`{variant}/{file}` should be refused before any store read",
+        );
+    }
+}
+
+#[test]
+fn a_stored_variant_from_before_the_showcase_field_still_deserializes() {
+    // A manifest written before the field existed carries no `showcase` key on its
+    // variants; the field must default to `None` rather than fail the read.
+    let mut manifest = sample_manifest("pong", "v1.0.0");
+    manifest.variants[0].showcase = None;
+    let mut serialized = serde_json::to_value(&manifest.variants[0]).unwrap();
+    serialized.as_object_mut().unwrap().remove("showcase");
+    let variant: StoredVariant = serde_json::from_value(serialized).unwrap();
+    assert_eq!(variant.showcase, None);
 }
 
 #[test]
@@ -372,22 +609,22 @@ fn validation_files_lists_the_whole_script_directory_recursively() {
 #[test]
 fn versions_are_listed_oldest_to_newest_by_semantic_version() {
     let (_dir, store) = temp_store();
-    // Write the *newer* version first so its directory has the *earlier* mtime:
-    // this proves ordering follows the semantic version, not directory mtime.
-    // Mtime order is not a reliable proxy for version order across environments
-    // (a fresh checkout or re-ingest touches version dirs in an arbitrary order),
-    // which is what made the reported "latest version" environment-dependent.
-    store
-        .write_manifest(&sample_manifest("snake", "v1.10.0"))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    store
-        .write_manifest(&sample_manifest("snake", "v1.9.0"))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    store
-        .write_manifest(&sample_manifest("snake", "v1.0.0"))
-        .unwrap();
+    for version in ["v1.10.0", "v1.9.0", "v1.0.0"] {
+        store
+            .write_manifest(&sample_manifest("snake", version))
+            .unwrap();
+    }
+    // Stamp the version directories so their mtimes run in the exact *reverse* of the expected
+    // order: ordering follows the semantic version, not the directory's age, and mtime order is
+    // not a reliable proxy for version order across environments (a fresh checkout or a re-ingest
+    // touches version dirs in an arbitrary order) — which is what made the reported "latest
+    // version" environment-dependent in the first place. Stamped rather than produced by writing
+    // them in one order and sleeping between: a sleep buys the same inversion only on a filesystem
+    // whose timestamps are finer than the nap, and silently buys nothing on one that is not.
+    for (version, at) in [("v1.10.0", 1_000), ("v1.9.0", 2_000), ("v1.0.0", 3_000)] {
+        stamp_mtime(&store, "snake", version, at);
+    }
+
     let versions = store.list_versions("snake").unwrap();
     // Component-wise: v1.0.0 < v1.9.0 < v1.10.0 (not the lexical v1.10.0 < v1.9.0),
     // newest listed last per the catalog contract.
@@ -455,7 +692,6 @@ fn a_case_keeps_its_non_experimental_versions_when_filtered() {
     let mut v1 = sample_manifest("mixed", "v1.0.0");
     v1.experimental = true;
     store.write_manifest(&v1).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
     store
         .write_manifest(&sample_manifest("mixed", "v1.1.0"))
         .unwrap();
@@ -480,12 +716,16 @@ fn delete_run_media_removes_every_kind_and_is_idempotent() {
         .write_run_asset("r1", "regenerated.png", b"asset")
         .unwrap();
     store.write_run_controller("r1", b"\0wasm").unwrap();
+    store
+        .write_run_replay("r1", b"{\"sessionId\":\"r1\"}")
+        .unwrap();
     store.write_run_proof("r2", "p.png", b"other").unwrap();
 
     store.delete_run_media("r1").unwrap();
 
     assert!(!store.run_dir("r1").exists());
     assert!(store.read_run_proof("r1", "p.png").is_err());
+    assert!(store.read_run_replay("r1").is_err());
     // A second delete is a no-op, not an error.
     store.delete_run_media("r1").unwrap();
     // The other run's media is untouched.
@@ -493,10 +733,225 @@ fn delete_run_media_removes_every_kind_and_is_idempotent() {
 }
 
 #[test]
+fn validation_files_round_trip_and_list_sorted() {
+    let (_dir, store) = temp_store();
+    store
+        .write_run_validation("r1", "spin__serve.json.gz", b"\x1f\x8bgz")
+        .unwrap();
+    // A recording's shared image store shares this flat namespace deliberately — one
+    // directory, one route, one resolver — and cannot collide with a declared output:
+    // a declared name always carries the `__` joining verdict to output, and a store
+    // name, derived from nothing but the bytes' digest, never can.
+    store
+        .write_run_validation("r1", "img.9f2c1ab4.png", b"png:sprite")
+        .unwrap();
+
+    assert_eq!(
+        store.read_run_validation("r1", "img.9f2c1ab4.png").unwrap(),
+        b"png:sprite"
+    );
+    // The listing is what lets the snapshot builder publish the store at all: those
+    // files back no verdict and are on no record, so the directory is the only place
+    // they can be found. Sorted, so a refresh publishes a stable set.
+    assert_eq!(
+        store.list_run_validation("r1").unwrap(),
+        vec![
+            "img.9f2c1ab4.png".to_string(),
+            "spin__serve.json.gz".to_string(),
+        ]
+    );
+    // A run with nothing stored lists empty rather than erroring — every run recorded
+    // before automated validation existed.
+    assert_eq!(
+        store.list_run_validation("r2").unwrap(),
+        Vec::<String>::new()
+    );
+    // Validation media is part of the per-run tree the delete sweeps.
+    store.delete_run_media("r1").unwrap();
+    assert!(store.read_run_validation("r1", "img.9f2c1ab4.png").is_err());
+    assert_eq!(
+        store.list_run_validation("r1").unwrap(),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn showcase_files_round_trip_and_list_sorted() {
+    let (_dir, store) = temp_store();
+    store
+        .write_run_showcase("r1", "title.png", b"png:title")
+        .unwrap();
+    store
+        .write_run_showcase("r1", "showcase.md", b"# My Game")
+        .unwrap();
+    store
+        .write_run_showcase("r1", "clip.json.gz", b"\x1f\x8bgz")
+        .unwrap();
+
+    assert_eq!(
+        store.read_run_showcase("r1", "title.png").unwrap(),
+        b"png:title"
+    );
+    // The listing enumerates the stored names, sorted, so the snapshot builder
+    // publishes a stable set.
+    assert_eq!(
+        store.list_run_showcase("r1").unwrap(),
+        vec![
+            "clip.json.gz".to_string(),
+            "showcase.md".to_string(),
+            "title.png".to_string(),
+        ]
+    );
+    // A run with nothing stored lists empty rather than erroring — every run
+    // recorded before the showcase existed.
+    assert_eq!(store.list_run_showcase("r2").unwrap(), Vec::<String>::new());
+    assert!(store.read_run_showcase("r2", "title.png").is_err());
+    // Showcase media is part of the per-run tree the delete sweeps.
+    store.delete_run_media("r1").unwrap();
+    assert!(store.read_run_showcase("r1", "title.png").is_err());
+}
+
+#[test]
+fn showcase_files_reject_unsafe_segments() {
+    let (_dir, store) = temp_store();
+    assert!(matches!(
+        store
+            .write_run_showcase("../escape", "a.png", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .write_run_showcase("r1", "../a.png", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_showcase("r1", "..").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    // The manifest is capture-side input, already folded into the record — the
+    // store refuses it so "showcase.toml is never stored" holds for any client.
+    assert!(matches!(
+        store
+            .write_run_showcase("r1", "showcase.toml", b"[[media]]")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}
+
+#[test]
 fn delete_run_media_rejects_an_unsafe_run_id() {
     let (_dir, store) = temp_store();
     let err = store.delete_run_media("../escape").unwrap_err();
     assert!(matches!(err, BackendError::BadRequest(_)));
+}
+
+#[test]
+fn a_run_tree_artifact_round_trips_opaquely_under_its_name() {
+    let (_dir, store) = temp_store();
+    // Gzip bytes, because that is what the convention stores: the slot must never
+    // parse, sniff or re-encode what it is handed, so arbitrary binary comes back
+    // byte-identical.
+    let bytes: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0x99, 0x00, 0xff, 0x01];
+    store
+        .write_run_artifact("run-xyz", "code-analysis", bytes)
+        .unwrap();
+    assert_eq!(
+        store.read_run_artifact("run-xyz", "code-analysis").unwrap(),
+        bytes
+    );
+    // The path is `runs/<id>/<name>.json` — one layout for every artifact, so a new
+    // one needs no new store layout and `delete_run_media` keeps collecting them all.
+    let path = store.run_artifact_path("run-xyz", "code-analysis");
+    assert!(path.ends_with("runs/run-xyz/code-analysis.json"));
+    assert!(path.is_file());
+    // Artifacts of one run do not collide with each other.
+    store
+        .write_run_artifact("run-xyz", "replay", b"other")
+        .unwrap();
+    assert_eq!(
+        store.read_run_artifact("run-xyz", "code-analysis").unwrap(),
+        bytes
+    );
+}
+
+#[test]
+fn a_run_tree_artifact_guards_both_path_segments() {
+    let (_dir, store) = temp_store();
+    // Neither segment may escape the store root. The name is a compile-time constant
+    // at every call site today, but it is a path segment all the same, and the guard
+    // is what keeps it safe to widen this to a route-supplied name later.
+    assert!(matches!(
+        store
+            .write_run_artifact("../escape", "replay", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_artifact("../escape", "replay").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .write_run_artifact("run-xyz", "../../etc/passwd", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .read_run_artifact("run-xyz", "../../etc/passwd")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    // An artifact a run never produced is not-found, not an error — every run-tree
+    // artifact is optional by construction.
+    assert!(matches!(
+        store
+            .read_run_artifact("run-xyz", "code-analysis")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+}
+
+#[test]
+fn the_replay_slot_is_the_generic_artifact_slot_named_replay() {
+    let (_dir, store) = temp_store();
+    // The named wrappers must resolve to the same bytes as the generic slot, or a
+    // record written through one API would be invisible to the other — and every
+    // replay stored before the generalization would 404.
+    store.write_run_replay("run-xyz", b"{}").unwrap();
+    assert_eq!(
+        store.read_run_artifact("run-xyz", REPLAY_ARTIFACT).unwrap(),
+        b"{}"
+    );
+    assert_eq!(
+        store.run_replay_path("run-xyz"),
+        store.run_artifact_path("run-xyz", REPLAY_ARTIFACT)
+    );
+    assert!(store.run_replay_path("run-xyz").ends_with("replay.json"));
+}
+
+#[test]
+fn run_replay_record_round_trips_and_guards_the_run_id() {
+    let (_dir, store) = temp_store();
+    let bytes = br#"{"sessionId":"run-xyz","capabilitySet":{},"entries":[]}"#;
+    store.write_run_replay("run-xyz", bytes).unwrap();
+    assert_eq!(store.read_run_replay("run-xyz").unwrap(), bytes);
+    // A run with no stored replay reads as not-found, not a panic.
+    assert!(matches!(
+        store.read_run_replay("run-none").unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    // An unsafe run id is rejected on both read and write.
+    assert!(matches!(
+        store.write_run_replay("../escape", bytes).unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_replay("../escape").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
 }
 
 #[test]
@@ -559,4 +1014,154 @@ fn publish_staged_version_swaps_a_fresh_build_into_place() {
         leaked.is_empty(),
         "staging area should be empty after publish, found {leaked:?}"
     );
+}
+
+#[test]
+fn the_code_analysis_slot_is_the_generic_artifact_slot_named_code_analysis() {
+    let (_dir, store) = temp_store();
+    // Same rule as the replay slot: the named wrappers must resolve to the same bytes as
+    // the generic slot, because the artifact name is one constant shared by the store
+    // slot, the route segment and the run tree's file stem — and the convention only
+    // holds if the three cannot drift apart.
+    store
+        .write_run_code_analysis("run-xyz", br#"{"analyzerVersion":1}"#)
+        .unwrap();
+    assert_eq!(
+        store
+            .read_run_artifact("run-xyz", CODE_ANALYSIS_ARTIFACT)
+            .unwrap(),
+        br#"{"analyzerVersion":1}"#
+    );
+    assert_eq!(
+        store.run_code_analysis_path("run-xyz"),
+        store.run_artifact_path("run-xyz", CODE_ANALYSIS_ARTIFACT)
+    );
+    assert!(
+        store
+            .run_code_analysis_path("run-xyz")
+            .ends_with("code-analysis.json")
+    );
+    // The route segment is the same string, and it is the stem of the run tree's file.
+    assert_eq!(
+        test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT,
+        format!("{CODE_ANALYSIS_ARTIFACT}.json.gz"),
+    );
+}
+
+#[test]
+fn run_code_analysis_document_round_trips_and_guards_the_run_id() {
+    let (_dir, store) = temp_store();
+    let bytes = br#"{"analyzerVersion":1,"summary":{},"files":[]}"#;
+    store.write_run_code_analysis("run-xyz", bytes).unwrap();
+    assert_eq!(store.read_run_code_analysis("run-xyz").unwrap(), bytes);
+    // A run that was never analysed reads as not-found, not a panic: every run-tree
+    // artifact is optional by construction.
+    assert!(matches!(
+        store.read_run_code_analysis("run-none").unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(matches!(
+        store
+            .write_run_code_analysis("../escape", bytes)
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_code_analysis("../escape").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}
+
+/// A test-case group with the given slug, rank, and members, for the group-slot
+/// tests.
+fn group(slug: &str, rank: Option<u32>, cases: &[&str]) -> TestCaseGroup {
+    TestCaseGroup {
+        slug: slug.to_string(),
+        name: format!("{slug} name"),
+        summary: None,
+        rank,
+        cases: cases.iter().map(|c| c.to_string()).collect(),
+    }
+}
+
+#[test]
+fn test_case_groups_round_trip_in_written_order() {
+    // The slot serves the set back exactly as written: ingest writes the
+    // catalogue's display order, and neither side re-sorts.
+    let (_dir, store) = temp_store();
+    let groups = vec![
+        group("tower-defense", Some(1), &["meltdown", "valence"]),
+        group("arcade-physics", Some(2), &["pong"]),
+    ];
+    store.write_test_case_groups(&groups).unwrap();
+    assert_eq!(store.read_test_case_groups().unwrap(), groups);
+
+    // A rewrite replaces the set whole rather than merging.
+    let replacement = vec![group("sim-economy", None, &["coil"])];
+    store.write_test_case_groups(&replacement).unwrap();
+    assert_eq!(store.read_test_case_groups().unwrap(), replacement);
+}
+
+#[test]
+fn an_absent_test_case_groups_slot_reads_as_the_empty_set() {
+    // The slot is additive (no `STORE_FORMAT` bump): a store from before groups
+    // existed simply serves none.
+    let (_dir, store) = temp_store();
+    assert_eq!(store.read_test_case_groups().unwrap(), Vec::new());
+}
+
+#[test]
+fn a_test_case_groups_slot_in_another_record_format_is_an_internal_error() {
+    // Present-but-unreadable is a store problem naming the re-ingest repair, like
+    // an unreadable manifest — not an empty set, which would silently blank the
+    // home page's leaderboards.
+    let (dir, store) = temp_store();
+    let path = dir.path().join("test-case-groups/test-case-groups.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"not json").unwrap();
+    assert!(matches!(
+        store.read_test_case_groups().unwrap_err(),
+        BackendError::Internal(_)
+    ));
+}
+
+#[test]
+fn a_validator_scoped_to_engines_round_trips_through_the_stored_manifest() {
+    // The engines a validator decides its point on are part of the definition the
+    // backend serves: the run-scoped checklist is resolved from the stored manifest,
+    // so a scoping lost at write time would silently re-admit a point the case
+    // excluded from that engine.
+    let (_dir, store) = temp_store();
+    let mut manifest = sample_manifest("pong", "v1.0.0");
+    manifest.common_review_items[0]
+        .validation
+        .as_mut()
+        .unwrap()
+        .engines = vec!["none".to_string(), "simple-2d".to_string()];
+
+    store.write_manifest(&manifest).unwrap();
+    let read = store.read_manifest("pong", "v1.0.0").unwrap();
+
+    assert_eq!(read, manifest);
+    assert_eq!(
+        read.common_review_items[0]
+            .validation
+            .as_ref()
+            .unwrap()
+            .engines,
+        ["none", "simple-2d"]
+    );
+}
+
+#[test]
+fn a_manifest_stored_before_validator_engine_scoping_reads_as_unrestricted() {
+    // The field is additive (no `STORE_FORMAT` bump): every manifest written before
+    // it existed named a validator active on every engine the case supports, which is
+    // exactly what the empty list means.
+    let stored: StoredReviewValidation = serde_json::from_str(
+        r#"{"script":"validation/ball-spin.mjs","per_engine":false,"outputs":[]}"#,
+    )
+    .unwrap();
+
+    assert!(stored.engines.is_empty());
 }

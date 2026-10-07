@@ -9,6 +9,14 @@
   margin: 0;
 }
 
+// Why the duration chart is comparable: the provider pin, stated beside the
+// charts rather than only in the docs.
+.note {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: t.$space-md 0 0;
+}
+
 // Widgets stack one per row so each chart gets the full content width — the room
 // a large model roster needs along the x axis.
 .widgets {

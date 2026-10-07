@@ -12,18 +12,10 @@
     {
       "name": "discharge-core",
       "shape": "sphere",
-      "position": [
-        0.0,
-        0.0,
-        -18.0
-      ],
+      "position": [0.0, 0.0, -18.0],
       "extent": {
         "radius": 0.7,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -34,11 +26,7 @@
       "lifetimeSpread": 25.0,
       "speed": 12.0,
       "speedSpread": 5.0,
-      "direction": [
-        0.0,
-        0.0,
-        1.0
-      ],
+      "direction": [0.0, 0.0, 1.0],
       "coneAngle": 65.0,
       "seed": 1101,
       "forces": {
@@ -75,18 +63,10 @@
     {
       "name": "lance-line",
       "shape": "point",
-      "position": [
-        0.0,
-        0.0,
-        -18.0
-      ],
+      "position": [0.0, 0.0, -18.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -97,11 +77,7 @@
       "lifetimeSpread": 30.0,
       "speed": 265.0,
       "speedSpread": 20.0,
-      "direction": [
-        0.0,
-        0.0,
-        1.0
-      ],
+      "direction": [0.0, 0.0, 1.0],
       "coneAngle": 0.8,
       "seed": 1102,
       "forces": {
@@ -143,18 +119,10 @@
     {
       "name": "energy-bolt",
       "shape": "point",
-      "position": [
-        0.0,
-        0.0,
-        -18.0
-      ],
+      "position": [0.0, 0.0, -18.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -165,11 +133,7 @@
       "lifetimeSpread": 65.0,
       "speed": 205.0,
       "speedSpread": 55.0,
-      "direction": [
-        0.0,
-        0.0,
-        1.0
-      ],
+      "direction": [0.0, 0.0, 1.0],
       "coneAngle": 3.2,
       "seed": 1103,
       "forces": {
@@ -207,18 +171,10 @@
     {
       "name": "crackle",
       "shape": "sphere",
-      "position": [
-        0.0,
-        0.0,
-        -17.4
-      ],
+      "position": [0.0, 0.0, -17.4],
       "extent": {
         "radius": 0.9,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -229,11 +185,7 @@
       "lifetimeSpread": 45.0,
       "speed": 27.0,
       "speedSpread": 12.0,
-      "direction": [
-        0.0,
-        0.0,
-        1.0
-      ],
+      "direction": [0.0, 0.0, 1.0],
       "coneAngle": 120.0,
       "seed": 1104,
       "forces": {
@@ -275,18 +227,10 @@
     {
       "name": "crackle-late",
       "shape": "sphere",
-      "position": [
-        0.0,
-        0.0,
-        -16.9
-      ],
+      "position": [0.0, 0.0, -16.9],
       "extent": {
         "radius": 1.2,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -297,11 +241,7 @@
       "lifetimeSpread": 35.0,
       "speed": 20.0,
       "speedSpread": 9.0,
-      "direction": [
-        0.0,
-        0.0,
-        1.0
-      ],
+      "direction": [0.0, 0.0, 1.0],
       "coneAngle": 145.0,
       "seed": 1105,
       "forces": {

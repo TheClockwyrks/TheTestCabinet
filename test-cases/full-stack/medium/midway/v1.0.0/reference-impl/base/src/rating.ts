@@ -20,7 +20,10 @@ export function varietyScore(distinctRideKinds: number): number {
 
 // reliability drops with broken rides: 100 when all rides run, 0 when all are broken; a
 // park with no rides yet is treated as reliable (nothing is broken).
-export function reliabilityFrom(totalRides: number, brokenRides: number): number {
+export function reliabilityFrom(
+  totalRides: number,
+  brokenRides: number,
+): number {
   if (totalRides <= 0) return 100;
   return 100 * (1 - brokenRides / totalRides);
 }
@@ -34,12 +37,19 @@ export function computeRatingTarget(
   reliability: number,
 ): number {
   const r = TUNE.rating;
-  const target = r.wHappy * avgHappiness + r.wClean * cleanliness + r.wVariety * ((variety * reliability) / 100);
+  const target =
+    r.wHappy * avgHappiness +
+    r.wClean * cleanliness +
+    r.wVariety * ((variety * reliability) / 100);
   return Math.max(0, Math.min(100, target));
 }
 
 // Ease the live rating toward its target at ~`ease` points per day (dtDays = dt/daySeconds).
-export function easeRating(rating: number, target: number, dtDays: number): number {
+export function easeRating(
+  rating: number,
+  target: number,
+  dtDays: number,
+): number {
   const step = TUNE.rating.ease * dtDays;
   if (rating < target) return Math.min(target, rating + step);
   if (rating > target) return Math.max(target, rating - step);
@@ -51,7 +61,10 @@ export function easeRating(rating: number, target: number, dtDays: number): numb
 export function arrivalRateFor(rating: number): number {
   const r = TUNE.rating;
   if (rating < r.arrivalCutoff) return 0;
-  const t = Math.max(0, Math.min(1, (rating - r.ratingLo) / (r.ratingHi - r.ratingLo)));
+  const t = Math.max(
+    0,
+    Math.min(1, (rating - r.ratingLo) / (r.ratingHi - r.ratingLo)),
+  );
   return r.arrivalMin + t * (r.arrivalMax - r.arrivalMin);
 }
 

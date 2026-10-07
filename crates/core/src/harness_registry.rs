@@ -263,6 +263,7 @@ impl AgentHarness for CliHarness {
             output,
             raw_output,
             translated_events,
+            tool_calls,
         } = run_streamed_translation(
             runtime,
             container,
@@ -306,7 +307,104 @@ impl AgentHarness for CliHarness {
             reported_cost: parse_reported_cost(&output, self.usage),
             raw_output,
             translated_events,
+            // A third-party harness emits no gg session summary.
+            gg_summary: None,
+            tool_calls,
+            // See `orchestrator::drive_orchestrator`: cooperative cancellation is a gg
+            // path, so a third-party session never reports itself canceled — its outcome
+            // is never observed on a kill at all, because the driver drops the run.
+            canceled: false,
         })
+    }
+}
+
+/// The first-party **gg** adapter.
+///
+/// gg is a standalone binary that runs *inside* the run container carrying its own
+/// LLM client, agent turn loop, tool dispatch, and telemetry emitter, and core
+/// invokes it **directly** — not as an orchestrated CLI subprocess. So most of the
+/// [`AgentHarness`] surface, which is shaped around shelling out to a third-party
+/// CLI and parsing its stdout, does not apply to gg. This adapter exists so gg is a
+/// resolvable registry entry that can declare the one thing this layer legitimately
+/// owns for gg — the API-key environment and the variable it is injected into
+/// inside the container (the gg binary calls the model itself, so the key must be
+/// present in the container). The invocation-shaped methods are honest `TODO`
+/// stubs: the real direct-invocation path is built by the gg executor workflow, and
+/// nothing in Phase 0 drives gg through this trait.
+struct GgHarness;
+
+#[async_trait::async_trait]
+impl AgentHarness for GgHarness {
+    fn slug(&self) -> HarnessSlug {
+        HarnessSlug::Gg
+    }
+
+    fn name(&self) -> &str {
+        "gg"
+    }
+
+    /// gg needs no third-party install step. In k8s the gg binary is fetched from a
+    /// published release in blob storage and locally it is a no-deps local build; either way that is
+    /// the gg executor's concern, not a container-side `sh -c` CLI install.
+    fn install_command(&self) -> Option<&str> {
+        None
+    }
+
+    /// gg reaches its model through OpenRouter for Phase 0.
+    fn api_key_env(&self) -> Option<&'static str> {
+        Some("OPENROUTER_API_KEY")
+    }
+
+    /// The key is injected into the container under the same name, because the gg
+    /// binary runs in-container and calls the model itself — it must find
+    /// `OPENROUTER_API_KEY` in its own environment.
+    fn container_key_env(&self) -> Option<&'static str> {
+        Some("OPENROUTER_API_KEY")
+    }
+
+    fn session_argv(&self, _model_id: &str, _prompt: &str) -> Vec<String> {
+        // TODO(gg-integration): gg is invoked directly by core, not as a CLI
+        // session rendered from an argv. There is no honest argv to return here;
+        // the direct-invocation entrypoint is built by the gg executor workflow.
+        unimplemented!("gg is invoked directly by core, not via a session argv")
+    }
+
+    fn event_format(&self) -> EventFormat {
+        // TODO(gg-integration): gg emits its own first-party telemetry stream
+        // (`GgTelemetryEvent`) on a dedicated channel rather than the normalized
+        // `HarnessEvent` parser this selects. `Generic` is a Phase-0 placeholder so
+        // the trait is satisfiable; gg output never actually flows through
+        // `EventParser`.
+        EventFormat::Generic
+    }
+
+    fn parse_session_usage(&self, _output: &ExecOutput) -> (Usage, Option<f64>) {
+        // TODO(gg-integration): gg accounts usage per model-slot from its own
+        // telemetry, not by parsing a CLI's stdout. There is no ExecOutput to parse
+        // on gg's direct-invocation path.
+        unimplemented!("gg reports usage through its own telemetry, not stdout parsing")
+    }
+
+    async fn probe(
+        &self,
+        _runtime: &dyn ContainerRuntime,
+        _container: &ContainerHandle,
+    ) -> Result<Availability> {
+        // TODO(gg-integration): a gg readiness check belongs to the gg executor
+        // path, not a `<binary> --version` CLI probe.
+        unimplemented!("gg readiness is handled by the gg executor, not a CLI probe")
+    }
+
+    async fn invoke(
+        &self,
+        _runtime: &dyn ContainerRuntime,
+        _container: &ContainerHandle,
+        _invocation: &HarnessInvocation,
+        _events: &mut dyn EventSink,
+    ) -> Result<HarnessOutcome> {
+        // TODO(gg-integration): core invokes gg directly; this orchestrated
+        // CLI-session entrypoint is not gg's path and must not fake one.
+        unimplemented!("gg is invoked directly by core, not through AgentHarness::invoke")
     }
 }
 
@@ -343,6 +441,9 @@ pub(crate) struct Streamed {
     pub raw_output: Vec<RawOutputLine>,
     /// Every translated event, in the order produced.
     pub translated_events: Vec<HarnessEvent>,
+    /// Per-tool invocation counts accumulated while translating the stream (see
+    /// [`crate::event::EventParser`]), including consumed todo tools.
+    pub tool_calls: std::collections::BTreeMap<String, u64>,
 }
 
 /// Run `command` inside the container, translating each output line into
@@ -375,23 +476,24 @@ pub(crate) async fn run_streamed_translation(
         .await?;
     let raw_output = std::mem::take(&mut translator.raw);
     let translated_events = std::mem::take(&mut translator.recorded);
+    let tool_calls = translator.parser.take_tool_calls();
     drop(translator);
     Ok(Streamed {
         output,
         raw_output,
         translated_events,
+        tool_calls,
     })
 }
 
-/// Build a detailed failure message from a harness invocation that exited non
-/// zero.
+/// The figures a harness invocation that exited non-zero is reported with.
 ///
-/// The previous behavior kept only the first line of standard error, which threw
-/// away the harness's actual complaint. This keeps the tail of whichever stream
-/// carried output — standard error first, then standard output — so the real
-/// cause survives, capped so a runaway log cannot dominate the error.
+/// [`HarnessInvocation`](Error::HarnessInvocation) states the failure itself, so this is
+/// figures alone: the exit code, then the tail of whichever stream carried output —
+/// standard error first, then standard output — so the harness's own complaint survives,
+/// capped so a runaway log cannot dominate the error.
 fn failure_detail(output: &ExecOutput) -> String {
-    let exit = format!("harness exited with code {}", output.exit_code);
+    let exit = format!("code {}", output.exit_code);
     let tail = last_lines(&output.stderr, 20).or_else(|| last_lines(&output.stdout, 20));
     match tail {
         Some(tail) => format!("{exit}\n{tail}"),
@@ -451,9 +553,17 @@ impl crate::harness::HarnessRegistry for DefaultHarnessRegistry {
     }
 }
 
-/// Construct an adapter for every harness slug.
+/// Construct an adapter for every harness the registry serves: the third-party
+/// CLI harnesses built from their manifests, plus the first-party [`GgHarness`].
+///
+/// gg is appended directly rather than mapped from [`HarnessSlug::ALL`] because it
+/// is not a manifest-backed CLI harness (ALL is the CLI catalog); it is a distinct
+/// run mode whose executor is built separately.
 fn all_harnesses() -> Vec<Box<dyn AgentHarness>> {
-    HarnessSlug::ALL.into_iter().map(descriptor).collect()
+    let mut harnesses: Vec<Box<dyn AgentHarness>> =
+        HarnessSlug::ALL.into_iter().map(descriptor).collect();
+    harnesses.push(Box::new(GgHarness));
+    harnesses
 }
 
 /// Every API-key value currently set in the host environment, across all
@@ -500,6 +610,13 @@ fn manifest_toml(slug: HarnessSlug) -> &'static str {
         HarnessSlug::Kilo => include_str!("../../../harnesses/kilo/harness.toml"),
         HarnessSlug::Opencode => include_str!("../../../harnesses/opencode/harness.toml"),
         HarnessSlug::Pi => include_str!("../../../harnesses/pi/harness.toml"),
+        // gg is not a manifest-backed CLI harness: it has no `harnesses/gg/`
+        // directory and is not built by `descriptor`. Its adapter is constructed
+        // directly in `all_harnesses` (see [`GgHarness`]), so this arm is never
+        // reached — only [`HarnessSlug::ALL`] slugs flow through here.
+        HarnessSlug::Gg => {
+            unreachable!("gg has no harness.toml; it is registered directly, not via a manifest")
+        }
     }
 }
 
@@ -857,6 +974,15 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             },
             event_format: EventFormat::Pi,
         },
+        // gg is the first-party in-container executor, not a shelled-out CLI, so it
+        // has no `AdapterSpec` (no session argv, no manifest usage shape). Its
+        // adapter is [`GgHarness`], constructed directly in `all_harnesses`; only
+        // [`HarnessSlug::ALL`] slugs ever reach this function, so this arm is
+        // unreachable. TODO(gg-integration): the real invocation/usage path is
+        // built by the gg executor workflow.
+        HarnessSlug::Gg => {
+            unreachable!("gg has no AdapterSpec; it is registered directly, not via `descriptor`")
+        }
     }
 }
 
@@ -968,6 +1094,63 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
     Usage {
         tokens: shape.finalize(raw),
     }
+}
+
+/// The usage mapping for a harness output format, so a per-turn usage slice is
+/// mapped onto the normalized token classes the same way the session total is.
+/// `Generic` (Antigravity, gg) reports no usage. This keeps the per-turn
+/// [`EventKind::Usage`] and the run-level total
+/// (see [`parse_usage`]) reading from one source of truth — the harness's
+/// [`AdapterSpec::usage`] — rather than two mappings that could drift apart.
+fn usage_shape_for_format(format: EventFormat) -> UsageShape {
+    let slug = match format {
+        EventFormat::Claude => HarnessSlug::Claude,
+        EventFormat::Codex => HarnessSlug::Codex,
+        EventFormat::Cline => HarnessSlug::Cline,
+        EventFormat::Goose => HarnessSlug::Goose,
+        EventFormat::Kilo => HarnessSlug::Kilo,
+        EventFormat::Opencode => HarnessSlug::Opencode,
+        EventFormat::Pi => HarnessSlug::Pi,
+        EventFormat::Generic => return UsageShape::NONE,
+    };
+    adapter_spec(slug).usage
+}
+
+/// Extract one turn's token counts (and per-turn cost, when reported) from a
+/// single harness event `value` that carries usage, mapped onto the normalized
+/// classes with the same [`UsageShape`] the session total uses. Returns `None`
+/// when the event reports no usage, so an empty usage event is never emitted.
+///
+/// The [event parser](crate::event::EventParser) calls this to turn a per-turn
+/// usage record (Pi's `message_end`, Kilo/OpenCode's `step_finish`) into an
+/// [`EventKind::Usage`]. The parser is already
+/// positioned on the usage-carrying event, so — unlike [`parse_usage`] — no
+/// `usage_events` line filtering is applied here.
+pub(crate) fn per_turn_usage(
+    format: EventFormat,
+    value: &Value,
+) -> Option<(TokenCounts, Option<f64>)> {
+    let shape = usage_shape_for_format(format);
+    // Confine the token search to the usage sub-object when the shape names one
+    // (Kilo/OpenCode nest per-step tokens under `part.tokens`), exactly as
+    // `parse_usage` does per line.
+    let scope = if shape.usage_path.is_empty() {
+        value
+    } else {
+        dig(value, shape.usage_path)?
+    };
+    let raw = extract_tokens(scope, shape);
+    if raw.total_input() == 0 && raw.total_output() == 0 {
+        return None;
+    }
+    let cost = if shape.cost.is_empty() {
+        None
+    } else {
+        shape.cost.iter().find_map(|key| find_f64(value, key))
+    };
+    // A turn that reported nothing has already returned `None` above, so the
+    // counts reaching `finalize` are always a genuine report.
+    Some((shape.finalize(Some(raw)), cost))
 }
 
 /// Parse the harness's self-reported run cost (USD) out of its command output.

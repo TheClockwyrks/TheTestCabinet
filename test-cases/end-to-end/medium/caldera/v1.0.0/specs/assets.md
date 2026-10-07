@@ -24,13 +24,13 @@ animations as F-curves keyed on joint values. Each part's `.glb` is a standard g
 2.0 binary whose geometry decodes to plain typed arrays — `positions`, `normals`,
 `colors`, `indices`.
 
-Load and pose the models with `@test-cabinet/voxel-runtime`, the same library these
+Load and pose the models with `@clockwyrks/voxel-runtime`, the same library these
 models were authored against. It is injected into your `package.json`, so import it by
 bare name:
 
 - its root `parseGlb(bytes)` decodes a part's `.glb` into a `PartMesh`
   (`{ positions, normals, colors, indices }`), the shape the recolor below walks;
-- its `@test-cabinet/voxel-runtime/three` binding's `VoxelRig` takes a model's parsed
+- its `@clockwyrks/voxel-runtime/three` binding's `VoxelRig` takes a model's parsed
   parts and its `rig.json`, poses the parts on their joints under a `three` group, and
   plays the authored animations **by name** — the names in `models.json`'s `clips`.
   A `VoxelRigOptions.material` lets you supply your own material (used for the
@@ -85,11 +85,11 @@ recovers the authored byte exactly.
 Each model reserves one **accent region** — the plates and trim on a Slag, the
 fittings on a tower — authored in a color used **nowhere else on that model**:
 
-| Family | Accent color | Recolored to, at the base level |
-| --- | --- | --- |
-| Slag | `#4a4358` | Obsidian `#241f2b` (Tier I) |
-| Towers, Core, fluid structures | `#2f7d72` | Brass dark `#8a6d2e` (level 0) |
-| Pipe kit | `#808890` | The network's fluid color |
+| Family                         | Accent color | Recolored to, at the base level |
+| ------------------------------ | ------------ | ------------------------------- |
+| Slag                           | `#4a4358`    | Obsidian `#241f2b` (Tier I)     |
+| Towers, Core, fluid structures | `#2f7d72`    | Brass dark `#8a6d2e` (level 0)  |
+| Pipe kit                       | `#808890`    | The network's fluid color       |
 
 The towers use `towerLevels` (levels `0`–`2`); the **Core** has four upgrade levels
 (`specs/build.md`) and uses its own `coreLevels` table. The fluid structures do not
@@ -112,14 +112,17 @@ glow, and only its plates turn violet.
 ```js
 const key = (r, g, b) => (r << 16) | (g << 8) | b;
 
-function remap(mesh, table) {                  // table: Map<key, [r, g, b] in 0..1>
+function remap(mesh, table) {
+  // table: Map<key, [r, g, b] in 0..1>
   const colors = Float32Array.from(mesh.colors);
   for (let i = 0; i < colors.length; i += 3) {
-    const hit = table.get(key(
-      Math.round(colors[i] * 255),
-      Math.round(colors[i + 1] * 255),
-      Math.round(colors[i + 2] * 255),
-    ));
+    const hit = table.get(
+      key(
+        Math.round(colors[i] * 255),
+        Math.round(colors[i + 1] * 255),
+        Math.round(colors[i + 2] * 255),
+      ),
+    );
     if (hit) [colors[i], colors[i + 1], colors[i + 2]] = hit;
   }
   return { ...mesh, colors };
@@ -134,7 +137,7 @@ color. A whole-model multiply drags the acid-green glow and the steel plating al
 with the body, and it cannot make a plate violet while the body stays obsidian. That
 is what the accent region exists to avoid.
 
-### Whole-model tinting *is* correct for state
+### Whole-model tinting _is_ correct for state
 
 A **dark** tower (brownout or severed steam, `specs/fluids.md`), a **starved** pipe,
 and a structure flashing on damage are whole-model state changes, not region swaps.

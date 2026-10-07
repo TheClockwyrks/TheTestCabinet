@@ -1,4 +1,5 @@
 @use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
 
 .section {
   display: flex;
@@ -26,6 +27,7 @@
 .notice {
   margin: 0;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // The loading state: the "Loading events…" notice over a transfer progress bar
@@ -46,4 +48,5 @@
 
 .error {
   color: t.$color-negative;
+  @include h.halo;
 }

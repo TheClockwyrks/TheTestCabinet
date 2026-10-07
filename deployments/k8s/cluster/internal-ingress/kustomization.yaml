@@ -1,0 +1,7 @@
+# The cert-manager ClusterIssuer the internal-ingress component's Ingresses reference
+# (see clusterissuer.yaml). cert-manager and its CRDs must be installed first.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - clusterissuer.yaml

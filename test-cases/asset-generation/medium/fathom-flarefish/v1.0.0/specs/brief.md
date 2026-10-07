@@ -3,7 +3,7 @@
 You are drawing the **Flarefish**, a **sprite sheet** for a deep-sea maze-chase
 game. In that game the Flarefish is **the flare-maker**: a **non-playable
 pursuer**, a predator that is blind between flares and hunts only in the light
-of its own **flare**. Everything below describes the *enemy* — never the player
+of its own **flare**. Everything below describes the _enemy_ — never the player
 character.
 
 You are drawing the **creature** here: its body swimming in four directions,
@@ -28,12 +28,12 @@ try to draw an expanding flare here; just the creature and the organ on its body
 The sheet holds **four-direction movement**, two frames per direction (a small
 swim cycle):
 
-| Frames | Contents |
-| --- | --- |
-| 0, 1 | **swim down** — two frames (the tail flicks between them) |
-| 2, 3 | **swim up** — two frames |
-| 4, 5 | **swim left** — two frames |
-| 6, 7 | **swim right** — two frames |
+| Frames | Contents                                                  |
+| ------ | --------------------------------------------------------- |
+| 0, 1   | **swim down** — two frames (the tail flicks between them) |
+| 2, 3   | **swim up** — two frames                                  |
+| 4, 5   | **swim left** — two frames                                |
+| 6, 7   | **swim right** — two frames                               |
 
 In each **movement** frame the creature faces its direction of travel: the
 **head leads** (points the way it swims) and a **forked tail trails** behind,
@@ -60,12 +60,12 @@ own light**:
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Body (orange) | `#ff7a59` |
+| Role                      | Hex       |
+| ------------------------- | --------- |
+| Body (orange)             | `#ff7a59` |
 | Belly / lighter underside | `#ffb199` |
 | Outline / mouth (darkest) | `#5a1e14` |
-| Flare organ (warm) | `#ffd166` |
+| Flare organ (warm)        | `#ffd166` |
 | Flare organ core (bright) | `#ffffff` |
 
 ## Working the tool

@@ -13,13 +13,24 @@
 // map onto the produced systems. This mapping is the one place the produced files meet
 // the redesigned roster.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxKind, Cue } from "./types";
 import type { DamageType, TowerKind } from "./constants";
 
-const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
-const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
-const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", { eager: true, query: "?url", import: "default" });
+const pngUrls = import.meta.glob<string>("../assets/**/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", {
+  eager: true,
+  import: "default",
+});
+const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
 
 function keyOf(globPath: string, ext: string): string {
   return globPath.replace("../assets/", "").replace(ext, "");
@@ -112,14 +123,18 @@ export async function loadAssets(): Promise<Assets> {
   };
 
   const rawFx: Record<string, ParticleSystem> = {};
-  for (const [globPath, sys] of Object.entries(fxJson)) rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
+  for (const [globPath, sys] of Object.entries(fxJson))
+    rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
   const fx = {} as Record<FxKind, ParticleSystem | undefined>;
-  for (const k of Object.keys(FX_SOURCE) as FxKind[]) fx[k] = rawFx[FX_SOURCE[k]];
+  for (const k of Object.keys(FX_SOURCE) as FxKind[])
+    fx[k] = rawFx[FX_SOURCE[k]];
 
   const rawWav: Record<string, string> = {};
-  for (const [globPath, url] of Object.entries(wavUrls)) rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
+  for (const [globPath, url] of Object.entries(wavUrls))
+    rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
   const audioUrl = {} as Record<Cue | "music", string>;
-  for (const k of Object.keys(CUE_SOURCE) as Cue[]) audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? rawWav.build ?? "";
+  for (const k of Object.keys(CUE_SOURCE) as Cue[])
+    audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? rawWav.build ?? "";
   audioUrl.music = rawWav.music ?? "";
 
   const towerFire = {} as Record<TowerKind, HTMLImageElement[]>;

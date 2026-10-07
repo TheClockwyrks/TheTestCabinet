@@ -7,11 +7,37 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { CodeAnalysisSummary } from "./code-analysis";
+import type { GgCapabilitySet, GgSessionSummary } from "./gg";
+import type { ModelSpec } from "@clockwyrks/asset-contract";
+
+export type {
+  AnimationSpec,
+  AnimationTrackSpec,
+  AxisSpec,
+  DriveKindSpec,
+  InterpSpec,
+  JointKindSpec,
+  JointSpec,
+  KeyframeSpec,
+  ModelSpec,
+  PartSpec,
+} from "@clockwyrks/asset-contract";
+
 /**
- * A stable slug identifying a supported agent harness.
+ * A stable slug identifying an agent harness — a run's subject.
  *
  * Serializes to the snake/kebab-case slugs used throughout run records and the
- * site (all eight happen to be single-word lowercase tokens).
+ * site (every slug happens to be a single-word lowercase token).
+ *
+ * The first eight are the **third-party CLI harnesses** The Test Cabinet
+ * integrates: each ships a `harnesses/<slug>/harness.toml` manifest, installs a
+ * CLI into the run container, and is shelled out to. [`Gg`](HarnessSlug::Gg) is
+ * different in kind — the Test Cabinet's own first-party executor, invoked
+ * directly rather than through a manifest/CLI — so it is **deliberately not** a
+ * member of [`ALL`](HarnessSlug::ALL) (the CLI-harness catalog) and is handled on
+ * its own path everywhere ALL is enumerated. It is still a first-class run
+ * subject: a gg run yields a scoreable [`RunRecord`] carrying `harness_slug: gg`.
  */
 export type HarnessSlug =
   | "claude"
@@ -21,7 +47,8 @@ export type HarnessSlug =
   | "goose"
   | "kilo"
   | "opencode"
-  | "pi";
+  | "pi"
+  | "gg";
 
 /**
  * A family of harnesses that share a model-slug namespace — the set of model ids
@@ -41,13 +68,16 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 /**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
- * harness exit splits into [`Completed`](RunState::Completed) and
+ * harness exit splits into [`Completed`](RunState::Completed),
  * [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
- * never built or loaded);
- * a harness that exits **non-zero** is a
- * [`HarnessError`](RunState::HarnessError) and one that stops responding
- * altogether is [`Hung`](RunState::Hung); a run stopped before the harness
- * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+ * never built or loaded) and, when the output's dependency install never
+ * succeeded, [`Infrastructure`](RunState::Infrastructure);
+ * a harness that stopped itself on one of its own configured ceilings is
+ * [`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any
+ * other way is a [`HarnessError`](RunState::HarnessError), and one that stops
+ * responding altogether is [`Hung`](RunState::Hung); a run stopped before the
+ * harness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),
+ * [`Canceled`](RunState::Canceled) (an operator killed it), or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
 export type RunState =
@@ -55,8 +85,10 @@ export type RunState =
   | "catastrophic"
   | "timed_out"
   | "harness_error"
+  | "limit_exceeded"
   | "hung"
-  | "infrastructure";
+  | "infrastructure"
+  | "canceled";
 
 /**
  * The authentication mode a run used, recorded so a published run is
@@ -82,7 +114,7 @@ export type RunEnvironment = {
    * The run-container image the run executed in: the single shared base image,
    * the same for every harness. The full, pullable reference pulled by digest
    * from the registry (for example,
-   * `ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build
+   * `testcabinet.azurecr.io/test-cabinet-base@sha256:…`), or the local-build
    * fallback tag for an offline run.
    */
   containerImage: string;
@@ -181,6 +213,27 @@ export type AssetKind =
   | "blender-mechanism";
 
 /**
+ * Within a full-stack case, which dimension of asset tooling the run image carries.
+ *
+ * A full-stack run builds a program *and* produces the assets it ships with, so the
+ * image it executes in has to have the authoring binaries baked in — and there are two
+ * such images, because the 3D tooling is a great deal heavier than the 2D tooling and
+ * most cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D
+ * binaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);
+ * `3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`
+ * and `particle-3d`. See [`crate::resolve_run_image`].
+ *
+ * Like [`AssetKind`] this is a property of the **whole version**, not a per-variant
+ * choice: every variant of a case runs in one image. It is declared by the
+ * `asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written
+ * before the key existed — and every full-stack case that only draws sprites and plays
+ * sound — resolves unchanged. It is meaningful only for a full-stack case; an explicit
+ * value on any other type is rejected rather than silently ignored, because on those
+ * types nothing consults it.
+ */
+export type AssetDimension = "2d" | "3d";
+
+/**
  * The subject of a run: what was run, with what, against which model.
  */
 export type RunSubject = {
@@ -213,7 +266,7 @@ export type RunSubject = {
   harnessVersion: string | null;
   /**
    * The resolved slug of the orchestrator that conducted the harness sessions
-   * (for example `one-shot` or `ralph`). For an external `--orchestrator-dir`
+   * (for example `one-shot`). For an external `--orchestrator-dir`
    * this is the directory's own manifest slug, not the request's. Defaults to
    * `one-shot` so records written before orchestrator selection existed — and
    * hand-written fixtures — still deserialize. See
@@ -221,9 +274,65 @@ export type RunSubject = {
    */
   orchestratorSlug: string;
   /**
-   * The model ID passed to the harness, treated as an opaque string.
+   * The slug of the [engine](crate::engine) the produced build was written
+   * against (for example `simple-2d`), or `none` when the build supplied its
+   * own frame loop, input, audio, assets, and diagnostics.
+   *
+   * The engine is a **run dimension**, not a property of the case: the same
+   * case version can be run on several engines, and a result is only
+   * comparable with another result on the same engine, so the selection is
+   * recorded here beside the harness and the orchestrator rather than being
+   * inferred from the case. Defaults to `none` so records written before
+   * engine selection existed — and hand-written fixtures — still deserialize,
+   * which is also the truth about them: they had no runtime.
+   */
+  engineSlug: string;
+  /**
+   * The version of the engine runtime that was vendored into the run
+   * repository, read out of the staged package at seed time.
+   *
+   * Separate from [`Self::engine_slug`] because an engine's contract moves
+   * under a stable slug: two `simple-2d` runs a release apart were given
+   * different frame, input, or host behaviour, and only the version
+   * distinguishes them. `None` for a run whose engine vendors no runtime
+   * (`none` has no package, so there is no version to read) and for records
+   * written before engine selection existed.
+   */
+  engineVersion?: string;
+  /**
+   * The model ID passed to the harness, treated as an opaque string. For a gg
+   * run there is no single harness model (a run binds models to slots via
+   * [`Self::gg_capability_set`]); this carries the run's primary-slot model so a
+   * gg run still has a representative model identity for the existing per-model
+   * listings.
    */
   modelId: string;
+  /**
+   * The declarative [capability set](GgCapabilitySet) a **gg** run was configured
+   * with — which capabilities were on, their implementations/params, and the
+   * model-slot bindings — recorded verbatim so a gg result is traceable to the
+   * exact configuration that produced it and
+   * [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can
+   * slice by configuration. Present only for a gg run (`harness_slug` is
+   * [`HarnessSlug::Gg`]); `None` for every third-party-harness run, which is
+   * configured by the flat `(model, orchestrator)` dimensions instead.
+   */
+  ggCapabilitySet?: GgCapabilitySet;
+  /**
+   * The compact, aggregatable [summary](GgSessionSummary) of a **gg** run's own
+   * outcome — total agents/subagent depth, compactions, whether it ran out of
+   * context, issue-review and speculation counts, issues created/completed, the
+   * per-slot cost rollup, the terminal status, and the execution ceiling that stopped
+   * it, when one did — computed by the gg binary from
+   * its telemetry and recorded here so
+   * [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can
+   * slice a run's outcome by its [`gg_capability_set`](Self::gg_capability_set)
+   * without re-parsing the whole event stream. Present only for a gg run that ran a
+   * session (the binary emitted a
+   * [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary)); `None` for every
+   * third-party-harness run and for a gg run that failed to launch.
+   */
+  ggSummary?: GgSessionSummary;
 };
 
 /**
@@ -269,27 +378,56 @@ export type TokenMetrics = {
 };
 
 /**
+ * Per-token prices (USD) used to compute the comparable cost.
+ *
+ * These are the model developer's published list prices, curated on the
+ * model's catalog entry — not the billed rate of whichever endpoint served the
+ * run. Reasoning tokens are priced at the output rate, so no separate field is
+ * needed.
+ *
+ * Each price is optional: `None` means the price is **unknown** (OpenRouter
+ * does not list one, or lists a nonsensical value such as a negative sentinel),
+ * which is distinct from `Some(0.0)` (a genuinely free class). A class priced
+ * `None` poisons any cost it contributes to rather than being silently treated
+ * as free — see [`Cost::comparable_from`].
+ */
+export type TokenPrices = {
+  /**
+   * Price per uncached input token, or `None` when unknown.
+   */
+  uncachedInput: number | null;
+  /**
+   * Price per cached input token, or `None` when unknown.
+   */
+  cachedInput: number | null;
+  /**
+   * Price per output token (also applied to reasoning tokens), or `None` when
+   * unknown.
+   */
+  output: number | null;
+};
+
+/**
  * Cost of a run, recorded two ways.
  *
  * Each figure is optional: `None` means the cost is **unknown** — typically
- * because the model's per-token prices could not be resolved (the model is
- * absent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).
- * This is distinct from `Some(0.0)`, a genuinely free run. Keeping the two
- * apart avoids presenting an unknown cost as `$0.00`.
+ * because the model's per-token list prices could not be resolved (the model's
+ * catalog entry curates none). This is distinct from `Some(0.0)`, a genuinely
+ * free run. Keeping the two apart avoids presenting an unknown cost as `$0.00`.
  */
 export type CostMetrics = {
   /**
    * The canonical figure shown on the site, stable across providers. It is
-   * derived from token classes and OpenRouter's listed prices, except for
-   * harnesses that drive a single provider directly and report their own
-   * exact cost (such as Claude Code), where that reported cost — itself
-   * provider-stable — is used instead. `None` when the cost is unknown.
+   * computed from the run's token classes and the model's curated list
+   * price, and from nothing else: a billed figure never feeds it, so two
+   * runs of one model at different billed rates still compare on the same
+   * basis. `None` when the cost is unknown.
    */
   comparable: number | null;
   /**
-   * The amount actually charged for the run, recorded for reference. Equal
-   * to the comparable figure unless the harness reports its own exact cost.
-   * `None` when the cost is unknown.
+   * The amount the run was actually billed, recorded for reference: the
+   * harness's own accounting where it reports one, otherwise the comparable
+   * figure. `None` when the cost is unknown.
    */
   actual: number | null;
 };
@@ -299,9 +437,54 @@ export type CostMetrics = {
  */
 export type RunMetrics = {
   /**
-   * End-to-end wall-clock time of the run, in seconds.
+   * End-to-end wall-clock time of the whole run, in seconds, excluding any
+   * time the run's container spent queued for cluster capacity before it
+   * started.
+   *
+   * This is what the run cost in machine time. It is the sum of
+   * [`Self::setup_seconds`], [`Self::session_seconds`] and
+   * [`Self::teardown_seconds`], and a question about the model is answered by
+   * the session alone: setup is shared by every run of a test case and
+   * dominates this figure whenever the session is short.
    */
   runTimeSeconds: number;
+  /**
+   * Wall-clock time of the harness session alone, in seconds — the model's own
+   * working time, and the figure that describes a model.
+   *
+   * `None` on a record written before the stage durations were measured, which
+   * is distinct from `Some(0.0)`.
+   */
+  sessionSeconds?: number;
+  /**
+   * Wall-clock time from the start of the run until the harness session began,
+   * in seconds: rendering the case's references, seeding the workspace,
+   * starting the container, probing its environment, installing the harness,
+   * and running the test case's `init` step.
+   *
+   * The queueing wait excluded from [`Self::run_time_seconds`] is subtracted
+   * here, the stage that contains it. `None` on a record written before the
+   * stage durations were measured.
+   */
+  setupSeconds?: number;
+  /**
+   * Wall-clock time spent collecting the produced tree and stopping the
+   * container, in seconds.
+   *
+   * Taken as the remainder of [`Self::run_time_seconds`], so the three stages
+   * sum to it exactly. `None` on a record written before the stage durations
+   * were measured.
+   */
+  teardownSeconds?: number;
+  /**
+   * Wall-clock time of the [validation](crate::validation) pass, in seconds.
+   *
+   * Recorded outside [`Self::run_time_seconds`], which is frozen before
+   * validation and before every [post-run stage](crate::post_run) runs. `None`
+   * on a canceled run, which skips validation, and on a record written before
+   * the stage durations were measured.
+   */
+  validationSeconds?: number;
   /**
    * Normalized token usage.
    */
@@ -314,9 +497,10 @@ export type RunMetrics = {
 
 /**
  * The kind of a piece of media — used for both reference media and proof
- * artifacts so a UI knows whether to render an `<img>` or a `<video>`.
+ * artifacts so a UI knows whether to render an `<img>`, a `<video>`, or a
+ * player that redraws a recording.
  */
-export type MediaKind = "image" | "video";
+export type MediaKind = "image" | "video" | "replay";
 
 /**
  * The presence result for a single declared proof-of-implementation artifact.
@@ -401,14 +585,30 @@ export type StepResult = {
    */
   command: string;
   /**
-   * Whether the command exited successfully.
+   * Whether the step succeeded: the command exited zero and, for the
+   * [verified install](crate::install), left every package the lockfile declares
+   * for the host on disk.
    */
   succeeded: boolean;
   /**
-   * Detail about a failure (a tail of the command's stderr), or `None` when
-   * the step succeeded.
+   * Detail about a failure — why the command could not be started, the packages
+   * an install left uninstalled, or the bounded output of a command that exited
+   * non-zero — or `None` when the step succeeded.
    */
   detail: string | null;
+  /**
+   * A bounded excerpt of the command's combined stdout and stderr, capped at
+   * [`TOOLCHAIN_OUTPUT_LIMIT`](crate::toolchain::TOOLCHAIN_OUTPUT_LIMIT) bytes.
+   * Present whenever the command ran, whatever it exited with; absent when it
+   * could not be started, and on records from before it was kept.
+   */
+  output?: string;
+  /**
+   * How many times the command was run before this result was final. Present on
+   * the install, which is retried; absent on the build, which runs once, and on
+   * records from before it was kept.
+   */
+  attempts?: number;
 };
 
 /**
@@ -430,8 +630,9 @@ export type StepResult = {
  * is synthesized for it, pre-filled into the review like any auto verdict and
  * overridable by the reviewer — rather than failing the whole run: a build with a
  * broken debug API is still reviewed, and is scored down by exactly the points its
- * checks could not answer. A script the host could not run *at all* (no browser) is
- * not recorded here — that degrades like a [check](CheckResult).
+ * checks could not answer. A check that decided nothing about the build is held apart
+ * by [`precondition_unmet`](Self::precondition_unmet), which
+ * [`inconclusive`](Self::inconclusive) then qualifies.
  */
 export type DebugScriptResult = {
   /**
@@ -481,18 +682,23 @@ export type DebugScriptResult = {
    */
   ran: boolean;
   /**
-   * Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
-   * a debug-API contract failure.
+   * Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather
+   * than a contract failure the build earned.
    *
-   * A script's `arrange` often searches the model's own world for a spot to pose
-   * its scenario — a blind corner in an invented maze, a legal build tile. That
-   * search can come up empty against a fully conformant build: every call was
-   * answered correctly, there was simply no such spot. That is INCONCLUSIVE about
-   * the model, so it is held apart from a genuine contract failure: no failed
-   * verdict is synthesized for it and the point is left for the reviewer to decide
-   * by hand. Only ever `true` alongside `ran == false`.
+   * An inconclusive result leaves the point unanswered: no failed verdict is
+   * synthesized, [scoring](crate::comparison::automated_only_score) skips the point
+   * entirely, and the reviewer decides it by hand. Which inconclusive outcome it
+   * was is carried by [`inconclusive`](Self::inconclusive), and the
+   * [`detail`](Self::detail) names the reason in prose. Only ever `true` alongside
+   * `ran == false`.
    */
   preconditionUnmet: boolean;
+  /**
+   * Which inconclusive outcome this is, set exactly when
+   * [`precondition_unmet`](Self::precondition_unmet) is. `None` on a result
+   * recorded before the outcomes were told apart.
+   */
+  inconclusive: Inconclusive | null;
   /**
    * Detail about a failed or degraded script (the handle was missing, a call
    * threw, an output was not produced), or `None` when it ran clean.
@@ -512,6 +718,14 @@ export type DebugScriptResult = {
    */
   outputs: Array<DebugScriptOutput>;
 };
+
+/**
+ * Why a validator's negative answer decided nothing about the build.
+ *
+ * Each of these leaves the point unanswered, and they are held apart so a reviewer
+ * reads the real reason rather than one that sounds like a fact about the build.
+ */
+export type Inconclusive = "preconditionUnmet" | "notRun" | "timedOut";
 
 /**
  * One auto-decided checklist verdict produced by a [`DebugScriptResult`].
@@ -839,229 +1053,6 @@ export type VoxelPartResult = {
    * Detail about anything that could not be evaluated for this part.
    */
   detail: string | null;
-};
-
-/**
- * The resolved `[model]` of a voxel-animation case: the rig the model must
- * produce — named parts in a parent/child hierarchy and the named joints a
- * consuming game (or an auto-play clip) drives. This is the **required** contract
- * (the scoring targets and the stable, game-facing joint interface); at run time
- * the model may add further parts and joints of its own, which are recorded in
- * the produced `rig.json` but are not required here. Carried into the run record
- * (see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know
- * the joint interface without a separate catalog lookup.
- */
-export type ModelSpec = {
-  /**
-   * The declared parts, in declared order. The first is the root (its `parent`
-   * is `None`); every other part names a declared parent.
-   */
-  parts: Array<PartSpec>;
-  /**
-   * The declared joints, in declared order. Each names a declared part.
-   */
-  joints: Array<JointSpec>;
-  /**
-   * The model's **animations** — one unified type across the pipeline. On the
-   * *required* contract each is a declaration (its `joints` set, `tracks` empty),
-   * seeded into `rig.json` from t=0; on the *produced* rig each additionally
-   * carries the model-authored F-curve `tracks`. Empty when the case declares
-   * none.
-   */
-  animations?: Array<AnimationSpec>;
-};
-
-/**
- * A resolved part of a [`ModelSpec`]: one named voxel component of the rig.
- */
-export type PartSpec = {
-  /**
-   * Stable name of this part (for example `chassis`, `turret`). The `voxel-anim`
-   * binary targets a part's voxel operations with `--part <name>`.
-   */
-  name: string;
-  /**
-   * The parent part this one is attached to, or `None` for the root part. A
-   * part inherits its parent's world transform, so posing a parent moves it too.
-   */
-  parent?: string;
-  /**
-   * The attachment point of this part in the parent's local voxel coordinates
-   * (`[x, y, z]`). For the root part this is its origin in world space.
-   */
-  pivot: [number, number, number];
-};
-
-/**
- * A resolved joint of a [`ModelSpec`]: one named degree of freedom on a part.
- *
- * A joint is either **caller-driven** (a consuming game supplies its value at
- * runtime, e.g. `turret_yaw`) or **`auto`** (driven only by the model's
- * [`AnimationSpec`] tracks, holding at `rest` until one overlays it). Rotations
- * are in radians about [`Self::axis`] through [`Self::pivot`]; translations are in
- * voxel units along the axis.
- */
-export type JointSpec = {
-  /**
-   * Stable name of this joint; the parameter a game addresses (for example
-   * `turret_yaw`).
-   */
-  name: string;
-  /**
-   * The part this joint moves (a declared [`PartSpec::name`]).
-   */
-  part: string;
-  /**
-   * Whether this joint rotates or translates the part.
-   */
-  kind: JointKindSpec;
-  /**
-   * The axis the joint acts about (rotation) or along (translation).
-   */
-  axis: AxisSpec;
-  /**
-   * The joint origin in the part's local voxel coordinates (`[x, y, z]`).
-   */
-  pivot: [number, number, number];
-  /**
-   * Minimum value: radians for a rotation, voxel units for a translation.
-   */
-  min: number;
-  /**
-   * Maximum value.
-   */
-  max: number;
-  /**
-   * The rest/default value, within `[min, max]`.
-   */
-  rest: number;
-  /**
-   * A fixed mount translation `[x, y, z]` (in voxels) this joint applies to the
-   * part in addition to its driven motion — the translation half of a compound
-   * attach. Absent (or all-zero) means no offset.
-   */
-  offset?: [number, number, number];
-  /**
-   * A fixed mount rotation `[x, y, z]` (radians, applied as Euler X→Y→Z about
-   * [`Self::pivot`]) this joint applies in addition to its driven motion — the
-   * rotation half of a compound attach. Absent (or all-zero) means no rotation.
-   */
-  orient?: [number, number, number];
-  /**
-   * Who drives this joint: a caller (a game) or the model's animations.
-   */
-  drive: DriveKindSpec;
-};
-
-/**
- * Whether a [`JointSpec`] rotates or translates its part.
- */
-export type JointKindSpec = "rotation" | "translation";
-
-/**
- * A principal axis a [`JointSpec`] acts about or along.
- */
-export type AxisSpec = "x" | "y" | "z";
-
-/**
- * Who drives a [`JointSpec`].
- */
-export type DriveKindSpec = "caller" | "auto";
-
-/**
- * How an [`AnimationSpec`] F-curve segment interpolates between two keyframes —
- * the graph-editor curve real 3D tools use, so motion carries weight and snap
- * instead of sliding linearly. Set per keyframe on the segment **leaving** it.
- */
-export type InterpSpec =
-  | "constant"
-  | "linear"
-  | "bezier"
-  | "ease-in"
-  | "ease-out"
-  | "ease-in-out";
-
-/**
- * A resolved keyframe within an [`AnimationTrackSpec`] F-curve: a joint value at a
- * time offset, plus how the curve leaves this key.
- */
-export type KeyframeSpec = {
-  /**
-   * Time offset from the start of the animation, in milliseconds
-   * (`0..=period_ms`).
-   */
-  tMs: number;
-  /**
-   * The joint value at this time.
-   */
-  value: number;
-  /**
-   * Interpolation of the segment **leaving** this key.
-   */
-  interp: InterpSpec;
-  /**
-   * Bézier out-handle on this key as `[dt_ms, dvalue]` offset from the key;
-   * `None` = auto tangent.
-   */
-  outHandle?: [number, number];
-  /**
-   * Bézier in-handle on this key as `[dt_ms, dvalue]` offset from the key; `None`
-   * = auto tangent.
-   */
-  inHandle?: [number, number];
-};
-
-/**
- * A model **animation** — one unified type across the whole pipeline. On the
- * *required* contract it is a declaration: its [`Self::joints`] set is fixed and
- * [`Self::tracks`] is empty; the declaration is seeded into `rig.json` from t=0. On
- * the *produced* rig the model fills [`Self::tracks`] with the authored F-curve
- * motion. An animation is either an [`Self::auto_play`] decorative idle (played
- * continuously by default) or a named playable a game triggers.
- */
-export type AnimationSpec = {
-  /**
-   * Stable, unique name a game plays this animation by (for example `walk`).
-   */
-  name: string;
-  /**
-   * The period in milliseconds — one full loop across every track.
-   */
-  periodMs: number;
-  /**
-   * Whether the animation loops (true) or plays once and holds the last pose.
-   */
-  looping: boolean;
-  /**
-   * Whether the animation plays continuously by default (a decorative idle) or is
-   * a named playable a game triggers.
-   */
-  autoPlay: boolean;
-  /**
-   * The joints the animation is **required** to drive. Present on both the
-   * declaration and the produced animation.
-   */
-  joints: Array<string>;
-  /**
-   * The authored F-curve tracks, one per driven joint. Empty for a pure required
-   * declaration; filled on the produced rig.
-   */
-  tracks?: Array<AnimationTrackSpec>;
-};
-
-/**
- * One track of an [`AnimationSpec`]: the F-curve keyframes that drive a single
- * joint over the animation's timeline.
- */
-export type AnimationTrackSpec = {
-  /**
-   * The joint this track drives (a declared [`JointSpec::name`]).
-   */
-  joint: string;
-  /**
-   * The keyframes, in time order, sampled over the animation's period.
-   */
-  keyframes: Array<KeyframeSpec>;
 };
 
 /**
@@ -1480,9 +1471,15 @@ export type PerformanceCaseResult = {
    *
    * Recorded so [browser playback](crate::validation) can *prove* what it is
    * drawing: playback loads the run's **own** engine module and steps it, and at
-   * each scheduled snapshot tick can compare the module's checksum against the one
-   * recorded here — a cheap assertion that the wasm it is animating is the engine
-   * the run graded, not a stand-in.
+   * each graded tick inside the played window it compares the module's checksum
+   * against the one recorded here, warning when they differ — a cheap assertion
+   * that the wasm it is animating is the engine the run graded, not a stand-in.
+   *
+   * The checksums are worth comparing against because the grader *derived* them
+   * from state rather than accepting them as reported: the host re-serializes each
+   * returned snapshot to canonical bytes and rejects a checksum that is not its
+   * own state's. A run recorded before that gate existed carries checksums that
+   * were taken on trust.
    *
    * `#[serde(default)]` because run records written before this field existed
    * must still load.
@@ -1606,7 +1603,7 @@ export type ControllerRef = {
 /**
  * One match's result, summarized so a tournament list can show the outcome
  * without loading (and replaying) the match. Serializes `camelCase` to mirror the
- * `@test-cabinet/run-record` TypeScript contract.
+ * `@clockwyrks/run-record` TypeScript contract.
  */
 export type MatchSummary = {
   /**
@@ -1843,6 +1840,447 @@ export type RunValidation = {
 };
 
 /**
+ * What one toolchain command did.
+ *
+ * [`ran`](Self::ran) distinguishes *the command exited non-zero* from *the command
+ * was never started* — a declared command whose prerequisite install failed did not
+ * fail the check, it never got the chance, and reporting that as a failure would be
+ * a fabricated verdict. Only a command that ran and exited non-zero can gate.
+ */
+export type ToolchainCommandResult = {
+  /**
+   * The command as the manifest declared it, run verbatim through `sh -c`.
+   */
+  command: string;
+  /**
+   * Whether the command was started at all. `false` when a prerequisite step
+   * failed, when no shell could be spawned, or when the stage ran out of time.
+   */
+  ran: boolean;
+  /**
+   * The process exit status, or `None` when the command never ran (or was killed
+   * by a signal, which leaves no code).
+   */
+  exitCode?: number;
+  /**
+   * Whether the command ran and exited zero — and, for the [verified
+   * install](crate::install), left every package the lockfile declares for the
+   * host on disk.
+   */
+  succeeded: boolean;
+  /**
+   * A bounded excerpt of the command's combined output, capped at
+   * [`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.
+   */
+  output: string;
+  /**
+   * Whether [`output`](Self::output) is an excerpt rather than the whole of what
+   * the command printed.
+   */
+  truncated: boolean;
+  /**
+   * Why the command did not run, when it did not; or, for an install that ran
+   * and exited zero but still did not succeed, the lockfile packages it left
+   * uninstalled. `None` for any other command that ran, whatever it exited with.
+   */
+  detail?: string;
+  /**
+   * How many times the command was run before this result was final. Present on
+   * the [verified install](crate::install), which is retried; absent on every
+   * command that is run once.
+   */
+  attempts?: number;
+};
+
+/**
+ * One istanbul coverage metric: how many of a thing there are and how many the tests
+ * reached.
+ *
+ * [`covered`](Self::covered) and [`total`](Self::total) are the authority and
+ * [`pct`](Self::pct) is what istanbul itself printed, carried so a stored figure and
+ * the report it came from cannot disagree by a rounding rule. `pct` is an `Option`
+ * because istanbul does not always emit a number: a metric with a zero total is
+ * reported as the STRING `"Unknown"`, which is an absence, not a zero. A consumer
+ * that wants a percentage for a metric whose `pct` is `None` derives it from
+ * `covered`/`total`, or renders nothing when `total` is zero.
+ */
+export type CoverageMetric = {
+  /**
+   * How many of this thing the tests reached.
+   */
+  covered: number;
+  /**
+   * How many of this thing there are in the measured source.
+   */
+  total: number;
+  /**
+   * The percentage istanbul reported, when it reported one.
+   */
+  pct?: number;
+};
+
+/**
+ * The four istanbul metrics, for one file or for the whole measured source.
+ *
+ * All four are carried rather than one headline percentage, because branch and
+ * function coverage answer questions line coverage cannot: a suite that calls every
+ * function once and takes no `else` reads as well-covered on lines alone. Istanbul's
+ * `branchesTrue` extra is deliberately not carried — it is a diagnostic of
+ * istanbul's own branch bookkeeping, not a figure about the code.
+ */
+export type CoverageMetrics = {
+  /**
+   * Executable lines.
+   */
+  lines: CoverageMetric;
+  /**
+   * Statements, which a single line may hold several of.
+   */
+  statements: CoverageMetric;
+  /**
+   * Function declarations, including methods and arrow functions.
+   */
+  functions: CoverageMetric;
+  /**
+   * Branch arms: each side of an `if`, a ternary, a logical operator, a default
+   * parameter and a `switch` case.
+   */
+  branches: CoverageMetric;
+};
+
+/**
+ * One measured source file's coverage.
+ */
+export type CoverageFile = {
+  /**
+   * The file's path relative to the implementation's repository root, forward
+   * slashed. Istanbul keys its report by ABSOLUTE host path; storing that would
+   * leak the host's filesystem layout into a published record and would not join
+   * to the static analysis, whose `CodeFileEntry.path` is repo-relative. The
+   * relativisation happens once, when the report is read.
+   */
+  path: string;
+  /**
+   * Executable lines.
+   */
+  lines: CoverageMetric;
+  /**
+   * Statements, which a single line may hold several of.
+   */
+  statements: CoverageMetric;
+  /**
+   * Function declarations, including methods and arrow functions.
+   */
+  functions: CoverageMetric;
+  /**
+   * Branch arms: each side of an `if`, a ternary, a logical operator, a default
+   * parameter and a `switch` case.
+   */
+  branches: CoverageMetric;
+};
+
+/**
+ * What the coverage reporter measured, read from
+ * [`TOOLCHAIN_COVERAGE_SUMMARY_PATH`].
+ *
+ * The presence of this whole block is the signal that coverage was reported at all.
+ * A case whose config writes no summary file, a command that never ran, and a runner
+ * that produced an unreadable file all leave it absent — never present with zeroes
+ * in it.
+ */
+export type ToolchainCoverage = {
+  /**
+   * The `total` row: every measured file rolled up.
+   */
+  totals: CoverageMetrics;
+  /**
+   * Per-file rows, sorted by path, capped at [`TOOLCHAIN_COVERAGE_FILE_LIMIT`].
+   */
+  files: Array<CoverageFile>;
+  /**
+   * How many files the report actually measured, before the cap.
+   */
+  filesMeasured: number;
+  /**
+   * Whether [`files`](Self::files) was cut short by the cap.
+   */
+  filesTruncated: boolean;
+};
+
+/**
+ * One test file the runner reported on.
+ */
+export type ToolchainTestFile = {
+  /**
+   * The file's path relative to the implementation's repository root, forward
+   * slashed. The reporter names it absolutely, for the same reason and with the
+   * same fix as [`CoverageFile::path`].
+   */
+  path: string;
+  /**
+   * Tests in this file that passed.
+   */
+  passed: number;
+  /**
+   * Tests in this file that failed.
+   */
+  failed: number;
+  /**
+   * Tests in this file that were skipped, pending or todo — neither passed nor
+   * failed, and counted separately so a suite that skipped half of itself cannot
+   * read as a suite that passed all of itself.
+   */
+  skipped: number;
+  /**
+   * The file-level message, when the file failed to load and so ran no tests at
+   * all. Stack frames stripped and bounded, like every other message here.
+   */
+  message?: string;
+};
+
+/**
+ * One failing test, named and explained.
+ */
+export type ToolchainTestFailure = {
+  /**
+   * The test file's repo-relative path.
+   */
+  file: string;
+  /**
+   * The test's full name — its `describe` chain and its own title, as the reporter
+   * joined them.
+   */
+  name: string;
+  /**
+   * Why it failed: the reporter's failure messages joined by a blank line, with
+   * every stack frame dropped and the result capped at
+   * [`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`] bytes. Frames carry host paths and line
+   * numbers that mean nothing to a reader of a published record.
+   */
+  message?: string;
+};
+
+/**
+ * What the runner decided about one test.
+ *
+ * The three states the reporter's own statuses collapse to. `skipped`, `pending` and
+ * `todo` are one state seen from three spellings — a test the runner declined to
+ * decide — and they are held together here exactly as [`ToolchainTestFile::skipped`]
+ * counts them together.
+ */
+export type ToolchainTestStatus = "passed" | "failed" | "skipped";
+
+/**
+ * One test the runner reported, named and timed.
+ *
+ * The per-file rows say how many tests a file passed and failed; these say which
+ * tests those were. Counts and the first ten failures cannot show a reader the suite
+ * itself — which tests a build wrote, which of them it skipped, and which one took a
+ * second and a half.
+ */
+export type ToolchainTest = {
+  /**
+   * The test file's repo-relative path, forward slashed: the
+   * [`path`](ToolchainTestFile::path) of the row this test is counted in.
+   */
+  file: string;
+  /**
+   * The test's full name — its `describe` chain and its own title, as the reporter
+   * joined them; its bare title when it has no chain.
+   */
+  name: string;
+  /**
+   * What the runner decided about it.
+   */
+  status: ToolchainTestStatus;
+  /**
+   * How long it took, in milliseconds, when the runner timed it. Absent when it
+   * reported no duration, which is the ordinary case for a test that never ran:
+   * absence is *not timed*, never zero.
+   */
+  durationMs?: number;
+};
+
+/**
+ * What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].
+ *
+ * Present only when that file was written and parsed. A suite that ran and found no
+ * tests reports zeroes here — that is a figure the runner actually produced, and it
+ * is exactly the signal that a build shipped no tests. The difference between "no
+ * tests" and "not reported" is the difference between this block being present with
+ * zeroes and being absent.
+ */
+export type ToolchainTests = {
+  /**
+   * Every test the runner ran, in every file.
+   */
+  total: number;
+  /**
+   * How many of them passed.
+   */
+  passed: number;
+  /**
+   * How many of them failed.
+   */
+  failed: number;
+  /**
+   * Skipped, pending and todo together.
+   */
+  skipped: number;
+  /**
+   * Test FILES the runner loaded.
+   */
+  filesRun: number;
+  /**
+   * How many of those files had a failure in them, counting a file that failed to
+   * load at all as one.
+   */
+  filesFailed: number;
+  /**
+   * Whether the runner called the whole invocation a success.
+   */
+  succeeded: boolean;
+  /**
+   * Per-file rows, sorted by path, capped at [`TOOLCHAIN_TEST_FILE_LIMIT`].
+   */
+  files: Array<ToolchainTestFile>;
+  /**
+   * Whether [`files`](Self::files) was cut short by the cap.
+   */
+  filesTruncated: boolean;
+  /**
+   * The first [`TOOLCHAIN_TEST_FAILURE_LIMIT`] failures, in the reporter's own
+   * order, so the list reads as "what broke" rather than an arbitrary sample.
+   */
+  failures: Array<ToolchainTestFailure>;
+  /**
+   * Whether [`failures`](Self::failures) was cut short by the cap.
+   * [`failed`](Self::failed) is always the true count regardless.
+   */
+  failuresTruncated: boolean;
+  /**
+   * The first [`TOOLCHAIN_TEST_ENTRY_LIMIT`] tests the runner reported, in its own
+   * order: file by file as the report lists them and, within a file, the order they
+   * ran in. A prefix of that order rather than a sample of it, so two reads of one
+   * report retain the same entries. The order is the reporter's rather than the
+   * path sort [`files`](Self::files) is in, because a suite reads as the runner ran
+   * it.
+   */
+  tests: Array<ToolchainTest>;
+  /**
+   * Whether [`tests`](Self::tests) was cut short by the cap.
+   * [`total`](Self::total) is always the true count regardless.
+   */
+  testsTruncated: boolean;
+};
+
+/**
+ * The optional `test` command's result, plus the figures its REPORT FILES carried.
+ *
+ * Nothing here is read from what the command printed. The case's build vitest config
+ * writes a JSON test report and an istanbul coverage summary into `coverage/`, and
+ * these two blocks are those files, parsed and bounded. A figure that no longer
+ * moves when a reporter changes its terminal layout is a figure that can be compared
+ * across runs; a scraped one is not.
+ *
+ * Both blocks are `Option` and **absence means not reported, never zero**. A case
+ * whose config writes no report files — every case version predating this contract,
+ * and any case not on the v0.7.0 shape — leaves both absent, and every consumer is
+ * required to render nothing at all rather than an empty widget. A zero inside a
+ * present block is only ever a zero the runner actually reported.
+ */
+export type ToolchainTestRun = {
+  /**
+   * The command, its exit status and its bounded output.
+   */
+  result: ToolchainCommandResult;
+  /**
+   * What the runner's JSON report said, when it wrote one.
+   */
+  tests?: ToolchainTests;
+  /**
+   * What the coverage summary said, when one was written.
+   */
+  coverage?: ToolchainCoverage;
+};
+
+/**
+ * The build smoke check: does the site the build produced actually boot?
+ *
+ * Distinct from — and weaker than — validation's load check, which decides review
+ * points. This one answers a single question at the moment the toolchain ran: the
+ * built site was served, opened in headless Chromium, and either painted a first
+ * frame with a clean console or it did not.
+ */
+export type ToolchainSmokeResult = {
+  /**
+   * Whether the check could be performed at all: the build produced an output
+   * directory and a browser was available to open it. `false` degrades — a host
+   * with no Node, Playwright or Chromium reports *not checked*, never *failed*.
+   */
+  ran: boolean;
+  /**
+   * Whether the page loaded and its scripts got as far as a first animation
+   * frame.
+   */
+  booted: boolean;
+  /**
+   * Whether that first frame drew anything — a canvas with more than one distinct
+   * pixel, or a laid-out DOM.
+   */
+  painted: boolean;
+  /**
+   * Console errors and uncaught page errors observed while the page booted, each
+   * truncated to a readable length and capped in number. Empty is the clean case.
+   */
+  consoleErrors?: Array<string>;
+  /**
+   * Why the check could not run, or what went wrong while it did.
+   */
+  detail?: string;
+};
+
+/**
+ * Everything the [toolchain stage](crate::toolchain_stage) recorded for a run,
+ * destined for [`RunRecord::toolchain`](crate::run_record::RunRecord::toolchain).
+ *
+ * Absent from a run whose case declares no `[toolchain]` table, and from a run
+ * whose tree never reached the host — absence means *not checked*, which the
+ * record's `Option` is what encodes.
+ */
+export type ToolchainSummary = {
+  /**
+   * The dependency install the stage ran before the commands, so that each
+   * command had the dependencies it needs. Reported in its own right because a
+   * failed install is why every command below it reports `ran: false`.
+   */
+  install: ToolchainCommandResult;
+  /**
+   * The gating typecheck. Always present when the case declares a toolchain,
+   * even when it never ran — *why* it did not run is the whole point of
+   * [`ToolchainCommandResult::ran`].
+   */
+  typecheck: ToolchainCommandResult;
+  /**
+   * The optional lint command's result, when the case declared one.
+   */
+  lint?: ToolchainCommandResult;
+  /**
+   * The optional format check's result, when the case declared one.
+   */
+  format?: ToolchainCommandResult;
+  /**
+   * The optional test command's result and figures, when the case declared one.
+   */
+  test?: ToolchainTestRun;
+  /**
+   * The build the smoke check served, and the check itself. `None` when the stage
+   * did not get as far as building.
+   */
+  smoke?: ToolchainSmokeResult;
+};
+
+/**
  * Links to a run's published outputs.
  */
 export type RunLinks = {
@@ -1896,6 +2334,57 @@ export type PriorGameJamEntry = {
    * The gameplay README the prior run produced.
    */
   readme: string;
+};
+
+/**
+ * One entry of a [showcase](RunShowcase)'s media carousel.
+ */
+export type ShowcaseMedia = {
+  /**
+   * The media file's name in the run's `showcase/` directory (a plain file name,
+   * no subdirectories), which is also its name under the run's served
+   * `/runs/<id>/showcase/<file>` route.
+   */
+  file: string;
+  /**
+   * The model's short caption for this entry.
+   */
+  name: string;
+  /**
+   * The kind of media, inferred from the file's extension by the same rule as a
+   * declared proof ([`MediaKind::from_path`]): `.png` an image, `.json.gz` a
+   * draw-command replay, `.webm` a video.
+   */
+  kind: MediaKind;
+};
+
+/**
+ * A run's showcase: the model's own presentation of the game it built, captured
+ * onto the record from the produced tree's `showcase/` directory (see
+ * `docs/showcase.md`). The description is `showcase/showcase.md`; the carousel is
+ * `showcase/showcase.toml`'s `[[media]]` tables, in their declared order.
+ *
+ * The media *bytes* do not ride the record — they are uploaded from the produced
+ * tree and served per run at `/runs/<id>/showcase/<file>` alongside the run's
+ * proof, asset, and validation media; this block carries only the description
+ * text and the carousel's file names, captions, and kinds.
+ */
+export type RunShowcase = {
+  /**
+   * The player-facing markdown description, in the style of a store page. It may
+   * reference images beside it in `showcase/` by bare relative path
+   * (`![Title](title.png)`), which a renderer resolves against the run's served
+   * showcase files. Capped at capture; a longer description is truncated on a
+   * char boundary with a trailing marker.
+   */
+  description: string;
+  /**
+   * The media carousel, in the order the model declared it — carousel order is
+   * presentation order. Capped at capture; entries whose files were missing or
+   * oversized were dropped there, so every entry named here was present and
+   * within bounds when the record was assembled.
+   */
+  media: Array<ShowcaseMedia>;
 };
 
 /**
@@ -1961,6 +2450,18 @@ export type RunRecord = {
    */
   gameJamReadme?: string | null;
   /**
+   * How many times each tool the harness's agent invoked was called over the
+   * run, keyed by lowercased raw tool name — **including** tools recognized and
+   * consumed without emitting an event (the todo tools). Lifted from
+   * [`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so
+   * a harness comparison can diagnose tool-call behavior (a re-reading or
+   * over-shelling harness shows here) that a count derived from the event stream
+   * alone would miss. Defaulted and omitted when
+   * empty so records written before the field existed still deserialize, and a
+   * gg run — whose per-tool detail comes from its own telemetry — carries none.
+   */
+  toolCalls?: { [key in string]: number };
+  /**
    * The earlier entries this **game-jam** run was seeded with and briefed to build
    * something distinct from: every prior run of the same jam by the same model whose
    * gameplay README was written into the run's `previous-entries/` folder, oldest
@@ -1976,4 +2477,89 @@ export type RunRecord = {
    * empty so records written before the field existed still deserialize.
    */
   gameJamPriorEntries?: Array<PriorGameJamEntry>;
+  /**
+   * The commit hash of the run's **seed** commit — the single commit
+   * [`RepoSeeder::seed`](crate::execution::RepoSeeder::seed) makes after laying
+   * down the specs, assets, and rendered reference images, before the container
+   * ever starts. Everything reachable from it is scaffolding the run was given;
+   * everything else in the produced tree is the model's own work.
+   *
+   * Recorded because it is the only *exact* answer to "which files did the model
+   * write?", and it is computed host-side where nothing the model does can affect
+   * it. The obvious substitute — treat the produced tree's root commit as the seed
+   * — fails in the worst direction: a model that amends, squashes, rebases, or
+   * re-runs `git init` folds its own work into the root commit, so the seeded set
+   * swallows the authored files and the run reports near-zero authored code
+   * *stamped as an exact measurement*. See
+   * [code analysis](https://docs.testcabinet.ai/gg/analysis/code-analysis/) for the
+   * basis ladder that falls back when this field is absent.
+   *
+   * Distinct from, and authoritative over, a gg session record's `baselineCommit`: that is
+   * gg's own in-container observation of the same commit, and a mismatch between
+   * them is diagnostic rather than redundant.
+   *
+   * Defaulted and omitted when absent so records written before the field existed
+   * still deserialize, and a run that failed before its workspace was seeded — which
+   * has no seed commit to name — serializes without the key rather than with an
+   * empty string that would read as a real hash.
+   */
+  seedCommit?: string;
+  /**
+   * The **bounded** tier of the run's [code analysis](crate::code_analysis): a
+   * deterministic, execute-nothing static read of the code the model wrote,
+   * computed on the host at the [post-run seam](crate::post_run) — after the tree
+   * is collected and **before** validation rewrites it.
+   *
+   * Roughly ninety-five scalars, every leaf a number, a boolean or a small enum, so
+   * the whole block flattens into the query language's `code.*` namespace and is
+   * directly aggregable. The unbounded tier — every file, symbol, import edge, cycle
+   * and clone group — is the run tree's
+   * [`code-analysis.json.gz`](crate::code_analysis::CODE_ANALYSIS_TREE_ARTIFACT)
+   * artifact instead, because a record is deserialized on every run listing.
+   *
+   * **Nothing in here influences the run's score or verdict.** A run is judged on
+   * what it built, never on what a metric said about it; the polarity a metric
+   * definition carries orients a sort and nothing else.
+   *
+   * Absent for a run whose host wired no analyzer, for a run analysed by a build
+   * that predates the analyzer, and for a run whose tree could not be read at all.
+   * Defaulted and omitted when absent so records written before the field existed
+   * still deserialize, and so a run that carries no analysis is not confused with
+   * one that measured an empty tree — the distinction that
+   * [`CodeAuthoredBasis`](crate::code_analysis::CodeAuthoredBasis) exists to keep
+   * honest.
+   */
+  codeAnalysis?: CodeAnalysisSummary;
+  /**
+   * What the case's [`[toolchain]`](crate::toolchain) commands did when they were
+   * run over the produced implementation at the
+   * [post-run seam](crate::post_run), together with the build smoke check.
+   *
+   * **This is the one analysis block that can influence a run's rating**, and it
+   * does so through exactly one field: a `typecheck` that ran and exited non-zero
+   * [gates](crate::toolchain::ToolchainSummary::gates) the run, which rates it
+   * `broken` and scores it zero, because code that does not compile is not
+   * reviewable. The lint, format and test results are recorded and gate nothing.
+   * The gate is applied where the aggregate rating and score are computed
+   * ([`crate::review::gated_rating`]), never by rewriting a reviewer's marks.
+   *
+   * Absent for a run whose case declares no `[toolchain]` table, for a canceled
+   * run, for a run whose tree never reached the host, and for every record written
+   * before the field existed. Absence is *not checked*, and it never gates — the
+   * distinction the `Option` exists to keep.
+   */
+  toolchain?: ToolchainSummary;
+  /**
+   * The run's showcase: the model's own presentation of the game it built — a
+   * player-facing description and a short, ordered media carousel — captured
+   * from the produced tree's `showcase/` directory at record assembly (see
+   * `docs/showcase.md`). The Play page renders it around the playable build.
+   *
+   * Absent for a run whose tree carried no parseable showcase and for every
+   * record written before the field existed; a showcase problem never fails a
+   * run and never degrades its status, so absence says nothing about the run
+   * beyond "there is nothing to show". Defaulted and omitted when absent so
+   * older records still deserialize.
+   */
+  showcase?: RunShowcase;
 };

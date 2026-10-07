@@ -35,14 +35,14 @@ The **same slime** through one hop, its shape changing frame to frame. The class
 squash-and-stretch arc — flatten on the ground, elongate through the air, round off
 at the top:
 
-| Frame | Phase | Shape |
-| --- | --- | --- |
-| 0 | **rest** — squashed on the ground | wide and flat, sitting low, gathered for the jump |
-| 1 | **launch** — springing up | stretched **tall**, narrowed, pushing off the ground |
-| 2 | **rising** | rounding out, still moving up, off the ground |
-| 3 | **apex** | a rounded blob at the top of the arc, momentarily still |
-| 4 | **falling** — dropping back | stretched **tall** again as it plunges toward the ground |
-| 5 | **landing** — impact | squashed **wide** and flat as it hits, about to settle |
+| Frame | Phase                             | Shape                                                    |
+| ----- | --------------------------------- | -------------------------------------------------------- |
+| 0     | **rest** — squashed on the ground | wide and flat, sitting low, gathered for the jump        |
+| 1     | **launch** — springing up         | stretched **tall**, narrowed, pushing off the ground     |
+| 2     | **rising**                        | rounding out, still moving up, off the ground            |
+| 3     | **apex**                          | a rounded blob at the top of the arc, momentarily still  |
+| 4     | **falling** — dropping back       | stretched **tall** again as it plunges toward the ground |
+| 5     | **landing** — impact              | squashed **wide** and flat as it hits, about to settle   |
 
 Make it read as **one cute slime**:
 
@@ -65,13 +65,13 @@ Make it read as **one cute slime**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Slime body (green) | `#57c04a` |
-| Highlight (pale sheen) | `#b6ec8f` |
+| Role                          | Hex       |
+| ----------------------------- | --------- |
+| Slime body (green)            | `#57c04a` |
+| Highlight (pale sheen)        | `#b6ec8f` |
 | Shadow (deep-green underside) | `#2f7d34` |
-| Eyes (dark) | `#14210f` |
-| Eye shine | `#ffffff` |
+| Eyes (dark)                   | `#14210f` |
+| Eye shine                     | `#ffffff` |
 
 The body is the green `#57c04a`, lit by the pale `#b6ec8f` sheen near the top and
 grounded by the `#2f7d34` shadow underneath; the two `#14210f` eyes each carry a

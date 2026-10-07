@@ -1,0 +1,10 @@
+{
+  "sample_rate": 44100,
+  "channels": "stereo",
+  "max_duration_ms": 2600,
+  "seed": 4711,
+  "sample_pack": "combat-core@0.1.0",
+  "actions": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/audio/collapse/collapse.actions.json",
+  "preview": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/audio/collapse/preview.png",
+  "wav": "/tmp/claude-1000/-workspaces-the-test-cabinet/8ee961fe-e147-4698-b279-7f4b9a2db42a/scratchpad/assets/audio/collapse/collapse.wav"
+}

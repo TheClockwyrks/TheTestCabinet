@@ -1,0 +1,20 @@
+Context Usage:
+- Overall: {{overall}}
+{{#each categories}}
+- {{this.label}}: {{this.percent}}
+{{#if this.topFiles}}
+- Top {{this.label}}:
+{{#each this.topFiles}}
+  - `{{this.path}}`: {{this.percent}}
+{{/each}}
+{{/if}}
+{{/each}}
+{{#if canEvict}}
+Use `{{evictFileView}}` to drop file views you no longer need; you can always read the file again.
+{{/if}}
+{{#if canCloseViews}}
+Use `{{closeView}}` to close views you no longer need, naming a file view's path or a text view's label. A file view you can always open again; a text view holds the only copy of what you composed, so write anything you still need to a file before closing it.
+{{/if}}
+{{#if canArchive}}
+Use `{{archiveThread}}` to move whole turns into the searchable archive, naming them by the turn numbers on your results.
+{{/if}}

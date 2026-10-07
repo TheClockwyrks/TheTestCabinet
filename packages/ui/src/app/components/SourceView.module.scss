@@ -1,0 +1,85 @@
+@use "../styles/tokens" as t;
+
+// Inline source text (see SourceView.tsx): no background, border, or padding of
+// its own — the hosting pane frames it — just the console's monospace at prose
+// size, scrolling sideways for long lines.
+.source {
+  margin: 0;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1.6;
+  color: t.$color-text;
+  overflow-x: auto;
+
+  code {
+    font-family: inherit;
+  }
+}
+
+// The token palette. Hues are drawn from the same terminal-legible set the live
+// event feed uses on this deep-black background (see theme.scss), assigned by
+// syntactic role rather than by event type.
+.source :global {
+  .hljs-comment,
+  .hljs-quote {
+    color: t.$color-text-muted;
+    font-style: italic;
+  }
+
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-doctag,
+  .hljs-meta {
+    color: #a78bfa; // purple
+  }
+
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition {
+    color: #4ade80; // green
+  }
+
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-link {
+    color: #fbbf24; // amber
+  }
+
+  .hljs-title,
+  .hljs-section,
+  .hljs-name {
+    color: #22d3ee; // cyan
+  }
+
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-property,
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-id,
+  .hljs-selector-pseudo {
+    color: #60a5fa; // blue
+  }
+
+  .hljs-built_in,
+  .hljs-type,
+  .hljs-class {
+    color: #e879f9; // magenta
+  }
+
+  .hljs-deletion {
+    color: t.$color-negative;
+  }
+
+  .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .hljs-strong {
+    font-weight: 700;
+  }
+}

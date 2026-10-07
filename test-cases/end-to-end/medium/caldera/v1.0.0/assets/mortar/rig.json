@@ -2,38 +2,22 @@
   "parts": [
     {
       "name": "base",
-      "pivot": [
-        16,
-        0,
-        16
-      ]
+      "pivot": [16, 0, 16]
     },
     {
       "name": "yoke",
       "parent": "base",
-      "pivot": [
-        16,
-        13,
-        14
-      ]
+      "pivot": [16, 13, 14]
     },
     {
       "name": "tub",
       "parent": "yoke",
-      "pivot": [
-        16,
-        13,
-        14
-      ]
+      "pivot": [16, 13, 14]
     },
     {
       "name": "screw",
       "parent": "base",
-      "pivot": [
-        16,
-        9,
-        8
-      ]
+      "pivot": [16, 9, 8]
     }
   ],
   "joints": [
@@ -42,11 +26,7 @@
       "part": "yoke",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        16,
-        13,
-        14
-      ],
+      "pivot": [16, 13, 14],
       "min": -0.3,
       "max": 0.5,
       "rest": 0.0,
@@ -57,11 +37,7 @@
       "part": "tub",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        16,
-        13,
-        14
-      ],
+      "pivot": [16, 13, 14],
       "min": -4.2,
       "max": 0.8,
       "rest": 0.0,
@@ -72,11 +48,7 @@
       "part": "screw",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        16,
-        9,
-        8
-      ],
+      "pivot": [16, 9, 8],
       "min": -2.6,
       "max": 0.8,
       "rest": 0.0,

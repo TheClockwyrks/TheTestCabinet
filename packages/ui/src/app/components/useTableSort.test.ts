@@ -1,6 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ariaSortFor, sortRows, useTableSort, type SortState } from "./useTableSort";
+import {
+  ariaSortFor,
+  sortRows,
+  useTableSort,
+  type SortState,
+} from "./useTableSort";
 
 interface Row {
   id: string;
@@ -66,11 +71,7 @@ describe("sortRows", () => {
       { id: "b", n: 1 },
       { id: "c", n: 1 },
     ];
-    const out = sortRows(
-      ties,
-      { columnId: "n", direction: "desc" },
-      keyFor,
-    );
+    const out = sortRows(ties, { columnId: "n", direction: "desc" }, keyFor);
     expect(out.map((r) => r.id)).toEqual(["a", "b", "c"]);
   });
 

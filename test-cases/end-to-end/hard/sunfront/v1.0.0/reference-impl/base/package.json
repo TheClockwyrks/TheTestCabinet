@@ -11,12 +11,12 @@
     "test": "node test/run.mjs && node test/effects.run.mjs"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime",
-    "@test-cabinet/voxel-runtime": "file:vendor/voxel-runtime",
-    "three": "~0.182.0"
+    "@clockwyrks/particle-runtime": "file:vendor/particle-runtime",
+    "@clockwyrks/voxel-runtime": "file:vendor/voxel-runtime",
+    "three": "~0.185.0"
   },
   "devDependencies": {
-    "@types/three": "~0.182.0",
+    "@types/three": "~0.185.0",
     "typescript": "5.6.3",
     "vite": "5.4.11"
   }

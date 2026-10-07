@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
 use super::{
-    ASSET_QUALITY_PREAMBLE, FULL_STACK_PREAMBLE, GAME_JAM_DIVIDER, GAME_JAM_PREAMBLE,
-    GAME_JAM_README_DIRECTIVE, render_prompt, render_spec,
+    ASSET_QUALITY_PREAMBLE, FULL_STACK_2D_PREAMBLE, FULL_STACK_3D_PREAMBLE, GAME_JAM_DIVIDER,
+    GAME_JAM_PREAMBLE, GAME_JAM_README_DIRECTIVE, render_prompt, render_spec,
 };
+use crate::engine::{EngineCatalog, EngineSelection, NONE_SLUG, ResolvedEngine};
 use crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR;
 use crate::run_record::PriorGameJamEntry;
-use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
+use crate::test_case::{
+    AssetDimension, BuildCommands, SpecFile, TestCaseVersion, TestType, Variant,
+};
 
 /// A prior game-jam entry with the given README, for exercising the distinctness
 /// section. The finished-at stamp is fixed so tests need not thread a clock.
@@ -29,10 +32,12 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
 /// that decides whether the asset-generation quality preamble is prepended.
 fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Carom".to_string(),
         difficulty: "easy".to_string(),
         tags: vec![],
@@ -57,6 +62,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         r#match: None,
         replay: None,
         asset_kind: crate::test_case::AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -64,15 +70,17 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),
             kind: Default::default(),
         }],
-        common_workspace: vec![],
+        common_workspace: Default::default(),
         init: None,
         asset_paths: vec![],
         packages: Vec::new(),
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: vec![],
         common_references: vec![],
         common_proofs: vec![],
@@ -81,6 +89,17 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         domains: vec![],
         cases: vec![],
         errata: vec![],
+    }
+}
+
+/// A full-stack version at an explicit [`AssetDimension`] — the discriminator
+/// that decides which of the two standing full-stack directives is prepended,
+/// because it is the same field that decides which asset-generation binaries the
+/// run image puts on the model's `PATH`.
+fn full_stack_version(prompt_path: PathBuf, asset_dimension: AssetDimension) -> TestCaseVersion {
+    TestCaseVersion {
+        asset_dimension,
+        ..version_with_prompt_typed(prompt_path, TestType::FullStack)
     }
 }
 
@@ -100,7 +119,8 @@ fn frenzy() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
+        showcase: None,
     }
 }
 
@@ -116,7 +136,7 @@ fn renders_workspace_variant_and_spec_paths() {
     .expect("write prompt");
 
     let version = version_with_prompt(prompt);
-    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     // The workspace and variant come from The Test Cabinet, not the template.
     assert!(out.contains("Build in /work (Frenzy)."));
@@ -133,7 +153,7 @@ fn asset_generation_prompts_open_with_the_quality_preamble() {
     std::fs::write(&prompt, "Sculpt in {{workspace}}.").expect("write prompt");
 
     let version = version_with_prompt_typed(prompt, TestType::AssetGeneration);
-    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     // The shared directive is prepended verbatim, ahead of the case's own text,
     // and the authored template still renders after it.
@@ -145,22 +165,145 @@ fn asset_generation_prompts_open_with_the_quality_preamble() {
 }
 
 #[test]
-fn full_stack_prompts_open_with_the_full_stack_preamble() {
+fn full_stack_2d_prompts_open_with_the_2d_preamble() {
     let dir = tempfile::tempdir().expect("temp dir");
     let prompt = dir.path().join("prompt.hbs");
     std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
 
-    let version = version_with_prompt_typed(prompt, TestType::FullStack);
-    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let version = full_stack_version(prompt, AssetDimension::TwoD);
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     // A full-stack case opens with its own standing directive — not the
     // asset-generation one — and the authored template still renders after it.
     assert!(
-        out.starts_with(FULL_STACK_PREAMBLE),
-        "a full-stack prompt must open with the full-stack preamble",
+        out.starts_with(FULL_STACK_2D_PREAMBLE),
+        "a 2D full-stack prompt must open with the 2D full-stack preamble",
     );
+    // The 2D run image bakes in six binaries and no more, so the directive must
+    // not name the 3D tooling: a model sent looking for `voxel` in a 2D run finds
+    // nothing on its `PATH`.
+    assert!(!out.contains("voxel"));
+    assert!(!out.contains("particle-3d"));
     assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
     assert!(out.contains("Build in /work."));
+}
+
+#[test]
+fn full_stack_3d_prompts_open_with_the_3d_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    let version = full_stack_version(prompt, AssetDimension::ThreeD);
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+    assert!(
+        out.starts_with(FULL_STACK_3D_PREAMBLE),
+        "a 3D full-stack prompt must open with the 3D full-stack preamble",
+    );
+    assert!(!out.starts_with(FULL_STACK_2D_PREAMBLE));
+    // The directive names every binary the 3D run image carries: the three the 3D
+    // image adds, and the six it shares with the 2D one. Naming fewer would point
+    // a case away from tooling its asset contract requires.
+    for binary in [
+        "`draw`",
+        "`draw-sheet`",
+        "`particle-2d`",
+        "`sfx-synth`",
+        "`sfx-sample`",
+        "`music`",
+        "`voxel`",
+        "`voxel-anim`",
+        "`particle-3d`",
+    ] {
+        assert!(
+            out.contains(binary),
+            "the 3D full-stack preamble must name {binary}",
+        );
+    }
+    assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
+    assert!(out.contains("Build in /work."));
+}
+
+#[test]
+fn a_full_stack_case_that_declares_no_dimension_gets_the_2d_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    // `asset_dimension` defaults to 2D, so a case that never declares the key —
+    // which is every full-stack case that only draws sprites and plays sound —
+    // opens with the six-binary directive, matching the image it resolves.
+    let version = full_stack_version(prompt, AssetDimension::default());
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+    assert!(
+        out.starts_with(FULL_STACK_2D_PREAMBLE),
+        "the default dimension must render the 2D full-stack preamble",
+    );
+}
+
+#[test]
+fn non_full_stack_prompts_carry_neither_full_stack_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    // The dimension is a full-stack key, and resolution rejects a manifest that
+    // sets it on any other type. Even handed a version that carries one anyway,
+    // another type renders its own preamble or none at all.
+    for test_type in [
+        TestType::EndToEnd,
+        TestType::AssetGeneration,
+        TestType::GameJam,
+    ] {
+        let version = TestCaseVersion {
+            asset_dimension: AssetDimension::ThreeD,
+            ..version_with_prompt_typed(prompt.clone(), test_type)
+        };
+        let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+        assert!(
+            !out.contains(FULL_STACK_2D_PREAMBLE),
+            "a {test_type:?} prompt must not carry the 2D full-stack preamble",
+        );
+        assert!(
+            !out.contains(FULL_STACK_3D_PREAMBLE),
+            "a {test_type:?} prompt must not carry the 3D full-stack preamble",
+        );
+    }
+}
+
+#[test]
+fn the_two_full_stack_preambles_differ_only_in_their_binary_list() {
+    // The dimension decides which binaries the run image carries, and that is all
+    // it decides. The bar the directive sets — the two jobs, what counts as a
+    // placeholder, the self-containment requirement, and the quality ceiling — is
+    // one standing wording, so a case must not be held to a different standard for
+    // having asked for the heavier image. The binary list sits in the only
+    // parenthetical either directive opens before it, so splitting on that
+    // parenthetical isolates the part allowed to differ.
+    let (opening_2d, rest_2d) = FULL_STACK_2D_PREAMBLE
+        .split_once('(')
+        .expect("the 2D preamble lists its binaries");
+    let (opening_3d, rest_3d) = FULL_STACK_3D_PREAMBLE
+        .split_once('(')
+        .expect("the 3D preamble lists its binaries");
+    assert_eq!(
+        opening_2d, opening_3d,
+        "both full-stack directives must open with the same wording",
+    );
+
+    let (_, closing_2d) = rest_2d
+        .split_once(')')
+        .expect("the 2D binary list is closed");
+    let (_, closing_3d) = rest_3d
+        .split_once(')')
+        .expect("the 3D binary list is closed");
+    assert_eq!(
+        closing_2d, closing_3d,
+        "both full-stack directives must close with the same wording",
+    );
 }
 
 #[test]
@@ -170,7 +313,7 @@ fn game_jam_prompts_open_with_the_preamble_then_a_divider() {
     std::fs::write(&prompt, "# My theme\n\nBuild in {{workspace}}.").expect("write prompt");
 
     let version = version_with_prompt_typed(prompt, TestType::GameJam);
-    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     // A game jam opens with its standing preamble, then a divider fences that
     // general framing off from the jam's own rendered brief.
@@ -212,7 +355,7 @@ fn game_jam_prompt_adds_a_distinctness_section_only_when_prior_entries_exist() {
     // With no prior entries, there is no distinctness section: nothing points the
     // model at the previous-entries folder. (The standing README directive mentions
     // making an entry "distinct", so the folder pointer is the reliable signal.)
-    let none = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let none = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
     assert!(!none.contains(GAME_JAM_PRIOR_ENTRIES_DIR));
 
     // With prior entries, the section appears — after the README directive — and
@@ -221,7 +364,7 @@ fn game_jam_prompt_adds_a_distinctness_section_only_when_prior_entries_exist() {
         prior_entry("# Space Miner\n\nDig for ore."),
         prior_entry("# Tide Pool"),
     ];
-    let out = render_prompt(&version, &frenzy(), &entries).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &entries, None).expect("render prompt");
     assert!(
         out.contains(GAME_JAM_PRIOR_ENTRIES_DIR),
         "the distinctness section must point at the previous-entries folder",
@@ -250,7 +393,8 @@ fn game_jam_distinctness_section_singularizes_a_lone_prior_entry() {
     std::fs::write(&prompt, "# My theme\n\nBuild in {{workspace}}.").expect("write prompt");
     let version = version_with_prompt_typed(prompt, TestType::GameJam);
 
-    let out = render_prompt(&version, &frenzy(), &[prior_entry("# Only one")]).expect("render");
+    let out =
+        render_prompt(&version, &frenzy(), &[prior_entry("# Only one")], None).expect("render");
     assert!(
         out.contains("one earlier entry"),
         "a single prior entry reads in the singular"
@@ -267,7 +411,8 @@ fn non_game_jam_prompts_ignore_prior_entries() {
     // Even if prior entries are somehow supplied, a non-jam type never grows a
     // distinctness section or the README directive — those are game-jam-only.
     let version = version_with_prompt_typed(prompt, TestType::EndToEnd);
-    let out = render_prompt(&version, &frenzy(), &[prior_entry("# Ignored")]).expect("render");
+    let out =
+        render_prompt(&version, &frenzy(), &[prior_entry("# Ignored")], None).expect("render");
     assert_eq!(out, "Build in /work.");
 }
 
@@ -279,7 +424,7 @@ fn non_asset_prompts_have_no_quality_preamble() {
 
     // An end-to-end case renders exactly its template, with nothing prepended.
     let version = version_with_prompt_typed(prompt, TestType::EndToEnd);
-    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     assert_eq!(out, "Build in /work.");
     assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
@@ -303,10 +448,11 @@ fn strict_mode_rejects_unknown_variables() {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
+        showcase: None,
     };
     assert!(
-        render_prompt(&version, &variant, &[]).is_err(),
+        render_prompt(&version, &variant, &[], None).is_err(),
         "an unknown template variable must be a render error",
     );
 }
@@ -314,7 +460,7 @@ fn strict_mode_rejects_unknown_variables() {
 #[test]
 fn missing_prompt_file_is_an_error() {
     let version = version_with_prompt(PathBuf::from("/does/not/exist/prompt.hbs"));
-    assert!(render_prompt(&version, &frenzy(), &[]).is_err());
+    assert!(render_prompt(&version, &frenzy(), &[], None).is_err());
 }
 
 #[test]
@@ -329,7 +475,7 @@ fn render_spec_exposes_the_variant_and_version() {
     .expect("write spec");
 
     let version = version_with_prompt(dir.path().join("prompt.hbs"));
-    let out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+    let out = render_spec(&version, &frenzy(), &spec, None).expect("render spec");
 
     // The version and variant come from The Test Cabinet, not the spec text.
     assert_eq!(
@@ -361,7 +507,7 @@ fn spec_template_branches_on_the_variant_slug() {
 
     let version = version_with_prompt(dir.path().join("prompt.hbs"));
 
-    let frenzy_out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+    let frenzy_out = render_spec(&version, &frenzy(), &spec, None).expect("render spec");
     assert_eq!(
         frenzy_out,
         "Intro line.\n- three balls in play\nOutro line.\n"
@@ -369,7 +515,7 @@ fn spec_template_branches_on_the_variant_slug() {
 
     let mut other = frenzy();
     other.slug = "base".to_string();
-    let base_out = render_spec(&version, &other, &spec).expect("render spec");
+    let base_out = render_spec(&version, &other, &spec, None).expect("render spec");
     assert_eq!(base_out, "Intro line.\n- one ball in play\nOutro line.\n");
 }
 
@@ -401,7 +547,7 @@ fn spec_template_injects_the_voxel_dimensions() {
     .expect("write spec");
 
     let version = voxel_version(dir.path().join("prompt.hbs"), 50, 20, 76);
-    let out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+    let out = render_spec(&version, &frenzy(), &spec, None).expect("render spec");
 
     assert_eq!(out, "50x20x76, x 0-49 y 0-19 z 0-75");
 }
@@ -423,7 +569,7 @@ fn spec_template_uses_the_variant_volume_override() {
         background: "transparent".to_string(),
     });
 
-    let out = render_spec(&version, &half, &spec).expect("render spec");
+    let out = render_spec(&version, &half, &spec, None).expect("render spec");
     assert_eq!(out, "25x10x38");
 }
 
@@ -438,7 +584,7 @@ fn prompt_template_injects_the_voxel_dimensions() {
     .expect("write prompt");
 
     let version = voxel_version(prompt, 40, 30, 80);
-    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     // Asset-generation prompts carry the shared preamble, then the rendered body.
     assert!(out.starts_with(ASSET_QUALITY_PREAMBLE));
@@ -455,7 +601,7 @@ fn render_spec_rejects_unknown_variables() {
 
     let version = version_with_prompt(dir.path().join("prompt.hbs"));
     assert!(
-        render_spec(&version, &frenzy(), &spec).is_err(),
+        render_spec(&version, &frenzy(), &spec, None).is_err(),
         "a spec template referencing an unknown variable must be a render error",
     );
 }
@@ -467,8 +613,174 @@ fn render_spec_missing_file_is_an_error() {
         render_spec(
             &version,
             &frenzy(),
-            &PathBuf::from("/does/not/exist/overview.hbs")
+            &PathBuf::from("/does/not/exist/overview.hbs"),
+            None,
         )
         .is_err()
     );
+}
+
+/// Resolve a built-in engine by slug, for the tests that render with one
+/// selected. Resolution is what a real run does, so these exercise the actual
+/// catalogue manifests rather than a hand-built [`ResolvedEngine`] that could
+/// drift from them.
+fn engine(slug: &str) -> ResolvedEngine {
+    EngineCatalog::new()
+        .resolve(&EngineSelection::new(slug))
+        .expect("built-in engine resolves")
+}
+
+/// A prompt template that prints the whole engine context, so a test can assert
+/// on all three fields at once.
+const ENGINE_PROBE: &str = "{{engine.slug}}|{{engine.name}}|{{engine.docs}}|";
+
+#[test]
+fn prompt_template_renders_the_sentinel_engine_for_an_engineless_run() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, ENGINE_PROBE).expect("write prompt");
+
+    let version = version_with_prompt(prompt);
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+    // The engine field is always present — strict mode would make an absent one a
+    // render error — so a run with no engine gets the sentinel, and `docs` is
+    // empty because nothing was seeded for the build to read.
+    assert_eq!(out, "none|None||");
+}
+
+#[test]
+fn prompt_template_renders_the_selected_engine_and_its_docs_path() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, ENGINE_PROBE).expect("write prompt");
+
+    let version = version_with_prompt(prompt);
+    let out =
+        render_prompt(&version, &frenzy(), &[], Some(&engine("simple-2d"))).expect("render prompt");
+
+    // The docs path is the in-container one, built from the workspace root and the
+    // fixed directory seeding flattens the engine's documentation into — never the
+    // `docs` directory name from inside the package.
+    assert_eq!(out, "simple-2d|Simple 2D|/work/engine|");
+}
+
+#[test]
+fn prompt_template_branches_on_the_engine_slug() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    // The shape a real `prompt.hbs` uses: one template that grows an engine
+    // section only when an engine is selected, guarded by the registered `ne`
+    // helper rather than by the field being absent.
+    std::fs::write(
+        &prompt,
+        "Build in {{workspace}}.\n\
+         {{#if (ne engine.slug \"none\")}}\n\
+         Read the {{engine.name}} docs at {{engine.docs}}.\n\
+         {{/if}}\n",
+    )
+    .expect("write prompt");
+    let version = version_with_prompt(prompt);
+
+    let engineless = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+    assert_eq!(engineless, "Build in /work.\n");
+
+    let with_engine =
+        render_prompt(&version, &frenzy(), &[], Some(&engine("simple-2d"))).expect("render prompt");
+    assert_eq!(
+        with_engine,
+        "Build in /work.\nRead the Simple 2D docs at /work/engine.\n"
+    );
+}
+
+#[test]
+fn spec_template_renders_the_engine_too() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("instrumentation.md.hbs");
+    std::fs::write(&spec, ENGINE_PROBE).expect("write spec");
+
+    let version = version_with_prompt(dir.path().join("prompt.hbs"));
+
+    // A spec sees the engine on the same terms as the prompt in all but one
+    // respect: always present, sentinel when there is none. That is what lets one
+    // authored spec state what the build must implement itself and what the engine
+    // provides.
+    let engineless = render_spec(&version, &frenzy(), &spec, None).expect("render spec");
+    assert_eq!(engineless, "none|None||");
+
+    // The exception is the docs path. A spec is rendered into a file that sits
+    // beside the build, so it is handed the directory relative to the workspace
+    // rather than the in-container path the prompt gets — a spec carries no
+    // absolute path at all.
+    let with_engine =
+        render_spec(&version, &frenzy(), &spec, Some(&engine("simple-2d"))).expect("render spec");
+    assert_eq!(with_engine, "simple-2d|Simple 2D|engine/|");
+}
+
+#[test]
+fn spec_template_branches_on_the_engine_slug() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("balls.md.hbs");
+    std::fs::write(
+        &spec,
+        "Intro line.\n\
+         {{#if (ne engine.slug \"none\")}}\n\
+         - integrate against the delta time the engine hands you\n\
+         {{else}}\n\
+         - integrate at a fixed 120 Hz timestep\n\
+         {{/if}}\n\
+         Outro line.\n",
+    )
+    .expect("write spec");
+    let version = version_with_prompt(dir.path().join("prompt.hbs"));
+
+    let engineless = render_spec(&version, &frenzy(), &spec, None).expect("render spec");
+    assert_eq!(
+        engineless,
+        "Intro line.\n- integrate at a fixed 120 Hz timestep\nOutro line.\n"
+    );
+
+    let with_engine =
+        render_spec(&version, &frenzy(), &spec, Some(&engine("simple-2d"))).expect("render spec");
+    assert_eq!(
+        with_engine,
+        "Intro line.\n- integrate against the delta time the engine hands you\nOutro line.\n"
+    );
+}
+
+#[test]
+fn engineless_context_matches_the_none_engine() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, ENGINE_PROBE).expect("write prompt");
+    let version = version_with_prompt(prompt);
+
+    // Selecting `none` explicitly and selecting nothing at all must be
+    // indistinguishable to a template, which is what lets a case declare `none` in
+    // its `engines` list for readability without changing a single rendered word.
+    // This is also the guard on the hardcoded sentinel name in `prompt.rs`: if
+    // `engines/none/engine.toml` were renamed, these two would diverge.
+    let selected =
+        render_prompt(&version, &frenzy(), &[], Some(&engine(NONE_SLUG))).expect("render prompt");
+    let unselected = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+    assert_eq!(selected, unselected);
+    assert_eq!(selected, "none|None||");
+}
+
+#[test]
+fn an_engine_without_a_docs_directory_renders_an_empty_docs_path() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "[{{engine.docs}}]").expect("write prompt");
+    let version = version_with_prompt(prompt);
+
+    // `docs` tracks what seeding actually wrote, not whether an engine exists: an
+    // engine that ships no documentation tree has nothing seeded, so the path is
+    // blank and a template must guard on `engine.slug` instead.
+    let mut docless = engine("simple-2d");
+    docless.manifest.docs = None;
+
+    let out = render_prompt(&version, &frenzy(), &[], Some(&docless)).expect("render prompt");
+    assert_eq!(out, "[]");
 }

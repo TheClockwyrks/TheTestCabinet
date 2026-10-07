@@ -2,9 +2,197 @@
 
 use std::io::BufWriter;
 
-use super::{Image, decode_png, image_similarity, score, script_verdicts, validation_media_name};
+use super::{
+    Image, ScriptedValidation, decode_png, image_similarity, is_validation_image_name, score,
+    script_verdicts, scripted_validation, validation_media_name,
+};
 use crate::browser::ScriptVerdict;
+use crate::engine::{EngineCatalog, EngineSelection};
+use crate::execution::ArtifactCollection;
 use crate::test_case::MediaKind;
+
+/// The engine `slug` resolves to.
+fn resolved(slug: &str) -> crate::engine::ResolvedEngine {
+    EngineCatalog::default()
+        .resolve(&EngineSelection::new(slug))
+        .unwrap_or_else(|err| panic!("`{slug}` is a built-in engine: {err}"))
+}
+
+/// A case rooted at `root`, used for the scripted-validation selection tests.
+fn version_rooted_at(root: &std::path::Path) -> crate::test_case::TestCaseVersion {
+    let mut version = asset_version();
+    version.root = root.to_path_buf();
+    version
+}
+
+/// Give `version` a validator project for `engine`, as a case shipping one does.
+fn write_validator_project(version: &crate::test_case::TestCaseVersion, engine: &str) {
+    let project = version.root.join("validation").join(engine);
+    std::fs::create_dir_all(&project).expect("validator project directory");
+    std::fs::write(project.join("vitest.config.ts"), b"export default {}\n")
+        .expect("validator project config");
+}
+
+/// A review item whose one point is decided by the validator at `script_rel`.
+fn validated_item(id: &str, script_rel: &str) -> crate::test_case::ReviewItem {
+    crate::test_case::ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
+        id: id.to_string(),
+        title: format!("The {id} point"),
+        text: String::new(),
+        reference: None,
+        proof: None,
+        sequences: Vec::new(),
+        frames: Vec::new(),
+        weight: 1,
+        graded: true,
+        domain: None,
+        sub_items: Vec::new(),
+        scored: true,
+        validation: Some(crate::test_case::ReviewValidation {
+            script: None,
+            script_rel: script_rel.to_string(),
+            engines: Vec::new(),
+            outputs: Vec::new(),
+        }),
+    }
+}
+
+/// A variant carrying nothing of its own, so the case's common items are its whole
+/// checklist.
+fn bare_variant() -> crate::test_case::Variant {
+    crate::test_case::Variant {
+        slug: "base".to_string(),
+        name: "Base".to_string(),
+        description: None,
+        specs: Vec::new(),
+        workspace: None,
+        references: Vec::new(),
+        proofs: Vec::new(),
+        review_items: Vec::new(),
+        domains: Vec::new(),
+        voxel: None,
+        reference_impls: Default::default(),
+        showcase: None,
+    }
+}
+
+#[test]
+fn a_case_shipping_a_validator_project_for_the_run_s_engine_runs_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = version_rooted_at(dir.path());
+    write_validator_project(&version, "simple-2d");
+    let artifacts = ArtifactCollection::new("/runs/impl").built_on(Some(resolved("simple-2d")));
+
+    assert_eq!(
+        scripted_validation(&version, &artifacts),
+        ScriptedValidation::Vitest("simple-2d".to_string()),
+        "the case ships that engine's validator project, so its points are decided in process",
+    );
+}
+
+#[test]
+fn an_engineless_run_of_a_case_shipping_its_project_runs_it_too() {
+    // The engineless project is TypeScript a suite imports exactly as an
+    // engine-backed one is, so what decides the path is the project the case ships
+    // rather than whether the run vendored a runtime. Both spellings of "no engine"
+    // — a run that selected `none`, and a tree that recorded no selection at all —
+    // resolve to the same project.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = version_rooted_at(dir.path());
+    write_validator_project(&version, crate::engine::NONE_SLUG);
+
+    let selected_none =
+        ArtifactCollection::new("/runs/impl").built_on(Some(resolved(crate::engine::NONE_SLUG)));
+    let nothing_recorded = ArtifactCollection::new("/runs/impl");
+
+    assert_eq!(
+        scripted_validation(&version, &selected_none),
+        ScriptedValidation::Vitest(crate::engine::NONE_SLUG.to_string()),
+    );
+    assert_eq!(
+        scripted_validation(&version, &nothing_recorded),
+        ScriptedValidation::Vitest(crate::engine::NONE_SLUG.to_string()),
+    );
+}
+
+#[test]
+fn a_case_shipping_no_project_for_the_run_s_engine_is_driven_in_a_browser() {
+    // Two ways to arrive here: a case that ships no validator project at all (every
+    // case predating them), and one that ships a project for some OTHER engine.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let nothing = version_rooted_at(dir.path());
+    let artifacts = ArtifactCollection::new("/runs/impl").built_on(Some(resolved("simple-2d")));
+    assert_eq!(
+        scripted_validation(&nothing, &artifacts),
+        ScriptedValidation::Browser,
+    );
+
+    let other = tempfile::tempdir().expect("temp dir");
+    let elsewhere = version_rooted_at(other.path());
+    write_validator_project(&elsewhere, crate::engine::NONE_SLUG);
+    assert_eq!(
+        scripted_validation(&elsewhere, &artifacts),
+        ScriptedValidation::Browser,
+        "a project for another engine decides nothing about this run",
+    );
+}
+
+#[test]
+fn a_baseline_is_captured_by_the_same_path_the_run_would_use() {
+    // The reviewer's two panes only mean something if they came from the same
+    // scenario driven the same way, so the baseline capture asks the same question
+    // the per-run capture asks — does the case ship a validator project for this
+    // engine? — and answers it the same way. Here it does, so the reference
+    // implementation has the project run over it rather than being served to a
+    // browser.
+    //
+    // Nothing installs vitest into this scratch reference directory, so the runner
+    // reports every point as not run. That is the outcome under test: it is a
+    // *unit* result, which is what the project path produces, where the browser path
+    // would have returned `None` outright for want of anything to serve.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut version = version_rooted_at(dir.path());
+    version.build = Some(crate::test_case::BuildCommands {
+        install: "npm ci".to_string(),
+        build: "npm run build".to_string(),
+        module: None,
+    });
+    version.instrumentation = Some(crate::test_case::Instrumentation {
+        handle: "__carom".to_string(),
+        tick_hz: None,
+    });
+    version.common_review_items = vec![validated_item(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+    )];
+    write_validator_project(&version, "simple-2d");
+
+    let reference = tempfile::tempdir().expect("a scratch reference implementation");
+    let baseline = tempfile::tempdir().expect("a scratch baseline directory");
+    let units = super::capture_baseline_media(
+        &version,
+        &bare_variant(),
+        "simple-2d",
+        reference.path(),
+        // A build directory that does not exist: the project path never serves it,
+        // and reaching for it would be the browser path taking over.
+        &reference.path().join("dist"),
+        baseline.path(),
+    )
+    .expect("the project path reports per unit rather than declining wholesale");
+
+    assert_eq!(units.len(), 1, "the case's one declared unit is reported");
+    assert!(!units[0].ran, "there was no vitest to run it with");
+    assert_eq!(units[0].outputs_present, 0);
+
+    assert!(
+        !reference.path().join("validation").exists(),
+        "the staged validator project is removed again: a reference implementation is \
+         committed, and a capture must leave it as it found it",
+    );
+}
 
 #[test]
 fn validation_media_name_is_flat() {
@@ -19,6 +207,102 @@ fn validation_media_name_is_flat() {
     assert_eq!(
         validation_media_name("states-complete", "title", MediaKind::Image),
         "states-complete__title.png"
+    );
+    // A recording is gzipped JSON, and it is gzipped JSON on both sides: unlike a
+    // clip there is no second format the public snapshot converts it into, so the
+    // name a run serves and the name the gallery publishes are the same one. Both
+    // extensions are in the name, so the document format and its framing are each
+    // readable off the file.
+    assert_eq!(
+        validation_media_name("ball-spin.no-tunnel", "serve", MediaKind::Replay),
+        "ball-spin.no-tunnel__serve.json.gz"
+    );
+    assert_eq!(
+        crate::validator::validation_published_extension(MediaKind::Replay),
+        "json.gz"
+    );
+    // The stored name resolves back to the kind that produced it, which is what the
+    // manifest's proof declarations and the media routes both depend on.
+    assert_eq!(
+        MediaKind::from_path(std::path::Path::new("ball-spin.no-tunnel__serve.json.gz")),
+        Some(MediaKind::Replay),
+    );
+}
+
+#[test]
+fn a_shared_image_store_file_is_told_apart_from_a_declared_output() {
+    // The store shares the declared outputs' flat namespace on purpose — one
+    // directory, one route, one resolver — so the *only* thing that separates them is
+    // this predicate, and both publish paths lean their whole enumeration on it.
+    assert!(is_validation_image_name("img.9f2c1ab4.png"));
+    assert!(is_validation_image_name("img.9f2c1ab4.bin"));
+
+    // A declared output is never mistaken for a store file, in either direction. The
+    // separation is structural rather than lucky: a declared name always carries the
+    // `__` that joins its verdict to its output, and a store name — derived from
+    // nothing but the bytes' digest — never can.
+    assert!(!is_validation_image_name("ball-spin__still.png"));
+    assert!(!is_validation_image_name(
+        "ball-spin.no-tunnel__serve.json.gz"
+    ));
+    assert!(!validation_media_name("img", "still", MediaKind::Image).starts_with("img."));
+
+    // The store holds two shapes of bytes and no others, so a name carrying the
+    // prefix but an extension this side cannot label a content type for is left
+    // where it is rather than published as an unlabelled blob.
+    assert!(!is_validation_image_name("img.9f2c1ab4.json.gz"));
+    assert!(!is_validation_image_name("img.9f2c1ab4"));
+    assert!(!is_validation_image_name("images.9f2c1ab4.png"));
+}
+
+#[test]
+fn declared_outputs_are_flattened_out_of_the_directory_they_were_written_to() {
+    // The shared relocation both validation paths use: a producer writes each output
+    // under its own id in a directory of its own, and the run serves them from the
+    // flat `<verdict>__<output>.<ext>` names keyed by the point they back. What was
+    // not written is recorded absent — media is the evidence beside a verdict, not
+    // the verdict.
+    use crate::test_case::ReviewOutput;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let media = dir.path().join("media");
+    let produced = dir.path().join("produced");
+    std::fs::create_dir_all(&media).expect("media dir");
+    std::fs::create_dir_all(&produced).expect("produced dir");
+    std::fs::write(produced.join("serve.json.gz"), b"\x1f\x8b").expect("the recording");
+    std::fs::write(produced.join("title.png"), b"\x89PNG").expect("the still");
+
+    let outputs = vec![
+        ReviewOutput {
+            id: "serve".to_string(),
+            name: "Serve".to_string(),
+            kind: MediaKind::Replay,
+        },
+        ReviewOutput {
+            id: "title".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        },
+        ReviewOutput {
+            id: "rally".to_string(),
+            name: "Rally".to_string(),
+            kind: MediaKind::Video,
+        },
+    ];
+    let collected = crate::validator::relocate_outputs(&outputs, "spin.serve", &media, &produced);
+
+    assert!(collected[0].present, "the recording was written");
+    assert!(collected[1].present, "the still was written");
+    assert!(
+        !collected[2].present,
+        "the clip was never written, which is absence and not failure",
+    );
+    assert!(media.join("spin.serve__serve.json.gz").is_file());
+    assert!(media.join("spin.serve__title.png").is_file());
+    assert!(!media.join("spin.serve__rally.webm").exists());
+    assert!(
+        !produced.join("serve.json.gz").exists(),
+        "the file is moved rather than copied, so the run carries one of each",
     );
 }
 
@@ -157,10 +441,9 @@ fn score_of_identical_pngs_is_one() {
 // --- asset-generation validation -------------------------------------------
 
 use super::AssetGenValidator;
-use crate::execution::ArtifactCollection;
 use crate::test_case::{
-    AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion, TestType,
-    ToolSpec,
+    AssetDimension, AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion,
+    TestType, ToolSpec,
 };
 use crate::validation::Validator;
 
@@ -178,13 +461,16 @@ fn base_variant() -> crate::test_case::Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
-        reference_impl: None,
+        reference_impls: Default::default(),
+        showcase: None,
     }
 }
 
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
+        engine_format: false,
+        toolchain: None,
         instrumentation: None,
         slug: "sprite".to_string(),
         version: "v1.0.0".to_string(),
@@ -218,6 +504,7 @@ fn asset_version() -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -225,11 +512,13 @@ fn asset_version() -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -265,9 +554,7 @@ fn asset_validation_regenerates_and_detects_no_cheating() {
         .validate(
             &asset_version(),
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -340,9 +627,7 @@ fn asset_validation_regenerates_each_sheet_frame_independently() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection {
-                repo_path: repo.clone(),
-            },
+            &ArtifactCollection::new(repo.clone()),
             &[],
             &[],
         )
@@ -387,7 +672,7 @@ fn asset_validation_flags_drawing_outside_the_tool() {
         .validate(
             &asset_version(),
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -411,7 +696,7 @@ fn asset_validation_without_an_action_log_fails_to_load() {
         .validate(
             &asset_version(),
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )
@@ -429,6 +714,8 @@ use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
 /// is `module_rel` (relative to the run root).
 fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        engine_format: false,
+        toolchain: None,
         instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
@@ -470,6 +757,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -477,11 +765,13 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -508,7 +798,7 @@ fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
         .validate(
             &version,
             &base_variant(),
-            &ArtifactCollection { repo_path: repo },
+            &ArtifactCollection::new(repo),
             &[],
             &[],
         )

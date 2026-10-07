@@ -19,6 +19,12 @@
   // min-content floor so the segments compress (and wrap) to fit instead.
   max-width: 100%;
   min-width: 0;
+
+  // Inert: the selection still reads at full contrast (it is information), but the
+  // track dims so it is plainly not a control the reader can move.
+  &.disabled {
+    opacity: 0.65;
+  }
 }
 
 // The highlight that slides behind the selected segment. One segment wide,
@@ -62,6 +68,14 @@
 
   &:hover {
     color: t.$color-text;
+  }
+
+  &:disabled {
+    cursor: default;
+
+    &:hover {
+      color: t.$color-text-muted;
+    }
   }
 
   // The selected segment reads in the accent over its highlight.

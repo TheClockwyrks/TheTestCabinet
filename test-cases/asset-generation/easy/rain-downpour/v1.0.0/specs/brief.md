@@ -26,10 +26,10 @@ Author the effect in only these cool, desaturated colors — a muted, wet, cool-
 rain. A viewer judges the effect against this list, so keep every emitter,
 gradient, and streak inside it:
 
-| Role | Hex |
-| --- | --- |
-| Rain streak | `#9fb3c6` |
-| Bright streak highlight | `#c6d4e0` |
+| Role                      | Hex       |
+| ------------------------- | --------- |
+| Rain streak               | `#9fb3c6` |
+| Bright streak highlight   | `#c6d4e0` |
 | Splash fleck (near-white) | `#eef4f9` |
 
 The rain is **pale blue-grey** and slightly **translucent** — it reads as water
@@ -90,7 +90,7 @@ Graph) is authored. Shape it, conceptually, as:
 with forces that read as falling rain: a steady **downward pull** (gravity) carrying
 the drops down, and a light constant **sideways push** giving the whole field its
 consistent wind slant. Keep the slant **gentle** — this is near-vertical rain, not a
-sideways gale. Author these as *intent*: read `particle-2d --help` for the exact
+sideways gale. Author these as _intent_: read `particle-2d --help` for the exact
 emitter, force, and curve flags.
 
 ## Color, opacity, and size curves
@@ -110,10 +110,11 @@ Over each particle's normalized life:
 
 The `particle-2d` binary already on your `PATH` is the **only** channel for
 shaping this effect — you build the system by calling it **one operation at a
-time**, and the ordered list of operations you issue, recorded to `actions.json`,
-is the **authoritative output**. You are authoring a **system** (emitters, forces,
-per-particle curves), **not** placing individual particles: the review UI and a
-game **simulate it live** from the system you author.
+time**, and the ordered list of operations you issue, recorded to
+`actions.json`, is the **authoritative output**. You are authoring a **system**
+(emitters, forces, per-particle curves), **not** placing individual particles: a
+game, or any viewer that plays it, **simulates it live** from the system you
+author.
 
 Run `particle-2d --help` to list every operation and `particle-2d <operation>
 --help` for one operation's exact flags — that help text is the authoritative
@@ -126,7 +127,7 @@ already seeded alongside the workspace — no operation needs those flags.
 
 Because the effect is **simulated live**, it **varies slightly from one play to the
 next** — individual drops fall on different paths each time. That is correct for
-rain: author it so the *character* — a steady heavy downpour of thin slanted streaks
+rain: author it so the _character_ — a steady heavy downpour of thin slanted streaks
 with splashes at the bottom, in the cool desaturated palette — **reads the same
 across every replay** and **loops with no visible seam**, rather than depending on
 any one frozen arrangement of particles.

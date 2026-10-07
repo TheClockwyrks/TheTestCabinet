@@ -1,5 +1,5 @@
-import { Panel, StatusGlyph } from "@test-cabinet/ui";
-import type { RunRecord, StepResult } from "@test-cabinet/run-record";
+import { Panel, StatusGlyph } from "@clockwyrks/ui";
+import type { RunRecord, StepResult } from "@clockwyrks/run-record";
 import { DebugScriptList } from "./DebugScriptList";
 import styles from "./RunDetailPages.module.scss";
 
@@ -174,7 +174,7 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
                       }
                     >
                       divergence {(frame.cheatDivergence * 100).toFixed(1)}%
-                      {drewOutsideTool ? " — drew outside the tool" : ""}
+                      {drewOutsideTool ? " (drew outside the tool)" : ""}
                     </span>
                   )}
                 </td>

@@ -35,14 +35,19 @@
 //   RUN_ID     restrict to a single run id (optional; for targeted re-runs/testing)
 //   PAGE_LIMIT runs per /runs page        (default 200, the backend max)
 
-const BACKEND = (process.env.BACKEND ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
+const BACKEND = (process.env.BACKEND ?? "http://127.0.0.1:8787").replace(
+  /\/+$/,
+  "",
+);
 const ARTIFACTS = (process.env.ARTIFACTS ?? "").replace(/\/+$/, "");
 const APPLY = process.env.APPLY === "1";
 const RUN_ID = process.env.RUN_ID || null;
 const PAGE_LIMIT = Number(process.env.PAGE_LIMIT ?? "200");
 
 if (!ARTIFACTS) {
-  console.error("ARTIFACTS base URL is required (e.g. http://tcab-artifacts:8790)");
+  console.error(
+    "ARTIFACTS base URL is required (e.g. http://tcab-artifacts:8790)",
+  );
   process.exit(2);
 }
 
@@ -63,7 +68,10 @@ function mediaFor(record) {
   const out = [];
   for (const proof of record.validation.proofs ?? []) {
     if (proof.present) {
-      out.push({ kind: "proof", file: `${proof.id}.${extensionFor(proof.dest)}` });
+      out.push({
+        kind: "proof",
+        file: `${proof.id}.${extensionFor(proof.dest)}`,
+      });
     }
   }
   const asset = record.validation.asset;
@@ -104,7 +112,14 @@ async function* publishedRecords() {
   }
 }
 
-const stats = { runs: 0, withMedia: 0, copied: 0, present: 0, missing: 0, errors: 0 };
+const stats = {
+  runs: 0,
+  withMedia: 0,
+  copied: 0,
+  present: 0,
+  missing: 0,
+  errors: 0,
+};
 
 async function backfill() {
   console.log(
@@ -123,23 +138,31 @@ async function backfill() {
         res = await fetch(src);
       } catch (err) {
         stats.errors++;
-        console.error(`  ERROR ${record.id} ${kind}/${file}: artifact fetch failed: ${err}`);
+        console.error(
+          `  ERROR ${record.id} ${kind}/${file}: artifact fetch failed: ${err}`,
+        );
         continue;
       }
       if (res.status === 404) {
         stats.missing++;
-        console.warn(`  MISSING ${record.id} ${kind}/${file} (artifact service has no such file)`);
+        console.warn(
+          `  MISSING ${record.id} ${kind}/${file} (artifact service has no such file)`,
+        );
         continue;
       }
       if (!res.ok) {
         stats.errors++;
-        console.error(`  ERROR ${record.id} ${kind}/${file}: artifact GET -> ${res.status}`);
+        console.error(
+          `  ERROR ${record.id} ${kind}/${file}: artifact GET -> ${res.status}`,
+        );
         continue;
       }
       const bytes = Buffer.from(await res.arrayBuffer());
       if (!APPLY) {
         stats.present++;
-        console.log(`  WOULD COPY ${record.id} ${kind}/${file} (${bytes.length} bytes)`);
+        console.log(
+          `  WOULD COPY ${record.id} ${kind}/${file} (${bytes.length} bytes)`,
+        );
         continue;
       }
       const dst = `${BACKEND}/runs/${encodeURIComponent(record.id)}/${kind}/${file}`;
@@ -150,11 +173,15 @@ async function backfill() {
       });
       if (!put.ok) {
         stats.errors++;
-        console.error(`  ERROR ${record.id} ${kind}/${file}: backend POST -> ${put.status}`);
+        console.error(
+          `  ERROR ${record.id} ${kind}/${file}: backend POST -> ${put.status}`,
+        );
         continue;
       }
       stats.copied++;
-      console.log(`  COPIED ${record.id} ${kind}/${file} (${bytes.length} bytes)`);
+      console.log(
+        `  COPIED ${record.id} ${kind}/${file} (${bytes.length} bytes)`,
+      );
     }
   }
 
@@ -178,7 +205,9 @@ async function backfill() {
       ` missing=${stats.missing} errors=${stats.errors} refreshed=${refreshed}`,
   );
   if (!APPLY) {
-    console.log("Dry run only — set APPLY=1 to copy media and trigger a snapshot refresh.");
+    console.log(
+      "Dry run only — set APPLY=1 to copy media and trigger a snapshot refresh.",
+    );
   }
   process.exit(stats.errors > 0 ? 1 : 0);
 }

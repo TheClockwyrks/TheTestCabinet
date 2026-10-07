@@ -4,8 +4,9 @@
 # The socket's owning group GID is a property of the HOST and is only knowable
 # once the socket is mounted at runtime — it differs across hosts (a native Linux
 # daemon exposes it as the host `docker` group; Docker Desktop / OrbStack bind it
-# in root-owned). So access is aligned here, at container start, rather than via
-# the build-time DOCKER_GID guess. Idempotent, and a no-op when no socket is
+# in root-owned). So access is aligned here, at container start, and the image
+# takes no build argument for it, which keeps it one image whichever path
+# starts the container. Idempotent, and a no-op when no socket is
 # mounted. Run from devcontainer.json's postStartCommand; needs passwordless sudo
 # (the devcontainer user has it).
 set -euo pipefail
@@ -20,7 +21,9 @@ if [ -r "$SOCK" ] && [ -w "$SOCK" ]; then
 	exit 0
 fi
 
-SOCK_GID="$(stat -c '%g' "$SOCK")"
+# `-L` because tools/host-runtime.sh publishes a bound socket as a link to it,
+# and the group that matters is the socket's rather than the link's.
+SOCK_GID="$(stat -L -c '%g' "$SOCK")"
 USER_NAME="$(id -un)"
 
 if [ "$SOCK_GID" = "0" ]; then

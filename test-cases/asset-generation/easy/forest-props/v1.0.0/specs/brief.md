@@ -63,23 +63,23 @@ recognizable as what it is.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Leaf highlight | `#a7d977` |
-| Leaf body | `#6fb04a` |
-| Leaf shadow | `#4c8a39` |
-| Pine needle | `#3e7d4f` |
-| Pine shadow | `#2b5a39` |
-| Grass blade | `#7cc24f` |
-| Trunk / bark | `#9c6b3f` |
-| Bark shadow | `#6e4826` |
-| Cut wood (stump top) | `#caa06e` |
-| Rock grey | `#b3b8bf` |
-| Rock shadow | `#7c828b` |
-| Moss | `#7fa94e` |
-| Flower petal (pink) | `#e87fb0` |
-| Flower center (yellow) | `#f4d35e` |
-| Mushroom cap (red) | `#d1443b` |
+| Role                    | Hex       |
+| ----------------------- | --------- |
+| Leaf highlight          | `#a7d977` |
+| Leaf body               | `#6fb04a` |
+| Leaf shadow             | `#4c8a39` |
+| Pine needle             | `#3e7d4f` |
+| Pine shadow             | `#2b5a39` |
+| Grass blade             | `#7cc24f` |
+| Trunk / bark            | `#9c6b3f` |
+| Bark shadow             | `#6e4826` |
+| Cut wood (stump top)    | `#caa06e` |
+| Rock grey               | `#b3b8bf` |
+| Rock shadow             | `#7c828b` |
+| Moss                    | `#7fa94e` |
+| Flower petal (pink)     | `#e87fb0` |
+| Flower center (yellow)  | `#f4d35e` |
+| Mushroom cap (red)      | `#d1443b` |
 | Cap spot / stem (cream) | `#f2e6c9` |
 
 Leaf tones carry the round tree and bush; pine tones carry the pine tree; grass

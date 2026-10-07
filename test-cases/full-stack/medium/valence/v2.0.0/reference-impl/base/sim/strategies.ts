@@ -9,7 +9,12 @@
 //   5. a competent mixed + upgraded + well-placed board must WIN.
 //   6. (soft) both branch leanings can win — neither branch dominates.
 
-import { ANCHORS, layoutController, type BuildOrder, type Controller } from "./harness";
+import {
+  ANCHORS,
+  layoutController,
+  type BuildOrder,
+  type Controller,
+} from "./harness";
 import type { Pt } from "../src/board";
 import type { Branch, TowerKind } from "../src/constants";
 
@@ -24,7 +29,13 @@ function spread(pts: Pt[], count: number, offset = 0): Pt[] {
   return [...new Set(out)];
 }
 
-function order(kind: TowerKind, at: Pt, level?: 1 | 2 | 3, branch?: Branch, minRound?: number): BuildOrder {
+function order(
+  kind: TowerKind,
+  at: Pt,
+  level?: 1 | 2 | 3,
+  branch?: Branch,
+  minRound?: number,
+): BuildOrder {
   return { kind, at, level, branch, minRound };
 }
 
@@ -37,10 +48,17 @@ export function controllerSet(): Controller[] {
   const OUT = ANCHORS.sharedOut();
 
   // --- 1. Energy-only spam: emitters + ionizers, no kinetic/nuclear, no detection. ---
-  const spamCells = [...spread(A, 6), ...spread(B, 6), ...spread(IN, 2), ...spread(OUT, 2)];
+  const spamCells = [
+    ...spread(A, 6),
+    ...spread(B, 6),
+    ...spread(IN, 2),
+    ...spread(OUT, 2),
+  ];
   const spam = layoutController(
     "energy-spam",
-    spamCells.map((c, i) => order(i % 2 ? "ionizer" : "emitter", c, i < 6 ? 3 : 2, i % 2 ? "A" : "A")),
+    spamCells.map((c, i) =>
+      order(i % 2 ? "ionizer" : "emitter", c, i < 6 ? 3 : 2, i % 2 ? "A" : "A"),
+    ),
     "all energy — should stall on heavies",
   );
 
@@ -52,14 +70,29 @@ export function controllerSet(): Controller[] {
     ...spread(Bhigh, 2).map((c) => order("cleaver", c, 3, "A")),
     ...spread(OUT, 2).map((c) => order("reactor", c, 3, "A")),
   ];
-  const nodet = layoutController("no-detection", nodetOrders, "no reveal/detect — inert leaks");
+  const nodet = layoutController(
+    "no-detection",
+    nodetOrders,
+    "no reveal/detect — inert leaks",
+  );
 
   // --- 3. Never-upgraded: a broad tier-I mix, no upgrades at all. ---
-  const noupCells = [...spread(A, 5), ...spread(B, 5), ...spread(IN, 2), ...spread(OUT, 3)];
+  const noupCells = [
+    ...spread(A, 5),
+    ...spread(B, 5),
+    ...spread(IN, 2),
+    ...spread(OUT, 3),
+  ];
   const noup = layoutController(
     "no-upgrade",
     noupCells.map((c, i) => {
-      const kinds: TowerKind[] = ["ionizer", "cleaver", "reactor", "catalyst", "emitter"];
+      const kinds: TowerKind[] = [
+        "ionizer",
+        "cleaver",
+        "reactor",
+        "catalyst",
+        "emitter",
+      ];
       return order(kinds[i % kinds.length]!, c, 1);
     }),
     "tier-I only — should drown late",
@@ -72,7 +105,11 @@ export function controllerSet(): Controller[] {
     ...spread(A, 2, 3).map((c) => order("reactor", c, 3, "B")),
     ...spread(Alow, 2, 1).map((c) => order("catalyst", c, 3, "A")),
   ];
-  const oneLane = layoutController("one-lane", oneLaneOrders, "ignores Lane B — should leak there");
+  const oneLane = layoutController(
+    "one-lane",
+    oneLaneOrders,
+    "ignores Lane B — should leak there",
+  );
 
   // --- 5. Competent: mixed types, both lanes, detection + kinetic + nuclear, upgraded. ---
   const competent = competentLayout("competent", "A");
@@ -131,6 +168,9 @@ function competentLayout(name: string, lean: Branch): Controller {
     ...spread(B, 3, 1).map((c) => order("ionizer", c, 3, ib, 36)),
     order("moderator", spread(B, 1, 5)[0]!, 3, "A", 37),
   ];
-  const note = lean === "A" ? "mixed, A-branches — should WIN" : "mixed, B-branches — should WIN";
+  const note =
+    lean === "A"
+      ? "mixed, A-branches — should WIN"
+      : "mixed, B-branches — should WIN";
   return layoutController(name, orders, note);
 }

@@ -197,9 +197,8 @@ impl Kube {
     async fn vanished_pod_detail(&self, job_name: &str) -> String {
         if self.job_recorded_pod_failure(job_name).await {
             return format!(
-                "driver Job `{job_name}` ran a pod that is already gone — it was most \
-                 likely deleted mid-run (autoscaler scale-down, preemption, or a node \
-                 drain); no pod status survives to read"
+                "driver Job `{job_name}` ran a pod that no longer exists, most likely \
+                 deleted mid-run (autoscaler scale-down, preemption, or a node drain)"
             );
         }
         format!("driver Job `{job_name}` failed before its pod started")

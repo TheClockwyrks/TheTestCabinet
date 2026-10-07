@@ -18,7 +18,7 @@ and stand up turrets and armed defenders — all while the settlers' own needs (
 rest, mood) run down and the day/night clock turns. Survival is the tension between
 those two clocks: the colony must grow its defenses and its larder faster than the
 raids escalate, or it is overrun. It is a small-scale colony sim in the spirit of
-*RimWorld*, entirely its own, with layered systems — a top-down tile world, needs-
+_RimWorld_, entirely its own, with layered systems — a top-down tile world, needs-
 and-mood-driven settlers on a job queue, a build-and-food economy, a day/night cycle,
 and a ranged-combat threat director — that interact.
 
@@ -142,26 +142,26 @@ carry the scene. The colony reads as tidy human structure — walls, floors, bed
 stove, farm rows, turrets — laid over rougher wild land, and the raiders come out of
 the dark edges in hostile red. The canonical palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Deep shadow / void (background) | `#14110d` |
-| Soil / bare ground | `#5a4632` |
-| Grass / fertile ground | `#6a7638` |
-| Rock / impassable outcrop | `#38332c` |
-| Tree / forest node | `#3f6b3a` |
-| Ore node (mineral vein) | `#c9a24a` |
+| Element                              | Color     |
+| ------------------------------------ | --------- |
+| Deep shadow / void (background)      | `#14110d` |
+| Soil / bare ground                   | `#5a4632` |
+| Grass / fertile ground               | `#6a7638` |
+| Rock / impassable outcrop            | `#38332c` |
+| Tree / forest node                   | `#3f6b3a` |
+| Ore node (mineral vein)              | `#c9a24a` |
 | Built structure (walls, beds, stove) | `#8a6a44` |
-| Built floor / path | `#4a3f30` |
-| Settler (colonist) | `#4f93c9` |
-| Raider (hostile) | `#c0473f` |
-| Food / crop | `#7cc45a` |
-| Wood / material | `#b98b4e` |
-| Health / medical | `#e05a6a` |
-| Alert / danger | `#ff5a52` |
-| Panels / overlays | `#1b1712` |
-| Primary text | `#ece6db` |
-| Secondary text | `#a89e8d` |
-| Tertiary text / hints | `#6b6355` |
+| Built floor / path                   | `#4a3f30` |
+| Settler (colonist)                   | `#4f93c9` |
+| Raider (hostile)                     | `#c0473f` |
+| Food / crop                          | `#7cc45a` |
+| Wood / material                      | `#b98b4e` |
+| Health / medical                     | `#e05a6a` |
+| Alert / danger                       | `#ff5a52` |
+| Panels / overlays                    | `#1b1712` |
+| Primary text                         | `#ece6db` |
+| Secondary text                       | `#a89e8d` |
+| Tertiary text / hints                | `#6b6355` |
 
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required
@@ -185,19 +185,3 @@ the dark edges in hostile red. The canonical palette and type are below; match t
 - The three canonical screens — the title screen, the in-colony view, and the
   colony-lost screen — are described in full under Game states in `specs/flow.md`.
   Implement each as described, in this palette and type.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-colony frame, mid-play.
-- `reference/game-over.png` — the colony-lost screen.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — and the exact map layout, structures, and
-settler positions they show are just **one example moment**. Build the screens
-from this specification, and design your own conforming colony.

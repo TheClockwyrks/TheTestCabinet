@@ -10,7 +10,7 @@
 // All URLs are imported through Vite, so they resolve page-relative under any
 // base path (the build sets `base: "./"`), exactly as specs/assets.md requires.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { CYAN, MAGENTA, type Band } from "./constants";
 
 import fighterUrl from "./assets/fighter.png";

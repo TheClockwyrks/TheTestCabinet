@@ -15,9 +15,21 @@ function model(name: string, aliases: ModelAlias[]): Model {
     coveredModelIds: [],
     aliases,
     price: null,
+    listPrice: null,
+    listPriceAsOf: null,
+    listPriceSource: null,
     priceHistory: [],
     contextLength: null,
+    providerPin: null,
+    providerPinSetByHand: false,
+    nativeQuantization: null,
+    maxInputPrice: null,
+    maxOutputPrice: null,
+    bannedProviders: [],
+    quantizationFilter: true,
+    unknownQuantizationProviders: [],
     releasedAt: null,
+    inputModalities: [],
   };
 }
 
@@ -68,9 +80,9 @@ describe("modelForHarness", () => {
       "anthropic/claude-opus-4.8",
     );
     // OpenCode → Claude Code: back to the native slug.
-    expect(modelForHarness(catalog, "anthropic/claude-opus-4.8", "claude")).toBe(
-      "claude-opus-4-8",
-    );
+    expect(
+      modelForHarness(catalog, "anthropic/claude-opus-4.8", "claude"),
+    ).toBe("claude-opus-4-8");
   });
 
   it("clears a known model that has no slug for the new family", () => {

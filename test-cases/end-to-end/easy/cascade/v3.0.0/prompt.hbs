@@ -1,0 +1,75 @@
+Build **Cascade**, a Klondike solitaire that runs entirely in the browser.
+
+Your project root is `{{workspace}}`. Build the game there. Its dependencies are
+already installed, so you can build and test right away.
+
+{{#if (eq engine.slug "none")}}
+The game does not exist yet: there is nothing under `src/`, and that directory
+has still to be created.
+{{else if (eq engine.slug "simple-2d")}}
+The game does not exist yet: `src/game.ts` is a stub whose `initialize`,
+`update`, and `render` throw. The project does not type-check until the
+declarations `specs/overview.md` asks for are in place, so the first `tsc`
+failure on a fresh checkout is expected.
+{{else}}
+The game does not exist yet: `src/game.ts` has still to be created, and
+`src/main.ts` imports it, so the project does not type-check until it exists. The
+first `tsc` failure on a fresh checkout is expected.
+{{/if}}
+{{#if (ne engine.slug "none")}}
+
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install. Its own documentation is at
+`{{engine.docs}}` and is the authoritative description of its API.
+{{/if}}
+
+## This build's deal mode
+
+Build the **{{variant.name}}** deal mode.
+{{variant.description}}
+`specs/stock.md` states what that means for the stock and the waste.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Produce an implementation that matches the specification
+exactly. `specs/overview.md` states what you implement, which files stay as they
+are, the code quality the build is held to, and the commands that run over the
+finished repository. It also lists the other files of the specification and what
+each one fixes.
+
+## The build interface
+
+`npm ci` then `npm run build` produces the static site into `dist/` at the
+project root, with no other manual step.
+
+## Driving the game in a browser
+
+The project's Playwright and its headless Chromium are installed, so the built
+game can be served and driven in a real browser.
+
+When you launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on `PATH`;
+it lives in your project's `node_modules` like any other dependency. Launch
+Chromium with the `--no-sandbox` argument, since this container has no Chromium
+sandbox and a default launch fails.
+
+## The showcase
+
+`specs/showcase.md` defines a showcase the finished game ships.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+directly from this repository's commits, so work you leave uncommitted is not
+published. When the build is complete, commit everything: run `git add -A` then
+`git commit`, and confirm `git status` reports a clean working tree with nothing
+uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
+build output, and coverage reports, so a clean tree means committing your source,
+your tests, your `package-lock.json`, your `showcase/` directory, and your
+`README.md`.

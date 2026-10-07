@@ -1,0 +1,249 @@
+import { Link, useParams } from "react-router";
+import { useWorkers } from "../../../../client/context";
+import { KillRunControl } from "../../../components/KillRunControl";
+import { PageLayout } from "../../../components/PageLayout";
+import { PromptHeader } from "../../../components/PromptHeader";
+import { useCaseMaxRuntime } from "../../../data/useCaseMaxRuntime";
+import { useRunsRuntime } from "../../../runtime/runsRuntime";
+import { routes } from "../../../routes";
+import runExec from "../RunExec.module.scss";
+import { useGgRuntime } from "./ggRuntime";
+import {
+  useGgRunState,
+  type GgMonitorStatus,
+  type SetupStage,
+} from "./useGgRunState";
+import { GgDashboard, type GgDashboardStatus } from "./GgDashboard";
+import { GgRunPanels } from "./GgRunPanels";
+
+// The live gg run monitor (`/runs/gg/:jobId/live`, consoles only). gg is
+// headless, so this is the only live window into a run. It reads the run's live
+// state from `useGgRunState` (which owns the `GET /jobs/{id}/live` subscription and
+// folds gg's first-party `GgTelemetryEvent` stream into typed state) and lays it out
+// as the shared [GgRunPanels] — the panel selector leads the page, and the run-level
+// read-out (status, the running token/cost tally, the configuration, the enforced FSM
+// state) is its first panel, the Dashboard, rather than a header the panels hang
+// beneath. Every other panel is offered only where this run's capability set
+// justifies it. On a terminal state the Dashboard links to the produced run, whose
+// own gg tab renders these same panels from the recorded stream, so the rich view
+// outlives the live one.
+export function GgRunMonitorPage() {
+  const { jobId } = useParams<{ jobId: string }>();
+  const { active: worker } = useWorkers();
+  const runs = useRunsRuntime();
+  const state = useGgRunState(jobId);
+  const {
+    status,
+    error,
+    sawSession,
+    sessionEndStatus,
+    usage,
+    capabilitySet,
+    setupStage,
+  } = state;
+  const live = status.kind === "running";
+
+  // The run's two clocks. The wall clock ticks while the stream is live and settles on the
+  // last event once it is not, so the read-out is a clock during the run and a record after
+  // it (see `ggRuntime`).
+  const runtime = useGgRuntime(
+    state.agentForest,
+    state.executionStartedAt,
+    state.lastTimestamp,
+    live,
+  );
+  // The ceiling the host will stop this run at. A live run has no RunRecord yet, so the
+  // case it is exercising is read off the launch this session is tracking; null once the run
+  // has dropped out of that list (or on a monitor reached by URL alone), where the card
+  // simply states no limit rather than guessing one.
+  const launched = runs.inProgress.find((run) => run.runId === jobId);
+  const timeoutSeconds = useCaseMaxRuntime(
+    launched?.testCaseSlug ?? null,
+    launched?.testCaseVersion ?? null,
+  );
+
+  const dashboardStatus: GgDashboardStatus = {
+    ...statusPhase(status, sawSession, setupStage),
+    note:
+      sessionEndStatus && status.kind === "running"
+        ? `gg session ended: ${sessionEndStatus}. Finalizing…`
+        : null,
+    action:
+      status.kind === "running" && jobId ? (
+        <KillRunControl runId={jobId} />
+      ) : undefined,
+  };
+
+  return (
+    <PageLayout fill>
+      <PromptHeader
+        command="--gg watch"
+        comment={<>// live telemetry for a gg run</>}
+        arg={jobId ?? ""}
+      />
+
+      {!worker && (
+        <p className={`${runExec.notice} ${runExec.warn}`}>
+          No worker connected. The live stream comes from the worker that ran
+          this job.
+        </p>
+      )}
+
+      {/* The panels this run's configuration justifies — gg announces its
+          capability set on the stream, so the view is shaped to the run — led by
+          the Dashboard, which carries the run as a whole. */}
+      <GgRunPanels
+        state={state}
+        capabilitySet={capabilitySet}
+        live={live}
+        dashboard={
+          <GgDashboard
+            status={dashboardStatus}
+            usage={usage}
+            slotUsage={state.slotUsage}
+            perAgent={state.perAgent}
+            agentForest={state.agentForest}
+            capabilitySet={capabilitySet}
+            runtime={runtime}
+            timeoutSeconds={timeoutSeconds}
+          >
+            {/* Terminal outcome + a link to the produced run. */}
+            {status.kind === "done" && status.outcome.kind === "completed" && (
+              <p className={`${runExec.notice} ${runExec.ok}`}>
+                Run complete: state {status.outcome.record.status.state}.{" "}
+                <Link to={routes.runDetail(status.outcome.record.id)}>
+                  Open the run
+                </Link>{" "}
+                to review it,{" "}
+                <Link to={routes.runGg(status.outcome.record.id)}>
+                  keep reading this view
+                </Link>{" "}
+                (it is rebuilt from the recorded telemetry, so it stays
+                reachable), or{" "}
+                <Link to={routes.runMetrics(status.outcome.record.id)}>
+                  see its metrics
+                </Link>
+                .
+              </p>
+            )}
+            {status.kind === "done" && status.outcome.kind === "canceled" && (
+              <p className={`${runExec.notice} ${runExec.warn}`}>
+                Run canceled
+                {status.outcome.message
+                  ? `: ${status.outcome.message}`
+                  : ""}.{" "}
+                {/* A killed gg run keeps everything it streamed before the kill,
+                    so point at the telemetry views rather than only the record —
+                    that stream is the reason the run is worth retaining at all. */}
+                {status.outcome.record ? (
+                  <>
+                    <Link to={routes.runDetail(status.outcome.record.id)}>
+                      Open the run
+                    </Link>{" "}
+                    to see what was recorded,{" "}
+                    <Link to={routes.runGg(status.outcome.record.id)}>
+                      keep reading this view
+                    </Link>{" "}
+                    (it is rebuilt from the telemetry recorded up to the kill),
+                    or{" "}
+                    <Link to={routes.runMetrics(status.outcome.record.id)}>
+                      see its metrics
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  jobId && (
+                    <Link to={routes.runDetail(jobId)}>
+                      Open the run to see what was recorded.
+                    </Link>
+                  )
+                )}
+              </p>
+            )}
+            {status.kind === "done" && status.outcome.kind === "failed" && (
+              <p className={`${runExec.notice} ${runExec.error}`}>
+                Run failed: {status.outcome.message}
+                {jobId && (
+                  <>
+                    {" "}
+                    <Link to={routes.runDetail(jobId)}>
+                      Open the run to see what was recorded.
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+            {error && (
+              <p className={`${runExec.notice} ${runExec.error}`}>{error}</p>
+            )}
+          </GgDashboard>
+        }
+      />
+    </PageLayout>
+  );
+}
+
+// The status pill's label, detail, and cue for the current phase. Setting up (gg has
+// yet to speak) and running are the two live phases; a terminal state reflects the
+// transport outcome — and, where gg reported it, the session's own end status.
+//
+// The pre-session phase is reported from the orchestrator's own setup stages rather
+// than as one flat "Queued", because they are not the same wait and the difference is
+// most of an operator's question. A run genuinely awaiting a runner has produced no
+// events at all; a run whose container is up and whose test case is installing a
+// browser has produced several, and can sit there for ten minutes legitimately. Calling
+// both of them "waiting for a runner and container" told an operator the cluster had
+// given them nothing when it had in fact given them everything and was busy in the
+// workspace — so the pill now names the stage the orchestrator last reported, and keeps
+// the runner-and-container wording for the case it is actually true of.
+function statusPhase(
+  status: GgMonitorStatus,
+  sawSession: boolean,
+  setupStage: SetupStage | null,
+): Pick<GgDashboardStatus, "label" | "detail" | "tone"> {
+  if (status.kind === "running") {
+    if (sawSession) {
+      // No detail: the pill already says the run is live, and a run has as many agents
+      // working as it has dispatched, so there is nothing true to add in one phrase.
+      return { label: "Running", detail: null, tone: "live" };
+    }
+    // Nothing has been reported yet, so nothing has been allocated yet — the one case
+    // the original wording describes.
+    if (!setupStage) {
+      return {
+        label: "Queued",
+        detail: "waiting for a runner and container",
+        tone: "live",
+      };
+    }
+    return {
+      label: "Setting up",
+      // The orchestrator's own phrasing for the stage at its status, carried verbatim
+      // from the event (`SystemStage::describe` in crates/core) so this reads the same
+      // as the setup rows in the feed beneath it.
+      detail: setupStage.message,
+      // A failed stage is terminal in effect — the run does not proceed past it — so it
+      // reads as a failure straight away rather than glowing "live" until the stream
+      // catches up and closes.
+      tone: setupStage.status === "failed" ? "fail" : "live",
+    };
+  }
+  switch (status.outcome.kind) {
+    case "completed":
+      return {
+        label: "Completed",
+        detail: `state ${status.outcome.record.status.state}`,
+        tone: "ok",
+      };
+    case "canceled":
+      return {
+        label: "Canceled",
+        // Not a `fail` tone: nothing failed. An operator stopped the run, and everything
+        // below this pill is the frozen record of what it did first.
+        detail: "stopped by an operator",
+        tone: "stopped",
+      };
+    case "failed":
+      return { label: "Failed", detail: status.outcome.message, tone: "fail" };
+  }
+}

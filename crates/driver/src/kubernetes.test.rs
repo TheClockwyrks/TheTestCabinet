@@ -20,6 +20,7 @@ fn spec(image: &str) -> ContainerSpec {
         secrets: BTreeMap::new(),
         env: BTreeMap::new(),
         files: Vec::new(),
+        dirs: Vec::new(),
         network_enabled: true,
         add_hosts: Vec::new(),
     }
@@ -67,27 +68,169 @@ fn missing_status_is_minus_one() {
     assert_eq!(exit_code_from_status(None), -1);
 }
 
+// ── is_stream_closed / seed_verdict ──────────────────────────────────────────
+
+#[test]
+fn a_write_error_from_the_far_end_going_away_is_recognized() {
+    use std::io::{Error as IoError, ErrorKind};
+    // Every one of these is the client's message loop having ended under the stdin
+    // writer, which says nothing about the seed itself.
+    for kind in [
+        ErrorKind::BrokenPipe,
+        ErrorKind::ConnectionReset,
+        ErrorKind::ConnectionAborted,
+        ErrorKind::NotConnected,
+        ErrorKind::UnexpectedEof,
+        ErrorKind::WriteZero,
+    ] {
+        assert!(is_stream_closed(&IoError::from(kind)), "{kind:?}");
+    }
+}
+
+#[test]
+fn a_write_error_of_our_own_making_is_not_a_closed_stream() {
+    use std::io::{Error as IoError, ErrorKind};
+    for kind in [ErrorKind::PermissionDenied, ErrorKind::OutOfMemory] {
+        assert!(!is_stream_closed(&IoError::from(kind)), "{kind:?}");
+    }
+}
+
+fn exec_outcome(exit_code: i32, stderr: &str, stdin: StdinOutcome) -> RemoteExec {
+    RemoteExec {
+        exit_code,
+        stdout: Vec::new(),
+        stderr: stderr.to_string(),
+        stdin,
+    }
+}
+
+#[test]
+fn a_zero_exit_is_a_completed_seed() {
+    let verdict = seed_verdict(&exec_outcome(0, "", StdinOutcome::Written));
+    assert_eq!(verdict, SeedVerdict::Seeded);
+}
+
+#[test]
+fn a_zero_exit_is_a_completed_seed_even_if_the_write_did_not_finish() {
+    // `tar` only exits 0 once it has read the end-of-archive marker, which is the
+    // last thing in the stream — so a zero exit proves the whole archive landed,
+    // whatever our own writer made of the stream.
+    for stdin in [StdinOutcome::CutShort, StdinOutcome::Stalled] {
+        assert_eq!(
+            seed_verdict(&exec_outcome(0, "", stdin)),
+            SeedVerdict::Seeded
+        );
+    }
+}
+
+#[test]
+fn a_reported_tar_failure_is_deterministic_and_carries_its_stderr() {
+    let verdict = seed_verdict(&exec_outcome(
+        2,
+        "tar: /opt/audio: Cannot open: No such file or directory",
+        StdinOutcome::Written,
+    ));
+    let SeedVerdict::Failed(detail) = verdict else {
+        panic!("expected a reported failure, got {verdict:?}");
+    };
+    assert!(detail.contains("tar exited 2"), "{detail}");
+    assert!(detail.contains("/opt/audio: Cannot open"), "{detail}");
+}
+
+#[test]
+fn a_stall_that_named_its_cause_is_deterministic_and_not_retried() {
+    // The shape a run image missing `/opt/audio` produces: `tar` gives up on its
+    // first entry, nothing drains stdin again, and the terminating status never
+    // arrives — but `tar` already said exactly what was wrong. Retrying only
+    // reproduces it; the directory does not appear between attempts.
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "tar: /opt/audio: Cannot open: No such file or directory",
+        StdinOutcome::Stalled,
+    ));
+    let SeedVerdict::Failed(detail) = verdict else {
+        panic!("expected a reported failure, got {verdict:?}");
+    };
+    assert!(detail.contains("/opt/audio: Cannot open"), "{detail}");
+}
+
+#[test]
+fn a_silent_stall_decided_nothing_and_is_retried() {
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "",
+        StdinOutcome::Stalled,
+    ));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(detail.contains("stopped reading"), "{detail}");
+}
+
+#[test]
+fn a_cut_short_write_decided_nothing_and_is_retried() {
+    // The command saw a truncated archive, so its exit code describes work nobody
+    // asked for. This is the `broken pipe` case, which used to fail the run.
+    let verdict = seed_verdict(&exec_outcome(2, "", StdinOutcome::CutShort));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(
+        detail.contains("before the archive finished writing"),
+        "{detail}"
+    );
+}
+
+#[test]
+fn a_missing_status_decided_nothing_and_is_retried() {
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "",
+        StdinOutcome::Written,
+    ));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(detail.contains("without a terminating status"), "{detail}");
+}
+
+#[test]
+fn an_undecided_attempt_still_reports_what_the_command_managed_to_say() {
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "tar: short read",
+        StdinOutcome::CutShort,
+    ));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(detail.contains("tar: short read"), "{detail}");
+}
+
 // ── normalize_image_id ───────────────────────────────────────────────────────
 
 #[test]
 fn image_id_with_digest_is_kept() {
     assert_eq!(
-        normalize_image_id("ghcr.io/x/base@sha256:abc"),
-        Some("ghcr.io/x/base@sha256:abc".to_string())
+        normalize_image_id("registry.example.com/x/base@sha256:abc"),
+        Some("registry.example.com/x/base@sha256:abc".to_string())
     );
 }
 
 #[test]
 fn image_id_strips_docker_pullable_prefix() {
     assert_eq!(
-        normalize_image_id("docker-pullable://ghcr.io/x/base@sha256:abc"),
-        Some("ghcr.io/x/base@sha256:abc".to_string())
+        normalize_image_id("docker-pullable://registry.example.com/x/base@sha256:abc"),
+        Some("registry.example.com/x/base@sha256:abc".to_string())
     );
 }
 
 #[test]
 fn image_id_without_digest_is_none() {
-    assert_eq!(normalize_image_id("ghcr.io/x/base:latest"), None);
+    assert_eq!(
+        normalize_image_id("registry.example.com/x/base:latest"),
+        None
+    );
     assert_eq!(normalize_image_id(""), None);
 }
 
@@ -148,7 +291,7 @@ fn quantity_map_all_unset_is_none() {
 fn pod_carries_both_env_channels_with_secrets_last() {
     // The harness runs inside this pod, so its telemetry configuration has to be
     // on the pod spec: the Kubernetes exec API carries no environment of its own.
-    let mut s = spec("ghcr.io/x/base:latest");
+    let mut s = spec("registry.example.com/x/base:latest");
     s.env.insert(
         "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
         "http://tcab-lgtm:4318".to_string(),
@@ -180,7 +323,7 @@ fn pod_carries_both_env_channels_with_secrets_last() {
 
 #[test]
 fn pod_carries_image_secrets_labels_and_no_command() {
-    let mut s = spec("ghcr.io/x/base:latest");
+    let mut s = spec("registry.example.com/x/base:latest");
     s.secrets
         .insert("ANTHROPIC_API_KEY".to_string(), "sk-test".to_string());
     let mut config = KubernetesConfig {
@@ -197,7 +340,10 @@ fn pod_carries_image_secrets_labels_and_no_command() {
     let container = &pod_spec.containers[0];
 
     assert_eq!(container.name, RUN_CONTAINER);
-    assert_eq!(container.image.as_deref(), Some("ghcr.io/x/base:latest"));
+    assert_eq!(
+        container.image.as_deref(),
+        Some("registry.example.com/x/base:latest")
+    );
     // The image's keep-alive CMD must run — no command override.
     assert!(container.command.is_none());
     let env = container.env.as_ref().expect("env");
@@ -360,30 +506,136 @@ fn tar_dir_contents_packs_relative_entries() {
     assert!(names.iter().any(|n| n == "sub/file.txt"), "{names:?}");
 }
 
+/// A tar archive of one file, as the sandbox's `tar -c` would stream it.
+fn one_file_archive(name: &str, contents: &[u8]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(Vec::new());
+    let mut header = tar::Header::new_gnu();
+    header.set_size(contents.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder
+        .append_data(&mut header, name, contents)
+        .expect("append");
+    builder.into_inner().expect("archive")
+}
+
 #[test]
-fn collect_tar_command_excludes_regenerable_dependency_dirs() {
-    let cmd = collect_tar_command();
-    // Streams the working tree to stdout (`-f -`) from `/work`, packing `.`.
-    assert_eq!(cmd.first().map(String::as_str), Some("tar"));
-    assert!(cmd.contains(&"-c".to_string()), "{cmd:?}");
-    assert_eq!(
-        cmd[cmd.len() - 5..],
-        ["-f", "-", "-C", WORK_DIR, "."].map(String::from)
-    );
-    // Every never-kept directory is excluded at pack time, before the `.` operand
-    // (GNU tar's `--exclude` is unanchored, so the bare name matches at any depth),
-    // so a `node_modules` full of native binaries and `.bin/*` symlinks never
-    // enters the archive the host must unpack.
-    for dir in SKIPPED_DIRS {
-        let flag = format!("--exclude={dir}");
-        let pos = cmd.iter().position(|a| a == &flag);
-        assert!(pos.is_some(), "expected {flag} in {cmd:?}");
-        let dot = cmd.iter().position(|a| a == ".").expect("`.` operand");
-        assert!(pos.unwrap() < dot, "{flag} must precede the `.` operand");
-    }
+fn an_unpack_failure_reports_the_cause_beneath_the_tar_crates_wrapper() {
+    // The `tar` crate wraps an entry that would not unpack twice over the I/O error
+    // that says why, and shows only the outermost wrapper in its `Display`. The
+    // collection report must carry the innermost cause, or the failure reads as
+    // "failed to unpack `<path>`" and nothing more.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let archive_path = dir.path().join("collected.tar");
+    let mut archive = one_file_archive("dist/assets/music-play.wav", &[7u8; 4096]);
+    archive.truncate(archive.len() - 1500);
+    std::fs::write(&archive_path, &archive).expect("write");
+    let dest = dir.path().join("dest");
+    std::fs::create_dir(&dest).expect("dest");
+
+    let err = unpack_archive_file(&archive_path, &dest).expect_err("truncated");
+    let message = err.to_string();
+    assert!(message.contains("unpacking collected archive"), "{message}");
+    assert!(message.contains("failed to unpack"), "{message}");
     assert!(
-        SKIPPED_DIRS.contains(&"node_modules"),
-        "node_modules must be excluded from collection",
+        message.contains("music-play.wav"),
+        "the entry is named: {message}"
+    );
+    assert!(
+        message.contains("failed to write entire file"),
+        "the cause is named: {message}"
+    );
+}
+
+#[test]
+fn error_chain_walks_every_source_outermost_first() {
+    #[derive(Debug)]
+    struct Layer(&'static str, Option<Box<dyn std::error::Error + 'static>>);
+    impl std::fmt::Display for Layer {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+    impl std::error::Error for Layer {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref()
+        }
+    }
+
+    let err = Layer(
+        "failed to unpack `dist/assets/music-play.wav`",
+        Some(Box::new(Layer(
+            "failed to unpack `./dist/assets/music-play.wav` into `dist/assets/music-play.wav`",
+            Some(Box::new(std::io::Error::other("No space left on device"))),
+        ))),
+    );
+    assert_eq!(
+        error_chain(&err),
+        "failed to unpack `dist/assets/music-play.wav`: failed to unpack \
+         `./dist/assets/music-play.wav` into `dist/assets/music-play.wav`: \
+         No space left on device"
+    );
+    assert_eq!(
+        error_chain(&std::io::Error::other("bare")),
+        "bare",
+        "an error with no source is just its own message"
+    );
+}
+
+#[test]
+fn the_salvage_read_command_streams_one_file_without_a_shell() {
+    // Salvaging a `hung` run's capture journal out of a pod has no filesystem-layer
+    // channel to use — the only way to read a byte out of a pod is to run something in
+    // it — so this is the exec the salvage rides. Passed as argv rather than through
+    // `sh -c`, with `--` terminating options, so nothing in the path is ever
+    // interpreted.
+    let cmd = salvage_read_command("/work/.gg/replay.ndjson");
+    assert_eq!(
+        cmd,
+        ["cat", "--", "/work/.gg/replay.ndjson"].map(String::from)
+    );
+    assert!(
+        !cmd.iter().any(|arg| arg == "sh" || arg == "-c"),
+        "the salvage must not go through a shell: {cmd:?}",
+    );
+}
+
+#[test]
+fn a_staged_tree_extracts_at_its_own_absolute_path() {
+    // A run's audio palette travels as a host tree and is streamed in with ONE exec,
+    // exactly as the seeded `/work` is: entries relative to the tree's root, extracted
+    // at the destination directory rather than at `/`, and bounded by the byte count
+    // so a truncated stream is a non-zero exit rather than a hung read.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("packs/combat-core@0.1.0")).expect("pack dir");
+    std::fs::write(dir.path().join("packs.json"), b"{}").expect("write");
+    std::fs::write(dir.path().join("packs/combat-core@0.1.0/pack.toml"), b"x").expect("write");
+
+    let archive = tar_dir_contents(dir.path()).expect("archive");
+    let mut names: Vec<String> = tar::Archive::new(std::io::Cursor::new(archive.clone()))
+        .entries()
+        .expect("entries")
+        .map(|e| {
+            e.expect("entry")
+                .path()
+                .expect("path")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    assert!(names.iter().any(|n| n == "packs.json"), "{names:?}");
+    assert!(
+        names
+            .iter()
+            .any(|n| n == "packs/combat-core@0.1.0/pack.toml"),
+        "{names:?}",
+    );
+
+    let cmd = extract_tar_command("/opt/audio", archive.len(), false);
+    assert_eq!(
+        cmd[2],
+        format!("head -c {} | tar -x -f - -C '/opt/audio'", archive.len()),
     );
 }
 
@@ -522,12 +774,12 @@ fn scheduling_message_falls_back_to_reason_or_message_alone() {
 fn resolved_digest_reads_running_container_image_id() {
     let pod = pod_with_container_status(ContainerStatus {
         name: RUN_CONTAINER.to_string(),
-        image_id: "ghcr.io/x/base@sha256:deadbeef".to_string(),
+        image_id: "registry.example.com/x/base@sha256:deadbeef".to_string(),
         ..Default::default()
     });
     assert_eq!(
         resolved_image_digest(&pod),
-        Some("ghcr.io/x/base@sha256:deadbeef".to_string())
+        Some("registry.example.com/x/base@sha256:deadbeef".to_string())
     );
 }
 

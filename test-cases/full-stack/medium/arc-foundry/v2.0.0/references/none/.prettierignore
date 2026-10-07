@@ -1,0 +1,14 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, the vendored produced-effect runtime, and the supplied
+# specification.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+vendor/
+package-lock.json
+specs/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md

@@ -1,0 +1,95 @@
+// drilling/bedrock-makes-no-progress — the bedrock border cannot be drilled.
+//
+// specs/character.md: a drill aimed into the bedrock border starts no cut and
+// makes no progress. specs/world.md puts that border in columns `0` and `31`, so
+// the playable field cannot be dug out of sideways.
+//
+// The miner walks east along a floor until it is flush against column `31` and
+// holds the direction there for four seconds — thirty-two `DRILL_HIT_INTERVAL`s,
+// twice what the deepest band takes to break at the weakest drill. The border
+// cell it is aimed at is the one beside its box, not the one under its feet.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual } from "../assert";
+import {
+  MINER_W,
+  PLAYABLE_COL_MAX,
+  TILE,
+  WALK_SPEED,
+  WORLD_COLS,
+} from "../constants";
+import {
+  ACTION_KEY,
+  captureReplay,
+  createHarness,
+  layFloor,
+  openScene,
+  standOn,
+  TICK_HZ,
+  type Harness,
+} from "../harness";
+
+/** The row the miner walks along, well clear of the camp and the Core. */
+const ROW = 12;
+
+/** The border column the drill is aimed into: the east edge of the grid. */
+const BORDER_COL = WORLD_COLS - 1;
+
+/** How long the drill is held into the border, in frames. */
+const HOLD_FRAMES = 4 * TICK_HZ;
+
+/**
+ * How far the box may sit short of the border's face, in world units.
+ *
+ * A build resolves a wall contact with an epsilon of its own and
+ * `specs/character.md` fixes none: one that advances, tests, and keeps the last
+ * position clear of the wall comes to rest up to a whole frame of walk short of
+ * the face. `specs/instrumentation.md` integrates every rate against the frame's
+ * delta, so that frame is `WALK_SPEED / TICK_HZ`, and the band is the whole unit
+ * above it — a twenty-sixth of the eighty a tile spans. Overlapping the bedrock
+ * is not admitted at all.
+ */
+const FLUSH = Math.ceil(WALK_SPEED / TICK_HZ);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves the bedrock border whole however long the drill is held", async () => {
+  await openScene(h);
+  await layFloor(h, ROW);
+  await standOn(h, PLAYABLE_COL_MAX, ROW, "east");
+
+  const opening = await h.tileAt(BORDER_COL, ROW - 1);
+  assertEqual(opening.kind, "bedrock", "specs/world.md");
+  assertEqual(opening.health, null, "specs/instrumentation.md");
+
+  const held = await captureReplay(h, "border", async () => {
+    await h.hold(ACTION_KEY.right);
+    try {
+      await h.advance(HOLD_FRAMES);
+      return await h.snapshot();
+    } finally {
+      await h.release(ACTION_KEY.right);
+    }
+  });
+
+  // Flush against the border, so the drill was aimed into it for the hold.
+  assertBetween(
+    held.miner.x + MINER_W,
+    BORDER_COL * TILE - FLUSH,
+    BORDER_COL * TILE,
+    "specs/character.md",
+  );
+
+  const after = await h.tileAt(BORDER_COL, ROW - 1);
+  assertEqual(after.kind, "bedrock", "specs/character.md");
+  assertEqual(after.health, null, "specs/character.md");
+  assertEqual(held.miner.drilling, null, "specs/character.md");
+});

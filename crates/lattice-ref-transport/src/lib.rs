@@ -294,7 +294,7 @@ fn gcd(mut a: u64, mut b: u64) -> u64 {
 /// same fingerprint provably evolve identically, which is what makes a fingerprint
 /// repeat a genuine cycle.
 ///
-/// It is built from the canonical [`Snapshot`](lattice_core::Snapshot) the world
+/// It is built from the canonical [`Snapshot`] the world
 /// already knows how to produce — the belts' exact item layouts, the machines'
 /// exact buffers/timers, and each source's `emit_phase` — with the sinks zeroed
 /// out, then hashed with the same FNV-1a the checksum uses. Reusing the canonical

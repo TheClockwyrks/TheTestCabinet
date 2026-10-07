@@ -2,9 +2,9 @@ slug = "holdfast"
 experimental = true
 # The Test Cabinet test case manifest.
 #
-# Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, and which validation
-# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+# Declares, for this exact version, which files are seeded into a run and which
+# validation checks run. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
 
 # Human-readable display name for this test case.
 name = "Holdfast"
@@ -15,11 +15,12 @@ name = "Holdfast"
 # `PATH`, and then build a game that uses them. It is NOT the older two-run pattern
 # where a separate asset-gen run makes an asset a later game merely consumes; here
 # one model both produces the art/effects/audio and builds the game around it. The
-# `full-stack` type schedules the run onto the `test-cabinet-full-stack-2d` image,
-# which carries exactly six binaries on `PATH` — `draw`, `draw-sheet`,
-# `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no others; every
-# asset the game needs is produced with one of them (`specs/assets.md` is the
-# production contract). A root identity field, so it sits above the first table.
+# `full-stack` type, with `asset_dimension` left at its `2d` default, schedules the
+# run onto the `test-cabinet-full-stack-2d` image, which carries exactly six
+# binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Holdfast is
@@ -74,7 +75,7 @@ workspace = "workspaces/base"
 
 # Init command, run in the run container once the workspace and specs are seeded
 # and before the harness starts. `npm install` — NOT `npm ci` — because `packages`
-# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# injects the `@clockwyrks/particle-runtime` `file:` dependency this build plays
 # its produced particle systems with, so the lockfile is completed at seed time;
 # the same command downloads the Playwright Chromium build (the base image ships
 # the OS libraries Chromium links against, but not the browser binary), so the
@@ -84,11 +85,10 @@ init = "npm install && npx playwright install chromium"
 # NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
 # whole point of a full-stack case: the model PRODUCES the game's art, effects, and
 # audio itself, during the run, with the six binaries on the run image's `PATH`
-# (see `type` above and `specs/assets.md`). The `reference/` mockups below are
-# harness-side visual targets rendered via `[[reference]]`, not seeded game assets.
+# (see `type` above and `specs/assets.md`).
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and
 # the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
 # the build imports it (its `/canvas` binding) like any other dependency and plays
@@ -96,19 +96,33 @@ init = "npm install && npx playwright install chromium"
 # fire spread, explosion, and construction dust are all produced `particle-2d`
 # systems played this way; see `specs/assets.md` for the consumption contract. (A
 # root key, so it must sit above the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
 # first is the default. Each seeds the common specs plus its own mode spec (its
 # `specs/mode-<slug>.md` → the stable dest `specs/mode.md`, which REPLACES the mode
-# rather than adding one) and supplies its own `title` menu reference (the main menu
-# lists that variant's start; `gameplay` and `game-over` are common):
+# rather than adding one):
 #   - base — the standard frontier start.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
 ]
+
+# The audio packs the run container is staged with, and the whole of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind.
+#
+# `combat-core` is the sample pack the colony's violence is layered from: the
+# gunshot, the hit, the build cue, and the raid alarm all have their material in
+# its cannon body, snaps, metal impacts, and clangs. The bed is asked to sit low
+# and sparse and then lift when a raid lands (`specs/assets.md`), so `cinematic`
+# leads the banks, because its tremolo strings, low brass, choir, and taiko are
+# what that lift is made of. `gm-lite` follows for the nylon guitar, violin, and
+# cello a frontier plays itself between raids. `synthwave` is not staged; nothing
+# on this map is electric.
+[audio]
+packs = ["combat-core@0.1.0", "cinematic@0.1.0", "gm-lite@0.1.0"]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -158,61 +172,6 @@ source = "specs/flow.md"
 [[spec]]
 source = "specs/assets.md"
 
-# Proof of implementation: instructs the build to capture evidence at the exact
-# paths the `[[proof]]` entries below declare. The paths in this spec and in the
-# `[[proof]]` entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup the harness renders to a screenshot and seeds as a visual target. The
-# `title` view is variant-specific (declared per variant) because the menu differs
-# by variant; `gameplay` and `game-over` look the same in every variant.
-[[reference]]
-view = "gameplay"
-path = "reference/gameplay.html"
-
-[[reference]]
-view = "game-over"
-path = "reference/game-over.html"
-
-# Proof of implementation, requested for every variant. Each declares a `dest` path
-# (relative to the run workspace root) the build must write a screenshot or `.webm`
-# clip to; `specs/proof.md` instructs the build to produce them at exactly these
-# paths. Validation records whether each turned up (informational). The media kind
-# is inferred from the extension: `.png` is an image, `.webm` a video (the format
-# Playwright records natively; the public gallery transcodes it to mp4).
-[[proof]]
-id = "title"
-name = "Title menu"
-dest = "proof/title.png"
-
-[[proof]]
-id = "gameplay"
-name = "In-colony dashboard"
-dest = "proof/gameplay.png"
-
-[[proof]]
-id = "game-over"
-name = "Colony lost"
-dest = "proof/game-over.png"
-
-[[proof]]
-id = "colony"
-name = "Colony work clip"
-dest = "proof/colony.webm"
-
-[[proof]]
-id = "raid"
-name = "Raid defense clip"
-dest = "proof/raid.webm"
-
-# Reference-similarity checks (opt-in) are intentionally not declared. The
-# reference screenshots are seeded as illustrative examples of the screens, not
-# layouts to reproduce, so menus and screens are left to the model's design and
-# are reviewed by a human rather than scored against a baseline. The automated
-# load check still runs.
-
 # Scoring domains. The reviewer rates each independently while playing the build,
 # and the run's overall rating is the WORST across them — flawless simulation
 # cannot mask crude, un-produced art, and gorgeous produced art cannot mask a
@@ -245,8 +204,6 @@ title = "Top-down tile world and resource nodes"
 text = "The world is a top-down grid of terrain (soil, fertile ground, rock) with walkable and blocked tiles and scattered resource nodes — trees to chop and ore to mine. Designating a chop or mine sends a settler to work it over time; it yields wood or ore and, for a tree, clears the tile. Rock and the map border block movement and cannot be walked through."
 weight = 1
 domain = "simulation"
-reference = "gameplay"
-proof = "colony"
 
 [[review_item]]
 id = "settler-ai"
@@ -254,7 +211,6 @@ title = "Settler needs, mood, jobs, and pathfinding"
 text = "Each settler has needs (hunger, rest) and a mood that drift over time, skills that affect work speed, and pulls jobs from a PRIORITY QUEUE — chop/mine, haul, build, cook, farm, fight — pathfinding across walkable tiles to reach them. A hungry settler eats, a tired one sleeps, and low mood degrades behavior; two settlers do not both claim the same job."
 weight = 1
 domain = "simulation"
-proof = "colony"
 
 [[review_item]]
 id = "build-economy"
@@ -262,7 +218,6 @@ title = "Work, build, cook, and farm economy"
 text = "The player designates work and places build orders; settlers haul materials and construct walls, doors, beds, a stove, farm plots, and defensive turrets from those materials. Harvested crops are cooked at the stove into meals that settlers eat, and running out of material blocks construction while running out of food starves the colony."
 weight = 1
 domain = "simulation"
-proof = "colony"
 
 [[review_item]]
 id = "threat-combat"
@@ -270,8 +225,6 @@ title = "Threat director and ranged combat"
 text = "An escalating threat director sends raids of hostiles on a timer/wealth curve. Combat is ranged: settlers and turrets shoot at raiders and take cover behind walls, which reduce incoming hits. A settler reduced to zero health is downed and bleeds out unless tended, and raiders can be killed or driven off. Raids grow harder as the colony ages and grows."
 weight = 1
 domain = "simulation"
-reference = "gameplay"
-proof = "raid"
 
 [[review_item]]
 id = "day-night"
@@ -279,7 +232,6 @@ title = "Day/night cycle"
 text = "Time advances through a day/night cycle shown on the HUD clock. Daylight and darkness affect the colony — settlers rest at night and work by day, and raids favor certain times — so the cycle is a real pressure on scheduling, not merely a background tint."
 weight = 1
 domain = "simulation"
-proof = "colony"
 
 [[review_item]]
 id = "survival-loss"
@@ -287,7 +239,6 @@ title = "Survival pressure and the loss state"
 text = "The colony must gather, build defenses, and feed itself faster than the raids escalate and its needs run down. When every settler is dead — killed in a raid, bled out, or starved — the colony is lost: a clear loss state showing how many days it survived, with a restart."
 weight = 1
 domain = "simulation"
-proof = "raid"
 
 # --- Presentation & Assets ------------------------------------------------------
 [[review_item]]
@@ -296,8 +247,6 @@ title = "Produced, animated settler and raider sheets"
 text = "The settlers and raiders are drawn from sprite sheets the build produced with `draw-sheet` — genuine per-frame pixel art — and animate through their actions (at least walk, work, fight, and downed cycles), not a static dot or an ad-hoc code-drawn figure."
 weight = 1
 domain = "presentation"
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "produced-world-sprites"
@@ -305,17 +254,13 @@ title = "Produced world sprites"
 text = "The terrain tiles, resource nodes, structures, item icons, and HUD icons are rendered from single sprites the build produced with `draw` — soil/rock/grass, trees and ore, built walls/doors/beds/stove/farm plots/turrets, wood and food and meal items — not flat rectangles or ad-hoc canvas fills."
 weight = 1
 domain = "presentation"
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "produced-combat-effects"
 title = "Produced particle effects"
-text = "The muzzle flash, blood/impact spray, fire spread, explosion, and construction dust are all particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated effects that vary play to play, not a flat flash or a hand-coded burst."
+text = "The muzzle flash, blood/impact spray, fire spread, explosion, and construction dust are all particle systems the build authored with `particle-2d` and plays live through `@clockwyrks/particle-runtime`'s canvas binding — simulated effects that vary play to play, not a flat flash or a hand-coded burst."
 weight = 1
 domain = "presentation"
-reference = "gameplay"
-proof = "raid"
 
 [[review_item]]
 id = "produced-audio"
@@ -323,7 +268,6 @@ title = "Produced sound and music"
 text = "The colony has real audio the build produced with the audio tools: gunshot/hit/build-place/raid-alarm sound effects (`sfx-synth` and/or `sfx-sample`) and an ambient/tension music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
 weight = 1
 domain = "presentation"
-proof = "raid"
 
 [[review_item]]
 id = "hud-in-code"
@@ -331,8 +275,6 @@ title = "In-code HUD dashboard"
 text = "The colony dashboard — the resource stocks (wood, food, meals), the settler roster and their needs and mood, the work-priority grid, the day/time clock and speed, and threat/raid warnings — plus the build palette and all menus and overlays are drawn in code (canvas/DOM); only the small icons within it may be produced sprites."
 weight = 1
 domain = "presentation"
-reference = "gameplay"
-proof = "gameplay"
 
 # --- General (states, window fit) — no domain -----------------------------------
 [[review_item]]
@@ -340,8 +282,6 @@ id = "states-complete"
 title = "Game states"
 text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the live colony with its HUD, pause (resume/restart/quit to menu) with speed controls, and colony-lost (restart/menu) with the days survived shown."
 weight = 1
-reference = "title"
-proof = "title"
 
 # --- General (states, window fit) — no domain -----------------------------------
 [[review_item]]

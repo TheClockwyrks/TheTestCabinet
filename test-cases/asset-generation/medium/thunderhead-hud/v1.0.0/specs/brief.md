@@ -1,6 +1,6 @@
 # Thunderhead HUD — painting brief
 
-You are painting the **fleet-command HUD kit** for *Thunderhead*, a naval
+You are painting the **fleet-command HUD kit** for _Thunderhead_, a naval
 fleet-command strategy game. The interface is the industrial overlay a commander
 reads mid-battle: a **riveted-naval** chassis of gunmetal and brass, its readouts
 glowing in cold **tactical cyan**, with **warning amber** reserved for alerts. It
@@ -51,18 +51,18 @@ progress.
 Build every element from **only** these colors (name and hex). Cyan is for
 tactical readouts and glow; amber is reserved for warnings, never the main trim:
 
-| Role | Hex |
-| --- | --- |
-| Gunmetal chassis | `#2b313a` |
-| Gunmetal shadow (recesses) | `#161a20` |
-| Brass trim | `#b28a4c` |
-| Brass highlight | `#e6c483` |
-| Steel edge (bevel light) | `#c2ccd8` |
-| Tactical cyan (readout) | `#35e2ff` |
-| Cyan glow (deep) | `#0c5f78` |
-| Warning amber | `#ffb43a` |
+| Role                         | Hex       |
+| ---------------------------- | --------- |
+| Gunmetal chassis             | `#2b313a` |
+| Gunmetal shadow (recesses)   | `#161a20` |
+| Brass trim                   | `#b28a4c` |
+| Brass highlight              | `#e6c483` |
+| Steel edge (bevel light)     | `#c2ccd8` |
+| Tactical cyan (readout)      | `#35e2ff` |
+| Cyan glow (deep)             | `#0c5f78` |
+| Warning amber                | `#ffb43a` |
 | Readout black (screen field) | `#0d1117` |
-| Rivet highlight | `#ffffff` |
+| Rivet highlight              | `#ffffff` |
 
 ## The elements
 
@@ -88,7 +88,7 @@ you finish.
   where the live radar renders, its four corners bolted with rivets and a cyan
   bearing tick at top-center. Nine-slice so the riveted corners stay fixed while
   the framed edges tile to any minimap size: `left 48, right 48, top 48,
-  bottom 48`.
+bottom 48`.
 - **`faction-crest`** — **256×256**. A fixed-size military naval insignia: a bold,
   centered emblem — a brass-and-gunmetal silhouette (e.g. a stylized anchor,
   thunderhead cloud, or fouled-anchor-over-lightning device) with a cyan accent —

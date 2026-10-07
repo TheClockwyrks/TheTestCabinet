@@ -31,6 +31,7 @@
   margin: 0 0 t.$space-sm;
   color: t.$color-text-muted;
   font-size: t.$font-sm;
+  @include h.halo;
 }
 
 .empty {

@@ -19,15 +19,28 @@
 //! selected variant — for example which configuration this build is — without
 //! the authored text having to hedge about what a run "may" contain. A spec with
 //! any other extension is seeded verbatim. See `docs/testing/end-to-end/overview.md#spec-templates`.
+//!
+//! Both contexts also carry the run's selected [engine](crate::engine), and it is
+//! the one piece of context that is *always* present — even for a run that
+//! selected no engine at all. Everything else optional (`voxel`) is omitted when
+//! it does not apply, because a case that never mentions it never renders it. The
+//! engine is different: an engine is a run dimension, so the *same* template is
+//! rendered both with and without one and has to be able to ask which. Under
+//! strict mode an absent field is a hard error, not a blank, so a template could
+//! not ask at all if the field came and went. It is therefore always serialized,
+//! and an engineless run renders the sentinel `none` engine, which a template
+//! branches on with the registered equality helpers:
+//! `{{#if (ne engine.slug "none")}}`.
 
 use std::path::Path;
 
 use serde::Serialize;
 
+use crate::engine::{NONE_SLUG, ResolvedEngine};
 use crate::error::{Error, Result};
 use crate::execution::{GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
 use crate::run_record::PriorGameJamEntry;
-use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
+use crate::test_case::{AssetDimension, TestCaseVersion, TestType, Variant, VoxelSpec};
 
 /// A standing quality directive prepended to every asset-generation case's
 /// rendered prompt.
@@ -79,7 +92,9 @@ const GAME_JAM_DIVIDER: &str = "========================================";
 /// only, after the jam's own brief.
 const GAME_JAM_README_DIRECTIVE: &str = "One deliverable beyond the game itself is required: commit a `README.md` at your project root that explains, to a player, WHAT the game is and HOW to play it — its premise, the goal, the controls, and the core loop — in a few short paragraphs. Keep it strictly about playing the game: no implementation, build, or code detail belongs in it. Write it so someone who has never seen the game understands what it is and how to pick it up. This README is read by the person reviewing your entry, and it is also what a later jam entry is shown so each new game can be made distinct from the ones before it — so describe the actual experience of play, clearly and honestly.";
 
-/// A standing directive prepended to every full-stack case's rendered prompt.
+/// The standing directive prepended to every full-stack case whose
+/// [`AssetDimension`] is [`AssetDimension::TwoD`] — the default, and so the
+/// directive nearly every full-stack case opens with.
 ///
 /// A full-stack case asks the model to do two jobs at once: build a working
 /// program *and* produce the program's own assets. The largest risk is that the
@@ -92,7 +107,75 @@ const GAME_JAM_README_DIRECTIVE: &str = "One deliverable beyond the game itself 
 /// itself. It is deliberately generic — no per-subject or per-asset detail, and no
 /// comparison, ranking, or benchmark framing. Prepended only for
 /// [`TestType::FullStack`]; every other test type renders unchanged.
-const FULL_STACK_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+///
+/// The one thing it is *not* generic about is the tools, and it must not be: it
+/// names the six binaries the 2D run image bakes in and only those. A standing
+/// directive is worth no more than the tools it points at — naming a binary the
+/// run image does not carry sends the model hunting for something absent, and
+/// omitting one hides a tool the case's asset contract may require — so
+/// [`FULL_STACK_3D_PREAMBLE`] is the same directive over the 3D image's nine, and
+/// [`full_stack_preamble`] picks between them by the case's declared dimension.
+const FULL_STACK_2D_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+
+/// The standing directive prepended to every full-stack case whose
+/// [`AssetDimension`] is [`AssetDimension::ThreeD`], the counterpart of
+/// [`FULL_STACK_2D_PREAMBLE`].
+///
+/// Word for word the 2D directive, with a single difference: the parenthetical
+/// naming the binaries on `PATH` lists all nine the 3D run image carries rather
+/// than the 2D image's six. Everything else — the two jobs, the placeholders that
+/// count as unfinished work, the self-containment requirement, and the quality
+/// ceiling — is the dimension-independent half of the directive and is required to
+/// stay identical between the two;
+/// `the_two_full_stack_preambles_differ_only_in_their_binary_list` in the tests is
+/// what holds them together.
+///
+/// The three added binaries carry a few words saying what each produces, which the
+/// 2D six do not need: `draw` and `music` name themselves, but nothing in the name
+/// `voxel-anim` tells a model where it stops and `voxel` begins, and a model that
+/// cannot tell them apart reaches for the wrong one. `--help` remains the
+/// authority on what each can actually do.
+const FULL_STACK_3D_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music`, plus `voxel` for a static voxel model, `voxel-anim` for a rigged, animated one, and `particle-3d` for a volumetric effect — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+
+/// The standing full-stack directive for `asset_dimension`: the only part of a
+/// full-stack prompt that depends on which of the two run images the case resolves.
+///
+/// Selection is the whole of the function, and the dimension is the right
+/// discriminator for it because it is the same field that decides which binaries
+/// the run actually has on `PATH` (see [`crate::resolve_run_image`]). A case
+/// therefore cannot be handed a directive naming tools its image does not carry.
+const fn full_stack_preamble(asset_dimension: AssetDimension) -> &'static str {
+    match asset_dimension {
+        AssetDimension::TwoD => FULL_STACK_2D_PREAMBLE,
+        AssetDimension::ThreeD => FULL_STACK_3D_PREAMBLE,
+    }
+}
+
+/// The workspace-relative directory the selected engine's own documentation is
+/// seeded into, and so the tail of the `{{engine.docs}}` path a prompt points the
+/// model at.
+///
+/// The engine's manifest names the documentation directory *inside its package*
+/// (`docs`, for `@clockwyrks/simple-2d`), but seeding flattens it to this one
+/// fixed place in the run workspace, so every engine's documentation is found at
+/// the same path and a template never has to know the package's internal layout.
+/// The path a template sees therefore depends only on *whether* the engine
+/// declares documentation, never on what it called the directory.
+pub(crate) const ENGINE_DOCS_DIR: &str = "engine";
+
+/// The display name of the sentinel [`NONE_SLUG`] engine, mirroring the `name` in
+/// `engines/none/engine.toml`.
+///
+/// A run that selected no engine still renders an `engine` context (see
+/// [`TemplateEngine`]), and it renders this name rather than resolving the
+/// catalogue for it. Rendering is pure and infallible, and its callers include
+/// ones that hold no engine at all — the backend catalog API renders
+/// a case's prompt for the gallery from stored manifest fields — so making them
+/// carry an [`EngineCatalog`](crate::engine::EngineCatalog) just to name the
+/// absence of an engine would be a resolution step with exactly one possible
+/// answer. `engineless_context_matches_the_none_engine` in the tests is what
+/// keeps this in step with the manifest.
+const NONE_NAME: &str = "None";
 
 /// The Handlebars context exposed to a test case's `prompt.hbs`.
 ///
@@ -121,6 +204,12 @@ struct PromptContext<'a> {
     /// non-voxel case, whose prompt never references `{{voxel}}`.
     #[serde(skip_serializing_if = "Option::is_none")]
     voxel: Option<TemplateVoxel>,
+    /// The engine this run selected, always present — the sentinel `none` engine
+    /// when the run selected none. A prompt uses it to add an engine section
+    /// naming the runtime and pointing the model at `{{engine.docs}}`, wrapped in
+    /// `{{#if (ne engine.slug "none")}}` so the same template still renders for an
+    /// engineless run.
+    engine: TemplateEngine<'a>,
 }
 
 /// The Handlebars context exposed to a test case's spec `.hbs` template.
@@ -129,9 +218,19 @@ struct PromptContext<'a> {
 /// the prompt — it is handed neither the in-container workspace path nor the
 /// spec manifest: those belong to the prompt, and keeping them out of specs is
 /// what lets a specification stay free of container paths. A spec template sees
-/// only the selected variant and the version. These are the only variables it
-/// may reference (rendering runs in strict mode); they are documented for
-/// authors in `docs/testing/end-to-end/overview.md#spec-templates`.
+/// only the selected variant, the version, and the selected engine. These are the
+/// only variables it may reference (rendering runs in strict mode); they are
+/// documented for authors in
+/// `docs/testing/end-to-end/overview.md#spec-templates`.
+///
+/// The engine is the one thing this context and [`PromptContext`] share beyond
+/// the variant, and it is here for the same reason the version is: a spec states
+/// what the *build* must do, and that genuinely differs by engine — an engine
+/// that owns the frame loop changes what the build is required to implement. What
+/// a spec must never do is restate the engine's own documentation, which the
+/// engine ships from its package and seeding puts at `{{engine.docs}}` — here the
+/// directory relative to the workspace, so the rule above holds for it too; a spec
+/// branches on the engine only to say what is specific to *this case* under it.
 #[derive(Debug, Serialize)]
 struct SpecContext<'a> {
     /// The exact test case version string (for example `v1.0.0`).
@@ -146,6 +245,10 @@ struct SpecContext<'a> {
     /// for a non-voxel case, whose specs never reference `{{voxel}}`.
     #[serde(skip_serializing_if = "Option::is_none")]
     voxel: Option<TemplateVoxel>,
+    /// The engine this run selected, always present — the sentinel `none` engine
+    /// when the run selected none, so one spec can carry both the engineless
+    /// wording and the wording that holds under an engine.
+    engine: TemplateEngine<'a>,
 }
 
 /// The bounding volume as exposed to a prompt or spec template.
@@ -199,6 +302,85 @@ struct TemplateVariant<'a> {
     description: Option<&'a str>,
 }
 
+/// The selected engine, as exposed to a prompt or spec template.
+///
+/// Unlike every other optional piece of context this is never omitted: see the
+/// module documentation. An engineless run renders the sentinel values
+/// `{ slug: "none", name: "None", docs: "" }`, which is exactly what the built-in
+/// `none` engine resolves to, so a template needs one branch — on the slug — and
+/// not two.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TemplateEngine<'a> {
+    /// The engine's slug (for example `simple-2d`), or [`NONE_SLUG`] when the run
+    /// selected no engine. This is what a template branches on.
+    slug: &'a str,
+    /// The engine's display name (for example `Simple 2D`), for prose.
+    name: &'a str,
+    /// The absolute in-container path of the engine's seeded documentation (for
+    /// example `/work/engine`), or the empty string when there is none to read —
+    /// which is every engineless run, and any engine that ships no documentation
+    /// tree. Derived exactly as a spec's `path` is, from the workspace root and
+    /// the seeded destination.
+    docs: &'a str,
+}
+
+impl<'a> TemplateEngine<'a> {
+    /// Build the template view of the run's selected engine.
+    ///
+    /// `docs` is passed in rather than derived here because it is an owned path
+    /// built by [`engine_docs_path`], and the borrow has to outlive the context
+    /// this is embedded in.
+    fn new(engine: Option<&'a ResolvedEngine>, docs: &'a str) -> Self {
+        match engine {
+            Some(engine) => Self {
+                slug: engine.slug(),
+                name: &engine.manifest.name,
+                docs,
+            },
+            // No engine selected. This is deliberately identical to what the
+            // built-in `none` engine resolves to, so a run that named `none`
+            // explicitly and a run that named nothing render the same prompt.
+            None => Self {
+                slug: NONE_SLUG,
+                name: NONE_NAME,
+                docs,
+            },
+        }
+    }
+}
+
+/// The absolute in-container path of the selected engine's seeded documentation,
+/// or the empty string when there is nothing seeded to point at.
+///
+/// Built the same way [`prompt_spec`] builds a spec's `path` — the workspace root
+/// joined to the workspace-relative destination seeding wrote — so the two can
+/// never disagree about where the run's files live. An engine that declares no
+/// `docs` directory (and the absence of an engine altogether) seeds nothing, and
+/// the empty string is what a template sees; it should be guarding on
+/// `engine.slug` rather than on this, which is why the empty value is left as a
+/// blank rather than an invented path.
+fn engine_docs_path(engine: Option<&ResolvedEngine>) -> String {
+    match engine {
+        Some(engine) if engine.docs().is_some() => format!("{WORKSPACE_DIR}/{ENGINE_DOCS_DIR}"),
+        _ => String::new(),
+    }
+}
+
+/// The selected engine's seeded documentation directory relative to the workspace,
+/// or the empty string when there is nothing seeded to point at.
+///
+/// What a spec gets in place of [`engine_docs_path`]. A spec is rendered into a
+/// file that sits beside the build, and a container path written into it would be
+/// the one absolute path in a document otherwise entirely about the build's own
+/// tree — which is why [`SpecContext`] is handed no workspace path at all.
+fn engine_docs_dir(engine: Option<&ResolvedEngine>) -> String {
+    match engine {
+        Some(engine) if engine.docs().is_some() => format!("{ENGINE_DOCS_DIR}/"),
+        _ => String::new(),
+    }
+}
+
 /// A single seeded spec, as exposed to a prompt template.
 #[derive(Debug, Serialize)]
 struct PromptSpec {
@@ -219,10 +401,16 @@ struct PromptSpec {
 /// the `PromptContext`. Rendering uses strict mode, so a template that
 /// references an unknown variable fails rather than silently producing an empty
 /// value, and HTML escaping is disabled because the output is plain text.
+///
+/// `engine` is the engine this run resolved, or `None` for a run that selected
+/// none; either way the template sees an `engine` — the sentinel `none` one when
+/// nothing was selected — because strict mode makes an absent field a hard error
+/// rather than a blank.
 pub fn render_prompt(
     test_case: &TestCaseVersion,
     variant: &Variant,
     prior_game_jam_entries: &[PriorGameJamEntry],
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String> {
     let template =
         std::fs::read_to_string(&test_case.prompt_path).map_err(|err| Error::PromptRender {
@@ -246,9 +434,11 @@ pub fn render_prompt(
         variant.description.as_deref(),
         &dests,
         test_case.test_type,
+        test_case.asset_dimension,
         test_case.max_runtime_seconds,
         test_case.voxel_for(variant),
         prior_game_jam_entries.len(),
+        engine,
     )
 }
 
@@ -283,22 +473,29 @@ fn game_jam_distinctness_section(count: usize) -> String {
 /// This is the rendering core that [`render_prompt`] delegates to once it has
 /// read the template and resolved the seeded specs off a [`TestCaseVersion`]. It
 /// is exposed for callers that hold those pieces directly — notably the backend
-/// and desktop catalog APIs, which render a variant's prompt for the gallery's
-/// Specifications tab from stored manifest fields rather than a disk checkout.
+/// catalog API, which renders a variant's prompt for the gallery's Specifications
+/// tab from stored manifest fields rather than a disk checkout.
 /// `spec_dests` are the seeded specs' workspace-relative destination paths in
 /// seed order (the common specs first, then the variant's own), exactly as
 /// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared
 /// preamble is prepended: the `ASSET_QUALITY_PREAMBLE` for
-/// [`TestType::AssetGeneration`], the `FULL_STACK_PREAMBLE` for
+/// [`TestType::AssetGeneration`], a full-stack directive for
 /// [`TestType::FullStack`], the `GAME_JAM_PREAMBLE` for [`TestType::GameJam`], and
 /// none for the other types, so every asset-generation, full-stack, and game-jam
 /// case opens with the same standing directive while other types render bare.
+/// `asset_dimension` refines that choice for a full-stack case alone, picking the
+/// directive whose binary list matches the run image the dimension resolves (see
+/// `full_stack_preamble`); pass the case's declared value, which is
+/// [`AssetDimension::TwoD`] for every other type and is then never consulted.
 /// `max_runtime_seconds` is the run's wall-clock cap; it is exposed to the template
 /// as `{{time_limit_hours}}` (formatted hours) so a prompt can state the time budget.
 /// `voxel` is the effective bounding volume for a voxel case (the variant's
 /// override, else the case's `[voxel]`), exposed to the template as `{{voxel}}`;
-/// pass `None` for a non-voxel case. Rendering uses the same strict, no-escape
-/// engine as a real run, so the output matches what the harness receives.
+/// pass `None` for a non-voxel case. `engine` is the run's resolved engine, or
+/// `None` for a run that selected none — a caller that renders a prompt for
+/// display rather than for a run (the gallery) passes `None` and gets the
+/// engineless prompt. Rendering uses the same strict, no-escape Handlebars
+/// configuration as a real run, so the output matches what the harness receives.
 #[allow(clippy::too_many_arguments)]
 pub fn render_prompt_from_template(
     slug: &str,
@@ -309,10 +506,15 @@ pub fn render_prompt_from_template(
     variant_description: Option<&str>,
     spec_dests: &[String],
     test_type: TestType,
+    asset_dimension: AssetDimension,
     max_runtime_seconds: u64,
     voxel: Option<&VoxelSpec>,
     prior_game_jam_entry_count: usize,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String> {
+    // Built before the context so the borrow outlives it: `TemplateEngine` holds
+    // the path by reference, like every other string in the context.
+    let engine_docs = engine_docs_path(engine);
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
         variant: TemplateVariant {
@@ -323,9 +525,10 @@ pub fn render_prompt_from_template(
         specs: spec_dests.iter().map(|dest| prompt_spec(dest)).collect(),
         time_limit_hours: format_hours(max_runtime_seconds),
         voxel: voxel.map(TemplateVoxel::new),
+        engine: TemplateEngine::new(engine, &engine_docs),
     };
 
-    let body = template_engine()
+    let body = handlebars_registry()
         .render_template(template, &context)
         .map_err(|err| Error::PromptRender {
             slug: slug.to_string(),
@@ -336,13 +539,17 @@ pub fn render_prompt_from_template(
     // The quality preambles are standing directives, not part of any case's
     // authored template, so prepend the one for this type to the rendered body:
     // the asset-quality directive for an asset-generation case, the full-stack
-    // directive for a full-stack case, the game-jam directive (followed by a
-    // divider fencing it off from the jam's own brief) for a game jam, and nothing
-    // for the other types. They are intentionally not run through the template
-    // engine (they hold no `{{...}}`), keeping them out of strict-mode resolution.
+    // directive of the case's asset dimension for a full-stack case, the game-jam
+    // directive (followed by a divider fencing it off from the jam's own brief) for
+    // a game jam, and nothing for the other types. They are intentionally not run
+    // through the template engine (they hold no `{{...}}`), keeping them out of
+    // strict-mode resolution.
     Ok(match test_type {
         TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
-        TestType::FullStack => format!("{FULL_STACK_PREAMBLE}\n\n{body}"),
+        TestType::FullStack => {
+            let preamble = full_stack_preamble(asset_dimension);
+            format!("{preamble}\n\n{body}")
+        }
         // A game jam opens with the standing preamble (fenced off from the jam's own
         // brief), and closes with the standing README requirement — and, when earlier
         // entries of this jam were seeded for this harness+model, a distinctness
@@ -370,10 +577,14 @@ pub fn render_prompt_from_template(
 /// `source_path` and rendered with the [`SpecContext`] under the same rules as
 /// the prompt — strict mode (an unknown variable is an error rather than a
 /// silent blank) and HTML escaping disabled, since a spec is plain text.
+///
+/// `engine` is the engine the run resolved, or `None` for a run that selected
+/// none, so a spec can state what this case requires under the selected engine.
 pub(crate) fn render_spec(
     test_case: &TestCaseVersion,
     variant: &Variant,
     source_path: &Path,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String> {
     let spec = source_path.display().to_string();
 
@@ -393,6 +604,7 @@ pub(crate) fn render_spec(
         &variant.name,
         variant.description.as_deref(),
         test_case.voxel_for(variant),
+        engine,
     )
 }
 
@@ -406,9 +618,11 @@ pub(crate) fn render_spec(
 /// seeded spec per variant for the gallery's Inputs tab (live) and bake the
 /// rendered bodies into the public snapshot (static), the exact spec analogue of
 /// how [`render_prompt_from_template`] renders a variant's prompt. `spec` is a
-/// label used only in error messages (the spec's source key or dest). Rendering
-/// uses the same strict, no-escape engine as a real run's seed, so the displayed
-/// spec matches the file the harness receives.
+/// label used only in error messages (the spec's source key or dest). `engine` is
+/// the run's resolved engine, or `None` to render the engineless form — which is
+/// what a caller displaying a spec outside a run passes. Rendering uses the same
+/// strict, no-escape Handlebars configuration as a real run's seed, so the
+/// displayed spec matches the file the harness receives.
 #[allow(clippy::too_many_arguments)]
 pub fn render_spec_from_template(
     slug: &str,
@@ -419,7 +633,10 @@ pub fn render_spec_from_template(
     variant_name: &str,
     variant_description: Option<&str>,
     voxel: Option<&VoxelSpec>,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String> {
+    // Built before the context so the borrow outlives it, as in the prompt.
+    let engine_docs = engine_docs_dir(engine);
     let context = SpecContext {
         version,
         variant: TemplateVariant {
@@ -428,9 +645,10 @@ pub fn render_spec_from_template(
             description: variant_description,
         },
         voxel: voxel.map(TemplateVoxel::new),
+        engine: TemplateEngine::new(engine, &engine_docs),
     };
 
-    template_engine()
+    handlebars_registry()
         .render_template(template, &context)
         .map_err(|err| Error::SpecRender {
             slug: slug.to_string(),
@@ -440,11 +658,15 @@ pub fn render_spec_from_template(
         })
 }
 
-/// A Handlebars engine configured the way every test case template is rendered:
-/// strict mode so referencing an undefined variable is an error rather than a
-/// silent empty value, and HTML escaping disabled because the rendered output
-/// (a prompt or a spec) is plain text, not HTML.
-fn template_engine() -> handlebars::Handlebars<'static> {
+/// A Handlebars registry configured the way every test case template is
+/// rendered: strict mode so referencing an undefined variable is an error rather
+/// than a silent empty value, and HTML escaping disabled because the rendered
+/// output (a prompt or a spec) is plain text, not HTML.
+///
+/// Named for the registry rather than "the template engine" because *engine* now
+/// names a run dimension in this module — the runtime a produced game is built on
+/// — and the two have nothing to do with each other.
+fn handlebars_registry() -> handlebars::Handlebars<'static> {
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.set_strict_mode(true);
     handlebars.register_escape_fn(handlebars::no_escape);

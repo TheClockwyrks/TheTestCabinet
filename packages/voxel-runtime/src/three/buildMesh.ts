@@ -19,10 +19,21 @@ import type { PartMesh } from "../contract";
  */
 export function buildPartGeometry(mesh: PartMesh): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.positions), 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(mesh.normals), 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(mesh.colors), 3));
-  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
+  geometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(new Float32Array(mesh.positions), 3),
+  );
+  geometry.setAttribute(
+    "normal",
+    new THREE.BufferAttribute(new Float32Array(mesh.normals), 3),
+  );
+  geometry.setAttribute(
+    "color",
+    new THREE.BufferAttribute(new Float32Array(mesh.colors), 3),
+  );
+  geometry.setIndex(
+    new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1),
+  );
   geometry.computeBoundingSphere();
   geometry.computeBoundingBox();
   return geometry;

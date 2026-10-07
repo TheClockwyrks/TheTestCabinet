@@ -73,7 +73,9 @@ export function setPointer(x: number, y: number): void {
 }
 // The in-flight designation/build drag rectangle (logical screen coords), or null. Drawn as
 // the multi-tile designation preview; input.ts sets it while a drag is live.
-export function setDrag(d: { x0: number; y0: number; x1: number; y1: number } | null): void {
+export function setDrag(
+  d: { x0: number; y0: number; x1: number; y1: number } | null,
+): void {
   drag = d;
 }
 export function setWorkGrid(open: boolean): void {
@@ -140,14 +142,23 @@ function structureSprite(s: Structure): string {
     case "stove":
       return s.active ? "structures/stove_on" : "structures/stove_idle";
     case "farm":
-      return s.cropStage === 2 ? "structures/farm_ripe" : s.cropStage === 1 ? "structures/farm_growing" : "structures/farm_empty";
+      return s.cropStage === 2
+        ? "structures/farm_ripe"
+        : s.cropStage === 1
+          ? "structures/farm_growing"
+          : "structures/farm_empty";
     case "turret":
       return s.active ? "structures/turret_firing" : "structures/turret_idle";
   }
 }
 
 // ---- entry --------------------------------------------------------------------
-export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts: Bursts): Clickable[] {
+export function render(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  bursts: Bursts,
+): Clickable[] {
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
@@ -178,7 +189,12 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 }
 
 // ---- the colony view (the camera on the 60×44 tile world) ---------------------
-function drawColony(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts: Bursts): void {
+function drawColony(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  bursts: Bursts,
+): void {
   const zoom = game.zoom;
   const camX = game.camX;
   const camY = game.camY;
@@ -211,8 +227,22 @@ function drawColony(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts
       const cx = sxOf(tileCenterX(tx));
       const cy = syOf(tileCenterY(ty));
       if (t.node) {
-        blit(ctx, A.sprite(t.node.kind === "tree" ? "nodes/tree" : "nodes/ore"), cx, cy, cell, cell);
-        if (t.designated) drawDesignation(ctx, dx, dy, cell, t.designated === "chop" ? COL.food : COL.ore);
+        blit(
+          ctx,
+          A.sprite(t.node.kind === "tree" ? "nodes/tree" : "nodes/ore"),
+          cx,
+          cy,
+          cell,
+          cell,
+        );
+        if (t.designated)
+          drawDesignation(
+            ctx,
+            dx,
+            dy,
+            cell,
+            t.designated === "chop" ? COL.food : COL.ore,
+          );
       }
       if (t.structure) drawStructure(ctx, A, t.structure, cx, cy, cell);
     }
@@ -221,11 +251,19 @@ function drawColony(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts
   // Dropped resource piles (a gather result awaiting a haul).
   for (const d of game.drops) {
     if (d.tx < tx0 || d.tx > tx1 || d.ty < ty0 || d.ty > ty1) continue;
-    blit(ctx, A.sprite(ITEM_ICON[d.res]), sxOf(tileCenterX(d.tx)), syOf(tileCenterY(d.ty)) + cell * 0.18, 15 * zoom, 15 * zoom);
+    blit(
+      ctx,
+      A.sprite(ITEM_ICON[d.res]),
+      sxOf(tileCenterX(d.tx)),
+      syOf(tileCenterY(d.ty)) + cell * 0.18,
+      15 * zoom,
+      15 * zoom,
+    );
   }
 
   // Settlers and raiders (produced sheet cycles).
-  for (const s of game.settlers) drawSettler(ctx, A, game, s, sxOf(s.x), syOf(s.y), zoom);
+  for (const s of game.settlers)
+    drawSettler(ctx, A, game, s, sxOf(s.x), syOf(s.y), zoom);
   for (const r of game.raiders) {
     if (r.dead) continue;
     drawRaider(ctx, A, r, sxOf(r.x), syOf(r.y), zoom);
@@ -262,7 +300,13 @@ function drawColony(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts
   ctx.restore();
 }
 
-function drawDesignation(ctx: CanvasRenderingContext2D, dx: number, dy: number, cell: number, color: string): void {
+function drawDesignation(
+  ctx: CanvasRenderingContext2D,
+  dx: number,
+  dy: number,
+  cell: number,
+  color: string,
+): void {
   const len = Math.max(4, cell * 0.28);
   const p = 2;
   ctx.save();
@@ -274,15 +318,30 @@ function drawDesignation(ctx: CanvasRenderingContext2D, dx: number, dy: number, 
   const R = dx + cell - p;
   const T = dy + p;
   const B = dy + cell - p;
-  ctx.moveTo(L, T + len); ctx.lineTo(L, T); ctx.lineTo(L + len, T);
-  ctx.moveTo(R - len, T); ctx.lineTo(R, T); ctx.lineTo(R, T + len);
-  ctx.moveTo(L, B - len); ctx.lineTo(L, B); ctx.lineTo(L + len, B);
-  ctx.moveTo(R - len, B); ctx.lineTo(R, B); ctx.lineTo(R, B - len);
+  ctx.moveTo(L, T + len);
+  ctx.lineTo(L, T);
+  ctx.lineTo(L + len, T);
+  ctx.moveTo(R - len, T);
+  ctx.lineTo(R, T);
+  ctx.lineTo(R, T + len);
+  ctx.moveTo(L, B - len);
+  ctx.lineTo(L, B);
+  ctx.lineTo(L + len, B);
+  ctx.moveTo(R - len, B);
+  ctx.lineTo(R, B);
+  ctx.lineTo(R, B - len);
   ctx.stroke();
   ctx.restore();
 }
 
-function drawStructure(ctx: CanvasRenderingContext2D, A: Assets, s: Structure, cx: number, cy: number, cell: number): void {
+function drawStructure(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  s: Structure,
+  cx: number,
+  cy: number,
+  cell: number,
+): void {
   const ang = s.kind === "turret" ? s.aim : 0;
   if (!s.built) {
     // Ghost / blueprint awaiting construction — translucent, with a build-progress bar.
@@ -296,12 +355,22 @@ function drawStructure(ctx: CanvasRenderingContext2D, A: Assets, s: Structure, c
   blit(ctx, A.sprite(structureSprite(s)), cx, cy, cell, cell, ang);
   // Integrity bar for a damaged, damageable structure (turret takes raider fire in base).
   if (s.maxHp > 0 && s.hp < s.maxHp) {
-    entityBar(ctx, cx, cy - cell / 2 - 5, Math.max(0, s.hp) / s.maxHp, cell, COL.alert);
+    entityBar(
+      ctx,
+      cx,
+      cy - cell / 2 - 5,
+      Math.max(0, s.hp) / s.maxHp,
+      cell,
+      COL.alert,
+    );
   }
 }
 
 // Which produced cycle + frame rate a settler shows for its current activity.
-function settlerCycle(A: Assets, activity: Activity): { imgs: HTMLImageElement[]; fps: number } {
+function settlerCycle(
+  A: Assets,
+  activity: Activity,
+): { imgs: HTMLImageElement[]; fps: number } {
   switch (activity) {
     case "walk":
     case "haul":
@@ -323,10 +392,22 @@ function settlerCycle(A: Assets, activity: Activity): { imgs: HTMLImageElement[]
   }
 }
 
-function drawSettler(ctx: CanvasRenderingContext2D, A: Assets, game: Game, s: Settler, cx: number, cy: number, zoom: number): void {
+function drawSettler(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  game: Game,
+  s: Settler,
+  cx: number,
+  cy: number,
+  zoom: number,
+): void {
   const size = 22 * zoom;
-  const { imgs, fps } = s.dead ? { imgs: A.frames("settler/downed", 2), fps: 0 } : settlerCycle(A, s.activity);
-  const img = imgs.length ? imgs[fps > 0 ? frameOf(s.animT, imgs.length, fps) : 0]! : null;
+  const { imgs, fps } = s.dead
+    ? { imgs: A.frames("settler/downed", 2), fps: 0 }
+    : settlerCycle(A, s.activity);
+  const img = imgs.length
+    ? imgs[fps > 0 ? frameOf(s.animT, imgs.length, fps) : 0]!
+    : null;
   const flip = Math.cos(s.facing) < 0;
 
   if (game.selectedSettlerId === s.id && !s.dead) {
@@ -348,21 +429,54 @@ function drawSettler(ctx: CanvasRenderingContext2D, A: Assets, game: Game, s: Se
   }
 
   if (!s.dead && (s.downed || s.health < s.maxHealth)) {
-    entityBar(ctx, cx, cy - size / 2 - 5, Math.max(0, s.health) / s.maxHealth, size, s.downed ? COL.alert : COL.health);
+    entityBar(
+      ctx,
+      cx,
+      cy - size / 2 - 5,
+      Math.max(0, s.health) / s.maxHealth,
+      size,
+      s.downed ? COL.alert : COL.health,
+    );
   }
   if (!s.dead && s.carrying) {
-    blit(ctx, A.sprite(ITEM_ICON[s.carrying.res]), cx + size * 0.42, cy - size * 0.5, 11 * zoom, 11 * zoom);
+    blit(
+      ctx,
+      A.sprite(ITEM_ICON[s.carrying.res]),
+      cx + size * 0.42,
+      cy - size * 0.5,
+      11 * zoom,
+      11 * zoom,
+    );
   }
 }
 
-function drawRaider(ctx: CanvasRenderingContext2D, A: Assets, r: Raider, cx: number, cy: number, zoom: number): void {
+function drawRaider(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  r: Raider,
+  cx: number,
+  cy: number,
+  zoom: number,
+): void {
   const size = 22 * zoom;
   const holding = r.targetId !== null && r.path.length === 0 && !r.fleeing;
-  const imgs = holding ? A.frames("raider/fight", 4) : A.frames("raider/walk", 4);
-  const img = imgs.length ? imgs[frameOf(r.animT, imgs.length, holding ? 10 : 8)]! : null;
+  const imgs = holding
+    ? A.frames("raider/fight", 4)
+    : A.frames("raider/walk", 4);
+  const img = imgs.length
+    ? imgs[frameOf(r.animT, imgs.length, holding ? 10 : 8)]!
+    : null;
   const flip = Math.cos(r.facing) < 0;
   if (img) blit(ctx, img, cx, cy, size, size, 0, flip);
-  if (r.health < r.maxHealth) entityBar(ctx, cx, cy - size / 2 - 5, Math.max(0, r.health) / r.maxHealth, size, COL.raider);
+  if (r.health < r.maxHealth)
+    entityBar(
+      ctx,
+      cx,
+      cy - size / 2 - 5,
+      Math.max(0, r.health) / r.maxHealth,
+      size,
+      COL.raider,
+    );
 }
 
 // ---- tool / selection cursor --------------------------------------------------
@@ -378,7 +492,10 @@ function drawCursor(
   const p = ptr();
   if (p.x < VIEW_X0 || p.x > VIEW_X1 || p.y < VIEW_Y0 || p.y > VIEW_Y1) return;
   const cell = TILE * zoom;
-  const rectOf = (tx: number, ty: number): { x: number; y: number } => ({ x: sxOf(tx * TILE), y: syOf(ty * TILE) });
+  const rectOf = (tx: number, ty: number): { x: number; y: number } => ({
+    x: sxOf(tx * TILE),
+    y: syOf(ty * TILE),
+  });
 
   // A live designation drag: highlight every node in the rectangle by what it would become.
   if (game.tool === "designate" && drag) {
@@ -391,14 +508,25 @@ function drawCursor(
     ctx.save();
     ctx.strokeStyle = hexA(COL.text, 0.4);
     ctx.lineWidth = 1;
-    ctx.strokeRect(sxOf(x0 * TILE), syOf(y0 * TILE), (x1 - x0 + 1) * cell, (y1 - y0 + 1) * cell);
+    ctx.strokeRect(
+      sxOf(x0 * TILE),
+      syOf(y0 * TILE),
+      (x1 - x0 + 1) * cell,
+      (y1 - y0 + 1) * cell,
+    );
     ctx.restore();
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
         const t = game.world.tileAt(tx, ty);
         if (!t || !t.node) continue;
         const r = rectOf(tx, ty);
-        drawDesignation(ctx, Math.floor(r.x), Math.floor(r.y), cell, t.node.kind === "tree" ? COL.food : COL.ore);
+        drawDesignation(
+          ctx,
+          Math.floor(r.x),
+          Math.floor(r.y),
+          cell,
+          t.node.kind === "tree" ? COL.food : COL.ore,
+        );
       }
     }
     return;
@@ -439,7 +567,14 @@ function drawCursor(
   // cursor is a subtle hovered-tile outline.
   if (game.tool === "designate") {
     const t = game.world.tileAt(tile.tx, tile.ty);
-    if (t && t.node) drawDesignation(ctx, Math.floor(r.x), Math.floor(r.y), cell, t.node.kind === "tree" ? COL.food : COL.ore);
+    if (t && t.node)
+      drawDesignation(
+        ctx,
+        Math.floor(r.x),
+        Math.floor(r.y),
+        cell,
+        t.node.kind === "tree" ? COL.food : COL.ore,
+      );
     hoverRect(ctx, r.x, r.y, cell, hexA(COL.text, 0.4));
     return;
   }
@@ -465,7 +600,13 @@ function BUILD_GHOST(kind: StructureKind): string {
   return BUILD_ICON[kind];
 }
 
-function hoverRect(ctx: CanvasRenderingContext2D, x: number, y: number, cell: number, color: string): void {
+function hoverRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cell: number,
+  color: string,
+): void {
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
@@ -502,7 +643,12 @@ function darkness(t0: number): number {
   const t = t0 - Math.floor(t0);
   if (t < PHASE_DAWN_END) return lerp(0.45, 0, t / PHASE_DAWN_END);
   if (t < PHASE_DAY_END) return 0;
-  if (t < PHASE_DUSK_END) return lerp(0, 0.45, (t - PHASE_DAY_END) / (PHASE_DUSK_END - PHASE_DAY_END));
+  if (t < PHASE_DUSK_END)
+    return lerp(
+      0,
+      0.45,
+      (t - PHASE_DAY_END) / (PHASE_DUSK_END - PHASE_DAY_END),
+    );
   const nt = (t - PHASE_DUSK_END) / (1 - PHASE_DUSK_END); // 0..1 across the night
   return 0.45 + (NIGHT_DARKEN - 0.45) * Math.sin(nt * Math.PI); // peaks at mid-night
 }
@@ -513,7 +659,14 @@ export function frameOf(anim: number, count: number, fps: number): number {
   return Math.floor(anim * fps) % count;
 }
 
-export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+export function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
@@ -542,7 +695,12 @@ export function text(
     const chars = [...s];
     const adv = size * 0.6 + letter;
     const total = chars.length * adv;
-    let cx = align === "center" ? x - total / 2 + adv / 2 : align === "right" ? x - total : x;
+    let cx =
+      align === "center"
+        ? x - total / 2 + adv / 2
+        : align === "right"
+          ? x - total
+          : x;
     ctx.textAlign = "left";
     for (const c of chars) {
       ctx.fillText(c, cx, y);
@@ -554,7 +712,16 @@ export function text(
   }
 }
 
-export function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, w: number, h: number, ang = 0, flip = false): void {
+export function blit(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  ang = 0,
+  flip = false,
+): void {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx, cy);
@@ -565,7 +732,15 @@ export function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: n
 }
 
 // A rounded fill/track bar (HUD need/stat meters). `frac` is clamped to [0,1].
-export function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, frac: number, color: string): void {
+export function bar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  frac: number,
+  color: string,
+): void {
   roundRect(ctx, x, y, w, h, h / 2);
   ctx.fillStyle = "rgba(255,255,255,0.09)";
   ctx.fill();
@@ -578,7 +753,14 @@ export function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: numb
 }
 
 // A tiny entity-anchored bar (health / build progress) drawn centered above a sprite.
-function entityBar(ctx: CanvasRenderingContext2D, cx: number, topY: number, frac: number, w: number, color: string): void {
+function entityBar(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  topY: number,
+  frac: number,
+  w: number,
+  color: string,
+): void {
   const bw = Math.max(12, w * 0.86);
   const bh = 3;
   const x = cx - bw / 2;
@@ -607,11 +789,29 @@ export function button(
   ctx.strokeStyle = enabled ? color : "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text(ctx, label, x + w / 2, y + h / 2 + 1, 12, enabled ? color : COL.text3, "center", "700");
+  text(
+    ctx,
+    label,
+    x + w / 2,
+    y + h / 2 + 1,
+    12,
+    enabled ? color : COL.text3,
+    "center",
+    "700",
+  );
   if (enabled) clicks.push({ x, y, w, h, action });
 }
 
-export function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string, lineHeight = 20): void {
+export function wrap(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  maxW: number,
+  size: number,
+  color: string,
+  lineHeight = 20,
+): void {
   ctx.font = `400 ${size}px ${FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -630,7 +830,12 @@ export function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: num
   ctx.fillText(line, x, yy);
 }
 
-export function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): number {
+export function lineCount(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  maxW: number,
+  size: number,
+): number {
   ctx.font = `400 ${size}px ${FONT}`;
   const words = s.split(" ");
   let line = "";
@@ -645,7 +850,14 @@ export function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number
   return n;
 }
 
-export function inRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+export function inRect(
+  px: number,
+  py: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 

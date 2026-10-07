@@ -94,4 +94,7 @@ export async function poseBossUnderFire(api, opts = {}) {
 export async function clearBoard(api) {
   for (const t of (await api.snapshot()).towers)
     await api.call("sellTower", t.id);
+  // Every aura and every acquisition on the board was derived from the towers just sold
+  // (specs/instrumentation.md, "Reconciling derived state").
+  await api.call("reconcile");
 }

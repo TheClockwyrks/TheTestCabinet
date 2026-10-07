@@ -75,6 +75,7 @@ pub async fn ingest(
             request,
             protected,
             state.publisher.clone(),
+            state.gg_docs.clone(),
             state.ready.clone(),
         ));
     }
@@ -97,14 +98,19 @@ pub async fn ingest(
     // gallery frozen on whatever was built while the store was momentarily empty.
     if scan_changed_store(&report) {
         state.publisher.queue_refresh();
+        // ...and the gg document index holds a `score` per run that is a fraction of the
+        // case manifest's checklist weights. A re-ingest can change those weights (or an
+        // erratum's `exclude_from_score`) without touching a single `run` row, which is
+        // precisely the change the index's per-id freshness rule cannot observe.
+        state.gg_docs.invalidate_all().await;
     }
 
-    // A backend that started on an empty store is held out of its Service until one
-    // of these scans fills it (see `crate::readiness`). Gate on what the store now
-    // holds rather than on the scan merely succeeding: a scan against an empty or
-    // broken checkout returns Ok having ingested nothing, and must not flip an
-    // still-empty backend Ready.
-    if state.store.is_populated() {
+    // A backend that started on an empty store, or one written in another record
+    // format, is held out of its Service until one of these scans leaves it servable
+    // (see `crate::readiness`). Gate on what the store now holds rather than on the
+    // scan merely succeeding: a scan against an empty or broken checkout returns Ok
+    // having ingested nothing, and must not flip an still-empty backend Ready.
+    if state.store.is_servable() {
         state.ready.mark_store_populated();
     }
 
@@ -124,7 +130,11 @@ pub async fn ingest(
 /// (all `ingested`), so it always refreshes — which is exactly what an operator
 /// running `reingest-cluster.sh` to push catalog edits to the site wants.
 fn scan_changed_store(report: &IngestReport) -> bool {
-    report.test_case_versions.iter().any(|v| v.ingested)
+    // A changed test-case-group set counts too: the snapshot exports the set as
+    // its own object, so a group-only edit must republish even though no version
+    // moved. (The gg-index invalidation this gates alongside is superfluous on a
+    // group-only change but merely re-parses once, so the two triggers stay one.)
+    report.test_case_versions.iter().any(|v| v.ingested) || report.test_case_groups_changed
 }
 
 /// Reconcile `case_reference_build` from the committed reference-builds lockfile to
@@ -280,6 +290,7 @@ fn ingest_streaming(
     request: IngestRequest,
     protected: std::collections::HashSet<(String, String)>,
     publisher: Publisher,
+    gg_docs: crate::gg_docs::GgDocIndex,
     readiness: Readiness,
 ) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
@@ -298,10 +309,18 @@ fn ingest_streaming(
                 // `scan_changed_store`).
                 if scan_changed_store(&report) {
                     publisher.queue_refresh();
+                    // ...and, also as the non-streaming path, drop the gg document
+                    // index: a manifest's checklist weights are an input to every gg
+                    // run's `score` and are invisible to that index's per-run
+                    // freshness rule. Blocking on it rather than spawning it keeps the
+                    // invalidation ordered *before* the `done` line, so a client that
+                    // queries the moment ingest reports finished cannot be served the
+                    // pre-ingest scores.
+                    tokio::runtime::Handle::current().block_on(gg_docs.invalidate_all());
                 }
                 // …and, as on the non-streaming path, a scan that leaves the store
-                // populated releases the readiness latch.
-                if store.is_populated() {
+                // servable releases the readiness latch.
+                if store.is_servable() {
                     readiness.mark_store_populated();
                 }
                 StreamEvent::done(&report)

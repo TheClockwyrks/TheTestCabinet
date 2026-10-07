@@ -254,16 +254,19 @@ fn a_source_fills_a_lane_to_standard_spacing_then_stalls_when_it_is_full() {
 }
 
 // ---------------------------------------------------------------------------
-// Side-loading — a single lane filled, the other untouched.
+// Curves vs side-loading. A pure curve (sole perpendicular feeder) continues the
+// run and carries BOTH lanes through the 90° turn, preserved. A genuine side-load
+// (a belt with its own straight feed plus a perpendicular feeder) forces the
+// feeder's lead onto one near lane and leaves the other for the straight flow.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn side_loading_fills_the_near_lane_and_leaves_the_other_flowing() {
-    // Belt A (S-facing) feeds the side of Belt B (E-facing) — a perpendicular
-    // hand-off. A comes from the NORTH (it flows south into B), so the item lands on
-    // B's NEAR lane = its north lane = LEFT (the side the feeder is on). Both of A's
-    // lanes dump into that one near lane; B's other (right/south) lane stays empty for
-    // its own flow. A feeder from the south would fill B's right lane instead.
+fn a_curve_carries_both_lanes_through_the_turn() {
+    // Belt A (S-facing) bends into Belt B (E-facing): a PURE CURVE — B's only feeder
+    // is the perpendicular A, so B continues A's run. Both of A's lanes carry through
+    // the 90° turn PRESERVED (left stays left, right stays right) at belt speed,
+    // exactly like a straight belt — NOT a side-load that dumps both into one near
+    // lane. So BOTH of B's lanes fill.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 20,
              "snapshots": [20],
@@ -276,15 +279,94 @@ fn side_loading_fills_the_near_lane_and_leaves_the_other_flowing() {
         w.advance();
     }
     let (b_left, b_right) = belt_lanes(&w, 2);
+    assert!(
+        !b_left.is_empty(),
+        "the curve carries the left lane through"
+    );
+    assert!(
+        !b_right.is_empty(),
+        "the curve carries the right lane through too — both lanes are preserved"
+    );
+    // Each lane stays compacted to standard spacing, just as on a straight belt.
+    for lane in [&b_left, &b_right] {
+        for pair in lane.windows(2) {
+            assert!(pair[1].pos - pair[0].pos >= SPACING);
+        }
+    }
+}
+
+#[test]
+fn a_side_load_fills_the_near_lane_and_leaves_the_far_lane_flowing() {
+    // A GENUINE side-load (not a curve): belt B (E-facing) has its OWN straight feed
+    // from the west (so it is not a pure curve) AND a perpendicular feeder from the
+    // north. The north feeder forces its lead onto B's NEAR lane = its north lane =
+    // LEFT (the side the feeder is on); both of the feeder's lanes land on that one
+    // near lane (each at its own contact point, see the next test), and B's far
+    // (right/south) lane is left for its straight flow — which here is empty, so the
+    // far lane stays empty. A feeder from the south fills the right lane instead.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 20,
+             "snapshots": [20],
+             "entities": [
+                { "type": "belt", "x": 0, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "source", "x": 1, "y": 0, "dir": "S", "item": "iron-ore", "lane": "both", "period": 2 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "S", "tier": "fast" },
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    for _ in 0..12 {
+        w.advance();
+    }
+    let (b_left, b_right) = belt_lanes(&w, 3);
     assert!(b_right.is_empty(), "the far lane of B is never touched");
     assert!(
         !b_left.is_empty(),
         "the side-loaded near (left) lane of B fills"
     );
-    // The filled lane is compacted to standard spacing.
     for pair in b_left.windows(2) {
         assert!(pair[1].pos - pair[0].pos >= SPACING);
     }
+}
+
+#[test]
+fn a_side_load_places_each_feeder_lane_at_its_own_contact_point() {
+    // Both feeder lanes cross onto the target's near lane, but at DIFFERENT positions
+    // reflecting where each physically makes contact: the lane that is UPSTREAM in the
+    // target's flow enters near the input edge (`TILE/2 + SPACING`), the DOWNSTREAM lane
+    // further along at its contact point (`TILE/2 - SPACING`). Onto an empty target both
+    // land the SAME tick — the old "everything enters at TILE - SPACING" model could
+    // place only one per tick and teleported the downstream item to the back.
+    //
+    //   B = belt (1,2) E, drained east by a sink so it stays clear between deliveries;
+    //   an empty straight feed at (0,2) makes B a side-load target, not a pure curve;
+    //   a period-8 source feeds both lanes of the perpendicular feeder (1,1) S.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 60,
+             "snapshots": [60],
+             "entities": [
+                { "type": "belt", "x": 0, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "source", "x": 1, "y": 0, "dir": "S", "item": "iron-ore", "lane": "both", "period": 8 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "S", "tier": "fast" },
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "sink", "x": 3, "y": 2, "dir": "W" } ] }"#,
+    );
+    // Some delivery tick lands both feeder lanes on B's near lane at once, at exactly
+    // the two contact coordinates — never both at the single back coordinate.
+    let mut saw_both = false;
+    for _ in 0..60 {
+        w.advance();
+        let (b_left, _) = belt_lanes(&w, 3);
+        let at = |p: u32| b_left.iter().any(|it| it.pos == p);
+        if at(TILE / 2 + SPACING) && at(TILE / 2 - SPACING) {
+            saw_both = true;
+            break;
+        }
+    }
+    assert!(
+        saw_both,
+        "both feeder lanes land on the near lane at their own contact points \
+         (TILE/2 + SPACING and TILE/2 - SPACING) in the same tick"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +492,176 @@ fn an_inserter_swings_back_empty_before_grabbing_again() {
     );
 }
 
+#[test]
+fn an_inserter_takes_the_closer_lane_first() {
+    // Both lanes of the pickup belt hold an item; the inserter takes the one on the lane
+    // physically CLOSER to it and only reaches across to the other lane when the closer
+    // one's head is empty. Subtlety: `near_far_lanes` names lanes by the inserter's
+    // FACING, and an inserter picks from BEHIND itself, so the physically-closer lane is
+    // the one it calls `far` — which `try_pickup` tries first. This pins the priority
+    // down and guards against re-inverting the pickup order to `[near, far]`.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "inserter", "x": 2, "y": 1, "dir": "N" },
+                { "type": "sink", "x": 2, "y": 0, "dir": "N" } ] }"#,
+    );
+    // The inserter at (2,1) faces N: it sits NORTH of the belt at (2,2) and picks from
+    // it, dropping into the sink ahead (always accepts) — so the only choice under test
+    // is the lane. For an E belt the left lane is the north side (`left_offset(E)`), and
+    // the inserter is north, so the LEFT lane is the closer one.
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    let closer = LaneSide::Left; // north side == closer to the northern inserter
+    let farther = LaneSide::Right;
+    if let Machine::Belt(b) = &mut w.machines[0] {
+        b.lanes[closer.index()] = vec![LaneItem { pos: 0, item: iron }];
+        b.lanes[farther.index()] = vec![LaneItem {
+            pos: 0,
+            item: copper,
+        }];
+    }
+    w.advance();
+    // The idle inserter grabs on this tick: it must be holding the CLOSER (iron) item.
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(iron),
+        "the inserter grabbed the physically closer lane's item, not the farther one"
+    );
+    // The farther lane's item is left behind for a later reach-across.
+    let lanes = belt_lanes(&w, 0);
+    assert!(
+        lanes.1.iter().any(|i| i.item == copper),
+        "only the closer item was taken; the farther-lane item remains on the belt"
+    );
+}
+
+/// The inserter used by the crafter-pickup tests below: it sits at `(2,2)` facing
+/// N, picks from the belt at `(2,3)` behind it, and drops into the crafter that
+/// covers the tile `(2,1)` in front. For the E belt the north side is the LEFT lane
+/// (`left_offset(E)`), and the inserter is north of the belt, so LEFT is the lane
+/// physically CLOSER to it.
+const CLOSER: LaneSide = LaneSide::Left;
+const FARTHER: LaneSide = LaneSide::Right;
+
+#[test]
+fn an_inserter_fills_a_furnaces_fuel_before_its_ore() {
+    // A furnace's inserter picks from a belt carrying ore on the CLOSER lane and coal
+    // (the fuel) on the farther lane. Fuel comes first: the inserter reaches past the
+    // closer ore to grab coal, so the fuel buffer fills before any ore is loaded. This
+    // is the crafter-aware pickup overriding the plain closer-lane preference.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 5, "height": 5 }, "ticks": 50, "snapshots": [50],
+             "entities": [
+                { "type": "furnace", "x": 2, "y": 0, "recipe": "iron-plate" },
+                { "type": "inserter", "x": 2, "y": 2, "dir": "N" },
+                { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let ore = item_index("iron-ore").unwrap();
+    let coal = item_index("coal").unwrap();
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[CLOSER.index()] = vec![LaneItem { pos: 0, item: ore }];
+        b.lanes[FARTHER.index()] = vec![LaneItem { pos: 0, item: coal }];
+    }
+    w.advance();
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(coal),
+        "the inserter grabbed the farther-lane fuel before the closer ore"
+    );
+}
+
+#[test]
+fn an_inserter_reaches_across_for_a_furnaces_missing_input() {
+    // The user's case: the CLOSER lane carries coal, the farther lane ore, and the
+    // furnace's fuel buffer is already full. The old rule stalled — it kept peeking the
+    // full-buffer coal on the closer lane and never reached the ore. Now the inserter
+    // reaches across and grabs the ore the furnace still needs.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 5, "height": 5 }, "ticks": 50, "snapshots": [50],
+             "entities": [
+                { "type": "furnace", "x": 2, "y": 0, "recipe": "iron-plate" },
+                { "type": "inserter", "x": 2, "y": 2, "dir": "N" },
+                { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let ore = item_index("iron-ore").unwrap();
+    let coal = item_index("coal").unwrap();
+    // Fuel buffer full; no ore yet.
+    if let Machine::Furnace(f) = &mut w.machines[0] {
+        f.inputs.insert(coal, crate::prototypes::INPUT_CAP);
+    }
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[CLOSER.index()] = vec![LaneItem { pos: 0, item: coal }];
+        b.lanes[FARTHER.index()] = vec![LaneItem { pos: 0, item: ore }];
+    }
+    w.advance();
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(ore),
+        "with fuel full, the inserter reaches past the closer coal to the ore it still needs"
+    );
+    // The closer-lane coal is left on the belt — it was not grabbed and stalled.
+    let (closer, _) = belt_lanes(&w, 2);
+    assert!(
+        closer.iter().any(|i| i.item == coal),
+        "the un-needed closer coal stays on the belt"
+    );
+}
+
+#[test]
+fn an_inserter_switches_to_an_assemblers_missing_component() {
+    // An assembler whose closer-lane component is already full: the inserter skips it
+    // and grabs the farther-lane component the recipe is still short of, instead of
+    // stalling on the full one.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 50, "snapshots": [50],
+             "entities": [
+                { "type": "assembler", "x": 2, "y": 0, "recipe": "circuit" },
+                { "type": "inserter", "x": 2, "y": 3, "dir": "N" },
+                { "type": "belt", "x": 2, "y": 4, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    // `circuit` = iron-plate x1 + copper-cable x3. Fill the plate buffer; leave cable
+    // empty.
+    let plate = item_index("iron-plate").unwrap();
+    let cable = item_index("copper-cable").unwrap();
+    if let Machine::Assembler(a) = &mut w.machines[0] {
+        a.inputs.insert(plate, crate::prototypes::INPUT_CAP);
+    }
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[CLOSER.index()] = vec![LaneItem {
+            pos: 0,
+            item: plate,
+        }];
+        b.lanes[FARTHER.index()] = vec![LaneItem {
+            pos: 0,
+            item: cable,
+        }];
+    }
+    w.advance();
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(cable),
+        "the inserter skipped the full closer component for the missing farther one"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Splitter: round-robin balancing of a saturated input.
 // ---------------------------------------------------------------------------
@@ -528,12 +780,15 @@ fn a_splitter_preserves_the_input_lane() {
 }
 
 #[test]
-fn a_splitter_gives_each_output_belt_one_of_each_item_type() {
+fn a_splitter_balances_two_input_belts_across_both_outputs() {
     // Two full input belts of two DIFFERENT items — a top belt of iron on both lanes
-    // and a bottom belt of copper on both lanes — must split so EACH output belt
-    // receives BOTH iron and copper (the Factorio per-type alternation), NOT one belt
-    // all iron and the other all copper. Lanes are still preserved: iron stays on the
-    // lane it entered, copper on its lane.
+    // and a bottom belt of copper on both lanes. The splitter is item-AGNOSTIC: it
+    // balances by COUNT, not by type, so over the run it feeds each output belt an equal
+    // share of the total flow. It does not sort by type per tick (a single tick may send
+    // one output a row of iron and the other a row of copper), but across the run both
+    // output belts end up carrying BOTH iron and copper — not one belt all iron and the
+    // other all copper forever. Lanes are still preserved: iron stays on the lane it
+    // entered, copper on its lane.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 10, "height": 6 }, "ticks": 200,
              "snapshots": [200],
@@ -636,6 +891,161 @@ fn a_splitter_spreads_one_belt_across_both_lanes_of_both_outputs() {
 }
 
 #[test]
+fn a_lane_splitter_unzips_its_single_input_onto_the_outer_output_lanes() {
+    // The lane splitter takes ONE input (the belt behind its anchor, the top cell) and
+    // unzips that belt's two lanes onto the two outputs. With the input carrying iron
+    // on its left lane and copper on its right, every left-lane item must land on the
+    // TOP output belt's LEFT lane (its OUTER lane) and every right-lane item on the
+    // BOTTOM output belt's RIGHT lane (also outer). The two INNER lanes — the top
+    // belt's right lane and the bottom belt's left lane — must stay EMPTY every tick.
+    // That "outer lanes only" invariant is the whole point of the unzip.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "lane-splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    // machines: 0 = the single input belt, 1 = lane splitter, 2 = top output, 3 = bottom.
+    let mut iron_top_left = false; // left-lane iron reached the top belt's outer lane
+    let mut copper_bottom_right = false; // right-lane copper reached the bottom belt's outer lane
+    for _ in 0..6 {
+        // Re-saturate the ONE input belt: left = iron, right = copper, at the edge.
+        if let Machine::Belt(b) = &mut w.machines[0] {
+            b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item: iron }];
+            b.lanes[LaneSide::Right.index()] = vec![LaneItem {
+                pos: 0,
+                item: copper,
+            }];
+        }
+        // Drain the outputs so each tick shows only that tick's placement.
+        for o in [2usize, 3] {
+            if let Machine::Belt(b) = &mut w.machines[o] {
+                b.lanes[0].clear();
+                b.lanes[1].clear();
+            }
+        }
+        w.advance();
+
+        let (top_left, top_right) = belt_lanes(&w, 2);
+        let (bottom_left, bottom_right) = belt_lanes(&w, 3);
+        if top_left.iter().any(|i| i.item == iron) {
+            iron_top_left = true;
+        }
+        if bottom_right.iter().any(|i| i.item == copper) {
+            copper_bottom_right = true;
+        }
+        assert!(
+            top_right.is_empty(),
+            "the top belt's right (inner) lane stays empty (got {top_right:?})"
+        );
+        assert!(
+            bottom_left.is_empty(),
+            "the bottom belt's left (inner) lane stays empty (got {bottom_left:?})"
+        );
+        assert!(
+            !top_left.iter().any(|i| i.item == copper),
+            "copper (a right-lane item) never reaches the top belt"
+        );
+        assert!(
+            !bottom_right.iter().any(|i| i.item == iron),
+            "iron (a left-lane item) never reaches the bottom belt"
+        );
+    }
+    assert!(
+        iron_top_left,
+        "left-lane iron is routed to the TOP output belt's outer (left) lane"
+    );
+    assert!(
+        copper_bottom_right,
+        "right-lane copper is routed to the BOTTOM output belt's outer (right) lane"
+    );
+}
+
+#[test]
+fn a_lane_splitter_ignores_a_belt_behind_its_second_tile() {
+    // The lane splitter has only ONE input — the belt behind its anchor. A belt placed
+    // behind its SECOND (bottom) tile is not an input and must be left untouched: the
+    // machine never pulls from it.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "lane-splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    // machines: 0 = belt behind the SECOND tile (2,2) at (1,2); 1 = lane splitter.
+    if let Machine::Belt(b) = &mut w.machines[0] {
+        b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item: iron }];
+    }
+    w.advance();
+    // The item is still on that belt's left lane at the edge — the machine never took it.
+    let (left, _right) = belt_lanes(&w, 0);
+    assert_eq!(
+        left.len(),
+        1,
+        "the belt behind the second tile is not an input; its item is untouched"
+    );
+}
+
+#[test]
+fn a_splitter_routes_a_lane_item_agnostically() {
+    // Item-agnostic routing: a splitter keeps ONE cursor per lane, not one per (type,
+    // lane). Feeding a single lane a run of items whose TYPES alternate, the output belt
+    // must still STRICTLY alternate (A, B, A, B) — an item's type has no effect on where
+    // it goes. Under the old per-item-type rule the same feed grouped by type (A, A, B,
+    // B), so this pins the new behavior down.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    // Feed the LEFT lane one item per tick, alternating type; record which output belt
+    // (entity 2 or 3) each fed item lands on, draining the outputs each tick.
+    let feed = [iron, copper, iron, copper];
+    let mut dest = Vec::new();
+    for &item in &feed {
+        if let Machine::Belt(b) = &mut w.machines[0] {
+            b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item }];
+            b.lanes[LaneSide::Right.index()].clear();
+        }
+        for o in [2usize, 3] {
+            if let Machine::Belt(b) = &mut w.machines[o] {
+                b.lanes[0].clear();
+                b.lanes[1].clear();
+            }
+        }
+        w.advance();
+        for o in [2usize, 3] {
+            let (left, _right) = belt_lanes(&w, o);
+            if left.iter().any(|i| i.item == item) {
+                dest.push(o);
+            }
+        }
+    }
+    assert_eq!(
+        dest.len(),
+        4,
+        "each fed item lands on exactly one output belt: {dest:?}"
+    );
+    // Strict alternation regardless of type: consecutive items go to different belts.
+    assert!(
+        dest[0] != dest[1] && dest[1] != dest[2] && dest[2] != dest[3],
+        "the left lane alternates its output belt every item, ignoring type: {dest:?}"
+    );
+}
+
+#[test]
 fn a_splitter_with_one_output_belt_sends_everything_to_it() {
     // A splitter whose second output tile holds no belt must route the whole flow to
     // the belt it does have. Treating the empty side as back pressure deadlocked it:
@@ -694,49 +1104,72 @@ fn a_splitter_with_no_output_belts_holds_its_items() {
 }
 
 // ---------------------------------------------------------------------------
-// Assembler: starved then flooded, with pause-when-output-full.
+// Furnace: the fuel gate, starved then fed ore and coal.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_starved_assembler_is_idle_then_crafts_once_fed() {
-    // An iron-plate assembler (iron-ore -> iron-plate, 32 ticks). Starved, it sits
-    // idle; once its input buffer holds a set it consumes and counts down.
+fn a_starved_furnace_is_idle_then_smelts_once_fed_ore_and_coal() {
+    // An iron-plate furnace (iron-ore + coal -> iron-plate, 32 ticks). Starved it
+    // sits idle; fed ore but NO coal it still cannot smelt (the fuel gate); only
+    // once both ore and coal are buffered does it consume a set and count down.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 200,
              "snapshots": [200],
              "entities": [
-                { "type": "assembler", "x": 1, "y": 1, "recipe": "iron-plate" } ] }"#,
+                { "type": "furnace", "x": 1, "y": 1, "recipe": "iron-plate" } ] }"#,
     );
     let ore = item_index("iron-ore").unwrap();
+    let coal = item_index("coal").unwrap();
     // Starved: idle.
     w.advance();
-    if let Machine::Assembler(a) = &w.machines[0] {
-        assert_eq!(a.craft_left, 0, "no inputs -> idle");
+    if let Machine::Furnace(f) = &w.machines[0] {
+        assert_eq!(f.craft_left, 0, "no inputs -> idle");
     }
-    // Feed one ore into the input buffer, then advance: it starts a craft.
-    if let Machine::Assembler(a) = &mut w.machines[0] {
-        a.inputs.insert(ore, 1);
+    // Feed ore but no coal: still idle — a furnace cannot smelt without fuel.
+    if let Machine::Furnace(f) = &mut w.machines[0] {
+        f.inputs.insert(ore, 1);
     }
     w.advance();
-    if let Machine::Assembler(a) = &w.machines[0] {
+    if let Machine::Furnace(f) = &w.machines[0] {
         assert_eq!(
-            a.craft_left, 32,
-            "a fed assembler starts the CRAFT countdown"
+            f.craft_left, 0,
+            "ore without coal -> still idle (the fuel gate)"
         );
         assert_eq!(
-            a.inputs.get(&ore).copied().unwrap_or(0),
-            0,
-            "one set consumed at start"
+            f.inputs.get(&ore).copied().unwrap_or(0),
+            1,
+            "ore is not consumed while unfuelled"
         );
     }
-    // Run the craft out: after 32 ticks total the output appears.
+    // Add coal: now it starts a smelt, consuming one ore and one coal.
+    if let Machine::Furnace(f) = &mut w.machines[0] {
+        f.inputs.insert(coal, 1);
+    }
+    w.advance();
+    if let Machine::Furnace(f) = &w.machines[0] {
+        assert_eq!(
+            f.craft_left, 32,
+            "a fuelled, fed furnace starts the CRAFT countdown"
+        );
+        assert_eq!(
+            f.inputs.get(&ore).copied().unwrap_or(0),
+            0,
+            "one ore consumed at start"
+        );
+        assert_eq!(
+            f.inputs.get(&coal).copied().unwrap_or(0),
+            0,
+            "one coal consumed at start"
+        );
+    }
+    // Run the smelt out: the plate appears on the finishing tick.
     for _ in 0..32 {
         w.advance();
     }
     let plate = item_index("iron-plate").unwrap();
-    if let Machine::Assembler(a) = &w.machines[0] {
+    if let Machine::Furnace(f) = &w.machines[0] {
         assert!(
-            a.output.get(&plate).copied().unwrap_or(0) >= 1,
+            f.output.get(&plate).copied().unwrap_or(0) >= 1,
             "it deposited a plate"
         );
     }
@@ -746,24 +1179,25 @@ fn a_starved_assembler_is_idle_then_crafts_once_fed() {
 fn an_assembler_pauses_when_its_output_buffer_is_full() {
     // Flood the input buffer and fill the output buffer to OUTPUT_CAP: the
     // assembler must NOT start a new craft (it pauses rather than overflow), so it
-    // stops consuming inputs.
+    // stops consuming inputs. Uses the iron-gear recipe (iron-plate x2 -> iron-gear),
+    // a non-smelting recipe, since smelting runs only on furnaces.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 200,
              "snapshots": [200],
              "entities": [
-                { "type": "assembler", "x": 1, "y": 1, "recipe": "iron-plate" } ] }"#,
+                { "type": "assembler", "x": 1, "y": 1, "recipe": "iron-gear" } ] }"#,
     );
-    let ore = item_index("iron-ore").unwrap();
     let plate = item_index("iron-plate").unwrap();
+    let gear = item_index("iron-gear").unwrap();
     if let Machine::Assembler(a) = &mut w.machines[0] {
-        a.inputs.insert(ore, 8); // flooded inputs
-        a.output.insert(plate, crate::prototypes::OUTPUT_CAP); // full output
+        a.inputs.insert(plate, 8); // flooded inputs
+        a.output.insert(gear, crate::prototypes::OUTPUT_CAP); // full output
     }
     w.advance();
     if let Machine::Assembler(a) = &w.machines[0] {
         assert_eq!(a.craft_left, 0, "a full output pauses the assembler");
         assert_eq!(
-            a.inputs.get(&ore).copied().unwrap_or(0),
+            a.inputs.get(&plate).copied().unwrap_or(0),
             8,
             "it stops consuming inputs"
         );

@@ -109,7 +109,9 @@ export class ParticleCanvasPlayer {
 }
 
 /** A linear `0..1` RGB triple as `0..255` integer channels. */
-function to255(color: readonly [number, number, number]): [number, number, number] {
+function to255(
+  color: readonly [number, number, number],
+): [number, number, number] {
   return [
     Math.round(clamp01(color[0]) * 255),
     Math.round(clamp01(color[1]) * 255),

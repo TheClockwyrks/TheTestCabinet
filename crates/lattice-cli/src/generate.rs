@@ -32,7 +32,9 @@
 use std::collections::HashSet;
 
 use lattice_core::prototypes::{BELT_TIERS, ITEMS, RECIPES, Recipe};
-use lattice_core::{Dir, Entity, Grid, Lane, SCENARIO_VERSION, Scenario, ScenarioError};
+use lattice_core::{
+    Dir, Entity, Grid, Lane, PLAYBACK_WINDOW_TICKS, SCENARIO_VERSION, Scenario, ScenarioError,
+};
 
 /// Which layout strategy [`scenario_with_layout`] lays down. Parsed straight from
 /// the `--layout` flag (clap [`ValueEnum`](clap::ValueEnum): `lines` / `bus`).
@@ -80,49 +82,25 @@ const MIN_CRAFT_WIDTH: i32 = 9;
 /// in the belts and read as dead tiles.)
 const BUS_PERIOD: u32 = 4;
 
-/// Rows a **smelt** bus-unit occupies (see [`push_smelt_unit`]): an ore bus, a
-/// row of tap inserters, two feeder rows, a load-inserter row, a 3×3 assembler
-/// band, an unload-inserter row, a product row, and the plate collector — top to
-/// bottom. The tap columns march the whole width, so the band's height is fixed
-/// but the *number* of assemblers grows with the grid.
-const SMELT_HEIGHT: i32 = 11;
+/// The source period for a smelter bank's **ore and coal** feeds. A furnace needs one
+/// ore *and* one coal per craft, delivered by a single inserter off the alternating merged
+/// backbone, so — unlike the old one-input plate assembler — a furnace draws **two** items
+/// per craft and the merged backbone must stay a clean 1:1 alternation. The banks pack
+/// their furnaces tightly (`cx += 2`) so the row draws close to the merge's full output;
+/// ore and coal share this one period so the two streams interleave evenly. `2` divides
+/// `LCM(32, 64, 96) = 192`, staying harmonic with the craft times, so the transport
+/// reference's steady-state cycle stays tight.
+const SMELTER_FEED_PERIOD: u32 = 2;
 
-/// Rows a **gear** bus-unit occupies (see [`push_gear_unit`]): a single east-
-/// running line whose two 3×3 assemblers (iron-plate → iron-gear) share the
-/// band's three rows.
-const GEAR_HEIGHT: i32 = 3;
+/// The column span of the [`machine_works`] block (its widest tile is `x0 + 23`),
+/// reserved so lane splitters and the block never collide.
+const MACHINE_WORKS_WIDTH: i32 = 24;
 
-/// Rows a **circuit** bus-unit occupies (see [`push_circuit_unit`]): a copper
-/// smelting-and-cabling line on top (rows 0–2), a curve row (row 3), and an
-/// iron-plate-into-circuit line beneath (rows 4–6) — the full two-input chain
-/// built entirely from raw-ore sources.
-const CIRCUIT_HEIGHT: i32 = 7;
-
-/// Rows a **farm** bus-unit occupies (see [`push_farm_unit`]): an ore bus, a row
-/// of tap inserters, a 3×3 assembler band, an unload-inserter row, and a row of
-/// sinks — top to bottom. Each assembler is fed *directly* off the bus and dumps
-/// straight to a sink, so the band carries a whole row of assemblers with no belt
-/// but the one dense bus.
-const FARM_HEIGHT: i32 = 7;
-
-/// The narrowest grid a **farm** unit fits in: the first assembler sits over cols
-/// 2–4 and the bus runs to an east sink, so a handful of tiles suffice.
-const MIN_FARM_WIDTH: i32 = 10;
-
-/// The narrowest grid a **smelt** unit fits in: the first tap column and its 3×3
-/// assembler sit at the west (cols 2–4), leaving room for the ore bus, the plate
-/// collector, and their shared east sink.
-const MIN_SMELT_WIDTH: i32 = 14;
-
-/// The narrowest grid a **gear** unit fits in: its two chained assemblers plus
-/// the loading, transfer, and unloading inserters occupy a fixed ten-tile run to
-/// the east of the ore backbone, so the sink needs to sit at x ≥ 12.
-const MIN_GEAR_WIDTH: i32 = 13;
-
-/// The narrowest grid a **circuit** unit fits in: its copper and iron machinery
-/// occupy a fixed twelve-tile run to the east of the two raw-ore backbones, so
-/// the circuit assembler's product inserter and sink land at the east edge.
-const MIN_CIRCUIT_WIDTH: i32 = 16;
+/// The column of a smelter bank's first (west-most) furnace, and so the column where the
+/// first plate lands on a plate lane. The lanes start here rather than the grid edge —
+/// nothing feeds the tiles west of the first drop (belts face east), so a lane laid from
+/// column 1 would only add dead lead-in belts.
+const SMELTER_FIRST_COL: i32 = 6;
 
 /// A tiny deterministic PRNG (SplitMix64). Pure, seedable, no dependencies — all
 /// the generator needs to make reproducible choices from the seed.
@@ -439,9 +417,11 @@ fn push_circuit_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i3
     let tier = BELT_TIERS[rng.below(BELT_TIERS.len())].name.to_string();
     let recipe = RECIPES
         .iter()
-        .find(|r| r.inputs.len() > 1)
-        // Every shipped multi-input recipe is `circuit`; fall back to the last
-        // recipe rather than panicking if the table ever changes shape.
+        // A multi-input recipe that runs on an ASSEMBLER — so skip the smelting
+        // recipes (`iron-plate`/`copper-plate`), which take ore + coal (two inputs)
+        // but run only on a furnace. The first such is `circuit`, the two-input chain.
+        .find(|r| r.inputs.len() > 1 && !r.smelting)
+        // Fall back to the last recipe rather than panicking if the table ever changes.
         .unwrap_or(&RECIPES[RECIPES.len() - 1]);
 
     let load_x = (width - 6).max(2);
@@ -569,15 +549,33 @@ impl Placer {
         });
     }
 
-    fn source(&mut self, x: i32, y: i32, dir: Dir, item: &str) {
+    /// Place a source emitting `item` every `period` ticks onto both lanes of the
+    /// downstream belt. The period is a tuning lever: the transport reference
+    /// fingerprints the world at multiples of `align = LCM(all source periods)`, so
+    /// a bus keeps every source's period small and harmonic with the craft times
+    /// (all dividing `LCM(32, 64, 96) = 192`). Faster belts want a shorter period to
+    /// stay dense (see [`tier_period`]); a `slow` stage keeps the default
+    /// [`BUS_PERIOD`], the value `align` settles to.
+    fn source_period(&mut self, x: i32, y: i32, dir: Dir, item: &str, period: u32) {
+        self.source_lane(x, y, dir, item, Lane::Both, period);
+    }
+
+    /// Place a source emitting `item` onto a **specific** lane (or both). The smelter
+    /// banks emit ore and coal onto ONE lane so that, once merged into the alternating
+    /// ore/coal backbone, the whole stream rides a single lane — the lane the furnace's
+    /// feed inserters read — so a furnace is never handed a pure-ore lane and starved of
+    /// coal. (A perpendicular **curve** collapses a belt onto one lane anyway, which is
+    /// why the coal branch is single-lane after it turns; matching the ore to it keeps
+    /// the merge's output alternating rather than one lane pure ore.)
+    fn source_lane(&mut self, x: i32, y: i32, dir: Dir, item: &str, lane: Lane, period: u32) {
         self.occupy(x, y);
         self.entities.push(Entity::Source {
             x,
             y,
             dir,
             item: item.to_string(),
-            lane: Lane::Both,
-            period: BUS_PERIOD,
+            lane,
+            period,
         });
     }
 
@@ -618,6 +616,39 @@ impl Placer {
             recipe: recipe.to_string(),
         });
     }
+
+    /// A horizontal run of east-facing belts covering `x0..x1` on row `y`.
+    fn hbelt(&mut self, x0: i32, x1: i32, y: i32, tier: &str) {
+        for x in x0..x1 {
+            self.belt(x, y, Dir::E, tier);
+        }
+    }
+
+    /// A vertical run of belts on column `x` covering rows `y0..y1` (inclusive of
+    /// `y0`, exclusive of `y1`), all facing `dir` (`Dir::S` for a downward run,
+    /// `Dir::N` for an upward one).
+    fn vbelt(&mut self, x: i32, y0: i32, y1: i32, dir: Dir, tier: &str) {
+        for y in y0..y1 {
+            self.belt(x, y, dir, tier);
+        }
+    }
+
+    /// Place a 2×2 furnace anchored at `(x, y)`, claiming the four tiles it covers
+    /// (`x..x+2` × `y..y+2`). A furnace runs a **smelting** recipe (`iron-plate` /
+    /// `copper-plate`), reducing raw ore to a plate by burning coal, so it must be
+    /// fed BOTH its ore and coal (see the smelter banks) before it crafts.
+    fn furnace(&mut self, x: i32, y: i32, recipe: &str) {
+        for dy in 0..2 {
+            for dx in 0..2 {
+                self.occupy(x + dx, y + dy);
+            }
+        }
+        self.entities.push(Entity::Furnace {
+            x,
+            y,
+            recipe: recipe.to_string(),
+        });
+    }
 }
 
 /// Pick a belt `tier` from the seed. Tiers are cosmetic (every belt runs at the
@@ -627,484 +658,886 @@ fn pick_tier(rng: &mut SplitMix64) -> String {
     BELT_TIERS[rng.below(BELT_TIERS.len())].name.to_string()
 }
 
-/// The **Bus** layout: a realistic, interconnected main-bus factory of
-/// self-contained horizontal **bus-units**, stacked in non-overlapping bands top
-/// to bottom (the same band discipline the Lines layout uses to guarantee no
-/// overlap). Five unit shapes, wired end to end, between them cover every entity,
-/// both belt-to-belt feeding modes (curve and side-load), the multi-input recipe,
-/// and — crucially — the **whole craft tree grown from raw ore alone**. Every
-/// `source` in a bus scenario emits only `iron-ore` or `copper-ore`; every
-/// intermediate (`iron-plate`, `copper-plate`, `copper-cable`, `iron-gear`,
-/// `circuit`) is *crafted on the grid* by an assembler chain, never spawned:
+/// The source emission period for a belt `tier`. Faster belts want a shorter
+/// period so a *flowing* lane stays dense (an express belt clears a tile in ~2.7
+/// ticks, so an item every four would leave gaps), while a slow belt at period 4
+/// is already one item per tile. All three divide `LCM(32, 64, 96) = 192`, so the
+/// steady-state cycle stays the tiny 192 the transport reference detects, and the
+/// bus's `align = LCM(periods)` stays 4 (a `slow` stage is always present), keeping
+/// the transport engine's warm-up fingerprinting cheap.
+fn tier_period(tier: &str) -> u32 {
+    match tier {
+        "slow" => BUS_PERIOD,
+        _ => 2,
+    }
+}
+
+/// The **Bus** layout: a spread-out west→east factory, correct by construction.
 ///
-/// - a **farm unit** ([`push_farm_unit`], 7 rows) — the primary filler: a whole
-///   row of plate `assembler`s tapped *directly* off one dense ore bus, each
-///   dumping straight to a sink, with no feed or product belts. It makes the grid
-///   busy and densely occupied (a row of working machines) while adding almost no
-///   moving-belt mass — which is what keeps the transport engine's warm-up cheap on
-///   a large grid, since that warm-up pays for every belt item it fingerprints;
-/// - an **ore belt unit** ([`push_belt_unit`], 1–2 rows) — a `source` at the west
-///   edge into a full-width `belt` run into an east `sink`, optionally through a
-///   `splitter` draining its second output down a reserved row. A dense ore bus for
-///   naive mass and the layout's `splitter`; it fills densely (an ore stream at
-///   [`BUS_PERIOD`] leaves no empty tile);
-/// - a **smelt unit** ([`push_smelt_unit`], 11 rows) — an ore bus tapped by a
-///   *row of columns marching the whole width*, each `inserter`-tapping ore onto a
-///   south feeder into a 3×3 plate `assembler`, whose crafted plate curves and
-///   side-loads onto a shared ore collector into a sink. Exercises belt→belt taps,
-///   curves, and side-load merges;
-/// - a **gear unit** ([`push_gear_unit`], 3 rows) — an iron-ore backbone feeding a
-///   chained `iron-plate` → `iron-gear` pair (two adjacent assemblers bridged by a
-///   single transfer inserter), the crafted gear leaving to a sink. Proves the
-///   two-stage iron chain and delivers a *product* (`iron-gear`) to a sink;
-/// - a **circuit unit** ([`push_circuit_unit`], 7 rows) — the full two-input
-///   chain from ore: a copper line (`copper-ore` → `copper-plate` → `copper-cable`)
-///   whose cable curves south into a `circuit` assembler, and an iron line
-///   (`iron-ore` → `iron-plate`) whose plate feeds the same assembler's other
-///   slot; the crafted `circuit` (the other *product*) leaves to a sink. This is
-///   the only unit reaching the multi-input recipe and the real copper chain.
+/// The grid is filled left-to-right in three regions, but the defining property is
+/// that **product-crafting machinery reaches the whole width, out to the east edge
+/// — never clustered at one end**:
 ///
-/// The circuit unit, then the gear unit, then one smelt unit are placed **outright
-/// whenever they fit**, in that order: between them they guarantee — on any seed —
-/// that both products reach sinks, that the copper chain and every intermediate
-/// exist, and that taps/curves/side-loads are graded. A forced two-row ore belt
-/// unit then guarantees a `splitter`. The rest of the grid is filled biased hard to
-/// farm units (dense occupancy and craft work for almost no belt mass), with the
-/// occasional gear or ore belt unit.
+/// **Region 1 — smelting (`x < smelt_x`, with `smelt_x = width/3`).** Iron-ore and
+/// copper-ore `source`s sit on the far-west column. Each rides a short ore
+/// backbone (confined to the left third, so no raw ore ever travels past
+/// `width/2`) that a row of plate `assembler`s taps and lifts onto a full-width
+/// horizontal **plate sub-bus** — an iron-plate lane and a copper-plate lane that
+/// run east across the entire grid.
 ///
-/// **Every bus source emits at the one fixed [`BUS_PERIOD`]** — see that constant
-/// for why a single small harmonic period is what lets the transport engine detect
-/// the cycle instead of degrading to the naive cost. The craft tree deepens the
-/// warm-up (buffers must fill through the copper chain — which is why the circuit
-/// unit bleeds its surplus cable, so the chain settles fast), but the ore backbones
-/// dwarf it in naive mass, so the transport engine still leaps whole cycles for a
-/// tiny fraction of the naive fuel.
+/// **Region 2 — the plate sub-buses and their product stations (most of the
+/// grid).** The iron- and copper-plate lanes run east at reserved rows. Along them,
+/// compact **product stations** repeat at a regular horizontal pitch across the
+/// full remaining width: each taps the lane(s) beside it, crafts a product through
+/// a short local chain, and drains it to a single-item `sink`. Gear stations tap
+/// the iron lane; cable stations tap the copper lane; and a handful of deeper
+/// **machine cores** (transport-belt, inserter, assembler — plus the circuit they
+/// need) tap both lanes and build the craft tree's tips. A **split-merge balancer**
+/// splits the iron lane onto a parallel branch that rejoins it downstream, so the
+/// layout carries many `splitter`s spread along the bus without ever wasting plate.
+///
+/// **Region 3 — outputs (the east).** Every product drains to its **own single-item
+/// `sink`**, spread down the east side; no `splitter` is ever the last hop.
 fn bus_layout(rng: &mut SplitMix64, width: i32, height: i32) -> Vec<Entity> {
     let mut placer = Placer::new(width, height);
-
-    let circuit_fits = width >= MIN_CIRCUIT_WIDTH && height >= CIRCUIT_HEIGHT;
-    let gear_fits = width >= MIN_GEAR_WIDTH && height >= GEAR_HEIGHT;
-    let smelt_fits = width >= MIN_SMELT_WIDTH && height >= SMELT_HEIGHT;
-    let farm_fits = width >= MIN_FARM_WIDTH && height >= FARM_HEIGHT;
-    let mut y = 0;
-
-    // The circuit unit goes down first whenever it fits: it is the only unit with
-    // the multi-input recipe and the full copper chain, and on its own it delivers
-    // the `circuit` product to a sink. Leaving that to a dice roll is exactly how a
-    // scored set ends up unable to catch an engine that skipped the multi-input
-    // recipe (see the Lines layout's circuit line).
-    if circuit_fits {
-        push_circuit_unit(&mut placer, rng, width, y);
-        y += CIRCUIT_HEIGHT;
+    if width >= 40 && height >= 30 {
+        full_bus(&mut placer, rng, width, height);
+    } else {
+        simple_bus(&mut placer, rng, width, height);
     }
-    // Then a gear unit, so the *other* product (`iron-gear`) always reaches a sink
-    // and the two-stage iron chain is always present.
-    if gear_fits && height - y >= GEAR_HEIGHT {
-        push_gear_unit(&mut placer, rng, width, y);
-        y += GEAR_HEIGHT;
-    }
-    // Then one smelt unit when the remaining height holds it: it is the unit that
-    // exercises inserter belt→belt taps, a curve, and a side-load merge, and packs
-    // many plate assemblers across the whole width.
-    if smelt_fits && height - y >= SMELT_HEIGHT {
-        push_smelt_unit(&mut placer, rng, width, y);
-        y += SMELT_HEIGHT;
-    }
-    // A forced two-row ore belt unit guarantees a `splitter` on any grid wide and
-    // tall enough for one (the belt unit always carries a splitter when it has its
-    // second row), for the same reason the circuit unit is placed outright: leaving
-    // it to a coin flip means some scored scenarios silently grade no balancing.
-    if width >= 6 && height - y >= BELT_BAND {
-        push_belt_unit(&mut placer, rng, width, height, y, true);
-        y += BELT_BAND;
-    }
-
-    // Fill the rest, biased hard to **farm units**. A farm packs a whole row of
-    // assemblers across the grid over one dense ore bus with no other belt, so it
-    // makes the factory *busy and densely occupied* while adding almost no
-    // moving-belt mass — and moving-belt mass is precisely what the transport
-    // engine pays to fingerprint every cycle during its warm-up. Filling with farms
-    // rather than long packed belts is what keeps the big grid's transport fuel far
-    // under the naive fuel while the grid stays visibly full of working machines. An
-    // occasional gear unit adds a crafted product and a packed backbone, and a belt
-    // unit lands where a band is too short for a farm (and adds an extra splitter).
-    // The smelt unit is deliberately *not* in the fill — it is placed exactly once
-    // (above); one is enough for the taps/curve/side-load grading, and a batch of
-    // its sparse feeder/product belts would be the only dead belt on the grid.
-    while y < height {
-        let rows_left = height - y;
-        if farm_fits && rows_left >= FARM_HEIGHT && rng.below(4) != 0 {
-            push_farm_unit(&mut placer, rng, width, y);
-            y += FARM_HEIGHT;
-        } else if gear_fits && rows_left >= GEAR_HEIGHT && rng.below(2) == 0 {
-            push_gear_unit(&mut placer, rng, width, y);
-            y += GEAR_HEIGHT;
-        } else {
-            // An ore belt unit takes a second row for a splitter's branch when the
-            // band has one to spare; on the last single row it is a plain packed bus.
-            let two_rows = rows_left >= BELT_BAND;
-            push_belt_unit(&mut placer, rng, width, height, y, two_rows);
-            y += if two_rows { BELT_BAND } else { 1 };
-        }
-    }
-
     placer.entities
 }
 
-/// Append a **belt unit** at row `y`: a `source` at the west edge, a full-width
-/// `belt` run east into a `sink`, and — when the band has a spare row and the grid
-/// is wide enough — a `splitter` one tile in from the east end draining its second
-/// output down the reserved row `y + 1` into its own sink.
-///
-/// This is the bus layout's packed-belt workhorse: a long saturated run is the
-/// bulk of the naive engine's per-tick item mass, while costing the transport
-/// engine almost nothing once the run compacts to a frozen block. The emitted item
-/// is a **raw ore** — `iron-ore` or `copper-ore`, seed-chosen — never a crafted
-/// intermediate: in the bus layout only assembler chains produce plates, cables,
-/// gears, and circuits, so a source that spawned one would be a fiction the case
-/// grades as real. (Which ore rides a backbone belt is cosmetic — it never feeds a
-/// machine — but keeping it to the two raw ores is what makes "no source spawns an
-/// intermediate" hold for every belt on the grid.)
-fn push_belt_unit(
-    placer: &mut Placer,
-    rng: &mut SplitMix64,
-    width: i32,
-    height: i32,
-    y: i32,
-    two_rows: bool,
-) {
+/// The east boundary of the ore-smelting region — every raw-ore backbone stays
+/// west of this, inside the left half the rule requires (`< width/2`). Pushed as far
+/// right as the machine works leaves room for, so the bank fits enough plate smelters
+/// that the lanes reach their steady equilibrium quickly (a short transient the
+/// transport reference fingerprints cheaply) instead of drifting up for tens of
+/// thousands of ticks.
+fn smelt_boundary(width: i32) -> i32 {
+    (width - MACHINE_WORKS_WIDTH - 1).min(width / 2 - 1).max(6)
+}
+
+/// The station columns a pitched row of stations occupies: anchored so the
+/// **east-most** station reaches the east edge (`x >= width - 6`) and each
+/// consecutive column is within `pitch` of the last, laid from the east edge back
+/// to the smelting boundary. `pitch` is chosen `<= width/6` so the assembler-anchor
+/// spacing rule holds by construction.
+fn station_columns(width: i32, smelt_x: i32, pitch: i32) -> Vec<i32> {
+    let mut cols = Vec::new();
+    let mut x = width - 3;
+    while x >= smelt_x {
+        cols.push(x);
+        x -= pitch;
+    }
+    cols.reverse();
+    cols
+}
+
+/// The full spread-out layout for a generous grid. Two full-width plate lanes fed
+/// by left-third smelters, product stations pitched across the whole width, machine
+/// cores for the craft-tree tips, and split-merge balancers along the iron lane.
+fn full_bus(p: &mut Placer, rng: &mut SplitMix64, width: i32, height: i32) {
+    let smelt_x = smelt_boundary(width);
     let tier = pick_tier(rng);
-    let item = if rng.below(2) == 0 {
-        "iron-ore"
+    // The lanes are pushed apart (iron down, copper near the bottom) so each smelter
+    // bank has room for its 2×2 furnace row *and* the coal that feeds it — a furnace
+    // takes ore from one merge input and coal from another with no belt crossing.
+    let ibus = 8; // iron-plate lane row (five rows below the iron smelter backbone)
+    let cbus = height - 7; // copper-plate lane row (near the bottom)
+    // Above-station pitch is `<= width/12`, so even where a balancer displaces one
+    // the assembler-anchor gap stays `<= width/6`.
+    let pitch = (width / 6).clamp(6, 12);
+    let cols = station_columns(width, smelt_x, pitch);
+    let mw_lo = smelt_x + 1; // the machine works starts just east of the smelting bank
+    let mw_hi = mw_lo + MACHINE_WORKS_WIDTH;
+
+    // Split-curve gear stations replace the old dead distribution splitters. Each is a
+    // real 1-in/2-out splitter that peels a plate branch off the iron lane; the branch
+    // **curves** south and feeds an iron-gear assembler, while the splitter's other
+    // output continues the lane east to the machine works and the drain sink. So both
+    // outputs do real work (lane + a machine), the flow turns a corner, and no output
+    // ever dead-ends. `iron_curve_stations` places them (with the lane-tap gear stations
+    // that consume the stations' lane-continuation outputs on a wide grid) and returns
+    // the splitter columns the lane must skip.
+    let iron_stations = iron_curve_stations(p, ibus, width, smelt_x, mw_lo, mw_hi, &tier);
+
+    // The two full-width plate lanes. The iron lane is broken only at its split-curve
+    // splitter columns; the copper lane runs unbroken. Both drain to a sink at the east
+    // edge, so plate flows (never dead-ends) and every furnace outputs freely.
+    // The lanes start at the smelter banks' first furnace column (6) — where the first
+    // plate lands — since nothing feeds the tiles west of it.
+    place_lane_skipping(
+        p,
+        ibus,
+        width,
+        SMELTER_FIRST_COL,
+        &tier,
+        &iron_stations,
+        true,
+    );
+    place_lane_skipping(p, cbus, width, SMELTER_FIRST_COL, &tier, &[], true);
+
+    // The coal supply: one coal source per furnace bank, each running down a west-edge
+    // spine and **curving** east into its bank's ore+coal merge. Laid before the smelters
+    // lay their merge splitters (they read the coal it delivers).
+    coal_supply(p, ibus, cbus, &tier);
+
+    // Smelter banks (left region): iron above its lane, copper below its lane. Each is
+    // a row of 2×2 furnaces fed a mixed ore+coal backbone, lifting plate onto the lane.
+    // A single bank per lane keeps the lane a light, moving stream — cheaper for the
+    // transport reference to fingerprint than a fully saturated block.
+    iron_smelters(p, ibus, smelt_x, &tier);
+    copper_smelters(p, cbus, smelt_x, &tier);
+
+    // Gear stations tap the iron lane from above; cable stations tap the copper lane
+    // from below. Together with the furnaces (left) and machine works (mid/east) they
+    // spread crafting machinery across the whole width. The iron lane also feeds the
+    // deep machine works, so gear stations are placed at every OTHER pitch column
+    // (cable stations at every column): a full rank of iron-plate consumers would drink
+    // the lane dry before the machine works — whose furnaces produce less per machine
+    // than the old plate assemblers did — leaving its circuit/belt tips starved.
+    for (i, &gx) in cols.iter().enumerate() {
+        // A single gear station drains iron-gear to its own sink (enough to prove the
+        // iron chain reaches a sink); the rest of the iron plate is left for the deep
+        // machine works, whose furnaces yield less plate per machine than the old plate
+        // assemblers did. Cable stations still line every column, so the copper chain and
+        // the machinery-spread anchors are unaffected.
+        if i == 0 {
+            gear_station_above(p, gx, ibus, &tier);
+        }
+        // Cable stations sit in the band *below* the copper lane, at every other column:
+        // a full rank drinks the copper lane dry (a furnace yields less copper-plate per
+        // craft than an assembler did), leaving it sparse; halving them leaves a dense,
+        // moving surplus. The station spacing still lands an anchor in every third.
+        if i % 2 == 0 {
+            cable_station_below(p, gx, cbus, &tier);
+        }
+    }
+
+    // The machine works: the craft-tree tips (circuit, transport-belt, inserter,
+    // assembler) on shared sub-buses, occupying the mid band across the width.
+    machine_works(p, mw_lo, ibus, cbus, &tier);
+
+    // The configuration bay: functional belt/splitter/inserter *configurations*
+    // (real balancers, merges, side-loads, "+" intersections, shared-source
+    // inserter pairs, and a mixed-item belt) laid in the free band west of the
+    // machine works, all carrying **smelted intermediates** off a dedicated bay
+    // plate sub-lane. A large grid carries the full set; a medium grid a subset.
+    let full = height >= 38;
+    config_bay(p, ibus, cbus, width, &tier, full);
+}
+
+/// The **configuration bay** — a band of functional belt/splitter/inserter
+/// *configurations* laid in the empty region between the two plate lanes, west of the
+/// machine works. A dedicated bay iron smelter lifts iron-plate onto a **bay plate
+/// sub-lane** ([`bay_iron_smelter`]); every gadget taps that sub-lane, so the bay
+/// carries **smelted intermediates** (never raw ore) and never taps — nor starves —
+/// the main plate lanes that feed the machine works.
+///
+/// Every gadget's splitter outputs **do real work** — they drain to a product sink or
+/// feed a machine, never dead-end unused (the `every_bus_splitter_output_is_used` gate).
+/// The `2-in/1-out` **merge** configuration (#2) is proved by the smelter banks' own
+/// ore+coal merges, so the bay carries no separate merge gadget.
+///
+/// - [`balancer_gadget`] — a real **2-in / 2-out** balancer (#1) fed by two plate taps
+///   (one via a curved feed) whose two outputs each drain to their own iron-plate sink.
+/// - [`twin_gadget`] — **two inserters from one belt line** (#6), both lifting plate.
+/// - [`plus_gadget`] (large) — a vertical plate through belt fed by two perpendicular
+///   feeders, one from each side, that also continues past the join: the
+///   **T-intersection** (#3), **double side-load** (#4) and **"+"** (#5).
+/// - [`mixed_gadget`] (large) — iron-plate + iron-gear merged onto one **mixed-item
+///   belt** (#8) that feeds a `transport-belt` assembler (both are its inputs, so the
+///   sink stays single-item).
+/// - [`cable_twin_gadget`] (large) — **two inserters unloading one assembler** (#7):
+///   a copper-cable assembler (a 2-output recipe) unloaded by a pair.
+fn config_bay(p: &mut Placer, ibus: i32, cbus: i32, width: i32, tier: &str, full: bool) {
+    let pl = ibus + 8; // the bay plate sub-lane row
+    let bay_east = smelt_boundary(width) - 1; // = mw_lo - 2, two clear of the works
+    bay_iron_smelter(p, pl, bay_east, tier);
+    // Structural gadgets first, tapping the sub-lane from below, side by side.
+    debug_assert!(pl + 4 <= cbus - 2);
+    // The balancer sits east of the bay smelter's first furnace (column 6) so both its
+    // plate taps land on a *fed* stretch of the sub-lane, not the always-empty west end.
+    balancer_gadget(p, pl, 8, tier); // #1
+    twin_gadget(p, pl, 18, tier); // #6
+    if full {
+        // The taller gadgets fit only a large grid (they reach down toward the copper
+        // lane). `plus` and `mixed` sit east along the sub-lane; the copper-cable pair
+        // gets its own block lower-west, clear of the short gadgets above it.
+        debug_assert!(pl + 12 <= cbus - 2);
+        plus_gadget(p, pl, 24, tier); // #3/#4/#5 (centre column 24)
+        mixed_gadget(p, pl, 28, tier); // #8
+        cable_twin_gadget(p, ibus + 14, tier); // #7
+    }
+}
+
+/// The bay's own iron smelter: a **mixed ore+coal backbone** in the far-west columns
+/// (kept inside the left half so no raw ore ever travels past `width/2`) — its own
+/// `iron-ore` and `coal` sources merged through a real 2-in/1-out splitter — feeding a
+/// short rank of 2×2 **furnaces** that lift `iron-plate` onto the **bay plate sub-lane**
+/// at row `pl` (which runs east to `bay_east`). Self-contained, so its coal never
+/// touches the main banks' supply. The sub-lane dead-ends, so it saturates and every
+/// gadget tap downstream stays fed. Column 0 is left clear for the main coal spine.
+fn bay_iron_smelter(p: &mut Placer, pl: i32, bay_east: i32, tier: &str) {
+    let ob = pl - 5; // ore backbone row (furnace is 2 tall, one shorter than the old assembler)
+    let bank_east = bay_east.min(20); // ~5 plate furnaces — plenty for the bay
+    p.source_lane(2, ob, Dir::E, "iron-ore", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(3, ob, Dir::E, tier);
+    p.splitter(4, ob, Dir::E); // merge: ore (row ob) + coal (row ob+1) -> mix
+    p.hbelt(5, bank_east, ob, tier); // the mixed backbone
+    // The bay's own coal, merged onto the backbone's lower input.
+    p.source_lane(1, ob + 1, Dir::E, "coal", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(2, ob + 1, Dir::E, tier);
+    p.belt(3, ob + 1, Dir::E, tier);
+    let mut cx = 6;
+    while cx + 1 < bank_east {
+        // ONE inserter per furnace pulls the ALTERNATING backbone (ore, coal, ore, …)
+        // so the furnace crafts each pair without accumulating — two inserters would
+        // often grab two of the same item at once and imbalance it.
+        p.inserter(cx, ob + 1, Dir::S); // mix off the backbone -> furnace
+        p.furnace(cx, ob + 2, "iron-plate"); // rows ob+2..ob+3 = pl-3..pl-2
+        p.inserter(cx, ob + 4, Dir::S); // plate off the furnace -> sub-lane
+        cx += 2; // pack furnaces adjacent for more plate throughput
+    }
+    // The bay plate sub-lane (dead-ends dense). It starts at the first furnace column,
+    // not the grid edge: the tiles west of the first plate drop only ever sit empty.
+    p.hbelt(6, bay_east + 1, pl, tier);
+}
+
+/// Tap the bay plate sub-lane at column `x`: an inserter one row below lifts an
+/// iron-plate off the lane and drops it onto the gadget belt two rows below.
+fn tap_plate(p: &mut Placer, x: i32, pl: i32) {
+    p.inserter(x, pl + 1, Dir::S); // pick plate off (x, pl) -> (x, pl+2)
+}
+
+/// #1 — a real **2-in / 2-out** balancer, carrying iron-plate, whose outputs **drain to
+/// sinks** (never dead-end). Two plate taps feed its two inputs — the top one straight,
+/// the bottom one via a south-then-east **curve** — and its two outputs each run a belt to
+/// their own iron-plate sink (one output also turning a corner on the way). So the balancer
+/// balances real flow across two live outputs, and every splitter output reaches a consumer.
+fn balancer_gadget(p: &mut Placer, pl: i32, c: i32, tier: &str) {
+    let r = pl + 2; // the balancer's top-input row
+    let bc = c + 3; // the balancer's anchor column (2-in/2-out, tiles (bc,r),(bc,r+1))
+    // Top feed (straight): tap at column `c` runs east into the balancer's top input.
+    tap_plate(p, c, pl); // (c,pl+1) lifts plate off (c,pl) -> (c,r)
+    p.belt(c, r, Dir::E, tier);
+    p.belt(c + 1, r, Dir::E, tier);
+    p.belt(c + 2, r, Dir::E, tier); // -> balancer top input (bc-1, r)
+    // Bottom feed (curved): tap at column `c-1`, drop, turn south then east into the
+    // bottom input — the S→E turn at (c-1, r+1) is a real curve.
+    tap_plate(p, c - 1, pl); // (c-1,pl+1) lifts plate off (c-1,pl) -> (c-1,r)
+    p.belt(c - 1, r, Dir::S, tier);
+    p.belt(c - 1, r + 1, Dir::E, tier); // CURVE
+    p.belt(c, r + 1, Dir::E, tier);
+    p.belt(c + 1, r + 1, Dir::E, tier);
+    p.belt(c + 2, r + 1, Dir::E, tier); // -> balancer bottom input (bc-1, r+1)
+    // The balancer.
+    p.splitter(bc, r, Dir::E); // 2-in / 2-out, tiles (bc,r),(bc,r+1)
+    // Top output -> its own sink (a belt between splitter and sink, per the sink rule).
+    p.belt(bc + 1, r, Dir::E, tier);
+    p.sink(bc + 2, r, Dir::E);
+    // Bottom output -> its own sink, turning a corner (E then S) on the way.
+    p.belt(bc + 1, r + 1, Dir::E, tier);
+    p.belt(bc + 2, r + 1, Dir::S, tier); // CURVE
+    p.sink(bc + 2, r + 2, Dir::S);
+}
+
+/// #6 — **two inserters drawing from one belt line**. A tap feeds a short plate run;
+/// two inserters spaced along it each lift plate into its own sink, so both carry from
+/// the shared line.
+fn twin_gadget(p: &mut Placer, pl: i32, c: i32, tier: &str) {
+    // Two taps feed the run, one just upstream of each pick inserter, so plate reaches
+    // both rather than the upstream inserter monopolising a single feed.
+    tap_plate(p, c, pl);
+    tap_plate(p, c + 2, pl);
+    for dx in 0..4 {
+        p.belt(c + dx, pl + 2, Dir::E, tier);
+    }
+    for px in [c + 1, c + 3] {
+        p.inserter(px, pl + 3, Dir::S); // lift plate off (px, pl+2) -> sink
+        p.sink(px, pl + 4, Dir::S);
+    }
+}
+
+/// #3, #4, #5 — a **"+" intersection** carrying iron-plate. A vertical plate through
+/// belt (fed by a tap and running south) is joined at its centre by two perpendicular
+/// feeders, one from the **west** and one from the **east** (each a #3 T-intersection;
+/// together a #4 double side-load), while the through belt **continues** south past
+/// the join (#5). All three arms tap the sub-lane; the through dead-ends at the bottom.
+fn plus_gadget(p: &mut Placer, pl: i32, c: i32, tier: &str) {
+    // Through belt: tap at column `c`, running south through the centre (c, pl+3).
+    tap_plate(p, c, pl);
+    p.belt(c, pl + 2, Dir::S, tier);
+    p.belt(c, pl + 3, Dir::S, tier); // the centre tile
+    p.belt(c, pl + 4, Dir::S, tier); // collinear downstream (the "+" continues)
+    p.belt(c, pl + 5, Dir::S, tier); // dead-ends
+    // West feeder: tap two columns west, drop, run south then east into the centre.
+    tap_plate(p, c - 2, pl);
+    p.belt(c - 2, pl + 2, Dir::S, tier);
+    p.belt(c - 2, pl + 3, Dir::E, tier);
+    p.belt(c - 1, pl + 3, Dir::E, tier); // side-loads onto (c, pl+3) from the west
+    // East feeder: mirror image, side-loading from the east.
+    tap_plate(p, c + 2, pl);
+    p.belt(c + 2, pl + 2, Dir::S, tier);
+    p.belt(c + 2, pl + 3, Dir::W, tier);
+    p.belt(c + 1, pl + 3, Dir::W, tier); // side-loads onto (c, pl+3) from the east
+}
+
+/// #8 — a **mixed-item belt**. An `iron-gear` assembler feeds a gear belt on one row
+/// and a plate tap feeds a plate belt on the row below; a 2-in/1-out merge combines
+/// them onto **one belt carrying both iron-gear and iron-plate at once**, which an
+/// inserter loads into a `transport-belt` assembler — iron-plate + iron-gear are
+/// exactly its two inputs, so the mix is consumed cleanly and its product sink stays
+/// single-item. Laid vertically to stay narrow.
+fn mixed_gadget(p: &mut Placer, pl: i32, c: i32, tier: &str) {
+    // iron-gear stream (row pl+6): tap -> gear assembler -> gear belt running east.
+    p.inserter(c + 1, pl + 1, Dir::S); // tap plate -> gear assembler top-mid
+    p.assembler(c, pl + 2, "iron-gear"); // cols c..c+2, rows pl+2..pl+4
+    p.inserter(c + 1, pl + 5, Dir::S); // gear out (bottom-mid) -> (c+1, pl+6)
+    p.belt(c + 1, pl + 6, Dir::E, tier);
+    p.belt(c + 2, pl + 6, Dir::E, tier);
+    p.belt(c + 3, pl + 6, Dir::E, tier); // -> merge bottom input (c+3, pl+6)
+    // iron-plate stream (row pl+7): a separate tap dropped south then run east.
+    p.inserter(c - 1, pl + 1, Dir::S);
+    p.belt(c - 1, pl + 2, Dir::S, tier);
+    p.belt(c - 1, pl + 3, Dir::S, tier);
+    p.belt(c - 1, pl + 4, Dir::S, tier);
+    p.belt(c - 1, pl + 5, Dir::S, tier);
+    p.belt(c - 1, pl + 6, Dir::S, tier);
+    p.belt(c - 1, pl + 7, Dir::E, tier);
+    p.belt(c, pl + 7, Dir::E, tier);
+    p.belt(c + 1, pl + 7, Dir::E, tier);
+    p.belt(c + 2, pl + 7, Dir::E, tier);
+    p.belt(c + 3, pl + 7, Dir::E, tier); // -> merge top input (c+3, pl+7)
+    // Merge (2-in/1-out): gear on pl+6, plate on pl+7, onto ONE mixed belt (pl+6).
+    p.splitter(c + 4, pl + 6, Dir::E); // tiles (c+4,pl+6),(c+4,pl+7); output row pl+6
+    p.belt(c + 5, pl + 6, Dir::E, tier); // the MIXED belt (iron-gear + iron-plate)
+    // Consume the mix in a transport-belt assembler; drain the product to its sink.
+    p.inserter(c + 5, pl + 7, Dir::S); // lift the mix off (c+5,pl+6) -> assembler top
+    p.assembler(c + 4, pl + 8, "transport-belt"); // cols c+4..c+6, rows pl+8..pl+10
+    p.inserter(c + 5, pl + 11, Dir::S); // product out -> sink
+    p.sink(c + 5, pl + 12, Dir::S);
+}
+
+/// #7 — **two inserters unloading one assembler**. A short copper chain
+/// (ore -> copper-plate -> copper-cable) ends in a single copper-cable assembler
+/// (`copper-cable` yields two per craft, so a pair of unloaders both stay busy). One
+/// inserter unloads it to the west and one to the east, each onto its own belt into
+/// its own copper-cable sink. Self-contained (its own ore source, kept in the left
+/// half), so it never touches the plate lanes.
+fn cable_twin_gadget(p: &mut Placer, y: i32, tier: &str) {
+    // A mixed copper-ore+coal backbone (its own sources, own coal, real 2-in/1-out
+    // merge) feeds a 2×2 copper-plate FURNACE, whose plate feeds a copper-cable
+    // assembler, which the twin unloaders draw from. Column 0 stays clear for the spine.
+    p.source_lane(2, y, Dir::E, "copper-ore", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(3, y, Dir::E, tier);
+    p.splitter(4, y, Dir::E); // merge: ore (row y) + coal (row y+1) -> mix
+    p.hbelt(5, 9, y, tier); // the short mixed backbone
+    p.source_lane(1, y + 1, Dir::E, "coal", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(2, y + 1, Dir::E, tier);
+    p.belt(3, y + 1, Dir::E, tier);
+    // The copper-plate furnace, fed by two inserters off the alternating backbone.
+    p.inserter(7, y + 1, Dir::S); // one inserter pulls the alternating backbone
+    p.furnace(7, y + 2, "copper-plate"); // rows y+2..y+3
+    p.inserter(7, y + 4, Dir::S); // plate off the furnace -> cable assembler
+    p.assembler(7, y + 5, "copper-cable"); // cols 7..9, rows y+5..y+7
+    // Two inserters unload the ONE cable assembler, west and east.
+    p.inserter(6, y + 6, Dir::W); // pick cable from the assembler's left-mid
+    p.belt(5, y + 6, Dir::W, tier);
+    p.sink(4, y + 6, Dir::W);
+    p.inserter(10, y + 6, Dir::E); // pick cable from the assembler's right-mid
+    p.belt(11, y + 6, Dir::E, tier);
+    p.sink(12, y + 6, Dir::E);
+}
+
+/// Place the iron lane's split-curve gear stations and return their splitter columns
+/// (which [`place_lane_skipping`] must skip). Each station peels a plate branch off the
+/// lane and curves it south into an iron-gear assembler (see [`split_curve_gear_station`]);
+/// the splitter's other output continues the lane, and that lane-continuation output must
+/// itself reach a consumer or the `every_bus_splitter_output_is_used` gate rejects it.
+///
+/// **Wide grid** (room east of the machine works): a run of stations packed into the
+/// clear east region, each paired with a [`gear_station_below`] lane-tap four columns
+/// downstream that lifts plate off the lane — so the station's lane-continuation output
+/// reaches that tap before the next station's splitter breaks the run. A trailing station
+/// (if one more fits) lets its output run to the lane's own drain sink.
+///
+/// **Tight grid** (the machine works reaches the east edge, e.g. the medium scored size):
+/// a single station in the narrow gap just west of the machine works. Its
+/// lane-continuation output flows east *through* the machine works — whose plate risers
+/// tap the lane — and on to the drain sink, so it needs no dedicated tap.
+fn iron_curve_stations(
+    p: &mut Placer,
+    ibus: i32,
+    width: i32,
+    smelt_x: i32,
+    mw_lo: i32,
+    mw_hi: i32,
+    tier: &str,
+) -> Vec<i32> {
+    let mut cols = Vec::new();
+    if width - mw_hi >= 12 {
+        // Room east of the machine works: paired station + downstream lane-tap units.
+        let mut c = mw_hi;
+        while c + 6 <= width - 2 {
+            split_curve_gear_station(p, c, ibus, tier);
+            cols.push(c);
+            gear_station_below(p, c + 4, ibus, tier); // consumes station c's lane output
+            c += 7;
+        }
+        // A trailing station whose lane-continuation output runs to the drain sink.
+        if c + 3 <= width - 2 {
+            split_curve_gear_station(p, c, ibus, tier);
+            cols.push(c);
+        }
     } else {
-        "copper-ore"
+        // Tight grid: one station in the gap west of the machine works; its lane output
+        // flows east through the machine works' plate-riser taps to the drain sink.
+        let gx = mw_lo - 3;
+        if gx > smelt_x - 4 {
+            split_curve_gear_station(p, gx, ibus, tier);
+            cols.push(gx);
+        }
+    }
+    cols
+}
+
+/// A **split-curve gear station** on the iron lane at column `gx`. A splitter peels a
+/// plate branch off the lane: its lane-side output (`gx+1, ibus`) continues the lane east,
+/// and its branch output (`gx+1, ibus+1`) faces east so the splitter routes plate onto it.
+/// The branch then **curves** south (`gx+2, ibus+1` faces south) and an inserter lifts the
+/// plate into an `iron-gear` assembler, whose gear drains south to a single-item sink. Both
+/// splitter outputs do real work and the flow turns a corner — the pattern that replaces
+/// the old dead inserter-tap-only stations and the useless distribution splitters.
+fn split_curve_gear_station(p: &mut Placer, gx: i32, ibus: i32, tier: &str) {
+    p.splitter(gx, ibus, Dir::E); // (gx,ibus)+(gx,ibus+1); lane out (gx+1,ibus), branch out (gx+1,ibus+1)
+    p.belt(gx + 1, ibus + 1, Dir::E, tier); // branch output (east, so the splitter routes to it)
+    p.belt(gx + 2, ibus + 1, Dir::S, tier); // CURVE: the east branch turns south
+    p.inserter(gx + 2, ibus + 2, Dir::S); // lift plate off (gx+2,ibus+1) into the assembler
+    p.assembler(gx, ibus + 3, "iron-gear"); // cols gx..gx+2, rows ibus+3..ibus+5
+    p.inserter(gx + 1, ibus + 6, Dir::S); // gear out (gx+1,ibus+5) -> sink
+    p.sink(gx + 1, ibus + 7, Dir::S);
+}
+
+/// Place a plate lane at `row` from column `west` to the east edge, skipping the
+/// splitter columns (a splitter takes each such tile). The lane starts at `west` — the
+/// column of the smelter bank's first plate drop — rather than the grid edge, so the
+/// always-empty tiles west of any plate (belts face east, nothing feeds them) are never
+/// laid: a dead lead-in would only pad the empty-belt count the density gate measures.
+fn place_lane_skipping(
+    p: &mut Placer,
+    row: i32,
+    width: i32,
+    west: i32,
+    tier: &str,
+    bal_cols: &[i32],
+    drain: bool,
+) {
+    // The lane ends in a SINK that drains the plate surplus, so the lane never
+    // dead-end-backs-up. A furnace outputs through a single inserter at exactly its craft
+    // rate (unlike the old two-input plate assembler it has no spare margin), so a
+    // backed-up lane would fill its output buffer, stall its craft, and shear its
+    // just-in-time input feed — pushing the transport reference far past the fuel ceiling.
+    // Draining keeps the lane flowing so every furnace outputs freely and the factory
+    // settles quickly into the steady cycle. `drain` is false only for a lane with no
+    // sink to spare (none today); the surplus that would fill it is left for the sink.
+    let east = if drain { width - 1 } else { width };
+    for x in west..east {
+        if bal_cols.contains(&x) {
+            continue; // a splitter occupies (x, row) and (x, row+1)
+        }
+        p.belt(x, row, Dir::E, tier);
+    }
+    if drain {
+        p.sink(width - 1, row, Dir::E);
+    }
+}
+
+/// Place a **functional** distribution splitter on a plate lane at column `sx`: a
+/// real 1-in / 2-out splitter (never a trivial 1-in/1-out pass-through). The lane
+/// feeds the splitter's one input; one output continues the lane, and the other peels
+/// a short branch off onto the adjacent row that curves straight back and side-loads
+/// onto the lane two tiles downstream — so the splitter genuinely routes plate across
+/// two output belts without ever losing any (a Factorio main-bus staple).
+///
+/// `branch_below` puts the branch on the row *south* of the lane (the iron lane, whose
+/// mid band lies below it); otherwise it goes *north* (the copper lane, whose stations
+/// hang below). The splitter's two-tile footprint always straddles the lane row and
+/// the branch row, so `place_lane_skipping` need only skip column `sx`.
+///
+/// The branch is a short buffer belt: the splitter routes plate onto it (so it is a
+/// genuine 1-in/2-out, never a 1-in/1-out pass-through), and once it fills the
+/// splitter sends the rest down the lane — so no plate is lost and the lane's
+/// throughput is preserved. Kept to a single tile so the extra state the transport
+/// reference must fingerprint stays tiny.
+fn distribution_splitter(p: &mut Placer, sx: i32, lane_row: i32, branch_below: bool, tier: &str) {
+    let anchor_y = if branch_below { lane_row } else { lane_row - 1 };
+    let branch_row = if branch_below {
+        lane_row + 1
+    } else {
+        lane_row - 1
     };
-    let sink_x = width - 1;
+    p.splitter(sx, anchor_y, Dir::E);
+    // The branch faces east so the splitter recognises it as a live second output.
+    p.belt(sx + 1, branch_row, Dir::E, tier);
+}
 
-    placer.source(0, y, Dir::E, item);
+/// The iron ore backbone row for a given iron lane row: five rows above the lane
+/// (backbone, feed inserters, the 2×2 furnace's two rows, plate inserters, lane).
+fn iron_ob(ibus: i32) -> i32 {
+    ibus - 5
+}
 
-    // A splitter needs the row beneath for its second tile and branch belt, and
-    // enough width to sit clear of the source and sink.
-    let place_splitter = two_rows && y + 1 < height && width >= 6;
-    let splitter_x = width - 3;
+/// The copper ore backbone row for a given copper lane row: five rows below the lane
+/// (mirror of [`iron_ob`]).
+fn copper_ob(cbus: i32) -> i32 {
+    cbus + 5
+}
 
-    for x in 1..sink_x {
-        if place_splitter && x == splitter_x {
-            placer.splitter(x, y, Dir::E);
+/// Iron smelters: a **mixed ore+coal backbone** — raw `iron-ore` from the west edge
+/// merged with the bank's coal branch through a real **2-in/1-out** merge splitter, so
+/// the backbone carries an alternating ore/coal stream — feeding a row of 2×2
+/// **furnaces** that smelt `iron-plate` and lift it onto the iron lane from above. Each
+/// furnace is fed by **two** inserters tapping two adjacent backbone tiles: because the
+/// merged stream alternates, the two tiles never hold the same item, so at least one
+/// inserter can always deliver the input the furnace still needs — the furnace never
+/// deadlocks starved of ore *or* coal. The coal itself is delivered to the merge by
+/// [`coal_supply`]; here we lay the ore feed, the merge, and the furnace row.
+fn iron_smelters(p: &mut Placer, ibus: i32, smelt_x: i32, tier: &str) {
+    let ob = iron_ob(ibus);
+    // Ore from the west edge (column 0 is reserved for the coal spine, so the ore
+    // source sits at column 2, clear of the inter-bank splitter's footprint).
+    p.source_lane(2, ob, Dir::E, "iron-ore", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(3, ob, Dir::E, tier); // ore -> merge's upper input
+    // The merge: ore on its upper input (row ob), coal (laid by `coal_supply`) on its
+    // lower input (row ob+1); the single live output (row ob) carries the mix east.
+    p.splitter(4, ob, Dir::E); // 2-in / 1-out merge, tiles (4,ob),(4,ob+1)
+    p.hbelt(5, smelt_x, ob, tier); // the mixed ore+coal backbone
+    let mut cx = 6;
+    while cx + 1 < smelt_x {
+        // ONE inserter per furnace pulls the ALTERNATING backbone (ore, coal, ore, …)
+        // so the furnace crafts each pair without accumulating — two inserters would
+        // often grab two of the same item at once and imbalance it.
+        p.inserter(cx, ob + 1, Dir::S); // mix off the backbone -> furnace
+        p.furnace(cx, ob + 2, "iron-plate"); // rows ob+2..ob+3
+        p.inserter(cx, ob + 4, Dir::S); // plate off the furnace -> iron lane
+        cx += 2; // pack furnaces adjacent for more plate throughput
+    }
+}
+
+/// Copper smelters: the mirror of [`iron_smelters`] below the copper lane — a mixed
+/// `copper-ore`+coal backbone (real 2-in/1-out merge) feeding 2×2 furnaces that smelt
+/// `copper-plate` and lift it onto the copper lane from below. The merge is laid exactly
+/// like the iron bank's (ore on the first/upper input, coal on the second/lower, live
+/// output on the first tile) — the arrangement that stays a clean 1:1 alternation under
+/// back-pressure — so the copper coal is fed in from **below** the backbone (row `ob+1`).
+fn copper_smelters(p: &mut Placer, cbus: i32, smelt_x: i32, tier: &str) {
+    let ob = copper_ob(cbus);
+    p.source_lane(2, ob, Dir::E, "copper-ore", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(3, ob, Dir::E, tier); // ore -> merge's UPPER (first) input
+    // The merge mirrors the iron bank exactly (ore first/upper input, coal second/lower,
+    // live output on the first tile) — the arrangement that stays a clean 1:1 alternation
+    // under back-pressure. So the copper coal is routed BELOW the backbone (row ob+1).
+    p.splitter(4, ob, Dir::E); // 2-in / 1-out merge, tiles (4,ob),(4,ob+1)
+    p.hbelt(5, smelt_x, ob, tier); // the mixed ore+coal backbone
+    let mut cx = 6;
+    while cx + 1 < smelt_x {
+        p.inserter(cx, ob - 1, Dir::N); // one inserter pulls the alternating backbone
+        p.furnace(cx, ob - 3, "copper-plate"); // rows ob-3..ob-2
+        p.inserter(cx, ob - 4, Dir::N); // plate off the furnace -> copper lane
+        cx += 2; // pack furnaces adjacent for more plate throughput
+    }
+}
+
+/// The **coal supply** for both main banks: one `coal` source per bank, each running down
+/// a far-west spine and **curving** east into the low (coal) input of its bank's 2-in/1-out
+/// merge (`iron_smelters` / `copper_smelters`), where it joins that bank's ore into the
+/// alternating ore/coal backbone the furnaces smelt from. Each source emits at the ore
+/// period ([`SMELTER_FEED_PERIOD`]), so the coal reaching each merge matches its ore rate
+/// and the backbone stays a clean 1:1 alternation the furnace inserter pulls pair by pair.
+/// The S→E turn at the foot of each spine is a real **curve** (a belt whose sole feeder is
+/// perpendicular), and — as a perpendicular turn collapses a belt onto one lane — it hands
+/// the merge a single-lane coal stream, matching the single-lane ore feed. Two independent
+/// sources (no inter-bank splitter) keep each merge's feed back-pressure-independent; both
+/// periods are [`SMELTER_FEED_PERIOD`], so the bus's `align` is unchanged and the transport
+/// reference's cycle stays tight. Coal is a raw material like ore — carried from the edge
+/// and consumed in the furnaces, never sunk raw.
+fn coal_supply(p: &mut Placer, ibus: i32, cbus: i32, tier: &str) {
+    let iob = iron_ob(ibus);
+    let cob = copper_ob(cbus);
+    // ONE coal source, divided between the two furnace banks by a real 1-in/2-out
+    // inter-bank splitter — the split is on the CRITICAL PATH (each branch is the only
+    // coal its bank gets) and feeds each bank's ore+coal merge, so the splitter does
+    // genuine balancing work rather than buffering a dead-end. The source emits at
+    // period 1 and the splitter halves it, so each branch delivers period-2 coal to
+    // match each bank's period-2 ore, keeping the merged backbone a clean 1:1
+    // alternation. Each branch curves S→E into its merge; the copper branch runs the
+    // long way down the clear far-west column (the plate lanes start further east) to
+    // reach the bottom bank — the deliberate cost of feeding both banks from one source.
+    //
+    // The coal rides a SINGLE lane (`Left`), matching the single-lane ore, so that
+    // through the curves into each merge it stays on one lane and the merge produces a
+    // clean 1:1 ore/coal alternation. (A two-lane coal source would flood the merged
+    // backbone's other lane with pure coal — a curve preserves both lanes, unlike a
+    // side-load — starving the furnaces of ore.)
+    p.source_lane(0, 0, Dir::S, "coal", Lane::Left, 1);
+    p.belt(0, 1, Dir::S, tier); // the source's spine belt down to the splitter
+    p.splitter(0, 2, Dir::S); // 1-in / 2-out: outputs (0,3) and (1,3) run south
+
+    // Iron branch: the east output curves east into the iron merge's lower (coal) input
+    // at (3, iob+1). The curve is at (1, iob+1).
+    p.vbelt(1, 3, iob + 1, Dir::S, tier); // (1,3)..(1,iob) south
+    p.hbelt(1, 4, iob + 1, tier); // (1,iob+1)..(3,iob+1) east -> merge (4,iob+1)
+
+    // Copper branch: the west output runs the long way down column 0 and curves east
+    // into the copper merge's lower (coal) input at (3, cob+1). The curve is at (0, cob+1).
+    p.vbelt(0, 3, cob + 1, Dir::S, tier); // (0,3)..(0,cob) south down the clear west edge
+    p.hbelt(0, 4, cob + 1, tier); // (0,cob+1)..(3,cob+1) east -> merge (4,cob+1)
+}
+
+/// A gear station tapping the iron lane from **above** (rows `ibus-6..ibus-1`):
+/// iron-plate up into an `iron-gear` assembler, the gear up to a sink.
+fn gear_station_above(p: &mut Placer, gx: i32, ibus: i32, _tier: &str) {
+    p.inserter(gx, ibus - 1, Dir::N); // pick iron-plate off the lane -> assembler
+    p.assembler(gx - 1, ibus - 4, "iron-gear"); // rows ibus-4..ibus-2
+    p.inserter(gx, ibus - 5, Dir::N); // gear off the assembler -> sink
+    p.sink(gx, ibus - 6, Dir::N);
+}
+
+/// A gear station tapping the iron lane from **below** (rows `ibus+1..ibus+6`).
+fn gear_station_below(p: &mut Placer, gx: i32, ibus: i32, _tier: &str) {
+    p.inserter(gx, ibus + 1, Dir::S);
+    p.assembler(gx - 1, ibus + 2, "iron-gear"); // rows ibus+2..ibus+4
+    p.inserter(gx, ibus + 5, Dir::S);
+    p.sink(gx, ibus + 6, Dir::S);
+}
+
+/// A cable station tapping the copper lane from **below** (rows `cbus+1..cbus+6`).
+fn cable_station_below(p: &mut Placer, cx: i32, cbus: i32, _tier: &str) {
+    p.inserter(cx, cbus + 1, Dir::S);
+    p.assembler(cx - 1, cbus + 2, "copper-cable"); // rows cbus+2..cbus+4
+    p.inserter(cx, cbus + 5, Dir::S);
+    p.sink(cx, cbus + 6, Dir::S);
+}
+
+// The cores build vertically down the tall mid band, fed by two plate risers: an
+// **iron riser** (a vertical belt on the core's west edge, tapped off the iron lane
+// at the top) and a **copper riser** (on the east edge, tapped off the copper lane
+// at the bottom). Both dead-end and so saturate, keeping every tap fed. A core's
+// columns, west→east, are: iron riser `cx`, iron-tap gap `cx+1`, the stacked 3-wide
+// assemblers `cx+2..cx+4`, copper-tap gap `cx+5`, copper riser `cx+6`. Each stacked
+// assembler picks the plate it needs off the adjacent riser (through the gap
+// column) and the intermediate it needs off the assembler directly above it; the
+// bottom assembler's product drains south to a sink.
+
+/// An iron riser: a vertical belt at column `x` carrying iron-plate down from the
+/// iron lane (`ibus`) through row `y1`, fed by a tap inserter at the top. Dead-ends
+/// at `y1`, so it saturates and every tap below stays fed.
+fn iron_riser(p: &mut Placer, x: i32, ibus: i32, y1: i32, tier: &str) {
+    p.inserter(x, ibus + 1, Dir::S); // tap the lane -> riser top
+    for y in (ibus + 2)..=y1 {
+        p.belt(x, y, Dir::S, tier);
+    }
+}
+
+/// A copper riser: a vertical belt at column `x` carrying copper-plate up from the
+/// copper lane (`cbus`) through row `y0`, fed by a tap inserter at the bottom.
+fn copper_riser(p: &mut Placer, x: i32, cbus: i32, y0: i32, tier: &str) {
+    p.inserter(x, cbus - 1, Dir::N); // tap the lane -> riser top
+    for y in y0..=(cbus - 2) {
+        p.belt(x, y, Dir::N, tier);
+    }
+}
+
+/// Drain a core's bottom assembler (anchor at `cx+2`, rows `y..y+2`) south to its
+/// The craft-tree tips, built on two shared dead-end horizontal **sub-buses** in
+/// the mid band: a **gear sub-bus** (row `gb`) fed by gear producers that tap the
+/// iron lane, and a **circuit sub-bus** (row `qb`) fed by a circuit producer (a
+/// copper-riser cable assembler feeding an iron-riser circuit assembler). Four tip
+/// stations then hang off the sub-buses, each draining a distinct product east to
+/// its own single-item sink:
+/// - a **circuit** drain (surplus circuit off the circuit bus);
+/// - a **transport-belt** tip (gear bus + iron riser);
+/// - an **inserter** tip (gear bus + circuit bus);
+/// - an **assembler** tip (an inline transport-belt from the gear bus, combined with
+///   the circuit bus).
+///
+/// Every intermediate rides a belt for a stretch, so the works is a busy, spread
+/// block of machinery — not an ore backbone — occupying the whole mid band width.
+fn machine_works(p: &mut Placer, x0: i32, ibus: i32, cbus: i32, tier: &str) {
+    // Two self-contained vertical stations, each with its copper riser at its clear
+    // west edge (so the long riser crosses nothing) and vertical intermediate belts.
+    // The assembler station (which needs the most iron-plate — an inline gear AND an
+    // inline transport-belt) sits at the WEST, where the plate lane is densest, so it
+    // stays fed on the tighter medium grid; the inserter station takes the drier east.
+    assembler_station(p, x0, ibus, cbus, tier);
+    inserter_station(p, x0 + 13, ibus, cbus, tier);
+}
+
+/// A **circuit belt** (`cq = x0+3`) and a **gear belt** (`cg = x0+9`), each a
+/// dead-end vertical belt fed by a producer at the top, with an `inserter` converge
+/// assembler between them tapping circuit (west) and gear (east). Ten columns wide.
+fn vertical_source_belts(p: &mut Placer, x0: i32, ibus: i32, cbus: i32, tier: &str) {
+    let cq = x0 + 3;
+    let cg = x0 + 9;
+    let bot = ibus + 14; // vertical belts end just below the converge station, then drain
+    // Circuit producer: copper riser (col x0, clear) -> cable -> circuit -> circuit belt.
+    copper_riser(p, x0, cbus, ibus + 3, tier); // belts (x0, ibus+3..cbus-2)
+    iron_riser(p, x0 + 6, ibus, ibus + 7, tier); // IR1 belts (x0+6, ibus+2..ibus+7)
+    p.assembler(x0 + 2, ibus + 2, "copper-cable"); // rows ibus+2..ibus+4
+    p.inserter(x0 + 1, ibus + 3, Dir::E); // copper riser -> cable left-mid
+    p.assembler(x0 + 2, ibus + 6, "circuit"); // rows ibus+6..ibus+8
+    p.inserter(x0 + 5, ibus + 7, Dir::W); // IR1 -> circuit right-mid
+    p.inserter(x0 + 3, ibus + 5, Dir::S); // cable bottom -> circuit top-mid
+    p.inserter(cq, ibus + 9, Dir::S); // circuit bottom -> circuit belt top
+    for y in (ibus + 10)..=bot {
+        p.belt(cq, y, Dir::S, tier);
+    }
+    // Gear producer (anchor x0+8) -> gear belt at cg = x0+9.
+    p.inserter(cg, ibus + 1, Dir::S); // iron lane -> gear assembler top-mid
+    p.assembler(x0 + 8, ibus + 2, "iron-gear"); // cols x0+8..x0+10, rows ibus+2..ibus+4
+    p.inserter(cg, ibus + 5, Dir::S); // gear bottom-mid -> gear belt top
+    for y in (ibus + 6)..=bot {
+        p.belt(cg, y, Dir::S, tier);
+    }
+    // Surplus-circuit drain off the circuit belt bottom (sink above the copper lane).
+    p.inserter(cq, bot + 1, Dir::S);
+    p.sink(cq, bot + 2, Dir::S);
+}
+
+/// The vertical source belts plus an `inserter` converge assembler. Ten columns wide.
+fn inserter_station(p: &mut Placer, x0: i32, ibus: i32, cbus: i32, tier: &str) {
+    let cg = x0 + 9;
+    vertical_source_belts(p, x0, ibus, cbus, tier);
+    let iy = ibus + 12; // rows iy..iy+2
+    p.assembler(x0 + 5, iy, "inserter"); // cols x0+5..x0+7
+    p.inserter(x0 + 4, iy + 1, Dir::E); // circuit belt (cq) -> inserter left-mid
+    p.inserter(cg - 1, iy + 1, Dir::W); // gear belt (cg) -> inserter right-mid
+    p.inserter(x0 + 6, iy - 1, Dir::N); // inserter top-mid -> sink
+    p.sink(x0 + 6, iy - 2, Dir::N);
+}
+
+/// A circuit belt (`cq = x0+3`) and a transport-belt belt (`cb = x0+9`), each fed by
+/// a producer at the top, with an `assembler` converge assembler between them tapping
+/// circuit (west) and transport-belt (east). The transport-belt producer builds an
+/// inline gear then a transport-belt; a surplus transport-belt drains to its own
+/// sink. Thirteen columns wide (`x0..x0+12`).
+fn assembler_station(p: &mut Placer, x0: i32, ibus: i32, cbus: i32, tier: &str) {
+    let cq = x0 + 3; // circuit belt
+    let cb = x0 + 9; // transport-belt belt
+    let bot = ibus + 14; // vertical belts end just below the converge station, then drain
+    // Circuit producer: copper riser -> cable -> circuit -> circuit belt.
+    copper_riser(p, x0, cbus, ibus + 3, tier);
+    iron_riser(p, x0 + 6, ibus, ibus + 7, tier); // IR1 for circuit
+    p.assembler(x0 + 2, ibus + 2, "copper-cable");
+    p.inserter(x0 + 1, ibus + 3, Dir::E); // copper -> cable left-mid
+    p.assembler(x0 + 2, ibus + 6, "circuit");
+    p.inserter(x0 + 5, ibus + 7, Dir::W); // IR1 -> circuit right-mid
+    p.inserter(x0 + 3, ibus + 5, Dir::S); // cable -> circuit top-mid
+    p.inserter(cq, ibus + 9, Dir::S); // circuit -> circuit belt
+    for y in (ibus + 10)..=bot {
+        p.belt(cq, y, Dir::S, tier);
+    }
+    // Transport-belt producer: gear (inline, iron lane) then transport-belt (gear + iron).
+    p.inserter(x0 + 9, ibus + 1, Dir::S); // iron lane -> gear assembler top-mid
+    p.assembler(x0 + 8, ibus + 2, "iron-gear"); // cols x0+8..x0+10
+    iron_riser(p, x0 + 12, ibus, ibus + 7, tier); // IR2 for the belt assembler
+    p.assembler(x0 + 8, ibus + 6, "transport-belt"); // cols x0+8..x0+10
+    p.inserter(x0 + 9, ibus + 5, Dir::S); // gear bottom -> belt top-mid
+    p.inserter(x0 + 11, ibus + 7, Dir::W); // IR2 -> belt right-mid
+    p.inserter(cb, ibus + 9, Dir::S); // belt bottom-mid -> transport-belt belt top
+    for y in (ibus + 10)..=bot {
+        p.belt(cb, y, Dir::S, tier);
+    }
+    // Surplus transport-belt drain.
+    p.inserter(cb, bot + 1, Dir::S);
+    p.sink(cb, bot + 2, Dir::S);
+    // Assembler converge assembler between the two belts.
+    let ay = ibus + 12;
+    p.assembler(x0 + 5, ay, "assembler"); // cols x0+5..x0+7
+    p.inserter(x0 + 4, ay + 1, Dir::E); // circuit belt -> assembler left-mid
+    p.inserter(cb - 1, ay + 1, Dir::W); // transport-belt belt -> assembler right-mid
+    p.inserter(x0 + 6, ay + 3, Dir::S); // assembler bottom-mid -> sink
+    p.sink(x0 + 6, ay + 4, Dir::S);
+}
+
+/// A compact fallback for small grids: a single iron plate lane fed by a couple of
+/// smelters, a rank of gear stations, and one split-merge balancer. Valid, solving,
+/// ore-confined, and single-item-sinked — the spread rules apply only to the
+/// generous grids.
+fn simple_bus(p: &mut Placer, rng: &mut SplitMix64, width: i32, height: i32) {
+    let smelt_x = smelt_boundary(width);
+    let tier = pick_tier(rng);
+    let period = tier_period(&tier);
+    let ibus = 6.min(height - 8).max(2);
+    if ibus < 6 || height < 13 {
+        // Too small for the aisle. A factory never ships raw ore, so rather than sink
+        // it, the fallback is a lone ore source feeding a dead-end backbone (it piles
+        // up at the end): valid, solving, and no sink ever consumes raw ore.
+        p.source_period(0, 0, Dir::E, "iron-ore", period);
+        p.hbelt(1, (width - 1).max(2), 0, &tier);
+        return;
+    }
+    let bal = smelt_x + 2;
+    place_lane_skipping(p, ibus, width, 1, &tier, &[bal], true);
+    // A single bank: its own local coal feeds the mixed-backbone merge (no inter-bank
+    // splitter needed with one bank). The coal runs east into the merge's lower input.
+    let ob = iron_ob(ibus);
+    p.source_lane(1, ob + 1, Dir::E, "coal", Lane::Left, SMELTER_FEED_PERIOD);
+    p.belt(2, ob + 1, Dir::E, &tier);
+    p.belt(3, ob + 1, Dir::E, &tier);
+    iron_smelters(p, ibus, smelt_x, &tier);
+    // A real 1-in/2-out distribution splitter (branch curves back onto the lane),
+    // never a trivial pass-through.
+    distribution_splitter(p, bal, ibus, true, &tier);
+    let pitch = (width / 6).clamp(4, 7);
+    let bottom = height - 1;
+    for gx in station_columns(width, smelt_x, pitch) {
+        // Skip the splitter's columns and the two branch columns beside it.
+        if (bal..=bal + 2).contains(&gx) {
             continue;
         }
-        placer.belt(x, y, Dir::E, &tier);
-    }
-    placer.sink(sink_x, y, Dir::E);
-
-    // Drain the splitter's second output down the reserved row into its own sink,
-    // so it actually balances across two belts rather than sending everything one
-    // way.
-    if place_splitter {
-        for x in (splitter_x + 1)..sink_x {
-            placer.belt(x, y + 1, Dir::E, &tier);
+        gear_station_above(p, gx, ibus, &tier);
+        if ibus + 6 <= bottom {
+            gear_station_below(p, gx, ibus, &tier);
         }
-        placer.sink(sink_x, y + 1, Dir::E);
     }
 }
 
-/// Append a **smelt unit** in the band at rows `y..y+11`. The band, top to bottom:
+/// The graded snapshot ticks for a scenario of `ticks` length: a quarter, a half,
+/// and the final tick — plus, for a scenario longer than the playback window, the
+/// window's midpoint and its final tick. Strictly ascending and each in `1..=ticks`,
+/// so the schedule always validates. For very small `ticks` the quarter/half can
+/// collapse onto the same value or zero, so we de-duplicate and clamp to tick 1.
 ///
-/// ```text
-///  y+0   ore bus:  source ── belt run ────────────────────────────── sink
-///  y+1   tap inserter (S)   tap inserter (S)   tap inserter (S)   …   (every 8th column)
-///  y+2   feeder belt (S)    feeder belt (S)    feeder belt (S)    …
-///  y+3   feeder belt (S)    feeder belt (S)    feeder belt (S)    …
-///  y+4   load inserter (S)  load inserter (S)  load inserter (S)  …
-///  y+5 ┐                  ┐                  ┐
-///  y+6 ├ 3×3 asm (plate)  ├ 3×3 asm (plate)  ├ 3×3 asm (plate)   …
-///  y+7 ┘                  ┘                  ┘
-///  y+8   unload inserter   unload inserter    unload inserter     …
-///  y+9   product belt (S)  product belt (S)   product belt (S)    …
-///  y+10  collector: ─── belt run ─────────────────────────────────── sink
-/// ```
+/// ## Why the window ticks are graded too
 ///
-/// Each **tap column** is one full interconnection: a tap `inserter` lifts ore off
-/// the bus belt (a belt→belt tap) and drops it onto a south feeder belt; the
-/// feeder carries it down to a load inserter that feeds a 3×3 plate `assembler`; an
-/// unload inserter lifts the crafted plate onto a south product belt that turns
-/// into the collector (a curve) and side-loads onto it (a merge), the collector
-/// running east into a sink. All the tap columns smelt the same ore (the bus
-/// carries one), chosen by the seed.
+/// Browser playback shows a scenario's first [`PLAYBACK_WINDOW_TICKS`] ticks and
+/// nothing else. The quarter/half/end checkpoints of a long scenario all land far
+/// past that — a 50,000-tick scenario is graded at 12,500 at the earliest — so
+/// without these the entire stretch a reviewer can watch is ungraded, and an engine
+/// whose warm-up diverges but whose steady state does not passes while visibly
+/// disagreeing with the reference playback. Grading the window's midpoint and its
+/// last tick puts the watched stretch back under the checksum, at the cost of two
+/// extra snapshots (fuel-negligible: an engine has to simulate those ticks anyway).
 ///
-/// The columns **march the whole width** — one every eight tiles — so a single
-/// band packs several assemblers across the grid. Both full-width belts carry their
-/// own raw-ore stream so they stay dense: the ore bus feeds the taps, and the
-/// bottom collector is itself an ore belt the plates merge into (flowing at the
-/// source rate, with gaps for the side-loads) — not a sparse plate-only line that
-/// would read as dead belt. The eight-tile spacing is what keeps the ore bus dense:
-/// each tap drains it only 1/16 of a tick, so a tap every eight tiles stays well
-/// under what the (period-[`BUS_PERIOD`]) source refills, and the bus never depletes
-/// into empty stretches the way a tighter row of taps would.
-fn push_smelt_unit(placer: &mut Placer, rng: &mut SplitMix64, width: i32, y: i32) {
-    let tier = pick_tier(rng);
-    // One ore per bus; every tap smelts it. Either single-input plate recipe works.
-    let (ore, recipe) = if rng.below(2) == 0 {
-        ("copper-ore", "copper-plate")
-    } else {
-        ("iron-ore", "iron-plate")
-    };
-    let sink_x = width - 1;
-    let collector_row = y + 10;
-
-    // Both full-width belts carry their **own raw-ore stream** so they stay dense:
-    // the top ore bus is what the taps lift from, and the bottom collector is an ore
-    // belt the crafted plates *side-load into* — it flows at the source's rate (with
-    // gaps a plate can merge into) rather than being a sparse plate-only line that
-    // would read as dead belt. Both drain into their own east sink. (A plate that
-    // merges into the ore stream just rides it to the collector's sink; the sink
-    // consumes ore and plate alike.)
-    placer.source(0, y, Dir::E, ore);
-    for x in 1..sink_x {
-        placer.belt(x, y, Dir::E, &tier);
-    }
-    placer.sink(sink_x, y, Dir::E);
-    placer.source(0, collector_row, Dir::E, ore);
-    for x in 1..sink_x {
-        placer.belt(x, collector_row, Dir::E, &tier);
-    }
-    placer.sink(sink_x, collector_row, Dir::E);
-
-    // Tap columns every eight tiles across the width. A column at `cx` anchors its
-    // 3-wide assembler over `cx-1..cx+1`, so the step of 8 leaves a five-tile gap
-    // between adjacent assemblers. The first column sits at `cx = 3` (assembler over
-    // 2..4, clear of the source at x = 0) and the last is the greatest
-    // `cx ≤ sink_x - 2` (assembler right edge `cx+1 ≤ sink_x - 1`, one tile clear of
-    // the east sinks). The wide spacing keeps the ore bus dense: each tap drains it
-    // only 1/16 of a tick, so this many taps stays under what the source refills.
-    let mut cx = 3;
-    while cx <= sink_x - 2 {
-        // Tap: pick ore off the bus above (behind, north) and drop onto the feeder
-        // below (in front, south).
-        placer.inserter(cx, y + 1, Dir::S);
-        placer.belt(cx, y + 2, Dir::S, &tier);
-        placer.belt(cx, y + 3, Dir::S, &tier);
-        // Load: pick off the feeder above, drop into the assembler's top-middle
-        // tile below.
-        placer.inserter(cx, y + 4, Dir::S);
-        placer.assembler(cx - 1, y + 5, recipe);
-        // Unload: pick from the assembler's bottom-middle tile above, drop onto the
-        // product belt below.
-        placer.inserter(cx, y + 8, Dir::S);
-        // Product flows south and turns into the collector (a perpendicular
-        // belt-to-belt feed) running east to the sink.
-        placer.belt(cx, y + 9, Dir::S, &tier);
-        cx += 8;
-    }
-}
-
-/// Append a **farm unit** in the band at rows `y..y+7` — a row of plate assemblers
-/// fed *directly* off one ore bus, with **no feed or product belts at all**:
-///
-/// ```text
-///  y+0   ore bus:  source ── belt run ────────────────────────────── sink
-///  y+1   tap inserter (S)      tap inserter (S)      …   (every 8th column)
-///  y+2 ┐                     ┐
-///  y+3 ├ 3×3 asm (plate)     ├ 3×3 asm (plate)       …
-///  y+4 ┘                     ┘
-///  y+5   unload inserter (S)   unload inserter (S)   …
-///  y+6   sink                  sink                  …
-/// ```
-///
-/// The tap `inserter` lifts ore off the bus and drops it **straight into the
-/// assembler below** (no feeder belt), and the unload inserter lifts the crafted
-/// plate **straight into a sink** (no product belt). The unit is therefore almost
-/// pure machinery: a whole row of assemblers crafting across the grid over one
-/// dense ore bus, adding lots of occupancy and craft work but almost no moving-belt
-/// mass — the opposite trade to the packed ore belt unit. This is what fills a
-/// large grid *densely and busily* without inflating the transport engine's warm-up
-/// cost (which pays for every belt item it fingerprints each cycle).
-///
-/// Taps are spaced every eight tiles (assemblers over `cx-1..cx+1`, a five-tile gap
-/// between them) so the bus, which each tap drains only 1/16 of a tick, stays dense
-/// rather than being emptied by a too-tight row of taps.
-fn push_farm_unit(placer: &mut Placer, rng: &mut SplitMix64, width: i32, y: i32) {
-    let tier = pick_tier(rng);
-    let (ore, recipe) = if rng.below(2) == 0 {
-        ("copper-ore", "copper-plate")
-    } else {
-        ("iron-ore", "iron-plate")
-    };
-    let sink_x = width - 1;
-
-    // The one dense ore bus the whole row of assemblers taps from.
-    placer.source(0, y, Dir::E, ore);
-    for x in 1..sink_x {
-        placer.belt(x, y, Dir::E, &tier);
-    }
-    placer.sink(sink_x, y, Dir::E);
-
-    // A row of assemblers, each fed directly off the bus and dumping to its own
-    // sink. The first sits over cols 2..4 (clear of the source); the step of eight
-    // leaves the bus dense between taps.
-    let mut cx = 3;
-    while cx <= sink_x - 2 {
-        // Tap ore off the bus above straight into the assembler below.
-        placer.inserter(cx, y + 1, Dir::S);
-        placer.assembler(cx - 1, y + 2, recipe);
-        // Lift the crafted plate off the assembler straight into a sink.
-        placer.inserter(cx, y + 5, Dir::S);
-        placer.sink(cx, y + 6, Dir::S);
-        cx += 8;
-    }
-}
-
-/// Append a **gear unit** in the band at rows `y..y+3` — the two-stage iron chain,
-/// crafted entirely from raw ore. The flow rides the band's middle row (`y+1`, the
-/// assemblers' centre line) west to east:
-///
-/// ```text
-///  y+0 ┐                  ┐
-///  y+1 │ source(iron-ore) ── ore belt run ── [load]→ iron-plate asm →[xfer]→ iron-gear asm →[unload]→ belt → sink
-///  y+2 ┘                  ┘
-/// ```
-///
-/// A single `iron-ore` `source` floods a long packed ore backbone (naive mass);
-/// a load `inserter` feeds the first assembler `iron-ore` → `iron-plate`; a single
-/// **transfer inserter** bridges the two adjacent assemblers, lifting a plate out
-/// of the first and dropping it straight into the second (`iron-plate` → the
-/// `iron-gear` assembler, whose recipe needs two plates per gear — matched to the
-/// plate assembler's one-plate-per-craft output); an unload inserter lifts the
-/// crafted `iron-gear` onto a short belt into the sink. The product (`iron-gear`)
-/// thus reaches a sink from ore with no spawned intermediate anywhere.
-///
-/// The machinery is pinned to the *east* so the ore backbone west of it is long
-/// and packed while the product belt east of it is a single tile — a long
-/// carrying-nothing product run would otherwise read as dead belt.
-fn push_gear_unit(placer: &mut Placer, rng: &mut SplitMix64, width: i32, y: i32) {
-    let tier = pick_tier(rng);
-    let mid = y + 1;
-    let sink_x = width - 1;
-
-    // The ten-tile machinery run [load | plate-asm(3) | xfer | gear-asm(3) | unload]
-    // then a one-tile product belt and the sink, pinned to the east edge.
-    let load_x = sink_x - 10;
-    let plate_x = load_x + 1; // iron-plate assembler, cols load_x+1..load_x+3
-    let xfer_x = load_x + 4; // transfer inserter between the two assemblers
-    let gear_x = load_x + 5; // iron-gear assembler, cols load_x+5..load_x+7
-    let unload_x = load_x + 8; // lifts the gear onto the product belt
-
-    // Source floods the ore backbone; belts run packed up to the load inserter.
-    placer.source(0, mid, Dir::E, "iron-ore");
-    for x in 1..load_x {
-        placer.belt(x, mid, Dir::E, &tier);
-    }
-    placer.inserter(load_x, mid, Dir::E); // ore off the belt → iron-plate assembler
-    placer.assembler(plate_x, y, "iron-plate");
-    placer.inserter(xfer_x, mid, Dir::E); // plate out of the plate asm → gear asm
-    placer.assembler(gear_x, y, "iron-gear");
-    placer.inserter(unload_x, mid, Dir::E); // gear out → product belt
-    for x in (unload_x + 1)..sink_x {
-        placer.belt(x, mid, Dir::E, &tier);
-    }
-    placer.sink(sink_x, mid, Dir::E);
-}
-
-/// Append a **circuit unit** in the band at rows `y..y+7` — the full two-input
-/// `circuit` chain, every input crafted from raw ore. A copper line on top and an
-/// iron line beneath both flood long packed ore backbones (naive mass), and their
-/// products converge on one circuit assembler near the east edge:
-///
-/// ```text
-///  y+0 ┐                        ┐                    ┐
-///  y+1 │ src(copper-ore) ─ ore ─[load]→ copper-plate asm →[xfer]→ copper-cable asm →[unload]→ ↓ cable
-///  y+2 ┘                        ┘                    ┘                                        ↓  (curve S)
-///  y+3                                                              cable [inserter S] ───────┘
-///  y+4 ┐                        ┐                    ┌ (cable drops in from the north) ┐
-///  y+5 │ src(iron-ore) ─ ore ──[load]→ iron-plate asm →[xfer]→ belt → belt →[load]→ circuit asm →[unload]→ sink
-///  y+6 ┘                        ┘                                                     └ (plate in from the west) ┘
-/// ```
-///
-/// The copper line crafts `copper-ore` → `copper-plate` → `copper-cable`, then the
-/// cable curves *south* (a two-tile vertical run) and a south-facing inserter drops
-/// it into the top slot of the `circuit` assembler. The iron line crafts
-/// `iron-ore` → `iron-plate`, which rides a short belt east into a load inserter
-/// that drops it into the assembler's west slot. With both inputs present the
-/// assembler crafts `circuit` (1 plate + 3 cable per craft), and an unload inserter
-/// hands the product straight to the sink at the east edge.
-///
-/// The copper line **over-produces** cable — two per craft where a circuit needs
-/// only one per plate — so a second unload inserter bleeds the surplus straight to
-/// a small sink. Without that bleed the surplus backs the cable buffer up and
-/// stalls the whole copper chain, and the unit only reaches its steady cycle after
-/// many craft periods; that long transient is what would dominate the transport
-/// engine's warm-up. Bleeding it lets the copper chain run free and the factory
-/// settle far sooner. So `copper-cable` reaches a sink here (via the bleed) while
-/// the *products* `iron-gear` and `circuit` reach sinks as the crafted goods they
-/// are; this is the unit whose entity list carries the `copper-plate` and
-/// `copper-cable` assemblers that prove the real copper chain exists.
-fn push_circuit_unit(placer: &mut Placer, rng: &mut SplitMix64, width: i32, y: i32) {
-    let tier = pick_tier(rng);
-    let sink_x = width - 1;
-    let cu_mid = y + 1; // copper line centre (assemblers rows y..y+2)
-    let ic_mid = y + 5; // iron/circuit line centre (assemblers rows y+4..y+6)
-
-    // All machinery hangs off a fixed twelve-tile run ending at the east sink, so
-    // both ore backbones (cols 1..mx on their rows) stay long and packed.
-    let mx = sink_x - 12;
-
-    // --- Copper line: copper-ore → copper-plate → copper-cable, out to a cable belt.
-    placer.source(0, cu_mid, Dir::E, "copper-ore");
-    for x in 1..mx {
-        placer.belt(x, cu_mid, Dir::E, &tier);
-    }
-    placer.inserter(mx, cu_mid, Dir::E); // ore → copper-plate assembler
-    placer.assembler(mx + 1, y, "copper-plate"); // cols mx+1..mx+3, rows y..y+2
-    placer.inserter(mx + 4, cu_mid, Dir::E); // plate → copper-cable assembler
-    placer.assembler(mx + 5, y, "copper-cable"); // cols mx+5..mx+7, rows y..y+2
-    placer.inserter(mx + 8, cu_mid, Dir::E); // cable out → the vertical cable belt
-    // The cable curves south down to the circuit assembler's top slot: two belt
-    // tiles then a south-facing inserter that drops into the assembler.
-    placer.belt(mx + 9, cu_mid, Dir::S, &tier); // dropped here, flows S
-    placer.belt(mx + 9, y + 2, Dir::S, &tier);
-    placer.inserter(mx + 9, y + 3, Dir::S); // cable → circuit assembler top-middle
-    // A second unload inserter drains the copper-cable assembler's *surplus* into a
-    // sink. The recipe makes two cable per craft but a circuit needs only one cable
-    // per plate, so the cable line over-produces ~2×; without a bleed the surplus
-    // backs the cable buffer up, stalls the copper chain, and the whole unit only
-    // settles into its steady cycle after many craft periods — which is what
-    // dominates the transport engine's warm-up. Bleeding the surplus lets the copper
-    // chain run free, so the factory reaches its cycle far sooner (a much cheaper
-    // warm-up) while the cable it *does* need still flows to the circuit assembler.
-    placer.inserter(mx + 6, y + 3, Dir::S); // surplus cable off the assembler's south
-    placer.sink(mx + 6, y + 4, Dir::S);
-
-    // --- Iron/circuit line: iron-ore → iron-plate, plate east into the circuit asm.
-    placer.source(0, ic_mid, Dir::E, "iron-ore");
-    for x in 1..mx {
-        placer.belt(x, ic_mid, Dir::E, &tier);
-    }
-    placer.inserter(mx, ic_mid, Dir::E); // ore → iron-plate assembler
-    placer.assembler(mx + 1, y + 4, "iron-plate"); // cols mx+1..mx+3, rows y+4..y+6
-    placer.inserter(mx + 4, ic_mid, Dir::E); // plate out → short plate belt
-    placer.belt(mx + 5, ic_mid, Dir::E, &tier);
-    placer.belt(mx + 6, ic_mid, Dir::E, &tier);
-    placer.inserter(mx + 7, ic_mid, Dir::E); // plate off the belt → circuit asm west slot
-    placer.assembler(mx + 8, y + 4, "circuit"); // cols mx+8..mx+10, rows y+4..y+6
-    placer.inserter(mx + 11, ic_mid, Dir::E); // circuit out → sink
-    placer.sink(sink_x, ic_mid, Dir::E); // sink_x == mx + 12
-}
-
-/// Three evenly-spaced snapshot ticks within `ticks`: a quarter, a half, and the
-/// final tick. Strictly ascending and each in `1..=ticks`, so the schedule always
-/// validates. For very small `ticks` the quarter/half can collapse onto the same
-/// value or zero, so we de-duplicate and clamp to at least tick 1.
+/// A scenario at or under the window is watched end to end, and quarter/half/end
+/// already sample it, so it gets no extra checkpoints.
 fn snapshot_schedule(ticks: u64) -> Vec<u64> {
     let mut raw = vec![ticks / 4, ticks / 2, ticks];
-    let mut out = Vec::with_capacity(3);
-    for t in raw.drain(..) {
-        let t = t.max(1);
-        // Keep strictly ascending: drop a tick that did not advance past the last.
-        if out.last().map(|&last| t > last).unwrap_or(true) {
-            out.push(t);
-        }
+    if ticks > PLAYBACK_WINDOW_TICKS {
+        raw.push(PLAYBACK_WINDOW_TICKS / 2);
+        raw.push(PLAYBACK_WINDOW_TICKS);
     }
-    out
+    // Clamp to a valid tick, then sort and de-duplicate: the window ticks are
+    // smaller than the quarter/half/end ones, so the merged list is not ordered.
+    for t in raw.iter_mut() {
+        *t = (*t).max(1);
+    }
+    raw.sort_unstable();
+    raw.dedup();
+    raw
 }
 
 #[cfg(test)]

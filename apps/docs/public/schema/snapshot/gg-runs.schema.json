@@ -1,0 +1,26 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/gg-runs.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map\nof dotted fields, plus the instant the export was taken.\n\nThis is the **whole** public analysis payload. The site's Discover surface runs the\nmirrored TypeScript evaluator over these documents and makes no backend call at all,\nwhich is only affordable because a document is an order of magnitude smaller than the\nrecord it derives from — no source, no prompts, no model output.\n\nIt carries its own `generated_at` even though [`SnapshotIndex`] has one, because the\npublic corpus legitimately lags the console's: every figure the site renders has to be\nlabelled with the instant it was true, and a figure and its as-of time should travel\nin the same object rather than be joined at read time.",
+  "properties": {
+    "documents": {
+      "description": "The exported documents, already filtered and redacted (see\n[`SnapshotBuilder::with_gg_documents`]).",
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/gg/run-document.schema.json"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When this corpus was exported (RFC 3339), rendered beside every public figure.",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": ["schemaVersion", "generatedAt", "documents"],
+  "title": "GgRunsFile",
+  "type": "object"
+}

@@ -12,18 +12,10 @@
     {
       "name": "blast-core",
       "shape": "sphere",
-      "position": [
-        0.0,
-        -4.0,
-        -18.0
-      ],
+      "position": [0.0, -4.0, -18.0],
       "extent": {
         "radius": 6.5,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -34,11 +26,7 @@
       "lifetimeSpread": 45.0,
       "speed": 32.0,
       "speedSpread": 16.0,
-      "direction": [
-        0.0,
-        0.05,
-        1.0
-      ],
+      "direction": [0.0, 0.05, 1.0],
       "coneAngle": 78.0,
       "seed": 1101,
       "forces": {
@@ -77,18 +65,10 @@
     {
       "name": "blast-flare",
       "shape": "point",
-      "position": [
-        0.0,
-        -4.0,
-        -17.8
-      ],
+      "position": [0.0, -4.0, -17.8],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -99,11 +79,7 @@
       "lifetimeSpread": 40.0,
       "speed": 78.0,
       "speedSpread": 34.0,
-      "direction": [
-        0.0,
-        0.05,
-        1.0
-      ],
+      "direction": [0.0, 0.05, 1.0],
       "coneAngle": 84.0,
       "seed": 1202,
       "forces": {
@@ -142,18 +118,10 @@
     {
       "name": "flame",
       "shape": "cone",
-      "position": [
-        0.0,
-        -4.0,
-        -17.4
-      ],
+      "position": [0.0, -4.0, -17.4],
       "extent": {
         "radius": 2.8,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -164,20 +132,12 @@
       "lifetimeSpread": 100.0,
       "speed": 132.0,
       "speedSpread": 48.0,
-      "direction": [
-        0.0,
-        0.05,
-        1.0
-      ],
+      "direction": [0.0, 0.05, 1.0],
       "coneAngle": 27.0,
       "seed": 2202,
       "forces": {
         "gravity": 80.0,
-        "gravityDir": [
-          0.0,
-          -1.0,
-          0.0
-        ],
+        "gravityDir": [0.0, -1.0, 0.0],
         "drag": 1.6,
         "turbulence": {
           "amplitude": 26.0,
@@ -224,18 +184,10 @@
     {
       "name": "embers",
       "shape": "point",
-      "position": [
-        0.0,
-        -4.0,
-        -17.0
-      ],
+      "position": [0.0, -4.0, -17.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -246,20 +198,12 @@
       "lifetimeSpread": 150.0,
       "speed": 114.0,
       "speedSpread": 48.0,
-      "direction": [
-        0.0,
-        0.08,
-        1.0
-      ],
+      "direction": [0.0, 0.08, 1.0],
       "coneAngle": 15.0,
       "seed": 3303,
       "forces": {
         "gravity": 240.0,
-        "gravityDir": [
-          0.0,
-          -1.0,
-          0.0
-        ],
+        "gravityDir": [0.0, -1.0, 0.0],
         "drag": 0.95
       },
       "particle": {
@@ -294,18 +238,10 @@
     {
       "name": "smoke",
       "shape": "sphere",
-      "position": [
-        0.0,
-        -4.0,
-        -19.0
-      ],
+      "position": [0.0, -4.0, -19.0],
       "extent": {
         "radius": 5.0,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -316,20 +252,12 @@
       "lifetimeSpread": 110.0,
       "speed": 90.0,
       "speedSpread": 38.0,
-      "direction": [
-        0.0,
-        0.2,
-        1.0
-      ],
+      "direction": [0.0, 0.2, 1.0],
       "coneAngle": 58.0,
       "seed": 4404,
       "forces": {
         "gravity": 90.0,
-        "gravityDir": [
-          0.0,
-          1.0,
-          0.0
-        ],
+        "gravityDir": [0.0, 1.0, 0.0],
         "drag": 0.6,
         "vortex": 5.0,
         "turbulence": {
@@ -369,18 +297,10 @@
     {
       "name": "smoke-roll",
       "shape": "sphere",
-      "position": [
-        0.0,
-        -2.5,
-        -11.0
-      ],
+      "position": [0.0, -2.5, -11.0],
       "extent": {
         "radius": 6.5,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -391,20 +311,12 @@
       "lifetimeSpread": 90.0,
       "speed": 50.0,
       "speedSpread": 24.0,
-      "direction": [
-        0.0,
-        0.45,
-        1.0
-      ],
+      "direction": [0.0, 0.45, 1.0],
       "coneAngle": 70.0,
       "seed": 5505,
       "forces": {
         "gravity": 85.0,
-        "gravityDir": [
-          0.0,
-          1.0,
-          0.0
-        ],
+        "gravityDir": [0.0, 1.0, 0.0],
         "drag": 0.85,
         "vortex": 7.0,
         "turbulence": {
@@ -444,18 +356,10 @@
     {
       "name": "smoke-tail",
       "shape": "sphere",
-      "position": [
-        0.0,
-        0.0,
-        -5.0
-      ],
+      "position": [0.0, 0.0, -5.0],
       "extent": {
         "radius": 8.0,
-        "size": [
-          1.0,
-          1.0,
-          1.0
-        ]
+        "size": [1.0, 1.0, 1.0]
       },
       "emission": {
         "mode": "burst",
@@ -466,20 +370,12 @@
       "lifetimeSpread": 70.0,
       "speed": 26.0,
       "speedSpread": 13.0,
-      "direction": [
-        0.0,
-        0.7,
-        1.0
-      ],
+      "direction": [0.0, 0.7, 1.0],
       "coneAngle": 80.0,
       "seed": 6606,
       "forces": {
         "gravity": 75.0,
-        "gravityDir": [
-          0.0,
-          1.0,
-          0.0
-        ],
+        "gravityDir": [0.0, 1.0, 0.0],
         "drag": 1.2,
         "vortex": 6.0,
         "turbulence": {
@@ -519,11 +415,7 @@
   ],
   "forces": {
     "gravity": 60.0,
-    "gravityDir": [
-      0.0,
-      -1.0,
-      0.0
-    ],
+    "gravityDir": [0.0, -1.0, 0.0],
     "drag": 1.2
   },
   "subEmitters": []

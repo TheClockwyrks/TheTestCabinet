@@ -56,7 +56,7 @@ export function GifDownloadButton({
       {status === "working"
         ? "Preparing GIF…"
         : status === "error"
-          ? "Failed — retry"
+          ? "Failed, retry"
           : "Download GIF"}
     </button>
   );

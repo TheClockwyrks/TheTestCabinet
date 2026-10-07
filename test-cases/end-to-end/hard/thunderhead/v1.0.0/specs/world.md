@@ -12,7 +12,7 @@ over this world are in `specs/units.md`; how they move across it is in
 The **quality of the world you generate — how natural, varied, legible, and
 watertight the islands are, how the cloud sea reads, and how sight and movement are
 shaped by the relief** — is central to what this build is about. There is
-deliberately little steering on the *shape*; there is exact steering on the *rules*.
+deliberately little steering on the _shape_; there is exact steering on the _rules_.
 
 ## The battlespace
 
@@ -88,7 +88,7 @@ You must **procedurally generate** the terrain each match. Requirements:
   terrain cannot reach. Each floating island is drawn as solid rock with a visible
   **underside**, and is as solid and static as the grounded terrain.
 - **Watertight.** Every landmass — grounded or floating — is a **closed mesh**: no
-  holes a unit falls through, no cracks in its surface, no torn faces. (A *floating*
+  holes a unit falls through, no cracks in its surface, no torn faces. (A _floating_
   island is closed all the way around, underside included; it is intentionally not
   attached to the ground — that is the one exception to "grounded," not a license
   for gaps in a surface.)

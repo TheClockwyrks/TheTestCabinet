@@ -2,7 +2,7 @@
 // be looked at without publishing them.
 //
 // A reference implementation for an asset case is a `draw.sh` of drawing-binary
-// calls (see `testing/asset-generation/manifests.md`); the images and the action
+// calls (see `testing/asset-generation/manifests/overview.md`); the images and the action
 // logs it produces are deliberately NOT committed, because the script reproduces
 // them exactly. That is the right trade for the repository, but it leaves an author
 // with nothing to look at while iterating. This script closes that gap: it seeds a

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router";
-import { Pagination } from "@test-cabinet/ui";
+import { Pagination } from "@clockwyrks/ui";
 import type { MyReview } from "../../../client/types";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";

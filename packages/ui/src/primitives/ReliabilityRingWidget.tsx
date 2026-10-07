@@ -16,6 +16,7 @@ export type ReliabilityTone =
   | "catastrophic"
   | "timeout"
   | "harnessError"
+  | "limitExceeded"
   | "hung";
 
 /** One outcome slice of the ring: its share is `value / totalRuns`. */
@@ -48,7 +49,7 @@ function formatPercent(fraction: number): string {
 }
 
 // A multi-segment ring gauge of a model's run outcomes: each segment (completed,
-// catastrophic, timeout, harness error, hang) is an arc sized by its share of the
+// catastrophic, timeout, harness error, execution ceiling, hang) is an arc sized by its share of the
 // model's runs, drawn consecutively from 12 o'clock, with a legend giving each raw
 // tally. The center shows the total. Only *published* runs count — the same set the
 // model page shows — so this reads as the model's published reliability breakdown.
@@ -84,7 +85,7 @@ export function ReliabilityRingWidget({
       </header>
       {totalRuns === 0 ? (
         <p className={styles.empty}>
-          No runs yet — the reliability breakdown appears once this model has
+          No runs yet. The reliability breakdown appears once this model has
           runs.
         </p>
       ) : (

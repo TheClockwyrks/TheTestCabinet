@@ -20,7 +20,12 @@
  * spec's required "minimap you can click to jump the camera".
  */
 
-import { PALETTE, TEAM_COLORS, ARENA_SIZE, CORRIDOR_HALF_WIDTH } from "../constants";
+import {
+  PALETTE,
+  TEAM_COLORS,
+  ARENA_SIZE,
+  CORRIDOR_HALF_WIDTH,
+} from "../constants";
 import { pointVisible } from "../vision";
 import { gridCellCenter } from "./terrain";
 import type { Match } from "../match";
@@ -41,7 +46,10 @@ export class Minimap {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
 
-  constructor(parent: HTMLElement, private readonly onJump: MinimapJump) {
+  constructor(
+    parent: HTMLElement,
+    private readonly onJump: MinimapJump,
+  ) {
     this.root = document.createElement("div");
     Object.assign(this.root.style, {
       position: "absolute",
@@ -61,9 +69,14 @@ export class Minimap {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = MAP_PX * dpr;
     this.canvas.height = MAP_PX * dpr;
-    Object.assign(this.canvas.style, { width: `${MAP_PX}px`, height: `${MAP_PX}px`, display: "block" });
+    Object.assign(this.canvas.style, {
+      width: `${MAP_PX}px`,
+      height: `${MAP_PX}px`,
+      display: "block",
+    });
     const ctx = this.canvas.getContext("2d");
-    if (!ctx) throw new Error("Sunfront minimap: 2D canvas context unavailable");
+    if (!ctx)
+      throw new Error("Sunfront minimap: 2D canvas context unavailable");
     this.ctx = ctx;
     this.ctx.scale(dpr, dpr);
 
@@ -82,8 +95,12 @@ export class Minimap {
     parent.appendChild(this.root);
   }
 
-  show(): void { this.root.style.display = "block"; }
-  hide(): void { this.root.style.display = "none"; }
+  show(): void {
+    this.root.style.display = "block";
+  }
+  hide(): void {
+    this.root.style.display = "none";
+  }
 
   /** Redraw the minimap from the live match and the renderer's current view region. */
   update(match: Match, render: RenderWorld): void {
@@ -109,9 +126,18 @@ export class Minimap {
     // Bases and Reliquaries: the player's own always show; the enemy's only in vision.
     this.structureBlip(c, w.bases.player, PALETTE.ember, 5, true);
     this.structureBlip(c, w.reliquaries.player, PALETTE.neutral, 4.5, true);
-    this.structureBlip(c, w.bases.enemy, TEAM_COLORS.enemy.base, 5, pointVisible(vision, w.bases.enemy.x, w.bases.enemy.z));
     this.structureBlip(
-      c, w.reliquaries.enemy, PALETTE.neutral, 4.5,
+      c,
+      w.bases.enemy,
+      TEAM_COLORS.enemy.base,
+      5,
+      pointVisible(vision, w.bases.enemy.x, w.bases.enemy.z),
+    );
+    this.structureBlip(
+      c,
+      w.reliquaries.enemy,
+      PALETTE.neutral,
+      4.5,
       pointVisible(vision, w.reliquaries.enemy.x, w.reliquaries.enemy.z),
     );
 
@@ -138,8 +164,10 @@ export class Minimap {
     // clip to the plotted square so the overhang is cropped cleanly.
     const h = CORRIDOR_HALF_WIDTH;
     const quad = [
-      { x: h, z: -h }, { x: -h, z: h },
-      { x: ARENA_SIZE - h, z: ARENA_SIZE + h }, { x: ARENA_SIZE + h, z: ARENA_SIZE - h },
+      { x: h, z: -h },
+      { x: -h, z: h },
+      { x: ARENA_SIZE - h, z: ARENA_SIZE + h },
+      { x: ARENA_SIZE + h, z: ARENA_SIZE - h },
     ];
     c.save();
     c.beginPath();
@@ -158,7 +186,10 @@ export class Minimap {
   }
 
   /** Outline the four-corner ground footprint of the current view. */
-  private strokeViewRegion(c: CanvasRenderingContext2D, region: readonly { x: number; z: number }[]): void {
+  private strokeViewRegion(
+    c: CanvasRenderingContext2D,
+    region: readonly { x: number; z: number }[],
+  ): void {
     if (region.length < 3) return;
     c.save();
     c.beginPath();
@@ -194,7 +225,14 @@ export class Minimap {
   }
 
   /** Plot a unit/structure as a filled dot (square when `structure`, else a circle). */
-  private dot(c: CanvasRenderingContext2D, x: number, z: number, r: number, color: string, structure: boolean): void {
+  private dot(
+    c: CanvasRenderingContext2D,
+    x: number,
+    z: number,
+    r: number,
+    color: string,
+    structure: boolean,
+  ): void {
     const s = this.project(x, z);
     c.fillStyle = color;
     if (structure) {

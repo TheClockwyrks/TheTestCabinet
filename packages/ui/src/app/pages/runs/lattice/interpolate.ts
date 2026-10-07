@@ -33,7 +33,15 @@ export type Dir = "N" | "E" | "S" | "W";
 
 /** One placed entity from the static board, with its resolved footprint. */
 export interface BoardEntity {
-  type: "belt" | "splitter" | "inserter" | "assembler" | "source" | "sink";
+  type:
+    | "belt"
+    | "splitter"
+    | "lane-splitter"
+    | "inserter"
+    | "assembler"
+    | "furnace"
+    | "source"
+    | "sink";
   x: number;
   y: number;
   dir?: Dir;
@@ -71,6 +79,7 @@ export interface BeltItem {
 export type EntityState =
   | { belt: { left: BeltItem[]; right: BeltItem[] } }
   | { splitter: { out_pref: number; in_first: number } }
+  | { lanesplitter: Record<string, never> }
   | {
       inserter: {
         // idle = empty at the pickup; swing = loaded, going out; return = empty,
@@ -82,6 +91,15 @@ export type EntityState =
     }
   | {
       assembler: {
+        inputs: Record<string, number>;
+        output: Record<string, number>;
+        craft_left: number;
+      };
+    }
+  | {
+      // A furnace shares the assembler's shape; `craft_left > 0` means it is
+      // actively smelting this tick (drives the off/smelting sprite loop).
+      furnace: {
         inputs: Record<string, number>;
         output: Record<string, number>;
         craft_left: number;
@@ -125,12 +143,46 @@ export interface ItemPoint {
   /** The engine's item id. */
   item: string;
   /**
+   * The belt tile this item sits on, and the belt's facing. Items are matched
+   * within a lane line, but a **perpendicular hand-off** (a curve or a side-load)
+   * crosses to a line with a different facing, so the item cannot be paired there
+   * and would be drawn twice — once leaving the source belt, once entering the
+   * target. These let the matcher **bridge that seam**: a leaving item on belt A
+   * and an entering item on belt B are the same item iff A flows into B's tile
+   * (`(bx + fx, by + fy)` of A equals B's `(bx, by)`), so it becomes one gliding
+   * item instead of a double image. See `bridgeSeams`.
+   */
+  bx: number;
+  by: number;
+  dir: Dir;
+  /**
    * How far, in pixels, an unobstructed item on this belt advances in one tick —
    * the belt tier's `SPEED`, converted to pixels by the engine-supplied value.
    * The matcher uses it as the motion each item is *expected* to make, which is
    * what lets it tell a real item's step apart from a coincidental alignment.
    */
   step: number;
+  /**
+   * The same one-tick forward motion as `step`, but as a screen-space vector: the
+   * belt's facing turned into a unit screen direction times `step`, so
+   * `(stepX, stepY)` is where the item's centre would move in one tick if
+   * unobstructed. `step` is the scalar magnitude of this. It exists so an item
+   * that *leaves* the world at a sink (matched with no `to`) can glide forward
+   * into the sink over the tween instead of freezing one belt step short of it
+   * (see `tweenItems`).
+   */
+  stepX: number;
+  stepY: number;
+  /**
+   * True if this item's belt drains directly into a sink (the tile one step downstream
+   * in the belt's facing is a sink). Such a line always *flows* — a sink never blocks,
+   * so its front item genuinely leaves every tick — which is why the matcher prefers
+   * letting the front item leave (and glide into the sink) over pinning it to a
+   * same-position slot and freezing the packed run behind it. Absent (falsy) for every
+   * other belt, where the matcher keeps its count-first bias so a genuinely blocked
+   * belt stays frozen rather than being animated as if it were flowing.
+   */
+  toSink?: boolean;
   /**
    * True if this item is on a belt fed directly by a splitter (the tile immediately
    * upstream of its belt is a splitter). A *just-appeared* such item is one emerging
@@ -164,6 +216,61 @@ const AXES: Record<Dir, { fx: number; fy: number; lx: number; ly: number }> = {
   N: { fx: 0, fy: -1, lx: -1, ly: 0 },
 };
 
+// `CW` is a facing's 90°-clockwise turn (E→S→W→N→E); used to tell a right-hand
+// (clockwise) curve from a left-hand one, which decides which lane is the inner
+// (shorter, slower) arc and which is the outer (longer, faster) one.
+const CW: Record<Dir, Dir> = { E: "S", S: "W", W: "N", N: "E" };
+
+/**
+ * Where an item on a **curve** tile sits, on the arc rather than cutting straight
+ * across. A curve is one transport belt whose flow turns 90°: it keeps its two lanes
+ * but bends them about a radial center at the tile corner the entry and exit edges
+ * share. Both lanes sweep the same angle each tick (they enter and exit together), so
+ * the **inner** lane — the shorter radius — travels a shorter path (slower along the
+ * ground) and the **outer** lane a longer one (faster), exactly as a real curved belt.
+ *
+ * `curveIn` is the travel direction of the perpendicular feeder (the flow entering the
+ * tile); `out` is the belt's own facing (the flow leaving). `pos` counts back from the
+ * output edge as everywhere else, so `travelled = 1 - pos/TILE` sweeps 0 (entry edge)
+ * → 1 (exit edge) along the quarter arc.
+ */
+function curvePoint(
+  tileX: number,
+  tileY: number,
+  out: Dir,
+  curveIn: Dir,
+  side: "left" | "right",
+  pos: number,
+  cell: number,
+): { x: number; y: number } {
+  const r0 = cell / 2;
+  const tcx = tileX * cell + r0;
+  const tcy = tileY * cell + r0;
+  const inA = AXES[curveIn];
+  const outA = AXES[out];
+  // The entry edge is on the feeder's side (opposite its travel); the exit edge is the
+  // `out` edge. The radial center is the tile corner those two perpendicular edges share.
+  const cx = tcx + r0 * (-inA.fx + outA.fx);
+  const cy = tcy + r0 * (-inA.fy + outA.fy);
+  // Unit vectors from the center to the entry- and exit-edge midpoints (90° apart).
+  const evx = (tcx - r0 * inA.fx - cx) / r0;
+  const evy = (tcy - r0 * inA.fy - cy) / r0;
+  const xvx = (tcx + r0 * outA.fx - cx) / r0;
+  const xvy = (tcy + r0 * outA.fy - cy) / r0;
+  // A clockwise (right-hand) turn has its center to the right of travel, so the LEFT
+  // lane is the outer (larger radius); a left-hand turn is mirrored.
+  const clockwise = CW[curveIn] === out;
+  const laneSign = (side === "left" ? 1 : -1) * (clockwise ? 1 : -1);
+  const r = r0 + laneSign * (cell / 4);
+  const a = (1 - pos / TILE) * (Math.PI / 2);
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  return {
+    x: cx + r * (evx * ca + xvx * sa),
+    y: cy + r * (evy * ca + xvy * sa),
+  };
+}
+
 /**
  * Place every belt item in the snapshot into world pixels.
  *
@@ -175,12 +282,19 @@ export function placeItems(
   board: Board,
   snapshot: Snapshot,
   cell: number,
+  curveAt?: (x: number, y: number) => Dir | undefined,
 ): ItemPoint[] {
   // Tiles covered by any splitter, so an item on a belt fed directly by one can be
-  // told apart (its upstream tile is in this set) and hidden while transiting.
+  // told apart (its upstream tile is in this set) and hidden while transiting. Sink
+  // tiles are gathered the same way, so a belt draining into one can be told apart (its
+  // downstream tile is in this set) and matched as a genuinely flowing line.
   const splitterTiles = new Set<string>();
+  const sinkTiles = new Set<string>();
   for (const e of board.entities) {
-    if (e.type === "splitter") for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
+    if (e.type === "splitter" || e.type === "lane-splitter")
+      for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
+    if (e.type === "sink")
+      for (const [tx, ty] of e.tiles) sinkTiles.add(`${tx},${ty}`);
   }
 
   const out: ItemPoint[] = [];
@@ -189,6 +303,9 @@ export function placeItems(
     if (!state || !("belt" in state) || entity.type !== "belt") return;
     const dir = entity.dir ?? "E";
     const axis = AXES[dir];
+    // A curve tile (its sole feeder is a perpendicular belt) bends its two lanes about
+    // a radial center instead of running them straight across; its items ride the arc.
+    const curveIn = curveAt?.(entity.x, entity.y);
     // Two belts on the same row but facing opposite ways are different lines, so
     // the facing is part of the key. The perpendicular coordinate pins the row (or
     // column) the line runs along.
@@ -196,7 +313,20 @@ export function placeItems(
     // The tile immediately upstream (behind the belt's input edge); if it is a
     // splitter, this belt is a splitter output and its just-appeared items are ones
     // emerging from the splitter.
-    const fromSplitter = splitterTiles.has(`${entity.x - axis.fx},${entity.y - axis.fy}`);
+    const fromSplitter = splitterTiles.has(
+      `${entity.x - axis.fx},${entity.y - axis.fy}`,
+    );
+    // The tile immediately downstream (one step in the belt's facing); if it is a sink,
+    // this belt drains into it and its front item leaves the line each tick.
+    const toSink = sinkTiles.has(`${entity.x + axis.fx},${entity.y + axis.fy}`);
+
+    // `speed` is in the same fixed-point units as `pos`, so it scales to pixels by
+    // the same tile factor. The facing's forward vector (`fx`,`fy` — the same one
+    // that advances `x`/`y` and `along`) times that magnitude is the item's
+    // per-tick motion in screen space.
+    const step = ((entity.speed ?? 0) / TILE) * cell;
+    const stepX = axis.fx * step;
+    const stepY = axis.fy * step;
 
     for (const side of ["left", "right"] as const) {
       // Lanes sit a quarter-cell either side of the tile's centre line. This is a
@@ -205,25 +335,51 @@ export function placeItems(
       const lateral = (side === "left" ? 1 : -1) * (cell / 4);
       const key = `${dir}|${perp}|${side}`;
       for (const it of state.belt[side]) {
-        // `pos` counts back from the output edge, so the travelled fraction of the
-        // tile is its complement.
-        const travelled = (1 - it.pos / TILE) * cell;
-        // The tile's upstream edge, from which the item has travelled.
-        const originX = entity.x * cell + (axis.fx < 0 ? cell : 0);
-        const originY = entity.y * cell + (axis.fy < 0 ? cell : 0);
-        const x =
-          originX + axis.fx * travelled + axis.lx * lateral + (axis.fx === 0 ? cell / 2 : 0);
-        const y =
-          originY + axis.fy * travelled + axis.ly * lateral + (axis.fy === 0 ? cell / 2 : 0);
+        let x: number;
+        let y: number;
+        if (curveIn) {
+          // On a curve the two lanes bend about a radial center: the item rides its
+          // lane's arc rather than a straight line across the tile.
+          ({ x, y } = curvePoint(
+            entity.x,
+            entity.y,
+            dir,
+            curveIn,
+            side,
+            it.pos,
+            cell,
+          ));
+        } else {
+          // `pos` counts back from the output edge, so the travelled fraction of the
+          // tile is its complement.
+          const travelled = (1 - it.pos / TILE) * cell;
+          // The tile's upstream edge, from which the item has travelled.
+          const originX = entity.x * cell + (axis.fx < 0 ? cell : 0);
+          const originY = entity.y * cell + (axis.fy < 0 ? cell : 0);
+          x =
+            originX +
+            axis.fx * travelled +
+            axis.lx * lateral +
+            (axis.fx === 0 ? cell / 2 : 0);
+          y =
+            originY +
+            axis.fy * travelled +
+            axis.ly * lateral +
+            (axis.fy === 0 ? cell / 2 : 0);
+        }
         out.push({
           line: key,
           along: axis.fx !== 0 ? axis.fx * x : axis.fy * y,
           x,
           y,
           item: it.item,
-          // `speed` is in the same fixed-point units as `pos`, so it scales to
-          // pixels by the same tile factor.
-          step: ((entity.speed ?? 0) / TILE) * cell,
+          bx: entity.x,
+          by: entity.y,
+          dir,
+          step,
+          stepX,
+          stepY,
+          toSink,
           fromSplitter,
         });
       }
@@ -268,89 +424,177 @@ export function matchItems(
   next: ItemPoint[],
   maxStep: number = MAX_STEP_PX,
 ): ItemPair[] {
-  const lines = new Set([...prev.map((p) => p.line), ...next.map((p) => p.line)]);
+  const lines = new Set([
+    ...prev.map((p) => p.line),
+    ...next.map((p) => p.line),
+  ]);
   const pairs: ItemPair[] = [];
 
   for (const line of lines) {
     // Ascending `along` = upstream first, so index 0 is the item furthest back.
-    const a = prev.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
-    const b = next.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
-    pairs.push(...matchLine(a, b, maxStep));
+    const a = prev
+      .filter((p) => p.line === line)
+      .sort((p, q) => p.along - q.along);
+    const b = next
+      .filter((p) => p.line === line)
+      .sort((p, q) => p.along - q.along);
+    // A line that drains into a sink always flows (a sink never blocks), so its front
+    // item genuinely leaves every tick. Telling matchLine lets it prefer that over
+    // freezing a packed run at the sink — while every other line keeps the count-first
+    // bias that holds a genuinely blocked belt still.
+    const sinkBound = a.some((p) => p.toSink) || b.some((p) => p.toSink);
+    pairs.push(...matchLine(a, b, maxStep, sinkBound));
   }
 
-  return pairs;
+  return bridgeSeams(pairs);
+}
+
+/**
+ * Re-pair items that crossed a **perpendicular belt seam** (a curve or a
+ * side-load) so each is one gliding item rather than a double image.
+ *
+ * `matchItems` pairs only within a lane line, and a 90° hand-off changes the belt's
+ * facing — a different line — so the item that crossed it comes out as two halves:
+ * a `from`-only on the source belt (drawn gliding off it) and a `to`-only on the
+ * target belt (drawn at its entry). Both are visible for the crossover tween.
+ *
+ * They are the same physical item exactly when the source belt **flows into** the
+ * target belt's tile — `(bx + fx, by + fy)` of the leaving item equals the entering
+ * item's `(bx, by)` — and the ids match. This uses the real belt topology, not a
+ * distance heuristic; the nearest such candidate is chosen only to disambiguate a
+ * two-lane side-load, where both feeder lanes flow into the same target tile and
+ * each pairs with the entry on its own side (their positions coincide across the
+ * seam, so "nearest" is unambiguous). Collinear hand-offs never reach here — they
+ * share a line and were matched in place — so only true curves and side-loads pair.
+ */
+function bridgeSeams(pairs: ItemPair[]): ItemPair[] {
+  const kept: ItemPair[] = [];
+  const fromOnly: ItemPoint[] = [];
+  const toOnly: ItemPoint[] = [];
+  for (const p of pairs) {
+    if (p.from && p.to) kept.push(p);
+    else if (p.from) fromOnly.push(p.from);
+    else if (p.to) toOnly.push(p.to);
+  }
+
+  const used = new Set<ItemPoint>();
+  for (const to of toOnly) {
+    let best: ItemPoint | null = null;
+    let bestDist = Infinity;
+    for (const from of fromOnly) {
+      if (used.has(from) || from.item !== to.item) continue;
+      // Does `from`'s belt flow into `to`'s tile? (the perpendicular hand-off)
+      const ax = AXES[from.dir];
+      if (from.bx + ax.fx !== to.bx || from.by + ax.fy !== to.by) continue;
+      const dist = Math.hypot(from.x - to.x, from.y - to.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = from;
+      }
+    }
+    if (best) {
+      used.add(best);
+      kept.push({ from: best, to });
+    } else {
+      kept.push({ from: null, to });
+    }
+  }
+  for (const from of fromOnly) {
+    if (!used.has(from)) kept.push({ from, to: null });
+  }
+  return kept;
 }
 
 /**
  * The order-preserving matching for ONE lane line.
  *
- * A textbook alignment DP over the two sorted sequences. `best[i][j]` is the
- * best matching of the first `i` items of `a` against the first `j` of `b`, and
- * each cell takes the best of three moves: leave `a[i-1]` unmatched (it left the
- * line), leave `b[j-1]` unmatched (it entered), or pair them if admissible.
- * "Best" is the most items matched, then the least deviation from the motion the
- * engine would have produced.
+ * A textbook alignment DP over the two sorted sequences. `cost[i][j]` is the least
+ * total cost of aligning the first `i` items of `a` with the first `j` of `b`, and
+ * each cell takes the cheapest of three moves: leave `a[i-1]` unmatched (it left the
+ * line), leave `b[j-1]` unmatched (it entered), or pair them if admissible. A pairing
+ * costs how far its motion strays from the belt's expected `step`; an unmatched item
+ * costs a `skip` penalty.
+ *
+ * The `skip` penalty is what makes this both correct at a sink and safe everywhere
+ * else, from the SAME code:
+ *
+ * - **On a sink-bound line** skipping is CHEAP — set below the cost of a frozen
+ *   (zero-motion) pairing — so the packed run is seen shifting forward with its front
+ *   item leaving into the sink, instead of every item pinned to a same-position slot
+ *   and frozen. Correct because a belt draining into a sink always flows (the sink
+ *   never blocks), so the front item really does leave each tick.
+ * - **Everywhere else** skipping is effectively barred (a cost larger than any
+ *   deviation sum), so the DP minimises skips first — i.e. maximises matches, then
+ *   minimises deviation, exactly the old count-first rule. That keeps a genuinely
+ *   blocked, stationary belt frozen (every item paired in place) rather than animated
+ *   as if it were flowing, since the two snapshots are indistinguishable by position.
  *
  * Cost is `O(n * m)` per line, but `maxStep` keeps the admissible window a
  * couple of items wide, so in practice the pairing move is only ever evaluated
  * on a narrow band around the diagonal.
  */
-function matchLine(a: ItemPoint[], b: ItemPoint[], maxStep: number): ItemPair[] {
+function matchLine(
+  a: ItemPoint[],
+  b: ItemPoint[],
+  maxStep: number,
+  sinkBound: boolean,
+): ItemPair[] {
   const n = a.length;
   const m = b.length;
   if (n === 0) return b.map((to) => ({ from: null, to }));
   if (m === 0) return a.map((from) => ({ from, to: null }));
 
-  // Flattened (n+1) x (m+1) grids: how many pairs the cell matched, the summed
-  // deviation from expected motion, and which move produced it.
+  // Flattened (n+1) x (m+1) grids: the least total cost to reach the cell and which
+  // move produced it. 0 = skip a[i-1], 1 = skip b[j-1], 2 = pair them.
   const width = m + 1;
-  const count = new Int32Array((n + 1) * width);
   const cost = new Float64Array((n + 1) * width);
-  // 0 = skip a[i-1], 1 = skip b[j-1], 2 = pair them.
   const move = new Uint8Array((n + 1) * width);
 
-  for (let i = 1; i <= n; i++) move[i * width] = 0;
-  for (let j = 1; j <= m; j++) move[j] = 1;
+  // Cost of leaving one item unmatched. On a sink-bound line, just under a frozen
+  // pairing's cost (a frozen pair strays by a whole `step`), so the front item leaves
+  // rather than freezing the run; a per-item value keeps it correct if belts ever
+  // differ in speed. Off a sink, larger than any achievable deviation sum, so matches
+  // are always preferred (count-first) and a blocked belt stays frozen.
+  const barred = (n + m) * maxStep + 1;
+  const skip = (p: ItemPoint) => (sinkBound ? 0.75 * p.step : barred);
+
+  for (let i = 1; i <= n; i++) {
+    cost[i * width] = cost[(i - 1) * width]! + skip(a[i - 1]!);
+    move[i * width] = 0;
+  }
+  for (let j = 1; j <= m; j++) {
+    cost[j] = cost[j - 1]! + skip(b[j - 1]!);
+    move[j] = 1;
+  }
 
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
       const here = i * width + j;
-      const skipA = (i - 1) * width + j;
-      const skipB = i * width + (j - 1);
+      const from = a[i - 1]!;
+      const to = b[j - 1]!;
 
-      // Default to whichever skip is better; a pairing has to beat it.
-      let bestCount = count[skipA]!;
-      let bestCost = cost[skipA]!;
+      // Default: skip a[i-1] (it left the line). Then skip b[j-1] (it entered) if
+      // cheaper, then pair them if that is cheaper still.
+      let bestCost = cost[(i - 1) * width + j]! + skip(from);
       let bestMove = 0;
-      if (
-        count[skipB]! > bestCount ||
-        (count[skipB]! === bestCount && cost[skipB]! < bestCost)
-      ) {
-        bestCount = count[skipB]!;
-        bestCost = cost[skipB]!;
+      const skipBCost = cost[i * width + (j - 1)]! + skip(to);
+      if (skipBCost < bestCost) {
+        bestCost = skipBCost;
         bestMove = 1;
       }
 
-      const from = a[i - 1]!;
-      const to = b[j - 1]!;
       const delta = to.along - from.along;
       // Forward-only, bounded, and identity-preserving.
       if (delta >= -1e-6 && delta <= maxStep && from.item === to.item) {
-        const diag = (i - 1) * width + (j - 1);
-        const pairedCount = count[diag]! + 1;
         // How far this step strays from the motion the belt would have produced.
-        const pairedCost = cost[diag]! + Math.abs(delta - from.step);
-        if (
-          pairedCount > bestCount ||
-          (pairedCount === bestCount && pairedCost < bestCost)
-        ) {
-          bestCount = pairedCount;
+        const pairedCost =
+          cost[(i - 1) * width + (j - 1)]! + Math.abs(delta - from.step);
+        if (pairedCost < bestCost) {
           bestCost = pairedCost;
           bestMove = 2;
         }
       }
 
-      count[here] = bestCount;
       cost[here] = bestCost;
       move[here] = bestMove;
     }
@@ -385,10 +629,19 @@ function matchLine(a: ItemPoint[], b: ItemPoint[], maxStep: number): ItemPair[] 
  * Resolve matched items to their drawable positions `alpha` of the way from the
  * previous tick to the next (`alpha` in `0..1`).
  *
- * A matched item glides. An item with only one side is at a lane's end — newly
- * placed by a source, inserter, or side-load, or just consumed — and there is no
- * second position to glide to, so it holds the position it does have rather than
- * sliding in from somewhere it never was.
+ * A matched item glides between its two positions. A one-sided item is at a lane's
+ * end and the two ends are handled differently:
+ *
+ * - **`to`-only** (just entered — a source emitting, an inserter dropping): it has
+ *   no earlier position to glide *from*, so it holds where it is rather than sliding
+ *   in from somewhere it never was. (An item that entered by crossing a perpendicular
+ *   belt seam — a curve or side-load — is **not** a bare `to`-only: `bridgeSeams` has
+ *   already paired it with the item leaving the source belt, so it glides.)
+ * - **`from`-only** (just left — consumed at a sink, or lifted off a belt by an
+ *   inserter): `from` is its last belt position, one belt step short of what
+ *   consumes it. It glides *forward* along its own travel vector (`stepX`/`stepY`)
+ *   over the tween, so it slides on into the sink and vanishes at the next
+ *   snapshot instead of freezing short and popping.
  *
  * The one exception is an item **emerging from a splitter** (a to-only item on a
  * splitter-fed belt): the splitter moves it across lane lines in a single tick, so
@@ -413,7 +666,17 @@ export function tweenItems(pairs: ItemPair[], alpha: number): DrawItem[] {
       if (to.fromSplitter) continue;
       out.push({ x: to.x, y: to.y, item: to.item });
     } else if (from) {
-      out.push({ x: from.x, y: from.y, item: from.item });
+      // A from-only item is leaving the world this tween — consumed at a sink, or
+      // (rarer) lifted off a belt by an inserter. `from` is its last *belt*
+      // position, one belt step short of whatever consumes it, so holding it there
+      // would freeze it and then pop it out of existence at the next snapshot — the
+      // "hit". Glide it forward along its travel vector instead so it visibly
+      // slides on into the sink and disappears as the next tick arrives.
+      out.push({
+        x: from.x + from.stepX * t,
+        y: from.y + from.stepY * t,
+        item: from.item,
+      });
     }
   }
   return out;

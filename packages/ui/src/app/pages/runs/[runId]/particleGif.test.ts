@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { particleGifPlan } from "./particleGif";
 
 // A minimal emitter carrying just the lifetime the plan reads; the rest is filled
 // with inert defaults so the object satisfies the contract.
-function emitter(lifetimeMs: number, lifetimeSpread = 0): ParticleSystem["emitters"][number] {
+function emitter(
+  lifetimeMs: number,
+  lifetimeSpread = 0,
+): ParticleSystem["emitters"][number] {
   return {
     name: "e",
     shape: "point",

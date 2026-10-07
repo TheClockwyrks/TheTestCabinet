@@ -1,5 +1,20 @@
 {
   "$defs": {
+    "AssetDimension": {
+      "description": "Within a full-stack case, which dimension of asset tooling the run image carries.\n\nA full-stack run builds a program *and* produces the assets it ships with, so the\nimage it executes in has to have the authoring binaries baked in — and there are two\nsuch images, because the 3D tooling is a great deal heavier than the 2D tooling and\nmost cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D\nbinaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);\n`3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`\nand `particle-3d`. See [`crate::resolve_run_image`].\n\nLike [`AssetKind`] this is a property of the **whole version**, not a per-variant\nchoice: every variant of a case runs in one image. It is declared by the\n`asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written\nbefore the key existed — and every full-stack case that only draws sprites and plays\nsound — resolves unchanged. It is meaningful only for a full-stack case; an explicit\nvalue on any other type is rejected rather than silently ignored, because on those\ntypes nothing consults it.",
+      "oneOf": [
+        {
+          "const": "2d",
+          "description": "The 2D full-stack image: sprites, sprite sheets, 2D particle effects, and audio.\nThe default, and what every full-stack case that predates the key resolves to.",
+          "type": "string"
+        },
+        {
+          "const": "3d",
+          "description": "The 3D full-stack image: everything the 2D image carries, plus the voxel-model\n(`voxel`, `voxel-anim`) and 3D-particle (`particle-3d`) tooling. The meshed/SDF\nfamilies and the Blender toolchain are deliberately not in it — they are a far\nheavier toolchain and no case needs them yet.",
+          "type": "string"
+        }
+      ]
+    },
     "AssetKind": {
       "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D\nvoxel model, or a rigged/animatable 3D voxel model — never a mix, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences); the two\nvoxel kinds declare a `[voxel]` table (the bounding volume), and\n[`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,\njoints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that\npredates the discriminator — and every non-asset-generation case — resolves\nunchanged.",
       "oneOf": [
@@ -95,12 +110,12 @@
         },
         {
           "const": "sfx-sample",
-          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.",
+          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its one pack in `audio.packs`). Judged on the\nemitted `clip.wav`.",
           "type": "string"
         },
         {
           "const": "music",
-          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its `instrument_bank`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
+          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its one pack in `audio.packs`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
           "type": "string"
         },
         {
@@ -133,25 +148,17 @@
       "type": "object"
     },
     "AudioSpec": {
-      "description": "The resolved `[audio]` of an audio asset-generation case: the rendered clip's\noutput format and (for the sample/instrument kinds) the baked palette.",
+      "description": "The resolved `[audio]` of an audio asset-generation case: the output format of\nthe single clip it emits.\n\nThe palette such a case plays is **not** here: a pack declaration is not an\nasset-generation concept (a full-stack case and a game jam declare one too), so\nit lives on [`TestCaseVersion::audio_packs`] for every test type alike.",
       "properties": {
         "channels": {
           "description": "Channel layout: `mono` or `stereo`.",
           "type": "string"
-        },
-        "instrumentBank": {
-          "description": "For `music`: the baked instrument bank (`name@version`). `None` otherwise.",
-          "type": ["string", "null"]
         },
         "maxDurationMs": {
           "description": "Cap on the rendered clip's length in milliseconds.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
-        },
-        "samplePack": {
-          "description": "For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.",
-          "type": ["string", "null"]
         },
         "sampleRate": {
           "description": "Output sample rate in Hz.",
@@ -198,7 +205,7 @@
       "type": "object"
     },
     "CaseOut": {
-      "description": "One held-out scored case of a performance case: the store-relative keys of the\n`input` scenario fed to the engine and the `expected` oracle state its output\nis checked against. Mirrors core's wire `CaseBody`, so a resolved version\nround-trips its scored set through to the runner's [`materialize_version`].",
+      "description": "One held-out scored case of a performance case: the store-relative keys of the\n`input` scenario fed to the engine and the `expected` oracle state its output\nis checked against. Mirrors core's wire `CaseBody`, so a resolved version\nround-trips its scored set through to the runner's [`materialize_version`](test_cabinet_core::backend_client::materialize_version).",
       "properties": {
         "expected": {
           "type": "string"
@@ -334,6 +341,24 @@
         }
       },
       "required": ["id", "name", "description"],
+      "type": "object"
+    },
+    "EngineOut": {
+      "description": "One [engine](test_cabinet_core::engine) a run of this version may select, with\nthe version range the case accepts it at. A launcher offers exactly this set,\nand the runner holds a run's selection against it before any container work.\n\nAlways the table spelling, so one shape answers both readers: a case that pins\nnothing carries the slug alone and omits the bounds.",
+      "properties": {
+        "maxVersion": {
+          "description": "The version support stops at, exclusive. Absent when the range is unbounded\nabove, which is the default.",
+          "type": ["string", "null"]
+        },
+        "minVersion": {
+          "description": "The lowest engine version a run may select, inclusive. Absent when the case\npinned no floor.",
+          "type": ["string", "null"]
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": ["slug"],
       "type": "object"
     },
     "ErratumOut": {
@@ -597,6 +622,24 @@
         "domain": {
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "On a validator-rated version, the scoring domains (by id) a failure of this\nwhole-item point lowers. Empty on a legacy version and on a sub-divided item.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureCap": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/FailureCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a validator-rated version, a whole-item point's **failure cap**: the\nhighest functional rating its `domains` may reach while its validator fails.\nAbsent on a legacy version and on a sub-divided item (whose caps sit on its\nsub-items)."
+        },
         "graded": {
           "default": false,
           "description": "Whether the item is graded on the five-level scale (a game-jam category)\nrather than pass/fail. False for every other test type. The reviewer UI keys\nits editor control (emoji grade scale vs. pass/fail) off this flag.",
@@ -641,7 +684,7 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "text", "weight", "subItems"],
+      "required": ["id", "title", "text", "weight", "subItems", "domains"],
       "type": "object"
     },
     "ReviewOutputOut": {
@@ -663,17 +706,65 @@
     "ReviewValidationOut": {
       "description": "A review item's automated-validation driver in the §1.2 wire shape: the\nversion-folder-relative debug `script` key the driver fetches (like an asset) and\nits declared media `outputs`.",
       "properties": {
+        "engines": {
+          "description": "The engines this validator decides its point on, by slug, in declared order.\nOmitted when the case declares no restriction, which leaves the point active\non every engine the case supports.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "outputs": {
           "items": {
             "$ref": "#/$defs/ReviewOutputOut"
           },
           "type": "array"
         },
+        "perEngine": {
+          "description": "Whether `script` names a suite inside a validator project — one per engine,\nand it ships in the project of every engine\n[`ReviewValidationOut::engines`] covers — rather than one file under the\nversion folder.",
+          "type": "boolean"
+        },
         "script": {
           "type": "string"
         }
       },
       "required": ["script", "outputs"],
+      "type": "object"
+    },
+    "ShowcaseMediaOut": {
+      "description": "One entry of a served showcase carousel: the file name the showcase route\naddresses the bytes by, its caption, and the kind of media it holds.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the showcase directory (a plain file name).",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind",
+          "description": "Whether the file is a still image, a video clip, or a replay recording."
+        },
+        "name": {
+          "description": "The short caption for the entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
+      "type": "object"
+    },
+    "ShowcaseOut": {
+      "description": "A variant's authored showcase as the resolved version serves it.",
+      "properties": {
+        "description": {
+          "description": "The showcase description — the authored `showcase.md`, verbatim markdown.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in declared order.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMediaOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
       "type": "object"
     },
     "SpecKind": {
@@ -821,6 +912,24 @@
           "description": "Optional prose for this point (categories grammar); absent for a legacy\nname-only sub-item.",
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "On a validator-rated version, the scoring domains (by id) a failure of this\npoint lowers. Empty on a legacy version.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureCap": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/FailureCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a validator-rated version, this point's **failure cap**: the highest\nfunctional rating its `domains` may reach while its validator fails. Absent on\na legacy version."
+        },
         "id": {
           "type": "string"
         },
@@ -853,7 +962,7 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "weight"],
+      "required": ["id", "title", "weight", "domains"],
       "type": "object"
     },
     "ToolOut": {
@@ -866,6 +975,25 @@
         }
       },
       "required": ["binary", "preview"],
+      "type": "object"
+    },
+    "ToolchainOut": {
+      "description": "The case's declared TypeScript toolchain, served so a backend-driven run can run\nit: the gating `typecheck` and the recorded `lint`/`format`/`test`.",
+      "properties": {
+        "format": {
+          "type": ["string", "null"]
+        },
+        "lint": {
+          "type": ["string", "null"]
+        },
+        "test": {
+          "type": ["string", "null"]
+        },
+        "typecheck": {
+          "type": "string"
+        }
+      },
+      "required": ["typecheck"],
       "type": "object"
     },
     "UiElementSpec": {
@@ -941,9 +1069,13 @@
           },
           "type": "array"
         },
-        "referenceBuild": {
-          "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), served on the console's \"Reference\" tab. `None` when the\nvariant declares no `reference_implementation`, or has one but it has not been\ndeployed yet. Written out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
-          "type": ["string", "null"]
+        "referenceBuilds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "The absolute URLs of this variant's authored **reference implementations** —\nthe correct, deployed static builds (the case-variant analogue of a run's\n`playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was\nbuilt for and served on the console's \"Reference\" tab, which lets a reader\nswitch between them. Empty when the variant declares no\n`reference_implementation`, or has one that has not been deployed yet.\nWritten out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
+          "type": "object"
         },
         "referenceSheet": {
           "anyOf": [
@@ -954,7 +1086,7 @@
               "type": "null"
             }
           ],
-          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not\na site, so what is recorded is which of its rendered frames were published to\nthe public snapshot bucket. `None` when the variant declares no\n`reference_implementation`, or has one that has not been published yet.\n\nWritten out-of-band by `tcab publish-reference` (which uploads the frames) and\nread from the `case_reference_sheet` table, which the backend reconciles by\nlisting the bucket at ingest — never resolved from the manifest and never\nseeded into a run. Only the indices travel: each frame's URL is derivable from\nthe case triple and its index (see `test_cabinet_core::asset_reference`), so\nthe client builds them against the `snapshotUrl` from `GET /config`."
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_builds`]. An asset case's reference is a `draw.sh` script, not\na site, so what is recorded is which of its rendered frames were published to\nthe public snapshot bucket. `None` when the variant declares no\n`reference_implementation`, or has one that has not been published yet.\n\nWritten out-of-band by `tcab publish-reference` (which uploads the frames) and\nread from the `case_reference_sheet` table, which the backend reconciles by\nlisting the bucket at ingest — never resolved from the manifest and never\nseeded into a run. Only the indices travel: each frame's URL is derivable from\nthe case triple and its index (see `test_cabinet_core::asset_reference`), so\nthe client builds them against the `snapshotUrl` from `GET /config`."
         },
         "references": {
           "items": {
@@ -967,6 +1099,17 @@
             "$ref": "#/$defs/ReviewItemOut"
           },
           "type": "array"
+        },
+        "showcase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShowcaseOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The variant's authored **showcase**, when it declares one: the description\nplus the media carousel captured from the reference implementation, shown\non the case's Play tab. `null` when the variant declares none. Each media\nfile is fetched from\n`/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`."
         },
         "slug": {
           "type": "string"
@@ -989,10 +1132,13 @@
           "description": "The variant's bounding-volume override, when it declares its own `[voxel]`\n(the size axis behind a case's half/base/double variants). `None` inherits\nthe case's common [`VersionResponse::voxel`]."
         },
         "workspace": {
-          "items": {
-            "$ref": "#/$defs/WorkspaceOut"
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/WorkspaceOut"
+            },
+            "type": "array"
           },
-          "type": ["array", "null"]
+          "type": ["object", "null"]
         }
       },
       "required": [
@@ -1053,6 +1199,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The resolved, fully-rendered definition of one test-case version: the body of\n`GET /test-cases/{slug}/{version}`. Everything a reporter needs to present the\ncase — its metadata, the per-test-type contract/sandbox shapes, the rendered\nprompt and seeded specs, and every variant, reference, proof, check, and\nreviewer item — resolved as a real run receives them.",
   "properties": {
+    "assetDimension": {
+      "$ref": "#/$defs/AssetDimension",
+      "description": "Which full-stack run image the version's runs execute in. Always serialized\n(never skipped) because the runner deserializes this body into the resolved\nversion it resolves the run image from."
+    },
     "assetKind": {
       "$ref": "#/$defs/AssetKind"
     },
@@ -1071,6 +1221,13 @@
           "type": "null"
         }
       ]
+    },
+    "audioPacks": {
+      "description": "The audio packs a run of this version is staged with, in declaration order.\nThe driver reads it to stage the run container's palette, so it is served for\nevery test type, not just the audio kinds — always present, empty for a\nversion that declares none, like the other list-valued keys beside it.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "build": {
       "anyOf": [
@@ -1152,6 +1309,17 @@
     "domains": {
       "items": {
         "$ref": "#/$defs/DomainOut"
+      },
+      "type": "array"
+    },
+    "engineFormat": {
+      "description": "Whether the version is on the **engine manifest format**, which (with the\ntest type) makes it **validator-rated**: a run's functional rating and score\nare decided by its validators — every review point declares its `failureCap`\nand `domains` — and a reviewer rates only the aesthetic channel. `false` on\nevery legacy version, whose runs are reviewed exactly as before.",
+      "type": "boolean"
+    },
+    "engines": {
+      "description": "The engines a run of this version may select. Never empty — a version that\ndeclares none supports the engineless run.",
+      "items": {
+        "$ref": "#/$defs/EngineOut"
       },
       "type": "array"
     },
@@ -1309,6 +1477,17 @@
         }
       ]
     },
+    "toolchain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolchainOut"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The case's TypeScript toolchain commands, when it declares a `[toolchain]`\ntable. Absent for every version that predates it, which is what leaves those\nversions unchecked and ungated."
+    },
     "ui": {
       "anyOf": [
         {
@@ -1339,10 +1518,13 @@
       ]
     },
     "workspace": {
-      "items": {
-        "$ref": "#/$defs/WorkspaceOut"
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/WorkspaceOut"
+        },
+        "type": "array"
       },
-      "type": "array"
+      "type": "object"
     }
   },
   "required": [
@@ -1354,7 +1536,11 @@
     "changelog",
     "maxRuntimeSeconds",
     "testType",
+    "engineFormat",
+    "engines",
     "assetKind",
+    "assetDimension",
+    "audioPacks",
     "promptTemplate",
     "commonSpecs",
     "packages",

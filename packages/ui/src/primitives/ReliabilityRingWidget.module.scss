@@ -47,8 +47,9 @@
 // Per-outcome palette, shared by the arc stroke and the legend swatch (which fills
 // with `currentColor`). Completed reads positive, a catastrophic build as the hot
 // red-orange (the model produced nothing runnable — the severest outcome it owns),
-// harness errors as the alert red, timeouts as amber, and hangs as muted — nothing
-// happened, so nothing shouts.
+// harness errors as the alert red, timeouts as amber, a spent execution ceiling as
+// a blend of the two clock-shaped outcomes it sits between, and hangs as muted —
+// nothing happened, so nothing shouts.
 .success {
   stroke: t.$color-positive;
   color: t.$color-positive;
@@ -72,6 +73,11 @@
 .timeout {
   stroke: t.$color-accent;
   color: t.$color-accent;
+}
+
+.limitExceeded {
+  stroke: color-mix(in srgb, t.$color-accent 60%, t.$color-accent-2);
+  color: color-mix(in srgb, t.$color-accent 60%, t.$color-accent-2);
 }
 
 // The total run count in the middle of the ring, with its "runs" label beneath.

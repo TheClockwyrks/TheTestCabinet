@@ -32,12 +32,12 @@ the ice and water.
 The same round critter facing and hopping in four directions, each a two-frame
 hop — a **crouch** (gathered, sitting low) and a **hop** (stretched, mid-leap):
 
-| Frames | Facing | First frame (crouch) | Second frame (hop) |
-| --- | --- | --- | --- |
-| 0, 1 | **down** (toward viewer) | gathered low, facing down | stretched up into a leap, little feet tucked |
-| 2, 3 | **up** (away) | gathered low, seen from behind | stretched into a leap |
-| 4, 5 | **left** | gathered low, facing left | stretched into a leap |
-| 6, 7 | **right** | gathered low, facing right | stretched into a leap |
+| Frames | Facing                   | First frame (crouch)           | Second frame (hop)                           |
+| ------ | ------------------------ | ------------------------------ | -------------------------------------------- |
+| 0, 1   | **down** (toward viewer) | gathered low, facing down      | stretched up into a leap, little feet tucked |
+| 2, 3   | **up** (away)            | gathered low, seen from behind | stretched into a leap                        |
+| 4, 5   | **left**                 | gathered low, facing left      | stretched into a leap                        |
+| 6, 7   | **right**                | gathered low, facing right     | stretched into a leap                        |
 
 Make it read as **one small creature**:
 
@@ -57,13 +57,13 @@ Make it read as **one small creature**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Fur — warm (back/body) | `#f2a03a` |
-| Belly / face (cream) | `#ffe0a8` |
+| Role                     | Hex       |
+| ------------------------ | --------- |
+| Fur — warm (back/body)   | `#f2a03a` |
+| Belly / face (cream)     | `#ffe0a8` |
 | Fur — shadow (underside) | `#b7651c` |
-| Eyes / nose | `#201510` |
-| Paws / feet | `#7a4a1e` |
+| Eyes / nose              | `#201510` |
+| Paws / feet              | `#7a4a1e` |
 
 ## Working the tool
 

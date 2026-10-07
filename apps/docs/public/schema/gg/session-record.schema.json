@@ -1,0 +1,1122 @@
+{
+  "$defs": {
+    "GgAgentStatus": {
+      "description": "The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),\nreported by an [`AgentStatus`](GgTelemetryKind::AgentStatus) transition so the console can\ncolour each node of the live tree (running vs waiting) and mark it done or failed.\n\nAn agent is [`Running`](Self::Running) while it drives its turn loop, [`Blocked`](Self::Blocked)\nwhile it has **freed its running slot to wait on its subagents** (the scheduler's\nblocked-frees-slot state — distinct from merely queuing for a slot), and terminally either\n[`Done`](Self::Done) (its loop ended normally) or [`Failed`](Self::Failed) (its loop ended in a\nmodel error). Like [`AgentSpawned`](GgTelemetryKind::AgentSpawned), the agent's identity rides\non the event's own [`agent_id`](GgTelemetryEvent::agent_id), so the payload carries only the\nstatus.",
+      "oneOf": [
+        {
+          "const": "running",
+          "description": "The agent is actively driving its turn loop (holds a running slot).",
+          "type": "string"
+        },
+        {
+          "const": "blocked",
+          "description": "The agent has freed its running slot and is waiting on one or more of its subagents to\nreturn (the scheduler's blocked-with-a-wait-condition state).",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "The agent's turn loop ended normally (completed, exhausted, or timed out).",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The agent's turn loop ended in a model error.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgClientRole": {
+      "description": "Which of gg's two model clients issued a request.\n\nThe discriminator is what makes a **second queue** representable. Without it a\n[handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and\nthe agent's own next turn interleave into one indistinguishable queue, and a reader would\nattribute the compaction's turn to the agent.",
+      "oneOf": [
+        {
+          "const": "agent",
+          "description": "The agent's own turn loop.",
+          "type": "string"
+        },
+        {
+          "const": "compaction",
+          "description": "The compaction summarizer, which rewrites the whole window rather than advancing\nthe conversation.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgLoopDetection": {
+      "additionalProperties": false,
+      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\n**An armed detector writes all five knobs.** What the rule trips on is the whole set of them\ntogether — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector\narmed on figures nobody chose measures gg rather than the model, and an armed detector missing\nany of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one\nis still read and still judged as written, which is what keeps the armed and unarmed arms of one\ncomparison the same document with one switch moved. A knob **set** to a value that cannot bound\nanything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,\non the same terms as [`GgRunLimits`].\n\nThe one exception is a declaration gg arms exactly as written and which is merely provably\ninert: [`min_offenders`](Self::min_offenders) above\n[`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the\nletter, so it warns rather than refusing.\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether the detector runs for this agent at all. `false`, which is what a profile that says\nnothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming\ntransport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
+          "type": "boolean"
+        },
+        "maxResponseChars": {
+          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Written and required on the terms\n[`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the\nrepetition rule, which is a declaration rather than an omission.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minOffenders": {
+          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Written and required on the terms [`window_words`](Self::window_words) is.\n\nMore than one is worth asking for because a single very common token (`the`, `0,`, a brace)\nis ordinary; a loop repeats a whole fragment, so it saturates several words together.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minSaturatedRun": {
+          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "repeatThreshold": {
+          "description": "`P` — how many times a single word may occur within the [window](Self::window_words) before\nit counts as an *offender*. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "windowWords": {
+          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive, and the minimum sample: the repetition rule cannot fire until\nthis many words have arrived.\n\nOne of the five knobs an **armed** detector writes. What the rule trips on is the five of\nthem together, so a detector armed on figures nobody chose would measure gg rather than the\nmodel, and an armed detector missing any of them refuses the launch. An unarmed detector owes\nnone of them, and a knob written on one is still read and still judged as written.\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
+    "GgSessionAgent": {
+      "description": "One agent the record captured, and how it came to exist — the table that tells a reader\nwhich agent every [entry](GgSessionEntry) belongs to, and where that agent came from.\n**One row per agent, not per turn**: repeating a provenance tuple on every entry would\ndefeat the pooling thesis outright.",
+      "properties": {
+        "agentId": {
+          "description": "The id the recorded run minted for this agent (`\"root\"` for the root agent).\nEvery [entry](GgSessionEntry::agent_id) is stamped with it.",
+          "type": "string"
+        },
+        "limitHit": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/session-summary.schema.json#/$defs/GgLimitBreach"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The ceiling that stopped this agent, when one did — and *which* ceiling, which\n[`terminal_status`](Self::terminal_status) cannot answer on its own."
+        },
+        "origin": {
+          "$ref": "#/$defs/GgSessionAgentOrigin",
+          "description": "How the agent came to exist, carrying the keys that explain it. This — not\n[`agent_id`](Self::agent_id) — is what identifies an agent across runs, because\nsubagent ids come off a global counter in the order agents reach their spawn, so two\nconcurrent agents take different ids from one run to the next."
+        },
+        "profile": {
+          "description": "The [display name](crate::gg::GgCapabilitySet::agent_name) that profile carried at launch,\nso a record read on its own still says which agent this was. Display text: two profiles may\nshare a [name](crate::gg::GgAgentConfig::name), and nothing joins on this.",
+          "type": "string"
+        },
+        "profileId": {
+          "description": "The [id](crate::gg::GgAgentConfig::id) of the agent profile it ran under — what joins\nthis row to the run's capability set, and to every telemetry event the agent emitted.",
+          "type": "string"
+        },
+        "terminalStatus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgAgentStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The status the agent's turn loop ended in, when it ended. Absent for an agent that\nnever reached an ending — one parked behind the parallelism cap when the run was\nkilled, which is exactly the row a salvaged record is opened for."
+        }
+      },
+      "required": ["agentId", "profileId", "profile", "origin"],
+      "type": "object"
+    },
+    "GgSessionAgentOrigin": {
+      "description": "How an [agent](GgSessionAgent) was created, carrying the keys that identify it\ndeterministically.\n\nEvery variant's payload is a key that is a function of the run's own structure — a parent's\nordered turn loop, or board state — and never of the global agent counter, whose values say\nonly what order agents happened to reach their spawn in.\n\nThe three board-dispatched variants are why this is an enum rather than a flat\n`(parent, ordinal)` pair: an [issue attempt](Self::IssueAttempt), a\n[reviewer](Self::Reviewer) and a [merge agent](Self::Merge) are all created with **no\nparent**, and a reviewer needs three keys rather than two, so a parent-keyed scheme\nleaves every one of them unbindable — and an unbound agent dies on its first turn.",
+      "oneOf": [
+        {
+          "description": "The run's root agent. Bound trivially — there is exactly one.",
+          "properties": {
+            "type": {
+              "const": "root",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "description": "Spawned by another agent: a delegated subagent, a workflow step, a\n[speculation](https://docs.testcabinet.ai/gg/speculative-execution/) arm, or a\n[fork](https://docs.testcabinet.ai/gg/fork-and-exec/).",
+          "properties": {
+            "ordinal": {
+              "description": "The spawn's position in the parent's own strictly-ordered turn loop, counted\nacross **all** spawn kinds rather than per profile — a fork runs the forker's\nown profile, so a fork child and a same-profile delegated subagent from one\nparent would otherwise compete for the same queue.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parent": {
+              "description": "The [`agent_id`](GgSessionAgent::agent_id) of the spawner.",
+              "type": "string"
+            },
+            "type": {
+              "const": "spawn",
+              "type": "string"
+            }
+          },
+          "required": ["type", "parent", "ordinal"],
+          "type": "object"
+        },
+        {
+          "description": "Succeeded another agent (the agent-transition path), which is likewise strictly\nordered within the predecessor.",
+          "properties": {
+            "ordinal": {
+              "description": "The succession's position within that predecessor.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "predecessor": {
+              "description": "The [`agent_id`](GgSessionAgent::agent_id) of the agent it succeeded.",
+              "type": "string"
+            },
+            "type": {
+              "const": "succession",
+              "type": "string"
+            }
+          },
+          "required": ["type", "predecessor", "ordinal"],
+          "type": "object"
+        },
+        {
+          "description": "Dispatched to implement a board [issue](crate::gg::GgBoardIssue).",
+          "properties": {
+            "attempt": {
+              "description": "**Which dispatch of that issue this agent is** — 0 for the first, 1 for the\nnext, and so on — a function of board state, not of the agent counter.\n\nEvery dispatch, not only every *retry*. The distinction is load-bearing and was\nlearned the hard way: a review that requests changes re-dispatches the issue to a\nfresh agent while deliberately **not** charging the retry budget (rework asked\nfor by a reviewer is not a failed attempt), so keying on the retry count gave two\ndifferent agents one identical origin, which is a provenance table that cannot tell\ntwo agents apart.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "issue": {
+              "description": "The issue's id.",
+              "type": "string"
+            },
+            "type": {
+              "const": "issue_attempt",
+              "type": "string"
+            }
+          },
+          "required": ["type", "issue", "attempt"],
+          "type": "object"
+        },
+        {
+          "description": "Dispatched to review a board issue's attempt.",
+          "properties": {
+            "issue": {
+              "description": "The issue's id.",
+              "type": "string"
+            },
+            "position": {
+              "description": "The reviewer's position within that round, so two reviewers of one round are\ndistinguishable.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "round": {
+              "description": "The review round.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "reviewer",
+              "type": "string"
+            }
+          },
+          "required": ["type", "issue", "round", "position"],
+          "type": "object"
+        },
+        {
+          "description": "Dispatched to merge a board issue's accepted work. The row that proves why\nprovenance keying is necessary: its live id comes straight off the **global\ncounter**, so it can only be bound by what it was dispatched *for*.",
+          "properties": {
+            "issue": {
+              "description": "The issue's id.",
+              "type": "string"
+            },
+            "ordinal": {
+              "description": "Which merge of that issue this is.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "merge",
+              "type": "string"
+            }
+          },
+          "required": ["type", "issue", "ordinal"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgSessionCommand": {
+      "description": "One subprocess gg ran, with its bulky streams pooled.",
+      "properties": {
+        "command": {
+          "description": "The command line, inline rather than pooled: it is short, and it is the **check**\nhalf of a recorded-command lookup (position is the key), so it is worth being able\nto read without resolving a pool.",
+          "type": "string"
+        },
+        "cwd": {
+          "$ref": "#/$defs/GgShellCwd",
+          "description": "Where it ran."
+        },
+        "exitCode": {
+          "description": "The exit status it returned.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "stderr": {
+          "description": "Its standard error, as an index into [`texts`](GgSessionRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stdout": {
+          "description": "Its standard output, as an index into [`texts`](GgSessionRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["command", "cwd", "exitCode", "stdout", "stderr"],
+      "type": "object"
+    },
+    "GgSessionEntry": {
+      "description": "One entry in the input log: a single pinned non-deterministic input, tagged so the\nmulti-agent interleaving recovers deterministically.",
+      "oneOf": [
+        {
+          "description": "One model turn's I/O: the pooled request and the response it returned.",
+          "properties": {
+            "durationMs": {
+              "description": "How long the call took, in milliseconds. Absent for a call whose latency was not\nmeasured.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
+            "request": {
+              "$ref": "#/$defs/GgSessionRequest",
+              "description": "What was sent."
+            },
+            "response": {
+              "description": "The response the turn yielded — the `gg` binary's `ModelResponse` (`text`,\n`toolCalls`, `finishReason`, `usage`, `cost`), carried as free-form JSON\nbecause its shape is owned by the binary. Its recorded `usage` is what makes a\ncost ceiling trip when it did."
+            },
+            "type": {
+              "const": "model_io",
+              "type": "string"
+            }
+          },
+          "required": ["type", "request", "response"],
+          "type": "object"
+        },
+        {
+          "description": "One model call that **failed**. Both the request and the error are kept: the\nrequest is what identifies the turn, and the error is what the loop branched on.",
+          "properties": {
+            "durationMs": {
+              "description": "How long the failed call took, in milliseconds. Worth as much as the successful\npath's and sometimes more: a retry exhaustion's latency is the whole of the backoff\nthe run paid for nothing.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
+            "error": {
+              "$ref": "#/$defs/GgSessionModelError",
+              "description": "Why it failed."
+            },
+            "request": {
+              "$ref": "#/$defs/GgSessionRequest",
+              "description": "What was sent."
+            },
+            "type": {
+              "const": "model_error",
+              "type": "string"
+            }
+          },
+          "required": ["type", "request", "error"],
+          "type": "object"
+        },
+        {
+          "description": "One tool call and the exact outcome the dispatch returned for it.",
+          "properties": {
+            "call": {
+              "$ref": "#/$defs/GgSessionToolCall",
+              "description": "The call."
+            },
+            "outcome": {
+              "$ref": "#/$defs/GgSessionToolOutcome",
+              "description": "The outcome."
+            },
+            "type": {
+              "const": "tool_result",
+              "type": "string"
+            }
+          },
+          "required": ["type", "call", "outcome"],
+          "type": "object"
+        },
+        {
+          "description": "One agent's context window as it stood for the turn just recorded.\n\nThe frame lands **after** the model call it describes and before that agent's next\none — the same attachment rule tool results already follow — which handles vision\nrecovery correctly for free: a refused image turn produces\n`model_error → model_io → prompt_frame`, so the frame attaches to the call that was\nactually sent.",
+          "properties": {
+            "items": {
+              "description": "The window's items, in the order they were rendered to the client.",
+              "items": {
+                "$ref": "#/$defs/GgSessionPromptItem"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "prompt_frame",
+              "type": "string"
+            }
+          },
+          "required": ["type", "items"],
+          "type": "object"
+        },
+        {
+          "description": "One shell command gg ran on the agent's behalf.",
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/GgSessionCommand",
+              "description": "The command and its result."
+            },
+            "origin": {
+              "$ref": "#/$defs/GgShellOrigin",
+              "description": "Which of the three command paths issued it."
+            },
+            "type": {
+              "const": "shell",
+              "type": "string"
+            }
+          },
+          "required": ["type", "origin", "command"],
+          "type": "object"
+        },
+        {
+          "description": "One `git` subprocess gg's own orchestration ran — a worktree add, a commit, a\nmerge, a diff.\n\nRecorded because its *result* explains a session that went wrong: a merge that\nconflicted changes the run, and a speculation judge scores whatever `git diff` printed.\nIt bypasses tool dispatch entirely, so this is the only place it is captured at all.",
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/GgSessionCommand",
+              "description": "The command and its result."
+            },
+            "type": {
+              "const": "git",
+              "type": "string"
+            }
+          },
+          "required": ["type", "command"],
+          "type": "object"
+        },
+        {
+          "description": "One read of the cancel file. Recorded because it **ends the session**, and a record\nthat stopped without saying why would look truncated.",
+          "properties": {
+            "canceled": {
+              "description": "Whether the probe found the session canceled.",
+              "type": "boolean"
+            },
+            "type": {
+              "const": "cancel_probe",
+              "type": "string"
+            }
+          },
+          "required": ["type", "canceled"],
+          "type": "object"
+        },
+        {
+          "description": "One read of the wall-clock deadline. Recorded because it changes control flow; a\nthe one clock read the loop branches on, so a record that lacked it could not say why\na session ended when it did.",
+          "properties": {
+            "elapsedMs": {
+              "description": "Milliseconds elapsed since the session began, as the run observed them.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "remainingMs": {
+              "description": "Milliseconds remaining before the run's ceiling, when one was configured.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
+            "type": {
+              "const": "clock",
+              "type": "string"
+            }
+          },
+          "required": ["type", "elapsedMs"],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "agentId": {
+          "description": "The [agent](GgSessionAgent::agent_id) whose loop consumed this input.",
+          "type": "string"
+        },
+        "seq": {
+          "description": "The globally monotonic sequence number this entry was recorded at, minted across\n**all** agents from one counter.\n\nIt is not merely an ordering hint: because a gg run holds run-global mutable state\n(the [board](https://docs.testcabinet.ai/gg/project-management/), inter-agent\nmessages, collected subagent results) that is rendered into every agent's pinned\nprompt each turn, the recorded interleaving **is** part of what each agent was shown.\nTwo agents' entries read in `seq` order are the windows the run actually built; read in\nany other order they are windows nobody saw.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["agentId", "seq"],
+      "type": "object"
+    },
+    "GgSessionFileRegion": {
+      "description": "The `offset`/`limit` window a paged file view covers.",
+      "properties": {
+        "limit": {
+          "description": "How many lines it returned.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "The 1-based first line the read returned.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["offset", "limit"],
+      "type": "object"
+    },
+    "GgSessionImage": {
+      "description": "One image a recorded call produced, as a **descriptor**: what it was and how big it was,\nnever its bytes.\n\nThe same shape the [telemetry stream](crate::gg::GgLoggedImage) carries, deliberately — the\ntwo are the same fact about the same turn, and a record that carried more would be a record\nnobody could afford to keep on every run.",
+      "properties": {
+        "bytes": {
+          "description": "The decoded size in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mediaType": {
+          "description": "The IANA media type (`image/png`, `image/jpeg`, …).",
+          "type": "string"
+        }
+      },
+      "required": ["mediaType", "bytes"],
+      "type": "object"
+    },
+    "GgSessionMessage": {
+      "description": "One distinct message body in the [message pool](GgSessionRecord::messages).\n\nA single message is typically re-sent on every turn it survives — the measured\nredundancy on a 12-turn single-agent session was 6.4× — so pooling it is the largest\nsingle win in the format after the toolset.",
+      "properties": {
+        "body": {
+          "description": "The message as the client sent it — the `gg` binary's `Message`, camelCase, with\nevery inline image payload replaced by a\n[descriptor](GgSessionImage). Carried as free-form JSON because its\nconcrete shape is owned by the `gg` binary rather than by this contract crate."
+        },
+        "id": {
+          "description": "The message's [content address](fingerprint_exact), computed over the body **including\nits exact image payloads** — before those payloads were reduced to descriptors.\n\nAddressing the message as it was *sent* is what keeps two different pictures of the same\nmedia type and decoded size two different messages. Addressing the stored body instead\nwould collide them, and the pool would then serve one turn's window in place of\nanother's.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "body"],
+      "type": "object"
+    },
+    "GgSessionModalities": {
+      "description": "Which input modalities a bound model slot was resolved to accept.",
+      "properties": {
+        "vision": {
+          "description": "Whether the slot's model accepts image input. `false` once a provider has\nrefused an image for this model and the loop has stripped images from the\ncontext.",
+          "type": "boolean"
+        }
+      },
+      "required": ["vision"],
+      "type": "object"
+    },
+    "GgSessionModelError": {
+      "description": "Why a model call failed.\n\nA failed call is an input like any other: a vision refusal strips images and re-runs the\nturn, and a retry exhaustion counts against an error ceiling, so **both change control\nflow** — and a record that dropped them would be blank precisely where a developer is\nmost likely to be looking.",
+      "properties": {
+        "attempts": {
+          "description": "How many attempts were made before giving up, for a retry exhaustion.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "kind": {
+          "$ref": "#/$defs/GgSessionModelErrorKind",
+          "description": "The error's class — what the loop branched on."
+        },
+        "message": {
+          "description": "The message the loop saw, which for a provider error is a truncated copy of its\nbody.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The model that produced the error, for an error that names one (a vision\nrefusal).",
+          "type": ["string", "null"]
+        },
+        "status": {
+          "description": "The HTTP status, for an error that carried one.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["kind", "message"],
+      "type": "object"
+    },
+    "GgSessionModelErrorKind": {
+      "description": "The class of a recorded [model error](GgSessionModelError) — a mirror of the `gg`\nbinary's `ModelError` variants, carried in the contract because the *class* is what\nthe turn loop branches on.",
+      "oneOf": [
+        {
+          "const": "missing_api_key",
+          "description": "The provider credential was not present in the environment. Fatal, and no request\nwas attempted.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "The provider returned a non-retryable status. Fatal.",
+          "type": "string"
+        },
+        {
+          "const": "retry_exhausted",
+          "description": "Every retry of a transient failure was exhausted. Retryable at the turn level, and\ncounted against the run's error ceiling.",
+          "type": "string"
+        },
+        {
+          "const": "vision_unsupported",
+          "description": "The request carried an image and the model has no route accepting image input.\nRecoverable in a way no other error is — the loop records that the model cannot\nsee images, strips them, and re-runs the same turn — which is why the\n[seed's resolved modalities](GgSessionSeed::model_modalities) matter.",
+          "type": "string"
+        },
+        {
+          "const": "parse",
+          "description": "A `2xx` response could not be parsed into a model response. Fatal.",
+          "type": "string"
+        },
+        {
+          "const": "provider_mismatch",
+          "description": "The gateway served the call from a provider other than the one the launch pinned. The\nreply is unusable: the cost recorded from it on would be on a different price basis, so\nthe run ends as a harness failure.",
+          "type": "string"
+        },
+        {
+          "const": "response_loop",
+          "description": "Every attempt at the request was abandoned mid-stream by\n[loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,\non all of them. Retryable at the turn level and counted against the run's error ceiling,\nexactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the\ntwo are diagnosed completely differently: one is the provider failing, the other is the\nmodel failing.\n\nThe record carries only the attempts that were *returned*, never the discarded ones: the\nrecorder journals the response a turn actually got, so a reply the guard abandoned never\nentered the context and correctly never enters the record either. The\n[`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop\ngave up.",
+          "type": "string"
+        },
+        {
+          "const": "timeout",
+          "description": "The call ran into the run's\n[**per-call ceiling**](crate::gg::GgRunLimits::model_call_timeout_secs) without producing a\nreply — a stalled provider or endpoint. Retryable at the turn level and counted against the run's\nerror ceiling; unlike every other class it never ends the session on its own.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgSessionPromptItem": {
+      "description": "One item of an agent's context window as it stood for a recorded turn.\n\nThese four typed fields exist in gg's window model and are recoverable from\n**nowhere else** — not the telemetry stream, not the raw output. The\n[`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt\ncontext-usage signal are otherwise indistinguishable on the wire, since both are\n[`System`](GgContextSource::System)-sourced, unlabelled and pinned.",
+      "properties": {
+        "label": {
+          "description": "The item's selector tag, when it carries one — a file view's workspace path, or\nthe fullness signal's sentinel.",
+          "type": ["string", "null"]
+        },
+        "message": {
+          "description": "The item's message, as an index into [`messages`](GgSessionRecord::messages).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgSessionFileRegion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a file view produced by a **paged** read, the window it covers."
+        },
+        "retention": {
+          "$ref": "#/$defs/GgSessionRetention",
+          "description": "Whether it survives a compaction boundary verbatim."
+        },
+        "slot": {
+          "$ref": "#/$defs/GgSessionPromptSlot",
+          "description": "Which slot of the window model it came from."
+        },
+        "source": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgContextSource",
+          "description": "The band it is attributed to in the per-source breakdown."
+        },
+        "turn": {
+          "description": "The session turn it was pushed on. `0` for everything seeded before the first\nturn, which is why the turn numbering the model sees starts at `1`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["message", "slot", "source", "retention", "turn"],
+      "type": "object"
+    },
+    "GgSessionPromptSlot": {
+      "description": "Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.\n\nThe window is not a flat list: every position but the thread is a *slot* that is\nassigned rather than appended, precisely so it cannot accumulate duplicates.",
+      "oneOf": [
+        {
+          "const": "system",
+          "description": "The system-prompt slot, held apart from the thread and never inherited.",
+          "type": "string"
+        },
+        {
+          "const": "thread",
+          "description": "The conversation thread itself.",
+          "type": "string"
+        },
+        {
+          "const": "context_usage",
+          "description": "The context-usage signal slot, rebuilt and re-assigned after every turn.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgSessionRecorder": {
+      "description": "Which build of gg wrote a record — the *explanatory* half of the record's\n[three-part identity](self#identity-and-what-a-reader-may-branch-on).\n\nCarried once on the record rather than per turn: it is a property of the capture, not\nof any individual input. Both members are optional because a build that cannot state\nits own version or commit reports \"unknown\" rather than inventing one.",
+      "properties": {
+        "commit": {
+          "description": "The exact commit the capturing build was made from, when it is known. The only\nthing that can tell an uncommitted prompt edit *within* one version from the\nreleased build of that version, so it is the only thing that identifies exactly which gg\nwrote a record.",
+          "type": ["string", "null"]
+        },
+        "ggVersion": {
+          "description": "The `gg --version` of the build that captured this record (for example `0.7.0`).\nExplanatory only — never the compatibility gate.",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "GgSessionRequest": {
+      "description": "One model request, as pool references: the conversation that was sent and the toolset\nthat was offered.",
+      "properties": {
+        "messages": {
+          "description": "The conversation sent this turn, as ordered indices into\n[`messages`](GgSessionRecord::messages).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "role": {
+          "$ref": "#/$defs/GgClientRole",
+          "description": "Which client issued it."
+        },
+        "shape": {
+          "$ref": "#/$defs/GgSessionRequestShape",
+          "description": "Whether the offered tool was required."
+        },
+        "toolset": {
+          "description": "The offered tool definitions, as an index into\n[`toolsets`](GgSessionRecord::toolsets). `None` for a call that offered no tools\nat all.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["role", "shape", "messages"],
+      "type": "object"
+    },
+    "GgSessionRequestShape": {
+      "description": "Which model-client call shape a [request](GgSessionRequest) was issued under.\n\nRecorded because the two shapes are not interchangeable: `complete_requiring` forces\nthe model to call the one offered tool, and a reader that cannot tell the two apart\nreads a forced call as a choice the model made freely — which is the opposite of what\nhappened, and exactly the thing a stalled run is diagnosed on.",
+      "oneOf": [
+        {
+          "const": "complete",
+          "description": "`ModelClient::complete` — the tools were *offered*.",
+          "type": "string"
+        },
+        {
+          "const": "complete_requiring",
+          "description": "`ModelClient::complete_requiring` — the single pooled tool was *required*.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgSessionRetention": {
+      "description": "Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction\nboundary or is ephemeral thread material.",
+      "oneOf": [
+        {
+          "const": "pinned",
+          "description": "Carried across compaction unchanged and never evicted.",
+          "type": "string"
+        },
+        {
+          "const": "ephemeral",
+          "description": "Thread material compaction may summarize and agent-managed context may evict.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgSessionSeed": {
+      "description": "The **fixed identity** a recorded session started from: everything a reader\nneeds before it consumes its first [entry](GgSessionEntry).\n\nRecording the seed is what makes a record self-contained rather than only meaningful\nbeside the run tree it came from.",
+      "properties": {
+        "baselineCommit": {
+          "description": "The commit gg observed the seeded workspace at, in the container, before the\nsession made any change.\n\nDeliberately kept alongside — not merged with — the host-side\n[`RunRecord::seed_commit`](crate::run_record::RunRecord::seed_commit). The host's\nvalue is harness-agnostic and authoritative; this one is gg's own observation.\nThey should be equal, and a mismatch is a *diagnostic* rather than redundancy.",
+          "type": ["string", "null"]
+        },
+        "modelModalities": {
+          "additionalProperties": {
+            "$ref": "#/$defs/GgSessionModalities"
+          },
+          "description": "The **final, resolved** modality state of each bound slot.\n\nResolved, not initial, and that distinction is load-bearing: vision recovery can\ncall the model twice for one turn and only the successful stripped call is\nrecorded, so a reader that started from an un-denied vision state would\nsend images on the first image turn and drift for a reason that has nothing to do\nwith any real change.",
+          "type": "object"
+        },
+        "modelProviders": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/GgProviderCandidate"
+            },
+            "type": "array"
+          },
+          "description": "The ordered candidate list each bound model may run on. Recorded because a\nrun's cost is on those providers' price bases, and a reader that guessed the\nlist would price the run against a different one.",
+          "type": "object"
+        },
+        "modelWindows": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The context window, in tokens, resolved for each bound model slot. Recorded\nbecause the window is what the fullness signal and compaction thresholds are\ncomputed against, so a reader that guessed it would compact at a\ndifferent turn than the run did.",
+          "type": "object"
+        },
+        "prompt": {
+          "description": "The build prompt the session was invoked with — the rendered test-case\ninstruction the root agent was given.",
+          "type": "string"
+        }
+      },
+      "required": ["prompt"],
+      "type": "object"
+    },
+    "GgSessionTextClip": {
+      "description": "One pooled text that is a **clip** of the payload the session actually saw, rather than the\nwhole of it.\n\nA capture clips a payload past [its ceiling](GG_SESSION_STREAM_MAX_BYTES). The clip has\nto be self-describing, and the\ntext pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string\ncannot tell a command that printed exactly that much from one that printed forty megabytes, and\nthe difference is the whole of whether a reader comparing its own output against it is\nentitled to call a mismatch drift. Hence this table, keyed by pool index, holding what the\nstored string is missing.\n\n# Why the whole payload's content address is on it\n\n[`original_id`](Self::original_id) is what makes a clipped record still *checkable*: a\nreader holding the whole output can hash it and answer \"is this the same output?\" exactly,\nfrom a record that kept 32 KiB of it. Without that the clip would be evidence of nothing — a\nmatching tail proves very little about a payload whose head was dropped.\n\nIt is also what makes the pool's dedup unambiguous. Interning keys on the address of the\n**original** rather than of the stored clip, so two different payloads that happen to share a\ntail occupy two pool entries with two clip rows, instead of collapsing into one entry whose\nsingle row could only describe one of them.",
+      "properties": {
+        "originalBytes": {
+          "description": "How many bytes the whole payload had.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "originalId": {
+          "description": "The [content address](fingerprint_exact) of the whole payload.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The index into [`texts`](GgSessionRecord::texts) whose entry is a clip.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["text", "originalBytes", "originalId"],
+      "type": "object"
+    },
+    "GgSessionToolCall": {
+      "description": "A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)\nprogram) made.",
+      "properties": {
+        "arguments": {
+          "description": "The call's arguments — free-form JSON, since each tool owns its own schema."
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgShellCwd"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The directory the call was dispatched in, for a tool that runs a subprocess.\nTyped rather than an absolute path string, so what is recorded is the part that says\nsomething — see [`GgShellCwd`]."
+        },
+        "id": {
+          "description": "The call id the loop minted. A program-composed call arrives under a synthetic id\ncarrying the program prefix, which is the only thing distinguishing the two.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool's name.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "arguments"],
+      "type": "object"
+    },
+    "GgSessionToolOutcome": {
+      "description": "The exact outcome a tool dispatch returned, with its bulky payloads pooled.\n\nInterning the output against the [text pool](GgSessionRecord::texts) is not merely a\nsize win: a tool's output is quoted **verbatim** into the `tool` message that carries\nit into the window, so the outcome and the message body are duplicates of one another.\nOne table collapses the pair.",
+      "properties": {
+        "data": {
+          "description": "The structured facts a responses-as-code program branches on, when the tool\nproduced them — with the one unbounded text field lifted out into\n[`data_text`](Self::data_text)."
+        },
+        "dataText": {
+          "description": "The bulky text lifted out of [`data`](Self::data), as an index into\n[`texts`](GgSessionRecord::texts).\n\nTwo of gg's structured tool payloads carry the *whole* of what the tool returned a second\ntime: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they\nwould be the largest thing in the record and the one thing in it that is neither pooled nor\nclipped — five reads of the same 100 KB file would store it five times, uncompressed, in a\nformat whose entire premise is that a payload is stored once. Worse, an inline copy\ndisagrees with a clipped [`output`](Self::output), leaving the entry with two answers to\nwhat the tool returned.\n\nPooling it fixes all three at once: the bytes are stored once, under the same ceiling\n`output` is clipped at, and — because a `read_file`'s `contents` and its `output` are\nusually the identical string — they normally dedup to the *same* pool entry, so the second\ncopy costs nothing at all.\n\nWhich field it belongs to is determined by `data`'s own variant, so nothing has to be\nrecorded twice to say. Absent on a record whose tool produced no such payload.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "failure": {
+          "description": "Why the call failed, when it failed and the failure was classified."
+        },
+        "images": {
+          "description": "The images the call produced, as **descriptors** — media type and decoded size,\nnever the bytes.\n\nThe same thing the [telemetry stream](crate::gg::GgTelemetryKind::ContextMessage)\nrecords, and for the same reason: a picture's payload is the one thing in a session\nlarge enough to dominate everything that explains it, and a record that carried them\nwould be a record nobody could afford to keep on every run.",
+          "items": {
+            "$ref": "#/$defs/GgSessionImage"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "description": "Whether the call succeeded.",
+          "type": "boolean"
+        },
+        "output": {
+          "description": "The text fed back to the model, as an index into\n[`texts`](GgSessionRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "summary": {
+          "description": "The short human-readable summary, when the call recorded one, as an index into\n[`texts`](GgSessionRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["ok", "output"],
+      "type": "object"
+    },
+    "GgSessionToolset": {
+      "description": "One distinct offered tool-definition array in the\n[toolset pool](GgSessionRecord::toolsets).\n\nThe finding that reshaped this format: on a real record the re-serialized tool array\nwas **52%** of the bytes — larger than the messages — and its redundancy is exactly\nthe turn count, because a run's offered toolset almost never changes. Pooling\ncollapses `N` copies to one.",
+      "properties": {
+        "id": {
+          "description": "The toolset's [content address](fingerprint_exact) over the serialized array.\nWhat the pool dedups on, so a run's one offered toolset is written once rather than\nonce per turn.",
+          "type": "string"
+        },
+        "tools": {
+          "description": "The tool definitions offered, in the order they were offered — the `gg` binary's\n`ToolDefinition[]`, camelCase."
+        }
+      },
+      "required": ["id", "tools"],
+      "type": "object"
+    },
+    "GgSessionTruncation": {
+      "description": "What a record is missing, when it is missing something.",
+      "properties": {
+        "bytes": {
+          "description": "How many bytes had been written when capture stopped, for a ceiling breach.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "lastSeq": {
+          "description": "The [`seq`](GgSessionEntry::seq) of the last entry that made it into the record.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "reason": {
+          "$ref": "#/$defs/GgSessionTruncationReason",
+          "description": "Why capture stopped."
+        }
+      },
+      "required": ["reason"],
+      "type": "object"
+    },
+    "GgSessionTruncationReason": {
+      "description": "Why a record stops short of the session it observed.\n\nCapture **degrades, it never fails the run it observes** — so every one of these is a\nrecorded fact rather than an error, and the record is still served.",
+      "oneOf": [
+        {
+          "const": "byte_ceiling",
+          "description": "The run's per-run byte ceiling was crossed and capture stopped.",
+          "type": "string"
+        },
+        {
+          "const": "session_killed",
+          "description": "The session died mid-capture: the journal has no terminating marker.\n\nDetected by the marker's **absence** rather than by a self-report, because a\nkilled gg cannot write a truncation marker either. This is the reason the\nterminating marker is mandatory on the normal exit path.",
+          "type": "string"
+        },
+        {
+          "const": "corrupt_journal",
+          "description": "The journal was readable up to a point and then was not — a line torn off\nmid-write, or a terminating marker whose entry count disagrees with what the\nassembly actually walked. Everything before the last complete entry is kept.\n\nDeliberately *not* what a mis-indexed pool produces. A journal whose indices do\nnot line up would assemble into a record that reads as complete and describes a\nconversation that never happened, so\n[assembly](crate::gg_session_assembly) refuses it outright and the run carries no\nrecord at all. This reason is for damage whose extent is known.",
+          "type": "string"
+        },
+        {
+          "const": "write_failed",
+          "description": "The journal writer failed (a stalled disk, a dead writer thread), which stops\ncapture for the whole run.\n\nCapture is never dropped *per line*: a hole in a pool would leave positional\nassembly silently shifting the wrong message body into a recorded prompt.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgShellCwd": {
+      "description": "Where a recorded command ran, expressed **relative to the workspace** wherever\npossible.\n\nAn absolute path says nothing a reader can use: the workspace root is an implementation\ndetail of the container the run happened in, so `/work/impl/web` and `/work` differ by the\nonly part worth recording. Storing the *relationship* is what makes the recorded directory\ncomparable across runs — and the same command in a different tree really is a different\ncommand.",
+      "oneOf": [
+        {
+          "description": "The agent's workspace root itself.",
+          "properties": {
+            "type": {
+              "const": "workspace",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "description": "A path beneath the agent's workspace root (an issue worktree, a subdirectory the\nmodel `cd`-ed into).",
+          "properties": {
+            "path": {
+              "description": "The workspace-relative path, with `/` separators and no leading `./`.",
+              "type": "string"
+            },
+            "type": {
+              "const": "relative",
+              "type": "string"
+            }
+          },
+          "required": ["type", "path"],
+          "type": "object"
+        },
+        {
+          "description": "A path outside the workspace entirely. Recorded verbatim because there is nothing\nto relativize it against, and reported on comparison rather than silently matched.",
+          "properties": {
+            "path": {
+              "description": "The absolute path.",
+              "type": "string"
+            },
+            "type": {
+              "const": "absolute",
+              "type": "string"
+            }
+          },
+          "required": ["type", "path"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgShellOrigin": {
+      "description": "Which of gg's three command paths issued a recorded shell command.\n\nAll three reach one command line, and the only thing they share is the tool context —\nwhich is why the seam belongs there. Recording *which* path asked is what keeps the commands gg\nruns *without the model asking* — an [agent-stop hook](https://docs.testcabinet.ai/gg/hooks/)'s\nending gate, say — distinguishable from the ones it ran because the model asked.",
+      "oneOf": [
+        {
+          "const": "tool",
+          "description": "The `shell` tool, called by the model.",
+          "type": "string"
+        },
+        {
+          "const": "program",
+          "description": "A [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE) program's\n`system.shell(…)`.",
+          "type": "string"
+        },
+        {
+          "const": "hook",
+          "description": "A [hook](crate::gg::GgHook) — a command hook's command line, or the script gg materialized\nfor a script hook and ran with the event as its argument.\n\nIts own origin rather than folded into [`Tool`](Self::Tool) because a hook's command is\nthe one gg runs *without the model asking*, and a record that filed it as a `shell` call\nwould attribute an operator's build to the model.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/session-record.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A gg run's **session record**: the fixed seed, four content-addressed pools, the agent\nprovenance table, and the ordered log of every non-deterministic input the session\nconsumed.\n\nSee the [module documentation](self) for the shape and for how a\nrecord from a newer gg is refused rather than read on a partial understanding of it.",
+  "properties": {
+    "agents": {
+      "description": "Every agent the session created, and how. One row per agent.",
+      "items": {
+        "$ref": "#/$defs/GgSessionAgent"
+      },
+      "type": "array"
+    },
+    "capabilitySet": {
+      "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
+      "description": "The [capability set](GgCapabilitySet) the run was configured with, so a\nreader has the configuration the run was launched with rather than one assembled to\nsuit the record."
+    },
+    "clips": {
+      "description": "Which [texts](Self::texts) are [clips](GgSessionTextClip) rather than whole payloads, in\nascending pool order. Empty for a record whose payloads all fit.\n\nA sparse side table rather than a field on each pooled text: the overwhelming majority of\npayloads are not clipped, and widening every entry of the pool to say so would cost more\nthan the clipping saves. Always serialized, like the pools it annotates rather than like\n[`truncation`](Self::truncation) — an empty table is the positive statement \"nothing was\nclipped\", which is exactly what a reader of a standard record needs to hear.",
+      "items": {
+        "$ref": "#/$defs/GgSessionTextClip"
+      },
+      "type": "array"
+    },
+    "entries": {
+      "description": "Every pinned non-deterministic input, in globally monotonic\n[`seq`](GgSessionEntry::seq) order.",
+      "items": {
+        "$ref": "#/$defs/GgSessionEntry"
+      },
+      "type": "array"
+    },
+    "formatVersion": {
+      "description": "The format **this document** is in. The compatibility contract, and the only\nidentity a reader may branch on.\n\n[`GG_SESSION_FORMAT_VERSION`] is the one version this build reads; a record stating any\nother is refused rather than read on a partial understanding of its entry kinds.\nRequired: a record that states no format is malformed, not a record to be guessed at.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "messages": {
+      "description": "The message pool. [Entries](GgSessionEntry) reference it by index.",
+      "items": {
+        "$ref": "#/$defs/GgSessionMessage"
+      },
+      "type": "array"
+    },
+    "recorder": {
+      "$ref": "#/$defs/GgSessionRecorder",
+      "description": "Which build captured it. Explanatory; never a gate."
+    },
+    "routingKey": {
+      "description": "The run's [routing key](crate::gg::GgTelemetryKind::SessionStarted::routing_key): the\nvalue every request of the run sent as `session_id` and `prompt_cache_key`, which is what\na provider dashboard shows for them.",
+      "type": ["string", "null"]
+    },
+    "seed": {
+      "$ref": "#/$defs/GgSessionSeed",
+      "description": "The fixed identity the session started from."
+    },
+    "sessionId": {
+      "description": "The gg session this record is of — the run id, matching the\n[telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.",
+      "type": "string"
+    },
+    "texts": {
+      "description": "The text pool: every large string payload — a tool outcome's output, a `git`\ninvocation's stdout, a probe body.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "toolsets": {
+      "description": "The offered-toolset pool.",
+      "items": {
+        "$ref": "#/$defs/GgSessionToolset"
+      },
+      "type": "array"
+    },
+    "truncation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GgSessionTruncation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the record is missing, when it is missing something. Absent on a complete\ncapture."
+    }
+  },
+  "required": [
+    "formatVersion",
+    "recorder",
+    "sessionId",
+    "capabilitySet",
+    "seed",
+    "agents",
+    "messages",
+    "toolsets",
+    "texts",
+    "clips",
+    "entries"
+  ],
+  "title": "GgSessionRecord",
+  "type": "object"
+}

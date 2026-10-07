@@ -11,18 +11,10 @@
     {
       "name": "flash",
       "shape": "point",
-      "position": [
-        64.0,
-        64.0,
-        0.0
-      ],
+      "position": [64.0, 64.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 100.0,
       "speed": 200.0,
       "speedSpread": 60.0,
-      "direction": [
-        0.0,
-        -1.0,
-        0.0
-      ],
+      "direction": [0.0, -1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 11,
       "forces": {

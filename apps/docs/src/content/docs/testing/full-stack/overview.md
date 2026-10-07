@@ -2,140 +2,126 @@
 title: Overview
 ---
 
-A **full-stack** test case is an [end-to-end](/testing/end-to-end/overview/)
-case — a single playable program a model builds from scratch — with one
-addition: the model must **also produce the program's own 2D assets during the
-run**, rather than being handed them. It is the same long-horizon,
-fully-autonomous software task as an end-to-end case, scored the same way, but it
-folds the [asset-generation](/testing/asset-generation/overview/) capability into
-the build: one model both draws the sprites, authors the effects and sound, and
-writes the code that ships them.
+A full-stack test case is an [end-to-end](/testing/end-to-end/overview/) case
+with one addition: the model produces the program's own assets during the run.
+One model makes the art, authors the effects and the sound, and writes the code
+that ships them.
 
-Everything an end-to-end case requires still holds — a full-stack case builds a
-self-contained static site through the [fixed build
-interface](/testing/end-to-end/overview/#design-requirements), is validated
-automatically and judged by a human who plays it, and reuses the same versioned
+Everything an end-to-end case requires still holds. A full-stack case builds a
+self-contained static site through the same fixed build interface, is validated
+automatically, is judged by a person who plays it, and reuses the same versioned
 definitions, variants, specs, references, proofs, review items, scoring domains,
-and required [instrumentation](/testing/end-to-end/instrumentation/) (the debug
-API, deterministic core, and debug overlay a run is driven through). This page
-covers only what the full-stack type **adds**; read the [end-to-end
-overview](/testing/end-to-end/overview/) first for the shared machinery, see
-[Manifests](/testing/full-stack/manifests/) for the `test-case.toml` differences,
-and [Evaluation](/testing/full-stack/evaluation/) for how a finished run is
-scored.
+and instrumentation. Read the
+[end-to-end overview](/testing/end-to-end/overview/) for that shared machinery.
+This page covers what the full-stack type adds.
 
-## Why it exists
+## The run image
 
-An end-to-end case that needs real art
-[pre-provides](/testing/end-to-end/overview/#assets) it: The Test Cabinet's goal
-there is to evaluate software development, so seeding fixed assets keeps runs
-comparable and keeps the test about code. A separate
-[asset-generation](/testing/asset-generation/overview/) case, conversely,
-evaluates only asset creation and produces no program. Between them sits a
-familiar **two-run pattern**: one asset-generation run produces an asset, and a
-later end-to-end run merely **consumes** it.
+A full-stack run executes in one of two images, selected by the case's
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension). A `2d`
+case, which is the default, runs in `test-cabinet-full-stack-2d`; a `3d` case
+runs in `test-cabinet-full-stack-3d`. A deployment pins them with
+`TCAB_CONTAINER_IMAGE_FULL_STACK_2D` and `TCAB_CONTAINER_IMAGE_FULL_STACK_3D`.
 
-A full-stack case collapses that seam. Instead of one model drawing the art and a
-different model (in a different run) building the game around it, **one model does
-both in one run** — it produces the sprites, sheets, particle effects, and sound
-its program needs, then builds the program that ships them. This is a higher-
-fidelity test: it measures whether a single model can carry a whole small product
-— art direction, effects, audio, and code — to a coherent whole, the way a real
-solo developer does, rather than integrating assets someone else made to spec.
+Both images are the base-wasm image plus asset-generation binaries on `PATH`.
+Six of those binaries produce 2D assets, and both images carry all six:
 
-## The full-stack-2d run image
+| Binary        | Produces                           | Reference                                                             |
+| ------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `draw`        | a single sprite → PNG              | [The sprite binaries](/testing/asset-generation/sprite-binaries/)     |
+| `draw-sheet`  | a sprite sheet → per-frame PNGs    | [The sprite binaries](/testing/asset-generation/sprite-binaries/)     |
+| `particle-2d` | a particle system → `system.json`  | [The particle binaries](/testing/asset-generation/particle-binaries/) |
+| `sfx-synth`   | a procedural sound effect → `.wav` | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
+| `sfx-sample`  | a sampled sound effect → `.wav`    | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
+| `music`       | sequenced music → `.wav` + `.mid`  | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
 
-An end-to-end run executes in the **base-wasm** container (the Node base plus the
-shared Rust → WebAssembly toolchain). A full-stack run instead executes in a
-dedicated **`test-cabinet-full-stack-2d`** run image: that same base-wasm plus the 2D
-asset-generation binaries baked onto `PATH`. Selecting the image is automatic — the
-full-stack test type picks it in place of the base-wasm image — so a case declares
-nothing to get the tools; they are simply present at run time. Because full-stack
-inherits base-wasm, a full-stack build may also author its core simulation in Rust and
-compile it to a **committed wasm build input**, exactly as an end-to-end build may; the
-compiled `.wasm` is committed and consumed like any other produced asset — the Rust
-toolchain is on `PATH` only while the run is live, so `npm run build` must not invoke
-`cargo`/`wasm-pack`, exactly as it must not shell out to `draw`.
+The 3D image adds three more, so a `3d` case has all nine:
 
-Six binaries are on `PATH`, each the same tool the corresponding
+| Binary        | Produces                                                      | Reference                                                             |
+| ------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `voxel`       | a static voxel model → `mesh.glb`                             | [The voxel binaries](/testing/asset-generation/voxel-binaries/)       |
+| `voxel-anim`  | a rigged, animated voxel model → per-part `.glb` + `rig.json` | [The voxel binaries](/testing/asset-generation/voxel-binaries/)       |
+| `particle-3d` | a volumetric particle system → `system.json`                  | [The particle binaries](/testing/asset-generation/particle-binaries/) |
+
+Each binary is the same tool the corresponding
 [asset-generation](/testing/asset-generation/overview/) case uses, invoked as a
-CLI whose `--help` is the contract (the model runs `<binary> --help` to learn its
-operations — a run seeds no operations schema):
+CLI whose `--help` states its operations. A run seeds no operations schema. The
+linked pages are the authoritative reference for each tool's operations, output,
+and previews.
 
-| Binary            | Produces                                                                   | Reference                                                             |
-| ----------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **`draw`**        | a single sprite → PNG                                                      | [The sprite binaries](/testing/asset-generation/sprite-binaries/)     |
-| **`draw-sheet`**  | a sprite sheet → per-frame PNGs                                            | [The sprite binaries](/testing/asset-generation/sprite-binaries/)     |
-| **`particle-2d`** | a particle system → `system.json`                                          | [The particle binaries](/testing/asset-generation/particle-binaries/) |
-| **`sfx-synth`**   | a procedural sound effect → `.wav`                                         | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
-| **`sfx-sample`**  | a sampled sound effect over the baked `combat-core` pack → `.wav`          | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
-| **`music`**       | sequenced music over the baked `gm-lite` instrument bank → `.wav` + `.mid` | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
+The audio packs a run may use come from the case rather than the image. A
+full-stack case declares them in its manifest's `[audio] packs`, and the run
+container is staged with those packs alone. A config that names no palette gets
+the first declared pack of its kind, a sample pack for `sfx-sample` and an
+instrument bank for `music`. See [Manifests](/testing/full-stack/manifests/).
 
-The linked asset-generation binary pages are the **authoritative reference** for
-each tool's operations, output, and previews; this type does not restate them.
-The image is 2D only — there are no voxel, mesh, skinned, `ui`, or `material`
-tools — because a full-stack program is a browser game built from sprite art,
-2D particle effects, and audio. The `sfx-sample` and `music` binaries carry the
-same baked [sample pack and instrument
-bank](/testing/asset-generation/audio-binaries/#the-sample-library) their asset-
-generation counterparts do (`combat-core` and `gm-lite`).
+The `3d` dimension covers cube-voxel models and volumetric effects. A concept
+whose art needs meshed or SDF geometry, `ui` screens, or `material` textures is
+an [asset-generation](/testing/asset-generation/overview/) case instead.
 
-## Produced assets are build inputs
+Both images inherit base-wasm, so a full-stack build may author its simulation
+core in Rust and compile it to a committed wasm build input, exactly as an
+end-to-end build may.
 
-The crucial difference from the two-run pattern is **where the produced assets
-go**. In an asset-generation run, the asset is the scored output and the run
-regenerates it from a recorded action log to defeat cheating. In a full-stack run
-there is **no separate scored asset and no action-log regeneration**: the model
-produces the files into the run workspace and its program **consumes them
-directly**, exactly as it would consume [seeded
-assets](/testing/end-to-end/overview/#assets). The produced files are **build
-inputs**, and they are judged only as part of the running program a reviewer
-plays — the asset's quality is a dimension of the experience, not a
-independently-scored artifact.
+## Produced assets as build inputs
 
-Because they are build *inputs*, asset generation happens **once** and the
-generated files are committed. The asset-generation binaries are on `PATH` only
-while the run is live — they are **not** present when the build is re-run to
-[validate](/components/core/validation/) it, nor when the published source is
-rebuilt. A case's build must therefore be **self-contained**: it bundles the
-committed asset files and must not invoke `draw` or the other binaries. A build
-that shells out to them (regenerating assets it already has) fails wherever those
-tools are absent — a catastrophic load failure, even though the game itself is
-complete. Producing the assets some other way is equally fine; what matters is
-that the committed files are what the build consumes.
+The model produces its asset files into the run workspace and its program
+consumes them directly, the way an end-to-end build consumes seeded assets. The
+produced files are build inputs. They are judged as part of the running program
+a reviewer plays, so an asset's quality is a dimension of the experience rather
+than a separately scored artifact.
 
-How each kind is consumed mirrors how an end-to-end build consumes a provided or
-produced asset:
+Asset generation therefore happens once and the generated files are committed.
+The binaries are on `PATH` only while the run is live. They are absent when the
+build is re-run to [validate](/components/core/validation/) it and when the
+published source is rebuilt, so a case's build must be self-contained: it
+bundles the committed asset files. A build that shells out to `draw` or the
+other binaries fails wherever those tools are absent, which is a load failure
+even when the game itself is complete. The same holds for a Rust core: the build
+bundles the committed `.wasm` rather than invoking `cargo` or `wasm-pack`.
+Producing an asset some other way is equally acceptable; what matters is that
+the committed files are what the build consumes.
 
-- **Sprites and sheets** (`draw`, `draw-sheet`) are plain **PNG** files the game
-  draws directly — a static sprite, or a sheet's per-frame PNGs animated by the
-  game.
-- **Particle systems** (`particle-2d`) are a **`system.json`** that is not
-  self-describing pixels but a definition a simulator **plays live**. The game
-  plays it through the [`@test-cabinet/particle-runtime`
-  package](/testing/asset-generation/particle-binaries/)'s **`./canvas`** 2D
-  binding — the same runtime the review UI uses — so the case declares that
-  package (see [Manifests](/testing/full-stack/manifests/)) exactly as an
-  end-to-end case that [consumes a produced particle
-  effect](/testing/end-to-end/overview/#packages) does.
-- **Audio** (`sfx-synth`, `sfx-sample`, `music`) is a finished **`.wav`** the
-  game plays directly through `<audio>` or the Web Audio API; `music`
-  additionally emits a **`.mid`** score alongside the `.wav`.
+How each kind is consumed mirrors how an end-to-end build consumes a provided
+asset:
 
-Because the produced files ship inside the static build, they travel with the
-run and play back in the console exactly as the game plays them — there is no
-extra viewer for a full-stack asset the way there is for a standalone asset-
-generation output.
+- Sprites and sheets (`draw`, `draw-sheet`) are plain PNG files the game draws
+  directly, either as a static sprite or as a sheet's per-frame PNGs animated by
+  the game.
+- Particle systems (`particle-2d`, `particle-3d`) are a `system.json` definition
+  a simulator plays live. The game plays it through
+  [`@clockwyrks/particle-runtime`](/testing/asset-generation/particle-binaries/),
+  the same runtime the review UI uses, so the case declares that package: the
+  `canvas` entry point composites a 2D effect, and the `three` entry point draws
+  a volumetric one. See [Manifests](/testing/full-stack/manifests/).
+- Voxel models (`voxel`, `voxel-anim`) are glTF binaries, and an animated model
+  adds the `rig.json` describing its parts, joints, and animations. The game
+  loads them through
+  [`@clockwyrks/voxel-runtime`](/components/voxel-runtime/overview/), whose
+  `parseGlb` decodes a part's mesh and whose `three` entry point poses and draws
+  the rig, so the case declares that package as well.
+- Audio (`sfx-synth`, `sfx-sample`, `music`) is a finished `.wav` the game plays
+  through `<audio>` or the Web Audio API. `music` additionally emits a `.mid`
+  score alongside the `.wav`.
+
+The produced files ship inside the static build, so they travel with the run and
+play back in the console exactly as the game plays them.
 
 ## The standing quality directive
 
-Every full-stack case's prompt is automatically prefixed at render time with a
-standing **quality directive** — the full-stack analogue of the [asset-generation
-quality preamble](/testing/asset-generation/overview/). It tells the model that
-this is a full-stack build, that it must use the on-`PATH` binaries to author
-**real** assets rather than placeholder rectangles or silence, and that it should
-hold the produced art, motion, effects, and sound to the same bar as the code.
-It is prepended by The Test Cabinet (`FULL_STACK_PREAMBLE` in
-`crates/core/src/prompt.rs`), so an author does **not** need to restate any of it
-in the case's `prompt.hbs`; the prompt template should cover only what is
-specific to the case, exactly as an end-to-end prompt does.
+Every full-stack case's prompt is prefixed at render time with a standing
+quality directive (`FULL_STACK_2D_PREAMBLE` and `FULL_STACK_3D_PREAMBLE` in
+`crates/core/src/prompt.rs`). It tells the model that this is a full-stack
+build, that the on-`PATH` binaries are there to author real art, animation,
+effects, and sound, that the build must be self-contained and bundle the
+committed files, and that the assets are held to the same quality ceiling as the
+code.
+
+The directive names the binaries the case's
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) puts on
+`PATH`: a `2d` case is handed the six, a `3d` case all nine. That list is the
+only wording the two dimensions differ in, so both are held to one standard.
+
+The directive is prepended by The Test Cabinet at the one point every prompt
+renders through. A case's `prompt.hbs` covers only what is specific to that
+case, exactly as an end-to-end prompt does.

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -14,20 +14,33 @@
         --red: #e8635a;
         --blue: #5a8fe8;
       }
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
       body {
         margin: 0;
         background: var(--bg);
         color: var(--ink);
-        font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        font:
+          14px/1.4 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 12px;
         padding: 16px;
       }
-      h1 { font-size: 16px; margin: 4px 0; letter-spacing: 0.08em; }
-      .sub { color: var(--muted); font-size: 12px; }
+      h1 {
+        font-size: 16px;
+        margin: 4px 0;
+        letter-spacing: 0.08em;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
       #stage {
         background: #0b0805;
         border: 1px solid #3a2a1c;
@@ -40,8 +53,12 @@
         align-items: center;
         font-size: 15px;
       }
-      .score-red { color: var(--red); }
-      .score-blue { color: var(--blue); }
+      .score-red {
+        color: var(--red);
+      }
+      .score-blue {
+        color: var(--blue);
+      }
       .controls {
         display: flex;
         gap: 12px;
@@ -62,13 +79,33 @@
         cursor: pointer;
         font: inherit;
       }
-      button:hover { background: #3a2c20; }
-      input[type="range"] { width: 320px; accent-color: var(--seed, #e8c14a); }
-      select { background: #2a2018; color: var(--ink); border: 1px solid #4a3a28; border-radius: 6px; padding: 5px; }
-      .result { font-size: 14px; min-height: 1.4em; }
-      .result.win-red { color: var(--red); }
-      .result.win-blue { color: var(--blue); }
-      label { color: var(--muted); }
+      button:hover {
+        background: #3a2c20;
+      }
+      input[type="range"] {
+        width: 320px;
+        accent-color: var(--seed, #e8c14a);
+      }
+      select {
+        background: #2a2018;
+        color: var(--ink);
+        border: 1px solid #4a3a28;
+        border-radius: 6px;
+        padding: 5px;
+      }
+      .result {
+        font-size: 14px;
+        min-height: 1.4em;
+      }
+      .result.win-red {
+        color: var(--red);
+      }
+      .result.win-blue {
+        color: var(--blue);
+      }
+      label {
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
@@ -112,7 +149,8 @@
         ]);
 
         const engine = await Engine.instantiate("./assets/foray-core.wasm");
-        if (!engine.load(replay)) throw new Error("foray-core rejected the replay");
+        if (!engine.load(replay))
+          throw new Error("foray-core rejected the replay");
         const board = engine.board();
         const sheet = await loadSheet("./assets/sheet.png", atlas, palette);
 
@@ -162,9 +200,9 @@
           if (a.result) {
             const r = a.result;
             const who = r.winner ? r.winner.toUpperCase() : "DRAW";
-            resultEl.textContent =
-              `${who} · ${r.ended} · red ${r.score.red} – blue ${r.score.blue} · ${r.ticks} ticks`;
-            resultEl.className = "result" + (r.winner ? ` win-${r.winner}` : "");
+            resultEl.textContent = `${who} · ${r.ended} · red ${r.score.red} – blue ${r.score.blue} · ${r.ticks} ticks`;
+            resultEl.className =
+              "result" + (r.winner ? ` win-${r.winner}` : "");
           } else {
             resultEl.textContent = "";
             resultEl.className = "result";

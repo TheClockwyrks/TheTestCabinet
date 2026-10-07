@@ -13,7 +13,7 @@
 // map onto the produced systems. This mapping is the one place the produced files meet
 // the redesigned roster.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxKind, Cue } from "./types";
 import type { DamageType, TowerKind } from "./constants";
 

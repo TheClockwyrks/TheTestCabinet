@@ -1,0 +1,7 @@
+# Everything `build.sh` generates on the way to its three artifacts: the vendored Opal packages and
+# the entry module they are baked with, both derived from the pins in `opal-version.sh`. (There was
+# a `compiler.sh` beside it; it folded into `build.sh`, because one script per arm is what lets one
+# rerun set decide when the component and the host-side compiler are cut — they are lowered from
+# one `src/` and must not be two vintages.) Nothing here is committed: the artifacts go to
+# $GG_ARTIFACTS_OUT_DIR, the `OUT_DIR` of crates/gg-sandbox-artifacts/ruby.
+.build/

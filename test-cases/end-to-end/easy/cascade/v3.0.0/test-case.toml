@@ -1,0 +1,3723 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+#
+# THE ORDER OF THIS FILE MATTERS. Every ROOT key — `variants`, `init`,
+# `max_runtime_hours` and `engines`, together with the metadata above them — must
+# precede the first table header. A root key written after a header such as
+# `[instrumentation]` parses as a member of THAT table
+# (`instrumentation.variants`), and the case then resolves declaring no variants
+# at all. The layout below is Refract's, Carom's and Wireworm's, key for key.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "cascade"
+
+# Human-readable display name for this test case.
+name = "Cascade"
+
+# The test type. It decides which tables are required and which are rejected;
+# `end-to-end` is the default and is stated here rather than left implied.
+type = "end-to-end"
+
+# Relative difficulty of this case, surfaced on the site. Cascade asks for the
+# whole of Klondike — thirteen piles, what each accepts and refuses, ordered runs,
+# a stock whose waste remembers each turn as a set, an auto-move, four screens, a
+# HUD, ten cues — driven entirely by the pointer and capped by a physics-driven
+# victory cascade. It is a lot of rules, but every one of them is a statement
+# about a pile: there is no opponent to model and nothing that has to be tuned by
+# feel. Difficulty rates how demanding the THINKING is, not how long the build
+# takes — `max_runtime_hours` below is where the size of the job is accounted for.
+# So easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["cards", "solitaire", "klondike", "2d"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+Klondike solitaire on a felt table, every card drawn in code, capped by a \
+physics-driven victory cascade that buries the table in bouncing cards."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version. The site aggregates every
+# version's entry, newest first, into the case's changelog. Like `description`,
+# it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs, the selected engine and the selected variant) and
+# handed to the model as the build instruction. It injects absolute in-container
+# paths through template variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Cascade is a substantial build — thirteen piles and every
+# rule over them, ordered runs, the stock's set memory, the pointer's grab, drag,
+# drop and double-click rules, four screens, a HUD, ten cues, the victory cascade,
+# and, under the engineless run, the whole runtime layer beneath all of it. Four
+# hours is comfortably more than a healthy build of that size needs while still
+# catching a session that never terminates.
+max_runtime_hours = 4
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# There is deliberately NO `assets` key. Cascade draws every card, the table, the
+# HUD and every screen in code, so the case seeds no art at all. That is one place
+# it is simpler than Wireworm and Fathom, and it is why nothing in the seeded
+# workspaces copies an `assets/` tree into `dist/`.
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Cascade declares TWO, and they differ in one thing — how many cards a stock turn
+# moves:
+#   - `draw-one`   the gentler deal. A turn moves one card, so every card in the
+#                  stock is reachable.
+#   - `draw-three` the classic Klondike deal. A turn moves three cards, fanned,
+#                  with only the frontmost playable.
+#
+# The four SCREENS are not variants, and neither are the two deal modes' shared
+# rules. A variant is a difference in the game a run is asked to BUILD; a screen is
+# what a single build already contains. Two seeded specs branch on the variant,
+# `specs/stock.md.hbs` and `specs/table.md.hbs`, and they branch only over the turn
+# count, the deal-mode id and label, and the fan. The set memory the waste keeps,
+# the recycle rule and every other stock rule are common text, and the snapshot
+# shape does not branch at all: `wasteSets` and `wasteVisibleCount` are reported by
+# both variants, so one validator suite reads both.
+#
+# Each variant declares its own `[workspaces]`, because four entries of
+# `src/constants.ts` differ, and its own additive review points under the case's
+# common `stock` category.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/draw-one.toml", "variants/draw-three.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# pointer input, the audio bus, and the on-screen diagnostics; one of them also
+# owns rendering and the gameplay framework the game is written inside. It is a
+# *run dimension*, chosen per run alongside the model, the harness and the variant,
+# and recorded on the run; it is not a property of the game.
+#
+# Cascade supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the frame loop, the canvas fit, the pointer input, the audio,
+#                     the debug overlay, the `window.__cascade` surface, and every
+#                     figure the specification fixes, from the specs alone.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules around
+#                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
+#                     stub the build replaces, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes the
+#                     whole of `src/game.ts` — the game definition, its instance,
+#                     its mode, its live state and its actors — and the debug
+#                     surface its instance's `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to THIS game under it.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+# ---- Tables begin here. No root key may follow. -----------------------------
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     pointer input, audio, debug overlay and `window.__cascade`
+#                     surface, and every figure the specification fixes, from the
+#                     specs alone. It is shared by both variants, because it holds
+#                     no game code for a variant to differ in.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them),
+#                     `src/main.ts` (the browser entry) and the `src/game.ts` stub
+#                     the build replaces.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds `src/constants.ts` and `src/main.ts`. It seeds NO
+#                     `src/game.ts`: `src/main.ts` imports one, so a freshly seeded
+#                     workspace fails `npx tsc --noEmit` on the missing module.
+#                     That failure is the starting point, and `src/main.ts` says so
+#                     in its header.
+#
+# The two engine projects are PER VARIANT, because `src/constants.ts` differs in
+# four entries — `TURN_COUNT`, `DEAL_MODE`, `DEAL_MODE_LABEL` and, on Draw Three,
+# `WASTE_FAN`. The table below names the Draw One set, and each variant file
+# declares its own `[workspaces]` that REPLACES this whole table rather than one
+# entry of it, so no run depends on which set happens to be named here.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/draw-one/simple-2d"
+"structured-2d" = "workspaces/draw-one/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`.
+# `npm ci` is deliberate — it requires the build to commit a `package-lock.json`,
+# so the validated build installs exactly what the deploy will. Both commands are
+# required; there are no defaults, so every case states exactly how its
+# implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint . --max-warnings 0"
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its
+# scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__cascade` once the game has initialized, so
+# the handle is what a person opening the console of such a build finds. An engine
+# run has NO global at all: the build writes the surface, its `initialize` returns
+# it — beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view, its
+# surface is written in the shape of `update` — a pose takes the current state and
+# returns the next, applied through `engine.apply`, and a reading takes the state
+# and returns what it read, called with `engine.state`. `structured-2d` holds the
+# world live, so its poses take only their own arguments and act on it at the call,
+# and its readings return plain data. One handle, three ways to reach the same
+# operations.
+#
+# There is deliberately no `tick_hz`. Cascade mandates no fixed timestep, which is
+# a change from v2.0.0's `tick_hz = 120`. Every rate in the game is per second and
+# integrated against the delta time the frame hands it, so there is no case-wide
+# step size for the harness to sample at, and each validator constructs its own
+# clock and asks for exactly the frames it wants. The key is optional precisely so
+# a case clocked this way omits it.
+[instrumentation]
+handle = "__cascade"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. Neither variant declares one
+# of its own: the two files the deal mode reaches branch inside themselves, so each
+# run receives one self-contained spec set describing one game.
+#
+# The specification is decomposed by concern, and EACH RULE LIVES IN EXACTLY ONE
+# FILE. Each file is self-contained enough to be read on its own while naming its
+# siblings, by file name in plain text, where a fact lives elsewhere.
+#
+# Every `.hbs` source is rendered before it lands, on two axes: `engine.slug`,
+# which selects what the build is handed and what it must write, and
+# `variant.slug`, which selects this run's deal mode. A spec's `dest` defaults to
+# its `source` with a trailing `.hbs` stripped, so an `.md.hbs` source seeds to the
+# same `.md` path and a plain `.md` source is seeded verbatim.
+
+# What the game is and what the finished build must be: the premise, the hard
+# requirements, the free choices, the fixed 1280x720 stage and the TOP-LEFT
+# convention every reported and accepted (x, y) uses, the stage-fit requirement,
+# and the legibility table — what a player must be able to read at a glance, which
+# is all this case fixes about the look. It names specs/table.md as where the pile
+# geometry lives rather than restating it. It branches on the engine for what the
+# runtime supplies against what the build writes.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The geometry of the table: the card footprint, the seven column anchors, the top
+# row and its stock, waste and four foundation anchors, the two overlap offsets,
+# long-column compression with its floor and its relaxation, the HUD strip, and
+# SOLE OWNERSHIP of every pile's DROP RECTANGLE, which specs/controls.md resolves a
+# release against. It branches on the variant for the waste alone: what the waste
+# shows, and, under Draw Three, the fan's pitch and where it ends.
+[[spec]]
+source = "specs/table.md.hbs"
+
+# The deck and the deal: fifty-two cards in four suits and thirteen ranks, Ace low
+# and King high; the uniform shuffle at every new game; seven columns of 1..7 with
+# each column's lowest card face-up; twenty-four cards to a face-down stock; an
+# empty waste and four empty foundations; and that a new deal clears the painted
+# table. Seeded verbatim: nothing in it differs by engine or by variant.
+[[spec]]
+source = "specs/deal.md"
+
+# The four foundations and what they accept: an Ace onto an empty one and
+# thereafter the next-higher card of the same suit, any suit onto any empty slot
+# and locked to it once started, one card at a time and never a run, and the pull
+# back onto a legal column. Seeded verbatim.
+[[spec]]
+source = "specs/foundations.md"
+
+# The seven columns and what they accept: building down in rank and alternating in
+# color, only a King or a King-headed run onto an empty column, nothing at all
+# onto a column whose lowest card is face-down, what a grab takes, that a
+# face-down source is refused, and that a newly exposed lowest card turns face-up.
+# Seeded verbatim.
+[[spec]]
+source = "specs/tableau.md"
+
+# The stock, the waste, and this build's deal mode: the turn count and the deal
+# mode's id and label; that a turn moves that many cards one at a time from the top
+# of the stock; the waste's SET MEMORY and the rule it follows, including what a
+# waste whose set memory is empty shows; that playing off the waste takes the top
+# card of the shown set and a set played off entirely falls back to the one before
+# it; the recycle; and that passes are unlimited. It branches on the variant for
+# the turn count, the mode id and label, and nothing else.
+[[spec]]
+source = "specs/stock.md.hbs"
+
+# The pointer and every control it answers: that a click and a touch tap are the
+# same event and a mouse drag and a touch drag likewise; that every pointer sample
+# a frame delivers is answered in the order it arrived; the grab rule and that a
+# run enters the hand ON THE PRESS; the drag threshold and what it decides; the
+# drop rule, resolved against the drop rectangles specs/table.md fixes; the
+# double-click rule and the auto-move it performs; SOLE OWNERSHIP of the hit
+# rectangles for the two title items, the how-to BACK item and the three HUD
+# controls; and the overlay toggle. It branches on the engine because an engine run
+# reads the pointer's ordered samples from the engine and the overlay toggle is the
+# engine's, while an engineless build listens for pointer events itself.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# Winning, and the victory cascade: the win condition, that play stops and the
+# cascade begins on the win, the launch cadence and order and the position and
+# velocity a card launches with, the per-frame integration order and every figure
+# in it, the floor bounce with its damping and reseating, that a card collides with
+# nothing, the painted trail, retiring past either side edge, the end of the
+# cascade and its message, and that a press deals a fresh game. Seeded verbatim.
+[[spec]]
+source = "specs/victory.md"
+
+# The four screens and the HUD: which screen the game opens on, what each shows,
+# the title copy as the literal strings that must be drawn, the how-to screen's
+# contents and its way back, the HUD's three controls, that the deal-mode label
+# drawn on the title screen and in the HUD is this build's own, that the HUD stays
+# clear of the piles, and what has no screen at all. Seeded verbatim.
+[[spec]]
+source = "specs/screens.md"
+
+# The cues and muting: the ten cues, what each sounds on, and that muting silences
+# them all. It branches on the engine because cues are defined and played through
+# the engine's audio bus on an engine run and the mute bit is the engine's, while
+# under `none` the build synthesizes them with the Web Audio API, owns the mute bit,
+# and must not autoplay.
+[[spec]]
+source = "specs/audio.md.hbs"
+
+# The shape of the game's state. Three shapes, one per engine: under `none` a list
+# of what the state must carry, because the build owns the shape; under `simple-2d`
+# the exact `CascadeState` declaration to write into `src/game.ts`; under
+# `structured-2d` the equivalent live class extending the engine's `GameState`.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the four faculty
+# gates among them; the snapshot shape; the identity rules for cards and flyers;
+# and a read-only debug overlay. Framed as an ordinary developer affordance of the
+# game. It branches on the engine for where the surface is reached, the operation
+# shape, and the two clock operations only an engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured — a gzipped recording from the engine's own draw-command
+# recorder on an engine run, a short clip under `none`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`.
+#
+# Cascade v3.0.0 deliberately fixes NO palette, no typeface and no styling: the
+# specification states what a player must be able to read at a glance
+# (specs/overview.md's legibility table) and everything else about the look is the
+# build's own design. A reference view is a picture a build is compared AGAINST, so
+# there is no honest one to seed here — every build is expected to look different,
+# and a screenshot diff would score the build that copied the mockup best rather
+# than the build that designed the best table. v2.x seeded reference mockups and a
+# canonical thirteen-color palette; dropping both is one of the things this major
+# bump is for.
+#
+# `[[proof]]` is likewise empty: no proof media is asked of the build, and
+# specs/proof.md is gone. Every piece of media a reviewer sees beside a verdict is
+# captured by this case's own validation suites, from scenarios the case controls.
+# The showcase spec above does ask for media, but as the game's own store-page
+# presentation rather than as evidence any point is judged on. The automated load
+# check still runs.
+
+# Scoring domains. This case is on the engine format, so it is validator-rated:
+# each domain's FUNCTIONAL rating is decided by the validators behind the point
+# checklist below (every point names the domains its failure lowers and how far —
+# see `domains` / `failure_cap` there), and the run's overall functional rating is
+# the WORST across the domains — an immaculate victory cascade cannot mask a
+# foundation that accepts the wrong card. The reviewer's judgement lives in the
+# separate AESTHETIC rating: the look, the polish and the feel, everything this
+# case fixes no picture of.
+#
+# Four domains, cut where a build can plausibly get one right and another wrong:
+# the rules underneath the game, the pointer that plays them, the signature ending,
+# and the presentation this case hands entirely to the build.
+[[domain]]
+id = "rules"
+name = "The Rules of Klondike"
+description = "The game underneath: the deal, what the foundations and the tableau accept, how runs move, the stock and the waste and the sets they remember, the auto-move, the turning of an exposed card, and the win."
+
+[[domain]]
+id = "handling"
+name = "Handling"
+description = "The pointer that plays it: what a press picks up, how a held run follows and highlights, where a release resolves, the double click, and the controls on the table."
+
+[[domain]]
+id = "cascade"
+name = "The Victory Cascade"
+description = "The signature: the launch cadence, the arcs under gravity, the floor bounces, the trail that buries the table, and the ending."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "The table's geometry, the four screens and the HUD, whether the palette the build chose lets a player tell its cards apart, the debug overlay, and the audio cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
+# each item entry under it is one graded review item, worth one point (the default
+# weight), so a category is worth the number of items it holds. Exactly one item
+# declares a `weight`, `showcase.exists` at three: every observable BEHAVIOR on
+# this checklist counts the same, and the relative importance of a failure is
+# carried by `failure_cap` rather than by arithmetic, but the showcase is not a
+# behavior — it is a whole file of the specification and a deliverable of its own,
+# and the note above that category says why it is worth three of the rest.
+#
+# A category carries no prose of its own; each item states in `description` the
+# claim its validator checks. The fifteen categories below hold 300 COMMON items,
+# applying to every run whatever its engine or variant, and they are worth 302
+# points between them because `showcase.exists` carries three. Each variant
+# contributes its own additive points to the common `stock` category — six on Draw
+# One, ten on Draw Three — so a Draw One run is rated on 306 items worth 308
+# points and a Draw Three run on 310 items worth 312. The checklist is
+# reporter-side material, never seeded into a run, so the
+# model never sees it. Every item restates a requirement the seeded specification
+# already states, in the spec's own vocabulary and naming the spec's own constants,
+# and every threshold a validator asserts is derived from a figure or rule in the
+# specs plus a numeric tolerance stated in the item.
+#
+# EVERY point carries a validation script, and every point is ONE OBSERVABLE
+# BEHAVIOR, so a build fails exactly the rule it breaks: the run that moves as a
+# unit and the order it arrives in are two points, not one. Each script is a vitest
+# suite under `validation/<engine>/<category>/<item id>.test.ts`, with one
+# deliberate exception: the `screens` category's menu points sit under
+# `navigation/`, `pointer/` and `touch/` instead, grouped by the INPUT ROUTE that
+# drives them rather than by the category they are graded in, because a build
+# with a working mouse and a dead keyboard fails one whole directory and no part
+# of another. The `<engine>`
+# level is the ENGINE the suite is written against — a validator speaks one
+# engine's vocabulary, so this case, which supports three, ships one directory per
+# engine, and resolution holds every declared script against all three.
+# `validation/none/` drives the build in Chromium through `window.__cascade`, with
+# a page-injected 2D-context recorder for the draws and an injected audio shim for
+# the cues; `validation/simple-2d/` and `validation/structured-2d/` each run in
+# process against their vendored engine, posing scenarios through the surface
+# `engine.debug` returns, reading state back from the snapshot, audio from the
+# engine's `cue:played` event, and drawing from the canvas pixels or the engine's
+# own draw-command recorder. The three are the same scenarios; only how they reach
+# the build differs. The directory for the run's engine is what gets staged into
+# the built workspace at `validation/`.
+#
+# EVERY SCENARIO IS POSED, AND POSED EMPTY. The shared harness's `openTable` calls
+# `reset()`, `setScreen("playing")` and `clearTable()`, and leaves the four faculty
+# gates ON at their reset defaults — so a validator's table holds only what its
+# requirement concerns. An empty table is safe without any world gate, because
+# Cascade has no autonomous entity: the game is turn-based and moves only when the
+# player moves it, so nothing arrives uninvited. Turning a FACULTY gate off is the
+# exception, and the point that does it is the point whose requirement the gate is,
+# or one whose requirement would otherwise be entangled with another rule.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. `kind` is decided ONCE here and serves all three engines —
+# `validation = { script, outputs }` is a per-item key, there is no per-engine
+# `outputs`, and the extension an output is served under is fixed by its kind, so a
+# kind that varied by engine would serve one engine's file under another's name.
+# `image` is the default: a single captured frame, which is the right evidence for
+# a posed board read once. `replay` is the exception, declared on the nineteen
+# common points (and two more on Draw Three) whose requirement IS motion — a run
+# following the pointer, a column relaxing, a card arcing and bouncing, a cascade
+# running out — where a reviewer wants to scrub. There is no `video` anywhere. Both
+# are evidence beside the verdict rather than any part of it: a point passes or
+# fails on its assertions alone.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a foundation point
+# lowers `rules`, an auto-move point lowers `rules` and `handling` both, and an
+# instrumentation point, which every suite in every domain drives through, lowers
+# all four. `failure_cap` is the highest functional rating those domains may reach
+# while the point fails; each domain gets the LOWEST cap among its failing points,
+# and a domain with no failing point is flawless. The caps are graded by how much
+# of the game a failure takes away: `broken` where the game cannot be played as
+# intended (no debug surface, a foundation that takes the wrong card, a run that
+# will not move, a cascade that never completes, a card whose rank cannot be
+# read); `scuffed` where an optional path is unplayable or normal play is
+# unpleasant (a pull-back that is refused, a menu the keyboard or a finger cannot
+# drive); `passable` where it affects play without breaking it (a tolerance, an
+# edge case, a gate a scenario leans on); and `great` where the standard flow is
+# untouched (a cue that never sounds, the debug overlay, the showcase). No point
+# caps at `flawless`: a failure always costs.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and every other suite on this checklist
+# poses its scenario through it. These points check that it is really there,
+# really wired to the running game, and that each pose reads back. A surface
+# that reports a plausible-looking object unconnected to what is on screen is
+# the failure mode worth naming.
+#
+# TWELVE OF THEM ARE THE FACULTY GATES. Cascade needs no world gates: nothing in
+# Klondike arrives uninvited, the game moves only when the player moves it, and an
+# empty posed table is already an isolated world. What does intrude is a faculty a
+# scenario never asked for, so `setAutoFlip`, `setWinDetect`, `setLaunching` and
+# `setTrailPainting` each gate ONE faculty and nothing else, default to on, are
+# restored to on by `reset`, and are reported by `snapshot()`. Each of the four
+# carries three points — the faculty stopping when the gate is off, the faculty
+# returning when it is on, and the gate being on again after `reset` — because a
+# gate the suite leans on has to be known to work in both directions and from its
+# default before anything leaning on it means anything, and a build that got one
+# of the three right and two wrong should not score as one that got all three.
+#
+# `clear-trail`, `reset-clears-trail`, `trail-painting-gate-off`,
+# `trail-painting-gate-on` and `deal.deal-clears-trail` all decide on
+# `trailStamps`, which is what makes them instrumentation points rather than
+# drawing points: a build with a correct gate and a broken blit fails
+# `cascade.trail-persists` and nothing else, and a build that paints correctly but
+# never clears fails these five and nothing else.
+#
+# `broken` here is reserved for the surface every other suite drives through;
+# a pose that reads back wrongly is a playable game with a defect no player can
+# see, and such items cap at `passable`.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+# The surface is three separate claims, and a build can miss any one of them
+# alone: it can be reachable but incomplete, complete but stamped with the wrong
+# version, and complete and correctly stamped while reporting an object that has
+# nothing to do with the game on screen. That last one is the failure mode worth
+# naming on its own, because it is the only one the other suites cannot tell from
+# a correct build until every one of them fails at once.
+[[review.categories.items]]
+id = "surface-present"
+title = "Every operation is present on the debug surface"
+description = "Every operation specs/instrumentation.md names is a function on the surface, reached where that file says it is reached for this engine."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "surface", name = "The table the surface was read off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "surface-version"
+title = "The surface reports its version"
+description = "version is CASCADE_DEBUG_VERSION (1), as a plain number."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-version.test.ts", outputs = [
+  { id = "version", name = "The table the version was read off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "surface-live"
+title = "The surface is wired to the running game"
+description = "A posed card reads back from the snapshot and a posed move applies to the board, so the surface drives the game rather than an object beside it."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-live.test.ts", outputs = [
+  { id = "live", name = "The posed card and the applied move the surface drove", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed board carrying cards in all four pile kinds, a waste with two sets, a run in hand over a legal target, and two flyers in flight, every field of the documented shape is present with its documented type."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "posed", name = "The board every reported field was read from", kind = "image" },
+] }
+# `snapshot` reports every field a pose can set, so each pose is verifiable by
+# setting a value and reading it back — and each pose is its own point, because a
+# build whose `setScreen` reads back and whose `setFlyerVelocity` does not has
+# missed one requirement rather than the whole surface.
+#
+# The list here is the poses NO OTHER POINT already reads back. A card's face is
+# `set-card-face-up` and `set-card-face-down`, the waste's sets are the three
+# `waste-*` points below, and the four gates are the eight gate points, each of
+# which reads its own field: repeating them here would dock one defect twice.
+#
+# `autoStep` is deliberately not among them and is deliberately not a snapshot
+# field. `setAutoStep` changes no game state: under `none` the flag belongs to the
+# frame loop, and under the two engines the clock belongs to the engine, so a field
+# reporting it would be a field no game rule reads and two systems could disagree
+# about. `muted` is not here either: only the engineless build has an operation
+# that sets it, and `screens.hud-sound-mutes`, `screens.hud-sound-unmutes` and
+# `audio.mute-silences` read the field on every engine.
+[[review.categories.items]]
+id = "screen-reads-back"
+title = "The posed screen is reported"
+description = "Each of the four screens set by setScreen is reported by snapshot().screen."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/screen-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The screen the pose reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-index-reads-back"
+title = "The posed menu selection is reported"
+description = "setMenuIndex(index) is reported by snapshot().menuIndex, for each item of the menu the current screen shows."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/menu-index-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The menu with the posed item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-index-reads-back"
+title = "The posed title entry is reported"
+description = "setTitleIndex(index) is reported by snapshot().titleIndex, for each entry of the title's menu."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/title-index-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The title the entry was posed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flyer-position-reads-back"
+title = "A posed flyer position is reported"
+description = "setFlyerPosition(id, x, y) is reported by that flyer's x and y in snapshot().flyers."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/flyer-position-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The flyer at the position it was posed to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flyer-velocity-reads-back"
+title = "A posed flyer velocity is reported"
+description = "setFlyerVelocity(id, vx, vy) is reported by that flyer's vx and vy in snapshot().flyers."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/flyer-velocity-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The flyer carrying the velocity it was posed with", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-clock-reads-back"
+title = "The posed launch clock is reported"
+description = "setLaunchClock(seconds) is reported by snapshot().launchClock."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/launch-clock-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The table the posed launch clock was read off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "draw-launch-vx-stands-alone"
+title = "The launch draw launches nothing"
+description = "drawLaunchVx() returns a number and leaves every field of snapshot() as it stood, with no card launched and no flyer added."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-launch-vx-stands-alone.test.ts", outputs = [
+  { id = "drawn", name = "The table the draw was taken over, unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores-title"
+title = "reset returns the game to its title values"
+description = "After a posed board, a held run, flyers in flight and every gate off, reset() restores each declared field to the value the specification lists and leaves muted untouched."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
+  { id = "title", name = "The title screen reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-clears-trail"
+title = "reset clears the painted trail"
+description = "After a cascade has painted the table, reset() reports trailStamps 0 and the table carries no painted stamp."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/reset-clears-trail.test.ts", outputs = [
+  { id = "cleared", name = "The clean table reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "card-ids-distinct"
+title = "Every card carries a distinct id"
+description = "On a full dealt board, the fifty-two ids are all different."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/card-ids-distinct.test.ts", outputs = [
+  { id = "dealt", name = "The dealt board the fifty-two ids were read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "card-ids-stable"
+title = "A card keeps its id across a move"
+description = "A card moved from a column to a foundation is reported with the id it carried before the move."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/card-ids-stable.test.ts", outputs = [
+  { id = "moved", name = "The card on its foundation, carrying the id it left with", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flyer-ids-distinct"
+title = "Every flyer carries a distinct id"
+description = "With six flyers in flight, the six ids are all different."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/flyer-ids-distinct.test.ts", outputs = [
+  { id = "flyers", name = "The six flyers in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "add-card-appends"
+title = "addCard appends to the pile's top"
+description = "A card added to a pile holding two cards is the pile's third and last entry."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/add-card-appends.test.ts", outputs = [
+  { id = "pile", name = "The pile with the added card on its top", kind = "image" },
+] }
+[[review.categories.items]]
+id = "add-card-touches-one-pile"
+title = "addCard changes only its own pile"
+description = "Adding to one column leaves the other twelve piles and the waste's sets exactly as they were."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/add-card-touches-one-pile.test.ts", outputs = [
+  { id = "board", name = "The board after the single addition", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-card"
+title = "removeCard removes exactly that card"
+description = "The named card leaves its pile and the remaining cards keep their order."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-card.test.ts", outputs = [
+  { id = "pile", name = "The pile with the named card gone", kind = "image" },
+] }
+# Turning a card up and turning it down are two points. A build that only ever
+# sets the flag true — the easy mistake, because the operation is named for the
+# up direction — passes the first and fails the second, and one point is what
+# that costs it.
+[[review.categories.items]]
+id = "set-card-face-up"
+title = "setCardFaceUp turns a card face-up"
+description = "setCardFaceUp(id, true) on a face-down card reports it faceUp, and no other card's face changes."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-card-face-up.test.ts", outputs = [
+  { id = "face-up", name = "The card posed face-up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-card-face-down"
+title = "setCardFaceUp turns a card face-down"
+description = "setCardFaceUp(id, false) on a face-up card reports it face-down, and no other card's face changes."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-card-face-down.test.ts", outputs = [
+  { id = "face-down", name = "The card posed face-down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-pile"
+title = "clearPile empties exactly one pile"
+description = "The named pile is empty and the other twelve still hold what they held."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-pile.test.ts", outputs = [
+  { id = "board", name = "The board with one pile emptied", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-pile-clears-the-set"
+title = "clearPile on the waste empties its set memory"
+description = "clearPile(\"waste\", 0) empties the waste's set memory as well as its cards, and leaves the other twelve piles standing."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+# The other half of the same rule, and its own point: `specs/stock.md` makes the
+# memory what decides which cards the waste shows, so a waste left holding cards
+# with its memory intact shows cards that are gone. A build can get the column
+# case right and this one wrong, and it is graded here or nowhere — no other
+# point calls `clearPile` on the waste.
+validation = { script = "instrumentation/clear-pile-clears-the-set.test.ts", outputs = [
+  { id = "board", name = "The emptied waste and its emptied set memory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-table"
+title = "clearTable empties every pile"
+description = "All thirteen piles and the waste's set memory are empty, and the flyers and the gates are untouched."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-table.test.ts", outputs = [
+  { id = "cleared", name = "The cleared table, with the flyers still in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-table-drops-the-hand"
+title = "clearTable drops the run in hand"
+description = "With a run held over a legal target, clearTable() reports drag null and dropTarget null."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+# Its own point because it is the operation that makes an isolated world
+# possible: a held run sits on no pile, so emptying the thirteen piles would
+# otherwise leave a card in the hand no board accounts for, and the surface
+# carries no other way to put one down but a real release.
+validation = { script = "instrumentation/clear-table-drops-the-hand.test.ts", outputs = [
+  { id = "cleared", name = "The cleared table with nothing left in hand", kind = "image" },
+] }
+# Three operations on the set memory, three points. `addWasteSet` and
+# `clearWasteSets` are separate operations, and `wasteVisibleCount` is a derived
+# reading rather than either of them — `specs/instrumentation.md` builds it at
+# the call from the newest entry — so a build can append correctly and derive the
+# shown count wrongly.
+[[review.categories.items]]
+id = "waste-set-appends"
+title = "addWasteSet appends one set"
+description = "addWasteSet(count) adds one entry of that count to the newest end of wasteSets, leaving the entries already there in their order."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/waste-set-appends.test.ts", outputs = [
+  { id = "waste", name = "The waste and the set appended to it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-sets-clear"
+title = "clearWasteSets empties the set memory"
+description = "clearWasteSets() reports wasteSets empty and leaves the cards on the waste standing."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/waste-sets-clear.test.ts", outputs = [
+  { id = "waste", name = "The waste with its cards and no set memory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-visible-count-follows-newest"
+title = "wasteVisibleCount follows the newest set"
+description = "wasteVisibleCount is the count of the newest entry of wasteSets, and 0 when the memory is empty."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/waste-visible-count-follows-newest.test.ts", outputs = [
+  { id = "waste", name = "The waste showing the newest set's count", kind = "image" },
+] }
+# The two verdicts are two points. A build whose `move` always returns `true` is
+# a different defect from one that always returns `false`, and every suite that
+# poses a board with `move` is standing on one of the two directions, so the
+# grade says which.
+[[review.categories.items]]
+id = "move-accepts-legal"
+title = "move accepts a legal move"
+description = "A move the rules accept returns true and is applied to the board."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/move-accepts-legal.test.ts", outputs = [
+  { id = "board", name = "The board after the accepted move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "move-refuses-illegal"
+title = "move refuses an illegal move"
+description = "A move the rules refuse returns false and leaves the board exactly as it was."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/move-refuses-illegal.test.ts", outputs = [
+  { id = "board", name = "The board the refused move left untouched", kind = "image" },
+] }
+# EACH GATE IS TWO POINTS, off and on. A gate is a switch, and a build can fail
+# it in two unrelated ways: a switch that never turns the faculty off leaves every
+# scenario that leans on it grading a faculty it never asked for, and a switch
+# that never turns it back on leaves the faculty itself dead in normal play. The
+# two failures cost the player completely different things, so the grade says
+# which one happened. Each half also reads the gate's own snapshot field, which
+# is why the read-back points above do not repeat the four gates.
+[[review.categories.items]]
+id = "auto-flip-gate-off"
+title = "The automatic flip stops when its gate is off"
+description = "With setAutoFlip(false), autoFlip reports false and a move exposing a face-down card leaves it face-down."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/auto-flip-gate-off.test.ts", outputs = [
+  { id = "gated", name = "The exposed card left face-down with the gate off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "auto-flip-gate-on"
+title = "The automatic flip returns when its gate is on"
+description = "With setAutoFlip(true) after setAutoFlip(false), autoFlip reports true and the same move turns the exposed card face-up."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/auto-flip-gate-on.test.ts", outputs = [
+  { id = "turned", name = "The exposed card turned with the gate back on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "win-detect-gate-off"
+title = "Win detection stops when its gate is off"
+description = "With setWinDetect(false), winDetect reports false and a board completed to fifty-two stays on playing."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/win-detect-gate-off.test.ts", outputs = [
+  { id = "gated", name = "The completed board still on the playing screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "win-detect-gate-on"
+title = "Win detection returns when its gate is on"
+description = "With setWinDetect(true) after setWinDetect(false), winDetect reports true and the same completion reaches won."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/win-detect-gate-on.test.ts", outputs = [
+  { id = "won", name = "The completed board reaching the won screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launching-gate-off"
+title = "The cascade's launching stops when its gate is off"
+description = "With setLaunching(false), launching reports false and no further card leaves the foundations over a second of game time, while a flyer already in flight keeps moving."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/launching-gate-off.test.ts", outputs = [
+  { id = "gated", name = "The foundations holding their cards with launching off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launching-gate-on"
+title = "The cascade's launching returns when its gate is on"
+description = "With setLaunching(true) after setLaunching(false), launching reports true and the same second of game time launches cards off the foundations again."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/launching-gate-on.test.ts", outputs = [
+  { id = "launching", name = "The foundations launching again with the gate back on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-painting-gate-off"
+title = "The trail's painting stops when its gate is off"
+description = "With setTrailPainting(false), trailPainting reports false and a second of flight leaves trailStamps where it was and the painted layer with no new stamp, while the flyer still moves and is still drawn."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/trail-painting-gate-off.test.ts", outputs = [
+  { id = "gated", name = "The clean table a second of flight left with painting off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-painting-gate-on"
+title = "The trail's painting returns when its gate is on"
+description = "With setTrailPainting(true) after setTrailPainting(false), trailPainting reports true and the same second of flight raises trailStamps."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/trail-painting-gate-on.test.ts", outputs = [
+  { id = "painted", name = "The stamps a second of flight left with painting back on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-trail"
+title = "clearTrail empties the painted layer"
+description = "After flight has stamped the layer, clearTrail() reports trailStamps 0 and the table carries no painted stamp, while every flyer is still in flight."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-trail.test.ts", outputs = [
+  { id = "cleared", name = "The cleared layer, with every flyer still in flight", kind = "image" },
+] }
+# One point per gate, because each gate is restored by its own line of a build's
+# `reset` and a build that forgot one has missed one requirement. Bundled, a
+# build that restored three of the four scored exactly as badly as one that
+# restored none.
+[[review.categories.items]]
+id = "auto-flip-defaults-on"
+title = "The automatic flip starts on"
+description = "After reset(), autoFlip reports true."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/auto-flip-defaults-on.test.ts", outputs = [
+  { id = "reset", name = "The table reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "win-detect-defaults-on"
+title = "Win detection starts on"
+description = "After reset(), winDetect reports true."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/win-detect-defaults-on.test.ts", outputs = [
+  { id = "reset", name = "The table reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launching-defaults-on"
+title = "The cascade's launching starts on"
+description = "After reset(), launching reports true."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/launching-defaults-on.test.ts", outputs = [
+  { id = "reset", name = "The table reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-painting-defaults-on"
+title = "The trail's painting starts on"
+description = "After reset(), trailPainting reports true."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/trail-painting-defaults-on.test.ts", outputs = [
+  { id = "reset", name = "The table reset returned to", kind = "image" },
+] }
+# Four points over the three pointer operations and the press they record. Every
+# handling suite in this checklist drives the pointer, so a build that reports
+# the position but never the button — or that never writes `lastPress`, which is
+# what the double-click rule is measured against — has broken a different thing
+# each time, and the grade says which.
+[[review.categories.items]]
+id = "pointer-down-reported"
+title = "A press is reported by the pointer"
+description = "pointerDown(x, y) is reported by snapshot().pointer as that point, with down true."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/pointer-down-reported.test.ts", outputs = [
+  { id = "pointer", name = "The board the press was driven onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-move-reported"
+title = "A move is reported by the pointer"
+description = "pointerMove(x, y) is reported by snapshot().pointer as that point, leaving down as the gesture left it."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/pointer-move-reported.test.ts", outputs = [
+  { id = "pointer", name = "The board the pointer was moved across", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-up-reported"
+title = "A release is reported by the pointer"
+description = "pointerUp(x, y) is reported by snapshot().pointer as that point, with down false."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/pointer-up-reported.test.ts", outputs = [
+  { id = "pointer", name = "The board the release was driven on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "last-press-reported"
+title = "The most recent press is reported"
+description = "After a press, snapshot().lastPress carries that press's point and the game time it arrived at, which is what the double-click rule is measured against."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/last-press-reported.test.ts", outputs = [
+  { id = "press", name = "The board the recorded press landed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sim-time-accumulates"
+title = "simTime accumulates game time"
+description = "Advancing one second raises simTime by one second on every screen."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/sim-time-accumulates.test.ts", outputs = [
+  { id = "advanced", name = "The board after the advanced second", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-in-frames"
+title = "The simulation advances on elapsed time alone"
+description = "With setLaunching(false) and one flyer posed clear of the floor and of both side edges, one second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way and leaves the flyer's x the same within 0.5 units, so the simulation reads nothing from the renderer."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+# `y` and `vy` are deliberately NOT compared. Under the semi-implicit Euler
+# integration `specs/victory.md` fixes, a quantity under acceleration depends on
+# how the interval was divided, so a build whose `y` agreed across the two
+# divisions would be one that had not implemented the stated integration.
+validation = { script = "instrumentation/advances-in-frames.test.ts", outputs = [
+  { id = "one-frame", name = "The flyer after one second covered as one frame", kind = "image" },
+  { id = "sixty-frames", name = "The flyer after the same second covered as sixty", kind = "image" },
+] }
+
+# --- The Table ----------------------------------------------------------------
+# The geometry of the felt: where each of the thirteen piles sits, how a column's
+# cards overlap, and how a column too long for the table compresses to fit and
+# relaxes again as it shortens.
+#
+# Every item in this group reads WHERE THE BUILD DREW, never what the pointer did
+# with it. Driving a press or a release to decide a geometry point would charge a
+# broken grab rule, a broken stock click or a broken drop resolution to the
+# `presentation` domain, which does not own them: those are decided by
+# `handling.press-grabs-column-run`, `handling.stock-click-turns` and
+# `handling.release-on-legal-completes`.
+[[review.categories]]
+id = "table"
+title = "The Table"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The whole table is drawn in logical units"
+description = "At four window shapes and two pixel ratios the build draws the table at its own logical anchors inside the fit, with nothing of it in the letterbox bars. Where the build writes the runtime, the fit itself is read."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "table/stage-fit.test.ts", outputs = [
+  { id = "fitted", name = "The whole table at the narrowest window shape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "card-size"
+title = "A card occupies its footprint"
+description = "A drawn card covers 100 x 140 at its position wherever it sits."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/card-size.test.ts", outputs = [
+  { id = "card", name = "The drawn card over its footprint", kind = "image" },
+] }
+[[review.categories.items]]
+id = "column-anchors"
+title = "The seven columns sit at their anchors"
+description = "One card posed on each of the seven columns is drawn with its top-left x at COLUMN_X[i], and nothing card-sized is drawn in the 22-unit gaps between the columns."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "table/column-anchors.test.ts", outputs = [
+  { id = "columns", name = "One card on each of the seven columns", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tableau-anchor-y"
+title = "A column's first card starts at 180"
+description = "The first card of a posed column is drawn with its top edge at y = 180."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/tableau-anchor-y.test.ts", outputs = [
+  { id = "column", name = "The column's first card at its anchor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stock-anchor"
+title = "The stock sits at its anchor"
+description = "A card posed on the stock is drawn with its top-left at (224, 24)."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/stock-anchor.test.ts", outputs = [
+  { id = "stock", name = "The card posed on the stock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-anchor"
+title = "The waste sits at its anchor"
+description = "The waste's bottom-most shown card is drawn with its top-left at (346, 24)."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/waste-anchor.test.ts", outputs = [
+  { id = "waste", name = "The waste's bottom-most shown card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foundation-anchors"
+title = "The four foundations sit at their anchors"
+description = "A card posed on each foundation is drawn with its top-left at (FOUNDATION_X[i], 24), and nothing card-sized is drawn at (468, 24)."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/foundation-anchors.test.ts", outputs = [
+  { id = "foundations", name = "One card on each of the four foundations", kind = "image" },
+] }
+[[review.categories.items]]
+id = "face-down-offset"
+title = "A card under a face-down card is offset 24"
+description = "In a posed column, the card below a face-down card is drawn 24 units lower."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/face-down-offset.test.ts", outputs = [
+  { id = "column", name = "The posed column and its face-down overlap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "face-up-offset"
+title = "A card under a face-up card is offset 34"
+description = "In a posed column short enough to need no compression, the card below a face-up card is drawn 34 units lower."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/face-up-offset.test.ts", outputs = [
+  { id = "column", name = "The posed column and its face-up overlap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "column-compression"
+title = "A long column compresses to fit"
+description = "A column long enough to pass 676 at the natural offset has its lowest card's bottom edge at or above 676."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "table/column-compression.test.ts", outputs = [
+  { id = "compressed", name = "The long column fitted above the floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "compression-uniform"
+title = "Compression is uniform within a column"
+description = "Every face-up gap in a compressed column is the same size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/compression-uniform.test.ts", outputs = [
+  { id = "compressed", name = "The compressed column's even gaps", kind = "image" },
+] }
+[[review.categories.items]]
+id = "compression-floor"
+title = "The compressed offset never falls below 14"
+description = "A column long enough to demand less than 14 still draws 14."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/compression-floor.test.ts", outputs = [
+  { id = "floored", name = "The column drawn at the minimum offset", kind = "image" },
+] }
+[[review.categories.items]]
+id = "compression-spares-face-down"
+title = "Compression leaves the face-down offset alone"
+description = "A compressed column still draws 24 under each face-down card."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/compression-spares-face-down.test.ts", outputs = [
+  { id = "compressed", name = "The compressed column's untouched face-down gaps", kind = "image" },
+] }
+[[review.categories.items]]
+id = "compression-relaxes"
+title = "A shortened column expands again"
+description = "A column that compressed and then lost cards returns to the 34 offset."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "table/compression-relaxes.test.ts", outputs = [
+  { id = "relaxing", name = "The column expanding as it loses cards", kind = "replay" },
+] }
+
+# --- The Deal -----------------------------------------------------------------
+# One full deck, shuffled afresh, laid out as Klondike lays it out. These points
+# read the arrangement a deal produced rather than any part of the deal's
+# animation.
+[[review.categories]]
+id = "deal"
+title = "The Deal"
+[[review.categories.items]]
+id = "seven-columns"
+title = "Seven columns are dealt"
+description = "The tableau holds exactly seven columns after a deal."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "deal/seven-columns.test.ts", outputs = [
+  { id = "dealt", name = "The dealt table", kind = "image" },
+] }
+[[review.categories.items]]
+id = "column-sizes"
+title = "Column n receives n cards"
+description = "The seven columns hold 1, 2, 3, 4, 5, 6, 7 cards."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "deal/column-sizes.test.ts", outputs = [
+  { id = "dealt", name = "The seven columns as dealt", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lowest-face-up"
+title = "Each column's lowest card is face-up"
+description = "All seven lowest cards are face-up."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "deal/lowest-face-up.test.ts", outputs = [
+  { id = "dealt", name = "The seven face-up cards a deal leaves", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rest-face-down"
+title = "Every other column card is face-down"
+description = "The twenty-one cards above the lowest in each column are face-down."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "deal/rest-face-down.test.ts", outputs = [
+  { id = "dealt", name = "The face-down cards above each column's lowest", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stock-count"
+title = "Twenty-four cards remain in the stock"
+description = "The stock holds 24 cards after a deal."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "deal/stock-count.test.ts", outputs = [
+  { id = "dealt", name = "The stock a deal leaves", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stock-face-down"
+title = "The stock is face-down"
+description = "Every stock card is face-down."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "deal/stock-face-down.test.ts", outputs = [
+  { id = "dealt", name = "The face-down stock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-empty"
+title = "The waste starts empty"
+description = "The waste and its set memory are both empty after a deal."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "deal/waste-empty.test.ts", outputs = [
+  { id = "dealt", name = "The empty waste a deal leaves", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foundations-empty"
+title = "The foundations start empty"
+description = "All four foundations are empty after a deal."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "deal/foundations-empty.test.ts", outputs = [
+  { id = "dealt", name = "The four empty foundations", kind = "image" },
+] }
+[[review.categories.items]]
+id = "full-deck"
+title = "The deal uses one full deck"
+description = "The fifty-two cards dealt are exactly one of each of the fifty-two suit-and-rank pairs."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "deal/full-deck.test.ts", outputs = [
+  { id = "dealt", name = "The fifty-two cards a deal put on the table", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reshuffled"
+title = "Every deal is shuffled afresh"
+description = "Two deals in a row differ in the arrangement of their columns."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "deal/reshuffled.test.ts", outputs = [
+  { id = "deals", name = "The two boards two deals laid out", kind = "image" },
+] }
+# `specs/deal.md` states the clearing as part of what a new deal IS, so a build
+# that reads its specs puts it on the deal path and what `deal()` leaves behind is
+# what the real path leaves behind.
+[[review.categories.items]]
+id = "deal-clears-trail"
+title = "A deal clears the painted table"
+description = "A deal after a cascade reports trailStamps 0 and leaves no painted stamp on the table (specs/deal.md)."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "deal/deal-clears-trail.test.ts", outputs = [
+  { id = "dealt", name = "The clean table the deal after a cascade left", kind = "image" },
+] }
+
+# --- The Foundations ----------------------------------------------------------
+# What each of the four foundations accepts and what it refuses. A refusal that
+# should have been an acceptance is `broken`, and so is an acceptance that should
+# have been a refusal: both make Klondike a different game. A refusal of an unusual
+# source or an edge case is `passable`.
+[[review.categories]]
+id = "foundations"
+title = "The Foundations"
+[[review.categories.items]]
+id = "ace-starts-empty"
+title = "An Ace starts an empty foundation"
+description = "An Ace moved onto an empty foundation is accepted and sits on it."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "foundations/ace-starts-empty.test.ts", outputs = [
+  { id = "accepted", name = "The Ace on the foundation it started", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-non-ace-empty"
+title = "An empty foundation refuses everything but an Ace"
+description = "A 2 and a King are each refused by an empty foundation."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "foundations/reject-non-ace-empty.test.ts", outputs = [
+  { id = "refused", name = "The empty foundation, with both cards still where they were", kind = "image" },
+] }
+[[review.categories.items]]
+id = "build-up-same-suit"
+title = "A foundation builds up by suit"
+description = "The next-higher card of the same suit is accepted onto the foundation's top card."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "foundations/build-up-same-suit.test.ts", outputs = [
+  { id = "accepted", name = "The foundation built one rank higher", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-off-suit"
+title = "A foundation refuses another suit"
+description = "The next-higher card of a different suit is refused."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "foundations/reject-off-suit.test.ts", outputs = [
+  { id = "refused", name = "The foundation with the off-suit card refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-rank-gap"
+title = "A foundation refuses a rank gap"
+description = "A card two ranks above the foundation's top is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/reject-rank-gap.test.ts", outputs = [
+  { id = "refused", name = "The foundation with the skipped rank refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-lower-rank"
+title = "A foundation refuses a lower rank"
+description = "A card below the foundation's top rank is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/reject-lower-rank.test.ts", outputs = [
+  { id = "refused", name = "The foundation with the lower rank refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "king-completes"
+title = "A King completes a foundation"
+description = "A King onto a Queen is accepted and the foundation then holds thirteen cards."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/king-completes.test.ts", outputs = [
+  { id = "completed", name = "The foundation holding its thirteen cards", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-onto-king"
+title = "A completed foundation accepts nothing"
+description = "A card of any suit is refused by a foundation holding its King."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/reject-onto-king.test.ts", outputs = [
+  { id = "refused", name = "The completed foundation refusing the card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "any-suit-any-slot"
+title = "Any suit may start any foundation"
+description = "Each of the four Aces is accepted onto the fourth foundation in turn."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/any-suit-any-slot.test.ts", outputs = [
+  { id = "started", name = "The fourth foundation started by each Ace in turn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "suit-locked-after-ace"
+title = "A started foundation takes only its suit"
+description = "With an Ace of spades down, the 2 of clubs is refused and the 2 of spades accepted."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/suit-locked-after-ace.test.ts", outputs = [
+  { id = "locked", name = "The spade foundation taking its own suit alone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-run"
+title = "A foundation refuses a run"
+description = "A two-card run whose leading card would be accepted alone is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/reject-run.test.ts", outputs = [
+  { id = "refused", name = "The foundation refusing the two-card run", kind = "image" },
+] }
+[[review.categories.items]]
+id = "accepts-from-waste"
+title = "A foundation accepts from the waste"
+description = "The waste's top card is accepted onto a legal foundation and leaves the waste."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/accepts-from-waste.test.ts", outputs = [
+  { id = "accepted", name = "The waste's card on its foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "accepts-from-tableau"
+title = "A foundation accepts from a column"
+description = "A column's lowest face-up card is accepted onto a legal foundation."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "foundations/accepts-from-tableau.test.ts", outputs = [
+  { id = "accepted", name = "The column's card on its foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pull-back-to-tableau"
+title = "A foundation's top card may be pulled back"
+description = "A foundation's top card is accepted onto a legal column and leaves the foundation."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "foundations/pull-back-to-tableau.test.ts", outputs = [
+  { id = "pulled", name = "The foundation's card back on a column", kind = "image" },
+] }
+
+# --- The Tableau --------------------------------------------------------------
+# What each of the seven columns accepts and refuses, and the automatic turning of
+# a newly exposed lowest card. Four of these points turn `setAutoFlip` off or on as
+# their own requirement; the rest leave every gate at its reset default, because an
+# empty posed table is already an isolated world.
+[[review.categories]]
+id = "tableau"
+title = "The Tableau"
+[[review.categories.items]]
+id = "build-down-alternating"
+title = "A column builds down in alternating color"
+description = "A card one rank lower and the opposite color is accepted onto a column's lowest card."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "tableau/build-down-alternating.test.ts", outputs = [
+  { id = "accepted", name = "The card accepted onto the column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-same-color"
+title = "A column refuses the same color"
+description = "A card one rank lower of the same color is refused."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "tableau/reject-same-color.test.ts", outputs = [
+  { id = "refused", name = "The column refusing the same-colored card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-rank-higher"
+title = "A column refuses a higher rank"
+description = "A card one rank higher and opposite in color is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/reject-rank-higher.test.ts", outputs = [
+  { id = "refused", name = "The column refusing the higher rank", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-rank-gap"
+title = "A column refuses a rank gap"
+description = "A card two ranks lower and opposite in color is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/reject-rank-gap.test.ts", outputs = [
+  { id = "refused", name = "The column refusing the skipped rank", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-equal-rank"
+title = "A column refuses an equal rank"
+description = "A card of the same rank and opposite color is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/reject-equal-rank.test.ts", outputs = [
+  { id = "refused", name = "The column refusing the equal rank", kind = "image" },
+] }
+[[review.categories.items]]
+id = "king-to-empty"
+title = "A King is accepted by an empty column"
+description = "A King moved onto an empty column is accepted."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "tableau/king-to-empty.test.ts", outputs = [
+  { id = "accepted", name = "The King on the empty column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-non-king-empty"
+title = "An empty column refuses a non-King"
+description = "A Queen and an Ace are each refused by an empty column."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "tableau/reject-non-king-empty.test.ts", outputs = [
+  { id = "refused", name = "The empty column, with both cards still where they were", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-onto-face-down"
+title = "A column with a face-down lowest card accepts nothing"
+description = "Every card offered to such a column is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/reject-onto-face-down.test.ts", outputs = [
+  { id = "refused", name = "The face-down column refusing every card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-exposed"
+title = "A newly exposed card turns face-up"
+description = "A move taking a column's only face-up card leaves the card beneath it face-up."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "tableau/flip-exposed.test.ts", outputs = [
+  { id = "flipped", name = "The card turned by the move above it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-only-lowest"
+title = "Only the newly lowest card turns"
+description = "The face-down cards above the newly turned one stay face-down."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/flip-only-lowest.test.ts", outputs = [
+  { id = "flipped", name = "The one turned card, the rest still face-down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-flip-when-face-up"
+title = "A face-up lowest card is left alone"
+description = "A move leaving a face-up card lowest changes no card's face."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/no-flip-when-face-up.test.ts", outputs = [
+  { id = "unchanged", name = "The column with every face as it was", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flip-after-run-move"
+title = "A run leaving a column turns the exposed card"
+description = "Moving a three-card run off a column turns the face-down card it uncovers."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/flip-after-run-move.test.ts", outputs = [
+  { id = "flipped", name = "The card the departing run uncovered", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-early-flip"
+title = "Lifting a card does not turn the one beneath"
+description = "A card lifted with the pointer and released over no target leaves the card beneath face-down throughout."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/no-early-flip.test.ts", outputs = [
+  { id = "lift", name = "The card lifted and returned, the one beneath still face-down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "face-down-not-movable"
+title = "A face-down card is never moved"
+description = "A move naming a face-down card as its source is refused and the board is unchanged."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "tableau/face-down-not-movable.test.ts", outputs = [
+  { id = "refused", name = "The board, unchanged by the refused move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "accepts-from-waste"
+title = "A column accepts from the waste"
+description = "The waste's top card is accepted onto a legal column."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/accepts-from-waste.test.ts", outputs = [
+  { id = "accepted", name = "The waste's card on the column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "accepts-from-foundation"
+title = "A column accepts from a foundation"
+description = "A card pulled back from a foundation is accepted onto a legal column."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/accepts-from-foundation.test.ts", outputs = [
+  { id = "accepted", name = "The foundation's card back on a column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refused-drop-leaves-empty-column"
+title = "A refused drop leaves an empty column empty"
+description = "A non-King released with its centre inside an empty column's drop rectangle, as specs/table.md fixes it, is refused; the column still holds nothing and the source is intact."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "tableau/refused-drop-leaves-empty-column.test.ts", outputs = [
+  { id = "refused", name = "The empty column and the intact source", kind = "image" },
+] }
+
+# --- Ordered Runs -------------------------------------------------------------
+# A contiguous face-up run in descending, alternating order moves as one thing.
+# These points decide what a grab takes, what a target accepts, and that a refused
+# run goes back exactly as it left.
+[[review.categories]]
+id = "runs"
+title = "Ordered Runs"
+[[review.categories.items]]
+id = "moves-as-unit"
+title = "A valid run moves as a unit"
+description = "A three-card descending-alternating run moves together onto a legal column."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "runs/moves-as-unit.test.ts", outputs = [
+  { id = "moved", name = "The three-card run on its new column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "keeps-order"
+title = "A moved run keeps its order"
+description = "The three cards arrive in the order they left."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "runs/keeps-order.test.ts", outputs = [
+  { id = "moved", name = "The run in the order it left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "takes-every-card-below"
+title = "A grab takes every card below it"
+description = "Grabbing the middle of a five-card face-up column takes that card and the three below it."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "runs/takes-every-card-below.test.ts", outputs = [
+  { id = "held", name = "The four cards the grab lifted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "leaves-cards-above"
+title = "A grab leaves the cards above it"
+description = "The two cards above the grabbed one stay in the source column, in order."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "runs/leaves-cards-above.test.ts", outputs = [
+  { id = "source", name = "The two cards left in the source column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-broken-run"
+title = "A slice that is not an ordered run is refused"
+description = "A grabbed slice out of descending-alternating order is refused by every target."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "runs/reject-broken-run.test.ts", outputs = [
+  { id = "refused", name = "The disordered slice, refused everywhere", kind = "image" },
+] }
+[[review.categories.items]]
+id = "onto-legal-card"
+title = "A run lands on a legal card"
+description = "A run whose leading card is one lower and opposite in color to the target's lowest card is accepted."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "runs/onto-legal-card.test.ts", outputs = [
+  { id = "accepted", name = "The run on the card it fits", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-wrong-color"
+title = "A run of the wrong color is refused"
+description = "A run whose leading card matches the target's color is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "runs/reject-wrong-color.test.ts", outputs = [
+  { id = "refused", name = "The run refused for its color", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-wrong-rank"
+title = "A run of the wrong rank is refused"
+description = "A run whose leading card does not fit the target's rank is refused."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "runs/reject-wrong-rank.test.ts", outputs = [
+  { id = "refused", name = "The run refused for its rank", kind = "image" },
+] }
+[[review.categories.items]]
+id = "king-run-to-empty"
+title = "A King-headed run fills an empty column"
+description = "A run led by a King is accepted onto an empty column."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "runs/king-run-to-empty.test.ts", outputs = [
+  { id = "accepted", name = "The King-headed run filling the empty column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reject-non-king-run-empty"
+title = "An empty column refuses a run not led by a King"
+description = "A run led by a 10 is refused by an empty column."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "runs/reject-non-king-run-empty.test.ts", outputs = [
+  { id = "refused", name = "The empty column refusing the run", kind = "image" },
+] }
+[[review.categories.items]]
+id = "returns-intact"
+title = "A refused run returns intact"
+description = "A refused run is back in its own column, in order, with every face unchanged."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "runs/returns-intact.test.ts", outputs = [
+  { id = "returned", name = "The refused run back in its own column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "run-of-one"
+title = "A single card is a run of one"
+description = "A column's lowest card alone moves onto a legal target."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "runs/run-of-one.test.ts", outputs = [
+  { id = "moved", name = "The single card on its target", kind = "image" },
+] }
+[[review.categories.items]]
+id = "full-run"
+title = "A thirteen-card run moves as a unit"
+description = "A King-to-Ace run moves onto an empty column in one move."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "runs/full-run.test.ts", outputs = [
+  { id = "moved", name = "The thirteen-card run on the empty column", kind = "image" },
+] }
+
+# --- The Stock and the Waste --------------------------------------------------
+# The stock, the waste, and the SET MEMORY the waste keeps. This is the group the
+# v2.1.0 fold-in fix landed in, and the rule it states is positive: the waste keeps
+# each turn's cards together as a set, remembers the sets in the order they were
+# turned, shows the cards still on the newest set that holds any, and falls back to
+# what is left of the set turned before it once a set is played off entirely.
+# `wasteVisibleCount` is a consequence of that rule rather than a counter reading.
+#
+# Six points here carry the rule directly (`turn-starts-a-set`,
+# `set-shrinks-on-play`, `cancelled-drag-returns-to-set`, `recycle-clears-sets`,
+# `no-sets-shows-nothing` and `no-sets-refuses-move`), and each variant contributes
+# the fallback point that decides it, over a waste large enough that no wrong model
+# is clamped into the right answer by the size of the pile.
+#
+# The last two of those six decide the END of the rule — the state a waste reaches
+# when its memory is empty and its cards are not. `clearWasteSets()` reaches it
+# directly (specs/instrumentation.md) and play reaches it by drawing three, playing
+# one, drawing three and playing all three, and the specification states both of its
+# consequences positively: such a waste SHOWS no card, and it OFFERS none to play.
+# Neither had a reading before, which left the same class of under-determination the
+# set memory exists to close.
+#
+# A common validator in this group NEVER hard-codes a turn count. Where a scenario
+# has to size itself to the deal mode it reads `snapshot().turnCount`, which
+# `draw-one.deal-mode-reported` and `draw-three.deal-mode-reported` separately pin
+# to the specification's figure.
+[[review.categories]]
+id = "stock"
+title = "The Stock and the Waste"
+[[review.categories.items]]
+id = "turn-moves-to-waste"
+title = "A turn moves cards to the waste"
+description = "After a turn the stock is smaller by the turn count and the waste larger by the same."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/turn-moves-to-waste.test.ts", outputs = [
+  { id = "turned", name = "The waste after the turn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turned-cards-face-up"
+title = "Turned cards are face-up"
+description = "Every card the turn put on the waste is face-up."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/turned-cards-face-up.test.ts", outputs = [
+  { id = "turned", name = "The face-up cards the turn brought over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turn-order"
+title = "The last card turned is the waste's top"
+description = "Cards are turned one at a time from the top of the stock, so the stock's top card ends up deepest of the turned group."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/turn-order.test.ts", outputs = [
+  { id = "turned", name = "The turned group, the stock's top card deepest", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turn-starts-a-set"
+title = "Each turn adds one set"
+description = "A turn appends exactly one entry to wasteSets, holding the cards it turned."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/turn-starts-a-set.test.ts", outputs = [
+  { id = "turned", name = "The waste and the set the turn added", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-shrinks-on-play"
+title = "Playing off the waste shrinks its set"
+description = "Playing the top card leaves the newest set one card smaller and wasteVisibleCount one lower."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/set-shrinks-on-play.test.ts", outputs = [
+  { id = "played", name = "The waste after its top card went home", kind = "image" },
+] }
+[[review.categories.items]]
+id = "only-top-playable"
+title = "Only the waste's top card is playable"
+description = "A move naming a waste card below the top is refused."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/only-top-playable.test.ts", outputs = [
+  { id = "refused", name = "The waste, unchanged by the refused move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "play-exposes-next"
+title = "Playing the top exposes the next"
+description = "After the top card leaves, the card beneath it is the waste's top."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/play-exposes-next.test.ts", outputs = [
+  { id = "exposed", name = "The card the departing top left showing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-top-to-foundation"
+title = "The waste's top card goes to a foundation"
+description = "It is accepted onto a legal foundation and leaves the waste."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/waste-top-to-foundation.test.ts", outputs = [
+  { id = "accepted", name = "The waste's card on its foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-top-to-tableau"
+title = "The waste's top card goes to a column"
+description = "It is accepted onto a legal column and leaves the waste."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/waste-top-to-tableau.test.ts", outputs = [
+  { id = "accepted", name = "The waste's card on the column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cancelled-drag-returns-to-set"
+title = "A cancelled waste drag rejoins its set"
+description = "A waste card lifted and released over no target is back on the waste with wasteSets and wasteVisibleCount as they were."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/cancelled-drag-returns-to-set.test.ts", outputs = [
+  { id = "returned", name = "The waste with its card and its sets as they were", kind = "image" },
+] }
+[[review.categories.items]]
+id = "empty-stock-recycles"
+title = "An empty stock recycles the waste"
+description = "Turning an empty stock returns every waste card to the stock, face-down."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/empty-stock-recycles.test.ts", outputs = [
+  { id = "recycled", name = "The stock the recycle refilled", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-preserves-order"
+title = "A recycle preserves the order"
+description = "The recycled stock turns the same cards up again in the same order."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/recycle-preserves-order.test.ts", outputs = [
+  { id = "turned", name = "The recycled pass turning the same cards", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-clears-waste"
+title = "A recycle empties the waste"
+description = "The waste holds nothing after a recycle."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/recycle-clears-waste.test.ts", outputs = [
+  { id = "recycled", name = "The empty waste a recycle leaves", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-clears-sets"
+title = "A recycle empties the set memory"
+description = "wasteSets is empty and wasteVisibleCount is 0 after a recycle."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/recycle-clears-sets.test.ts", outputs = [
+  { id = "recycled", name = "The waste with its set memory emptied", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-sets-shows-nothing"
+title = "A waste with no sets shows no card"
+description = "A waste holding cards whose set memory is empty draws its anchor exactly as an empty waste does, showing none of the cards it holds."
+domains = ["rules", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "stock/no-sets-shows-nothing.test.ts", outputs = [
+  { id = "hidden", name = "The waste holding cards and showing none", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-sets-refuses-move"
+title = "A waste with no sets offers no card to play"
+description = "A move naming a card on a waste whose set memory is empty is refused, and the board is unchanged."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "stock/no-sets-refuses-move.test.ts", outputs = [
+  { id = "refused", name = "The board, unchanged by the refused move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycle-unlimited"
+title = "Passes through the stock are unlimited"
+description = "The stock is emptied and recycled four times over, each pass turning the same cards."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "stock/recycle-unlimited.test.ts", outputs = [
+  { id = "passes", name = "Four passes through the stock", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-recycle-with-cards"
+title = "A non-empty stock turns rather than recycles"
+description = "Turning a stock holding cards leaves the waste larger, not empty."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/no-recycle-with-cards.test.ts", outputs = [
+  { id = "turned", name = "The larger waste the turn left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "empty-stock-empty-waste"
+title = "An empty stock and waste stay empty"
+description = "Turning with nothing anywhere leaves both piles empty."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "stock/empty-stock-empty-waste.test.ts", outputs = [
+  { id = "empty", name = "Both piles, still empty", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turn-drains-stock"
+title = "Turning drains the stock exactly"
+description = "Turning until the stock is empty puts every card on the waste once, with none lost and none duplicated."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "stock/turn-drains-stock.test.ts", outputs = [
+  { id = "drained", name = "The waste holding every card the stock had", kind = "image" },
+] }
+
+# --- The Auto-Move ------------------------------------------------------------
+# The auto-move sends one card home. It is a rule (which foundation a card belongs
+# on, and whether it may go there) driven by a gesture (the double click), so this
+# category names both `rules` and `handling`. The gesture itself is graded in
+# `handling`; what the auto-move DECIDES is graded here.
+[[review.categories]]
+id = "automove"
+title = "The Auto-Move"
+[[review.categories.items]]
+id = "waste-goes-home"
+title = "The waste's top card goes home"
+description = "autoMove(\"waste\", 0) sends it to the foundation it belongs on and returns true."
+domains = ["rules", "handling"]
+failure_cap = "broken"
+validation = { script = "automove/waste-goes-home.test.ts", outputs = [
+  { id = "home", name = "The waste's card on its foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "column-goes-home"
+title = "A column's lowest face-up card goes home"
+description = "autoMove(\"tableau\", c) sends it home and returns true."
+domains = ["rules", "handling"]
+failure_cap = "broken"
+validation = { script = "automove/column-goes-home.test.ts", outputs = [
+  { id = "home", name = "The column's card on its foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "illegal-does-nothing"
+title = "An illegal auto-move changes nothing"
+description = "With no foundation able to accept the card, the board is unchanged and the call returns false."
+domains = ["rules", "handling"]
+failure_cap = "broken"
+validation = { script = "automove/illegal-does-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The board the refused auto-move left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "picks-the-right-foundation"
+title = "The card lands on its own suit's foundation"
+description = "With three foundations started, the card joins the one already holding its suit."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/picks-the-right-foundation.test.ts", outputs = [
+  { id = "home", name = "The card on the foundation already holding its suit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "starts-a-foundation"
+title = "An Ace starts an empty foundation"
+description = "An Ace auto-moves onto an empty foundation."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/starts-a-foundation.test.ts", outputs = [
+  { id = "home", name = "The Ace on the foundation it started", kind = "image" },
+] }
+[[review.categories.items]]
+id = "obeys-rank"
+title = "The auto-move obeys the rank rule"
+description = "A card two ranks above a foundation's top is not sent."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/obeys-rank.test.ts", outputs = [
+  { id = "unchanged", name = "The board, with the skipped rank still out", kind = "image" },
+] }
+[[review.categories.items]]
+id = "takes-one-card"
+title = "The auto-move takes one card"
+description = "Only the named card leaves; any card above it in the column stays."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/takes-one-card.test.ts", outputs = [
+  { id = "home", name = "The one card sent, the rest still in the column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "from-empty-pile"
+title = "An auto-move from an empty pile does nothing"
+description = "The call returns false and the board is unchanged."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/from-empty-pile.test.ts", outputs = [
+  { id = "unchanged", name = "The board the call left alone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "face-down-does-nothing"
+title = "An auto-move from a face-down column does nothing"
+description = "A column whose lowest card is face-down sends nothing."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/face-down-does-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The face-down column, unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foundation-source-does-nothing"
+title = "An auto-move from a foundation does nothing"
+description = "The card is already home, so the call returns false."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/foundation-source-does-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The foundation, unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flips-exposed"
+title = "An auto-move turns the card it exposes"
+description = "Sending a column's only face-up card home turns the card beneath it."
+domains = ["rules", "handling"]
+failure_cap = "passable"
+validation = { script = "automove/flips-exposed.test.ts", outputs = [
+  { id = "flipped", name = "The card the auto-move uncovered", kind = "image" },
+] }
+[[review.categories.items]]
+id = "can-win"
+title = "The auto-move can win the game"
+description = "Auto-moving the fifty-second card home reaches the won screen."
+domains = ["rules", "handling"]
+failure_cap = "scuffed"
+validation = { script = "automove/can-win.test.ts", outputs = [
+  { id = "won", name = "The won screen the fifty-second card reached", kind = "image" },
+] }
+
+# --- Handling -----------------------------------------------------------------
+# The pointer that plays the game: what a press picks up, how a held run follows
+# and highlights, where a release resolves, and the double click.
+#
+# DRAG_THRESHOLD decides one thing and one thing only, and
+# `short-gesture-is-a-click` and `long-gesture-is-a-drop` are the two items that
+# grade it, one on each side of the figure: a build that calls every gesture a
+# click and a build that calls every gesture a drop are different defects, and
+# bundled they scored the same. `specs/controls.md` states the rest of the rule
+# the rest of this group depends on: the run enters the hand ON THE PRESS, before
+# any motion, which is what makes `press-grabs-column-run`, `press-grabs-waste-top`,
+# `press-grabs-foundation-top` and `press-face-down-grabs-nothing` readable from
+# `snapshot().drag` immediately after a `pointerDown` with no move. Every item that
+# completes a drop moves the pointer farther than DRAG_THRESHOLD before releasing.
+#
+# Four items resolve a release against a DROP RECTANGLE, which `specs/table.md`
+# fixes beside the anchors. Without that figure a build could read a column's
+# rectangle as the card footprint at its anchor or as the column's whole drawn
+# extent, both honouring every other stated rule, and these items would be
+# asserting the reference's choice rather than the specification's.
+[[review.categories]]
+id = "handling"
+title = "Handling"
+[[review.categories.items]]
+id = "press-grabs-column-run"
+title = "A press on a column card lifts it and the cards below"
+description = "The held run is the grabbed card and every face-up card below it, in order."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/press-grabs-column-run.test.ts", outputs = [
+  { id = "held", name = "The run in hand on the press", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-grabs-waste-top"
+title = "A press on the waste lifts its top card alone"
+description = "The held run holds one card."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/press-grabs-waste-top.test.ts", outputs = [
+  { id = "held", name = "The single card in hand", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-grabs-foundation-top"
+title = "A press on a foundation lifts its top card"
+description = "The held run holds that one card."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/press-grabs-foundation-top.test.ts", outputs = [
+  { id = "held", name = "The foundation's card in hand", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-face-down-grabs-nothing"
+title = "A press on a face-down card lifts nothing"
+description = "drag stays null."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/press-face-down-grabs-nothing.test.ts", outputs = [
+  { id = "unheld", name = "The board, with nothing in hand", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-bare-table-grabs-nothing"
+title = "A press on the bare table lifts nothing"
+description = "drag stays null."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/press-bare-table-grabs-nothing.test.ts", outputs = [
+  { id = "unheld", name = "The bare table, with nothing in hand", kind = "image" },
+] }
+[[review.categories.items]]
+id = "held-run-follows-pointer"
+title = "A held run follows the pointer"
+description = "The run's reported position tracks the pointer across a sweep."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/held-run-follows-pointer.test.ts", outputs = [
+  { id = "sweep", name = "The run following the pointer across the table", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drop-target-highlights"
+title = "A legal target under the run is reported"
+description = "The target the run is over is reported by dropTarget."
+domains = ["handling"]
+failure_cap = "scuffed"
+validation = { script = "handling/drop-target-highlights.test.ts", outputs = [
+  { id = "highlight", name = "The target reported under the held run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-highlight-illegal"
+title = "An illegal target is not reported"
+description = "dropTarget stays null while the leading card's centre lies inside the drop rectangle (specs/table.md) of a pile that would refuse the run."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/no-highlight-illegal.test.ts", outputs = [
+  { id = "unhighlighted", name = "The illegal pile under the run, unreported", kind = "image" },
+] }
+[[review.categories.items]]
+id = "release-on-legal-completes"
+title = "A release over a legal target completes the move"
+description = "The run is on the target and off its source."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/release-on-legal-completes.test.ts", outputs = [
+  { id = "dropped", name = "The run on the target and off its source", kind = "image" },
+] }
+[[review.categories.items]]
+id = "release-on-illegal-returns"
+title = "A release over an illegal pile returns the run"
+description = "The run is back in its source column, in order."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/release-on-illegal-returns.test.ts", outputs = [
+  { id = "returned", name = "The run back in its source column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "release-elsewhere-returns"
+title = "A release away from any pile returns the run"
+description = "A release whose leading card's centre lies in no pile's drop rectangle (specs/table.md) puts the run back in its source column."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/release-elsewhere-returns.test.ts", outputs = [
+  { id = "returned", name = "The run back in its source column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drop-target-by-position"
+title = "The target is the pile the leading card's centre lies in"
+description = "A release whose leading card's centre lies inside one pile's drop rectangle, as specs/table.md fixes them, resolves to that pile and not to a pile the card merely overlaps."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/drop-target-by-position.test.ts", outputs = [
+  { id = "resolved", name = "The pile the leading card's centre resolved to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stock-click-turns"
+title = "A press and release on the stock turns cards"
+description = "The waste grows by the turn count."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/stock-click-turns.test.ts", outputs = [
+  { id = "turned", name = "The waste the click grew", kind = "image" },
+] }
+[[review.categories.items]]
+id = "empty-stock-click-recycles"
+title = "A press on the empty stock slot recycles"
+description = "The waste returns to the stock."
+domains = ["handling"]
+failure_cap = "scuffed"
+validation = { script = "handling/empty-stock-click-recycles.test.ts", outputs = [
+  { id = "recycled", name = "The stock the click refilled", kind = "image" },
+] }
+[[review.categories.items]]
+id = "double-click-auto-moves"
+title = "Two quick presses send a card home"
+description = "Two presses 0.1 s apart at the same point send the card to its foundation."
+domains = ["handling"]
+failure_cap = "broken"
+validation = { script = "handling/double-click-auto-moves.test.ts", outputs = [
+  { id = "home", name = "The card the two presses sent home", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slow-second-press-does-not"
+title = "A slow second press does not auto-move"
+description = "Two presses 0.4 s apart, past DOUBLE_CLICK_WINDOW (0.30), leave the card where it was."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/slow-second-press-does-not.test.ts", outputs = [
+  { id = "unchanged", name = "The card still where it was", kind = "image" },
+] }
+[[review.categories.items]]
+id = "far-second-press-does-not"
+title = "A distant second press does not auto-move"
+description = "Two presses 0.1 s apart but 40 units apart, past DOUBLE_CLICK_SLOP (20), leave the card where it was."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/far-second-press-does-not.test.ts", outputs = [
+  { id = "unchanged", name = "The card still where it was", kind = "image" },
+] }
+[[review.categories.items]]
+id = "double-click-empty-does-nothing"
+title = "Two quick presses on bare table do nothing"
+description = "The board is unchanged."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/double-click-empty-does-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The bare table, unchanged", kind = "image" },
+] }
+# Three more boundaries the double-click rule's own words imply and no other item
+# reaches. `specs/controls.md` says a double click "lands on a playable card",
+# names the playable card as the waste's top card or a column's lowest face-up
+# card, and says the gesture "ends there; the release that follows changes
+# nothing". Each of the three is a distinct wrong reading of that sentence — a
+# build that sends the release on to the drop path, one that treats a face-down
+# card as playable, and one that treats any waste card as playable — so each is
+# its own point, and each is `passable` because a player who never double-clicks
+# a buried card never meets it.
+[[review.categories.items]]
+id = "double-click-release-inert"
+title = "The release after a double click changes nothing"
+description = "After a double click has sent a card home, the release that ends that gesture changes nothing: the board is exactly what the auto-move left, with nothing in hand."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/double-click-release-inert.test.ts", outputs = [
+  { id = "unchanged", name = "The board the auto-move left, unchanged by the release", kind = "image" },
+] }
+[[review.categories.items]]
+id = "double-click-face-down-does-nothing"
+title = "Two quick presses on a face-down card do nothing"
+description = "A double click on a column's face-down card is not on a playable card, so the board is unchanged."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/double-click-face-down-does-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The face-down card, unmoved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "double-click-buried-waste-does-nothing"
+title = "Two quick presses on a buried waste card do nothing"
+description = "A double click on a waste card that is not the waste's top card is not on a playable card, so the board is unchanged even when that card's foundation would accept it."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/double-click-buried-waste-does-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The buried waste card, unmoved", kind = "image" },
+] }
+# The finger on the table, scoped to `none`. `specs/controls.md` puts a mouse and
+# a touchscreen on the same footing and requires the game to be complete on a
+# touch device with no mouse attached, and under `none` the build owns the whole
+# input path, so answering a real touch contact is its work. Under `simple-2d`
+# and `structured-2d` the engine hands the game abstracted pointer samples that
+# have already resolved a finger into a press, a move and a release, so there is
+# nothing left for the build to get wrong and the point would pass vacuously.
+#
+# The cap is `scuffed` on all three: a player with a mouse loses nothing, and a
+# player without one loses the game — an optional path unplayable, which is what
+# `scuffed` names. The page not scrolling under a drag belongs with them, because
+# a table that pans away under the finger makes normal play on the device
+# unpleasant even where the drag itself lands.
+[[review.categories.items]]
+id = "touch-lifts-a-run"
+title = "A finger touching down lifts the run under it"
+description = "A touch contact landing on a column's lowest face-up card lifts that card and the cards below it into the hand, exactly as a mouse press does."
+domains = ["handling"]
+failure_cap = "scuffed"
+validation = { script = "handling/touch-lifts-a-run.test.ts", engines = ["none"], outputs = [
+  { id = "lifted", name = "The run the finger lifted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-completes-a-drop"
+title = "A finger lifting over a legal target completes the drop"
+description = "A touch contact that lifts a run, travels farther than DRAG_THRESHOLD (5) and lifts over a pile that accepts it applies the move, exactly as a mouse release does."
+domains = ["handling"]
+failure_cap = "scuffed"
+validation = { script = "handling/touch-completes-a-drop.test.ts", engines = ["none"], outputs = [
+  { id = "dropped", name = "The drop the finger completed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "touch-drag-does-not-scroll"
+title = "Dragging a card does not scroll the page"
+description = "A touch contact dragged across the table leaves the page's scroll position and visual viewport scale where they were."
+domains = ["handling"]
+failure_cap = "scuffed"
+validation = { script = "handling/touch-drag-does-not-scroll.test.ts", engines = ["none"], outputs = [
+  { id = "still", name = "The page still where it was after the drag", kind = "image" },
+] }
+# The failure this catches is a build that folds a frame's samples down to the
+# last position it saw: such a build receives the release alone, lifts nothing,
+# and completes no drop.
+[[review.categories.items]]
+id = "sweep-resolves-per-sample"
+title = "Every pointer sample a frame delivers is answered"
+description = "A press on a column's lowest card, a move across the table and a release over a legal target, all delivered to the real pointer before a single frame's update, still lift the run and complete the drop."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/sweep-resolves-per-sample.test.ts", outputs = [
+  { id = "dropped", name = "The completed drop the one frame's samples made", kind = "image" },
+] }
+[[review.categories.items]]
+id = "release-without-press"
+title = "A release with nothing held changes nothing"
+description = "The board and drag are unchanged."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/release-without-press.test.ts", outputs = [
+  { id = "unchanged", name = "The board and the empty hand", kind = "image" },
+] }
+# The two sides of DRAG_THRESHOLD (`5`), one point each. Four units and six units
+# are the same gesture either side of the figure, so a build reading the
+# comparison the wrong way round fails exactly one of the two and a build that
+# never measures at all fails both.
+#
+# BOTH ARE DRIVEN ON THE STOCK rather than on a card carried toward a column.
+# `specs/table.md` puts the thirteen drop rectangles at least `16` units apart, so
+# a run moved four or six units still has its leading card's centre inside its own
+# source pile's rectangle or inside none at all, and both readings of the
+# threshold leave the card where it started. The stock is the one place the two
+# kinds of gesture part company over a distance this small: a click there turns
+# the stock and a drop turns none.
+[[review.categories.items]]
+id = "short-gesture-is-a-click"
+title = "A short gesture is a click, not a drop"
+description = "A press in the stock's drop rectangle, a move of 4 units and a release turns the stock, because the release lies within DRAG_THRESHOLD (5) of its press."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/short-gesture-is-a-click.test.ts", outputs = [
+  { id = "click", name = "The four-unit gesture on the stock, and the card it turned", kind = "image" },
+] }
+[[review.categories.items]]
+id = "long-gesture-is-a-drop"
+title = "A longer gesture is a drop, not a click"
+description = "The same gesture moving 6 units turns no stock, because the release lies farther than DRAG_THRESHOLD (5) from its press and a drop turns none."
+domains = ["handling"]
+failure_cap = "passable"
+validation = { script = "handling/long-gesture-is-a-drop.test.ts", outputs = [
+  { id = "drop", name = "The six-unit gesture on the stock, which turned none", kind = "image" },
+] }
+
+# --- Screens and the HUD ------------------------------------------------------
+# The four screens, the copy each carries, and the three HUD controls. The category
+# names both `presentation` and `handling`, because a screen that draws correctly
+# but cannot be reached by its own control has failed the player either way.
+#
+# One item covers the how-to copy, not four and not two. A script can decide
+# whether a token is drawn; it cannot decide whether wording names the goal, and
+# `.claude/skills/test-cases/SKILL.md` forbids asking it to. The captured image is
+# what the reviewer judges the prose from. `title-shows-title`,
+# `title-shows-tagline`, `title-shows-new-game` and `title-shows-how-to` are four
+# separate items, each asserting its own literal.
+#
+# `title-shows-mode-label` and `hud-shows-mode-label` hold the drawn label against
+# the `dealModeLabel` the build itself reports, so they decide CONSISTENCY under
+# both variants and all three engines. The LITERAL each variant must draw is the
+# variant's own pair of points.
+#
+# THE MENU POINTS ARE IN THIS CATEGORY TOO, at its end. `specs/controls.md` makes
+# the controls a screen carries that screen's menu and drives every menu by the
+# keyboard, by a mouse and by touch alike, so where the menu is answered is a
+# screens question. They are the one group whose scripts are NOT named
+# `<category>/<item id>.test.ts`: they sit under `navigation/`, `pointer/` and
+# `touch/` instead, grouped by the input route that drives them, because that is
+# the axis a failure is read along — a build with a working mouse and a dead
+# keyboard fails one whole directory and no part of another.
+[[review.categories]]
+id = "screens"
+title = "Screens and the HUD"
+[[review.categories.items]]
+id = "opens-on-title"
+title = "The game opens on the title screen"
+description = "A freshly initialized build reports screen \"title\"."
+domains = ["presentation", "handling"]
+failure_cap = "broken"
+validation = { script = "screens/opens-on-title.test.ts", outputs = [
+  { id = "title", name = "The title screen the game opened on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-shows-title"
+title = "The title screen shows the title"
+description = "CASCADE is drawn on the title screen."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/title-shows-title.test.ts", outputs = [
+  { id = "title", name = "The title screen and its title", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-shows-tagline"
+title = "The title screen shows its tagline"
+description = "TAGLINE_TEXT (KLONDIKE SOLITAIRE) is drawn on the title screen."
+domains = ["presentation", "handling"]
+failure_cap = "great"
+validation = { script = "screens/title-shows-tagline.test.ts", outputs = [
+  { id = "title", name = "The title screen and its tagline", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-shows-new-game"
+title = "The title screen shows its NEW GAME item"
+description = "The TITLE_ITEMS literal NEW GAME is drawn on the title screen."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-shows-new-game.test.ts", outputs = [
+  { id = "title", name = "The title screen and its NEW GAME item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-shows-how-to"
+title = "The title screen shows its HOW TO PLAY item"
+description = "The TITLE_ITEMS literal HOW TO PLAY is drawn on the title screen."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-shows-how-to.test.ts", outputs = [
+  { id = "title", name = "The title screen and its HOW TO PLAY item", kind = "image" },
+] }
+# Matched against what the build itself reports rather than against a literal, so
+# the point decides CONSISTENCY under both variants and all three engines. The
+# literal each variant must draw is that variant's own `mode-label-title`.
+[[review.categories.items]]
+id = "title-shows-mode-label"
+title = "The title screen names the deal mode"
+description = "The text drawn on the title screen carries the build's own deal-mode label, matched against the dealModeLabel the snapshot reports."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/title-shows-mode-label.test.ts", outputs = [
+  { id = "title", name = "The title screen carrying the deal-mode label", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-new-game-enters-play"
+title = "The title's NEW GAME deals and enters play"
+description = "A press and release inside the region menuItemRect reports for the title's NEW GAME item reaches playing with a fresh fifty-two-card deal."
+domains = ["presentation", "handling"]
+failure_cap = "broken"
+validation = { script = "screens/title-new-game-enters-play.test.ts", outputs = [
+  { id = "playing", name = "The fresh deal the title's NEW GAME reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-how-to-opens"
+title = "The title's HOW TO PLAY opens the how-to screen"
+description = "A press and release inside the region menuItemRect reports for the title's HOW TO PLAY item reaches howto."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-how-to-opens.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen the title opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-copy"
+title = "The how-to screen names the goal and the controls"
+description = "Among the how-to screen's draws, each of the four standalone tokens specs/screens.md fixes, ACE, KING, STOCK and DOUBLE-CLICK, is present, matched at word boundaries. The prose around them is reviewed from the captured frame rather than asserted."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/howto-copy.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen and its copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back-returns"
+title = "The how-to screen's BACK returns to the title"
+description = "A press and release inside the region menuItemRect reports for the how-to screen's BACK item reaches title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-back-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen BACK returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "playing-draws-thirteen-piles"
+title = "The live table draws every pile"
+description = "The stock, the waste, four foundations and seven columns are all drawn."
+domains = ["presentation", "handling"]
+failure_cap = "broken"
+validation = { script = "screens/playing-draws-thirteen-piles.test.ts", outputs = [
+  { id = "table", name = "The live table and its thirteen piles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-new-game-deals"
+title = "The HUD's NEW GAME deals a fresh game"
+description = "A press and release inside the region menuItemRect reports for the HUD's NEW GAME item produces a fresh deal and stays on playing."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/hud-new-game-deals.test.ts", outputs = [
+  { id = "dealt", name = "The fresh deal the HUD's NEW GAME produced", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-returns"
+title = "The HUD's MENU returns to the title"
+description = "A press and release inside the region menuItemRect reports for the HUD's MENU item reaches title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/hud-menu-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen MENU returned to", kind = "image" },
+] }
+# Muting and unmuting are two points. A build whose SOUND control only ever sets
+# the bit has taken the player's sound away with no way back, which is a worse
+# thing to have shipped than one whose control does nothing at all, and one
+# bundled point could not tell them apart.
+[[review.categories.items]]
+id = "hud-sound-mutes"
+title = "The HUD's SOUND mutes"
+description = "With muted false, a press and release inside the region menuItemRect reports for the HUD's SOUND item reports muted true."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/hud-sound-mutes.test.ts", outputs = [
+  { id = "muted", name = "The HUD with mute on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-sound-unmutes"
+title = "The HUD's SOUND unmutes"
+description = "With muted true, a second press and release inside that same region reports muted false."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/hud-sound-unmutes.test.ts", outputs = [
+  { id = "unmuted", name = "The HUD with mute off again", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-shows-mode-label"
+title = "The HUD names the deal mode during play"
+description = "The text drawn during play carries the same dealModeLabel the snapshot reports."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/hud-shows-mode-label.test.ts", outputs = [
+  { id = "hud", name = "The HUD carrying the deal-mode label", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-clear-of-piles"
+title = "The HUD sits in its strip"
+description = "All three regions menuItemRect reports during play lie within the HUD strip, and no tableau card enters it."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/hud-clear-of-piles.test.ts", outputs = [
+  { id = "strip", name = "The HUD strip, clear of the columns", kind = "image" },
+] }
+[[review.categories.items]]
+id = "won-shows-message"
+title = "The won screen shows YOU WIN"
+description = "Once the cascade is done, YOU WIN is drawn over the painted table."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/won-shows-message.test.ts", outputs = [
+  { id = "won", name = "YOU WIN over the painted table", kind = "image" },
+] }
+[[review.categories.items]]
+id = "won-press-deals"
+title = "A press on the won screen deals a fresh game"
+description = "A press after the cascade reaches playing with a fresh deal."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "screens/won-press-deals.test.ts", outputs = [
+  { id = "dealt", name = "The fresh deal the press produced", kind = "image" },
+] }
+
+# A control answers only on the screen it belongs to (`specs/controls.md`), which
+# is a boundary the general rule already implies and no other point reaches. It
+# is `passable` because a player never presses the HUD's strip from the title on
+# purpose; it is graded because a build that hit-tests every screen's controls on
+# every screen deals a fresh game from the title menu.
+[[review.categories.items]]
+id = "control-inert-off-screen"
+title = "A control is inert on a screen it does not belong to"
+description = "A press and release at the point the HUD's NEW GAME item occupied during play, made while the game is on title, deals nothing and leaves the screen on title."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "screens/control-inert-off-screen.test.ts", outputs = [
+  { id = "title", name = "The title screen the off-screen press left standing", kind = "image" },
+] }
+
+# --- The menus (keyboard) -----------------------------------------------------
+# `specs/controls.md` makes each screen's controls that screen's menu and gives
+# the keyboard four actions over it — `menu-up`, `menu-down`, `menu-confirm` and
+# `menu-back` — bound to literal `KeyboardEvent.code` values. Each point below
+# drives the real key and reads the result off `screen` and `menuIndex`, one
+# transition at a time, on one menu at a time: the title's two items, the how-to
+# screen's one, and the HUD's three during play. `won` shows no menu and reads
+# none of the four, which is why nothing here drives it.
+#
+# A KEY THAT IS BOUND TO TWO CODES IS ONE POINT. `menu-up` is `ArrowUp` and
+# `KeyW`, `menu-confirm` is `Enter` and `Space`: the two codes raise the same
+# action and exercise the same rule the same way, so one point drives both and a
+# build that bound only one of the pair fails it.
+#
+# THE CAP IS `scuffed` WHERE THE ACTION DOES SOMETHING and `passable` where the
+# specification says it does nothing. Cascade is played with the pointer, so a
+# dead keyboard leaves the whole game reachable by the route it was designed
+# around — an optional path unplayable, which is what `scuffed` names. A build
+# that acts on an action the specification makes inert has instead done something
+# uninvited, which affects play without taking a route away.
+[[review.categories.items]]
+id = "title-menu-up"
+title = "Up moves the title selection up"
+description = "On title with menuIndex 1, a press of ArrowUp, and a press of KeyW, each set menuIndex to 0, with screen still title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-menu-up.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the first item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-down"
+title = "Down moves the title selection down"
+description = "On title with menuIndex 0, a press of ArrowDown, and a press of KeyS, each set menuIndex to 1, with screen still title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-menu-down.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the second item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-up-wraps"
+title = "Up wraps from the first title item to the last"
+description = "On title with menuIndex 0, one press of ArrowUp sets menuIndex to 1, the last of the two TITLE_ITEMS."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-menu-up-wraps.test.ts", outputs = [
+  { id = "menu", name = "The title menu wrapped to its last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-down-wraps"
+title = "Down wraps from the last title item to the first"
+description = "On title with menuIndex 1, one press of ArrowDown sets menuIndex to 0."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-menu-down-wraps.test.ts", outputs = [
+  { id = "menu", name = "The title menu wrapped to its first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-confirm"
+title = "Confirm activates the selected title item"
+description = "On title with menuIndex 1, a press of Enter, and a press of Space, each reach howto, the item at menuIndex having been activated."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-menu-confirm.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen the confirm reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-back-inert"
+title = "Back does nothing on the title"
+description = "On title with menuIndex 1, a press of Escape leaves screen at title and menuIndex at 1."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/title-menu-back-inert.test.ts", outputs = [
+  { id = "title", name = "The title menu Escape left where it was", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-menu-up-inert"
+title = "Up does nothing on the how-to screen"
+description = "On howto, a press of ArrowUp and a press of KeyW each leave menuIndex 0 and screen at howto, the screen carrying one item."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/howto-menu-up-inert.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen still on its single item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-menu-down-inert"
+title = "Down does nothing on the how-to screen"
+description = "On howto, a press of ArrowDown and a press of KeyS each leave menuIndex 0 and screen at howto, the screen carrying one item."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/howto-menu-down-inert.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen still on its single item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-menu-confirm"
+title = "Confirm leaves the how-to screen"
+description = "On howto, a press of Enter, and a press of Space, each activate the item labelled HOWTO_BACK_LABEL and reach title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/howto-menu-confirm.test.ts", outputs = [
+  { id = "title", name = "The title screen the confirm returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-menu-back"
+title = "Back leaves the how-to screen"
+description = "On howto, a press of Escape activates the item labelled HOWTO_BACK_LABEL and reaches title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/howto-menu-back.test.ts", outputs = [
+  { id = "title", name = "The title screen Escape returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-up"
+title = "Up moves the HUD selection up"
+description = "On playing with menuIndex 1, a press of ArrowUp, and a press of KeyW, each set menuIndex to 0, with screen still playing."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/hud-menu-up.test.ts", outputs = [
+  { id = "hud", name = "The HUD with its first item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-down"
+title = "Down moves the HUD selection down"
+description = "On playing with menuIndex 0, a press of ArrowDown, and a press of KeyS, each set menuIndex to 1, with screen still playing."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/hud-menu-down.test.ts", outputs = [
+  { id = "hud", name = "The HUD with its second item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-up-wraps"
+title = "Up wraps from the first HUD item to the last"
+description = "On playing with menuIndex 0, one press of ArrowUp sets menuIndex to 2, the last of the three HUD_ITEMS."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/hud-menu-up-wraps.test.ts", outputs = [
+  { id = "hud", name = "The HUD wrapped to its last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-down-wraps"
+title = "Down wraps from the last HUD item to the first"
+description = "On playing with menuIndex 2, one press of ArrowDown sets menuIndex to 0."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/hud-menu-down-wraps.test.ts", outputs = [
+  { id = "hud", name = "The HUD wrapped to its first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-confirm"
+title = "Confirm activates the selected HUD item"
+description = "On playing with menuIndex 1, a press of Enter, and a press of Space, each activate the HUD's MENU item and reach title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "navigation/hud-menu-confirm.test.ts", outputs = [
+  { id = "title", name = "The title screen the HUD's confirm reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-back-inert"
+title = "Back does nothing during play"
+description = "On playing with menuIndex 1, a press of Escape leaves screen at playing, menuIndex at 1 and the board as it stood."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/hud-menu-back-inert.test.ts", outputs = [
+  { id = "playing", name = "The table Escape left in play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-index-on-arrival"
+title = "Play opens on the HUD's first item"
+description = "With menuIndex left on the HUD's last item and carried onto won by setScreen, a press that deals a fresh game and returns to playing reports menuIndex 0."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/hud-menu-index-on-arrival.test.ts", outputs = [
+  { id = "hud", name = "The HUD as play opened, on its first item", kind = "image" },
+] }
+# The screen with no menu, and the key that stays down. Neither is reachable by a
+# point that taps one key on a screen that has a menu, and both are rules
+# `specs/controls.md` states in its own words.
+[[review.categories.items]]
+id = "won-reads-no-menu-keys"
+title = "The won screen reads none of the four menu actions"
+description = "On won, one press of each of the seven codes the four menu actions are bound to leaves screen at won."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/won-reads-no-menu-keys.test.ts", outputs = [
+  { id = "won", name = "The won screen the seven presses left standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-key-held-moves-once"
+title = "A held key moves the selection one step"
+description = "On playing with menuIndex 0, ArrowDown held down moves menuIndex to 1 on the frame it went down and leaves it at 1 over the next 60 frames it stays down."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/menu-key-held-moves-once.test.ts", outputs = [
+  { id = "hud", name = "The HUD one step down, after a second of the key held", kind = "image" },
+] }
+# The two ordering rules `specs/controls.md` states for a frame carrying more
+# than one edge. Each is an edge case of the general rule rather than a rule of
+# its own, so each is `passable`: a player who presses one key at a time never
+# meets either, and a build that reads them the other way round still answers
+# every single edge correctly.
+[[review.categories.items]]
+id = "menu-up-beats-down-in-a-frame"
+title = "An up edge and a down edge in one frame move up"
+description = "A frame carrying both a menu-up edge and a menu-down edge moves menuIndex up one and no further."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/menu-up-beats-down-in-a-frame.test.ts", outputs = [
+  { id = "menu", name = "The menu the two edges moved up one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-movement-beats-confirm-in-a-frame"
+title = "A movement edge and a confirm edge in one frame move only"
+description = "A frame carrying a menu-down edge and a menu-confirm edge moves menuIndex down one and activates nothing, leaving the screen where it was."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/menu-movement-beats-confirm-in-a-frame.test.ts", outputs = [
+  { id = "menu", name = "The menu moved but not activated", kind = "image" },
+] }
+# The remembered title selection (`specs/screens.md`, "Returning to the title"),
+# in four points rather than two paths. `specs/instrumentation.md` carries
+# `setTitleIndex`, so what an activation WRITES into `titleIndex` and what a
+# return RESTORES from it are two requirements a check can pose for separately —
+# and each point reaches its scenario without driving a control another point
+# grades. The pose is also what stops either restoration point passing on the
+# naive answer: both are driven with `titleIndex` at `1`, which a build that
+# always selects the title's first entry cannot produce.
+[[review.categories.items]]
+id = "title-new-game-remembers"
+title = "Activating NEW GAME records it as the title entry"
+description = "On title with titleIndex posed to 1, activating NEW GAME sets titleIndex to 0."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/title-new-game-remembers.test.ts", outputs = [
+  { id = "playing", name = "The game NEW GAME started", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-how-to-remembers"
+title = "Activating HOW TO PLAY records it as the title entry"
+description = "On title with titleIndex posed to 0, activating HOW TO PLAY sets titleIndex to 1."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/title-how-to-remembers.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen HOW TO PLAY opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back-restores-title-entry"
+title = "BACK returns to the title on the remembered entry"
+description = "On howto with titleIndex posed to 1, activating BACK returns to title with menuIndex 1."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/howto-back-restores-title-entry.test.ts", outputs = [
+  { id = "title", name = "The title BACK returned to, on the remembered entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-menu-restores-title-entry"
+title = "The HUD's MENU returns to the title on the remembered entry"
+description = "On playing with titleIndex posed to 1, activating the HUD's MENU item returns to title with menuIndex 1."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/hud-menu-restores-title-entry.test.ts", outputs = [
+  { id = "title", name = "The title the HUD's MENU returned to, on the remembered entry", kind = "image" },
+] }
+
+# --- The menus (the layout the build reports) ---------------------------------
+# `specs/controls.md` leaves every menu's layout to the build and `menuItemRect`
+# is how the build says where it put each item, so the pointer and touch points
+# below ask the build where the item is and drive the real input at the middle of
+# what it answered: any layout passes, and a build that reports a region it does
+# not answer on fails. That makes this read the one point in the group whose cap
+# is about the surface rather than about the player — every pointer and touch
+# point below drives through it, and so do the four remembered-entry points, the
+# HUD's label point and `presentation/selected-item-distinct`, so a read that
+# answers nothing leaves all of them deciding nothing. That is the `broken` this
+# checklist reserves for the surface every suite drives through.
+[[review.categories.items]]
+id = "menu-item-rect-reported"
+title = "The build reports each menu item's hit region"
+description = "menuItemRect(index) returns an { x, y, w, h } region of four finite numbers with a positive size for every item of the menu shown on title, on howto and on playing."
+domains = ["presentation", "handling"]
+failure_cap = "broken"
+validation = { script = "navigation/menu-item-rect-reported.test.ts", outputs = [
+  { id = "regions", name = "The title menu and the regions the build reported for it", kind = "image" },
+] }
+# The other two halves of the read are their own points, and neither carries the
+# `broken` above: a build can report a usable region for every item and still
+# stack two of them, or still answer a rectangle where the specification says
+# `null`, and those two misses cost a player different things.
+[[review.categories.items]]
+id = "menu-item-rects-do-not-overlap"
+title = "One screen's menu regions do not overlap"
+description = "No two of the regions menuItemRect reports for one screen's menu share any area, on title, on howto and on playing."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "navigation/menu-item-rects-do-not-overlap.test.ts", outputs = [
+  { id = "regions", name = "The HUD menu the regions were read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-item-rect-null-off-menu"
+title = "The read answers null where there is no item"
+description = "menuItemRect returns null for an index one past the end of the menu shown on title, on howto and on playing, and for index 0 on won, which shows no menu."
+domains = ["presentation", "handling"]
+failure_cap = "great"
+validation = { script = "navigation/menu-item-rect-null-off-menu.test.ts", outputs = [
+  { id = "regions", name = "The title menu, whose items do have regions", kind = "image" },
+] }
+
+# --- The menus (mouse) --------------------------------------------------------
+# The three behaviors `specs/controls.md` gives the mouse over a menu: a move
+# selects, a press and its release inside one region activate that item, and two
+# edges falling in different regions activate nothing. Each is graded on the
+# title menu, where the two entries confirm to screens a check reads straight off
+# `screen`.
+#
+# THE CAPS FOLLOW WHAT EACH MISS COSTS A PLAYER, and only the first is `broken`.
+# Cascade is a pointer game: the table is played with the mouse and nothing else,
+# so a build whose menus never CONFIRM under the mouse cannot be started or left
+# with the mouse at all. Activation does not wait on a hover — `specs/controls.md`
+# has a press and the release that follows it inside one region select the item
+# AND activate it — so a build that never highlights on the way past is still
+# fully playable and merely unpleasant, which is `scuffed`; and a slide-off that
+# still fires is an edge case of the general rule, which is the `passable` the
+# keyboard's own edge cases carry. The keyboard's edges are the `navigation`
+# points, not these.
+[[review.categories.items]]
+id = "pointer-hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 1, with screen still title."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-click-confirms"
+title = "A press and release inside one item activates it"
+description = "On title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["presentation", "handling"]
+failure_cap = "broken"
+validation = { script = "pointer/pointer-click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen the click opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-split-gesture-confirms-nothing"
+title = "A press and release in different items activates nothing"
+description = "On title, pressing the pointer inside the region menuItemRect reports for HOW TO PLAY and releasing it inside NEW GAME's leaves screen at title, activating neither item."
+domains = ["presentation", "handling"]
+failure_cap = "passable"
+validation = { script = "pointer/pointer-split-gesture-confirms-nothing.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+
+# --- The menus (touch) --------------------------------------------------------
+# A finger is not a small mouse. It never hovers, so the first the build hears of
+# it is the contact LANDING, and the landing is what selects: that is a rule of
+# its own in `specs/controls.md`'s pointer-and-touch table and cannot be reached
+# by any mouse point. Each point below drives one real touch contact at the
+# middle of the region the build reports, so any layout passes and only the
+# handling is graded.
+#
+# ONLY THE LANDING IS GRADED ON EVERY ENGINE. `specs/controls.md` gives a finger
+# ONE rule the mouse does not share — the contact landing inside a region selects
+# that item, with no hover before it — and no `pointer/` point reaches it, so a
+# build owes that answer under every engine. The other two touch rules ARE the
+# mouse's: a contact that lifts where it landed activates, and one that lifts
+# elsewhere does not, which is `pointer-click-confirms` and
+# `pointer-split-gesture-confirms-nothing` word for word. Under an engine the
+# engine resolves a contact into the same press, move and release a mouse raises,
+# so those two would re-run the mouse points and charge a build twice for one
+# defect; they carry `engines = ["none"]`, where the build owns the browser's
+# events and a build that listens for the mouse alone genuinely fails them.
+#
+# The cap is `scuffed`: a player holding a mouse loses nothing, and a player
+# holding a tablet loses the menus — an optional path unplayable.
+[[review.categories.items]]
+id = "touch-landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 1."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "touch/touch-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-tap-confirms"
+title = "A contact that lifts where it landed activates that item"
+description = "On title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "touch/touch-tap-confirms.test.ts", engines = ["none"], outputs = [
+  { id = "howto", name = "The how-to screen the tap opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-drag-cancels"
+title = "A contact that lifts on a different item activates nothing"
+description = "On title, a touch contact landing inside NEW GAME's reported region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 1."
+domains = ["presentation", "handling"]
+failure_cap = "scuffed"
+validation = { script = "touch/touch-drag-cancels.test.ts", engines = ["none"], outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
+] }
+
+# --- Winning ------------------------------------------------------------------
+# The win is a rule (fifty-two cards home, and not fifty-one) that hands over to
+# the cascade, so this category names both domains.
+#
+# Its three `replay` items record with the trail painting left ON. Each covers the
+# win and at most the cascade's first frames, far inside the recorder's budget, and
+# the capture is worth more with the real trail in it. The `cascade` group's
+# painting-off rule is that group's and does not reach here.
+[[review.categories]]
+id = "winning"
+title = "Winning"
+[[review.categories.items]]
+id = "win-at-fifty-two"
+title = "Fifty-two cards home wins the game"
+description = "The screen becomes won the instant the last card lands."
+domains = ["rules", "cascade"]
+failure_cap = "broken"
+validation = { script = "winning/win-at-fifty-two.test.ts", outputs = [
+  { id = "won", name = "The won screen the last card reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-win-at-fifty-one"
+title = "Fifty-one cards home is not a win"
+description = "With one card still out, the game stays on playing."
+domains = ["rules", "cascade"]
+failure_cap = "broken"
+validation = { script = "winning/no-win-at-fifty-one.test.ts", outputs = [
+  { id = "playing", name = "The board still in play with one card out", kind = "image" },
+] }
+[[review.categories.items]]
+id = "win-by-drop"
+title = "Dragging the last card home wins"
+description = "The win is reached by a released drag and the cascade is running when the gesture is over."
+domains = ["rules", "cascade"]
+failure_cap = "broken"
+validation = { script = "winning/win-by-drop.test.ts", outputs = [
+  { id = "drop", name = "The last card dragged home and the cascade starting", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "win-by-double-click"
+title = "Double-clicking the last card home wins"
+description = "The win is reached by a double click and the cascade is still running when the second press has been handled."
+domains = ["rules", "cascade"]
+failure_cap = "broken"
+validation = { script = "winning/win-by-double-click.test.ts", outputs = [
+  { id = "double-click", name = "The last card double-clicked home and the cascade starting", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cascade-begins-on-win"
+title = "The cascade begins with the win"
+description = "The first card launches on the cascade's first frame."
+domains = ["rules", "cascade"]
+failure_cap = "broken"
+validation = { script = "winning/cascade-begins-on-win.test.ts", outputs = [
+  { id = "first-frames", name = "The cascade's first frames", kind = "replay" },
+] }
+# Narrowed to the boundary this point owns: that a press DURING the cascade,
+# rather than after it, is answered at all. What the deal it triggers then clears is
+# `deal.deal-clears-trail`'s, on the same deal path, so the trail is not read
+# again here — one defect, one docked point.
+[[review.categories.items]]
+id = "press-clears-and-deals"
+title = "A press during the cascade deals a fresh game"
+description = "A press made while the cascade is still running reaches playing with a fresh fifty-two-card deal on the table (specs/victory.md)."
+domains = ["rules", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "winning/press-clears-and-deals.test.ts", outputs = [
+  { id = "dealt", name = "The fresh deal the press left on clean felt", kind = "image" },
+] }
+
+# --- The Victory Cascade ------------------------------------------------------
+# The signature: fifty-two cards launched one after another, each arcing under
+# gravity, bouncing off the floor, painting the table and retiring past a side
+# edge.
+#
+# A WRONG FIGURE IN THE CASCADE IS NOT `broken`. The cascade is the game's ending,
+# not its play. A cascade that never starts, never completes, or leaves no trail is
+# `broken`; a wrong gravity, damping, cadence or launch velocity is `passable`,
+# because the ending still plays and only its motion is off.
+#
+# Every item in this group turns `setTrailPainting(false)` except
+# `trail-persists`, `trail-accumulates` and `trail-survives-completion`, and every
+# `replay` output in the group records with it off, which is what keeps a cascade
+# replay inside the recorder's capture budget. `setLaunching(false)` is what lets
+# every single-flyer point read one parabola instead of fifty-two.
+#
+# Unless an item says otherwise, a point here advances the clock in frames of
+# 1/240 s, fine enough that a figure quantized to a frame boundary still meets the
+# stated tolerances. A suite that advances in 1/60 s frames instead will fail
+# conformant builds on the timing items.
+#
+# There is deliberately NO item saying that at most one card launches in a frame.
+# The launch rule carries its remainder, so a frame long enough to cover several
+# intervals launches several cards, and such an item would fail a conformant build
+# on any coarse frame while passing vacuously on fine ones. What the rule
+# guarantees is the count, and `launch-cadence` asserts exactly that.
+[[review.categories]]
+id = "cascade"
+title = "The Victory Cascade"
+# The mean is the honest figure because the launch rule carries its remainder, so
+# the cadence does not drift; a per-gap tolerance tighter than a frame would only
+# be measuring the validator's own step.
+#
+# THIS IS THE ITEM THAT SAYS OTHERWISE about the group's frame. The launch clock
+# adds each frame's delta and carries what it does not spend, so a card leaves at
+# the same game time however the interval was divided, and a frame decides only
+# which frame the launch is read on. The engine suites therefore watch these three
+# seconds in frames of 1/40 s, which is also what makes the CARRY readable: at
+# 1/240 s the interval is 43.2 frames, so a clock that zeroed its remainder where
+# the specification subtracts the interval launches every forty-fourth frame, a
+# cadence 1.9% wide and still seventeen cards over the window; at 1/40 s it
+# launches every eighth frame, 0.2 s apart, and fifteen cards over the window.
+[[review.categories.items]]
+id = "launch-cadence"
+title = "A card launches every 0.18 s"
+description = "Over three seconds of a running cascade, exactly floor(3 / LAUNCH_INTERVAL) + 1 (17) cards have launched, and the mean gap between successive launches is within 2% of LAUNCH_INTERVAL."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-cadence.test.ts", outputs = [
+  { id = "launches", name = "Three seconds of launches", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "launch-cycles-foundations"
+title = "Launching cycles the four foundations"
+description = "The first four launches take one card from each foundation in turn."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-cycles-foundations.test.ts", outputs = [
+  { id = "launches", name = "The first four launches, one per foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-takes-top-card"
+title = "Each launch takes the foundation's top card"
+description = "A foundation walks King down to Ace over its turns."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-takes-top-card.test.ts", outputs = [
+  { id = "walk", name = "The foundation walking down from its King", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-position"
+title = "A card launches from its foundation's position"
+description = "The new flyer's top-left is that foundation's anchor."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-position.test.ts", outputs = [
+  { id = "launch", name = "The new flyer at its foundation's anchor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-vy"
+title = "A launched card pops upward at -120"
+description = "The new flyer's vy is LAUNCH_VY."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-vy.test.ts", outputs = [
+  { id = "launch", name = "The launched card on its way up", kind = "image" },
+] }
+# The two `vx` items are decided through `drawLaunchVx`, the operation that
+# performs one launch's draw and nothing else, rather than by reading a whole
+# cascade. The magnitude item reads a handful of draws and holds each to the
+# range; the sign item reads a small sample and holds it to carry more than one
+# sign, which a fair sign fails with a chance of one in 2^31, beyond six standard
+# deviations. Neither item asserts a ratio or a spread, because a sample cannot
+# decide a distribution without failing conformant builds by chance; what they
+# decide is that no draw leaves the range and that the sign varies.
+[[review.categories.items]]
+id = "launch-vx-magnitude"
+title = "A launched card's horizontal speed is in range"
+description = "Every one of a handful of values drawLaunchVx() returns has |vx| in [180, 420]."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-vx-magnitude.test.ts", outputs = [
+  { id = "launches", name = "The drawn speeds, posed as cards in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-vx-both-signs"
+title = "Cards launch to both sides"
+description = "A small sample of values drawLaunchVx() returns carries more than one sign."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/launch-vx-both-signs.test.ts", outputs = [
+  { id = "launches", name = "The drawn speeds carrying cards to both sides", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gravity"
+title = "Gravity accelerates a flyer at 1800"
+description = "Over 0.5 s a held-still-horizontally flyer's vy grows by 900 within 2%."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/gravity.test.ts", outputs = [
+  { id = "fall", name = "The flyer accelerating downward", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "advance-x"
+title = "A flyer advances by its horizontal velocity"
+description = "Over 0.5 s the flyer's x changes by vx * 0.5 within 2%."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/advance-x.test.ts", outputs = [
+  { id = "travel", name = "The flyer crossing the table", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "advance-y"
+title = "A flyer advances by its vertical velocity"
+description = "Over one frame the flyer's y changes by the post-gravity vy * dt within 1 unit."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/advance-y.test.ts", outputs = [
+  { id = "step", name = "The flyer after one frame", kind = "image" },
+] }
+[[review.categories.items]]
+id = "floor-bounce-reflects"
+title = "A flyer bounces off the floor"
+description = "A descending flyer reaching the floor leaves it ascending."
+domains = ["cascade"]
+failure_cap = "broken"
+validation = { script = "cascade/floor-bounce-reflects.test.ts", outputs = [
+  { id = "bounce", name = "The flyer bouncing off the floor", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "floor-bounce-damps"
+title = "A bounce keeps 0.80 of the vertical speed"
+description = "The outgoing |vy| is BOUNCE_DAMP times the incoming, within 2%."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-bounce-damps.test.ts", outputs = [
+  { id = "bounce", name = "The damped bounce", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "floor-bounce-seats"
+title = "A bounced card is seated on the floor"
+description = "Its y is FLOOR_Y (580) on the bounce."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-bounce-seats.test.ts", outputs = [
+  { id = "seated", name = "The bounced card seated on the floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "floor-bounce-keeps-vx"
+title = "A bounce leaves the horizontal velocity alone"
+description = "vx is unchanged across the bounce."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-bounce-keeps-vx.test.ts", outputs = [
+  { id = "bounce", name = "The bounce, with the horizontal travel unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bounces-lose-height"
+title = "Each bounce peaks lower"
+description = "Three successive bounce peaks descend."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/bounces-lose-height.test.ts", outputs = [
+  { id = "bounces", name = "Three bounces, each peaking lower", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-side-bounce"
+title = "A flyer passes the side edges"
+description = "A flyer driven at a side edge crosses it rather than reflecting."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/no-side-bounce.test.ts", outputs = [
+  { id = "crossing", name = "The flyer crossing the side edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-flyer-collision"
+title = "Flyers pass through one another"
+description = "Two flyers aimed at one point keep their velocities through the crossing."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/no-flyer-collision.test.ts", outputs = [
+  { id = "crossing", name = "The two flyers passing through one another", kind = "image" },
+] }
+[[review.categories.items]]
+id = "retire-left"
+title = "A flyer clearing the left edge retires"
+description = "A flyer whose x + 100 falls below 0 leaves the flyer list."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/retire-left.test.ts", outputs = [
+  { id = "retire", name = "The flyer leaving past the left edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "retire-right"
+title = "A flyer clearing the right edge retires"
+description = "A flyer whose x passes 1280 leaves the flyer list."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/retire-right.test.ts", outputs = [
+  { id = "retire", name = "The flyer leaving past the right edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-early-retire"
+title = "A flyer still on the table stays"
+description = "A flyer partly over an edge is still in flight."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/no-early-retire.test.ts", outputs = [
+  { id = "edge", name = "The flyer still in flight over the edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-persists"
+title = "A flyer's stamp stays on the table"
+description = "The pixels a flyer painted are still painted many frames after it has moved on."
+domains = ["cascade"]
+failure_cap = "broken"
+validation = { script = "cascade/trail-persists.test.ts", outputs = [
+  { id = "trail", name = "The stamp still painted many frames later", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-accumulates"
+title = "The painted area grows"
+description = "The painted fraction of the table after four seconds exceeds the fraction after one."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/trail-accumulates.test.ts", outputs = [
+  { id = "one-second", name = "The table after one second", kind = "image" },
+  { id = "four-seconds", name = "The table after four", kind = "image" },
+] }
+# The failure this catches is a build that stops drawing the foundations once the
+# cascade starts. Painting stays off, per the group rule: the trail is not needed
+# to decide this and posing it would entangle two requirements.
+[[review.categories.items]]
+id = "foundations-drawn-beneath"
+title = "Unlaunched cards stay drawn in place"
+description = "The cards still on the foundations are drawn at their anchors while the cascade runs above them."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/foundations-drawn-beneath.test.ts", outputs = [
+  { id = "beneath", name = "The unlaunched foundations, still drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cascade-completes"
+title = "Every card launches and retires"
+description = "With the cascade run out, launched is 52, no flyer remains, and cascadeDone is true."
+domains = ["cascade"]
+failure_cap = "broken"
+validation = { script = "cascade/cascade-completes.test.ts", outputs = [
+  { id = "cascade", name = "The cascade running out", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "trail-survives-completion"
+title = "The painted table stays after the cascade"
+description = "Every point the cascade painted is still painted, and trailStamps is unchanged, once cascadeDone is true."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/trail-survives-completion.test.ts", outputs = [
+  { id = "painted", name = "The painted table once the cascade is done", kind = "image" },
+] }
+
+# --- Presentation -------------------------------------------------------------
+# What a player can actually READ. The case fixes no palette and no typeface, and
+# `specs/overview.md` closes its visual design table with "The palette, the type,
+# and every other aspect of the look are yours", so every point here decides
+# PRESENCE and nothing else: the build drew something where the specification
+# says something is drawn, or the region changed when the thing under test was
+# posed. How any of it looks — colors, contrast, how much of a region carries a
+# mark — is the reviewer's domain ratings to judge and no point's to measure.
+#
+# WHICH strings are drawn is the `screens` group's question and is not decided
+# again here. Deciding one fact in two groups would dock one defect twice.
+#
+# THE OVERLAY'S TOGGLE, ITS DEFAULT AND ITS READ-ONLY-NESS ARE GRADED ON `none`
+# ALONE. Under `simple-2d` and `structured-2d` the panel, the Backquote listener,
+# the hidden-at-start default and the fact that reading the panel moves nothing
+# are all the engine's, so a point about any of them could not fail on two of the
+# three engines; under `none` they belong to the runtime layer the build writes,
+# and `specs/controls.md` states them. So four of the eight overlay points carry
+# `engines = ["none"]` and the other four, which are about which diagnostic
+# sources the build registers, are what every engine is held to.
+#
+# `overlay-off-at-start`, `overlay-shows-on-backquote` and
+# `overlay-hides-on-backquote` cap at `great`. The overlay is a developer
+# affordance: a build whose backtick key does nothing plays exactly as well as one
+# whose key works, and the standard flow of gameplay is untouched. They exist so
+# that a missing Backquote binding docks the one point it costs rather than
+# entangling the registration points, which have to reach the panel to read it.
+# `overlay-changes-nothing` caps at `passable` instead, because an overlay that
+# moves the game's own state as it is read changes how the game plays.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "card-face-drawn"
+title = "A face-up card is drawn as a card"
+description = "A card-sized filled shape is drawn at the card's position."
+domains = ["presentation"]
+failure_cap = "broken"
+validation = { script = "presentation/card-face-drawn.test.ts", outputs = [
+  { id = "card", name = "The drawn card", kind = "image" },
+] }
+# Rank and suit cap at `broken` with `card-face-drawn`, and for the same reason:
+# Klondike is played by reading a card. A player who cannot tell a five from a
+# nine cannot build a column, and one who cannot tell hearts from spades cannot
+# build a foundation. The board is still drawn, the rules still work, and the game
+# cannot be played as intended, which is what `broken` names.
+[[review.categories.items]]
+id = "rank-drawn"
+title = "A face-up card shows its rank"
+description = "The card's rank is drawn on it."
+domains = ["presentation"]
+failure_cap = "broken"
+validation = { script = "presentation/rank-drawn.test.ts", outputs = [
+  { id = "rank", name = "The rank on the card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "suit-drawn"
+title = "A face-up card shows its suit"
+description = "The card's suit symbol is drawn on it."
+domains = ["presentation"]
+failure_cap = "broken"
+validation = { script = "presentation/suit-drawn.test.ts", outputs = [
+  { id = "suit", name = "The suit on the card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "empty-slot-drawn"
+title = "An empty pile draws a slot"
+description = "A pile holding no cards draws a card-sized mark at its anchor."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/empty-slot-drawn.test.ts", outputs = [
+  { id = "slot", name = "The empty pile's slot", kind = "image" },
+] }
+[[review.categories.items]]
+id = "held-run-drawn-above"
+title = "A held run is drawn over the piles"
+description = "The pixels where a held run overlaps a pile are the run's."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/held-run-drawn-above.test.ts", outputs = [
+  { id = "held", name = "The held run over the piles it passes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drop-highlight-visible"
+title = "A highlighted target reads as highlighted"
+description = "The same pile is drawn differently somewhere in the part of its rectangle the held run leaves in view, once the run over it makes it a legal drop target."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/drop-highlight-visible.test.ts", outputs = [
+  { id = "highlight", name = "The pile highlighted and unhighlighted", kind = "image" },
+] }
+# The one thing a menu shows a player that no `navigation`, `pointer` or `touch`
+# point can see: `specs/controls.md` has "the selected item drawn distinctly from
+# the others", and every one of those points reads `menuIndex` off `snapshot()`
+# instead. So a build that tracks the selection perfectly and draws no sign of it
+# would score full marks on the whole menu route while a player could never tell
+# what was selected. The check reads one item's own region twice, once selected
+# and once not, so the copy and the layout are identical between the readings and
+# the indication is the only thing that can have moved.
+[[review.categories.items]]
+id = "selected-item-distinct"
+title = "The selected menu item is drawn apart from the others"
+description = "Each title item's own region is drawn differently while that item is selected."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/selected-item-distinct.test.ts", outputs = [
+  { id = "selected", name = "The title menu with its second item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-labels-drawn"
+title = "Each HUD control draws its label"
+description = "Each of the three labels is drawn inside its own rectangle."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/hud-labels-drawn.test.ts", outputs = [
+  { id = "hud", name = "The three HUD labels in their rectangles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-shows-screen"
+title = "The overlay reports the screen and mode"
+description = "With the overlay toggled on over a posed board, the current screen and the deal mode are both on it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/overlay-shows-screen.test.ts", outputs = [
+  { id = "overlay", name = "The overlay over a posed board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-shows-pile-counts"
+title = "The overlay reports the pile sizes"
+description = "With the overlay on, the stock, waste, foundation and column counts are on it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/overlay-shows-pile-counts.test.ts", outputs = [
+  { id = "overlay", name = "The overlay's pile counts", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-shows-drag"
+title = "The overlay reports the drag"
+description = "With the overlay on over a held run, whether a drag is live and how many cards it holds are on it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/overlay-shows-drag.test.ts", outputs = [
+  { id = "overlay", name = "The overlay over a held run", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-shows-cascade"
+title = "The overlay reports the cascade"
+description = "With the overlay on during a cascade, the launched count and the number of cards in flight are on it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/overlay-shows-cascade.test.ts", outputs = [
+  { id = "overlay", name = "The overlay during a cascade", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-changes-nothing"
+title = "The overlay changes nothing"
+description = "The snapshot is identical before and after the overlay is toggled on, and identical again after it is toggled off."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/overlay-changes-nothing.test.ts", engines = ["none"], outputs = [
+  { id = "toggled", name = "The table with the overlay on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-off-at-start"
+title = "The overlay is off when the game starts"
+description = "A freshly initialized build draws no overlay over the table."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/overlay-off-at-start.test.ts", engines = ["none"], outputs = [
+  { id = "clean", name = "The table the game started on, with no overlay over it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-shows-on-backquote"
+title = "The backtick key shows the overlay"
+description = "A press of Backquote draws the overlay over the table."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/overlay-shows-on-backquote.test.ts", engines = ["none"], outputs = [
+  { id = "shown", name = "The overlay the backtick key showed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-hides-on-backquote"
+title = "The backtick key hides the overlay again"
+description = "A second press of Backquote takes the overlay away, leaving the table as it was before either press."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/overlay-hides-on-backquote.test.ts", engines = ["none"], outputs = [
+  { id = "hidden", name = "The table the second press left, with no overlay over it", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# Ten cues, one per event, and the mute that silences them.
+#
+# THE TEN CUES CAP AT `great`. A silent Klondike is a completely playable
+# Klondike: every rule still resolves, every gesture still lands, and the standard
+# flow of gameplay is untouched by a cue that never sounds. `mute-silences` and
+# `unmute-restores` are the exception at `passable`, because they are not about a
+# sound being made but about the player's own control over sound: a mute that does
+# not silence leaves a player no way to quiet the game, and an unmute that does
+# not restore takes the audio away permanently, and both of those affect play.
+#
+# There is deliberately NO `cues-defined` item. A cue's NAME is not observable from
+# outside an engineless build: the probe wraps `AudioScheduledSourceNode.start` and
+# `<audio>.play` and can see only that a sound was emitted and on which frame, and
+# the `none` workspace ships no `src/` for a CUES constant to live in. The ten
+# per-cue items already fail a build that defines no cues, and they degrade
+# honestly under `none` to a sound was emitted on the frame of the event.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cue-deal"
+title = "Dealing plays the deal cue"
+description = "A deal plays deal on the frame it happens."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-deal.test.ts", outputs = [
+  { id = "deal", name = "The deal the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-turn"
+title = "Turning the stock plays the turn cue"
+description = "A turn plays turn."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-turn.test.ts", outputs = [
+  { id = "turn", name = "The turn the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-recycle"
+title = "Recycling plays the recycle cue"
+description = "A recycle plays recycle."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-recycle.test.ts", outputs = [
+  { id = "recycle", name = "The recycle the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-lift"
+title = "Lifting a card plays the lift cue"
+description = "A press that lifts a run plays lift."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-lift.test.ts", outputs = [
+  { id = "lift", name = "The lift the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-drop"
+title = "An accepted drop plays the drop cue"
+description = "A release onto a legal target plays drop."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-drop.test.ts", outputs = [
+  { id = "drop", name = "The accepted drop the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-reject"
+title = "A refused drop plays the reject cue"
+description = "A release onto an illegal target plays reject."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-reject.test.ts", outputs = [
+  { id = "reject", name = "The refused drop the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-flip"
+title = "Turning an exposed card plays the flip cue"
+description = "A move that turns a face-down card plays flip."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-flip.test.ts", outputs = [
+  { id = "flip", name = "The turned card the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-home"
+title = "A card reaching a foundation plays the home cue"
+description = "A card accepted by a foundation plays home."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-home.test.ts", outputs = [
+  { id = "home", name = "The card reaching its foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-launch"
+title = "A launching card plays the launch cue"
+description = "Each cascade launch plays launch."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-launch.test.ts", outputs = [
+  { id = "launch", name = "The launch the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cue-win"
+title = "The win plays the win cue"
+description = "Reaching the won screen plays win."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-win.test.ts", outputs = [
+  { id = "win", name = "The win the cue sounded on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-silences"
+title = "Mute silences the cues"
+description = "With mute on, a cue that fires is silent."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/mute-silences.test.ts", outputs = [
+  { id = "muted", name = "The muted table the cue fired silently on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "unmute-restores"
+title = "Unmuting restores the cues"
+description = "With mute off again, the same cue is audible."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/unmute-restores.test.ts", outputs = [
+  { id = "unmuted", name = "The unmuted table the cue was audible on", kind = "image" },
+] }
+
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own — a whole file of the specification, and the one
+# piece of a run a person meets before they meet the game — where every other
+# point on this checklist is one behavior of the game itself. It is the only item
+# on the checklist that declares a `weight`.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of gameplay untouched. The weight and the cap say different
+# things on purpose — how much of the score the point carries, and how far a
+# failure may drag the ratings down.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of a real game, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose.
+#
+# It names `presentation` alone, because the showcase is presentation and nothing
+# else: a missing one says nothing about the deal, the pointer or the cascade.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }

@@ -40,8 +40,8 @@
 #
 # Prerequisites: `az` logged in with rights to set secrets on the vault; `jq`; the
 # harness CLIs already signed in on this machine; and the keyvault-csi component
-# already lists these objects (it does once deployments/k8s/overlays/azure-prod or
-# azure-staging is applied).
+# already lists these objects (it does once deployments/k8s/overlays/prod or
+# deployments/k8s/overlays/staging is applied).
 #
 # Usage (the target environment is REQUIRED):
 #   scripts/upload-subscription-creds.sh --env prod

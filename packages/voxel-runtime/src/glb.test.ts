@@ -5,7 +5,9 @@ import { parseGlb, parseSkinnedGlb } from "./glb";
 
 /** Read a fixture `.glb` as a tightly-sized `ArrayBuffer` (not a pooled Buffer view). */
 function readGlb(name: string): ArrayBuffer {
-  const buf = readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)));
+  const buf = readFileSync(
+    fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)),
+  );
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
@@ -49,7 +51,9 @@ describe("parseGlb", () => {
   });
 
   it("rejects a buffer that is not a glb", () => {
-    expect(() => parseGlb(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]).buffer)).toThrow();
+    expect(() =>
+      parseGlb(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]).buffer),
+    ).toThrow();
   });
 });
 
@@ -73,8 +77,12 @@ describe("parseSkinnedGlb", () => {
     expect(mesh.weights).toBeInstanceOf(Float32Array);
 
     // Bottom vertex 0 is pelvis (bone 0); top vertex 4 is spine (bone 1).
-    expect(Array.from(mesh.joints.slice(0, 4) as Uint32Array)).toEqual([0, 0, 0, 0]);
-    expect(Array.from(mesh.joints.slice(16, 20) as Uint32Array)).toEqual([1, 0, 0, 0]);
+    expect(Array.from(mesh.joints.slice(0, 4) as Uint32Array)).toEqual([
+      0, 0, 0, 0,
+    ]);
+    expect(Array.from(mesh.joints.slice(16, 20) as Uint32Array)).toEqual([
+      1, 0, 0, 0,
+    ]);
 
     // Two bones in skin.joints order, with names and parent hierarchy.
     expect(mesh.bones.map((b) => b.name)).toEqual(["pelvis", "spine"]);
@@ -91,7 +99,10 @@ describe("parseSkinnedGlb", () => {
     };
     for (let v = 0; v < mesh.weights.length; v += 4) {
       const sum =
-        mesh.weights[v]! + mesh.weights[v + 1]! + mesh.weights[v + 2]! + mesh.weights[v + 3]!;
+        mesh.weights[v]! +
+        mesh.weights[v + 1]! +
+        mesh.weights[v + 2]! +
+        mesh.weights[v + 3]!;
       expect(sum).toBeCloseTo(1, 6);
     }
     // The middle vertices split their influence 0.5/0.5 between the two bones.

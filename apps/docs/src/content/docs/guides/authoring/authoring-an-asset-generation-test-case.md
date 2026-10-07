@@ -2,41 +2,40 @@
 title: Authoring an Asset-Generation Test Case
 ---
 
-An [asset-generation](/testing/asset-generation/overview/) test case asks a model
-to **draw a small pixel sprite** with the `draw` tool (or `draw-sheet` for a sprite
-sheet) — one recorded operation at a time — to **match a written brief**, rather
-than to build a game. There is **no target image**: the model is given a precise
-description and the freedom to draw something that matches it, so the case rewards
-creativity rather than the faithful reproduction of a supplied picture. Authoring
-one is mostly writing a precise, **self-contained brief**.
-[Manifests](/testing/asset-generation/manifests/) is the authoritative schema —
-every field and the rules enforced at resolution — and you should read it first,
-along with the [Overview](/testing/asset-generation/overview/) (why the recorded
-actions, not the pixels on disk, are the output) and
-[Evaluation](/testing/asset-generation/evaluation/) (how the asset is
-human-reviewed against the brief, and how cheat-divergence is detected). This
-guide is the practical procedure that sits on top of that schema.
+## Overview
 
-Building a playable game instead is a different test type with its own manifest;
-see [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/).
+A 2D [asset-generation](/testing/asset-generation/overview/) test case asks a
+model to draw a small pixel sprite with the `draw` tool, or a sprite sheet with
+`draw-sheet`, one recorded operation at a time, to match a written brief. The
+model is given the brief and the freedom to draw something that matches it, so
+the case measures creativity rather than the reproduction of a supplied picture.
+Authoring one is mostly writing a precise, self-contained brief.
 
-A case draws **either a single sprite or a sprite sheet** (a set of animation
-frames, each its own separate file), chosen by the manifest's `asset_kind` field —
-a version-level choice, not a variant. The worked examples: the `spectra-fighter`,
-`spectra-shard`, `spectra-flux`, and `spectra-prism` cases are **single sprites**
-(`asset_kind = "sprite"`, the default), drawn with `draw`; the `lanternjaw`,
-`gloamfin`, `flarefish`, and `drifter` creature cases, the `trench-walls` tileset,
-and the `flare-bloom` effect case are **sprite sheets**
-(`asset_kind = "sprite-sheet"`), drawn with `draw-sheet --frame <index>`, with a
-`[sheet]` table of declared frames and named animation sequences. Read the one
-matching the kind you are authoring alongside this guide; a new case should look
-like it.
+Read the authoritative pages first:
+[Sprite cases](/testing/asset-generation/manifests/sprite-cases/) for the schema,
+[Overview](/testing/asset-generation/overview/) for why the recorded actions are
+the output, and [Evaluation](/testing/asset-generation/evaluation/) for how the
+asset is reviewed and how cheat divergence is detected.
 
-## What a case is, and what gets seeded
+A case draws either a single sprite or a sprite sheet, chosen by the manifest's
+`asset_kind`. This is a version-level choice, not a variant axis. The worked
+examples are `spectra-fighter` and its siblings for `asset_kind = "sprite"`, and
+`fathom-gloamfin`, `fathom-trench-walls`, and `fathom-flare-bloom` for
+`asset_kind = "sprite-sheet"`. Read the one matching the kind you are authoring.
 
-A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
-**immutable**: once a run references a version, that version is frozen. Revise by
-adding a new version, never by editing a published one.
+The 3D kinds are authored through their own guides:
+[voxel models](/guides/authoring/authoring-a-voxel-model-test-case/),
+[voxel animations](/guides/authoring/authoring-a-voxel-animation-test-case/),
+[mesh models](/guides/authoring/authoring-a-mesh-model-test-case/),
+[mesh animations](/guides/authoring/authoring-a-mesh-animation-test-case/),
+[skinned characters](/guides/authoring/authoring-a-skinned-test-case/), and
+[Blender characters](/guides/authoring/authoring-a-blender-character-test-case/).
+
+## Case layout
+
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`.
+Versioning is per-case and immutable: once a run references a version, that
+version is frozen. Revise by adding a new version.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
@@ -44,88 +43,84 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
+  changelog.md           # per-version site-facing entry (NOT seeded)
   README.md              # human overview (NOT seeded)
-  specs/brief.md         # the brief: what to draw + how the tool behaves — SEEDED
+  specs/brief.md         # the brief: what to draw + how the tool behaves (SEEDED)
 ```
 
-A run receives only the seeded files: the selected variant's brief. There is **no
-target image** — the model draws to match the brief, not to copy a supplied
-picture. It also gets the `draw` (or `draw-sheet`) binary in its environment, whose
-`--help` is the operations contract; **no operations schema is seeded**. Everything
-marked *NOT seeded* is authoring- or site-side only.
+A run receives the selected variant's brief, the seeded `draw.config.json`, and
+an empty action log plus a blank starting preview per frame. The drawing binary
+is on its `PATH` and its `--help` is the operations contract, so no operations
+schema is seeded. The model draws toward the brief; there is no target image.
 
 ## Procedure
 
-### 1. Choose the subject and confirm it qualifies
+### 1. Choose the subject
 
-Pick a catalog **slug** for the lineage (e.g. `gloamfin`) and the **subject** to
-draw. A good subject reads clearly at the canvas size from silhouette and palette
-alone, needs no surrounding game context, and is achievable within the tool's
-operation set. Pick a `version` (`vX.Y.Z`).
+Pick a catalog slug for the lineage and the subject to draw. A good subject reads
+clearly at the canvas size from silhouette and palette alone, needs no
+surrounding game context, and is achievable within the tool's operation set. Pick
+a `version` (`vX.Y.Z`).
 
 ### 2. Write the brief
 
-Write `specs/brief.md` — a single self-contained file describing:
+Write `specs/brief.md`, a single self-contained file describing:
 
-- **what to draw** — the subject, its silhouette and orientation, and the framing
+- what to draw: the subject, its silhouette and orientation, and its framing
   within the canvas;
-- the **exact palette** — named colors with hex values, stated as the only colors
-  allowed, so a reviewer can judge the asset against the brief unambiguously;
-- **how the tool behaves** — that `draw` is the only way to make a mark, that it
-  re-renders the preview after each call, and that the recorded actions are the
-  output (anything drawn outside the tool is discarded).
+- the exact palette: named colors with hex values, stated as the only colors
+  allowed, so a reviewer can judge the asset against the brief;
+- how the tool behaves: the binary is the only way to make a mark, it re-renders
+  the preview after each call, and the recorded actions are the output.
 
-The same self-containment and precise-values rules as an end-to-end spec apply:
-the brief must stand on its own, with no link outside the seeded set, and every
-visual detail written in real terms.
+The self-containment and precise-values rules that govern an end-to-end spec
+apply here: the brief stands on its own, with no link outside the seeded set, and
+every visual detail is written in real terms.
 
 ### 3. Write `prompt.hbs`
 
-A short instruction that points the model at the seeded brief, tells it to read the
-binary's `--help` for the operations, and states the hard requirements (draw only
-through the tool; return when finished). The template renders in **strict mode**, so
-use only the documented variables —
-`{{variant.slug}}`/`{{variant.name}}`/`{{variant.description}}` and
-`{{#each specs}}`. A shared **quality directive** — the brief is the floor, not the
-goal; produce the best asset you can within its constraints — is prepended to every
-asset-generation prompt automatically at render time, so keep `prompt.hbs` factual
-and do not restate that "aim high" framing yourself.
+A short instruction that points the model at the seeded brief, tells it to read
+the binary's `--help` for the operations, and states the hard requirements: draw
+only through the tool, and return when finished. The template renders in strict
+mode, and the available variables are `{{workspace}}`, `{{variant.slug}}`,
+`{{variant.name}}`, `{{variant.description}}`, `{{#each specs}}`, and
+`{{time_limit_hours}}`.
+
+The shared quality directive (`ASSET_QUALITY_PREAMBLE` in
+`crates/core/src/prompt.rs`) is prepended to every asset-generation prompt at
+render time, so `prompt.hbs` stays factual.
 
 ### 4. Write the manifest
 
-Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/):
+Author `test-case.toml` per the
+[schema](/testing/asset-generation/manifests/sprite-cases/).
 
-- **Metadata** — `name`, `difficulty`, and `tags`, all required and site-facing.
-- **`type = "asset-generation"`** — required. Omitting it defaults to
-  `end-to-end`, which then rejects the tables below.
-- **`[canvas]`** — the fixed `width`, `height`, and `background` the model draws
-  on. For a sprite sheet this is **one frame** (each frame is a separate file of
-  this size). Fixing it keeps runs comparable.
-- **`[tool]`** — the `binary` (`draw`, or `draw-sheet` for a sheet) and the
-  `preview` path the binary re-renders to after each call (a `{frame}` template for
-  a sheet). **No operations schema** — the binary's `--help` is the contract.
-- **`[output]`** — the `actions` log the binary records (a `{frame}` template for a
-  sheet, one log per frame); this is the **authoritative output** the reviewed image
-  is regenerated from.
-- **No references** — an asset-generation case declares **no `[[reference]]`** at
-  all. It has no target image; the regenerated asset is reviewed against the brief.
-  Declaring a `[[reference]]` — common or per-variant — is rejected.
-- **`[sheet]` (sprite sheets only)** — the `[[sheet.frame]]` entries (each just the
-  `index` it is written to) and the named `[[sheet.sequence]]` animations.
-- A **`variants`** list — an ordered array of paths to standalone variant files
-  under `variants/` (the first is the default; at least one is required, usually
-  `base`), each a self-contained TOML document. As a root key it must precede the
-  first table header, and each `[[spec]]` `dest` defaults to its `source`. To add
-  more, see
-  [Creating a Single-Sprite Variant](/guides/authoring/creating-a-sprite-variant/) or
-  [Creating a Sprite-Sheet Variant](/guides/authoring/creating-a-sprite-sheet-variant/),
-  per the case's `asset_kind`.
-- **`[[domain]]`** — the single `overall` scoring domain every asset-generation
-  case declares, and its whole review. There is **no `[[review_item]]`
-  checklist**: a produced asset is judged as a whole against its brief, so the
-  reviewer gives one rating and that rating is the run's (see
-  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
-  The domain is reporter-side and **not seeded**. Copy it verbatim:
+- Metadata. `slug`, `name`, `difficulty`, and `tags` are required and
+  site-facing.
+- `type = "asset-generation"` is required. Without it the case resolves as
+  end-to-end, which then rejects the tables below.
+- `[canvas]` fixes the `width`, `height`, and `background` the model draws on.
+  For a sprite sheet this is one frame; every frame is a separate file of this
+  size.
+- `[tool]` names the `binary` (`draw`, or `draw-sheet` for a sheet) and the
+  `preview` path the binary re-renders to after each call, a `{frame}` template
+  for a sheet.
+- `[output]` names the `actions` log the binary records, a `{frame}` template for
+  a sheet. This log is the authoritative output the reviewed image is regenerated
+  from.
+- `[sheet]` (sprite sheets only) declares the `[[sheet.frame]]` entries, each
+  carrying the `index` it is written to, and the named `[[sheet.sequence]]`
+  animations, each with a `slug`, a `name`, and its `frames`.
+- `variants` is an ordered array of paths to standalone variant files under
+  `variants/`. The first is the default, at least one is required (usually
+  `base`), and as a root key it must precede the first table header. To add more,
+  see [creating a single-sprite variant](/guides/authoring/creating-a-sprite-variant/)
+  or [a sprite-sheet variant](/guides/authoring/creating-a-sprite-sheet-variant/).
+- `[[spec]]` entries are seeded for every variant, and a `dest` defaults to the
+  `source` with a trailing `.hbs` stripped.
+- `[[domain]]` declares the single `overall` scoring domain, which is the
+  whole review. A produced asset is judged as a whole against its brief, so the
+  case declares no review checklist and the reviewer's one rating is the run's.
 
   ```toml
   [[domain]]
@@ -134,45 +129,51 @@ Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/):
   description = "How good the produced asset is overall, judged against the brief."
   ```
 
-  Because the rating is given against the brief alone, anything you would have
-  written as a checklist item belongs in `specs/brief.md`.
+  Anything a checklist item would have said belongs in `specs/brief.md`, which is
+  what the rating is given against.
 
-There is **no `[build]` table** and **no `[[check]]`** — an asset-generation run
-produces a recorded action log, not a static site, and its cheat-divergence signal
-is computed by the validator, not by a declared check.
+Resolution rejects a `[build]` table, any `[[check]]`, and any `[[reference]]`. A
+sprite case produces a recorded action log rather than a static site, and its
+cheat-divergence signal is computed by the validator.
 
 ### 5. Write the non-seeded docs
 
-`description.md` (site blurb) and `README.md` (human overview). These never reach
-a run; keep them honest about what is seeded.
+`description.md` (site blurb), `changelog.md`, and `README.md`. These never reach
+a run.
 
 ## Validate your work
 
-There is no separate authoring linter — you validate a case by resolving and
-seeding it. For **every** variant:
+A case is validated by resolving and seeding it. For every variant:
 
 ```sh
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-`prompt` renders the instruction (catching strict-mode template errors and
-manifest problems); `seed` writes the seeded repository to disk so you can read
-exactly what the model would receive — the brief, plus the seeded
-`draw.config.json` and blank starting frame(s) — and confirm it is self-contained.
-Lint the specs and prose with `npm run lint:specs` (markdownlint + cspell; see
-[Building](/development/building/)).
+`prompt` renders the instruction, catching strict-mode template errors and
+manifest problems. `seed` writes the seeded repository to disk (under `tmp/` by
+default) so you can read exactly what the model would receive: the brief, the
+seeded `draw.config.json`, and the blank starting frames.
 
-When the case is ready, exercise it end to end with
-[Run a Test Case](/quickstarts/development/run-a-test-case/). A backend the case is already
-ingested into keeps serving the old definition until you **force a re-ingest**, so
-after editing a case re-ingest it before running — see
+Lint the specs and prose from the repository root:
+
+```sh
+npm run lint:specs   # markdownlint-cli2 + cspell
+```
+
+If `cspell` flags a legitimate domain term, add it to
+`.cspell/project-words.txt`.
+
+When the case is ready, exercise it with
+[Run a Test Case](/quickstarts/development/run-a-test-case/). A backend that
+already holds the version keeps serving it until a forced re-ingest, so re-ingest
+an edited case before running it. See
 [Running the Local Service Stack](/guides/development/running-the-local-service-stack/).
 
 ## Next steps
 
-- [Creating a Single-Sprite Variant](/guides/authoring/creating-a-sprite-variant/) or
-  [Creating a Sprite-Sheet Variant](/guides/authoring/creating-a-sprite-sheet-variant/)
-  (per the case's `asset_kind`) — add a brief variation the model draws toward.
-- [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — assess a run
-  of your case.
+- [Creating a single-sprite variant](/guides/authoring/creating-a-sprite-variant/)
+  or [a sprite-sheet variant](/guides/authoring/creating-a-sprite-sheet-variant/), per
+  the case's `asset_kind`.
+- [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)
+  assesses a run of your case.

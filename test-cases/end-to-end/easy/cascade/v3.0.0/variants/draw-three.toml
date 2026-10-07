@@ -1,0 +1,211 @@
+# Draw Three — the classic Klondike deal. The stock turns THREE cards at a time,
+# fanned so all three on the shown set are visible, with only the frontmost
+# playable. Everything else about the game is the case's common text: the same
+# table, the same rules, the same pointer, the same victory cascade.
+#
+# Every path here resolves against the version folder, exactly like the case
+# manifest.
+slug = "draw-three"
+name = "Draw Three"
+description = "The stock turns three cards at a time, fanned, with only the frontmost playable."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The deal mode is not a spec set; it is a branch inside two COMMON specs.
+# `specs/stock.md.hbs` renders this variant's turn count, deal-mode id and label,
+# and `specs/table.md.hbs` renders the fan: its pitch, how many cards it holds, and
+# that its right edge never reaches the first foundation. Both are declared in
+# `test-case.toml` and seeded for every run, rendered for the selected variant
+# before they land, so a run receives one self-contained spec set describing one
+# game and no seeded text mentions the sibling variant.
+#
+# The waste's SET MEMORY is common text, not a Draw Three affordance. Draw Three is
+# where the rule is VISIBLE — a set played off entirely over a partly-played one is
+# reachable here and leaves the earlier set's remaining cards showing — but the
+# rule itself states both deals, and the snapshot shape does not branch:
+# `wasteSets` and `wasteVisibleCount` are reported by both variants, which is what
+# lets one validator suite read both. That is a change from v2.1.0, where
+# `wasteVisibleCount` was a Draw Three affordance.
+
+# What the game looks like played correctly, shown before anyone runs it: one
+# whole game of Draw Three, dealt by the game itself and played to the victory
+# cascade with the REAL MOUSE against `references/none/draw-three`, and three
+# frames taken out of that same take. `showcase/draw-three/showcase.toml` lists
+# the media in carousel order and `showcase/draw-three/showcase.md` carries the
+# player-facing description.
+#
+# Every outcome on screen arose from the game's own rules under real pointer
+# input. The debug surface is only ever READ: `snapshot()` after each gesture,
+# to check that the game did what the plan expected, so that a divergence fails
+# the capture rather than reaching the clip. Nothing is posed; posing an outcome
+# through the surface would be fabrication. `showcase/capture/README.md` records
+# how each committed file was produced and how to produce a fresh take.
+showcase = "showcase/draw-three"
+
+# The authored, *correct* build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. This table
+# must name EXACTLY the engines the case supports (the resolver checks both
+# directions): `references/none/draw-three` carries its own runtime layer (frame
+# loop, canvas fit, pointer input, audio, overlay, and the `window.__cascade`
+# surface), `references/simple-2d/draw-three` hands all of that to the engine
+# package resolved from the repository's `packages/simple-2d` and ships the game as
+# `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d/draw-three` writes the game inside the gameplay
+# framework resolved from `packages/structured-2d`. The game any of them implements
+# is identical, which is what makes a run on one engine comparable with a run on
+# another. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands, held to the same four
+# toolchain gates a run is, and driven by `tcab capture-baselines` to synthesize
+# the baseline half of the validation media for its engine.
+[reference_implementation]
+none = "references/none/draw-three"
+"simple-2d" = "references/simple-2d/draw-three"
+"structured-2d" = "references/structured-2d/draw-three"
+
+# This variant needs a starter project of its own under each engine that seeds one,
+# because `src/constants.ts` differs: TURN_COUNT is 3, DEAL_MODE is "draw-three",
+# DEAL_MODE_LABEL is "DRAW THREE", and WASTE_FAN (26) exists here and nowhere else.
+#
+# The table REPLACES the case's `[workspaces]` rather than layering on it, so it
+# names one directory per engine exactly as the case's does. Both variants declare
+# theirs explicitly, so neither depends on which set the case manifest happens to
+# name as the default.
+#
+# The engineless project is the case's own, shared with both variants. It holds no
+# game code for a variant to differ in — only the configuration the build is
+# written against — and what this variant changes about the game is carried by the
+# specs, which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/draw-three/simple-2d"
+"structured-2d" = "workspaces/draw-three/structured-2d"
+
+# --- The Stock and the Waste (Draw Three) ------------------------------------
+# Ten additive points, contributed to the case's COMMON `stock` category: a variant
+# may reuse a common category's id to add its own items to it (see
+# `merge_review_items` in the core), so the console groups these with the common
+# stock points rather than in a category of their own. The `format` is inherited
+# from the case manifest (`[review] format = 2`); a variant only adds
+# `[[review.categories]]`. Neither variant replaces the validator behind a common
+# item. Scripts live at `draw-three/<item>.test.ts` within each engine's validator
+# project, so all three engines ship them.
+#
+# These are the points a common validator cannot decide. A common scenario that has
+# to size itself to the deal mode reads `snapshot().turnCount` rather than
+# hard-coding a figure, and `deal-mode-reported` below is what pins that figure to
+# the specification — which is exactly why it exists.
+#
+# `set-falls-back` IS THE POINT THE FOLD-IN FIX TURNS ON, and its scenario is
+# driven through the build's own stock code rather than a posed waste: turn (a set
+# never played off), turn, play one card home, turn, play all three home, then read
+# `wasteVisibleCount` and the waste's top card. The waste still holds five cards at
+# that moment, so neither wrong model is clamped into the right answer by the size
+# of the pile. Two is the rule, one is the last-turn counter, three is the refilled
+# fan. `fan-shrinks` carries the other half: the fan counting 3 to 2 to 1 within
+# one set and never refilling from the cards buried under it.
+#
+# THE POINTS THAT ASSERT SOMETHING DRAWN NAME `presentation` BESIDE `rules`. A
+# waste drawn in the wrong place and a deal-mode label that is never drawn are
+# failures of the table's presentation as much as of the deal mode, and their
+# common counterparts in `table` and `screens` name `presentation` for exactly
+# that reason; a variant point that reads the canvas should lower the same domain
+# a common point reading the same canvas does.
+#
+# The deal-mode LABEL is graded in two places by two points. A build correct on the
+# title screen and wrong in the HUD misses one requirement, not both. The common
+# items `screens.title-shows-mode-label` and `screens.hud-shows-mode-label` hold
+# each drawn label against the `dealModeLabel` the build itself reports, so the
+# common pair decides consistency and this pair decides the literal.
+[[review.categories]]
+id = "stock"
+title = "The Stock and the Waste"
+[[review.categories.items]]
+id = "turn-count"
+title = "A turn moves exactly three cards"
+description = "The stock loses three and the waste gains three."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "draw-three/turn-count.test.ts", outputs = [
+  { id = "turn", name = "The stock turning its three cards", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deal-mode-reported"
+title = "The build reports its deal mode"
+description = "dealMode is \"draw-three\" and turnCount is 3."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "draw-three/deal-mode-reported.test.ts", outputs = [
+  { id = "mode", name = "The table the deal mode was read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turn-remainder"
+title = "A short stock turns all that remain"
+description = "A stock holding two cards turns both and adds a set of two."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "draw-three/turn-remainder.test.ts", outputs = [
+  { id = "turn", name = "The two cards the short stock turned", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-fans-shown-set"
+title = "The shown set fans to the right"
+description = "With three cards on the shown set, they are drawn at 346, 372 and 398, the last of them the playable top card."
+domains = ["rules", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "draw-three/waste-fans-shown-set.test.ts", outputs = [
+  { id = "fan", name = "The three fanned cards of the shown set", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fan-shrinks"
+title = "The fan counts down within its set"
+description = "Playing the top card leaves two fanned, then one, and never four or a card pulled up from beneath."
+domains = ["rules", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "draw-three/fan-shrinks.test.ts", outputs = [
+  { id = "fan", name = "The fan counting down within its set", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "set-falls-back"
+title = "The waste remembers what each turn left"
+description = "Turn, turn and play one home, turn and play all three home: the waste then shows the two cards the second turn was left with, on a waste still holding five, and the top card is the one that turn left."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "draw-three/set-falls-back.test.ts", outputs = [
+  { id = "fallback", name = "The waste falling back to the pair the second turn left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "only-frontmost-playable"
+title = "Only the frontmost fanned card is playable"
+description = "A move naming either of the two cards behind it is refused."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "draw-three/only-frontmost-playable.test.ts", outputs = [
+  { id = "refused", name = "The fan, with the two cards behind refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fan-clear-of-neighbours"
+title = "The fan clears the stock and the foundations"
+description = "The fan's leftmost edge is at or right of 346 and its rightmost edge is left of 590."
+domains = ["rules", "presentation"]
+failure_cap = "passable"
+validation = { script = "draw-three/fan-clear-of-neighbours.test.ts", outputs = [
+  { id = "fan", name = "The fan between the waste anchor and the first foundation", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mode-label-title"
+title = "The title screen's label reads DRAW THREE"
+description = "The title screen draws the literal DRAW THREE, this variant's DEAL_MODE_LABEL."
+domains = ["rules", "presentation"]
+failure_cap = "passable"
+validation = { script = "draw-three/mode-label-title.test.ts", outputs = [
+  { id = "title", name = "The title screen's DRAW THREE label", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mode-label-hud"
+title = "The HUD's label reads DRAW THREE"
+description = "The HUD draws the literal DRAW THREE during play."
+domains = ["rules", "presentation"]
+failure_cap = "passable"
+validation = { script = "draw-three/mode-label-hud.test.ts", outputs = [
+  { id = "hud", name = "The HUD's DRAW THREE label", kind = "image" },
+] }

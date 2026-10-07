@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Spinner } from "@test-cabinet/ui";
+import { Spinner } from "@clockwyrks/ui";
+import { engineName, orderEngines } from "../data/engines";
 import styles from "./PlayableEmbed.module.scss";
 
 interface EmbeddedFrameProps {
@@ -152,13 +153,11 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
 
   // Gated: the build is unedited model code, so gate the launch behind a generic
   // caveat. Nothing loads until the visitor clicks; the launch opens the overlay.
+  // The action leads and the caveat follows it, so the thing the visitor came
+  // to do is the first thing they meet.
   if (mode === "gated") {
     return (
       <div className={styles.gate}>
-        <p className={styles.notice}>
-          This is the model&rsquo;s code exactly as it was written. It has not
-          been edited or fixed and may be incomplete or broken.
-        </p>
         <button
           type="button"
           className={styles.launch}
@@ -166,6 +165,10 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
         >
           Launch implementation
         </button>
+        <p className={styles.notice}>
+          This is the model&rsquo;s code exactly as it was written. It has not
+          been edited or fixed and may be incomplete or broken.
+        </p>
       </div>
     );
   }
@@ -192,12 +195,24 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
 
 interface ReferencePlayableProps {
   /**
-   * The absolute URL of the variant's reference-implementation build, or `null`
-   * when the variant declares no `reference_implementation` (the common case).
+   * The absolute URLs of the variant's reference-implementation builds, keyed by
+   * the engine each was built for. Empty when the variant declares no
+   * `reference_implementation` (the common case).
    */
-  referenceBuild: string | null;
+  referenceBuilds: Record<string, string>;
   /** The variant's display name, used to label the embed and the empty state. */
   variantName: string;
+  /**
+   * The engine whose build is shown — the case detail page's ANCHORED engine.
+   * The page header is where the engine is switched (the anchor drives every
+   * tab at once), so this component carries no switch of its own: it shows the
+   * anchored engine's build, or a placeholder naming the engines that do have
+   * one when the anchored engine does not.
+   */
+  engine: string;
+  /** The anchored version, named in the missing-build placeholder so the reader
+   * knows exactly which deliverable lacks one. */
+  version: string;
 }
 
 /**
@@ -207,22 +222,47 @@ interface ReferencePlayableProps {
  * authored, *correct* build inline with a fullscreen toggle and no caveat. A
  * variant that declares no reference implementation renders a short placeholder
  * rather than an empty embed.
+ *
+ * A variant has one reference build per engine, because the build a reference
+ * demonstrates genuinely differs under each — an engineless one carries its own
+ * runtime, an engine-backed one hands the same surfaces to the runtime it
+ * vendors. Which one is shown follows the page's anchored engine (selected in
+ * the header alongside the version and variant), so the embed always shows the
+ * same rendering every other tab describes; an engine with no published build
+ * degrades to a placeholder listing the ones that have one.
  */
 export function ReferencePlayable({
-  referenceBuild,
+  referenceBuilds,
   variantName,
+  engine,
+  version,
 }: ReferencePlayableProps) {
-  if (!referenceBuild) {
+  const published = orderEngines(Object.keys(referenceBuilds));
+  const src = referenceBuilds[engine];
+
+  if (!src) {
+    // Nothing published for the anchored engine. Distinguish "this variant has
+    // no reference at all" from "not for THIS engine": the latter names the
+    // engines that do have builds, since the header is where one is picked.
+    if (published.length === 0) {
+      return (
+        <div className={styles.placeholder}>
+          No reference implementation for this variant.
+        </div>
+      );
+    }
     return (
       <div className={styles.placeholder}>
-        No reference implementation for this variant.
+        No reference build for {engineName(engine)} at {version}. Builds are
+        published for {published.map(engineName).join(", ")}. Switch the engine
+        in the header to view one.
       </div>
     );
   }
   return (
     <PlayableEmbed
-      src={referenceBuild}
-      title={`Reference implementation for ${variantName}`}
+      src={src}
+      title={`Reference implementation for ${variantName} on ${engineName(engine)}`}
       mode="inline"
     />
   );

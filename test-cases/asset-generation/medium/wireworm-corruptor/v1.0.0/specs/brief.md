@@ -47,12 +47,12 @@ the dark circuit board.
 The body, head, and stinger are the **same** in every frame; only the **legs** and
 a small body **bob** change so it scuttles:
 
-| Frame | Legs |
-| --- | --- |
-| 0 | Legs in stance A — forward pair reaching ahead, rear pair back. |
-| 1 | Mid-stride — legs gathered under the body; body bobbed **up** ~1 px. |
-| 2 | Stance B — the opposite reach from frame 0 (legs that were forward now back). |
-| 3 | Mid-stride again — legs gathered; body bobbed up ~1 px (the other half of the gait). |
+| Frame | Legs                                                                                 |
+| ----- | ------------------------------------------------------------------------------------ |
+| 0     | Legs in stance A — forward pair reaching ahead, rear pair back.                      |
+| 1     | Mid-stride — legs gathered under the body; body bobbed **up** ~1 px.                 |
+| 2     | Stance B — the opposite reach from frame 0 (legs that were forward now back).        |
+| 3     | Mid-stride again — legs gathered; body bobbed up ~1 px (the other half of the gait). |
 
 Make it read as a **horizontal scuttle**:
 
@@ -70,13 +70,13 @@ Make it read as a **horizontal scuttle**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Carapace — mid (body fill) | `#4e7a1e` |
+| Role                                 | Hex       |
+| ------------------------------------ | --------- |
+| Carapace — mid (body fill)           | `#4e7a1e` |
 | Carapace — dark (bottom shade, legs) | `#17280e` |
 | Carapace — edge (top glint, outline) | `#8fd63a` |
-| Charge stinger glow (amber) | `#ffb43a` |
-| Sensor eye (head) | `#ff5a3c` |
+| Charge stinger glow (amber)          | `#ffb43a` |
+| Sensor eye (head)                    | `#ff5a3c` |
 
 ## Working the tool
 

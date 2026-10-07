@@ -100,7 +100,9 @@ export class ParticleSimulator {
     this.baseSeed = opts.seed ?? DEFAULT_SEED;
     this.maxParticles = opts.maxParticles ?? MAX_PARTICLES;
 
-    const childNames = new Set((system.subEmitters ?? []).map((s) => s.emitter));
+    const childNames = new Set(
+      (system.subEmitters ?? []).map((s) => s.emitter),
+    );
     this.childEmitters = new Set(
       system.emitters.flatMap((e, i) => (childNames.has(e.name) ? [i] : [])),
     );
@@ -141,7 +143,9 @@ export class ParticleSimulator {
     this.spawners = this.system.emitters.map(
       (e, i) =>
         new Rng(
-          (asU64(this.baseSeed) ^ asU64(e.seed ?? 0) ^ splitmix64(asU64(i + 1))) &
+          (asU64(this.baseSeed) ^
+            asU64(e.seed ?? 0) ^
+            splitmix64(asU64(i + 1))) &
             ((1n << 64n) - 1n),
         ),
     );
@@ -292,11 +296,17 @@ export class ParticleSimulator {
 
   // --- sub-emitters -----------------------------------------------------------
 
-  private fireStepSubemitters(p: Particle, dtMs: number, spawned: Particle[]): void {
+  private fireStepSubemitters(
+    p: Particle,
+    dtMs: number,
+    spawned: Particle[],
+  ): void {
     const parentName = this.system.emitters[p.emitter]!.name;
     for (const sub of this.system.subEmitters ?? []) {
       if (sub.on !== "step" || sub.parent !== parentName) continue;
-      const child = this.system.emitters.findIndex((e) => e.name === sub.emitter);
+      const child = this.system.emitters.findIndex(
+        (e) => e.name === sub.emitter,
+      );
       if (child < 0) continue;
       const perSecond = childTrailRate(this.system.emitters[child]!);
       if (perSecond <= 0) continue;
@@ -313,7 +323,9 @@ export class ParticleSimulator {
     const parentName = this.system.emitters[p.emitter]!.name;
     for (const sub of this.system.subEmitters ?? []) {
       if (sub.on !== "death" || sub.parent !== parentName) continue;
-      const child = this.system.emitters.findIndex((e) => e.name === sub.emitter);
+      const child = this.system.emitters.findIndex(
+        (e) => e.name === sub.emitter,
+      );
       if (child < 0) continue;
       const count = childBurstCount(this.system.emitters[child]!);
       for (let k = 0; k < count; k++) {
@@ -325,7 +337,13 @@ export class ParticleSimulator {
 
   private spawnChild(child: number, parent: Particle): Particle | null {
     const before = this.scratch.length;
-    this.spawn(child, 1, parent.pos, parent.generation + 1, this.spawners[child]!);
+    this.spawn(
+      child,
+      1,
+      parent.pos,
+      parent.generation + 1,
+      this.spawners[child]!,
+    );
     if (this.scratch.length > before) {
       return this.scratch.pop() ?? null;
     }
@@ -353,11 +371,17 @@ export class ParticleSimulator {
     const sink = generation > 0 ? this.scratch : this.particles;
     const emitter = this.system.emitters[index]!;
     for (let k = 0; k < count; k++) {
-      if (this.particles.length + this.scratch.length >= this.maxParticles) break;
-      const pos = origin ? [origin[0], origin[1], origin[2]] as Vec3 : sampleShape(emitter, this.twoD, rng);
+      if (this.particles.length + this.scratch.length >= this.maxParticles)
+        break;
+      const pos = origin
+        ? ([origin[0], origin[1], origin[2]] as Vec3)
+        : sampleShape(emitter, this.twoD, rng);
       const dir = sampleDirection(emitter, this.twoD, rng);
       const speed = jitter(emitter.speed, emitter.speedSpread ?? 0, rng);
-      const lifetime = Math.max(jitter(emitter.lifetimeMs, emitter.lifetimeSpread ?? 0, rng), 1);
+      const lifetime = Math.max(
+        jitter(emitter.lifetimeMs, emitter.lifetimeSpread ?? 0, rng),
+        1,
+      );
       const vel = scale(dir, speed);
       if (this.twoD) {
         vel[2] = 0;
@@ -408,7 +432,10 @@ function applyForces(
     addInto(accel, scale(tangent, forces.vortex));
   }
   if (forces.turbulence !== undefined) {
-    const curl = turbulence.sample(p.pos, Math.max(forces.turbulence.scale, 1e-4));
+    const curl = turbulence.sample(
+      p.pos,
+      Math.max(forces.turbulence.scale, 1e-4),
+    );
     addInto(accel, scale(curl, forces.turbulence.amplitude));
   }
   if (forces.wind !== undefined) {
@@ -427,7 +454,9 @@ function childBurstCount(child: Emitter): number {
 
 /** The per-second trail rate a `step` child emits at. */
 function childTrailRate(child: Emitter): number {
-  return child.emission.mode === "rate" ? child.emission.rate : child.emission.count;
+  return child.emission.mode === "rate"
+    ? child.emission.rate
+    : child.emission.count;
 }
 
 /** Sample a birth position on the emitter's shape. */
@@ -446,7 +475,9 @@ function sampleShape(emitter: Emitter, twoD: boolean, rng: Rng): Vec3 {
     case "disc": {
       const d = rng.inDisc(r);
       // Planar disc in `xy` for 2D; a horizontal ground disc in `xz` for 3D.
-      return twoD ? [c[0] + d[0], c[1] + d[1], 0] : [c[0] + d[0], c[1], c[2] + d[1]];
+      return twoD
+        ? [c[0] + d[0], c[1] + d[1], 0]
+        : [c[0] + d[0], c[1], c[2] + d[1]];
     }
     case "box":
       return [
@@ -476,9 +507,16 @@ function sampleDirection(emitter: Emitter, twoD: boolean, rng: Rng): Vec3 {
   const cosTheta = 1 - rng.unit() * (1 - cosMin);
   const sinTheta = Math.sqrt(Math.max(1 - cosTheta * cosTheta, 0));
   const phi = rng.unit() * Math.PI * 2;
-  const local: Vec3 = [sinTheta * Math.cos(phi), sinTheta * Math.sin(phi), cosTheta];
+  const local: Vec3 = [
+    sinTheta * Math.cos(phi),
+    sinTheta * Math.sin(phi),
+    cosTheta,
+  ];
   const [right, up] = basis(base);
-  return add(add(scale(right, local[0]), scale(up, local[1])), scale(base, local[2]));
+  return add(
+    add(scale(right, local[0]), scale(up, local[1])),
+    scale(base, local[2]),
+  );
 }
 
 /** A jittered value: `base ± spread`, uniform. */

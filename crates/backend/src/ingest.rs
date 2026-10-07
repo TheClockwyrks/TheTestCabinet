@@ -7,6 +7,12 @@
 //! renders the reference mockups to screenshots at this point, so every runner
 //! shares the same baseline.
 //!
+//! A version's baseline validation media is not in its folder: it lives in the
+//! checkout's cold-storage submodule (see [`ColdStorage`]). Ingest copies it into the
+//! stored version under `validation-baseline/`, so the store serves and snapshots it
+//! as part of the version. A checkout without the submodule ingests every version
+//! with no baseline media.
+//!
 //! Container images are **not** ingested from the checkout: they are distributed
 //! via a registry and pulled by digest by each runner from its own
 //! configuration. The backend is out of the container path entirely.
@@ -16,7 +22,9 @@
 
 use std::path::Path;
 
+use test_cabinet_core::ColdStorage;
 use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, is_seeded_dotfile};
+use test_cabinet_core::test_case_group::TestCaseGroupCatalog;
 
 use crate::error::{BackendError, Result};
 use crate::render;
@@ -24,9 +32,9 @@ use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
     StoredContract, StoredDomain, StoredErratum, StoredInstrumentation, StoredManifest,
     StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay, StoredReviewItem,
-    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
-    write_manifest_in,
+    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredShowcase, StoredShowcaseMedia,
+    StoredSimulation, StoredSpec, StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspace,
+    StoredWorkspaceFile, reference_in, write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -67,6 +75,12 @@ pub struct IngestedVersion {
 pub struct IngestReport {
     /// One entry per scanned test-case version.
     pub test_case_versions: Vec<IngestedVersion>,
+    /// Whether the scan changed the store's [test-case
+    /// group](test_cabinet_core::TestCaseGroup) set. Only a whole-catalog scan
+    /// reconciles the set (a partial scan leaves it untouched and reports
+    /// `false`), and the flag is what lets a group-only edit trigger the public
+    /// snapshot refresh even though no version was re-ingested.
+    pub test_case_groups_changed: bool,
 }
 
 /// A progress event emitted as a [`Ingestor::scan_with_progress`] scan advances, so
@@ -94,6 +108,8 @@ pub enum IngestEvent<'a> {
 pub struct Ingestor<'a> {
     checkout: &'a Path,
     store: &'a DefinitionStore,
+    /// Where each version's baseline validation media is read from.
+    cold: ColdStorage,
     /// `(slug, version)` pairs a whole-catalog scan must never prune even when the
     /// checkout no longer declares them — the definitions still-referencing runs
     /// depend on. Empty by default (prune everything absent); set via
@@ -102,13 +118,21 @@ pub struct Ingestor<'a> {
 }
 
 impl<'a> Ingestor<'a> {
-    /// Create an ingestor over a checkout path and a target store.
+    /// Create an ingestor over a checkout path and a target store. Baseline media is
+    /// read from the checkout's cold storage ([`ColdStorage::for_checkout`]).
     pub fn new(checkout: &'a Path, store: &'a DefinitionStore) -> Self {
         Self {
             checkout,
             store,
+            cold: ColdStorage::for_checkout(checkout),
             protected: std::collections::HashSet::new(),
         }
+    }
+
+    /// Read baseline media from `cold` instead of the checkout's own cold storage.
+    pub fn with_cold_storage(mut self, cold: ColdStorage) -> Self {
+        self.cold = cold;
+        self
     }
 
     /// Protect these `(slug, version)` pairs from the whole-catalog prune — the set a
@@ -137,6 +161,25 @@ impl<'a> Ingestor<'a> {
         request: &IngestRequest,
         mut on_event: impl FnMut(IngestEvent),
     ) -> Result<IngestReport> {
+        // A store holding versions written in another record format holds nothing
+        // this build can read, so a partial scan cannot leave it coherent and there
+        // is nothing in it worth skipping: whatever was asked for is promoted to a
+        // forced whole-catalog scan, which rewrites every version in the format this
+        // build reads. This is the repair after a backend upgrade that changed the
+        // stored shapes, reached from any ingest rather than only an explicitly
+        // forced one.
+        let stale = self.store.needs_reingest();
+        let mut effective = request.clone();
+        if stale {
+            tracing::warn!(
+                "definition store was written in another record format; re-ingesting \
+                 the whole catalog"
+            );
+            effective.test_cases = None;
+            effective.force = true;
+        }
+        let request = &effective;
+
         // A whole-catalog ingest can carry a version token (the client's build
         // commit). When it matches what the store last ingested, the catalog is
         // unchanged and the per-version skip path (below) does the cheap thing; when
@@ -174,6 +217,12 @@ impl<'a> Ingestor<'a> {
         // referenced definitions are spared regardless (see `prune_absent`).
         if whole_catalog {
             self.prune_absent(&report)?;
+            // A whole-catalog scan also owns the global test-case-group set: it has
+            // the complete catalog in view, so it can both cross-validate every
+            // member slug and reconcile the stored set to exactly what the checkout
+            // declares (a deleted group folder prunes the group). A partial scan
+            // must not touch the set for the same reason it must not prune.
+            report.test_case_groups_changed = self.ingest_test_case_groups()?;
         }
 
         // Stamp the marker only after a clean full scan, so a fresh store (no marker)
@@ -181,6 +230,12 @@ impl<'a> Ingestor<'a> {
         if let Some(version) = tagged {
             self.store.set_catalog_version(version)?;
         }
+
+        // Every version the store now holds was written by this build: it was either
+        // already in this build's record format, empty before the scan, or just
+        // rewritten whole by the promotion above. Stamp the format so a later build
+        // that reads the store differently knows to rebuild it.
+        self.store.set_store_format()?;
 
         Ok(report)
     }
@@ -209,6 +264,82 @@ impl<'a> Ingestor<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Reconcile the store's global [test-case group](test_cabinet_core::TestCaseGroup)
+    /// set to the checkout's `test-case-groups/` catalogue, returning whether the
+    /// stored set changed. Called only by a whole-catalog scan (see
+    /// [`scan_with_progress`](Self::scan_with_progress)).
+    ///
+    /// Membership is cross-validated here, where the checkout's whole
+    /// [`TestCaseCatalog`] is in hand: a group naming a member the catalog cannot
+    /// resolve (cases and jams alike, by manifest-declared identity) is rejected
+    /// with a logged error while the valid groups still ingest — the repo's
+    /// `manifests_are_valid` test catches the mistake pre-commit, so meeting one
+    /// here means this backend's checkout is simply behind or ahead of the case it
+    /// names, which must not blank the rest of the home page. A checkout without
+    /// the folder declares no groups (the folder postdates most checkouts), which
+    /// reconciles the stored set to empty like any other deletion.
+    fn ingest_test_case_groups(&self) -> Result<bool> {
+        let root = self.checkout.join("test-case-groups");
+        let declared = if root.is_dir() {
+            TestCaseGroupCatalog::new(&root)
+                .list()
+                .map_err(BackendError::Core)?
+        } else {
+            Vec::new()
+        };
+        let known: std::collections::HashSet<String> =
+            TestCaseCatalog::new(self.checkout.join("test-cases"))
+                .list()
+                .map_err(BackendError::Core)?
+                .into_iter()
+                .map(|case| case.slug)
+                .collect();
+        let groups: Vec<_> = declared
+            .into_iter()
+            .filter(|group| {
+                let unresolved: Vec<&str> = group
+                    .cases
+                    .iter()
+                    .filter(|member| !known.contains(member.as_str()))
+                    .map(String::as_str)
+                    .collect();
+                if unresolved.is_empty() {
+                    return true;
+                }
+                tracing::error!(
+                    group = %group.slug,
+                    members = %unresolved.join(", "),
+                    "rejecting a test-case group: member slug(s) do not resolve in the \
+                     checkout's test-case catalog"
+                );
+                false
+            })
+            .collect();
+        // The stored set is read only to decide whether the snapshot needs
+        // refreshing. A slot that is present but unparseable (written by a build
+        // with a different `TestCaseGroup` shape, or truncated mid-write) must
+        // count as "changed" rather than abort the scan: re-ingest is the slot's
+        // documented repair (see `DefinitionStore::read_test_case_groups`), so the
+        // write below has to run precisely when the read cannot. I/O errors still
+        // propagate — the rewrite would hit them too.
+        let stored = match self.store.read_test_case_groups() {
+            Ok(stored) => Some(stored),
+            Err(BackendError::Internal(error)) => {
+                tracing::warn!(
+                    %error,
+                    "rewriting the stored test-case-group set: the slot does not parse"
+                );
+                None
+            }
+            Err(err) => return Err(err),
+        };
+        if stored.as_deref() == Some(groups.as_slice()) {
+            return Ok(false);
+        }
+        self.store.write_test_case_groups(&groups)?;
+        Ok(true)
     }
 
     /// Resolve the set of `(slug, version)` pairs to scan from the checkout.
@@ -305,14 +436,29 @@ impl<'a> Ingestor<'a> {
     /// caller discards it, so a partial build is never served.
     fn build_version(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<usize> {
         copy_tree(&resolved.root, dest)?;
+        self.copy_baselines(dest, resolved)?;
         let rendered = self.render_references(dest, resolved)?;
         let manifest = build_stored_manifest(resolved)?;
         write_manifest_in(dest, &manifest)?;
         Ok(rendered)
     }
 
+    /// Copy a version's baseline validation media from cold storage into `dest`'s
+    /// `validation-baseline/`, where the store serves it from. A version with no
+    /// counterpart in cold storage, including every version of a checkout without
+    /// the submodule, copies nothing.
+    fn copy_baselines(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<()> {
+        let Some(src) = self.cold.validation_baseline_dir(&resolved.root) else {
+            return Ok(());
+        };
+        if src.is_dir() {
+            copy_tree(&src, &dest.join(test_cabinet_core::VALIDATION_BASELINE_DIR))?;
+        }
+        Ok(())
+    }
+
     /// Store every reference view (common + per-variant) of a resolved version into
-    /// `dest`'s reference sidecar (a staging directory; see [`build_version`]). An
+    /// `dest`'s reference sidecar (a staging directory; see [`build_version`](Self::build_version)). An
     /// HTML mockup is rendered to a screenshot; a static image/video is copied as-is.
     /// A failure aborts the version's ingest, since serving a version with a missing
     /// baseline would let a runner validate against a hole. Returns the number of
@@ -391,11 +537,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
     // The starter workspace files (common + each variant's override) are keyed by
     // their store-relative source path; the runner fetches each like an asset and
     // seeds it at the file's run-relative `dest`.
-    let workspace = resolved
-        .common_workspace
-        .iter()
-        .map(|file| stored_workspace(root, file))
-        .collect::<Result<Vec<_>>>()?;
+    let workspace = stored_workspaces(root, &resolved.common_workspace)?;
 
     // Asset *paths* in a resolved version may be files or directories; the
     // contract expands directories to individual files. Each becomes an artifact
@@ -417,12 +559,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             let workspace = variant
                 .workspace
                 .as_ref()
-                .map(|files| {
-                    files
-                        .iter()
-                        .map(|file| stored_workspace(root, file))
-                        .collect::<Result<Vec<_>>>()
-                })
+                .map(|workspaces| stored_workspaces(root, workspaces))
                 .transpose()?;
             Ok(StoredVariant {
                 slug: variant.slug.clone(),
@@ -439,6 +576,11 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                     .collect(),
                 domains: variant.domains.iter().map(stored_domain).collect(),
                 voxel: variant.voxel.clone(),
+                showcase: variant
+                    .showcase
+                    .as_ref()
+                    .map(|showcase| stored_showcase(root, showcase))
+                    .transpose()?,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -455,6 +597,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         max_runtime_seconds: resolved.max_runtime_seconds,
         test_type: resolved.test_type,
         experimental: resolved.experimental,
+        engine_format: resolved.engine_format,
+        engines: resolved.engines.clone(),
         build: resolved.build.as_ref().map(|build| StoredBuild {
             install: build.install.clone(),
             build: build.build.clone(),
@@ -463,6 +607,15 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 .as_ref()
                 .map(|module| module.to_string_lossy().replace('\\', "/")),
         }),
+        toolchain: resolved
+            .toolchain
+            .as_ref()
+            .map(|toolchain| crate::store::StoredToolchain {
+                typecheck: toolchain.typecheck.clone(),
+                lint: toolchain.lint.clone(),
+                format: toolchain.format.clone(),
+                test: toolchain.test.clone(),
+            }),
         canvas: resolved.canvas.as_ref().map(|canvas| StoredCanvas {
             width: canvas.width,
             height: canvas.height,
@@ -511,6 +664,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             renderer: replay.renderer.to_string_lossy().replace('\\', "/"),
         }),
         asset_kind: resolved.asset_kind,
+        asset_dimension: resolved.asset_dimension,
         sheet: resolved.sheet.clone(),
         voxel: resolved.voxel.clone(),
         model: resolved.model.clone(),
@@ -518,6 +672,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         material: resolved.material.clone(),
         particle: resolved.particle.clone(),
         audio: resolved.audio.clone(),
+        audio_packs: resolved.audio_packs.clone(),
         prompt_template,
         common_specs,
         workspace,
@@ -613,11 +768,18 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
                 reference: sub.reference.clone(),
                 proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(stored_validation),
+                failure_cap: sub.failure_cap,
+                domains: sub.domains.clone(),
             })
             .collect(),
         // The item's auto-validation driver (present only for a whole-item validated
         // item; a sub-divided item carries its drivers on the sub-items above).
         validation: item.validation.as_ref().map(stored_validation),
+        // The validator-rated scoring declaration (present only on a validator-rated
+        // version, and only on a whole-item point; a sub-divided item carries them on
+        // the sub-items above).
+        failure_cap: item.failure_cap,
+        domains: item.domains.clone(),
     }
 }
 
@@ -629,6 +791,8 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
 fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> StoredReviewValidation {
     StoredReviewValidation {
         script: validation.script_rel.clone(),
+        per_engine: validation.script.is_none(),
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()
@@ -661,7 +825,7 @@ fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
     }
 }
 
-/// Build a `StoredSpec` from a resolved [`SpecFile`], deriving the store-relative
+/// Build a `StoredSpec` from a resolved [`SpecFile`](test_cabinet_core::SpecFile), deriving the store-relative
 /// `source` key and the `template` flag (a `.hbs` source) and carrying its `kind`.
 fn stored_spec(root: &Path, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
     let source = relative_key(root, &spec.source_path)?;
@@ -692,12 +856,58 @@ fn stored_workspace(
     })
 }
 
+/// Build a [`StoredShowcase`] from a variant's resolved
+/// [showcase](test_cabinet_core::test_case::CaseShowcase): the description is
+/// inlined, and each media entry is keyed by its **store-relative** path exactly
+/// as a spec or a workspace file is — the bytes themselves ride the copied
+/// version tree (`copy_tree`), so keying is all the upload there is.
+fn stored_showcase(
+    root: &Path,
+    showcase: &test_cabinet_core::test_case::CaseShowcase,
+) -> Result<StoredShowcase> {
+    let media = showcase
+        .media
+        .iter()
+        .map(|media| -> Result<StoredShowcaseMedia> {
+            Ok(StoredShowcaseMedia {
+                file: media.file.clone(),
+                name: media.name.clone(),
+                kind: media.kind,
+                key: relative_key(root, &media.source_path)?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(StoredShowcase {
+        description: showcase.description.clone(),
+        media,
+    })
+}
+
+/// Build a [`StoredWorkspace`] from a resolved per-engine starter project: one
+/// entry per [engine](test_cabinet_core::engine) the case ships a project for, each
+/// keyed by its store-relative source exactly as a spec or an asset is.
+fn stored_workspaces(
+    root: &Path,
+    workspaces: &test_cabinet_core::test_case::EngineWorkspaces,
+) -> Result<StoredWorkspace> {
+    let mut by_engine = std::collections::BTreeMap::new();
+    for engine in workspaces.engines() {
+        let files = workspaces
+            .get(engine)
+            .iter()
+            .map(|file| stored_workspace(root, file))
+            .collect::<Result<Vec<_>>>()?;
+        by_engine.insert(engine.to_string(), files);
+    }
+    Ok(StoredWorkspace(by_engine))
+}
+
 /// Build a [`StoredCase`] from a resolved performance case: the held-out `input`
 /// scenario and `expected` oracle state, each keyed by its **store-relative** path
 /// exactly as specs, workspace files, and assets are. The runner fetches both like
-/// any other definition file and the [`PerformanceValidator`] scores against them;
+/// any other definition file and the [`PerformanceValidator`](test_cabinet_core::PerformanceValidator) scores against them;
 /// they are never seeded into a run. Keying them absolutely (as this once did)
-/// leaves the driver's [`materialize_version`] unable to fetch or locate them, so
+/// leaves the driver's [`materialize_version`](test_cabinet_core::backend_client::materialize_version) unable to fetch or locate them, so
 /// every backend-driven performance run resolves an empty scored set and aborts.
 fn stored_case(
     root: &Path,
@@ -776,7 +986,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
             // as a symlink rather than dereferencing it: `std::fs::copy` follows the
             // link and errors on a symlink-to-directory ("the source path is neither
             // a regular file nor a symlink to a regular file") — e.g. a
-            // reference-impl's `node_modules/@test-cabinet/voxel-runtime` link.
+            // reference-impl's `node_modules/@clockwyrks/voxel-runtime` link.
             copy_symlink(&from, &to)?;
         } else if file_type.is_dir() {
             copy_tree(&from, &to)?;

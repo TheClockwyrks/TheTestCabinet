@@ -1,0 +1,134 @@
+# Meltdown — Controls
+
+Meltdown is built with the pointer and driven with the keys beside it. Every
+interaction and every menu is reachable with the pointer alone. This file defines
+what each press does and what each key is bound to. What the panel's controls are
+is in `specs/hud.md`, and what each action does to the floor is in
+`specs/building.md`.
+
+{{#if (eq engine.slug "none")}}
+## How input reaches the game
+
+This game stands on no engine, so the keyboard and the pointer belong to the
+runtime layer you write. Every key below is named by its `KeyboardEvent.code`, so
+a binding is a physical key rather than a layout-dependent character. The
+pointer's position is read in logical stage units, and touch input reaches the
+game as the same pointer.
+{{else}}
+## How input reaches the game
+
+Input reaches the game as named actions from the {{engine.name}} engine, which
+documents them in the `engine/` directory at the root of this repository. The
+game registers the layout `LAYOUT` (`dpad-4`), which carries four-way movement
+and the menu vocabulary, and registers every action in `ACTIONS` against the keys
+`BINDINGS` gives it. `BINDINGS` names each key by its `KeyboardEvent.code`, so a
+binding is a physical key rather than a layout-dependent character.
+
+The engine reports the pointer's position, already in logical stage units, and
+whether it is pressed. Touch input reaches the game as the same pointer.
+{{/if}}
+
+## The pointer
+
+There is one pointer button and the game asks for no other. A press begins when
+the pointer goes down and ends when it is released, and the game answers a press
+and release inside one region as one interaction with that region.
+
+| Where the press and release land | What happens |
+| --- | --- |
+| A row of the menu the current screen shows | That row becomes the highlighted row and is taken, exactly as `confirm` on it does. |
+| A shop entry | That entry's type is armed. |
+| A panel control | That control is operated. |
+| The floor, with a placement armed on a valid footprint | The tower is placed. |
+| The floor, with a placement armed on an invalid footprint | Nothing is built and nothing is spent. |
+| A placed tower's footprint, with nothing armed | That tower is selected. |
+| Open floor, with nothing armed | Nothing is selected. |
+
+Moving the pointer does three things:
+
+- Moving onto a row of the menu the current screen shows makes that row the
+  highlighted row, exactly as `up` and `down` reaching it do, and raises the
+  `menu` cue on the frame the highlight changes. Moving off every row leaves the
+  highlight on the row it last reached, and moving onto the already highlighted
+  row changes nothing and raises nothing. Hovering a row takes it no further:
+  reaching a row and taking it are separate.
+- With a placement armed, the held preview follows the pointer over the floor, as
+  `specs/building.md` states.
+- Moving into a shop entry marks that entry as the one being hovered, and moving
+  out of every shop entry clears the hover. Hovering arms nothing and selects
+  nothing.
+
+## The actions
+
+| Action | Effect |
+| --- | --- |
+| `up` | Moves the highlighted row of the current menu back one. |
+| `down` | Moves the highlighted row of the current menu on one. |
+| `left` | Moves the highlighted row of the current menu back one. |
+| `right` | Moves the highlighted row of the current menu on one. |
+| `confirm` | Takes the highlighted row. |
+| `back` | Cancels, deselects, pauses, or leaves the screen, in the order below. |
+| `pause` | Opens the pause screen from live play, and returns to play from it. |
+| `mute` | Toggles sound, from any screen. |
+| `arm1` to `arm8` | Arms the eight shop types, in the shop order of `TOWER_TYPES`. |
+| `rotate` | Turns the held preview one step. With nothing held it changes nothing. |
+| `send` | Sends the next wave, or begins Wave 1 from the opening phase. |
+| `speed` | Toggles the game speed between `1` and `2`. |
+| `upgrade` | Upgrades the selected tower. |
+| `sell` | Sells the selected tower. |
+
+Every action is read as a press edge and fires once per press. Holding a key down
+fires its action exactly once, however long it is held.
+
+## The bindings
+
+| Action | Key |
+| --- | --- |
+| `up` | `ArrowUp` |
+| `down` | `ArrowDown` |
+| `left` | `ArrowLeft` |
+| `right` | `ArrowRight` |
+| `confirm` | `Enter` |
+| `back` | `Escape` |
+| `pause` | `KeyP` |
+| `mute` | `KeyM` |
+| `arm1` to `arm8` | `Digit1` to `Digit8` |
+| `rotate` | `KeyR` |
+| `send` | `Space` |
+| `speed` | `KeyF` |
+| `upgrade` | `KeyU` |
+| `sell` | `KeyS` |
+
+No key drives two actions.
+
+## What `back` does
+
+`back` resolves in this order, taking the first case that applies:
+
+1. A placement is armed: cancel it, leaving the screen where it is.
+2. A tower is selected: deselect it, leaving the screen where it is.
+3. The screen is `playing`: open the pause screen.
+4. Otherwise: leave the current screen, as `specs/screens.md` states.
+
+## Touch
+
+Every interaction above is a tap, and the game is fully playable on a touchscreen.
+The whole stage is on screen at every size, so there is nothing to pan or scroll
+to, and no interaction needs a second pointer button. A tap on a shop entry both
+arms its type and marks it hovered, so the same panel that a mouse reads on hover
+is reached by tap. A tap on a menu row both highlights that row and takes it, so
+the menu a mouse reaches by hovering and confirming is reached by one contact,
+and every screen is left by tapping a row rather than by pressing a key.
+
+## The debug overlay
+
+{{#if (eq engine.slug "none")}}
+The read-only debug overlay `specs/instrumentation.md` describes is shown and
+hidden by the backtick key, `KeyboardEvent.code` `Backquote`. It is off when the
+game starts. The overlay and its toggle are part of the runtime layer you write,
+and they are not registered as an action.
+{{else}}
+The read-only debug overlay is the engine's, shown and hidden by the backtick
+key, `KeyboardEvent.code` `Backquote`, and off when the game starts. It is not
+one of Meltdown's actions. What it shows is in `specs/instrumentation.md`.
+{{/if}}

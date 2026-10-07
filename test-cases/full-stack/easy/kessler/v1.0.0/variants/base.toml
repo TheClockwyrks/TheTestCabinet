@@ -1,0 +1,43 @@
+# The single Kessler variant: the endless orbital score attack. Listed first (and
+# alone) in the manifest's `variants`, so it is the default. Every path resolves
+# against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The orbital demolition run: ride the deflector, bat the ball through three rings of derelicts, catch the salvage pods they shed, and survive waves that orbit faster and pay more."
+
+# What the game looks like played correctly, shown before anyone runs it: a
+# twenty-four-second replay of one real run on wave 1 — the opening serve, the
+# steered returns that gut all three rings of derelicts, the salvage pods those
+# breaks shed falling inward, and the shield, widen, pierce and multiball a catch
+# grants, up to six balls in the sky at once — plus three stills of that same
+# take. It was captured from `references/structured-2d/base`, played through the
+# game's own keyboard input with nothing posed mid-play; the driver that records
+# it is `showcase/capture/`. `showcase/base/showcase.toml` lists the media in
+# carousel order, the replay leading, and `showcase/base/showcase.md` carries the
+# description. Never seeded into a run.
+showcase = "showcase/base"
+
+# The authored, *correct* playable build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. This table
+# must name EXACTLY the engines the case supports; the resolver checks both
+# directions. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine. This is a
+# full-stack case, so each of these builds also PRODUCED its own sprites, particle
+# systems, and audio during authoring, committed beside it; the build itself only
+# loads them, so `npm ci && npm run build` is self-contained.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# No `[workspaces]` override. This is the only variant, so the case's own
+# `[workspaces]` names its starter projects directly, one per engine.
+
+# No `[[domain]]` of its own. The one variant is the whole game, so it is rated on
+# the case's own `gameplay` and `presentation` domains alone.
+
+# No `[[review.categories]]` of its own. Every review item is common: with a single
+# variant there is no point whose claim could differ between modes, so the case
+# manifest carries the entire checklist.

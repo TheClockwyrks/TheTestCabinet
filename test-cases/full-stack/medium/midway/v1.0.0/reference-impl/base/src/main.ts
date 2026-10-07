@@ -9,8 +9,21 @@
 // sound/particle event queues into the Audio + Particles players, holding the steam/sparkle
 // loops over active stalls/rides, and driving the camera from keyboard + edge-scroll + wheel.
 
-import { FIXED_STEP, PARK_Y0, PARK_Y1, STAGE_H, STAGE_W, TILE } from "./constants";
-import type { RideKind, SceneryKind, StaffKind, StallKind, ToolKind } from "./constants";
+import {
+  FIXED_STEP,
+  PARK_Y0,
+  PARK_Y1,
+  STAGE_H,
+  STAGE_W,
+  TILE,
+} from "./constants";
+import type {
+  RideKind,
+  SceneryKind,
+  StaffKind,
+  StallKind,
+  ToolKind,
+} from "./constants";
 import { screenToWorld } from "./park";
 import { MODE } from "./mode";
 import { loadAssets } from "./assets";
@@ -19,7 +32,13 @@ import { Particles } from "./particles";
 import { Game } from "./sim";
 import { Input, type Point } from "./input";
 import { menuItems } from "./menus";
-import { render, setDragCells, setMenuIndex, setMuted, setRenderTime } from "./render";
+import {
+  render,
+  setDragCells,
+  setMenuIndex,
+  setMuted,
+  setRenderTime,
+} from "./render";
 import type { Cell, Clickable, GameState, SpeedSetting } from "./types";
 
 const PAN_SPEED = 480; // camera pan speed (world px per real second)
@@ -34,7 +53,10 @@ if (!ctx) throw new Error("Midway: 2D canvas context unavailable");
 // once now so the very first painted frame is already correct (before any input/resize).
 function resize(): void {
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+  const scale = Math.min(
+    window.innerWidth / STAGE_W,
+    window.innerHeight / STAGE_H,
+  );
   const cssW = Math.max(1, Math.round(STAGE_W * scale));
   const cssH = Math.max(1, Math.round(STAGE_H * scale));
   canvas.style.width = `${cssW}px`;
@@ -102,13 +124,20 @@ async function main(): Promise<void> {
     devDay: (n: number) => game.devDay(n),
     devArrivals: (on: boolean) => game.devArrivals(on),
     layPath: (cells: [number, number][]) => game.layPath(cells),
-    place: (kind: RideKind | StallKind, col: number, row: number) => game.placeAttraction(kind, col, row),
-    scenery: (kind: SceneryKind, col: number, row: number) => game.placeScenery(kind, col, row),
-    hire: (kind: StaffKind, col: number, row: number) => game.hireStaff(kind, col, row),
-    setPrice: (target: number | "admission" | RideKind | StallKind, price: number) => game.setPrice(target, price),
+    place: (kind: RideKind | StallKind, col: number, row: number) =>
+      game.placeAttraction(kind, col, row),
+    scenery: (kind: SceneryKind, col: number, row: number) =>
+      game.placeScenery(kind, col, row),
+    hire: (kind: StaffKind, col: number, row: number) =>
+      game.hireStaff(kind, col, row),
+    setPrice: (
+      target: number | "admission" | RideKind | StallKind,
+      price: number,
+    ) => game.setPrice(target, price),
     spawnGuests: (n: number) => game.spawnGuests(n),
     breakRide: (id?: number) => game.breakRide(id),
-    litter: (col: number, row: number, amt: number) => game.litter(col, row, amt),
+    litter: (col: number, row: number, amt: number) =>
+      game.litter(col, row, amt),
     fireworks: () => game.fireworks(),
     setState: (s: GameState) => game.setState(s),
   };
@@ -210,9 +239,12 @@ async function main(): Promise<void> {
     const w = screenToWorld(game.world.camera, p.x, p.y);
     switch (game.tool.kind) {
       case "build":
-        if (game.tool.buildRide) game.placeAttraction(game.tool.buildRide, col, row);
-        else if (game.tool.buildStall) game.placeAttraction(game.tool.buildStall, col, row);
-        else if (game.tool.buildScenery) game.placeScenery(game.tool.buildScenery, col, row);
+        if (game.tool.buildRide)
+          game.placeAttraction(game.tool.buildRide, col, row);
+        else if (game.tool.buildStall)
+          game.placeAttraction(game.tool.buildStall, col, row);
+        else if (game.tool.buildScenery)
+          game.placeScenery(game.tool.buildScenery, col, row);
         break;
       case "staff":
         if (game.tool.staffKind) game.hireStaff(game.tool.staffKind, col, row);
@@ -267,7 +299,12 @@ async function main(): Promise<void> {
   // Esc: cancel a held build item / clear a selection first, else open the pause MENU
   // (which also freezes the board), distinct from the in-place Space pause (specs/flow.md).
   function escapePlaying(): void {
-    if (game.tool.buildRide || game.tool.buildStall || game.tool.buildScenery || game.tool.staffKind) {
+    if (
+      game.tool.buildRide ||
+      game.tool.buildStall ||
+      game.tool.buildScenery ||
+      game.tool.staffKind
+    ) {
       cancelHeld();
       return;
     }
@@ -305,8 +342,10 @@ async function main(): Promise<void> {
     }
     // Menu states: pointer and/or Up/Down (or W/S) move the selection, Enter/Space confirm.
     const items = menuItems(game.state, game);
-    if (k === "ArrowUp" || lower === "w") menuIndex = (menuIndex - 1 + items.length) % items.length;
-    else if (k === "ArrowDown" || lower === "s") menuIndex = (menuIndex + 1) % items.length;
+    if (k === "ArrowUp" || lower === "w")
+      menuIndex = (menuIndex - 1 + items.length) % items.length;
+    else if (k === "ArrowDown" || lower === "s")
+      menuIndex = (menuIndex + 1) % items.length;
     else if (k === "Enter" || k === " ") {
       if (items[menuIndex]) activate(items[menuIndex]!.action);
     } else if (k === "Escape") {
@@ -317,7 +356,14 @@ async function main(): Promise<void> {
   }
 
   function handleInput(): void {
-    if (input.presses.length || input.releases.length || input.keys.length || input.rightClicks || input.wheel) gesture();
+    if (
+      input.presses.length ||
+      input.releases.length ||
+      input.keys.length ||
+      input.rightClicks ||
+      input.wheel
+    )
+      gesture();
 
     // Wheel zoom (only over the live park); clampCamera keeps the fit inside zoomCamera.
     if (input.wheel !== 0 && game.state === "playing") {
@@ -337,7 +383,8 @@ async function main(): Promise<void> {
 
   // Live path-drag preview (recomputed each frame so it tracks the pointer).
   function updateDragPreview(): void {
-    if (dragging && dragStart) setDragCells(runCells(dragStart, cellAt(input.pointerLogical)));
+    if (dragging && dragStart)
+      setDragCells(runCells(dragStart, cellAt(input.pointerLogical)));
     else setDragCells(null);
   }
 
@@ -357,7 +404,8 @@ async function main(): Promise<void> {
       if (p.y < PARK_Y0 + EDGE) dy -= 1;
       else if (p.y > PARK_Y1 - EDGE) dy += 1;
     }
-    if (dx !== 0 || dy !== 0) game.panCamera(dx * PAN_SPEED * dt, dy * PAN_SPEED * dt);
+    if (dx !== 0 || dy !== 0)
+      game.panCamera(dx * PAN_SPEED * dt, dy * PAN_SPEED * dt);
   }
 
   // Hold a steam loop over each serving food/drink stall and a sparkle loop over each
@@ -366,15 +414,33 @@ async function main(): Promise<void> {
     const live = new Set<string>();
     if (game.state === "playing") {
       for (const a of game.attractions) {
-        if (a.category === "ride" && (a.state === "running" || a.state === "loading")) {
+        if (
+          a.category === "ride" &&
+          (a.state === "running" || a.state === "loading")
+        ) {
           const key = `sparkle:${a.id}`;
           live.add(key);
-          particles.ensureLoop(key, "sparkle", (a.col + a.w / 2) * TILE, (a.row + a.h / 2) * TILE);
+          particles.ensureLoop(
+            key,
+            "sparkle",
+            (a.col + a.w / 2) * TILE,
+            (a.row + a.h / 2) * TILE,
+          );
         }
-        if (a.category === "stall" && a.steam && a.connected && a.queue.length > 0) {
+        if (
+          a.category === "stall" &&
+          a.steam &&
+          a.connected &&
+          a.queue.length > 0
+        ) {
           const key = `steam:${a.id}`;
           live.add(key);
-          particles.ensureLoop(key, "steam", (a.col + a.w / 2) * TILE, a.row * TILE + 4);
+          particles.ensureLoop(
+            key,
+            "steam",
+            (a.col + a.w / 2) * TILE,
+            a.row * TILE + 4,
+          );
         }
       }
     }
@@ -387,7 +453,13 @@ async function main(): Promise<void> {
     const items = menuItems(game.state, game);
     for (let idx = 0; idx < items.length; idx++) {
       const c = clickables.find((cl) => cl.action === items[idx]!.action);
-      if (c && game.pointerX >= c.x && game.pointerX <= c.x + c.w && game.pointerY >= c.y && game.pointerY <= c.y + c.h) {
+      if (
+        c &&
+        game.pointerX >= c.x &&
+        game.pointerX <= c.x + c.w &&
+        game.pointerY >= c.y &&
+        game.pointerY <= c.y + c.h
+      ) {
         menuIndex = idx;
         return;
       }

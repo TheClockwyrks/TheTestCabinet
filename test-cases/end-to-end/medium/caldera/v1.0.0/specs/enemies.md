@@ -51,12 +51,12 @@ structures on it.
 The Slag field a **small set of archetypes**, each with a fixed intent. Base stats
 are for **Tier I**; tiers multiply them (below).
 
-| Archetype | Role & target | HP | Armor | Attack | Speed |
-| --- | --- | --- | --- | --- | --- |
-| **Runner** | Fast, fragile chaff; beelines the **Core**, swarming in numbers. | `50` | none | Melee `8` dmg to the Core, `0.7 s` cadence, reach `2` | `8 u/s` |
-| **Breaker** | Heavily armored sapper; beelines the **Core** and grinds its health down. The primary Core-killer. Slow. | `260` | heavy | Melee `45` dmg to the Core, `1.4 s` cadence, reach `2.5` | `4 u/s` |
-| **Sapper** | Targets your **fluid network** — it ignores the Core and towers unless blocked, and marches to cut **pipes, sources, and boilers**. | `90` | light | Melee `30` dmg to a structure, `1.0 s` cadence, reach `2` | `6 u/s` |
-| **Colossus** | Massive elite bruiser; wades to the **Core** dealing huge damage and buffs nearby Slag (armor aura, below). Very slow, very durable. | `600` | heavy | Melee `90` dmg to the Core, `1.6 s` cadence, reach `3` | `3 u/s` |
+| Archetype    | Role & target                                                                                                                        | HP    | Armor | Attack                                                    | Speed   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----- | ----- | --------------------------------------------------------- | ------- |
+| **Runner**   | Fast, fragile chaff; beelines the **Core**, swarming in numbers.                                                                     | `50`  | none  | Melee `8` dmg to the Core, `0.7 s` cadence, reach `2`     | `8 u/s` |
+| **Breaker**  | Heavily armored sapper; beelines the **Core** and grinds its health down. The primary Core-killer. Slow.                             | `260` | heavy | Melee `45` dmg to the Core, `1.4 s` cadence, reach `2.5`  | `4 u/s` |
+| **Sapper**   | Targets your **fluid network** — it ignores the Core and towers unless blocked, and marches to cut **pipes, sources, and boilers**.  | `90`  | light | Melee `30` dmg to a structure, `1.0 s` cadence, reach `2` | `6 u/s` |
+| **Colossus** | Massive elite bruiser; wades to the **Core** dealing huge damage and buffs nearby Slag (armor aura, below). Very slow, very durable. | `600` | heavy | Melee `90` dmg to the Core, `1.6 s` cadence, reach `3`    | `3 u/s` |
 
 ### Behaviors and targeting
 
@@ -100,10 +100,10 @@ schedule (`specs/waves.md`), not by anything here.
 
 Apply these multipliers to each archetype's Tier I base stats:
 
-| Tier | HP | Damage | Armor |
-| --- | --- | --- | --- |
-| **I** | ×`1.0` | ×`1.0` | as listed |
-| **II** | ×`1.8` | ×`1.4` | +`25%` damage reduction |
+| Tier    | HP     | Damage | Armor                   |
+| ------- | ------ | ------ | ----------------------- |
+| **I**   | ×`1.0` | ×`1.0` | as listed               |
+| **II**  | ×`1.8` | ×`1.4` | +`25%` damage reduction |
 | **III** | ×`2.8` | ×`1.9` | +`40%` damage reduction |
 
 - **Armor** reduces incoming tower damage by the listed percentage — **except** from

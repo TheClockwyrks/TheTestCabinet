@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Panel } from "@test-cabinet/ui";
-import type { ControllerRef, MatchSummary } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import { Button, Select } from "../../../../primitives";
+import type { ControllerRef, MatchSummary } from "@clockwyrks/run-record";
 import { useGalleryData, type ArenaApi } from "../../../data/galleryContext";
 import { useControllerName } from "../../../data/useControllerName";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import { routes } from "../../../routes";
+import { SubmitNotice } from "../../../components/SubmitNotice";
 import { ReplayOverlay } from "../../runs/[runId]/AdversarialReplaySection";
 import styles from "./TestCaseArenaPage.module.scss";
 
@@ -18,8 +20,12 @@ import styles from "./TestCaseArenaPage.module.scss";
 export function TestCaseArenaPage() {
   return (
     <TestCaseDetailLayout tab="arena">
-      {({ testCase, variant }) => (
-        <ArenaContent testCase={testCase} variant={variant} />
+      {({ testCase, variant, isLatest }) => (
+        <ArenaContent
+          testCase={testCase}
+          variant={variant}
+          isLatest={isLatest}
+        />
       )}
     </TestCaseDetailLayout>
   );
@@ -28,9 +34,14 @@ export function TestCaseArenaPage() {
 function ArenaContent({
   testCase,
   variant,
+  isLatest,
 }: {
   testCase: TestCaseSummary;
   variant: VariantSummary;
+  /** Whether the page is anchored to the case's latest version. The arena is
+   * pinned to latest regardless (see the note in {@link ArenaPanels}), so an
+   * older anchor only changes what is said, not what runs. */
+  isLatest: boolean;
 }) {
   const { canExecute, arena } = useGalleryData();
 
@@ -41,7 +52,7 @@ function ArenaContent({
       <section className={styles.section}>
         <Panel>
           <p className={styles.muted}>
-            The arena is not available here — it runs head-to-head matches on a
+            The arena is not available here. It runs head-to-head matches on a
             connected worker, for adversarial test cases only.
           </p>
         </Panel>
@@ -49,17 +60,26 @@ function ArenaContent({
     );
   }
 
-  return <ArenaPanels arena={arena} testCase={testCase} variant={variant} />;
+  return (
+    <ArenaPanels
+      arena={arena}
+      testCase={testCase}
+      variant={variant}
+      isLatest={isLatest}
+    />
+  );
 }
 
 function ArenaPanels({
   arena,
   testCase,
   variant,
+  isLatest,
 }: {
   arena: ArenaApi;
   testCase: TestCaseSummary;
   variant: VariantSummary;
+  isLatest: boolean;
 }) {
   const [controllers, setControllers] = useState<ControllerRef[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -95,12 +115,22 @@ function ArenaPanels({
 
   return (
     <section className={styles.section}>
+      {/* The arena is pinned to the case's LATEST version — every match and
+          tournament below launches `testCase.latestVersion`, because that is
+          the deliverable controllers are pushed against. Anchoring the page to
+          an older version therefore changes nothing here; say so rather than
+          letting the header's anchor imply the matches would replay history. */}
+      {!isLatest && (
+        <p className={styles.muted}>
+          Matches and tournaments always run the latest version (
+          {testCase.latestVersion}), whichever version the page is anchored to.
+        </p>
+      )}
       {workers.length > 1 && (
         <Panel>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Worker</span>
-            <select
-              className={styles.select}
+            <Select
               value={workerId}
               onChange={(e) => setWorkerId(e.target.value)}
             >
@@ -109,7 +139,7 @@ function ArenaPanels({
                   {w.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <p className={styles.muted}>
             Matches run on this worker, and its locally-produced (unpushed) runs
@@ -246,38 +276,25 @@ function QuickMatchPanel({
       <div className={styles.fields}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Red</span>
-          <select
-            className={styles.select}
-            value={redId}
-            onChange={(e) => setRedId(e.target.value)}
-          >
+          <Select value={redId} onChange={(e) => setRedId(e.target.value)}>
             <ControllerOptions controllers={controllers} />
-          </select>
+          </Select>
         </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Blue</span>
-          <select
-            className={styles.select}
-            value={blueId}
-            onChange={(e) => setBlueId(e.target.value)}
-          >
+          <Select value={blueId} onChange={(e) => setBlueId(e.target.value)}>
             <ControllerOptions controllers={controllers} />
-          </select>
+          </Select>
         </label>
       </div>
 
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={onRun}
-          disabled={!canRun}
-        >
-          {running ? "Running…" : "Run match"}
-        </button>
-      </div>
+      <SubmitNotice message={error} />
 
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
+      <div className={styles.actions}>
+        <Button variant="primary" onClick={onRun} disabled={!canRun}>
+          {running ? "Running…" : "Run match"}
+        </Button>
+      </div>
 
       {result && (
         <div className={styles.matchResult}>
@@ -287,16 +304,12 @@ function QuickMatchPanel({
           />
           {result.replay == null ? (
             <p className={styles.muted}>
-              No replay is available — a controller failed to load.
+              No replay is available: a controller failed to load.
             </p>
           ) : !launched ? (
-            <button
-              type="button"
-              className={styles.secondary}
-              onClick={() => setLaunched(true)}
-            >
+            <Button variant="secondary" onClick={() => setLaunched(true)}>
               Launch replay
-            </button>
+            </Button>
           ) : (
             <ReplayOverlay
               label={`Quick match ${result.summary.matchId}`}
@@ -423,15 +436,15 @@ function TournamentPanel({
         ))}
       </ul>
 
+      {/* Above the button rather than after the progress meter that follows it,
+        so the roster does not have to be scrolled past to find out the run was
+        refused. */}
+      <SubmitNotice message={error} />
+
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={onRun}
-          disabled={!canRun}
-        >
+        <Button variant="primary" onClick={onRun} disabled={!canRun}>
           {running ? "Running…" : `Run tournament (${picked.size})`}
-        </button>
+        </Button>
       </div>
 
       {running && progress && (
@@ -463,8 +476,6 @@ function TournamentPanel({
           </div>
         </div>
       )}
-
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
     </Panel>
   );
 }

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { PublishProgress, StoredRun } from "../../../client/types";
 import { Link } from "react-router";
-import { Panel, canonicalModelId } from "@test-cabinet/ui";
+import { Panel, canonicalModelId } from "@clockwyrks/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData } from "../../data/galleryContext";
 import { describeRunState } from "../../data/runState";
+import { HelpTip } from "../../components/HelpTip";
 import { useWorkers } from "../../../client/context";
 import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { useFindModel } from "../../data/useModels";
 import { formatSlug } from "../../format";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -34,6 +36,7 @@ export function RunFailuresPage() {
   const { canExecute } = useGalleryData();
   const { active: worker } = useWorkers();
   const { refreshToken, requestRefresh } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const { token } = useAuth();
   const client = worker?.client ?? null;
 
@@ -71,7 +74,9 @@ export function RunFailuresPage() {
   // infrastructure failure out defensively.
   const publishable = useMemo(() => {
     return failures
-      .filter((f) => describeRunState(f.record.status.state).isPublishableFailure)
+      .filter(
+        (f) => describeRunState(f.record.status.state).isPublishableFailure,
+      )
       .sort((a, b) => timestamp(b.record) - timestamp(a.record));
   }, [failures]);
 
@@ -81,6 +86,7 @@ export function RunFailuresPage() {
         command="--runs --failures"
         blink
         comment={<>// publishable failures awaiting publish</>}
+        actions={canStop ? <StopRunsControls /> : undefined}
       />
 
       <RunsTabs active="failures" />
@@ -183,8 +189,16 @@ function FailureRow({
         {error && <p className={styles.error}>{error}</p>}
       </div>
       <div className={styles.controls}>
-        <span className={styles.chip} data-state={run.status.state}>
-          {presentation.chip}
+        {/* The tier chip, with what publishing this tier actually does behind a
+            help tip: which of a source repository, a playable build and a
+            per-model statistic the release produces, and (for a harness error)
+            why each publish is a deliberate judgement. The operator decides here,
+            so the consequence belongs here rather than one tab away. */}
+        <span className={styles.tier}>
+          <span className={styles.chip} data-state={run.status.state}>
+            {presentation.chip}
+          </span>
+          <HelpTip text={presentation.consequence} />
         </span>
         {published ? (
           <span className={styles.publishedTag}>Published</span>

@@ -1,6 +1,11 @@
 import type { Plugin } from "vite";
-import type { AssetKind, AssetSheet, TestType } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type {
+  AssetKind,
+  AssetSheet,
+  MediaKind,
+  TestType,
+} from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -28,6 +33,14 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 const VIRTUAL_ID = "virtual:tcab-snapshot";
 const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
 
+// The engineless run's slug. It mirrors `DEFAULT_ENGINE_SLUG` in
+// `packages/ui/src/app/data/engines.ts`, restated rather than imported because this
+// plugin runs in the Vite config, outside the app bundle it would have to pull in
+// to reach it. A snapshot always carries the engineless rendering (it is a
+// variant's own `prompt`/`seededInputs`), so it is always one of the engines a
+// version's inputs can be read under.
+const NONE_ENGINE_SLUG = "none";
+
 // ---- Snapshot wire shapes (subset of design/v0.2.0-contracts.md §3) ----------
 
 interface SnapshotIndex {
@@ -44,12 +57,53 @@ interface SnapshotIndex {
   // Optional so a snapshot published before the model catalog existed still loads
   // (the site then renders an empty Models section).
   modelsKey?: string;
+  // Where the published harness comparisons live (`<prefix>/comparisons.json`).
+  // Optional so a snapshot published before comparisons existed still loads (the
+  // site then has none).
+  comparisonsKey?: string;
+  // Where the test-case groups live (`<prefix>/test-case-groups.json`).
+  // Optional so a snapshot published before groups existed still loads (the home
+  // page then renders no group leaderboards).
+  testCaseGroupsKey?: string;
+  // Where the gg document corpus lives (`<prefix>/gg-runs.json`) — the payload the
+  // public Discover surface evaluates in the browser. Optional so a snapshot published
+  // before the gg export existed still loads (the site then mounts no analysis
+  // surface at all).
+  ggRunsKey?: string;
 }
 
 interface SnapshotModelsFile {
   schemaVersion: number;
   // Wire `ModelOut` shape; the app maps it via `toModelSummary`.
   models: unknown[];
+}
+
+interface SnapshotComparisonsFile {
+  schemaVersion: number;
+  // Wire `Comparison` shape (`@clockwyrks/run-record/comparison`); consumed as-is.
+  comparisons: unknown[];
+}
+
+interface SnapshotTestCaseGroupsFile {
+  schemaVersion: number;
+  // Wire `TestCaseGroupOut` shape (`TestCaseGroupsFile` in
+  // `@clockwyrks/run-record/snapshot`), already in display order; the app
+  // consumes it as its `TestCaseGroupSummary`.
+  groups: unknown[];
+}
+
+// The gg document corpus (`gg-runs.json`): every exported gg run as one flat map of
+// dotted fields, plus the instant the export was taken. Consumed as-is — the app's
+// mirrored evaluator reads `GgRunDoc` directly — and inlined into the bundle like every
+// other snapshot payload, so the public analysis surface makes no request at runtime.
+//
+// The documents arrive already **filtered** (no experimental case) and **field-redacted**;
+// neither can be re-checked here, which is why both happen at export time. A replay
+// record is never part of this file.
+interface SnapshotGgRunsFile {
+  schemaVersion: number;
+  generatedAt: string;
+  documents: unknown[];
 }
 
 // The flat summary index (`runs.json`, the snapshot's `ln` key): the full
@@ -73,6 +127,15 @@ interface SnapshotDomainRating {
   rating: string;
 }
 
+// LEGACY: one per-domain AESTHETIC rating of a review, from when the second
+// channel was rated per scoring domain. Carried only by a snapshot written
+// before the channel became run-wide; a review's tier resolves as
+// `aesthetic ?? worst(aesthetics)`.
+interface SnapshotDomainAesthetic {
+  domain: string;
+  rating: string;
+}
+
 // One review entry in a run's `reviews[]` array: the reviewer's verdict plus
 // attribution (the public snapshot exposes the display name and id, not the
 // username). A run can carry more than one.
@@ -80,6 +143,13 @@ interface SnapshotReview {
   reviewerId?: string;
   reviewer?: string;
   ratings: SnapshotDomainRating[];
+  // The reviewer's RUN-WIDE aesthetic tier (a stored legacy row's per-domain
+  // entries arrive already collapsed); absent on a legacy run's review — which
+  // has no aesthetic channel — and on a snapshot written before the field.
+  aesthetic?: string | null;
+  // LEGACY: per-domain aesthetic ratings, present only on a not-yet-regenerated
+  // snapshot; collapse to the worst tier where `aesthetic` is absent.
+  aesthetics?: SnapshotDomainAesthetic[];
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
   reviewedAt?: string | null;
@@ -119,6 +189,19 @@ interface SnapshotRunFile {
   // clip). Absent for a run with no debug scripts and for snapshots written before
   // automated validation existed.
   validationMedia?: Array<{ file: string; key: string }>;
+  // The run's showcase files — the carousel media plus any image the description
+  // references. `file` is the recorded name the UI requests; `key` is the published
+  // object (a video transcoded to `.mp4`, so `key` and `file` differ in extension
+  // for a clip). Absent for a run whose record carries no showcase and for
+  // snapshots written before the showcase existed.
+  showcaseMedia?: Array<{ file: string; key: string }>;
+  // The snapshot-relative key of the run's unbounded code-analysis document (every
+  // authored file, scored function, import edge, cycle and clone group), published as
+  // its own generation-keyed object so the Code tab fetches it on demand instead of
+  // this document carrying a tier only one tab reads. Absent when the run was never
+  // analysed — the corpus is deliberately not backfilled, so that is most of it — and
+  // for snapshots written before code analysis existed.
+  codeAnalysisKey?: string;
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -130,6 +213,13 @@ interface SnapshotCaseFile {
   // The case's test type. Optional for snapshots written before it was published;
   // defaults to "end-to-end" when absent.
   testType?: TestType;
+  // Whether the version is on the ENGINE manifest format — which, with the test
+  // type (a game jam never is), makes it VALIDATOR-RATED: its runs' functional
+  // rating and score come from the validators (every review item carries a
+  // `failureCap` and `domains`), and reviewers rate the run-wide aesthetic
+  // channel (and may override individual verdicts).
+  // Optional for snapshots written before the field existed (legacy).
+  engineFormat?: boolean;
   // The asset shape an asset-generation case produces, partitioning the catalog's
   // 2D / 3D / Particle / Audio tabs. Optional for snapshots written before it was
   // published; treated as `sprite` when absent.
@@ -156,20 +246,59 @@ interface SnapshotCaseFile {
     // The variant's own seeded spec files (additive to the common ones), bodies
     // inlined. Optional for snapshots written before specs were inlined.
     seededInputs?: SnapshotSeededInput[];
+    // The prompt and seeded specs re-rendered for each engine the version declares
+    // that vendors a runtime, keyed by engine slug. `prompt`/`seededInputs` above
+    // are the engineless rendering, which is also what a run on the `none` engine
+    // received, so the engineless engine is deliberately absent here. Absent
+    // entirely on a snapshot written before the field existed. Each rendering
+    // also carries the variant's effective starter-workspace file set for its
+    // engine (`workspaceFiles`, absent on snapshots written before the field) —
+    // the per-engine half of the variant-level `workspaceFiles` below.
+    engineRenderings?: Record<
+      string,
+      {
+        prompt: string;
+        seededInputs?: SnapshotSeededInput[];
+        workspaceFiles?: SnapshotWorkspaceFile[];
+      }
+    >;
     // The variant's own reviewer checklist items (additive to the common ones).
     reviewItems?: SnapshotReviewItem[];
     // The variant's own scoring domains (additive to the common ones), rated only
     // when this variant is selected.
     domains?: SnapshotDomain[];
-    // The absolute URL of this variant's reference-implementation build (emitted
-    // by the Rust snapshot export as camelCase `referenceBuild`). Null/absent when
-    // the variant declares no `reference_implementation`.
-    referenceBuild?: string | null;
+    // The absolute URLs of this variant's reference-implementation builds, keyed by
+    // the engine each was built for (emitted by the Rust snapshot export as
+    // camelCase `referenceBuilds`). Absent when the variant declares no
+    // `reference_implementation`, and on a snapshot written before the field.
+    referenceBuilds?: Record<string, string>;
     // An ASSET-GENERATION variant's published reference frames: the indices whose
     // rendered image and action log `tcab publish-reference` uploaded to this very
     // bucket. Null/absent when the variant has no published asset reference (every
     // end-to-end variant, and any snapshot written before the field existed).
     referenceSheet?: { frames: number[] } | null;
+    // The variant's authored SHOWCASE (`CaseShowcaseOut`): the description plus
+    // the media carousel captured from the reference implementation, each entry
+    // naming the authored file (what the UI keys the entry by) and the published
+    // object key (a `.webm` clip published as `.mp4`, everything else verbatim).
+    // Null when the variant declares none; absent on snapshots written before
+    // the field existed.
+    showcase?: {
+      description: string;
+      media: Array<{
+        file: string;
+        name: string;
+        kind: MediaKind;
+        key: string;
+      }>;
+    } | null;
+    // The variant's effective starter-workspace files for the ENGINELESS
+    // rendering (`CaseWorkspaceFileOut[]`): the run-root-relative destination
+    // each file is seeded at and the published object key its bytes live under
+    // (the bytes are fetched lazily — a starter project can be large). The
+    // per-engine sets ride on each `engineRenderings` entry. Absent on snapshots
+    // written before the field existed.
+    workspaceFiles?: SnapshotWorkspaceFile[];
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // The runtime packages this case ships into every run (case-level), each with a
@@ -196,9 +325,10 @@ interface SnapshotCaseFile {
   // the flat `<item>__<output>.<ext>` name the reviewer UI requests (`.png`/`.webm`);
   // `key` is the published object (a video transcoded to `.mp4`). Case-scoped, so the
   // gallery resolves the reviewer's baseline side-by-side from these keyed by
-  // slug/version/variant. Optional for snapshots written before automated validation
-  // existed.
+  // slug/version/engine/variant. Optional for snapshots written before automated
+  // validation existed.
   validationBaselines?: Array<{
+    engine: string;
     variant: string;
     file: string;
     key: string;
@@ -223,6 +353,16 @@ interface SnapshotErratum {
   resolvedIn: string | null;
   variant: string | null;
   review: string | null;
+}
+
+// One starter-workspace file in case metadata (`CaseWorkspaceFileOut`): the
+// run-root-relative destination it is seeded at and the snapshot-relative object
+// key its bytes were published under. Unlike a seeded spec the body is NOT
+// inlined — a starter project can be large and most readers never open it, so
+// the site fetches a file lazily by its resolved URL.
+interface SnapshotWorkspaceFile {
+  dest: string;
+  key: string;
 }
 
 // One seeded spec file inlined in case metadata: the run-workspace path it lands
@@ -258,9 +398,25 @@ interface SnapshotReviewItem {
   // field existed; treated as false (every pre-jam case is pass/fail).
   graded?: boolean;
   domain?: string | null;
+  // On a validator-rated version: the failure cap of a whole-item point and the
+  // domain ids a failure lowers (see `AssembledReviewItem`). Absent on a legacy
+  // version and on a snapshot written before the fields existed.
+  failureCap?: string | null;
+  domains?: string[];
+  // The point's automated-validation driver, carried for its ENGINE SCOPING: the
+  // engines the validator decides the point on. A run built on any other engine
+  // does not carry the point, so a run-scoped surface filters it out. Absent for a
+  // human-judged point and on snapshots written before the field existed.
+  validation?: SnapshotReviewValidation | null;
   // The sub-items this item is graded by, each an independently scored pass/fail
   // point. Absent on snapshots written before sub-items existed.
   subItems?: SnapshotSubReviewItem[];
+}
+
+// The engine scoping of a point's validator as the snapshot carries it (the
+// snapshot publishes no script or media outputs — see `CaseReviewValidationOut`).
+interface SnapshotReviewValidation {
+  engines?: string[];
 }
 
 interface SnapshotSubReviewItem {
@@ -276,6 +432,12 @@ interface SnapshotSubReviewItem {
   // The reference view / proof id paired with this point, when it declares them.
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version: this point's failure cap and the domain ids a
+  // failure lowers. Absent on a legacy version.
+  failureCap?: string | null;
+  domains?: string[];
+  // The point's validator and its engine scoping (see `SnapshotReviewItem`).
+  validation?: SnapshotReviewValidation | null;
 }
 
 interface SnapshotDomain {
@@ -292,6 +454,12 @@ interface AssembledReview {
   reviewerId: string;
   reviewer: string;
   ratings: SnapshotDomainRating[];
+  // The run-wide aesthetic tier; null on a legacy run's review. A stale
+  // snapshot's per-domain `aesthetics` are collapsed into this at assembly.
+  aesthetic: string | null;
+  // LEGACY per-domain tiers, carried through for the app's `reviewAesthetic`
+  // fallback; empty on a regenerated snapshot.
+  aesthetics: SnapshotDomainAesthetic[];
   writeup: string;
   checklist: SnapshotReviewVerdict[];
   reviewedAt: string | null;
@@ -317,6 +485,16 @@ interface AssembledSnapshot {
   // The composed model catalog (wire `ModelOut[]`); the app maps it via
   // `toModelSummary`. Empty when the snapshot predates the model catalog.
   models: unknown[];
+  // The published harness comparisons (wire `Comparison[]`), each already the full
+  // read model the backend assembled. Empty when the snapshot has none.
+  comparisons: unknown[];
+  // The test-case groups (wire `TestCaseGroupOut[]`), already in display order —
+  // the home page's per-group leaderboards. Empty when the snapshot predates them.
+  testCaseGroups: unknown[];
+  // The gg document corpus and the instant it was exported, or null when the snapshot
+  // carries none — in which case the site mounts no analysis surface. Held whole rather
+  // than remapped: the app's evaluator reads these documents as they are.
+  ggRuns: { generatedAt: string; documents: unknown[] } | null;
   // Resolved proof media URLs, keyed by run id then by served file name
   // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
   proofMediaUrls: Record<string, Record<string, string>>;
@@ -327,12 +505,57 @@ interface AssembledSnapshot {
   // Resolved *actual* automated-validation media URLs, keyed by run id then by the
   // flat `<item>__<output>.<ext>` name the reviewer UI requests. The app's
   // `validationMediaUrl(runId, file)` reads this.
+  //
+  // A recording's SHARED IMAGE STORE is deliberately NOT in here — see
+  // `validationStorePrefixes`.
   validationMediaUrls: Record<string, Record<string, string>>;
+  // Where a run's shared image store lives, as an absolute URL prefix, keyed by run
+  // id. One string per run rather than one per file, and that is the whole point of
+  // it: every generated map in this module is inlined into a single eagerly-imported
+  // constant that every visitor downloads before the home page renders, and a run's
+  // store holds a distinct file per unique image its recordings drew — some fifteen
+  // hundred of them for the busiest case in the corpus. Listing those individually
+  // would put a few hundred kilobytes of JavaScript in the main chunk per published
+  // run, for URLs only one replay on one run page will ever ask for.
+  //
+  // Store file names are content-addressed and published verbatim, so the prefix
+  // plus the name the recording carries is the URL. The prefix is taken from a
+  // published key rather than composed here, so this file learns no key shape it did
+  // not already know.
+  validationStorePrefixes: Record<string, string>;
+  // Resolved showcase media URLs (the run's carousel media plus any image the
+  // description references), keyed by run id then by the recorded file name (a
+  // video's `.webm` request resolving to its published `.mp4`). The app's
+  // `showcaseMediaUrl(runId, file)` reads this.
+  showcaseMediaUrls: Record<string, Record<string, string>>;
+  // Resolved CASE showcase media URLs (a variant's authored carousel, captured
+  // from the reference implementation), keyed by a `<slug>/<version>/<variant>`
+  // subject key then by the authored file name (a video's `.webm` request
+  // resolving to its published `.mp4`). Case-scoped like the baselines below —
+  // the showcase is committed with the version, not produced by a run. The
+  // app's `caseShowcaseMediaUrl(slug, version, variant, file)` reads this.
+  caseShowcaseMediaUrls: Record<string, Record<string, string>>;
+  // Resolved code-analysis document URLs, keyed by run id — one URL per run, not a
+  // map of files, because a run has exactly one analysis. The app's
+  // `readCodeAnalysis(runId)` fetches this on demand.
+  //
+  // A run id absent from this map was **never analysed**, which is most of the corpus:
+  // analysis is deliberately not backfilled, so it starts on the day the analyzer
+  // shipped. The Code tab reads that absence as "not measured" and says so; it must
+  // never be read as "this model wrote no code".
+  codeAnalysisUrls: Record<string, string>;
   // Resolved *baseline* automated-validation media URLs, keyed by a
-  // `<slug>/<version>/<variant>` subject key then by the flat `<item>__<output>.<ext>`
-  // name. Case-scoped, so keyed by subject rather than run id. The app's
-  // `validationBaselineUrl(subject, file)` reads this.
+  // `<slug>/<version>/<engine>/<variant>` subject key then by the flat
+  // `<item>__<output>.<ext>` name. Case-scoped, so keyed by subject rather than run
+  // id. The app's `validationBaselineUrl(subject, file)` reads this.
+  //
+  // The shared image store is not in here either — see `baselineStorePrefixes`.
   validationBaselineUrls: Record<string, Record<string, string>>;
+  // Where a case version's committed image store lives, as an absolute URL prefix,
+  // keyed by the same `<slug>/<version>/<engine>/<variant>` subject key. The
+  // case-scoped counterpart of `validationStorePrefixes`, and carried for the same
+  // reason: a reference's store is the larger of the two.
+  baselineStorePrefixes: Record<string, string>;
   // Resolved **asset-reference** media URLs — a published reference frame's image,
   // and the action log it was drawn from — keyed by a `<slug>/<version>/<variant>`
   // subject key then by the file below that variant's prefix (`frames/<index>.png`,
@@ -364,10 +587,22 @@ interface AssembledReviewItem {
   // the grade tier. Omitted (treated as false) for a pass/fail case.
   graded?: boolean;
   domain: string | null;
+  // On a VALIDATOR-RATED version, the failure cap of a whole-item point — the
+  // highest functional rating its `domains` may reach while its validator fails —
+  // and the domain ids a failure lowers. The site derives a validator-rated run's
+  // functional rating from these exactly as the console does. Null/empty on a
+  // legacy version and on a category (whose points carry their own).
+  failureCap?: string | null;
+  domains: string[];
   // Whether this item contributes to the run's score. Omitted (treated as true)
   // unless a version erratum's `excludeFromScore` links its verdict id, in which case
   // it is `false` — still shown, just not scored. Mirrors `ReviewItem.scored`.
   scored?: boolean;
+  // The engine scoping of this point's validator: the engines it decides the point
+  // on. A run built on any other engine does not carry the point, and the app drops
+  // it through `reviewItemsForEngine`. Null when the point has no validator or the
+  // validator names no engines.
+  validation?: { engines?: string[] } | null;
   subItems: AssembledSubReviewItem[];
 }
 
@@ -381,8 +616,14 @@ interface AssembledSubReviewItem {
   weight?: number;
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version, this point's failure cap and the domain ids a
+  // failure lowers (see `AssembledReviewItem`). Null/empty on a legacy version.
+  failureCap?: string | null;
+  domains: string[];
   // Whether this sub-item contributes to the score (see `AssembledReviewItem.scored`).
   scored?: boolean;
+  // The engine scoping of this point's validator (see `AssembledReviewItem`).
+  validation?: { engines?: string[] } | null;
 }
 
 // Combine a case's common review items with a variant's own, merging by id so a
@@ -451,12 +692,51 @@ interface AssembledPackage {
   description: string;
 }
 
+// One variant's prompt and seeded specs as rendered under one engine — the pair a
+// run's Inputs tab shows, chosen by the engine that run recorded — plus the
+// variant's effective starter-workspace file set for that engine (a starter
+// project is written against a runtime, so the set genuinely differs per engine).
+interface AssembledRendering {
+  prompt: string;
+  seededInputs: AssembledSeededInput[];
+  workspace: AssembledWorkspaceFile[];
+}
+
+// One starter-workspace file the app consumes (mirrors `WorkspaceFileRef` in the
+// UI's client types): the run-root-relative path it is seeded at and the
+// absolute snapshot URL its bytes are fetched from lazily.
+interface AssembledWorkspaceFile {
+  path: string;
+  url: string | null;
+}
+
+// A variant's authored showcase the app consumes (mirrors `CaseShowcase` in the
+// UI's client types): the description plus the media carousel, each entry keyed
+// by its authored file name. The bytes themselves resolve through
+// `caseShowcaseMediaUrls`, which is where the published object keys go.
+interface AssembledShowcase {
+  description: string;
+  media: AssembledShowcaseMedia[];
+}
+
+// One showcase carousel entry (mirrors `ShowcaseMediaRef` in the UI's client
+// types) — the addressing only, never the object key.
+interface AssembledShowcaseMedia {
+  file: string;
+  name: string;
+  kind: MediaKind;
+}
+
 interface AssembledVariant {
   slug: string;
   name: string;
   description: string | null;
   prompt: string;
   seededInputs: AssembledSeededInput[];
+  // The same pair re-rendered for each engine the version declares that vendors a
+  // runtime, keyed by engine slug. The engineless rendering is `prompt` and
+  // `seededInputs` above, so this holds every other engine.
+  engineRenderings: Record<string, AssembledRendering>;
   // The runtime packages a run of this variant ships (case-level, so the same on
   // every variant), each with its UI-only description.
   packages: AssembledPackage[];
@@ -465,16 +745,32 @@ interface AssembledVariant {
   // The variant's effective scoring domains (common + its own) — the set a run of
   // this variant is rated against.
   domains: AssembledDomain[];
-  // The absolute URL of this variant's reference-implementation build, or null
-  // when it declares none. Carried through verbatim from the snapshot (already a
-  // fully-qualified Cloudflare Pages URL), it is the case-variant analogue of a
-  // run's playable build and drives whether the case-detail Reference tab appears.
-  referenceBuild: string | null;
+  // Whether a run of this variant is validator-rated (the version is on the engine
+  // manifest format and is not a game jam): the items above carry failure caps
+  // and domains, the functional rating and score come from the run's validators
+  // (reviewer overrides folded in), and reviewers rate the run-wide aesthetic
+  // channel.
+  validatorRated: boolean;
+  // The absolute URLs of this variant's reference-implementation builds, one per
+  // engine, or empty when it declares none. Carried through verbatim from the
+  // snapshot (each already a fully-qualified Cloudflare Pages URL), they are the
+  // case-variant analogue of a run's playable build and drive whether the
+  // case-detail Reference tab appears and what its engine switch offers.
+  referenceBuilds: Record<string, string>;
   // An asset-generation variant's published reference frames (indices only). The
   // other shape a reference implementation takes, and the other signal that drives
   // the Reference tab; the frame images and action logs themselves are resolved
   // through `referenceMediaUrls` below. Null when the variant has none.
   referenceSheet: { frames: number[] } | null;
+  // The variant's authored showcase (description + carousel), or null when it
+  // declares none (and for snapshots written before the field existed). The
+  // media bytes resolve through `caseShowcaseMediaUrls`.
+  showcase: AssembledShowcase | null;
+  // The variant's effective starter-workspace files for the ENGINELESS
+  // rendering, each resolved to an absolute snapshot URL fetched lazily by the
+  // Inputs tab. The per-engine sets ride on `engineRenderings`. Empty when the
+  // case seeds none (and for snapshots written before the field existed).
+  workspace: AssembledWorkspaceFile[];
 }
 
 interface AssembledTestCase {
@@ -499,12 +795,42 @@ interface AssembledTestCase {
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
+  // Every version OTHER than the latest, keyed by version, so a run's Inputs tab
+  // resolves the inputs the run itself was given rather than the latest version's.
+  // The latest version's variants are `variants` above; keeping them out of this
+  // map is what stops the bundle carrying them twice.
+  priorVariantsByVersion: Record<string, AssembledVariant[]>;
+  // Every version's variant identities (slug + name), latest included — the
+  // frame the detail header's variant selector is built from. Identities only,
+  // so nothing heavy is carried twice. `collapseCases` merges one entry per
+  // version into this map.
+  variantsByVersion: Record<string, { slug: string; name: string }[]>;
+  // The engines each published version's inputs can be read under, keyed by
+  // version — the engineless rendering plus every engine the snapshot carries a
+  // rendering for. `collapseCases` merges one entry per version into this map.
+  enginesByVersion: Record<string, string[]>;
+  // Every version's own site-facing description, latest included, keyed by
+  // version — a description ships with the version it describes, so the detail
+  // page anchored to an older version shows that version's text. `collapseCases`
+  // merges one entry per version into this map.
+  descriptionsByVersion: Record<string, string | null>;
   domains: AssembledDomain[];
   // The case's sprite-sheet declaration (frame size + named sequences), carried
   // through when the snapshot publishes it. Null for a non-sheet case (and for a
   // snapshot that predates the field), in which case the asset Reference tab shows
   // the still reference frames without animating them.
   sheet: AssetSheet | null;
+  // The case's catalog SHOWCASE PREVIEW (mirrors `CatalogShowcase` in the UI's
+  // client types): the latest version's first variant (manifest order) that
+  // declares a showcase, with the media list the catalog's preview stage loops.
+  // Each mapped version derives its own; `collapseCases` keeps the newest
+  // version's (its spread), which is exactly the latest-version rule. Null when
+  // no variant declares one, and the catalog renders its placeholder stage.
+  showcase: {
+    version: string;
+    variant: string;
+    media: AssembledShowcaseMedia[];
+  } | null;
 }
 
 const EMPTY: AssembledSnapshot = {
@@ -513,10 +839,18 @@ const EMPTY: AssembledSnapshot = {
   reviews: {},
   testCases: [],
   models: [],
+  comparisons: [],
+  testCaseGroups: [],
+  ggRuns: null,
   proofMediaUrls: {},
   assetMediaUrls: {},
   validationMediaUrls: {},
+  validationStorePrefixes: {},
+  showcaseMediaUrls: {},
+  caseShowcaseMediaUrls: {},
+  codeAnalysisUrls: {},
   validationBaselineUrls: {},
+  baselineStorePrefixes: {},
   referenceMediaUrls: {},
 };
 
@@ -524,12 +858,17 @@ const EMPTY: AssembledSnapshot = {
 // run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
 const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
-// The worst (lowest) rating among `tiers`, or null when empty.
-function worstRating(tiers: string[]): string | null {
+// Aesthetic tiers, ordered best to worst — the second channel, one run-wide
+// tier per review of a validator-rated run. Mirrors `AESTHETIC_RATINGS` in
+// `@clockwyrks/run-stats`.
+const AESTHETIC_ORDER = ["legendary", "amazing", "good", "okay", "slop"];
+
+// The worst (lowest) tier among `tiers` on the given scale, or null when empty.
+function worstOn(order: readonly string[], tiers: string[]): string | null {
   let worst: string | null = null;
   let worstRank = -1;
   for (const tier of tiers) {
-    const rank = RATING_ORDER.indexOf(tier);
+    const rank = order.indexOf(tier);
     if (rank > worstRank) {
       worstRank = rank;
       worst = tier;
@@ -538,7 +877,37 @@ function worstRating(tiers: string[]): string | null {
   return worst;
 }
 
+// The worst (lowest) rating among `tiers`, or null when empty.
+function worstRating(tiers: string[]): string | null {
+  return worstOn(RATING_ORDER, tiers);
+}
+
+// The worst (lowest) aesthetic rating among `tiers`, or null when empty.
+function worstAestheticRating(tiers: string[]): string | null {
+  return worstOn(AESTHETIC_ORDER, tiers);
+}
+
 // Join a base URL with a snapshot-relative key, collapsing any double slash.
+/**
+ * Whether `file` is one of a recording's shared image store rather than a declared
+ * validation output.
+ *
+ * MIRRORS `VALIDATION_IMAGE_PREFIX` / `is_validation_image_name` in
+ * `crates/core/src/validator.rs` and `IMAGE_STORE_PREFIX` in
+ * `packages/case-harness/src/replay/store.ts`. A declared output's flat name always
+ * carries `__` and a store file's never does, which is what keeps the two apart in
+ * the one namespace they share.
+ */
+function isImageStoreFile(file: string): boolean {
+  return file.startsWith("img.");
+}
+
+/** Everything of a published key up to and including its last `/`. */
+function prefixOf(key: string): string {
+  const cut = key.lastIndexOf("/");
+  return cut < 0 ? "" : key.slice(0, cut + 1);
+}
+
 function joinUrl(base: string, key: string): string {
   return `${base.replace(/\/+$/, "")}/${key.replace(/^\/+/, "")}`;
 }
@@ -554,10 +923,11 @@ async function fetchJson<T>(url: string): Promise<T> {
 // Reconstruct a single *aggregate* writeup's `---\nrating.<domain>: …\n---\n\n
 // <body>` framing from a run's reviews, so the existing `parseWriteup` path is
 // unchanged on the site side and the cards/badges show the aggregate verdict. The
-// aggregate rating for a domain is the worst any reviewer gave it; a checklist
+// aggregate rating for a domain is the worst any reviewer gave it; the run-wide
+// aesthetic tier is one bare `aesthetic: …` line (worst across reviews); a checklist
 // item reads `pass` only when every reviewer who judged it passed it; the body
 // concatenates each reviewer's prose, attributed by display name. Mirrors
-// `frameReviews` in `@test-cabinet/ui`. Returns null for no reviews.
+// `frameReviews` in `@clockwyrks/ui`. Returns null for no reviews.
 function frameWriteup(reviews: SnapshotReview[]): string | null {
   if (reviews.length === 0) return null;
 
@@ -574,6 +944,18 @@ function frameWriteup(reviews: SnapshotReview[]): string | null {
     const worst = worstRating(tiers);
     if (worst) ratingLines.push(`rating.${domain}: ${worst}`);
   }
+  // The aesthetic channel is run-wide: one bare `aesthetic:` line carrying the
+  // worst tier any reviewer gave the whole build. Each review's own tier is its
+  // `aesthetic` field, else the worst of its legacy per-domain entries (a stale
+  // snapshot) — the same resolution the app's `reviewAesthetic` applies.
+  const aestheticTiers = reviews.flatMap((review) => {
+    const tier =
+      review.aesthetic ??
+      worstAestheticRating((review.aesthetics ?? []).map((r) => r.rating));
+    return tier ? [tier] : [];
+  });
+  const worstAesthetic = worstAestheticRating(aestheticTiers);
+  if (worstAesthetic) ratingLines.push(`aesthetic: ${worstAesthetic}`);
 
   const statusesByItem = new Map<string, string[]>();
   for (const review of reviews) {
@@ -613,6 +995,12 @@ function toAssembledReview(
     reviewerId: review.reviewerId ?? "",
     reviewer: review.reviewer ?? "Reviewer",
     ratings: review.ratings ?? [],
+    // Resolve the run-wide tier here so the app reads one field either way; the
+    // legacy entries ride along untouched for its own fallback.
+    aesthetic:
+      review.aesthetic ??
+      worstAestheticRating((review.aesthetics ?? []).map((r) => r.rating)),
+    aesthetics: review.aesthetics ?? [],
     writeup: review.writeup ?? "",
     checklist: review.checklist ?? [],
     reviewedAt: review.reviewedAt ?? null,
@@ -620,6 +1008,55 @@ function toAssembledReview(
       ? joinUrl(base, review.pictureKey)
       : null,
   };
+}
+
+// Inline one rendering's seeded spec bodies. Only text specs are published, so the
+// kind is fixed; the role tags a starter script apart from a prose spec.
+function mapSeededInputs(
+  specs: SnapshotSeededInput[] | undefined,
+): AssembledSeededInput[] {
+  return (specs ?? []).map((s) => ({
+    path: s.path,
+    kind: "text",
+    role: s.kind ?? "spec",
+    text: s.text,
+  }));
+}
+
+// Resolve one starter-workspace file set to the shape the app consumes: the
+// seeded path plus the absolute URL of its published object, fetched lazily by
+// the Inputs tab (the bodies are deliberately not inlined — a starter project
+// can be large and most readers never open it).
+function mapWorkspaceFiles(
+  base: string,
+  files: SnapshotWorkspaceFile[] | undefined,
+): AssembledWorkspaceFile[] {
+  return (files ?? []).map((file) => ({
+    path: file.dest,
+    url: joinUrl(base, file.key),
+  }));
+}
+
+// The engines one version's inputs can be read under here. A case's prompt and
+// `.hbs` specs branch on the selected engine, so a version that supports more than
+// one has more than one set of inputs — and the snapshot publishes the engineless
+// rendering as the variant's own `prompt`/`seededInputs` plus one entry per other
+// engine under `engineRenderings`. The engineless slug is therefore always
+// readable, and the rest are exactly the keys the snapshot carries; a declared
+// engine the snapshot skipped is not offered, because there would be nothing to
+// show for it.
+//
+// The union runs across the version's variants rather than assuming they agree:
+// they are rendered from the same manifest, so in practice they do, but a union
+// cannot offer an engine some variant has no rendering for.
+function renderableEngines(variants: AssembledVariant[]): string[] {
+  const engines = new Set<string>([NONE_ENGINE_SLUG]);
+  for (const variant of variants) {
+    for (const engine of Object.keys(variant.engineRenderings)) {
+      engines.add(engine);
+    }
+  }
+  return [...engines];
 }
 
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
@@ -652,14 +1089,26 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     // specs first, then its own), every body already rendered for the variant (a
     // template spec's conditionals resolved) — the same order a run is seeded and
     // the consoles present. Only text specs are inlined.
-    const seededInputs: AssembledSeededInput[] = (
-      variant.seededInputs ?? []
-    ).map((s) => ({
-      path: s.path,
-      kind: "text",
-      role: s.kind ?? "spec",
-      text: s.text,
-    }));
+    const seededInputs: AssembledSeededInput[] = mapSeededInputs(
+      variant.seededInputs,
+    );
+    // The same pair re-rendered under each engine the version declares that vendors
+    // a runtime. A case's prompt and `.hbs` specs branch on the selected engine, so
+    // this is what lets a run's Inputs tab show the text that run was handed rather
+    // than the engineless one.
+    const engineRenderings: Record<string, AssembledRendering> = {};
+    for (const [engine, rendering] of Object.entries(
+      variant.engineRenderings ?? {},
+    )) {
+      engineRenderings[engine] = {
+        prompt: rendering.prompt,
+        seededInputs: mapSeededInputs(rendering.seededInputs),
+        // The effective starter-workspace set for this engine — a starter
+        // project is written against a runtime, so each rendering carries its
+        // own.
+        workspace: mapWorkspaceFiles(base, rendering.workspaceFiles),
+      };
+    }
     // The verdict ids this version's errata exclude from scoring for this variant
     // (an erratum with `excludeFromScore` scoped case-wide or to this variant). These
     // points stay on the checklist but are marked non-scoring below, mirroring the
@@ -690,7 +1139,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
         weight: item.weight,
         graded: item.graded,
         domain: item.domain ?? null,
+        failureCap: item.failureCap ?? null,
+        domains: item.domains ?? [],
         scored: itemExcluded ? false : undefined,
+        validation: item.validation ?? null,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
@@ -698,10 +1150,13 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
           weight: sub.weight,
           reference: sub.reference ?? null,
           proof: sub.proof ?? null,
+          failureCap: sub.failureCap ?? null,
+          domains: sub.domains ?? [],
           scored:
             itemExcluded || excludedVerdictIds.has(`${item.id}.${sub.id}`)
               ? false
               : undefined,
+          validation: sub.validation ?? null,
         })),
       };
     });
@@ -718,19 +1173,57 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       description: variant.description,
       prompt: variant.prompt,
       seededInputs,
+      engineRenderings,
       packages,
       referenceScreenshots,
       reviewItems,
       domains,
-      // The reference-implementation build URL, carried through verbatim (null
-      // when the variant declares none).
-      referenceBuild: variant.referenceBuild ?? null,
+      // Validator-rated iff the version is on the engine manifest format and is
+      // not a game jam — the same rule as the Rust `TestCaseVersion::validator_rated`.
+      validatorRated:
+        (file.engineFormat ?? false) &&
+        (file.testType ?? "end-to-end") !== "game-jam",
+      // The reference-implementation build URLs, one per engine, carried through
+      // verbatim (empty when the variant declares none).
+      referenceBuilds: variant.referenceBuilds ?? {},
       // The published asset-reference frame indices, carried through verbatim. The
       // objects they address are resolved into absolute URLs in `loadSnapshot`,
       // where the snapshot base is in hand.
       referenceSheet: variant.referenceSheet ?? null,
+      // The variant's authored showcase — the addressing only (file/name/kind);
+      // the published object keys go into `caseShowcaseMediaUrls`, built in
+      // `loadSnapshot` from the same per-version case files.
+      showcase: variant.showcase
+        ? {
+            description: variant.showcase.description,
+            media: variant.showcase.media.map((media) => ({
+              file: media.file,
+              name: media.name,
+              kind: media.kind,
+            })),
+          }
+        : null,
+      // The engineless starter-workspace set (what a run on the `none` engine is
+      // seeded with), matching the engineless prompt/specs above; the per-engine
+      // sets ride on `engineRenderings`.
+      workspace: mapWorkspaceFiles(base, variant.workspaceFiles),
     };
   });
+  // The catalog showcase preview: this version's first variant (manifest order)
+  // that declares a showcase with media to show. `collapseCases` spreads the
+  // newest mapped version into the collapsed case, so the preview the catalog
+  // renders is the LATEST version's — the same first-variant-with-a-showcase
+  // rule the backend's catalog applies.
+  const showcaseVariant = variants.find(
+    (variant) => (variant.showcase?.media.length ?? 0) > 0,
+  );
+  const showcase = showcaseVariant?.showcase
+    ? {
+        version: file.version,
+        variant: showcaseVariant.slug,
+        media: showcaseVariant.showcase.media,
+      }
+    : null;
   return {
     slug: file.slug,
     name: file.name,
@@ -757,6 +1250,22 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     versions: [file.version],
     latestVersion: file.version,
     variants,
+    // Filled by `collapseCases`, which is where a slug's other versions are in
+    // hand; one mapped file knows only its own.
+    priorVariantsByVersion: {},
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map.
+    variantsByVersion: {
+      [file.version]: variants.map((v) => ({ slug: v.slug, name: v.name })),
+    },
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map. Derived from the renderings this snapshot actually carries rather
+    // than from the case's declared `engines` (which it does not publish), so the
+    // Inputs tab offers exactly the renderings the site can show.
+    enginesByVersion: { [file.version]: renderableEngines(variants) },
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map.
+    descriptionsByVersion: { [file.version]: file.description },
     // The sprite-sheet declaration, so the asset Reference tab can play each named
     // sequence from the published reference frames. Null when the snapshot carries
     // none.
@@ -766,6 +1275,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       name: d.name,
       description: d.description,
     })),
+    showcase,
   };
 }
 
@@ -792,8 +1302,32 @@ function collapseCases(
       }),
     );
     const newest = versions[0]!;
+    // Every version but the newest, keyed by version, so a run of an older version
+    // resolves the inputs it was itself given. The newest version's variants stay on
+    // `variants`, so nothing is carried twice.
+    const priorVariantsByVersion: Record<string, AssembledVariant[]> = {};
+    for (const version of versions.slice(1)) {
+      priorVariantsByVersion[version.latestVersion] = version.variants;
+    }
+    // Unlike the full variants, every version's engines and variant identities
+    // are kept — including the newest's — because the detail header looks the
+    // selected version up here whichever one it is, and a list of slugs costs
+    // nothing to carry twice.
+    const enginesByVersion: Record<string, string[]> = {};
+    const variantsByVersion: Record<string, { slug: string; name: string }[]> =
+      {};
+    const descriptionsByVersion: Record<string, string | null> = {};
+    for (const version of versions) {
+      Object.assign(enginesByVersion, version.enginesByVersion);
+      Object.assign(variantsByVersion, version.variantsByVersion);
+      Object.assign(descriptionsByVersion, version.descriptionsByVersion);
+    }
     result.push({
       ...newest,
+      priorVariantsByVersion,
+      variantsByVersion,
+      enginesByVersion,
+      descriptionsByVersion,
       versions: versions.map((v) => v.latestVersion),
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.
@@ -843,7 +1377,12 @@ async function loadSnapshot(
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   const validationMediaUrls: Record<string, Record<string, string>> = {};
+  const validationStorePrefixes: Record<string, string> = {};
+  const showcaseMediaUrls: Record<string, Record<string, string>> = {};
+  const caseShowcaseMediaUrls: Record<string, Record<string, string>> = {};
+  const codeAnalysisUrls: Record<string, string> = {};
   const validationBaselineUrls: Record<string, Record<string, string>> = {};
+  const baselineStorePrefixes: Record<string, string> = {};
   const referenceMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
@@ -900,9 +1439,38 @@ async function loadSnapshot(
     if (runFile.validationMedia?.length) {
       const byFile: Record<string, string> = {};
       for (const media of runFile.validationMedia) {
+        // A recording's shared image store contributes ONE prefix rather than one
+        // entry per file. Every map in this module is inlined into a constant the
+        // main chunk carries, and a run's store holds a file per unique image its
+        // recordings drew — fifteen hundred of them for the busiest case here. The
+        // names are content-addressed and published verbatim, so a prefix taken
+        // from any one of the run's store keys resolves all of them.
+        if (isImageStoreFile(media.file)) {
+          validationStorePrefixes[summary.id] ??= joinUrl(
+            base,
+            prefixOf(media.key),
+          );
+          continue;
+        }
         byFile[media.file] = joinUrl(base, media.key);
       }
       validationMediaUrls[summary.id] = byFile;
+    }
+    // The run's showcase media, keyed by the recorded file name the UI requests (a
+    // video's `.webm` request resolving to its published `.mp4` key), resolved to
+    // absolute URLs the Play tab's showcase view loads.
+    if (runFile.showcaseMedia?.length) {
+      const byFile: Record<string, string> = {};
+      for (const media of runFile.showcaseMedia) {
+        byFile[media.file] = joinUrl(base, media.key);
+      }
+      showcaseMediaUrls[summary.id] = byFile;
+    }
+    // The run's unbounded code-analysis document, resolved to the absolute URL of its
+    // own generation-keyed object. Absent for a run that was never analysed, which is
+    // the honest default rather than an empty document.
+    if (runFile.codeAnalysisKey) {
+      codeAnalysisUrls[summary.id] = joinUrl(base, runFile.codeAnalysisKey);
     }
     // Emit the run's recorded events as a standalone asset (only when present),
     // so the Events tab can fetch `run-events/<id>.json` without the bundle
@@ -926,17 +1494,48 @@ async function loadSnapshot(
     }
   }
 
-  // The case-scoped *baseline* validation media, keyed by a `<slug>/<version>/<variant>`
-  // subject key then the flat `<item>__<output>.<ext>` name the reviewer UI requests.
-  // Built from the per-version case files (not the collapsed catalog), so a run against
-  // any published version resolves its variant's baseline (a video's `.webm` request
-  // resolving to its published `.mp4` key).
+  // The case-scoped *baseline* validation media, keyed by a
+  // `<slug>/<version>/<engine>/<variant>` subject key then the flat
+  // `<item>__<output>.<ext>` name the reviewer UI requests. Built from the per-version
+  // case files (not the collapsed catalog), so a run against any published version
+  // resolves the baseline of the reference build it was compared against (a video's
+  // `.webm` request resolving to its published `.mp4` key).
   for (const file of caseFiles) {
     for (const baseline of file.validationBaselines ?? []) {
-      const subjectKey = `${file.slug}/${file.version}/${baseline.variant}`;
+      const subjectKey = `${file.slug}/${file.version}/${baseline.engine}/${baseline.variant}`;
+      // The store is carried as one prefix per subject, for the same reason and by
+      // the same rule as the run-scoped one above. A committed reference's store is
+      // the larger of the two, since it holds an entry for every image the whole
+      // baseline corpus of that engine and variant drew.
+      if (isImageStoreFile(baseline.file)) {
+        baselineStorePrefixes[subjectKey] ??= joinUrl(
+          base,
+          prefixOf(baseline.key),
+        );
+        continue;
+      }
       const byFile = validationBaselineUrls[subjectKey] ?? {};
       byFile[baseline.file] = joinUrl(base, baseline.key);
       validationBaselineUrls[subjectKey] = byFile;
+    }
+  }
+
+  // The case-scoped SHOWCASE media (a variant's authored carousel), keyed by a
+  // `<slug>/<version>/<variant>` subject key then the authored file name the UI
+  // requests (a video's `.webm` request resolving to its published `.mp4` key).
+  // Built from the per-version case files like the baselines above, so the
+  // catalog preview (latest version) and an older version's Play tab both
+  // resolve their own media.
+  for (const file of caseFiles) {
+    for (const variant of file.variants) {
+      const media = variant.showcase?.media;
+      if (!media?.length) continue;
+      const subjectKey = `${file.slug}/${file.version}/${variant.slug}`;
+      const byFile = caseShowcaseMediaUrls[subjectKey] ?? {};
+      for (const entry of media) {
+        byFile[entry.file] = joinUrl(base, entry.key);
+      }
+      caseShowcaseMediaUrls[subjectKey] = byFile;
     }
   }
 
@@ -985,6 +1584,54 @@ async function loadSnapshot(
     }
   }
 
+  // The published harness comparisons. Absent from a snapshot published before
+  // they existed, in which case the site simply has none.
+  let comparisons: unknown[] = [];
+  if (index.comparisonsKey) {
+    try {
+      const comparisonsFile = await fetchJson<SnapshotComparisonsFile>(
+        joinUrl(base, index.comparisonsKey),
+      );
+      comparisons = comparisonsFile.comparisons;
+    } catch {
+      // Missing/unreadable comparisons file: render none rather than failing the
+      // whole build.
+    }
+  }
+
+  // The test-case groups. Absent from a snapshot published before they existed,
+  // in which case the home page simply renders no group leaderboards.
+  let testCaseGroups: unknown[] = [];
+  if (index.testCaseGroupsKey) {
+    try {
+      const groupsFile = await fetchJson<SnapshotTestCaseGroupsFile>(
+        joinUrl(base, index.testCaseGroupsKey),
+      );
+      testCaseGroups = groupsFile.groups;
+    } catch {
+      // Missing/unreadable groups file: render none rather than failing the
+      // whole build.
+    }
+  }
+
+  // The gg document corpus. Absent from a snapshot published before the gg export
+  // existed, in which case the site mounts no analysis surface rather than an empty one.
+  let ggRuns: AssembledSnapshot["ggRuns"] = null;
+  if (index.ggRunsKey) {
+    try {
+      const ggRunsFile = await fetchJson<SnapshotGgRunsFile>(
+        joinUrl(base, index.ggRunsKey),
+      );
+      ggRuns = {
+        generatedAt: ggRunsFile.generatedAt,
+        documents: ggRunsFile.documents,
+      };
+    } catch {
+      // Missing/unreadable corpus: no analysis surface rather than a failed build,
+      // matching how every other optional snapshot payload degrades.
+    }
+  }
+
   return {
     // The already-fetched summary index — the bounded cards, verbatim. No extra
     // network calls.
@@ -993,10 +1640,18 @@ async function loadSnapshot(
     reviews,
     testCases: collapseCases(base, caseFiles),
     models,
+    comparisons,
+    testCaseGroups,
+    ggRuns,
     proofMediaUrls,
     assetMediaUrls,
+    codeAnalysisUrls,
     validationMediaUrls,
+    validationStorePrefixes,
+    showcaseMediaUrls,
+    caseShowcaseMediaUrls,
     validationBaselineUrls,
+    baselineStorePrefixes,
     referenceMediaUrls,
   };
 }
@@ -1009,10 +1664,18 @@ function serialize(data: AssembledSnapshot): string {
     `export const reviews = ${JSON.stringify(data.reviews)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
     `export const models = ${JSON.stringify(data.models)};`,
+    `export const comparisons = ${JSON.stringify(data.comparisons)};`,
+    `export const testCaseGroups = ${JSON.stringify(data.testCaseGroups)};`,
+    `export const ggRuns = ${JSON.stringify(data.ggRuns)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
+    `export const codeAnalysisUrls = ${JSON.stringify(data.codeAnalysisUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
+    `export const validationStorePrefixes = ${JSON.stringify(data.validationStorePrefixes)};`,
+    `export const showcaseMediaUrls = ${JSON.stringify(data.showcaseMediaUrls)};`,
+    `export const caseShowcaseMediaUrls = ${JSON.stringify(data.caseShowcaseMediaUrls)};`,
     `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
+    `export const baselineStorePrefixes = ${JSON.stringify(data.baselineStorePrefixes)};`,
     `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,
   ].join("\n");
 }

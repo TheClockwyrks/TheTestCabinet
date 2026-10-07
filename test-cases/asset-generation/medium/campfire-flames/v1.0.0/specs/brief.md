@@ -94,15 +94,15 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed in the flames (no blues, greens, or purples; this is warm
 firelight):
 
-| Role | Hex |
-| --- | --- |
+| Role                      | Hex       |
+| ------------------------- | --------- |
 | Flame base (yellow-white) | `#fff2c4` |
-| Flame mid (orange) | `#ff9a3c` |
-| Flame tip (red) | `#d43a1e` |
-| Ember (bright) | `#ffb545` |
-| Ember (cooling) | `#b83410` |
-| Smoke wisp (grey) | `#6f6a63` |
-| Smoke (thin, dark) | `#2b2824` |
+| Flame mid (orange)        | `#ff9a3c` |
+| Flame tip (red)           | `#d43a1e` |
+| Ember (bright)            | `#ffb545` |
+| Ember (cooling)           | `#b83410` |
+| Smoke wisp (grey)         | `#6f6a63` |
+| Smoke (thin, dark)        | `#2b2824` |
 
 A natural read: the **flame** runs `#fff2c4` → `#ff9a3c` → `#d43a1e`; the **embers**
 run `#ffb545` → `#b83410` as they cool; the **smoke** runs `#6f6a63` → `#2b2824` as
@@ -110,20 +110,21 @@ it thins.
 
 ## Working the tool
 
-The `particle-3d` binary on your `PATH` is the only way to shape the effect, and you
-**author a system**, not individual particles — emitters, forces, and per-particle
-size/opacity/color curves that the review UI **simulates live**. Build it up in
-sensible layers: add the flame-tongue, ember, and smoke-wisp emitters (as
-continuous-rate emitters); set the forces (upward buoyancy, a light turbulence, and
-the optional inward gather at the base); then set each emitter's color gradient,
-opacity curve, and size curve. Keep the timeline **looping** so the fire burns in
-steady state — no ignition, no dying-out, no seam at the loop point.
+The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
+you **author a system**, not individual particles — emitters, forces, and
+per-particle size/opacity/color curves that a game, or any viewer that plays it,
+**simulates live**. Build it up in sensible layers: add the flame-tongue, ember,
+and smoke-wisp emitters (as continuous-rate emitters); set the forces (upward
+buoyancy, a light turbulence, and the optional inward gather at the base); then
+set each emitter's color gradient, opacity curve, and size curve. Keep the
+timeline **looping** so the fire burns in steady state — no ignition, no
+dying-out, no seam at the loop point.
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json` your
 result is built from** — you **must** render before you finish or the system is
 empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read as a cozy campfire,
+slightly from play to play**; judge its _character_ — the read as a cozy campfire,
 the heat gradient, the seamless loop, the organic flicker — across replays and from
 multiple orbit angles, not any single frame. The field size, duration, and fps are
 already seeded in a config beside your workspace, so no operation needs those flags.

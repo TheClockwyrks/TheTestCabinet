@@ -64,6 +64,24 @@ workspace = "workspaces/base"
 # libraries Chromium links against, but not the browser binary).
 init = "npm install && npx playwright install chromium"
 
+# The audio packs the run container is staged with, and the whole of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind, so `combat-core` serves `sfx-sample` and `gm-lite`
+# serves `music`.
+#
+# A jam hands over a THEME and nothing else: which timbres the game the model
+# conceives will want is not knowable when the jam is authored, so it declares
+# the whole published set rather than a subset chosen for a design that does not
+# exist yet. This is exactly what the game-jam image used to bake, so a jam
+# reaches the same palette it always has — now because it says so.
+[audio]
+packs = [
+  "combat-core@0.1.0",
+  "gm-lite@0.1.0",
+  "cinematic@0.1.0",
+  "synthwave@0.1.0",
+]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns the produced game
 # into a served static site — the same fixed build interface a full-stack case uses.
 # Both commands are required. `npm ci` requires the build to commit a

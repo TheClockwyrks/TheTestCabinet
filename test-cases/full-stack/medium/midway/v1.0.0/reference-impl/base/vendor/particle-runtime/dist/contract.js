@@ -9,7 +9,7 @@
  * `apps/docs/.../testing/asset-generation/particle-binaries.md`). The one shared enum
  * that already exists in the generated package — {@link InterpSpec}, the F-curve
  * interpolation — is re-exported from there so there is a single source of truth for
- * it, exactly as `@test-cabinet/voxel-runtime`'s contract re-exports the rig types.
+ * it, exactly as `@clockwyrks/voxel-runtime`'s contract re-exports the rig types.
  */
 export {};
 //# sourceMappingURL=contract.js.map

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../../client/auth";
 import { routes } from "../../routes";
+import { useRevealNotice } from "../../components/SubmitNotice";
+import { Button, Input } from "../../../primitives";
 import styles from "./AccountPages.module.scss";
 
 // The shared sign-in / registration form, rendered as its own page by
@@ -22,6 +24,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   const canSubmit =
     username.trim() !== "" &&
@@ -55,8 +58,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       <div className={styles.fields}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Username</span>
-          <input
-            className={styles.input}
+          <Input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
@@ -66,8 +68,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {mode === "register" && (
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Display name</span>
-            <input
-              className={styles.input}
+            <Input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               autoComplete="name"
@@ -77,23 +78,29 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         )}
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Password</span>
-          <input
-            className={styles.input}
+          <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            autoComplete={
+              mode === "login" ? "current-password" : "new-password"
+            }
           />
         </label>
       </div>
-      <button
+      {error && (
+        <p ref={errorRef} className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
+      <Button
+        variant="primary"
         type="submit"
-        className={styles.primary}
+        className={styles.submit}
         disabled={busy || !canSubmit}
       >
         {mode === "login" ? "Sign in" : "Create account"}
-      </button>
-      {error && <p className={styles.error}>{error}</p>}
+      </Button>
       <p className={styles.alt}>
         {mode === "login" ? (
           <>

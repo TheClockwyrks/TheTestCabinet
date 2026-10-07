@@ -6,7 +6,15 @@
 // (scaled by the speed control, frozen while paused) decoupled from rendering, which
 // interpolates and draws every frame.
 
-import { FIXED_STEP, PANEL_X, STAGE_H, STAGE_W, STATUS_H, TOWER_ORDER, type TowerKind } from "./constants";
+import {
+  FIXED_STEP,
+  PANEL_X,
+  STAGE_H,
+  STAGE_W,
+  STATUS_H,
+  TOWER_ORDER,
+  type TowerKind,
+} from "./constants";
 import { mapById } from "./board";
 import { MODE } from "./mode";
 import { loadAssets } from "./assets";
@@ -16,7 +24,13 @@ import { Game } from "./sim";
 import { installDebugApi } from "./debug";
 import { Input } from "./input";
 import { menuItems } from "./menus";
-import { render, setMenuIndex, setMuted, setRenderTime, toggleDebugOverlay } from "./render";
+import {
+  render,
+  setMenuIndex,
+  setMuted,
+  setRenderTime,
+  toggleDebugOverlay,
+} from "./render";
 import type { Clickable } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
@@ -25,7 +39,10 @@ if (!ctx) throw new Error("Valence: 2D canvas context unavailable");
 
 function resize(): void {
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+  const scale = Math.min(
+    window.innerWidth / STAGE_W,
+    window.innerHeight / STAGE_H,
+  );
   const cssW = Math.max(1, Math.round(STAGE_W * scale));
   const cssH = Math.max(1, Math.round(STAGE_H * scale));
   canvas.style.width = `${cssW}px`;
@@ -145,7 +162,12 @@ async function main(): Promise<void> {
       const c = clickables[i]!;
       if (c.disabled) continue;
       // Outside play, only navigation clicks fire (menu items and map-select cards).
-      if (game.state !== "playing" && !c.action.startsWith("menu:") && !c.action.startsWith("map:")) continue;
+      if (
+        game.state !== "playing" &&
+        !c.action.startsWith("menu:") &&
+        !c.action.startsWith("map:")
+      )
+        continue;
       if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
         activate(c.action);
         return;
@@ -216,14 +238,23 @@ async function main(): Promise<void> {
     // Menu states. Up/Left (or W/A) and Down/Right (or S/D) move the selection — the
     // map-select cards lay out horizontally, so left/right feel natural there too.
     const items = menuItems(game.state, game);
-    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a") menuIndex = (menuIndex - 1 + items.length) % items.length;
-    else if (k === "ArrowDown" || k === "ArrowRight" || lower === "s" || lower === "d") menuIndex = (menuIndex + 1) % items.length;
+    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a")
+      menuIndex = (menuIndex - 1 + items.length) % items.length;
+    else if (
+      k === "ArrowDown" ||
+      k === "ArrowRight" ||
+      lower === "s" ||
+      lower === "d"
+    )
+      menuIndex = (menuIndex + 1) % items.length;
     else if (k === "Enter" || k === " ") {
       if (items[menuIndex]) activate(items[menuIndex]!.action);
     } else if (k === "Escape") {
-      if (game.state === "howto" || game.state === "mapselect") activate("menu:back");
+      if (game.state === "howto" || game.state === "mapselect")
+        activate("menu:back");
       else if (game.state === "paused") activate("menu:resume");
-      else if (game.state === "victory" || game.state === "defeat") activate("menu:menu");
+      else if (game.state === "victory" || game.state === "defeat")
+        activate("menu:menu");
     }
   }
 
@@ -232,7 +263,13 @@ async function main(): Promise<void> {
     const items = menuItems(game.state, game);
     for (let idx = 0; idx < items.length; idx++) {
       const c = clickables.find((cl) => cl.action === items[idx]!.action);
-      if (c && game.pointerX >= c.x && game.pointerX <= c.x + c.w && game.pointerY >= c.y && game.pointerY <= c.y + c.h) {
+      if (
+        c &&
+        game.pointerX >= c.x &&
+        game.pointerX <= c.x + c.w &&
+        game.pointerY >= c.y &&
+        game.pointerY <= c.y + c.h
+      ) {
         menuIndex = idx;
         return;
       }
@@ -240,7 +277,8 @@ async function main(): Promise<void> {
   }
 
   function handleInput(): void {
-    if (input.clicks.length || input.keys.length || input.rightClicks) gesture();
+    if (input.clicks.length || input.keys.length || input.rightClicks)
+      gesture();
     for (const c of input.clicks) routeClick(c.x, c.y);
     if (input.rightClicks > 0 && game.buildKind) game.cancelBuild();
     for (const k of input.keys) routeKey(k);

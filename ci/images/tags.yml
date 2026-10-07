@@ -1,0 +1,21 @@
+# The commit whose image pipeline run built the CI images every job of
+# azure-pipelines.yml pulls. That pipeline includes this file as a variables
+# template, and each job names its track's image as
+# `<repository>:${{ variables.ciImageTag }}`, so a commit's diff says which
+# images its gates ran in.
+#
+# azure-pipelines-ci-images.yml tags every image it builds with the commit its
+# run is on. When a commit changes a file that pipeline triggers on:
+#
+#   1. push the commit; the image pipeline's run on it pushes each track's
+#      image under that commit;
+#   2. once that run has finished, write the commit here as ciImageTag and push
+#      it; the gates of that second commit run in the new images.
+#
+# Until the second commit lands the gates run in the images the pin names, so
+# a change to an image's files is complete when the pin follows it. The value
+# is the full forty-character commit id. The template renders this file only
+# where the workspace lacks it, and forty zeros, which name no image, are what
+# a render writes.
+variables:
+  ciImageTag: c6eb115e14415e27e584ab3ce6b9417d47c233d6

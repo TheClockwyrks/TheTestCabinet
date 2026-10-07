@@ -1,4 +1,4 @@
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 // The viewer pulls in three.js and the fiber/drei bindings at module load, none of
@@ -9,7 +9,7 @@ vi.mock("@react-three/fiber", () => ({
   useFrame: () => {},
 }));
 vi.mock("@react-three/drei", () => ({ OrbitControls: () => null }));
-vi.mock("@test-cabinet/particle-runtime/three", () => ({
+vi.mock("@clockwyrks/particle-runtime/three", () => ({
   ParticleSystemPlayer: class {},
 }));
 

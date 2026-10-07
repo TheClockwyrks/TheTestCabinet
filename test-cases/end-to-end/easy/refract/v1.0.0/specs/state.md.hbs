@@ -1,0 +1,554 @@
+# Refract — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a
+pose of the running game, so the state holds what those operations read, honors
+what they write, and returns to its title-screen values when the surface's
+`reset` is called. Beyond satisfying that surface, how the state is organized is
+yours to decide.
+
+Whatever its shape, the state carries the following:
+
+- The mode the player chose from the title menu, Campaign or Cascade. It decides
+  which screens the game moves between and where the next board comes from.
+- The item highlighted on whichever vertical menu the current screen shows,
+  counted from `0`. The snapshot reports it as `menuIndex`.
+- The board being played: its `cols` and `rows`, and every node on it with the
+  cell it occupies, its kind, the channel an emitter or a lens belongs to, and a
+  crystal's charge count. A node's center on the stage comes from the cell center
+  formula in `specs/board.md` rather than from the state.
+- One beam per channel present on the board, each carrying the cells it runs
+  through in the order they were drawn. Consecutive cells are joined by a
+  segment, so a beam of `n` cells carries `n - 1` segments, and a beam whose
+  trace has begun at an emitter and not yet extended carries one cell and no
+  segments for as long as that trace is live. At every other moment a beam
+  holding no segment carries no cells at all: before anybody touches it, and
+  again once a trace that added none is released (`specs/controls.md`,
+  Releasing). The first cell is the node the trace that drew it began at, and
+  the last cell is the end the most recent trace worked from: whenever a trace
+  begins on a beam, the beam is oriented first so that the end being extended is
+  its last cell, reversing the stored order when the trace begins at the other
+  end.
+- How much of each crystal is spent. A charge is spent the moment a beam enters
+  the crystal, so the spent count is the number of times that crystal's cell
+  appears across the beams, whether or not the crossing has been left again.
+- The live trace, and nothing when no trace is live. A trace carries the channel
+  of the beam it is extending, and its live end is the last cell of that beam.
+- The pointer position, in the stage's logical units, whether the pointer is
+  currently pressed, and the device driving it, all refreshed from the runtime
+  layer in every update.
+- The id of the pointer target armed by the press being held, and nothing when
+  no press has armed one, as `specs/controls.md` describes.
+- The course's progress, as `specs/modes/campaign.md` describes it: which board
+  is being played, which boards have been solved, and how many boards are open
+  to the player.
+- The board highlighted on the campaign's select grid, zero-indexed the same
+  way as the course's boards. The snapshot reports it as `selectIndex`.
+- The run's progress, as `specs/modes/cascade.md` describes it: how many boards
+  have been solved, and the tier the generator emits at.
+- The simulation time, in seconds, which every update adds its `dt` to whatever
+  the screen, the menus included. The snapshot reports it as `simTime`.
+
+Both modes' progress is carried whatever the mode being played, so the state has
+one shape. The two progressions are independent and neither is cleared by the
+other: entering a mode leaves the other mode's progress exactly as that mode
+left it, so the campaign's progress survives a run of Cascade and the run's
+survives a return to the campaign, as `specs/modes/campaign.md` and
+`specs/modes/cascade.md` require. On a fresh state, and after a `reset`, the
+snapshot reports `boardIndex` `0`, `solvedBoards` empty, `unlockedCount` `1`,
+`selectIndex` `0`, `solvedCount` `0`, and `tier` the opening tier.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state from
+the current one rather than writing into it, and every reader is handed the
+state as `DeepReadonly<RefractState>` in any case.
+
+```ts
+export type Screen =
+  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+
+export type Mode = "campaign" | "cascade";
+
+export type Channel = "triangle" | "square" | "diamond";
+
+export type NodeKind = "emitter" | "lens" | "crystal";
+
+export interface Cell {
+  readonly col: number;
+  readonly row: number;
+}
+
+export interface NodeState {
+  readonly col: number;
+  readonly row: number;
+  readonly kind: NodeKind;
+  readonly channel: Channel | null;
+  readonly charges: number | null;
+}
+
+export interface BoardState {
+  readonly cols: number;
+  readonly rows: number;
+  readonly nodes: readonly NodeState[];
+}
+
+export interface BeamState {
+  readonly channel: Channel;
+  readonly cells: readonly Cell[];
+}
+
+export interface TraceState {
+  readonly channel: Channel;
+}
+
+export type PointerDevice = "mouse" | "pen" | "touch";
+
+export interface PointerState {
+  readonly x: number;
+  readonly y: number;
+  readonly down: boolean;
+  readonly device: PointerDevice;
+}
+
+export interface RefractState {
+  readonly screen: Screen;
+  readonly mode: Mode;
+  readonly menuIndex: number;
+
+  readonly board: BoardState;
+  readonly beams: readonly BeamState[];
+  readonly tracing: TraceState | null;
+
+  readonly boardIndex: number;
+  readonly solvedBoards: readonly number[];
+  readonly unlockedCount: number;
+  readonly selectIndex: number;
+
+  readonly solvedCount: number;
+  readonly tier: number;
+
+  readonly pointer: PointerState;
+  readonly armedTarget: string | null;
+  readonly simTime: number;
+  readonly muted: boolean;
+}
+```
+
+## The type aliases
+
+`Screen` is the top-level state machine, and `screen` names the screen the game
+is showing. Every build carries all six, and `select` and `complete` are
+reached in Campaign alone, as `specs/modes/campaign.md` describes. `Mode` names
+the way play is chosen from the title menu: the fixed course of
+`specs/modes/campaign.md` or the endless run of `specs/modes/cascade.md`.
+`Channel` names one beam identity, and the three are the members of `CHANNELS`
+in that order. `NodeKind` names the three kinds of node `specs/board.md`
+defines. `Cell` addresses one cell of the board, `col` and `row` both
+zero-indexed from the top-left.
+
+## `NodeState`
+
+One node and the cell it occupies. Only a cell holding a node has an entry, so
+an empty cell appears nowhere.
+
+- `col`, `row` — the cell the node occupies.
+- `kind` — `"emitter"`, `"lens"`, or `"crystal"`.
+- `channel` — the channel an emitter or a lens belongs to, and `null` for a
+  crystal, which is channel-neutral.
+- `charges` — a crystal's charge count, a whole number from `1` to
+  `MAX_CHARGES` (`3`), and `null` for an emitter and for a lens.
+
+Two facts about a node are derived rather than stored. Its center on the stage
+is `cellX(col, cols)` and `cellY(row, rows)` from `specs/board.md`, so a board
+sits where its dimensions put it and the state carries no coordinates. How much
+of a crystal is spent is read off the beams: a charge is spent the moment a beam
+enters the crystal, so the spent count is the number of times that crystal's
+cell appears across the beams, whether or not the crossing has been left again.
+
+## `BoardState`
+
+The board being played.
+
+- `cols`, `rows` — the grid's dimensions, within `GRID_MAX_COLS` (`7`) by
+  `GRID_MAX_ROWS` (`6`).
+- `nodes` — every node on the board, in reading order from the top-left cell to
+  the bottom-right.
+
+## `BeamState`
+
+One channel's beam.
+
+- `channel` — the channel the beam belongs to.
+- `cells` — the cells the beam runs through, in the order they were drawn.
+  Consecutive cells are joined by a segment, so a beam of `n` cells carries
+  `n - 1` segments, and a beam whose trace has begun at an emitter and not yet
+  extended carries one cell and no segments for as long as that trace is live.
+  At every other moment a beam holding no segment carries no cells at all:
+  before anybody touches it, and again once a trace that added none is released
+  (`specs/controls.md`, Releasing).
+
+A beam's stored order is what makes its two ends distinguishable. The first cell
+is the node the trace that drew it began at, and the last cell is the end the
+most recent trace worked from. Whenever a trace begins on a beam, the beam is
+oriented first so that the end the trace will extend from is its last cell,
+reversing the stored order when the trace begins at the other end, so the live
+end is always the last cell and a press part way along the beam drops every cell
+after it.
+
+`beams` carries one entry per channel present on the board, in the order of
+`CHANNELS`, and a channel the board does not use has no entry at all. Whether a
+beam is complete is derived from R6 and R7 in `specs/beams.md` rather than
+stored, and whether the board is solved is derived from R9.
+
+## `TraceState`
+
+The trace currently live, and `null` whenever none is.
+
+- `channel` — the channel of the beam the trace is extending. The live end is
+  the last cell of that channel's beam, so it is read from there rather than
+  held twice.
+
+`tracing` becomes `null` on the frame a move solves the board, leaving the beams
+exactly as drawn, so the release edge that follows begins nothing and changes
+nothing.
+
+## `PointerState`
+
+Where the pointer is and whether it is pressed, as the game read it in the
+current frame.
+
+- `x`, `y` — the pointer position in the stage's logical units, the same units
+  the cell centers are in, so a hit test against a cell center needs no
+  conversion.
+- `down` — whether the pointer is currently pressed. A press with no node within
+  `NODE_HIT_R` (`44`) of it leaves `down` `true` and `tracing` `null`.
+- `device` — which of `"mouse"`, `"pen"`, and `"touch"` last drove the pointer,
+  as `specs/controls.md` describes. It reads `"mouse"` before the first pointer
+  event.
+
+## `RefractState`
+
+The whole of Refract's state. Every field is present from the moment
+`initialize` returns, and every one is plain data: numbers, strings, booleans,
+and containers of them, so a board is posed by building a state that differs in
+the fields posed and read back by reading them.
+
+- `screen` — the screen currently shown.
+- `mode` — the mode chosen from the title menu, and the one the board being
+  played belongs to.
+- `menuIndex` — the highlighted item on whichever vertical menu `screen` is
+  showing.
+- `board` — the board being played.
+- `beams` — one beam per channel present on that board.
+- `tracing` — the live trace, or `null`.
+- `boardIndex` — the board of the course currently being played, zero-indexed,
+  so the first board is `0`.
+- `solvedBoards` — the indices of the boards of the course solved so far,
+  ascending. Solving a board that is already listed adds nothing.
+- `unlockedCount` — how many boards from the start of the course are open to the
+  player. It is `1` when the course begins and grows as boards are solved.
+- `selectIndex` — the board highlighted on the `select` grid, zero-indexed the
+  same way as `boardIndex`.
+- `solvedCount` — how many boards of the run have been solved since play began.
+- `tier` — the tier the generator emits at, recomputed from `solvedCount` each
+  time a board is solved, so it holds the opening tier while `solvedCount` is
+  `0`.
+- `pointer` — the pointer as of this frame.
+- `armedTarget` — the id of the pointer target the held press armed, or `null`.
+  A release inside that same target takes it, and any other release clears the
+  field without taking anything, as `specs/controls.md` describes.
+- `simTime` — accumulated simulation time, in seconds. Every `update` adds its
+  `dt`, whatever the screen, the menus included.
+- `muted` — the game's readable copy of the engine's mute bit, which every
+  `update` carries into the state it returns. The engine owns muting, and this
+  field is what the debug surface reports.
+
+The four course fields and the two run fields are declared whatever `mode`
+holds, so the state has one shape. The two progressions are independent and
+neither is cleared by the other: entering a mode leaves the other mode's fields
+exactly as that mode left them, so the campaign's progress survives a run of
+Cascade and the run's survives a return to the campaign, as
+`specs/modes/campaign.md` and `specs/modes/cascade.md` require. On a fresh
+state, and after a `reset`, they hold `boardIndex` `0`, `solvedBoards` empty,
+`unlockedCount` `1`, `selectIndex` `0`, `solvedCount` `0`, and `tier` the
+opening tier.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+- `initialize` builds the whole state in one go, so every field is present by
+  the time a frame can observe it, and none of them is optional.
+- Fields you add hold derived data you can rebuild from the declared ones. A
+  `reset` restores the declared fields to their title-screen values, so those
+  fields are the whole of the authoritative state.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it; nothing is kept in a module-level variable or a
+  closure.
+- The state is handed over read-only, as `DeepReadonly<RefractState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of
+  the debug surface. `update` and the surface's poses return a new
+  `RefractState` built from the one they received; `render`, the sources, and
+  `snapshot` return no state.
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is the world's game state: a class extending the engine's
+`GameState`, named by the game mode as its `gameStateClass`, so the engine
+builds one instance of it when the world opens and `engine.world.state` is that
+instance. Wherever this specification writes `state.foo`, it means a field of
+that instance.
+
+The game runs in one world for the whole session. The game definition registers
+a single level, the game never opens another, and every screen is a value of
+`screen`, so the state below is built once and lives until the page closes. The
+framework's states are live objects: a tick writes the fields it advances in
+place, and each field initializer below is that field's title-screen value, the
+same value the debug surface's `reset` restores. `GameState` comes from the
+engine's package.
+
+```ts
+export type Screen =
+  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+
+export type Mode = "campaign" | "cascade";
+
+export type Channel = "triangle" | "square" | "diamond";
+
+export type NodeKind = "emitter" | "lens" | "crystal";
+
+export interface Cell {
+  col: number;
+  row: number;
+}
+
+export interface NodeState {
+  col: number;
+  row: number;
+  kind: NodeKind;
+  channel: Channel | null;
+  charges: number | null;
+}
+
+export interface BoardState {
+  cols: number;
+  rows: number;
+  nodes: NodeState[];
+}
+
+export interface BeamState {
+  channel: Channel;
+  cells: Cell[];
+}
+
+export interface TraceState {
+  channel: Channel;
+}
+
+export type PointerDevice = "mouse" | "pen" | "touch";
+
+export interface PointerState {
+  x: number;
+  y: number;
+  down: boolean;
+  device: PointerDevice;
+}
+
+export class RefractState extends GameState {
+  screen: Screen = "title";
+  mode: Mode = "campaign";
+  menuIndex = 0;
+
+  board: BoardState = { cols: 0, rows: 0, nodes: [] };
+  beams: BeamState[] = [];
+  tracing: TraceState | null = null;
+
+  boardIndex = 0;
+  solvedBoards: number[] = [];
+  unlockedCount = 1;
+  selectIndex = 0;
+
+  solvedCount = 0;
+  tier = 1;
+
+  pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
+  armedTarget: string | null = null;
+  simTime = 0;
+  muted = false;
+}
+```
+
+## The type aliases
+
+`Screen` is the top-level state machine, and `screen` names the screen the game
+is showing. Every build carries all six, and `select` and `complete` are
+reached in Campaign alone, as `specs/modes/campaign.md` describes. `Mode` names
+the way play is chosen from the title menu: the fixed course of
+`specs/modes/campaign.md` or the endless run of `specs/modes/cascade.md`.
+`Channel` names one beam identity, and the three are the members of `CHANNELS`
+in that order. `NodeKind` names the three kinds of node `specs/board.md`
+defines. `Cell` addresses one cell of the board, `col` and `row` both
+zero-indexed from the top-left.
+
+## `NodeState`
+
+One node and the cell it occupies. Only a cell holding a node has an entry, so
+an empty cell appears nowhere.
+
+- `col`, `row` — the cell the node occupies.
+- `kind` — `"emitter"`, `"lens"`, or `"crystal"`.
+- `channel` — the channel an emitter or a lens belongs to, and `null` for a
+  crystal, which is channel-neutral.
+- `charges` — a crystal's charge count, a whole number from `1` to
+  `MAX_CHARGES` (`3`), and `null` for an emitter and for a lens.
+
+Two facts about a node are derived rather than stored. Its center on the stage
+is `cellX(col, cols)` and `cellY(row, rows)` from `specs/board.md`, so a board
+sits where its dimensions put it and the state carries no coordinates. How much
+of a crystal is spent is read off the beams: a charge is spent the moment a beam
+enters the crystal, so the spent count is the number of times that crystal's
+cell appears across the beams, whether or not the crossing has been left again.
+
+## `BoardState`
+
+The board being played, and `{ cols: 0, rows: 0, nodes: [] }` while no board is
+in play.
+
+- `cols`, `rows` — the grid's dimensions, within `GRID_MAX_COLS` (`7`) by
+  `GRID_MAX_ROWS` (`6`).
+- `nodes` — every node on the board, in reading order from the top-left cell to
+  the bottom-right.
+
+## `BeamState`
+
+One channel's beam.
+
+- `channel` — the channel the beam belongs to.
+- `cells` — the cells the beam runs through, in the order they were drawn.
+  Consecutive cells are joined by a segment, so a beam of `n` cells carries
+  `n - 1` segments, and a beam whose trace has begun at an emitter and not yet
+  extended carries one cell and no segments for as long as that trace is live.
+  At every other moment a beam holding no segment carries no cells at all:
+  before anybody touches it, and again once a trace that added none is released
+  (`specs/controls.md`, Releasing).
+
+A beam's stored order is what makes its two ends distinguishable. The first cell
+is the node the trace that drew it began at, and the last cell is the end the
+most recent trace worked from. Whenever a trace begins on a beam, the beam is
+oriented first so that the end the trace will extend from is its last cell,
+reversing the stored order when the trace begins at the other end, so the live
+end is always the last cell and a press part way along the beam drops every cell
+after it.
+
+`beams` carries one entry per channel present on the board, in the order of
+`CHANNELS`, and a channel the board does not use has no entry at all. Whether a
+beam is complete is derived from R6 and R7 in `specs/beams.md` rather than
+stored, and whether the board is solved is derived from R9.
+
+## `TraceState`
+
+The trace currently live, and `null` whenever none is.
+
+- `channel` — the channel of the beam the trace is extending. The live end is
+  the last cell of that channel's beam, so it is read from there rather than
+  held twice.
+
+`tracing` becomes `null` on the frame a move solves the board, leaving the beams
+exactly as drawn, so the release edge that follows begins nothing and changes
+nothing.
+
+## `PointerState`
+
+Where the pointer is and whether it is pressed, as the player controller read
+it from the engine in the current frame.
+
+- `x`, `y` — the pointer position in the stage's logical units, the same units
+  the cell centers are in, so a hit test against a cell center needs no
+  conversion.
+- `down` — whether the pointer is currently pressed. A press with no node within
+  `NODE_HIT_R` (`44`) of it leaves `down` `true` and `tracing` `null`.
+- `device` — which of `"mouse"`, `"pen"`, and `"touch"` last drove the pointer,
+  as `specs/controls.md` describes. It reads `"mouse"` before the first pointer
+  event.
+
+## `RefractState`
+
+The whole of Refract's state. Every field is present from the moment the world
+opens, and every one is plain data: numbers, strings, booleans, and containers
+of them, so a board is posed by writing the fields posed and read back by
+reading them.
+
+- `screen` — the screen currently shown.
+- `mode` — the mode chosen from the title menu, and the one the board being
+  played belongs to.
+- `menuIndex` — the highlighted item on whichever vertical menu `screen` is
+  showing.
+- `board` — the board being played.
+- `beams` — one beam per channel present on that board.
+- `tracing` — the live trace, or `null`.
+- `boardIndex` — the board of the course currently being played, zero-indexed,
+  so the first board is `0`.
+- `solvedBoards` — the indices of the boards of the course solved so far,
+  ascending. Solving a board that is already listed adds nothing.
+- `unlockedCount` — how many boards from the start of the course are open to the
+  player. It is `1` when the course begins and grows as boards are solved.
+- `selectIndex` — the board highlighted on the `select` grid, zero-indexed the
+  same way as `boardIndex`.
+- `solvedCount` — how many boards of the run have been solved since play began.
+- `tier` — the tier the generator emits at, recomputed from `solvedCount` each
+  time a board is solved, so it holds the opening tier while `solvedCount` is
+  `0`.
+- `pointer` — the pointer as of this frame, refreshed by the player controller
+  every tick.
+- `armedTarget` — the id of the pointer target the held press armed, or `null`.
+  A release inside that same target takes it, and any other release clears the
+  field without taking anything, as `specs/controls.md` describes.
+- `simTime` — accumulated simulation time, in seconds. Every frame adds its
+  `dt`, whatever the screen; the game mode's tick is where it accumulates.
+- `muted` — the game's readable copy of the engine's mute bit, refreshed every
+  frame. The engine owns muting, and this field is what the debug surface
+  reports.
+
+`RefractState` extends the engine's `GameState`, so an instance also carries the
+framework's own `world`, `players`, `phase`, and `elapsed`. Refract's screens
+run on `screen` rather than on the match phase: the mode never calls
+`setPhase`, so `phase` stays `"waiting"` and `elapsed` stays `0`, and the one
+player the mode adds is `players[0]`, whose controller is where input is read.
+
+The four course fields and the two run fields are carried whatever `mode`
+holds, so the state has one shape. The two progressions are independent and
+neither is cleared by the other: entering a mode leaves the other mode's fields
+exactly as that mode left them, so the campaign's progress survives a run of
+Cascade and the run's survives a return to the campaign, as
+`specs/modes/campaign.md` and `specs/modes/cascade.md` require. On a fresh
+state, and after a `reset`, they hold `boardIndex` `0`, `solvedBoards` empty,
+`unlockedCount` `1`, `selectIndex` `0`, `solvedCount` `0`, and `tier` the
+opening tier.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe
+  it, and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game
+  carries from one frame to the next lives in it; nothing is kept in a
+  module-level variable or a closure, and any field an actor, component, or
+  controller holds of its own is derived data rebuilt from the declared ones.
+- The state is written only through the paths play runs on: the player
+  controller resolves the frame's input into it, the game mode's tick advances
+  it, and the debug surface's poses arrange it at the call. Rendering reads it
+  and writes nothing, and whether a segment may be added is decided from
+  `board` and `beams` alone.
+- A `reset` restores the declared fields to the initializers above, so those
+  fields are the whole of the authoritative state.
+{{/if}}

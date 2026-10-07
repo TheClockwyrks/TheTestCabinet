@@ -32,20 +32,28 @@ export interface VisionSource {
 export function collectVision(world: World, team: Team): VisionSource[] {
   const out: VisionSource[] = [];
   const base = world.bases[team];
-  if (!base.dead && base.hp > 0) out.push({ x: base.x, z: base.z, r: VISION_BASE });
+  if (!base.dead && base.hp > 0)
+    out.push({ x: base.x, z: base.z, r: VISION_BASE });
   const rel = world.reliquaries[team];
-  if (!rel.dead && rel.hp > 0) out.push({ x: rel.x, z: rel.z, r: VISION_RELIQUARY });
+  if (!rel.dead && rel.hp > 0)
+    out.push({ x: rel.x, z: rel.z, r: VISION_RELIQUARY });
   for (const u of world.units) {
-    if (u.team === team && !u.dead) out.push({ x: u.x, z: u.z, r: VISION_UNIT });
+    if (u.team === team && !u.dead)
+      out.push({ x: u.x, z: u.z, r: VISION_UNIT });
   }
   for (const a of world.aegis) {
-    if (a.team === team && !a.dead) out.push({ x: a.x, z: a.z, r: VISION_BASE });
+    if (a.team === team && !a.dead)
+      out.push({ x: a.x, z: a.z, r: VISION_BASE });
   }
   return out;
 }
 
 /** Is the ground point `(x, z)` inside ANY of the vision discs (i.e. currently seen)? */
-export function pointVisible(sources: readonly VisionSource[], x: number, z: number): boolean {
+export function pointVisible(
+  sources: readonly VisionSource[],
+  x: number,
+  z: number,
+): boolean {
   for (const s of sources) {
     const dx = x - s.x;
     const dz = z - s.z;

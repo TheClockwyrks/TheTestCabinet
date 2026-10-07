@@ -39,7 +39,8 @@ export class Audio {
     }
     const AC =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
@@ -100,7 +101,8 @@ export class Audio {
   setMachineHum(active: boolean): void {
     this.humActive = active;
     if (!this.ctx || !this.humGain) return;
-    if (active && !this.humSource && this.started && !this.muted) this.startHum();
+    if (active && !this.humSource && this.started && !this.muted)
+      this.startHum();
     const target = active && !this.muted ? 0.28 : 0;
     this.humGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.15);
   }
@@ -108,7 +110,11 @@ export class Audio {
   toggleMute(): void {
     this.muted = !this.muted;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : 0.6, this.ctx.currentTime, 0.02);
+      this.master.gain.setTargetAtTime(
+        this.muted ? 0 : 0.6,
+        this.ctx.currentTime,
+        0.02,
+      );
     }
     if (!this.muted && this.started) {
       if (!this.musicSource) this.startMusic();

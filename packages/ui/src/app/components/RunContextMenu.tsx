@@ -1,4 +1,4 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   useCallback,
   useEffect,
@@ -9,7 +9,7 @@ import {
   type Ref,
 } from "react";
 import { useNavigate } from "react-router";
-import { useFindModel } from "../data/useModels";
+import { useFindModel, useModels } from "../data/useModels";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { useRunKill } from "../data/useRunKill";
 import { isPublishable, useRunPublish } from "../data/useRunPublish";
@@ -19,8 +19,10 @@ import {
   type ConfirmApi,
   type ConfirmOptions,
 } from "./ConfirmDialog";
+import type { CatalogStatus } from "../data/galleryContext";
 import { routes } from "../routes";
 import type { SelectableRun } from "./RunSelect";
+import { runPagePath } from "../data/runLinks";
 import styles from "./RunContextMenu.module.scss";
 
 /**
@@ -70,11 +72,9 @@ function absoluteUrl(path: string): string {
 }
 
 // A run's own page: a finished run's detail, or an in-progress run's live monitor
-// (it has no detail until it completes).
+// (it has no detail until it completes) — gg's own monitor for a gg run.
 function runPageUrl(run: SelectableRun): string {
-  return absoluteUrl(
-    run.active ? routes.runMonitor(run.id) : routes.runDetail(run.id),
-  );
+  return absoluteUrl(runPagePath(run.id, run.harnessSlug, run.active));
 }
 
 // Open a URL in a new foreground tab and switch to it. `window.open` opens a
@@ -145,7 +145,10 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const findModel = useFindModel();
-  const { canDelete, deleteRun } = useRunDeletion();
+  // The catalog's load state, so an unresolved model id is reported as what it
+  // actually is: still loading, unreadable, or genuinely uncurated.
+  const { status: modelsStatus } = useModels();
+  const { canDelete, deletionGate, deleteRun } = useRunDeletion();
   const { canKill, killRun } = useRunKill();
   const { canPublish, publishRun } = useRunPublish();
   const { confirm, alert } = useConfirm();
@@ -235,6 +238,12 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
     const { subject } = run;
     const model = findModel(subject.modelId, subject.harnessSlug);
     const detailUrl = absoluteUrl(routes.runDetail(run.id));
+    // A card with no publish timestamp is an unpublished run — the same reading
+    // the run log already marks the row "unpublished" by.
+    const deleteGate = deletionGate({
+      id: run.id,
+      published: Boolean(run.publishedAt),
+    });
 
     const onDelete = async () => {
       close();
@@ -304,10 +313,13 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
             navigate(routes.modelDetail(model.slug));
             close();
           }}
-          // The model has a page only when it's in the catalog; an unrecognized run
-          // model has nowhere to link, so the item is present but disabled.
+          // The model has a page only when it's in the catalog; a run whose model
+          // cannot be resolved has nowhere to link, so the item is present but
+          // disabled — saying which of the three reasons it is rather than
+          // reporting a catalog still loading, or one that failed to load, as a
+          // model the cabinet does not curate.
           disabled={!model}
-          title={model ? undefined : "This model isn’t in the catalog"}
+          title={model ? undefined : unresolvedModelReason(modelsStatus)}
         >
           Open model
         </button>
@@ -332,7 +344,13 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
             </button>
           </>
         )}
-        {canDelete(run.id) && (
+        {/* The row's card carries the run's own publish state, so this asks the
+            authoritative question — "is this run published?" — rather than the
+            produced worklist's lagging one, "has this run's record reached the
+            worklist yet?". The item is shown disabled, with why on it, wherever
+            this console could delete but this run cannot be, mirroring the
+            "Open model" item above. */}
+        {deleteGate.offered && (
           <>
             <div className={styles.separator} role="separator" />
             <button
@@ -340,6 +358,8 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
               role="menuitem"
               className={`${styles.item} ${styles.itemDanger}`}
               onClick={onDelete}
+              disabled={!deleteGate.allowed}
+              title={deleteGate.reason ?? undefined}
             >
               Delete run
             </button>
@@ -361,6 +381,10 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
     );
     // Only in-progress runs can be killed, and only where the host allows it.
     const killable = canKill ? runs.filter((run) => run.killable) : [];
+    // Id only: a `SelectableRun` carries no publish state, so this falls back to
+    // the produced worklist, which holds exactly the unpublished runs it has
+    // caught up with. A run it has not yet caught up with is deleted from its own
+    // detail page, where the record — and with it the answer — is in hand.
     const deletable = runs.filter((run) => canDelete(run.id));
     // The runs in the selection that would actually release — a mixed selection
     // (some already public, some unreviewed) publishes the eligible ones and the
@@ -462,7 +486,7 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
           disabled={modelSlugs.length === 0}
           title={
             modelSlugs.length === 0
-              ? "None of these runs’ models are in the catalog"
+              ? unresolvedModelsReason(modelsStatus)
               : undefined
           }
         >
@@ -592,4 +616,20 @@ async function reportPublishEnqueued(
       "list once its release lands; any that fails raises a notification." +
       refused,
   });
+}
+
+// Why a run's model did not resolve to a catalog entry. Loading and a failed read
+// are not absences, and a tooltip that calls them one is the same claim the
+// not-found states used to make.
+function unresolvedModelReason(status: CatalogStatus): string {
+  if (status === "loading") return "The model catalog is still loading";
+  if (status === "error") return "The model catalog could not be read";
+  return "This model isn’t in the catalog";
+}
+
+/** The batch analogue of {@link unresolvedModelReason}. */
+function unresolvedModelsReason(status: CatalogStatus): string {
+  if (status === "loading") return "The model catalog is still loading";
+  if (status === "error") return "The model catalog could not be read";
+  return "None of these runs’ models are in the catalog";
 }

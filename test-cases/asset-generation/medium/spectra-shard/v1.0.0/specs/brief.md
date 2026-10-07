@@ -1,9 +1,9 @@
 # Spectra Shard — drawing brief
 
-You are drawing the **Shard**, a single **enemy drone** for *Spectra*, a
+You are drawing the **Shard**, a single **enemy drone** for _Spectra_, a
 two-band formation shooter. The Shard is the basic drone and the bulk of every
 formation: a **fixed-band** crystalline drone that dives at the player.
-Everything below describes the *enemy* — never the player's ship.
+Everything below describes the _enemy_ — never the player's ship.
 
 ## The canvas
 
@@ -19,9 +19,9 @@ Everything below describes the *enemy* — never the player's ship.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Magenta band | `#ff4ec7` |
+| Role              | Hex       |
+| ----------------- | --------- |
+| Magenta band      | `#ff4ec7` |
 | Highlight / glyph | `#ffffff` |
 
 ## The form

@@ -1,0 +1,16 @@
+# The base variant's carousel, in the order it is presented. The replay leads: it
+# is the entry the catalog's preview stage plays, and it is one whole expedition
+# played end to end rather than a moment out of one. Both stills are frames of
+# that same take.
+
+[[media]]
+file = "expedition.json.gz"
+name = "A Quick expedition dug to 160 m and flown home loaded"
+
+[[media]]
+file = "loaded-at-depth.png"
+name = "The bay full at the bottom of the shaft, on half a tank"
+
+[[media]]
+file = "the-haul-priced.png"
+name = "The haul on the counter at the Ore Market"

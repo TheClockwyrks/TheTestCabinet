@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pagination, Panel } from "@test-cabinet/ui";
+import { Pagination, Panel } from "@clockwyrks/ui";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   RunLog,
@@ -13,6 +13,7 @@ import type { ModelSummary } from "../../../data/models";
 import { useGalleryData } from "../../../data/galleryContext";
 import type { RunQueryResult } from "../../../data/runQuery";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
+import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import styles from "./ModelRunsPage.module.scss";
 
 // How many runs to show per page before paging kicks in. Keeps the list from
@@ -38,6 +39,7 @@ export function ModelRunsPage() {
 
 function RunsContent({ model }: { model: ModelSummary }) {
   const { localIds, writeups, queryRunSummaries } = useGalleryData();
+  const { refreshToken } = useRunsRuntime();
 
   // The server filters runs by a single model id, so scope to this model's primary
   // covered id. (A model that covers several ids may under-count runs recorded under
@@ -46,7 +48,8 @@ function RunsContent({ model }: { model: ModelSummary }) {
   const modelId = model.modelIds[0] ?? model.slug;
 
   const filters = useRunFilters({ model: modelId });
-  const { page, setPage, committedQuery, facets, latestVersions } = filters;
+  const { page, setPage, committedQuery, facets, latestVersions, ggConfigId } =
+    filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -66,7 +69,9 @@ function RunsContent({ model }: { model: ModelSummary }) {
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
-  // Fetch one page whenever the model, the active sort, or the page changes.
+  // Fetch one page whenever the model, the active sort, or the page changes — and
+  // whenever the runs runtime bumps its refresh token, so a run of this model that
+  // finishes appears here rather than waiting on a reload.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -81,6 +86,10 @@ function RunsContent({ model }: { model: ModelSummary }) {
       testCase: facets.testCase || undefined,
       version: facets.version || undefined,
       harness: facets.harness || undefined,
+      // Set only by a coverage cell's Runs link, which narrows to the runs behind
+      // one cell's figure. The bar carries no control for it (see
+      // `useRunFilters`), so it reaches the query straight from the URL.
+      ggConfigId: ggConfigId || undefined,
       latestVersions,
       sort,
       dir,
@@ -104,9 +113,11 @@ function RunsContent({ model }: { model: ModelSummary }) {
     page,
     needle,
     facets,
+    ggConfigId,
     latestVersions,
     sort,
     dir,
+    refreshToken,
   ]);
 
   // Navigating to a different model swaps the whole run set, and re-sorting

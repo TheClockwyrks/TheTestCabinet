@@ -10,9 +10,9 @@
 // `crates/core/src/run_record.rs` (`HarnessSlug::family`, `HarnessFamily`); a
 // drift test there keeps the OpenRouter arm in step with the routing predicate.
 // The `HarnessFamily` union itself is generated from Rust into
-// `@test-cabinet/run-record`.
+// `@clockwyrks/run-record`.
 
-import type { HarnessFamily } from "@test-cabinet/run-record";
+import type { HarnessFamily } from "@clockwyrks/run-record";
 import type { Model } from "../../client/types";
 
 export type { HarnessFamily };

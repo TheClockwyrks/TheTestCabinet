@@ -8,7 +8,7 @@ Your project root is `{{workspace}}`. Create the game there.
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that pins
 **Playwright** as a dev dependency and depends on the
-**`@test-cabinet/particle-runtime`** library (below). Its dependencies have already
+**`@clockwyrks/particle-runtime`** library (below). Its dependencies have already
 been installed for you — `node_modules/` is populated and Playwright's headless
 **Chromium** is downloaded — so you can build and verify right away. Build on this
 project rather than replacing it: keep the `package.json`, add your framework,
@@ -50,16 +50,10 @@ a summary here. Three things bear restating, because the harness depends on them
   authoritative contract**: it enumerates every sprite, animation, particle system,
   and sound the game needs, names which tool produces each and where it lands under
   `assets/`, and states how each is wired into the build — including that the particle
-  systems are played live through the **`@test-cabinet/particle-runtime`** library
+  systems are played live through the **`@clockwyrks/particle-runtime`** library
   already installed as a dependency of your project (import it like any other
   dependency; do not fetch or reimplement it). Load every produced file with
   page-relative URLs so it resolves from the served sub-path.
-- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are **illustrative examples, not targets to reproduce**, of the
-  title, gameplay, and park-closed screens — they show one way those screens can
-  look. Design your own menus and layout from the specification; the images only
-  illustrate the intended look, so build the screens from the specification rather
-  than copying the images.
 
 ## Verify before you finish
 
@@ -75,14 +69,8 @@ it works. Before you consider the task complete:
   mechanic and let a ride break down so it gets repaired, hire a janitor to clear
   litter, then run prices up (or let the park slide) so happiness and the rating fall
   and cash bleeds toward the bankruptcy loss state — and **screenshot** the title,
-  in-park, and park-closed screens. Verify each against the specs, treating the
-  `reference/` images as examples of the intended look only (not a layout to match),
-  and fix what does not follow the specification before finishing.
-- **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
-  screenshots and the two short clips, each written to the precise `proof/` path that
-  spec names. These are required deliverables of the finished build, not a private
-  check. Do not invent a different folder or filename, and do not skip the `.webm`
-  clips.
+  in-park, and park-closed screens. Verify each against the specs and fix what does
+  not follow the specification before finishing.
 
 Use the project's own Playwright: import it from your project (for example
 `import { chromium } from "playwright"`) or run the project-local CLI with
@@ -101,4 +89,4 @@ published. When the build is complete and verified, commit everything: run
 with nothing uncommitted or untracked. A `.gitignore` already excludes `node_modules/`
 and the build output (`dist/`/`build/`/`out/`), so a clean tree does not mean
 committing those — but it does mean committing your source, your `package-lock.json`,
-your `README.md`, the **produced assets under `assets/`**, and the `proof/` artifacts.
+your `README.md`, and the **produced assets under `assets/`**.

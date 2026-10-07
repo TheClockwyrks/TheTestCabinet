@@ -4,7 +4,6 @@ set -euo pipefail
 : "${USERNAME:?USERNAME must be set}"
 : "${USER_UID:?USER_UID must be set}"
 : "${USER_GID:?USER_GID must be set}"
-: "${DOCKER_GID:?DOCKER_GID must be set}"
 
 # Ubuntu 23.04+ images may include a default `ubuntu` user with UID 1000.
 # Remove it only when it would conflict with the requested devcontainer user.
@@ -62,23 +61,10 @@ fi
 printf '%s ALL=(root) NOPASSWD:ALL\n' "${USERNAME}" > "/etc/sudoers.d/${USERNAME}"
 chmod 0440 "/etc/sudoers.d/${USERNAME}"
 
-# Create or reuse the group with the Docker/Podman socket GID, then add the user.
-# The group name does not matter; the numeric GID is what controls socket access.
-# This only takes effect if a runtime socket is mounted into the container; see
+# Access to the host's runtime socket is no part of the image: the group that
+# owns it is a fact of the host known only once the socket is bound in, so
+# tools/docker-socket-access.sh aligns it at every start. See
 # .devcontainer/README.md.
-DOCKER_GROUP="$(getent group "${DOCKER_GID}" | cut -d: -f1 || true)"
-
-if [[ -z "${DOCKER_GROUP}" ]]; then
-	if getent group docker >/dev/null 2>&1; then
-		DOCKER_GROUP="docker_${DOCKER_GID}"
-	else
-		DOCKER_GROUP="docker"
-	fi
-
-	groupadd --gid "${DOCKER_GID}" "${DOCKER_GROUP}"
-fi
-
-usermod --append --groups "${DOCKER_GROUP}" "${USERNAME}"
 
 # Initialize shell config and fix ownership.
 cp /etc/skel/.bashrc "/home/${USERNAME}/.bashrc"

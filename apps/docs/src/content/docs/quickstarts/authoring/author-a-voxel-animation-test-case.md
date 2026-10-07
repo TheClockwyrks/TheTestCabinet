@@ -2,97 +2,108 @@
 title: Author a Voxel Animation Test Case
 ---
 
-Scaffold a new [asset-generation](/testing/asset-generation/overview/) test case
-that asks a model to sculpt a **rigged** voxel model (named parts + joints it
-invents) with the `voxel-anim` tool and author its **required animations**
-(`asset_kind = "voxel-animation"`). This is the short version;
-[Authoring a Voxel Animation Test Case](/guides/authoring/authoring-a-voxel-animation-test-case/)
-covers it in full, and
-[Manifests](/testing/asset-generation/manifests/#voxel-cases) is the authoritative
-schema.
+## Scope
 
-A **static** voxel model instead?
+Scaffold an [asset-generation](/testing/asset-generation/overview/) test case of
+`asset_kind = "voxel-animation"`: a rigged cube model a model sculpts with the
+`voxel-anim` binary and animates. The case fixes the required animations; the
+parts and joints that realize them are the model's to invent. Read
+[Authoring a Voxel Animation Test Case](/guides/authoring/authoring-a-voxel-animation-test-case/)
+for the full procedure;
+[Voxel cases](/testing/asset-generation/manifests/voxel-cases/) is the
+authoritative schema.
+
+For a static cube model see
 [Author a Voxel Model Test Case](/quickstarts/authoring/author-a-voxel-model-test-case/).
-A **meshed** (SDF/CSG) animated model?
+For a rigged meshed model see
 [Author a Mesh Animation Test Case](/quickstarts/authoring/author-a-mesh-animation-test-case/).
 
 ## Layout
 
-A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
-reference it — revise by adding a new version, not by editing a published one.
+A version lives at
+`test-cases/asset-generation/<difficulty>/<slug>/<version>/`. A version with runs
+recorded against it is frozen; revise a case by adding a new version.
 
 ```text
-test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml    # manifest: type, asset_kind, [voxel], [tool], [output], [model]
-  variants/         # one standalone TOML file per variant (listed in `variants`)
-  prompt.hbs        # rendered into the harness instruction (NOT seeded)
-  description.md    # site blurb (NOT seeded); README.md — human overview (NOT seeded)
-  specs/brief.md    # what to sculpt + how it moves + how the tool behaves — SEEDED
+test-cases/asset-generation/<difficulty>/<slug>/<version>/
+  test-case.toml    # manifest: type, asset_kind, voxel, tool, output, model
+  variants/         # one standalone TOML file per variant
+  prompt.hbs        # rendered into the harness instruction; not seeded
+  changelog.md      # required per-version entry; not seeded
+  description.md    # site blurb; not seeded
+  specs/brief.md    # subject, motion, and tool behavior; seeded
 ```
 
-A run receives only the seeded brief, the `voxel-anim` binary (`--help` is the op +
-rig-subcommand contract), and a **pre-seeded `rig.json`** holding just the required
-animation declarations (empty tracks, `parts: []`, `joints: []`) — **no target model**.
+A run seeds the brief, `voxel-anim.config.json`, and a `rig.json` pre-populated
+with the required animation declarations alone, with empty tracks, `parts: []`,
+and `joints: []`. The binary's `--help` is the operation and rig-subcommand
+contract. The case declares no `[[reference]]` and carries no target model.
 
 ## Steps
 
-1. Pick a catalog **slug** (e.g. `ironward`) and an **articulated** subject — one with
-   distinct movable components a game would want to see move.
-2. Decide the **required animations** only: each is a `name` a game plays it by, a
-   `loop` flag, and an `auto_play` flag (`true` = self-playing idle, `false` =
-   game-triggered playable). Do **not** design parts, joints, pivots, ranges, or pose
-   angles — the model invents the skeleton.
-3. Write `specs/brief.md`: the subject and silhouette, the **exact `#rrggbb` palette**,
-   the `[voxel]` volume framing (which axis is up/forward), the key features that must
-   read, how the tool behaves (`--part` on every op; a sculpting op only records;
-   `voxel-anim render` draws each `parts/<part>.png` **and** the assembled
-   `scene/{iso,front,side,top}.png`), and the **behaviour** each required animation must
-   show. Keep it
-   [self-contained](/testing/end-to-end/overview/#self-contained-specifications).
-4. Write `prompt.hbs` using only the documented template variables (`{{variant.*}}`,
-   `{{#each specs}}`) — it renders in strict mode — pointing the model at `voxel-anim
-   --help` and requiring it to `render` before finishing.
-5. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags` including
-   `3d`/`voxel`/`rig`), `type = "asset-generation"`, `asset_kind = "voxel-animation"`,
-   a `variants` list (root key before the first table; first = default), and:
-   - `[voxel]` — fixed `width`/`height`/`depth` + `background`; **no `[canvas]`**. Size
-     from real dimensions: **10 voxels/m** for smaller units (longest side ≤ ~8 m),
-     **5 voxels/m** for larger units/structures; largest dimension ~40–150.
-   - `[tool]` (`binary = "voxel-anim"`, `preview`) and `[output]` (`actions`) — each
-     path **must** carry `{part}` (`parts/{part}.png`, `parts/{part}.actions.json`).
-   - `[model]` — **required, carrying ONLY `[[model.animation]]` entries** (each just
-     `name` + `loop` + `auto_play`). **No `[[model.part]]`/`[[model.joint]]`, no
-     `period_ms`, no `joints`** — period, joints, and F-curves are the model's.
-   - the single `[[domain]]` (`overall`) and **no `[[review_item]]`s** — the rig and
-     its produced animations are judged as a whole against the brief, on one rating.
+1. Pick a catalog slug and an articulated subject, one with distinct movable
+   components a game would want to see move.
+2. Decide the required animations. Each is a `name` a game plays it by, a `loop`
+   flag, and an `auto_play` flag, where `true` means a self-playing idle and
+   `false` means a game-triggered playable. Leave parts, joints, pivots, ranges,
+   and pose angles to the model.
+3. Size the volume from real dimensions: 10 voxels per metre for smaller units
+   whose longest side is about 8 m or less, and 5 voxels per metre for larger
+   units and structures. Keep the largest dimension roughly in the 40 to 150
+   band.
+4. Write `specs/brief.md`: the subject and silhouette, the exact opaque
+   `#rrggbb` palette, the volume framing (which axis is up, which way is
+   forward), the key features that must read, and the behavior each required
+   animation must show. Cover how the tool behaves: every operation takes
+   `--part`, a sculpting operation records without rendering, and a bare
+   `voxel-anim render` re-emits every part's geometry and preview and composes
+   the assembled scene views. Keep the brief self-contained.
+5. Write `prompt.hbs`. It renders in strict mode against `{{variant.*}}`,
+   `{{#each specs}}`, `{{workspace}}`, `{{time_limit_hours}}`, and `{{voxel.*}}`.
+   Point the model at `voxel-anim --help` and require a `render` before
+   finishing.
+6. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags` including `3d`,
+   `voxel`, and `rig`), the required `changelog`, `type = "asset-generation"`,
+   `asset_kind = "voxel-animation"`, and the `variants` list. It is a root key,
+   so it precedes the first table header, and the first entry is the default
+   variant.
+7. Declare `[voxel]` with fixed `width`, `height`, `depth`, and `background`. It
+   replaces `[canvas]`, which resolution rejects on a voxel case.
+8. Declare `[tool]` with `binary = "voxel-anim"` and `[output]`. Both paths carry
+   the `{part}` token, as in `parts/{part}.png` and `parts/{part}.actions.json`,
+   because an animated model writes one file per part.
+9. Declare `[model]`, which is required, carrying `[[model.animation]]` entries
+   with a unique `name`, a `loop` flag, and an `auto_play` flag. The period,
+   joints, and F-curves are the model's.
+10. Declare the single `overall` `[[domain]]`. The rig and its animations are
+    judged as a whole against the brief on that one rating, so the case declares
+    no `[[review_item]]` checklist, no `[[reference]]`, no `[build]`, and no
+    `[[check]]`.
 
-   Declare **no `[[reference]]`**, **no `[build]`**, **no `[[check]]`**.
-
-The worked example is the `ironward` siege tank (one required animation, `turret_sweep`);
-for a multi-animation reference (`march`, self-playing `radar_spin`) see `aegis-mc-anim`.
+`ironward`, a siege tank with one required `turret_sweep`, is the worked example.
+`sunfront-aegis` and `caldera-colossus` are multi-animation references.
 
 ## Validate
 
-```sh
-npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
-```
-
-Then render and seed for **every** variant:
+Run these for every variant.
 
 ```sh
+npm run lint:specs
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-`prompt` catches strict-mode + manifest errors (unique animation `name`s; no declared
-parts/joints); `seed` writes the seeded set (brief, `voxel-anim.config.json`, pre-seeded
-`rig.json`) to confirm it is self-contained. After editing, force a re-ingest so the
-backend picks up the new tables — see
+`prompt` catches strict-mode template and manifest errors, including duplicate
+animation names and a missing `{part}` token. `seed` writes the seeded repository
+under `tmp/`, where you confirm the brief, `voxel-anim.config.json`, and the
+pre-seeded `rig.json` are self-contained. After editing, force a re-ingest so the
+backend picks up the new tables; see
 [Running the Local Service Stack](/guides/development/running-the-local-service-stack/).
 
 ## Next steps
 
 - [Create a Voxel Animation Variant](/quickstarts/authoring/create-a-voxel-animation-variant/)
   to add a brief variation.
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end to end.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end
+  to end.
 - [Review a Run](/quickstarts/development/review-a-run/) to score the result.

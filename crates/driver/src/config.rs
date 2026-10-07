@@ -13,7 +13,7 @@
 //! | `TCAB_RUN_REQUEST` | yes | The [`LaunchBody`] JSON the dispatcher claimed and passed in. | — |
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
-//! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. the local CLI/desktop path) skips the upload entirely. | — |
+//! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. a local setup with no artifact service) skips the upload entirely. | — |
 //! | `TCAB_DRIVER_SUBSCRIPTION_DIR` | no | A directory the operator-provided subscription Secret is mounted into (one file per credential, keyed by basename). When set, the driver makes subscription auth available by reading these files instead of a host home; unset leaves the run API-key-only, unchanged. | — |
 //!
 //! The driver never *decides* the auth mode — [`resolve_auth_with`] does, from
@@ -35,7 +35,9 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use test_cabinet_core::{LaunchBody, ONE_SHOT_SLUG, OrchestratorSelection, RunRequest};
+use test_cabinet_core::{
+    EngineSelection, LaunchBody, NONE_SLUG, ONE_SHOT_SLUG, OrchestratorSelection, RunRequest,
+};
 
 use crate::kubernetes::{KubernetesConfig, in_cluster_namespace};
 
@@ -87,9 +89,8 @@ pub struct Config {
     /// tree (`TCAB_WORK_DIR`). The pod is disposable, so this is lost on exit.
     pub work_dir: PathBuf,
     /// The artifact service base URL the driver uploads the produced run tree to
-    /// (`TCAB_ARTIFACTS_URL`), without a trailing slash. `None` (the local
-    /// CLI/desktop path, where nothing serves the artifacts off the worker disk
-    /// any more) skips the upload entirely, leaving behavior unchanged.
+    /// (`TCAB_ARTIFACTS_URL`), without a trailing slash. `None` (a local setup with
+    /// no artifact service) skips the upload entirely.
     pub artifacts_url: Option<String>,
     /// The directory the operator-provided subscription Secret is mounted into
     /// (`TCAB_DRIVER_SUBSCRIPTION_DIR`), one file per credential keyed by basename.
@@ -162,8 +163,9 @@ impl Config {
     /// [`LaunchBody`], exactly as `worker submit` does: an exact, immutable
     /// version, the `one-shot` orchestrator default when none is named, built-in
     /// orchestrators only (no external `dir` — the driver has no submitter
-    /// checkout), and the base image resolved from the environment in the
-    /// orchestrator rather than from the backend.
+    /// checkout), the `none` engine default when none is named, and the base image
+    /// resolved from the environment in the orchestrator rather than from the
+    /// backend.
     pub fn run_request(&self) -> RunRequest {
         let launch = &self.launch;
         RunRequest {
@@ -179,8 +181,43 @@ impl Config {
                     .unwrap_or_else(|| ONE_SHOT_SLUG.to_string()),
                 dir: None,
             },
+            // The engine the produced build is written against. Omitted on the
+            // wire for the engineless run — exactly as `orchestrator` is omitted
+            // for `one-shot` — so a launch that chose nothing gets `none`. The
+            // catalogue is closed and embedded, so
+            // there is no directory arm to carry and nothing for the driver (which
+            // has no checkout) to look up.
+            engine: EngineSelection {
+                slug: launch
+                    .engine
+                    .clone()
+                    .unwrap_or_else(|| NONE_SLUG.to_string()),
+            },
             max_runtime_override: launch.max_runtime_seconds,
             container_image: None,
+            // Carry the gg capability set through verbatim so a gg run is
+            // reconstructed faithfully. It is present iff the harness is gg; the
+            // engine's `RunRequest::validate` enforces that invariant at the top of
+            // the run.
+            gg_capability_set: launch.gg_capability_set.clone(),
+            // The per-model context windows the backend resolved from the model
+            // catalog at enqueue, carried through to the gg invocation. The driver
+            // never resolves them itself: the catalog lives on the backend, and this
+            // is the pushed answer.
+            gg_model_windows: launch.gg_model_windows.clone(),
+            // The per-model provider pins resolved alongside the windows. The driver never
+            // resolves them itself: the catalog lives on the backend, and this is the pushed
+            // answer gg stamps onto every request.
+            gg_model_providers: launch.gg_model_providers.clone(),
+            // The per-model input modalities resolved alongside the windows, which tell
+            // gg which of its models may be shown a reference image.
+            gg_model_modalities: launch.gg_model_modalities.clone(),
+            // The per-model curated list prices resolved alongside the windows, which
+            // are the only basis a run's comparable cost is computed from — the engine
+            // never re-fetches a price for a catalog-driven run.
+            gg_model_prices: launch.gg_model_prices.clone(),
+            // …and the single model's list price for a non-gg run, on the same terms.
+            model_prices: launch.model_prices,
         }
     }
 }

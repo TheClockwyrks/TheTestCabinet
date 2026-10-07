@@ -8,13 +8,13 @@
 //!   depends on this crate with `default-features = false` and uses it to carry
 //!   trace context across HTTP and subprocess boundaries.
 //!
-//! - **[`init`]** (the `otlp` feature): the binary-facing initializer. It builds
+//! - **[`init()`]** (the `otlp` feature): the binary-facing initializer. It builds
 //!   the SDK providers (traces + metrics + logs), exports them over vendor-
 //!   neutral OTLP (HTTP/protobuf), and returns a [`TelemetryGuard`] that flushes
 //!   on drop. Binaries enable `features = ["otlp"]`.
 //!
 //! Telemetry is **opt-in**: if `OTEL_EXPORTER_OTLP_ENDPOINT` is unset/blank,
-//! [`init`] installs only the existing fmt logger (no exporter, no panic).
+//! [`init()`] installs only the existing fmt logger (no exporter, no panic).
 //!
 //! # Binary call site
 //!

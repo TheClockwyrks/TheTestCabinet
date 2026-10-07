@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import { CAMERA_FOV, cameraPosition, framing, type Vec3 } from "./voxelScene";
 
 // Build a PartMesh whose only meaningful field for framing is `positions`: the

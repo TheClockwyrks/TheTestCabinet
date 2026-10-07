@@ -51,12 +51,12 @@ Each archetype's share of a wave shifts over the run, so tougher archetypes **ph
 in** by probability rather than at a hard gate. Illustrative (for `N = 15`):
 
 | Wave band | Runner | Breaker | Sapper | Colossus |
-| --- | --- | --- | --- | --- |
-| 1–3 | `100%` | — | — | — |
-| 4–6 | `70%` | `30%` | — | — |
-| 7–9 | `45%` | `35%` | `20%` | — |
-| 10–12 | `30%` | `35%` | `30%` | `5%` |
-| 13–15 | `20%` | `30%` | `30%` | `20%` |
+| --------- | ------ | ------- | ------ | -------- |
+| 1–3       | `100%` | —       | —      | —        |
+| 4–6       | `70%`  | `30%`   | —      | —        |
+| 7–9       | `45%`  | `35%`   | `20%`  | —        |
+| 10–12     | `30%`  | `35%`   | `30%`  | `5%`     |
+| 13–15     | `20%`  | `30%`   | `30%`  | `20%`    |
 
 So **Runners** carry the opening, **Breakers** join around wave 4, **Sappers** around
 wave 7 (the network becomes a target you must defend), and the **Colossus** appears in
@@ -68,12 +68,12 @@ Whatever archetype is rolled, its **tier** (`specs/enemies.md`) rolls from a sch
 that ramps toward Tier III. Illustrative:
 
 | Wave band | Tier I | Tier II | Tier III |
-| --- | --- | --- | --- |
-| 1–3 | `100%` | — | — |
-| 4–7 | `60%` | `40%` | — |
-| 8–10 | `25%` | `55%` | `20%` |
-| 11–13 | — | `45%` | `55%` |
-| 14–15 | — | `15%` | `85%` |
+| --------- | ------ | ------- | -------- |
+| 1–3       | `100%` | —       | —        |
+| 4–7       | `60%`  | `40%`   | —        |
+| 8–10      | `25%`  | `55%`   | `20%`    |
+| 11–13     | —      | `45%`   | `55%`    |
+| 14–15     | —      | `15%`   | `85%`    |
 
 The **shape is required**: the run opens **100% Runner /
 Tier I** (easy), tougher archetypes and tiers ramp in, there is a **mixed middle band**
@@ -117,8 +117,8 @@ late wave) to face the harder compositions directly. Starting at a later wave:
 - grants a **larger starting treasury** and a **head-start build interval** scaled to
   the skipped waves, so the defense is not expected to be built from `$600` against a
   late-wave assault. (Choose a sensible scaling — for example the funds a patient
-  player would have banked by then — the requirement is that a late start is *playable
-  and fair*, not that it reproduces an exact economy.)
+  player would have banked by then — the requirement is that a late start is _playable
+  and fair_, not that it reproduces an exact economy.)
 
 The survival clock and the displayed kill counter still start at `0`. This lets a
 player — or a viewer — jump straight to the tougher late content without first

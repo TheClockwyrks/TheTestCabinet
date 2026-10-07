@@ -5,8 +5,13 @@
 // driven from code behaves identically to one played by hand. It only sets up situations and
 // steps the real systems forward; it never fabricates an outcome. See specs/instrumentation.md.
 
-import { FIXED_STEP, type Branch, type TargetingMode, type TowerKind } from "./constants";
-import { mapById } from "./board";
+import {
+  FIXED_STEP,
+  type Branch,
+  type TargetingMode,
+  type TowerKind,
+} from "./constants";
+import { MAPS } from "./board";
 import type { Game, ValenceSnapshot } from "./sim";
 
 // A caller uses standard KeyboardEvent.code values (specs/instrumentation.md); the game's
@@ -43,6 +48,11 @@ export interface ValenceDebugApi {
   /** Advance the simulation by exactly `ticks` fixed steps. `ticks` must be a non-negative integer. */
   step(ticks: number): void;
   snapshot(): ValenceSnapshot;
+  /**
+   * Bring every value this surface reports into agreement with the board as it now
+   * stands, without advancing the simulation by any amount.
+   */
+  reconcile(): void;
   setAutoStep(enabled: boolean): void;
   selectMap(mapId: string): void;
   goToMapSelect(): void;
@@ -53,7 +63,11 @@ export interface ValenceDebugApi {
   /** Open a live round with no wave that does not end on its own — the scenario board. */
   startScenario(): boolean;
   spawnUnit(spec?: SpawnSpec): number;
-  placeTower(type: TowerKind, x: number, y: number): { ok: boolean; id: number | null; reason: string | null };
+  placeTower(
+    type: TowerKind,
+    x: number,
+    y: number,
+  ): { ok: boolean; id: number | null; reason: string | null };
   upgradeTower(id: number, branch?: Branch): boolean;
   sellTower(id: number): number;
   selectTower(id: number | null): void;
@@ -84,7 +98,9 @@ export function installDebugApi(game: Game, processInput: () => void): void {
     // Takes the clock (manual stepping) for the rest of the driven session.
     step(ticks) {
       if (!Number.isInteger(ticks) || ticks < 0) {
-        throw new Error(`step(ticks) expects a non-negative integer tick count, got ${ticks}`);
+        throw new Error(
+          `step(ticks) expects a non-negative integer tick count, got ${ticks}`,
+        );
       }
       game.autoStep = false;
       for (let i = 0; i < ticks; i++) game.fixedStep(FIXED_STEP);
@@ -94,12 +110,35 @@ export function installDebugApi(game: Game, processInput: () => void): void {
       return game.debugSnapshot();
     },
 
+    // Re-derive every reading that is a function of the board — a unit's position, the
+    // detectors and auras reaching it, a tower's stats and what it is aiming at — from the
+    // board exactly as it now stands (specs/instrumentation.md, "Reconciling derived
+    // state"). It moves no clock and fires nothing, so a caller poses a situation,
+    // reconciles it, and reads back a description of the situation it posed rather than of
+    // the one before it. `step()` is not a substitute: a step would move the very thing
+    // the pose just placed.
+    reconcile() {
+      game.reconcile();
+    },
+
     setAutoStep(enabled) {
       game.autoStep = Boolean(enabled);
     },
 
+    // The map ids are an enumerated domain (specs/instrumentation.md), so an id naming
+    // none of them fails loudly rather than starting a run on a map nobody asked for — a
+    // silent fallback would have every later reading answer for the wrong board. The
+    // screen the game is on is not consulted: this is a control operation, and a
+    // player's route to the map select is not a condition on it.
     selectMap(mapId) {
-      game.startOn(mapById(mapId));
+      const map = MAPS.find((m) => m.id === mapId);
+      if (map === undefined) {
+        throw new Error(
+          `selectMap: no map carries the id ${String(mapId)}; the ids are ` +
+            MAPS.map((m) => m.id).join(", "),
+        );
+      }
+      game.startOn(map);
     },
 
     goToMapSelect() {
@@ -118,8 +157,13 @@ export function installDebugApi(game: Game, processInput: () => void): void {
       game.debugSetRound(n);
     },
 
+    // The round-start TRANSACTION, not the player's route to the START ROUND control:
+    // `performStartRound` launches the round from wherever the game stands, where
+    // `game.startRound()` is the on-screen control and keeps the phase check that decides
+    // whether a player could have pressed it (specs/instrumentation.md, "Control
+    // operations").
     startRound() {
-      game.startRound();
+      game.performStartRound();
     },
 
     startScenario() {
@@ -163,12 +207,16 @@ export function installDebugApi(game: Game, processInput: () => void): void {
     // (a menu move, a confirm, a pause, a mute, a speed cycle, a tower/inspector hotkey) takes
     // effect immediately. This does not change autoStep.
     keyDown(code) {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code, key: keyForCode(code) }));
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code, key: keyForCode(code) }),
+      );
       processInput();
     },
 
     keyUp(code) {
-      window.dispatchEvent(new KeyboardEvent("keyup", { code, key: keyForCode(code) }));
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code, key: keyForCode(code) }),
+      );
     },
 
     press(code) {

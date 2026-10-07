@@ -99,7 +99,7 @@ fn a_submission_that_runs_out_of_fuel_is_classified_as_out_of_fuel() {
     let err = submission
         .invoke(scenario)
         .expect_err("a starved submission fails the run");
-    assert!(matches!(err, InvokeError::OutOfFuel), "got {err:?}");
+    assert!(matches!(err, InvokeError::OutOfFuel { .. }), "got {err:?}");
 }
 
 #[test]

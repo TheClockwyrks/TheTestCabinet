@@ -1,11 +1,11 @@
 # Foray Seed Cache — drawing brief
 
-You are drawing the **seed cache**, a single 16×16 sprite for *Foray*, a
+You are drawing the **seed cache**, a single 16×16 sprite for _Foray_, a
 top-down ant-colony raiding game. Two colonies raid each other's territory for
 seeds; a **seed cache is the scorable resource** sitting on the board — what a
-raider grabs, carries home, and banks for points. You are drawing the *cache on
-the board*. Seeds belong to **neither colony** — they are a shared prize, so the
-sprite is *not* recolored (see **Palette**).
+raider grabs, carries home, and banks for points. You are drawing the _cache on
+the board_. Seeds belong to **neither colony** — they are a shared prize, so the
+sprite is _not_ recolored (see **Palette**).
 
 ## The canvas
 
@@ -35,11 +35,11 @@ A seed cache is **shared and never recolored** — the same gold for both coloni
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Seed gold (body) | `#e8c14a` |
+| Role                    | Hex       |
+| ----------------------- | --------- |
+| Seed gold (body)        | `#e8c14a` |
 | Bright gold (highlight) | `#ffd964` |
-| Outline | `#0a0806` |
+| Outline                 | `#0a0806` |
 
 The seeds are the gold `#e8c14a` with a brighter `#ffd964` glint, outlined in
 `#0a0806`. Do not use any other color — in particular no red or blue: the cache

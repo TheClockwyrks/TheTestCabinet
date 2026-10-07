@@ -1,0 +1,109 @@
+// assets/particle-on-pickup — the sparkle plays where an ore is banked.
+//
+// `specs/assets.md`: `ore-sparkle.json` fires when "An ore or gemstone is
+// collected" and carries "A brief bright glint at the pickup, tinted to the ore".
+//
+// THE CONTROL IS THE SAME CUT WITHOUT THE ORE. A pickup can only be driven by
+// cutting, and cutting has an effect of its own — the debris this same file's
+// sibling point decides — so the drawing near the cell is counted over TWO cuts
+// that differ in one thing: one cell holds an ore vein and the other holds the
+// band's plain rock. `specs/world.md` gives both the same `BAND_HEALTH`, so both
+// cuts take the same hits over the same frames and the two readings line up frame
+// for frame. The ore cut must draw at least as much at every frame after the break
+// and strictly more somewhere: that difference is the glint.
+//
+// The cell is a coreshell one so the cut is long and unmistakably ends at the
+// break, the miner's travel is held so it does not fall into the hole it made, and
+// the mine is otherwise cleared.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { PLAYABLE_COL_MIN, TILE } from "../constants";
+import {
+  captureReplay,
+  cellCenter,
+  createHarness,
+  driveCut,
+  layFloor,
+  layOre,
+  openScene,
+  pinMiner,
+  standOn,
+  worldToStage,
+  type Harness,
+} from "../harness";
+import { seriesNear } from "./effects";
+
+const ROW = 450;
+const COL = PLAYABLE_COL_MIN + 8;
+const ORE = "cindrite" as const;
+
+/** Frames read after the break, over which the glint has to show. */
+const FRAMES = 30;
+
+/** How far from the cell's centre a draw counts as being at the pickup. */
+const RADIUS = TILE * 1.5;
+
+/**
+ * Longer than the project's default, because this point drives TWO whole cuts and
+ * polls the cell after every frame of both — each poll a round trip to the page —
+ * before it reads a single frame of the glint. Alone that is a few seconds; on a
+ * loaded host every round trip stretches, and a point that ran out of time is
+ * reported as one the build FAILED, which would be the check's defect rather than
+ * the build's. The bound still catches a hung build; it just does not catch a
+ * busy host.
+ */
+const TIMEOUT_MS = 240_000;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it(
+  "draws more at the cell when the cut banks an ore",
+  { timeout: TIMEOUT_MS },
+  async () => {
+    /** Cut the same cell through, with or without an ore in it, and read after. */
+    const cut = async (
+      ore: boolean,
+    ): Promise<{ broke: boolean; banked: number; series: number[] }> => {
+      await openScene(h);
+      await layFloor(h, ROW);
+      if (ore) await layOre(h, COL, ROW, ORE);
+      await standOn(h, COL, ROW);
+      await pinMiner(h);
+      const driven = await driveCut(h, "down", { col: COL, row: ROW });
+      const snapshot = await h.snapshot();
+      const centre = cellCenter(COL, ROW);
+      const at = worldToStage(snapshot, centre.x, centre.y);
+      return {
+        broke: driven.broke,
+        banked: snapshot.cargo.slotsUsed,
+        series: await seriesNear(h, FRAMES, RADIUS, at),
+      };
+    };
+
+    const plain = await cut(false);
+    const banked = await captureReplay(h, "sparkle", () => cut(true));
+
+    const short = banked.series.filter(
+      (count, at) => count < plain.series[at],
+    ).length;
+    const extra = banked.series.filter(
+      (count, at) => count > plain.series[at],
+    ).length;
+
+    assertEqual(plain.broke, true, "specs/mining.md");
+    assertEqual(banked.broke, true, "specs/mining.md");
+    assertEqual(plain.banked, 0, "specs/mining.md");
+    assertEqual(banked.banked, 1, "specs/mining.md");
+    assertEqual(short, 0, "specs/assets.md");
+    assertGreaterThan(extra, 0, "specs/assets.md");
+  },
+);

@@ -1,0 +1,155 @@
+// Arc Foundry — reading a produced sprite off disk, for the animation checks.
+// CASE-PROVIDED.
+//
+// `specs/assets.md` fixes every produced file's path under `assets/` at the root
+// of the repository the build produced, and the validator project's root is that
+// same directory (`validation/vitest.config.ts`), so a cycle is addressed here by
+// exactly the path the specification names it at.
+//
+// WHY THE PIXELS AND NOT THE BYTES. "The four frames are not one image repeated"
+// is a statement about what is drawn, not about how it was compressed: two
+// byte-identical encodings of the same picture are the same image, and two
+// different encodings of the same picture are also the same image. So each frame
+// is decoded and compared as pixels. The decoder is `@napi-rs/canvas`, which the
+// workspace already carries as a development dependency for exactly this — a test
+// that needs a real 2D context outside a browser.
+
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
+import { fail } from "../assert";
+import { captureStill, type Harness } from "../harness";
+
+/** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
+export const ASSETS = fileURLToPath(new URL("../../assets/", import.meta.url));
+
+/** A decoded produced sprite. */
+export interface Bitmap {
+  /** The path under `assets/`, as the specification names it. */
+  readonly at: string;
+  readonly width: number;
+  readonly height: number;
+  /** Straight RGBA, four bytes per pixel, row by row. */
+  readonly data: Uint8ClampedArray;
+}
+
+/** The four frame files of a cycle rooted at `directory`, `0.png` .. `3.png`. */
+export function cycleFrames(directory: string): string[] {
+  return [0, 1, 2, 3].map((index) => `${directory}/${index}.png`);
+}
+
+/** Which of `paths` are not on disk, in the order given. */
+export function missing(paths: readonly string[]): string[] {
+  return paths.filter((path) => !existsSync(ASSETS + path));
+}
+
+/**
+ * Decode one produced sprite, or fail naming the path the specification fixes.
+ *
+ * A file that is absent, or that is present and does not decode as an image, is
+ * the same miss from a player's point of view: the frame the game asks for is not
+ * there.
+ */
+export async function decode(at: string): Promise<Bitmap> {
+  let image;
+  try {
+    image = await loadImage(ASSETS + at);
+  } catch (error) {
+    return fail(
+      `assets/${at} to be a produced sprite that decodes as an image ` +
+        `(specs/assets.md)`,
+      existsSync(ASSETS + at)
+        ? `it is on disk and did not decode: ${String(error)}`
+        : "it is not on disk",
+    );
+  }
+  const canvas = createCanvas(image.width, image.height);
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, image.width, image.height);
+  return {
+    at,
+    width: image.width,
+    height: image.height,
+    data: pixels.data as unknown as Uint8ClampedArray,
+  };
+}
+
+/** Every one of `paths`, decoded, in the order given. */
+export async function decodeAll(paths: readonly string[]): Promise<Bitmap[]> {
+  const out: Bitmap[] = [];
+  for (const path of paths) out.push(await decode(path));
+  return out;
+}
+
+/** Whether two decoded sprites are the same picture, pixel for pixel. */
+export function identical(a: Bitmap, b: Bitmap): boolean {
+  if (a.width !== b.width || a.height !== b.height) return false;
+  if (a.data.length !== b.data.length) return false;
+  for (let i = 0; i < a.data.length; i += 1) {
+    if (a.data[i] !== b.data[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether a cycle's frames are ONE PICTURE REPEATED.
+ *
+ * WHAT THE SPECIFICATION ASKS OF A CYCLE, in its own words: "what the cycles must
+ * deliver is that the Load visibly crackles, a firing structure visibly charges
+ * and discharges, and the Dynamo visibly seethes". That is a floor on what a
+ * cycle DOES when it is played, and it is the only thing `specs/assets.md` fixes
+ * about the frames inside one — the surrounding sentence licenses reuse ("a body
+ * may be reused across tints") rather than forbidding it.
+ *
+ * SO PAIRWISE DIFFERENCE IS NOT THE LINE. A cycle played as a loop shows movement
+ * as soon as it holds two pictures: a ping-pong (`0`, `1`, `0`, `1`) crackles
+ * frame after frame, and a hold-strike-hold (`0`, `0`, `1`, `0`) stamps once a
+ * loop. Failing either asks for a fourfold of distinct art the specification
+ * never asks for. A cycle whose four frames are ONE picture is the case that
+ * delivers nothing however fast it is played, and that is what this answers.
+ *
+ * A cycle with no frames is not one picture; the presence points decide that.
+ */
+export function onePicture(frames: readonly Bitmap[]): boolean {
+  const first = frames[0];
+  if (first === undefined) return false;
+  return frames.every((frame) => identical(first, frame));
+}
+
+/* -------------------------------------------------------------------------- */
+/* The picture beside the verdict                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Write this point's declared still, and never let taking it decide the point.
+ *
+ * These points are decided by reading files off disk, so the game does not enter
+ * into them: a build whose surface cannot be driven, or one that refuses the
+ * pose's own placements under a reading of `specs/yard.md` the placement points
+ * already score, must still pass the point about whether its cycles were
+ * produced. The pose below is evidence for the reviewer and nothing more, so a
+ * pose that throws is reported to the console rather than raised, and the
+ * assertions that follow read the files either way.
+ *
+ * WHAT A FAILED POSE LEAVES BEHIND IS NOTHING. The still is not taken over an
+ * un-posed frame: a picture of the wrong state under this output's name would
+ * show the reviewer something the item is not about, where an output that is not
+ * there is recorded absent and shows nothing.
+ */
+export async function evidence(
+  h: Harness,
+  outputId: string,
+  pose: () => Promise<void>,
+): Promise<void> {
+  try {
+    await pose();
+  } catch (error) {
+    console.warn(
+      `arc foundry: could not pose the still for \`${outputId}\`, so none is ` +
+        `recorded: ${String(error)}`,
+    );
+    return;
+  }
+  await captureStill(h, outputId);
+}

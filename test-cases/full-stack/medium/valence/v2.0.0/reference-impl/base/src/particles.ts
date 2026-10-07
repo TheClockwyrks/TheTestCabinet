@@ -1,13 +1,13 @@
 // Valence — the decomposition particle bursts (specs/assets.md).
 //
 // Each decomposition event fires the matching PRODUCED particle system, played LIVE
-// through @test-cabinet/particle-runtime's canvas binding — not a flat flash or a
+// through @clockwyrks/particle-runtime's canvas binding — not a flat flash or a
 // hand-coded effect. A burst is simulated on its own offscreen 128x128 canvas (the
 // system's field size) and composited additively over the board at the event's
 // position, so — being simulated — it varies shot to shot.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, FxKind } from "./types";
 
 const FIELD = 128; // the authored field size of every fx system
@@ -37,7 +37,9 @@ interface Live {
 
 export class Bursts {
   private live: Live[] = [];
-  constructor(private readonly systems: Record<FxKind, ParticleSystem | undefined>) {}
+  constructor(
+    private readonly systems: Record<FxKind, ParticleSystem | undefined>,
+  ) {}
 
   spawn(ev: FxEvent): void {
     const system = this.systems[ev.kind];
@@ -47,7 +49,10 @@ export class Bursts {
     canvas.height = FIELD;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const player = new ParticleCanvasPlayer(system, ctx, { composite: "lighter", clear: true });
+    const player = new ParticleCanvasPlayer(system, ctx, {
+      composite: "lighter",
+      clear: true,
+    });
     this.live.push({
       player,
       canvas,
@@ -64,14 +69,22 @@ export class Bursts {
       b.player.update(dt);
       b.age += dt * 1000;
     }
-    this.live = this.live.filter((b) => b.age < b.dur + 120 || b.player.simulator.liveCount > 0);
+    this.live = this.live.filter(
+      (b) => b.age < b.dur + 120 || b.player.simulator.liveCount > 0,
+    );
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
     const prev = ctx.globalCompositeOperation;
     ctx.globalCompositeOperation = "lighter";
     for (const b of this.live) {
-      ctx.drawImage(b.canvas, b.x - b.size / 2, b.y - b.size / 2, b.size, b.size);
+      ctx.drawImage(
+        b.canvas,
+        b.x - b.size / 2,
+        b.y - b.size / 2,
+        b.size,
+        b.size,
+      );
     }
     ctx.globalCompositeOperation = prev;
   }

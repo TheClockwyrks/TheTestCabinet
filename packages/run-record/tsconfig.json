@@ -11,5 +11,6 @@
     "noEmit": false,
     "allowImportingTsExtensions": false
   },
+  "references": [{ "path": "../asset-contract" }],
   "include": ["src"]
 }

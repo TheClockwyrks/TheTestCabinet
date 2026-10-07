@@ -25,6 +25,18 @@ pub struct Model {
     /// The reviewer's per-domain ratings as a JSON array of `{domain, rating}`.
     #[sea_orm(column_type = "Text")]
     pub ratings: String,
+    /// **Legacy:** the reviewer's per-domain aesthetic ratings as a JSON array of
+    /// `{domain, rating}`, from when the aesthetic channel was rated per scoring
+    /// domain. `[]` on every legacy-run review and on every new write — the channel
+    /// is now run-wide (see [`aesthetic`](Self::aesthetic)); kept so old rows keep
+    /// their tiers (reads collapse them to the worst).
+    #[sea_orm(column_type = "Text")]
+    pub aesthetics: String,
+    /// The reviewer's **run-wide** aesthetic tier (a lowercase wire token,
+    /// `legendary`…`slop`), carried only by a review of a validator-rated run.
+    /// `None` on a legacy run's review (no aesthetic channel) and on a
+    /// pre-migration row whose tiers live in [`aesthetics`](Self::aesthetics).
+    pub aesthetic: Option<String>,
     #[sea_orm(column_type = "Text")]
     pub writeup: String,
     /// The reviewer's checklist verdicts as a JSON array.

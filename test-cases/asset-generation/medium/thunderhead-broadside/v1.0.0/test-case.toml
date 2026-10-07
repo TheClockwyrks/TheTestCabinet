@@ -23,13 +23,15 @@ asset_kind = "sfx-sample"
 # `variants/`. This list is a root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# The output format. A stereo 44.1 kHz clip, capped at four seconds — long enough
-# for the whole broadside to bloom and its debris tail to settle.
+# The output format, and the one sample pack `sfx-sample` layers over. A stereo
+# 44.1 kHz clip, capped at four seconds — long enough for the whole broadside to
+# bloom and its debris tail to settle. The run container is staged with
+# `combat-core@0.1.0` and nothing else.
 [audio]
 sample_rate = 44100
 channels = "stereo"
 max_duration_ms = 4000
-sample_pack = "combat-core@0.1.0"
+packs = ["combat-core@0.1.0"]
 
 # The audio tool. `sfx-sample` is the only way to shape sound; it records every
 # operation to the action log and re-draws the waveform + spectrogram preview when

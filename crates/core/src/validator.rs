@@ -9,20 +9,21 @@
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
-use uuid::Uuid;
+use std::time::Duration;
 
 use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, ScriptOutputSpec, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
+use crate::install::{
+    INSTALL_RETRY_DELAY, INSTALL_TIMEOUT, install_with_retry_blocking, run_command_blocking,
+};
 use crate::performance_validator::PerformanceValidator;
 use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    ReviewItem, ReviewValidation, TestCaseVersion, TestType, Variant,
+    ReviewItem, ReviewOutput, ReviewValidation, TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
     Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
@@ -32,7 +33,12 @@ use crate::validation::{
 };
 
 /// Candidate output directories a static build may produce.
-const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
+///
+/// Public because the [code analyzer](crate::code_analysis) removes exactly these names
+/// from the tree it measures, and the two must agree: a directory this validator will
+/// serve a build out of is, by definition, build output rather than code the model wrote.
+/// One list, read from both sides, so adding a fourth cannot silently start counting it.
+pub const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
 
 /// A validator that builds the implementation and load-checks it in a browser.
 #[derive(Debug, Clone)]
@@ -41,6 +47,10 @@ pub struct BuildValidator {
     /// captures land in a fresh unique sub-directory of this, so concurrent runs
     /// never share a capture path.
     screenshot_dir: PathBuf,
+    /// How long a failed or incomplete install attempt waits before it is retried,
+    /// when this validator runs the install itself. [`INSTALL_RETRY_DELAY`] unless
+    /// [`with_install_retry_delay`](Self::with_install_retry_delay) says otherwise.
+    install_retry_delay: Duration,
 }
 
 impl BuildValidator {
@@ -50,7 +60,15 @@ impl BuildValidator {
     pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
         Self {
             screenshot_dir: screenshot_dir.into(),
+            install_retry_delay: INSTALL_RETRY_DELAY,
         }
+    }
+
+    /// Wait `delay` between install attempts instead of the production delay. Tests
+    /// inject zero so a fixture whose install fails does not wait out the real one.
+    pub fn with_install_retry_delay(mut self, delay: Duration) -> Self {
+        self.install_retry_delay = delay;
+        self
     }
 }
 
@@ -95,12 +113,25 @@ impl Validator for BuildValidator {
         // The two required build steps run in order and are each reported in the
         // summary. Install runs first; if it fails the build step is never
         // reached, so it stays `None`.
-        let install = run_step(repo, &build_commands.install);
+        //
+        // A [post-run stage](crate::post_run) may already have run this exact install
+        // over this exact tree, in which case the tree carries the step it recorded
+        // and that step is reported here verbatim, whatever it came to. Running the
+        // command again would clear `node_modules` and rebuild it from the same
+        // lockfile, which is the state the tree is already in; and an install that
+        // failed has spent every attempt the verified install allows, so its failure
+        // is final rather than an invitation to try again. Every other caller — `tcab
+        // validate` against an implementation directory foremost — finds nothing
+        // prepared and installs.
+        let install = match artifacts.prepared_install_for(&build_commands.install) {
+            Some(prepared) => prepared.step.clone(),
+            None => install_step(repo, &build_commands.install, self.install_retry_delay),
+        };
         if !install.succeeded {
             let detail = install.detail.clone().unwrap_or_default();
             return Ok(failed_load(&detail, Some(install), None, proof_results));
         }
-        let build = run_step(repo, &build_commands.build);
+        let build = build_step(repo, &build_commands.build);
         if !build.succeeded {
             let detail = build.detail.clone().unwrap_or_default();
             return Ok(failed_load(
@@ -127,11 +158,29 @@ impl Validator for BuildValidator {
         // The build succeeded and produced output: the load signal is positive.
         // Running the declared checks is best-effort on top of that.
         let (checks, detail) = self.run_checks(test_case, &output_dir, references);
-        // Drive the case's debug scripts (if any) against the served build to
-        // decide the objective review items and synthesize their proof media. A
-        // script that could not be driven fails the checklist point it backs (see
-        // `script_verdicts`); it no longer affects the run's terminal state.
-        let debug_scripts = self.run_debug_scripts(test_case, variant, repo, &output_dir);
+        // Decide the case's scripted review items and synthesize their evidence. Which
+        // path does that is a property of the tree in hand: a tree built on an engine
+        // runtime has the case's validators run over it as a vitest project, and a tree
+        // built on no runtime has its instrumentation driven in a browser. A script or
+        // validator that could not be run against a conformant build fails the checklist
+        // point it backs; neither affects the run's terminal state.
+        let debug_scripts = match scripted_validation(test_case, artifacts) {
+            ScriptedValidation::Vitest(engine) => crate::vitest_validator::run_vitest_suites(
+                test_case,
+                variant,
+                &engine,
+                artifacts,
+                &build_commands.install,
+                &repo.join(VALIDATION_MEDIA_DIR),
+            ),
+            ScriptedValidation::Browser => self.run_debug_scripts(
+                test_case,
+                variant,
+                engine_slug(artifacts),
+                repo,
+                &output_dir,
+            ),
+        };
         Ok(ValidationSummary {
             loaded: true,
             detail,
@@ -216,7 +265,9 @@ impl BuildValidator {
         // concurrent runs that share a view slug (for example the same test case
         // run against two models) would otherwise write to — and read from — the
         // same `{view}.png` path and score against each other's screenshot.
-        let captures = self.screenshot_dir.join(format!("run-{}", Uuid::new_v4()));
+        let captures = self
+            .screenshot_dir
+            .join(format!("run-{}", cuid2::create_id()));
 
         let mut results = Vec::with_capacity(test_case.checks.len());
         for check in &test_case.checks {
@@ -298,7 +349,7 @@ impl BuildValidator {
     /// For each review item that declares a `validation` script, this drives the
     /// model's build through the script against the case's
     /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
-    /// declared media into the collected tree under `.tcab/validation/` and reading
+    /// declared media into the collected tree under `.vendor/validation/` and reading
     /// back the auto verdicts. A script that could be run but did not complete
     /// against a conformant build is recorded with `ran = false` and fails the
     /// checklist point it backs (see [`script_verdicts`]). Returns an empty vec when
@@ -314,6 +365,7 @@ impl BuildValidator {
         &self,
         test_case: &TestCaseVersion,
         variant: &Variant,
+        engine: &str,
         repo: &Path,
         output_dir: &Path,
     ) -> Vec<DebugScriptResult> {
@@ -325,10 +377,11 @@ impl BuildValidator {
         let media_dir = repo.join(VALIDATION_MEDIA_DIR);
 
         // Drive the case's scripted items against the served build, capturing the
-        // *actual* media into the run's `.tcab/validation/` tree. `None` means there
+        // *actual* media into the run's `.vendor/validation/` tree. `None` means there
         // is nothing to do (no scripted items) or nothing can be done (no browser) —
         // either way no results and no gate.
-        let Some(drives) = drive_scripted_items(test_case, variant, &server.url(), &media_dir)
+        let Some(drives) =
+            drive_scripted_items(test_case, variant, engine, &server.url(), &media_dir)
         else {
             return Vec::new();
         };
@@ -344,6 +397,12 @@ impl BuildValidator {
                 gates: drive.gates,
                 ran: drive.ran,
                 precondition_unmet: drive.precondition_unmet,
+                // A browser drive's only inconclusive answer is the script saying it
+                // could not pose its scenario. Anything the host could not do at all
+                // degrades the whole stage rather than reaching here.
+                inconclusive: drive
+                    .precondition_unmet
+                    .then_some(crate::validation::Inconclusive::PreconditionUnmet),
                 verdicts: script_verdicts(
                     &drive.verdict_id,
                     drive.ran,
@@ -364,6 +423,52 @@ impl BuildValidator {
                     .collect(),
             })
             .collect()
+    }
+}
+
+/// The slug of the [engine](crate::engine) a collected tree was built on, which is
+/// [`crate::engine::NONE_SLUG`] for a tree seeded with no runtime. It selects both
+/// the validation path and the run's checklist (see
+/// [`TestCaseVersion::review_items_for_engine`]).
+pub(crate) fn engine_slug(artifacts: &ArtifactCollection) -> &str {
+    artifacts
+        .engine
+        .as_ref()
+        .map_or(crate::engine::NONE_SLUG, |engine| engine.slug())
+}
+
+/// Which path decides a case's scripted review points for a given collected tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ScriptedValidation {
+    /// The case ships a validator project for the run's [engine](crate::engine): a
+    /// vitest project run in process against the build's own modules (see
+    /// [`crate::vitest_validator`]), carrying the engine slug whose project runs.
+    Vitest(String),
+    /// The case ships no validator project for the run's engine, so its points are
+    /// decided by driving the build's
+    /// [instrumentation](crate::test_case::Instrumentation) in a browser.
+    Browser,
+}
+
+/// The scripted-validation path for `test_case` over `artifacts`.
+///
+/// The question is whether the case ships a validator project for the engine the
+/// run was built on, which is a fact about the case and the tree together: a case
+/// declares its validators per engine, and the tree records which engine it was
+/// seeded for. A case that ships one has its points decided in process, against the
+/// build's own modules, whether or not that engine vendors a runtime — an
+/// engineless project is TypeScript a suite can import exactly as an engine-backed
+/// one is. A case that ships none has its build driven in a browser, which is how
+/// every case predating validator projects is decided.
+pub(crate) fn scripted_validation(
+    test_case: &TestCaseVersion,
+    artifacts: &ArtifactCollection,
+) -> ScriptedValidation {
+    let slug = engine_slug(artifacts);
+    if crate::vitest_validator::has_project(test_case, slug) {
+        ScriptedValidation::Vitest(slug.to_string())
+    } else {
+        ScriptedValidation::Browser
     }
 }
 
@@ -486,59 +591,39 @@ pub struct ScriptedOutput {
 /// One scripted verdict unit to drive: a whole review item (validated as a whole) or
 /// one of its sub-items, resolved to its verdict id, display title, and validation
 /// driver. Borrows the driver from the caller's `review_items_for` list.
-struct DriveUnit<'a> {
-    item_id: String,
-    sub_item_id: Option<String>,
+pub(crate) struct DriveUnit<'a> {
+    pub(crate) item_id: String,
+    pub(crate) sub_item_id: Option<String>,
     /// The verdict id (`<item>` or `<item>.<sub>`) that keys the auto verdict and media.
-    verdict_id: String,
+    pub(crate) verdict_id: String,
     /// The unit's own display title (the sub-item's, or the item's), no category prefix.
-    title: String,
+    pub(crate) title: String,
     /// The backing category/item's title, for grouping under its category.
-    category_title: String,
+    pub(crate) category_title: String,
     /// Whether this unit is scored: `true` for an ordinary point, `false` when the
     /// backing review point is excluded from scoring for the version (see
-    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto the
+    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`](crate::test_case::SubReviewItem::scored)). Carried onto the
     /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
     /// run because it is not scored at all.
-    gates: bool,
-    validation: &'a ReviewValidation,
+    pub(crate) gates: bool,
+    pub(crate) validation: &'a ReviewValidation,
 }
 
-/// Drive every scripted verdict unit of `variant` against the served build at `url`,
-/// capturing each declared media output into `media_dir` under its flat, addressable
-/// `<verdict>__<output>.<ext>` name ([`validation_media_name`]).
+/// Flatten `items` into the verdict units a case's automated validation decides.
 ///
-/// A unit is a verdict-bearing point: a whole review item that carries validation (it
-/// has no sub-items), or a sub-item that does. Each unit has its own script, its own
-/// verdict, and its own proof media keyed by the verdict id, so a reviewer can verify
-/// each sub-item independently.
+/// An item validated as a whole contributes one unit keyed by its own id; an item
+/// with sub-items contributes one unit per validated sub-item keyed by
+/// `<item>.<sub>`. Item-level validation and sub-items are mutually exclusive, so at
+/// most one branch fires per item. Both validation paths — the browser drive and the
+/// [vitest runner](crate::vitest_validator) — read their work list from here, so one
+/// checklist flattens into the same units whichever path decides them.
 ///
-/// This is the shared engine behind both automated-validation media flows: the
-/// per-run [`BuildValidator`] drives the *model's* build to synthesize the *actual*
-/// media, and `tcab publish-reference` drives the *reference implementation* once to
-/// synthesize the case's *baseline* media (see [`capture_baseline_media`]). The two
-/// differ only in which build is served and where the media lands; the drive itself
-/// is identical.
-///
-/// Returns `None` — nothing to record, no gate — when the case declares no
-/// [instrumentation](crate::test_case::Instrumentation), no scripted units, or the
-/// host has no browser to drive with (the degrade-don't-fail stance the whole
-/// validator takes). Otherwise returns one entry per scripted unit; a `ran = false`
-/// entry records a debug-API contract failure, which the per-run path turns into a
-/// failed verdict on the checklist point it backs (see `script_verdicts`).
-pub fn drive_scripted_items(
-    test_case: &TestCaseVersion,
-    variant: &Variant,
-    url: &str,
-    media_dir: &Path,
-) -> Option<Vec<ScriptedItemDrive>> {
-    let instrumentation = test_case.instrumentation.as_ref()?;
-    let items = test_case.review_items_for(variant);
-    // Flatten items into verdict units: an item validated as a whole contributes one
-    // unit keyed by its own id; an item with sub-items contributes one unit per
-    // validated sub-item keyed by `<item>.<sub>` (item-level validation and sub-items
-    // are mutually exclusive, so at most one branch fires per item).
-    let units: Vec<DriveUnit> = items
+/// `items` is already the run's own checklist
+/// ([`TestCaseVersion::review_items_for_engine`]): a point whose validator does not
+/// cover the run's engine is gone before this sees it, so every unit here belongs to
+/// the run and nothing filters twice.
+pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
+    items
         .iter()
         .flat_map(|item| {
             let own = item.validation.as_ref().map(|validation| DriveUnit {
@@ -567,7 +652,43 @@ pub fn drive_scripted_items(
             });
             own.into_iter().chain(subs)
         })
-        .collect();
+        .collect()
+}
+
+/// Drive every scripted verdict unit of `variant` against the served build at `url`,
+/// capturing each declared media output into `media_dir` under its flat, addressable
+/// `<verdict>__<output>.<ext>` name ([`validation_media_name`]).
+///
+/// A unit is a verdict-bearing point: a whole review item that carries validation (it
+/// has no sub-items), or a sub-item that does. Each unit has its own script, its own
+/// verdict, and its own proof media keyed by the verdict id, so a reviewer can verify
+/// each sub-item independently. The units come from the checklist `engine` gives the
+/// run ([`TestCaseVersion::review_items_for_engine`]), so a point whose validator
+/// does not cover the engine the build was made on is never driven.
+///
+/// This is the shared engine behind both automated-validation media flows: the
+/// per-run [`BuildValidator`] drives the *model's* build to synthesize the *actual*
+/// media, and `tcab publish-reference` drives the *reference implementation* once to
+/// synthesize the case's *baseline* media (see [`capture_baseline_media`]). The two
+/// differ only in which build is served and where the media lands; the drive itself
+/// is identical.
+///
+/// Returns `None` — nothing to record, no gate — when the case declares no
+/// [instrumentation](crate::test_case::Instrumentation), no scripted units, or the
+/// host has no browser to drive with (the degrade-don't-fail stance the whole
+/// validator takes). Otherwise returns one entry per scripted unit; a `ran = false`
+/// entry records a debug-API contract failure, which the per-run path turns into a
+/// failed verdict on the checklist point it backs (see `script_verdicts`).
+pub fn drive_scripted_items(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    engine: &str,
+    url: &str,
+    media_dir: &Path,
+) -> Option<Vec<ScriptedItemDrive>> {
+    let instrumentation = test_case.instrumentation.as_ref()?;
+    let items = test_case.review_items_for_engine(variant, engine);
+    let units = drive_units(&items);
     if units.is_empty() {
         return None;
     }
@@ -586,12 +707,19 @@ pub fn drive_scripted_items(
             })
             .collect();
 
+        // A per-engine validator names a suite inside a validator project, not one
+        // script a browser can drive, so it has no host path here. A case declaring
+        // them ships a project for every engine it supports, which is what this path
+        // is chosen over — so reaching this with one is a case whose project went
+        // missing, and the whole stage degrades rather than deciding the point.
+        let script = validation.script.as_deref()?;
+
         // Drive the build. An `Err` is an infra fault (no browser), which is
         // host-wide — degrade the entire stage rather than gate on the environment.
         let tmp = media_dir.join(format!(".drive-{}", unit.verdict_id));
         let drive = match browser::drive_script(
             url,
-            &validation.script,
+            script,
             handle,
             instrumentation.tick_hz,
             &tmp,
@@ -603,7 +731,7 @@ pub fn drive_scripted_items(
 
         // Relocate the captured media to their stable, addressable flat names (keyed by
         // the verdict id) and record whether each declared output was produced.
-        let outputs = relocate_outputs(validation, &unit.verdict_id, media_dir, &tmp);
+        let outputs = relocate_outputs(&validation.outputs, &unit.verdict_id, media_dir, &tmp);
         let _ = std::fs::remove_dir_all(&tmp);
 
         results.push(ScriptedItemDrive {
@@ -624,37 +752,154 @@ pub fn drive_scripted_items(
     Some(results)
 }
 
+/// One verdict unit's outcome as a baseline capture reports it: enough for the
+/// capturing command to say what was written and what went wrong, and nothing more.
+///
+/// The two capture paths report through this rather than through their own shapes.
+/// A browser drive produces [`ScriptedItemDrive`]s and a validator project produces
+/// [`DebugScriptResult`]s; both carry far more than a capture needs (verdicts,
+/// assertions, the checklist framing), because both were built to *decide* a run's
+/// points. A baseline decides nothing — the reference implementation is the answer,
+/// not a submission — so what it reports is which unit ran and how many outputs it
+/// left behind.
+#[derive(Debug, Clone)]
+pub struct BaselineUnit {
+    /// The backing review item's id, for naming the unit in the operator's output.
+    pub item_id: String,
+    /// Whether the unit's script or suite ran clean against the reference
+    /// implementation. A `false` here is worth surfacing: the reference is supposed
+    /// to be conformant.
+    pub ran: bool,
+    /// Detail about a failed or degraded capture, or `None` when it ran clean.
+    pub detail: Option<String>,
+    /// How many of the unit's declared outputs actually turned up.
+    pub outputs_present: usize,
+}
+
 /// Synthesize a case variant's **baseline** validation media once, from its
-/// reference implementation's already-built static site at `build_dir`, writing each
-/// declared output into `baseline_dir` under its flat [`validation_media_name`].
+/// reference implementation for `engine`, writing each declared output into
+/// `baseline_dir` under its flat [`validation_media_name`].
 ///
 /// This is the ingest-time counterpart to the per-run *actual* capture: the baseline
 /// is a fixed property of the case *version* (the reference implementation does not
-/// change per run), so it is generated exactly once — by `tcab publish-reference`,
-/// which owns building the reference implementation — and committed under the version
-/// folder, rather than re-driven on every run. Serves the build over an ephemeral
-/// static server and delegates to [`drive_scripted_items`]; see there for the `None`
-/// degrade cases.
+/// change per run), so it is generated exactly once — by
+/// [`tcab capture-baselines`](https://docs.testcabinet.ai/components/cli/overview/#commands),
+/// which owns building the reference implementation — and committed under the
+/// version folder, rather than re-driven on every run.
+///
+/// Which path produces it is the same question the per-run capture asks — does the
+/// case ship a validator project for this engine? — and it is answered the same way:
+/// a case that ships one has its baseline recorded by running THAT project against
+/// the reference implementation, so the reviewer's two panes come from the same
+/// suites driving the same scenarios, which is the only way the comparison means
+/// anything. A case that ships none has its reference build served and driven in a
+/// browser.
+///
+/// `reference_dir` is the reference implementation's own project directory and
+/// `build_dir` its built static output; the validator-project path needs the former
+/// (it imports the build's modules) and the browser path the latter (it serves the
+/// site). The project path stages the case's validators into `reference_dir` and
+/// removes them again, so a capture leaves the committed reference implementation as
+/// it found it.
+///
+/// Returns `None` when there is nothing to capture (no instrumentation, no scripted
+/// units) or nothing can capture it (the browser path with no browser) — see
+/// [`drive_scripted_items`] for the degrade cases.
 pub fn capture_baseline_media(
     test_case: &TestCaseVersion,
     variant: &Variant,
+    engine: &str,
+    reference_dir: &Path,
     build_dir: &Path,
     baseline_dir: &Path,
-) -> Option<Vec<ScriptedItemDrive>> {
+) -> Option<Vec<BaselineUnit>> {
+    if crate::vitest_validator::has_project(test_case, engine) {
+        return capture_baseline_suites(test_case, variant, engine, reference_dir, baseline_dir);
+    }
     let server = StaticServer::start(build_dir.to_path_buf()).ok()?;
-    drive_scripted_items(test_case, variant, &server.url(), baseline_dir)
+    let drives = drive_scripted_items(test_case, variant, engine, &server.url(), baseline_dir)?;
+    Some(
+        drives
+            .into_iter()
+            .map(|drive| BaselineUnit {
+                item_id: drive.item_id,
+                ran: drive.ran,
+                detail: drive.detail,
+                outputs_present: drive.outputs.iter().filter(|out| out.present).count(),
+            })
+            .collect(),
+    )
+}
+
+/// Capture the baseline by running the case's validator project for `engine` against
+/// the reference implementation at `reference_dir`.
+///
+/// The reference implementation is a built, installed project — `tcab
+/// capture-baselines` has just run the case's own install and build from it — so the
+/// suites run over it exactly as they run over a model's collected tree, and the same
+/// [`crate::vitest_validator::run_vitest_suites`] does both.
+///
+/// A reference implementation is committed, so the capture leaves it as it found it:
+/// the suite runner takes its staged project back out and the media scaffolding goes
+/// with the outputs it held. Everything else the capture touches (`node_modules`, the
+/// build output) the build step put there and the case's own ignore rules already
+/// cover.
+fn capture_baseline_suites(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    engine: &str,
+    reference_dir: &Path,
+    baseline_dir: &Path,
+) -> Option<Vec<BaselineUnit>> {
+    let build = test_case.build.as_ref()?;
+    let artifacts = ArtifactCollection::new(reference_dir.to_path_buf());
+    let results = crate::vitest_validator::run_vitest_suites(
+        test_case,
+        variant,
+        engine,
+        &artifacts,
+        &build.install,
+        baseline_dir,
+    );
+    if results.is_empty() {
+        return None;
+    }
+    Some(
+        results
+            .into_iter()
+            .map(|result| BaselineUnit {
+                item_id: result.item_id,
+                ran: result.ran,
+                detail: result.detail,
+                outputs_present: result
+                    .outputs
+                    .iter()
+                    .filter(|out| out.actual_present)
+                    .count(),
+            })
+            .collect(),
+    )
 }
 
 /// The run-root-relative directory synthesized *actual* validation media is
 /// collected under, so it travels with the published implementation and is served
 /// by [`crate::playable::serve_validation_file`].
-pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
+pub(crate) const VALIDATION_MEDIA_DIR: &str = ".vendor/validation";
 
-/// The version-folder-relative directory a case's committed **baseline** validation
-/// media lives under, one sub-directory per variant: `validation-baseline/<variant>/`.
-/// Synthesized once at publish-reference time from the reference implementation and
-/// committed beside the case, then served case-scoped by the backend — the invariant
-/// counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
+/// The directory a case version's **baseline** validation media lives under, one
+/// sub-directory per engine and variant: `validation-baseline/<engine>/<variant>/`.
+/// Synthesized once at capture-baselines time from the reference implementation and
+/// committed to the cold-storage submodule beneath the version's mirrored path (see
+/// [`crate::ColdStorage::validation_baseline_dir`]). Ingest copies it into the stored
+/// version under this same name, and the backend serves it case-scoped from there —
+/// the invariant counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
+///
+/// The engine comes first because it is what makes two captures of the same variant
+/// different media: a variant has one reference implementation PER ENGINE, and the
+/// two draw the same game through different runtimes, so their recordings are not
+/// interchangeable. A reviewer comparing a `simple-2d` run against an engineless
+/// build's frames would be shown a difference between two runtimes and read it as a
+/// difference in the build.
 pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 
 /// The version-folder-relative directory a case's reporter-side automated-validation
@@ -670,15 +915,28 @@ fn media_kind_tag(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "image",
         MediaKind::Video => "video",
+        MediaKind::Replay => "replay",
     }
 }
 
 /// The file extension a synthesized output is captured under, by kind: a still is a
-/// PNG, a clip is the `.webm` Playwright records natively.
+/// PNG, a clip is the `.webm` Playwright records natively, and a draw-command
+/// recording is the gzipped JSON document the engine's recorder hands back.
+///
+/// A recording is stored compressed because its format is deliberately repetitive.
+/// Every frame restates the drawing state it inherited so that any frame can be
+/// drawn without drawing the frames before it, and consecutive frames of a game
+/// issue very nearly the same operations as each other. That redundancy is what
+/// makes seeking and side-by-side scrubbing work at all, and it is also exactly
+/// what gzip removes: a real capture stores tens of times smaller, which is the
+/// difference between a run whose recordings are tens of megabytes and one whose
+/// recordings are a few. The name carries both extensions, so what the bytes
+/// are and how they are framed are each readable off the file.
 pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",
         MediaKind::Video => "webm",
+        MediaKind::Replay => "json.gz",
     }
 }
 
@@ -692,11 +950,15 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 /// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
 /// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
 /// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
-/// unchanged.
+/// unchanged, and so does a recording: a `.json.gz` document is inflated by the
+/// browser and drawn by the console's own player, so there is no format the gallery
+/// would need it converted into and no reason to publish it any larger than it is
+/// stored.
 pub fn validation_published_extension(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "png",
         MediaKind::Video => "mp4",
+        MediaKind::Replay => "json.gz",
     }
 }
 
@@ -712,23 +974,79 @@ pub fn validation_published_extension(kind: MediaKind) -> &'static str {
 /// `.`), so the name stays a single path segment and cannot escape the media directory.
 ///
 /// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
-/// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
-/// <variant>/`) use this same name; the directory, not the name, tells them apart.
+/// case's *baseline* media (under the version's [`VALIDATION_BASELINE_DIR`]`/
+/// <engine>/<variant>/`) use this same name; the directory, not the name, tells them
+/// apart.
 pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
     let ext = validation_output_extension(kind);
     format!("{verdict_id}__{output_id}.{ext}")
 }
 
-/// Move each declared output's captured file from a drive's temp directory to its
-/// stable flat name under `media_dir`, returning the per-output presence record.
-fn relocate_outputs(
-    validation: &ReviewValidation,
+/// The prefix every file of a recording's **shared image store** carries:
+/// `img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer, where
+/// `<id>` is derived from the bytes themselves. Only the first is written today —
+/// see [`is_validation_image_name`].
+///
+/// A draw-command recording's images are the bulk of its weight — PNG payloads that
+/// gzip cannot compress — and the same sprite is drawn by dozens of a run's
+/// recordings. So the harness writes each *unique* image once as a flat file beside
+/// the recordings and the entry inside the document names that file instead of
+/// carrying base64 of it. The producer is `@clockwyrks/case-harness`'s
+/// `replay/store.ts`, which mirrors this constant as `IMAGE_STORE_PREFIX`; the two
+/// spellings must agree, and there is no negotiation between them — a name that does
+/// not match here simply does not travel.
+///
+/// A store file deliberately shares the flat namespace of
+/// [`validation_media_name`]'s `<verdict>__<output>.<ext>`, and can never collide
+/// with one: a declared output's name always carries `__`, and a store file's never
+/// does. That is what lets it route through the one-segment `/validation/{file}`
+/// endpoints, publish through the media paths, and resolve in every console through
+/// the very resolver the recording it belongs to came from — with no new route, key
+/// shape, or lookup anywhere.
+pub const VALIDATION_IMAGE_PREFIX: &str = "img.";
+
+/// Whether `file` names a file of a recording's shared image store rather than a
+/// declared output.
+///
+/// Both publish paths — the driver's mirror into the backend store and the snapshot
+/// builder's upload — are driven off the run record's *declared* outputs. A store
+/// file is on no record: it backs no verdict and is named by its own bytes, so it
+/// has to be recognized off the directory instead, and this is the one place that
+/// judgement is written down.
+///
+/// The extension is part of the check and not decoration. The namespace admits
+/// exactly two shapes of bytes — a PNG bitmap and a headerless RGBA buffer — so a
+/// name carrying neither extension is not something this side of the contract knows
+/// how to serve a content type for, and it is left where it is rather than published
+/// as an unlabelled blob. Today only the first is ever written: the harness leaves a
+/// pixel buffer inline, where the recording's own gzip compresses raw RGBA far
+/// better than a flat file could be served. `.bin` is recognized here because the
+/// recording format admits a stored buffer and a player resolves one, so the day
+/// that becomes worth writing it travels without this side changing.
+pub fn is_validation_image_name(file: &str) -> bool {
+    file.starts_with(VALIDATION_IMAGE_PREFIX) && (file.ends_with(".png") || file.ends_with(".bin"))
+}
+
+/// Move each declared output's produced file from `tmp` to its stable flat name
+/// under `media_dir`, returning the per-output presence record.
+///
+/// `tmp` is wherever the producer was told to write, named by output id and
+/// nothing else: the temp directory a browser drive captures into, or the
+/// per-suite directory a [vitest validator](crate::vitest_validator) writes its
+/// recordings to. Both arrive here because the destination is the same in both
+/// cases — a name keyed by the verdict the media backs, flat enough to route
+/// through the one-segment media endpoints.
+///
+/// A file that is not there is recorded absent rather than treated as a failure.
+/// Media is the evidence beside a verdict, not the verdict: what decides the point
+/// is the drive's own outcome, or the suite's assertions.
+pub(crate) fn relocate_outputs(
+    outputs: &[ReviewOutput],
     verdict_id: &str,
     media_dir: &Path,
     tmp: &Path,
 ) -> Vec<ScriptedOutput> {
-    validation
-        .outputs
+    outputs
         .iter()
         .map(|output| {
             let ext = validation_output_extension(output.kind);
@@ -1946,7 +2264,7 @@ struct SystemJson {
 struct SystemJsonEmitter {
     /// The emission source, an internally-tagged `{"mode":"rate","rate":…}` or
     /// `{"mode":"burst","count":…,"atMs":…}` object (the shape `particle-core` and
-    /// `@test-cabinet/particle-runtime` emit). Absent → the emitter declares no source.
+    /// `@clockwyrks/particle-runtime` emit). Absent → the emitter declares no source.
     #[serde(default)]
     emission: Option<SystemJsonEmission>,
 }
@@ -3008,42 +3326,35 @@ fn unreached(test_case: &TestCaseVersion, detail: &str) -> Vec<CheckResult> {
         .collect()
 }
 
-/// Run one required build step (the manifest's `install` or `build` command) in
-/// `repo`, capturing its outcome as a [`StepResult`] for the validation summary.
-fn run_step(repo: &Path, command: &str) -> StepResult {
-    match run_command(repo, command) {
-        Ok(()) => StepResult {
-            command: command.to_string(),
-            succeeded: true,
-            detail: None,
-        },
-        Err(detail) => StepResult {
-            command: command.to_string(),
-            succeeded: false,
-            detail: Some(detail),
-        },
+/// Run the manifest's `install` command in `repo` as the [verified, retried
+/// install](crate::install), reporting the final attempt as a [`StepResult`] for
+/// the validation summary: its bounded output, the number of attempts it took, and
+/// — when it did not succeed — the reason, which for an install that exited zero
+/// is the lockfile packages it left behind.
+fn install_step(repo: &Path, command: &str, retry_delay: Duration) -> StepResult {
+    let outcome = install_with_retry_blocking(repo, command, INSTALL_TIMEOUT, retry_delay);
+    if !outcome.missing().is_empty() {
+        tracing::warn!(
+            command,
+            attempts = outcome.attempts,
+            missing = ?outcome.missing(),
+            "the install left lockfile packages uninstalled after every attempt",
+        );
     }
+    (&outcome.result).into()
 }
 
-/// Run one build command in `repo` through a shell, returning a description of
-/// any failure. The command is a manifest-declared string (for example `npm ci`
-/// or `npm run build`), so it is run via `sh -c` to honor whatever form a case
-/// chooses; only the produced implementation it operates on is untrusted, and
-/// running its build scripts is the point.
-fn run_command(repo: &Path, command: &str) -> std::result::Result<(), String> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .current_dir(repo)
-        .output()
-        .map_err(|err| format!("failed to run `{command}`: {err}"))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("; ");
-        Err(format!("`{command}` failed: {tail}"))
-    }
+/// Run the manifest's `build` command in `repo` once, reporting it as a
+/// [`StepResult`] whose detail on failure is a bounded excerpt of everything the
+/// command printed, so the real error is what a reader sees rather than whatever
+/// happened to be on the last few lines of stderr.
+///
+/// The command is a manifest-declared string (for example `npm run build`), so it
+/// is run via `sh -c` to honor whatever form a case chooses; only the produced
+/// implementation it operates on is untrusted, and running its build scripts is the
+/// point.
+fn build_step(repo: &Path, command: &str) -> StepResult {
+    (&run_command_blocking(repo, command, INSTALL_TIMEOUT)).into()
 }
 
 /// A decoded image reduced to the fields the similarity score needs.
@@ -3124,3 +3435,7 @@ fn image_similarity(a: &Image, b: &Image) -> f64 {
 #[cfg(test)]
 #[path = "validator.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "validator.install.test.rs"]
+mod install_tests;

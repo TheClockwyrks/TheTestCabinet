@@ -213,7 +213,7 @@ keep the world alive:
   `draw-sheet` (one frame per completed-component state), selected by how many components
   are installed (`specs/rocket.md`).
 
-## Particle systems: `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems: `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The world's effects are particle systems you author with `particle-2d` and play live:
 simulated effects that vary shot to shot, not flat flashes or hand-coded loops.
@@ -236,7 +236,7 @@ whose `render`/emit step writes a `system.json`; land them under, for example,
 | Launch exhaust | the rocket launches (`specs/rocket.md`) | a roaring column of exhaust and smoke as the rocket lifts off, the victory payoff |
 | Death burst | the miner dies (`specs/character.md`, `specs/modes.md`) | a burst marking the death (suit venting, debris) |
 
-Play them with the provided runtime. `@test-cabinet/particle-runtime` is already a
+Play them with the provided runtime. `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency; do not fetch or reimplement it). For this 2D game
 use its `/canvas` binding, its `ParticleCanvasPlayer`: construct one from a parsed

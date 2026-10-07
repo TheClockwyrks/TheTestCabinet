@@ -2,119 +2,67 @@
   "parts": [
     {
       "name": "base",
-      "pivot": [
-        12,
-        0,
-        17
-      ]
+      "pivot": [12, 0, 17]
     },
     {
       "name": "legs",
       "parent": "base",
-      "pivot": [
-        12,
-        0,
-        17
-      ]
+      "pivot": [12, 0, 17]
     },
     {
       "name": "feedpipe",
       "parent": "base",
-      "pivot": [
-        3,
-        0,
-        17
-      ]
+      "pivot": [3, 0, 17]
     },
     {
       "name": "vessel",
       "parent": "base",
-      "pivot": [
-        12,
-        7,
-        17
-      ]
+      "pivot": [12, 7, 17]
     },
     {
       "name": "chimney",
       "parent": "vessel",
-      "pivot": [
-        12,
-        28,
-        17
-      ]
+      "pivot": [12, 28, 17]
     },
     {
       "name": "cowl",
       "parent": "chimney",
-      "pivot": [
-        12,
-        42,
-        17
-      ]
+      "pivot": [12, 42, 17]
     },
     {
       "name": "lever",
       "parent": "vessel",
-      "pivot": [
-        8,
-        30,
-        17
-      ]
+      "pivot": [8, 30, 17]
     },
     {
       "name": "needle",
       "parent": "vessel",
-      "pivot": [
-        8,
-        21,
-        25
-      ]
+      "pivot": [8, 21, 25]
     },
     {
       "name": "bank",
       "parent": "base",
-      "pivot": [
-        25,
-        5,
-        17
-      ]
+      "pivot": [25, 5, 17]
     },
     {
       "name": "piston_a",
       "parent": "bank",
-      "pivot": [
-        25,
-        20,
-        11
-      ]
+      "pivot": [25, 20, 11]
     },
     {
       "name": "piston_b",
       "parent": "bank",
-      "pivot": [
-        25,
-        20,
-        17
-      ]
+      "pivot": [25, 20, 17]
     },
     {
       "name": "piston_c",
       "parent": "bank",
-      "pivot": [
-        25,
-        20,
-        23
-      ]
+      "pivot": [25, 20, 23]
     },
     {
       "name": "flywheel",
       "parent": "bank",
-      "pivot": [
-        30,
-        12,
-        23
-      ]
+      "pivot": [30, 12, 23]
     }
   ],
   "joints": [
@@ -123,11 +71,7 @@
       "part": "vessel",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        12,
-        7,
-        17
-      ],
+      "pivot": [12, 7, 17],
       "min": -0.8,
       "max": 0.4,
       "rest": 0.0,
@@ -138,11 +82,7 @@
       "part": "vessel",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        12,
-        7,
-        17
-      ],
+      "pivot": [12, 7, 17],
       "min": -0.06,
       "max": 0.06,
       "rest": 0.0,
@@ -153,11 +93,7 @@
       "part": "chimney",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        12,
-        28,
-        17
-      ],
+      "pivot": [12, 28, 17],
       "min": -0.1,
       "max": 0.1,
       "rest": 0.0,
@@ -168,11 +104,7 @@
       "part": "cowl",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        12,
-        42,
-        17
-      ],
+      "pivot": [12, 42, 17],
       "min": -20.0,
       "max": 20.0,
       "rest": 0.0,
@@ -183,11 +115,7 @@
       "part": "lever",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        8,
-        30,
-        17
-      ],
+      "pivot": [8, 30, 17],
       "min": -0.6,
       "max": 0.1,
       "rest": 0.0,
@@ -198,11 +126,7 @@
       "part": "needle",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        8,
-        21,
-        25
-      ],
+      "pivot": [8, 21, 25],
       "min": -0.2,
       "max": 1.7,
       "rest": 0.0,
@@ -213,11 +137,7 @@
       "part": "piston_a",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        25,
-        20,
-        11
-      ],
+      "pivot": [25, 20, 11],
       "min": -5.2,
       "max": 0.3,
       "rest": 0.0,
@@ -228,11 +148,7 @@
       "part": "piston_b",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        25,
-        20,
-        17
-      ],
+      "pivot": [25, 20, 17],
       "min": -5.2,
       "max": 0.3,
       "rest": 0.0,
@@ -243,11 +159,7 @@
       "part": "piston_c",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        25,
-        20,
-        23
-      ],
+      "pivot": [25, 20, 23],
       "min": -5.2,
       "max": 0.3,
       "rest": 0.0,
@@ -258,11 +170,7 @@
       "part": "flywheel",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        30,
-        12,
-        23
-      ],
+      "pivot": [30, 12, 23],
       "min": -20.0,
       "max": 20.0,
       "rest": 0.0,

@@ -4,7 +4,15 @@
   "ticks": 20000,
   "snapshots": [4000, 10000, 20000],
   "entities": [
-    { "type": "source", "x": 0, "y": 3, "dir": "E", "item": "iron-ore", "lane": "both", "period": 4 },
+    {
+      "type": "source",
+      "x": 0,
+      "y": 3,
+      "dir": "E",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 4
+    },
     { "type": "belt", "x": 1, "y": 3, "dir": "E", "tier": "fast" },
     { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "fast" },
     { "type": "belt", "x": 3, "y": 3, "dir": "E", "tier": "fast" },

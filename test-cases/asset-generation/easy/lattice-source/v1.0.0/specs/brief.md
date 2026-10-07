@@ -18,7 +18,7 @@ two visibly distinct.
 The source emits **whatever** item a scenario configures, and the **renderer
 draws that item** appearing and sliding out at run time. So you draw **only the
 fixture** — the housing, its output port, and its indicator. Do **not** draw an
-emitted item: a fixed item painted into the sprite would show the *same* item in
+emitted item: a fixed item painted into the sprite would show the _same_ item in
 every frame no matter what the source is actually emitting, which is wrong. The
 animation you draw is the fixture's own **emit reaction** — the green indicator
 and the aperture brightening as it fires — timed as if an item were leaving, but
@@ -86,14 +86,14 @@ The six frames are one rhythmic **emit pulse** — the fixture firing a single i
 and the **aperture**, brightening as an item would be emitted and dimming back to
 idle.
 
-| Frame | The pulse |
-| --- | --- |
-| 0 | **Idle.** Aperture dim; green indicator at its dim/dark tone. This is the rest state the loop returns to. |
-| 1 | The green indicator **brightens** (toward the green mid tone) and the aperture begins to **light up** with the green accent — the fixture is charging to emit. |
-| 2 | The aperture is **bright** (green pale accent in/around the port) — the fixture fires, and the renderer's item begins to leave here. |
-| 3 | The aperture stays lit at its brightest as the item slides out (drawn by the renderer); the indicator holds bright. |
-| 4 | The aperture begins to **dim** as the emission finishes. |
-| 5 | The aperture and indicator **dim back** toward — but not all the way to — idle, easing into frame 0. |
+| Frame | The pulse                                                                                                                                                      |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | **Idle.** Aperture dim; green indicator at its dim/dark tone. This is the rest state the loop returns to.                                                      |
+| 1     | The green indicator **brightens** (toward the green mid tone) and the aperture begins to **light up** with the green accent — the fixture is charging to emit. |
+| 2     | The aperture is **bright** (green pale accent in/around the port) — the fixture fires, and the renderer's item begins to leave here.                           |
+| 3     | The aperture stays lit at its brightest as the item slides out (drawn by the renderer); the indicator holds bright.                                            |
+| 4     | The aperture begins to **dim** as the emission finishes.                                                                                                       |
+| 5     | The aperture and indicator **dim back** toward — but not all the way to — idle, easing into frame 0.                                                           |
 
 The green indicator and aperture must **visibly brighten then dim** across the six
 frames — a clear pulse, not a flat glow. Make the idle frame 0 and the dim-down
@@ -105,13 +105,13 @@ renderer's; your job is the fixture's emit reaction.
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
-| Housing light (grey-blue) | `#6a7884` |
-| Housing mid (grey-blue) | `#4d5a64` |
-| Housing dark (grey-blue) | `#36424b` |
-| Source accent — green mid | `#46c46a` |
+| Role                       | Hex       |
+| -------------------------- | --------- |
+| Dark outline / shadow      | `#1b1d21` |
+| Housing light (grey-blue)  | `#6a7884` |
+| Housing mid (grey-blue)    | `#4d5a64` |
+| Housing dark (grey-blue)   | `#36424b` |
+| Source accent — green mid  | `#46c46a` |
 | Source accent — green dark | `#2f8f4c` |
 | Source accent — green pale | `#8ff0a5` |
 

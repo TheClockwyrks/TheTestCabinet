@@ -7,7 +7,10 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { ModelOut } from "./backend-api";
+import type { ModelOut, TestCaseGroupOut } from "./backend-api";
+import type { CodeAuthoredBasis, CodeTreeBasis } from "./code-analysis";
+import type { Comparison } from "./comparison";
+import type { GgRunDoc } from "./gg-query";
 import type {
   AssetKind,
   AssetSheet,
@@ -18,7 +21,13 @@ import type {
   RunState,
   TestType,
 } from "./index";
-import type { Rating, Review, VerdictStatus } from "./review";
+import type {
+  AestheticRating,
+  FailureCap,
+  Rating,
+  Review,
+  VerdictStatus,
+} from "./review";
 
 /**
  * The top-level snapshot pointer (`index.json`): where the runs index, per-run
@@ -44,6 +53,27 @@ export type SnapshotIndex = {
    * Where this snapshot's model catalog lives (`<prefix>/models.json`).
    */
   modelsKey: string;
+  /**
+   * Where this snapshot's comparisons index lives (`<prefix>/comparisons.json`).
+   */
+  comparisonsKey: string;
+  /**
+   * The prefix each published comparison's own document lives under
+   * (`<prefix>/comparisons/<id>.json`).
+   */
+  comparisonsPrefix: string;
+  /**
+   * Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the
+   * payload the public Discover surface evaluates in the browser.
+   */
+  ggRunsKey: string;
+  /**
+   * Where this snapshot's test-case-group set lives
+   * (`<prefix>/test-case-groups.json`). Optional on the wire because it
+   * postdates the other keys: a snapshot written before groups existed carries
+   * none, and a reader treats the absent key as an empty group set.
+   */
+  testCaseGroupsKey?: string;
 };
 
 /**
@@ -60,7 +90,43 @@ export type SubjectOut = {
   variant: string;
   harnessSlug: HarnessSlug;
   harnessVersion: string | null;
+  /**
+   * The slug of the [engine](test_cabinet_core::engine) the produced build was
+   * written against (`none` when it supplied its own runtime). Lifted onto the
+   * card because the engine is a *run dimension* selected alongside the variant,
+   * and a result is only comparable with another result on the same engine — so
+   * every listing that shows the variant has to be able to show this beside it.
+   */
+  engineSlug: string;
+  /**
+   * The version of the engine runtime vendored into the run repository. `None`
+   * for an engine that vendors no runtime (`none` has no package), and for runs
+   * recorded before engine selection existed.
+   */
+  engineVersion?: string | null;
   modelId: string;
+  /**
+   * The name of the gg **configuration** this run was launched from — the
+   * [`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's
+   * capability set. Lifted onto the card because a gg run has no single harness
+   * model to identify it by ([`model_id`](Self::model_id) is only its
+   * representative primary-slot model, one of several per-agent bindings), so the
+   * run log shows the configuration in that cell instead. `None` for every
+   * third-party-harness run (which carries no capability set) and for a gg run
+   * assembled by hand rather than from a named configuration.
+   */
+  ggPreset?: string | null;
+  /**
+   * The **id** of the gg configuration this run was launched from — the
+   * [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the
+   * run's capability set. Lifted onto the card beside the
+   * [name](Self::gg_preset) because it is what identifies the run's [coverage
+   * cell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a
+   * listing narrowed to one configuration's runs matches on: a name is display text
+   * that is rewritten freely and is unique to nothing. `None` for every
+   * third-party-harness run and for a gg run assembled by hand.
+   */
+  ggConfigId?: string | null;
 };
 
 /**
@@ -85,14 +151,39 @@ export type RunSummary = {
   validationLoaded: boolean;
   state: RunState;
   /**
-   * The run's overall rating: the worst rating any reviewer gave any domain.
-   * `None` when the run carries no reviews yet (an unrated console run); the
-   * snapshot only contains reviewed runs, so it is always `Some` there.
+   * The run's **functional** rating. On a legacy run the worst rating any
+   * reviewer gave any domain, `None` while the run carries no reviews (an
+   * unrated console run). On a [validator-rated](Self::validator_rated) run the
+   * validators' decision as overridden by its reviews — each failing scored
+   * point caps its domains at its declared failure cap, each review's overrides
+   * overlay the validators' verdicts, the run gets the worst across the
+   * reviews' effective ratings (the validators' own figure while unreviewed),
+   * composed with the toolchain gate — which is `Some` from the moment the run
+   * completes, with or without a review. A published run always has one.
    */
   rating: Rating | null;
   /**
-   * How many reviews the run carries. The site averages their scores; the
-   * aggregate sits between the harshest and most generous review.
+   * The run's aggregate **aesthetic** rating: the worst run-wide tier across
+   * its reviews, or `None` when no review has rated the aesthetic channel — a
+   * validator-rated run nobody has reviewed yet, and every legacy run (its
+   * reviews carry no aesthetic ratings, so it never shows the badge).
+   */
+  aesthetic?: AestheticRating | null;
+  /**
+   * Whether the run is **validator-rated**: its case version is on the engine
+   * manifest format and not a game jam, so [`rating`](Self::rating) and
+   * [`score`](Self::score) are decided by the validators (present without any
+   * review, with each review's overrides folded in), its reviewers supply the
+   * [`aesthetic`](Self::aesthetic) channel and any verdict overrides, and it
+   * publishes with zero reviews. `false` for every legacy run, whose card reads
+   * exactly as it always has. Lifted here so every consumer can branch on it
+   * without a catalog.
+   */
+  validatorRated: boolean;
+  /**
+   * How many reviews the run carries. The site averages their scores on a
+   * legacy run; the aggregate sits between the harshest and most generous
+   * review. On a validator-rated run it counts the aesthetic reviews.
    */
   reviewCount: number;
   /**
@@ -113,6 +204,25 @@ export type RunSummary = {
    * fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
    */
   performance?: PerformanceSummaryOut | null;
+  /**
+   * The ranking-relevant slice of the run's [code
+   * analysis](test_cabinet_core::code_analysis), lifted onto the card so a
+   * "which model writes the tightest code?" ordering can be computed from the
+   * bounded summary set without loading every run's full record. See
+   * [`CodeSummaryOut`], which also explains why the provenance rides along with
+   * the figures.
+   *
+   * `None` means the run was **never analysed** — not that it wrote no code. The
+   * corpus is [not backfilled], so every run that finished before the analyzer
+   * shipped carries `None` forever, and any view that renders this must say
+   * "not measured" rather than draw a zero.
+   *
+   * Catalog-free (the figures are already on the record), so
+   * [`RunSummary::from_stored`] fills it.
+   *
+   * [not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
+   */
+  code?: CodeSummaryOut | null;
   /**
    * Where this run's full document lives: its content-addressed
    * `documents/runs/<id>/<digest>.json` key. The digest is over the document's own
@@ -180,6 +290,69 @@ export type PerformanceSummaryOut = {
 };
 
 /**
+ * The code analysis as a summary card carries it: three ranking-relevant figures,
+ * plus the provenance a reader needs before comparing two of them.
+ *
+ * The full [`CodeAnalysisSummary`](test_cabinet_core::code_analysis::CodeAnalysisSummary)
+ * is ninety-odd leaves and already rides on the record inside the per-run document;
+ * this is the part a *list* sorts on, so it stays small — the same bargain
+ * [`PerformanceSummaryOut`] strikes for fuel, and catalog-free for the same reason.
+ *
+ * **The provenance fields are not decoration.** Two things make a bare figure
+ * dishonest here. Analysis is [never backfilled], so an absent `code` on a card means
+ * *not measured*, and among the cards that do carry one an
+ * [`allFiles`](test_cabinet_core::code_analysis::CodeAuthoredBasis::AllFiles) authored
+ * basis or a [`postValidation`](test_cabinet_core::code_analysis::CodeTreeBasis::PostValidation)
+ * tree basis measured a different population than the exact one — the silent-degradation
+ * risk the basis fields exist for. And a
+ * [truncated](test_cabinet_core::code_analysis::CodeAnalysisNotes::truncated) analysis is
+ * excluded from aggregation by default, so a view that ranks it beside complete ones
+ * ranks a partial figure that looks complete. Carrying all four alongside the numbers is
+ * what lets a card say so without fetching the record.
+ *
+ * [never backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
+ */
+export type CodeSummaryOut = {
+  /**
+   * The [analyzer generation](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)
+   * that produced these figures, so a corpus spanning two generations is visible
+   * rather than reading as a step change in the models.
+   */
+  analyzerVersion: number;
+  /**
+   * How the authored set was resolved — how much of this tree is actually the
+   * model's work.
+   */
+  authoredBasis: CodeAuthoredBasis;
+  /**
+   * Which state of the tree was measured.
+   */
+  treeBasis: CodeTreeBasis;
+  /**
+   * Whether a tree-wide cap stopped the analysis short. A truncated result is
+   * excluded from aggregation by default.
+   */
+  truncated: boolean;
+  /**
+   * How much code the model wrote: non-blank, non-comment lines across the
+   * authored set.
+   */
+  codeLines: number;
+  /**
+   * The Gini coefficient of code lines across files — zero when every file is the
+   * same size, approaching one when a single file holds everything. The one number
+   * that answers "did the model split the work?".
+   */
+  giniCodeLines: number;
+  /**
+   * Mean Sonar cognitive complexity per function. Cognitive rather than cyclomatic
+   * because cyclomatic is blind to nesting, and nesting is what makes generated code
+   * unreadable.
+   */
+  meanCognitive: number;
+};
+
+/**
  * The flat index of run summary cards (`runs.json`), newest first.
  */
 export type RunsIndex = { schemaVersion: number; runs: Array<RunSummary> };
@@ -209,6 +382,17 @@ export type RunAssetOut = { file: string; key: string };
  * the flat name the UI requests still resolves through the static gallery's map.
  */
 export type RunValidationMediaOut = { file: string; key: string };
+
+/**
+ * A [showcase](test_cabinet_core::RunShowcase) file exposed in a per-run document —
+ * a carousel media file, or an image the description references. `file` is the
+ * recorded name the gallery requests (the plain file name in the produced tree's
+ * `showcase/`); `key` is its snapshot-relative object key, whose bytes are the
+ * media as published — a video transcoded to `.mp4`, so `key` and `file` differ in
+ * extension for a clip while the name the UI requests still resolves through the
+ * static gallery's map (the validation-media convention).
+ */
+export type RunShowcaseOut = { file: string; key: string };
 
 /**
  * A per-run document (`runs/<id>.json`): the run record, its reviews and links,
@@ -248,6 +432,36 @@ export type PerRun = {
    * named by snapshot-relative key. Empty for a non-asset-generation run.
    */
   assetMedia: Array<RunAssetOut>;
+  /**
+   * The run's [showcase](test_cabinet_core::RunShowcase) files — the carousel
+   * media plus any image the description references — named by snapshot-relative
+   * key. Empty for a run whose record carries no showcase (every record written
+   * before the field existed), and possibly a subset of the carousel when a
+   * file's bytes could not be read. Always emitted (possibly empty); the static
+   * gallery treats it as optional so a snapshot written before this field
+   * existed still loads.
+   */
+  showcaseMedia: Array<RunShowcaseOut>;
+  /**
+   * The snapshot-relative key of the run's **unbounded**
+   * [code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —
+   * every authored file, every scored function, every import edge, cycle and clone
+   * group — published as its own object so the public Code tab can fetch it on demand
+   * rather than inflating this document (and therefore every run's page load) with a
+   * tier only one tab reads.
+   *
+   * Content-stable and **generation-keyed**
+   * (`media/runs/<id>/code-analysis/v<analyzerVersion>.json`), so a refresh that finds
+   * the object already in the bucket references it without re-reading or re-uploading
+   * the bytes — and a *re-analysis under a newer generation* mints a different key
+   * rather than silently overwriting figures a published snapshot still points at.
+   *
+   * `None` when the run was never analysed, and also when it was but the document's
+   * bytes are no longer readable (the backend store is ephemeral) — the bounded summary
+   * on the record survives either way, so the tab degrades to the figures instead of
+   * offering a link that 404s.
+   */
+  codeAnalysisKey?: string;
 };
 
 /**
@@ -313,6 +527,20 @@ export type CaseErratumOut = {
 };
 
 /**
+ * The part of a checklist point's automated-validation driver the case metadata
+ * exposes: which engines the validator decides the point on. The script itself and
+ * its media outputs are the driver's business and are not published here.
+ */
+export type CaseReviewValidationOut = {
+  /**
+   * The engines this validator decides its point on, by slug, in declared order.
+   * Empty leaves the point on every engine the case supports; a non-empty list is
+   * the subset that carries it, and a run on any other engine has no such point.
+   */
+  engines: Array<string>;
+};
+
+/**
  * A reviewer checklist item exposed in case metadata, carrying its point weight
  * and optional scoring domain so the site can compute and break down run scores.
  */
@@ -337,6 +565,24 @@ export type CaseReviewItemOut = {
    * pass/fail point. Empty for an item graded as a whole.
    */
   subItems: Array<CaseSubReviewItemOut>;
+  /**
+   * On a validator-rated version, a whole-item point's **failure cap**: the
+   * highest functional rating its `domains` may reach while its validator
+   * fails. Absent on a legacy version and on a sub-divided item (whose caps sit
+   * on its sub-items).
+   */
+  failureCap?: FailureCap;
+  /**
+   * On a validator-rated version, the scoring domains (by id) a failure of this
+   * whole-item point lowers. Empty on a legacy version and on a sub-divided item.
+   */
+  domains: Array<string>;
+  /**
+   * The point's automated-validation driver, when it declares one. Absent for a
+   * human-judged point. Carried so a run-scoped surface can drop a point the
+   * run's engine does not carry (see [`CaseReviewValidationOut::engines`]).
+   */
+  validation?: CaseReviewValidationOut;
 };
 
 /**
@@ -366,6 +612,22 @@ export type CaseSubReviewItemOut = {
    * Optional proof id paired with this point as the submitted media.
    */
   proof: string | null;
+  /**
+   * On a validator-rated version, this point's **failure cap**: the highest
+   * functional rating its `domains` may reach while its validator fails. Absent
+   * on a legacy version.
+   */
+  failureCap?: FailureCap;
+  /**
+   * On a validator-rated version, the scoring domains (by id) a failure of this
+   * point lowers. Empty on a legacy version.
+   */
+  domains: Array<string>;
+  /**
+   * The point's automated-validation driver, when it declares one (see
+   * [`CaseReviewItemOut::validation`]).
+   */
+  validation?: CaseReviewValidationOut;
 };
 
 /**
@@ -383,14 +645,16 @@ export type CaseReferenceOut = {
 
 /**
  * A committed **baseline** validation media file exposed in case metadata — one
- * debug-script output driven once against the case's reference implementation.
- * `variant` is the variant slug the baseline was captured for (baselines are always
- * per-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests
- * (`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the
- * media as published (a video transcoded to `.mp4`). The static gallery keys its
- * baseline lookup off `variant` + `file`.
+ * declared output captured once against the case's reference implementation.
+ * `engine` and `variant` name the reference build it was captured from (a variant
+ * has one reference implementation per engine, and their captures are not
+ * interchangeable); `file` is the flat `<item>__<output>.<ext>` name the gallery
+ * requests (`.png`/`.webm`/`.json.gz`); `key` is its snapshot-relative object key,
+ * whose bytes are the media as published (a video transcoded to `.mp4`). The static
+ * gallery keys its baseline lookup off `engine` + `variant` + `file`.
  */
 export type CaseValidationBaselineOut = {
+  engine: string;
   variant: string;
   file: string;
   key: string;
@@ -452,6 +716,86 @@ export type CaseReferenceSheetOut = {
 };
 
 /**
+ * One entry of an exported case showcase: `file` is the authored file name the
+ * UI keys the entry by (kept as authored even when the published bytes are a
+ * transcode); `key` is the snapshot-relative object key holding the media as
+ * published (a `.webm` clip transcoded to `.mp4`, everything else verbatim).
+ */
+export type CaseShowcaseMediaOut = {
+  /**
+   * The media file's authored name in the showcase directory.
+   */
+  file: string;
+  /**
+   * The short caption for the entry.
+   */
+  name: string;
+  /**
+   * Whether the file is a still image, a video clip, or a replay recording.
+   */
+  kind: MediaKind;
+  /**
+   * The snapshot-relative object key of the published bytes.
+   */
+  key: string;
+};
+
+/**
+ * A variant's authored showcase as case metadata exports it — the case-side
+ * counterpart of a run's `showcaseMedia[]`, but authored and committed with the
+ * version rather than produced by a run.
+ */
+export type CaseShowcaseOut = {
+  /**
+   * The showcase description — the authored `showcase.md`, verbatim markdown.
+   */
+  description: string;
+  /**
+   * The media carousel, in declared order.
+   */
+  media: Array<CaseShowcaseMediaOut>;
+};
+
+/**
+ * One starter-workspace file as case metadata exports it: the run-root-relative
+ * destination the file is seeded at, and the published object key its bytes
+ * live under. Only the addressing is inlined — the bytes are fetched lazily,
+ * because a starter project can be large and most readers never open it.
+ */
+export type CaseWorkspaceFileOut = {
+  /**
+   * The run-root-relative destination path the file is seeded at.
+   */
+  dest: string;
+  /**
+   * The snapshot-relative object key of the file's bytes.
+   */
+  key: string;
+};
+
+/**
+ * One variant's prompt and seeded specs rendered for one engine that vendors a
+ * runtime — the per-engine half of [`CaseVariantOut`].
+ */
+export type CaseVariantRenderingOut = {
+  /**
+   * The variant's prompt as a run on this engine receives it.
+   */
+  prompt: string;
+  /**
+   * The variant's complete seeded spec set in seed order, each body rendered for
+   * this variant on this engine.
+   */
+  seededInputs: Array<CaseSeededInputOut>;
+  /**
+   * The variant's effective starter-workspace files for this engine, each
+   * naming the published object its bytes live at — the per-engine half of
+   * [`CaseVariantOut::workspace_files`].
+   */
+  workspaceFiles: Array<CaseWorkspaceFileOut>;
+};
+
+/**
  * One variant of a case as the gallery shows it.
  */
 export type CaseVariantOut = {
@@ -474,6 +818,23 @@ export type CaseVariantOut = {
    */
   seededInputs: Array<CaseSeededInputOut>;
   /**
+   * This variant's prompt and seeded specs re-rendered for each
+   * [engine](test_cabinet_core::engine) the version declares that vendors a
+   * runtime, keyed by engine slug.
+   *
+   * A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so
+   * the text a run was handed depends on which runtime its build was written
+   * against. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless
+   * rendering — what a reader browsing the *case* sees, and exactly what a run on
+   * the `none` engine was handed — and this map carries the rest, so a run's
+   * Inputs surface shows the text that run actually received.
+   *
+   * The engineless engine is deliberately absent: it is already the pair above,
+   * and duplicating every spec body for it would double the document for the many
+   * cases that support nothing else.
+   */
+  engineRenderings: { [key in string]: CaseVariantRenderingOut };
+  /**
    * Reviewer checklist items additive to the common ones, with their point
    * weights, surfaced only when this variant is selected.
    */
@@ -485,18 +846,20 @@ export type CaseVariantOut = {
    */
   domains: Array<CaseDomainOut>;
   /**
-   * The absolute URL of this variant's authored **reference implementation** — the
-   * correct, deployed static build (the case-variant analogue of a run's
-   * `playableBuild`), shown on the static gallery's "Reference" tab. `null` when
-   * the variant declares no `reference_implementation`, or has one that has not
-   * been deployed yet. Written out-of-band by `tcab publish-reference` into the
-   * `case_reference_build` table and folded in here at export — never resolved
-   * from the manifest and never seeded into a run.
+   * The absolute URLs of this variant's authored **reference implementations** —
+   * the correct, deployed static builds (the case-variant analogue of a run's
+   * `playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was
+   * built for and shown on the static gallery's "Reference" tab, which lets a
+   * reader switch between them. Empty when the variant declares no
+   * `reference_implementation`, or has one that has not been deployed yet. Written
+   * out-of-band by `tcab publish-reference` into the `case_reference_build` table
+   * and folded in here at export — never resolved from the manifest and never
+   * seeded into a run.
    */
-  referenceBuild: string | null;
+  referenceBuilds: { [key in string]: string };
   /**
    * This variant's published **reference sheet** — the asset-generation analogue of
-   * [`Self::reference_build`], shown on the static gallery's "Reference" tab.
+   * [`Self::reference_builds`], shown on the static gallery's "Reference" tab.
    * `null` when the variant declares no `reference_implementation`, or has one that
    * has not been published yet.
    *
@@ -511,6 +874,23 @@ export type CaseVariantOut = {
    * resolved from the manifest and never seeded into a run.
    */
   referenceSheet: CaseReferenceSheetOut | null;
+  /**
+   * The variant's authored **showcase**, when it declares one: the description
+   * plus the media carousel captured from the reference implementation, shown
+   * on the static gallery's catalog preview and Play tab. `null` when the
+   * variant declares none — and treated as optional by the site, so a snapshot
+   * written before the field existed still loads.
+   */
+  showcase: CaseShowcaseOut | null;
+  /**
+   * The variant's effective starter-workspace files for the **engineless**
+   * rendering (what a run on the `none` engine is seeded with), each naming the
+   * published object its bytes live at, so the static gallery's Inputs tab can
+   * fetch a starter file lazily — the static mirror of the live artifact route.
+   * The per-engine sets ride on [`CaseVariantRenderingOut::workspace_files`].
+   * Empty for a case that seeds no engineless workspace.
+   */
+  workspaceFiles: Array<CaseWorkspaceFileOut>;
 };
 
 /**
@@ -530,6 +910,14 @@ export type CaseMetadata = {
    * case's type and treats every case as end-to-end.
    */
   testType: TestType;
+  /**
+   * Whether the version is on the **engine manifest format**, which (with the
+   * test type) makes it **validator-rated**: its runs' functional rating and
+   * score are decided by the validators — each review item's `failureCap` and
+   * `domains` below — and reviewers rate only the aesthetic channel. `false` on
+   * every legacy version, whose runs the site scores exactly as before.
+   */
+  engineFormat: boolean;
   /**
    * The asset shape an asset-generation case produces, so the gallery can
    * partition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),
@@ -608,4 +996,60 @@ export type CaseMetadata = {
 export type ModelCatalogFile = {
   schemaVersion: number;
   models: Array<ModelOut>;
+};
+
+/**
+ * The test-case-group set file (`test-case-groups.json`): the ingested groups
+ * in the order `GET /test-case-groups` serves them, from which the public site
+ * renders the home page's per-group leaderboards. Repo-authored catalog data,
+ * uploaded as built (no scrubbing — see the builder's emission site).
+ */
+export type TestCaseGroupsFile = {
+  schemaVersion: number;
+  /**
+   * The groups, in display order — the same wire shape the live API serves.
+   */
+  groups: Array<TestCaseGroupOut>;
+};
+
+/**
+ * The comparisons index file (`comparisons.json`): every published harness
+ * comparison as its full read model. The public site lists and renders them from
+ * here (each also has its own `<prefix>/comparisons/<id>.json` for a direct fetch).
+ */
+export type ComparisonsIndex = {
+  schemaVersion: number;
+  comparisons: Array<Comparison>;
+};
+
+/**
+ * One published comparison's own document (`comparisons/<id>.json`).
+ */
+export type ComparisonFile = { schemaVersion: number; comparison: Comparison };
+
+/**
+ * The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map
+ * of dotted fields, plus the instant the export was taken.
+ *
+ * This is the **whole** public analysis payload. The site's Discover surface runs the
+ * mirrored TypeScript evaluator over these documents and makes no backend call at all,
+ * which is only affordable because a document is an order of magnitude smaller than the
+ * record it derives from — no source, no prompts, no model output.
+ *
+ * It carries its own `generated_at` even though [`SnapshotIndex`] has one, because the
+ * public corpus legitimately lags the console's: every figure the site renders has to be
+ * labelled with the instant it was true, and a figure and its as-of time should travel
+ * in the same object rather than be joined at read time.
+ */
+export type GgRunsFile = {
+  schemaVersion: number;
+  /**
+   * When this corpus was exported (RFC 3339), rendered beside every public figure.
+   */
+  generatedAt: string;
+  /**
+   * The exported documents, already filtered and redacted (see
+   * [`SnapshotBuilder::with_gg_documents`]).
+   */
+  documents: Array<GgRunDoc>;
 };

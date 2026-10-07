@@ -4,24 +4,25 @@ import { useConfirm } from "./ConfirmDialog";
 import styles from "./KillRunControl.module.scss";
 
 // A control for killing an in-flight run, shown in the live monitor while the run
-// is still running. Offered only where cancellation is possible — see {@link
-// useRunKill}, which owns the gate (execution-enabled host, a worker whose
-// transport supports it, and an authorizing token) shared with the runs-list
-// batch menu; any one missing hides the control entirely rather than showing a
-// disabled, unexplained button. The backend is the real gate: it refuses to
-// cancel a run that already finished, so this mirrors that as a UI affordance.
+// is still running. See {@link useRunKill}, which owns the gate shared with the
+// runs-list batch menu.
+//
+// It HIDES only where this host can cancel no run at all — the static gallery, or
+// a worker whose transport cannot cancel — and renders DISABLED, with the reason
+// on it, where the console could cancel but nobody is signed in. Vanishing for a
+// state the operator can fix from the page they are on tells them nothing.
 //
 // On success the backend moves the run to `canceled` and closes its live stream,
 // which the monitor's own subscription reflects (its `onDone` fires and the page
 // transitions to the done state), so this control does not itself navigate — it
 // only issues the request and reports a failure inline.
 export function KillRunControl({ runId }: { runId: string }) {
-  const { canKill, killRun } = useRunKill();
+  const { killGate, killRun } = useRunKill();
   const { confirm } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!canKill) return null;
+  if (!killGate.offered) return null;
 
   const onKill = async () => {
     if (!(await confirm(CONFIRM_KILL_RUN))) return;
@@ -38,14 +39,16 @@ export function KillRunControl({ runId }: { runId: string }) {
     }
   };
 
+  const blocked = !killGate.allowed;
   return (
     <div className={styles.killControl}>
       <button
         type="button"
         className={styles.killButton}
         onClick={onKill}
-        disabled={busy}
-        title="Stop this in-progress run"
+        disabled={busy || blocked}
+        data-blocked={blocked ? "" : undefined}
+        title={gateTitle(busy, blocked, killGate.reason)}
       >
         {busy ? "Killing…" : "Kill run"}
       </button>
@@ -56,4 +59,16 @@ export function KillRunControl({ runId }: { runId: string }) {
       )}
     </div>
   );
+}
+
+// What the button says about itself on hover: what it is doing, why it cannot be
+// pressed, or what it does.
+function gateTitle(
+  busy: boolean,
+  blocked: boolean,
+  reason: string | null,
+): string {
+  if (busy) return "Killing…";
+  if (blocked && reason) return reason;
+  return "Stop this in-progress run";
 }

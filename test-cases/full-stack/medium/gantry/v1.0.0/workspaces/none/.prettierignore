@@ -1,0 +1,17 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, the Playwright verification scratch, the vendored voxel
+# runtime, the produced assets, and the supplied specification.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+test-results/
+playwright-report/
+.vendor/
+package-lock.json
+assets/
+specs/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md

@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
-import type { Model, ModelInput, ModelSeed } from "../../client/types";
+import type {
+  Model,
+  ModelInput,
+  ModelListing,
+  ModelSeed,
+} from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
 // The model-configuration capability, bound to the active backend client and the
@@ -23,6 +28,8 @@ export interface ModelConfigApi {
   fetchLogo(url: string): Promise<string>;
   /** Seed a blank draft from a run of an unknown model. */
   seedFromRun(runId: string): Promise<ModelSeed>;
+  /** What OpenRouter publishes about a slug, to fill the form in with. */
+  lookupOpenrouter(slug: string): Promise<ModelListing>;
   /** The bearer token the mutations are authorized with. */
   token: string;
 }
@@ -52,7 +59,8 @@ export function useModelConfig(): ModelConfigApi | null {
       !client.updateModel ||
       !client.deleteModel ||
       !client.fetchModelLogo ||
-      !client.seedModelFromRun
+      !client.seedModelFromRun ||
+      !client.lookupOpenrouterModel
     ) {
       return null;
     }
@@ -63,6 +71,7 @@ export function useModelConfig(): ModelConfigApi | null {
       deleteModel,
       fetchModelLogo,
       seedModelFromRun,
+      lookupOpenrouterModel,
     } = client;
     return {
       createModel: (input) => createModel(input, token),
@@ -70,6 +79,7 @@ export function useModelConfig(): ModelConfigApi | null {
       deleteModel: (slug) => deleteModel(slug, token),
       fetchLogo: async (url) => (await fetchModelLogo(url, token)).logoSvg,
       seedFromRun: (runId) => seedModelFromRun(runId),
+      lookupOpenrouter: (slug) => lookupOpenrouterModel(slug, token),
       token,
     };
   }, [canExecute, client, token]);

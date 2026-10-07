@@ -8,11 +8,13 @@
 // in the same pass.
 
 import type { HarnessSlug } from "./index";
+import type { RunSummary } from "./snapshot";
 
 /**
- * One test case in a plan or a case group, pinned to an exact version (and
- * variant). Coverage is counted against exactly this version; the matrix flags it
- * when a newer version has since been ingested.
+ * One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
+ * and the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted
+ * against exactly this pin; the matrix flags it when a newer version has since been
+ * ingested.
  */
 export type ReviewPlanCase = {
   /**
@@ -27,26 +29,73 @@ export type ReviewPlanCase = {
    * The variant to cover (e.g. `base`).
    */
   variant: string;
+  /**
+   * The engine to cover (e.g. `simple-2d`), or null for the `none` engine — the
+   * engineless run every case supports, and exactly what a plan scheduled before the
+   * pin carried an engine asked for.
+   *
+   * The engine is in the pin because a result is only comparable with another result
+   * on the same engine: a model handed a runtime and a documented API is doing
+   * different work from the same model starting from nothing, so one case at one
+   * version and variant on two engines is two pinned cases and two sets of cells.
+   *
+   * A pin naming an engine the version does not declare support for is accepted here
+   * and reported by the run, exactly as an uningested version is. The catalogue moves
+   * under a standing plan, so the check belongs where a run executes.
+   */
+  engine?: string;
 };
 
 /**
- * One harness+model combination in a plan or a combo group. The optional provider
- * mirrors the new-run form's per-combination provider for provider-routed
- * harnesses.
+ * One **combination** in a plan, a ladder, or a combo group: what a cell's runs are
+ * executed by.
+ *
+ * One type carrying two shapes, exactly as
+ * [`ComparisonArm`](test_cabinet_core::comparison::ComparisonArm) already does. A
+ * member naming a [`gg_config_id`](Self::gg_config_id) is a **gg combination** — a
+ * saved [gg configuration](https://docs.testcabinet.ai/gg/configurations/) plus a model
+ * for each launch slot it declares — and one without it is a **harness combination**:
+ * a harness, the model it runs, and a provider for a provider-routed harness. They are
+ * unioned into one list rather than split across two, so a plan crossing both against
+ * its cases needs no second axis.
  */
 export type ReviewPlanCombo = {
   /**
-   * The agent harness to drive.
+   * The agent harness to drive — `gg` on a gg member.
    */
   harness: HarnessSlug;
   /**
-   * The opaque model id passed to the harness.
+   * The opaque model id passed to the harness. Empty in storage on a gg member,
+   * which binds a model per agent instead; a read fills it with the model the bound
+   * set's root agent runs on, so a client with no configuration in hand still has
+   * something to show.
    */
   model: string;
   /**
    * The provider for a provider-routed harness, or null.
    */
   provider?: string;
+  /**
+   * The launcher's key for the gg configuration this member runs (`saved:<id>`), or
+   * null on a harness member. This is what makes a member a gg member.
+   */
+  ggConfigId?: string;
+  /**
+   * A model per [launch slot](https://docs.testcabinet.ai/gg/configurations/) the
+   * configuration declares, keyed by slot name. Empty on a harness member.
+   *
+   * Ordered (a `BTreeMap`) because it is compared and keyed, not merely read: two
+   * members binding the same slots must produce the same
+   * [`combination_key`] whatever order they arrived in.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * The configuration's current display name, filled on read and **never stored**.
+   *
+   * A configuration is renamed in one place, and a member that had stored the name it
+   * bore at the time would go on showing the old one forever.
+   */
+  ggConfigName?: string;
 };
 
 /**
@@ -56,7 +105,7 @@ export type ReviewPlanCombo = {
 export type CoverageGroupKind = "combo" | "case";
 
 /**
- * A reviewer's saved, reusable group of combinations or cases. Referenced by plans
+ * An owner's saved, reusable group of combinations or cases. Referenced by plans
  * as a pointer; editing the group reshapes every plan that references it. Exactly
  * one of `combos`/`cases` is populated, per `kind`.
  */
@@ -111,56 +160,36 @@ export type CoverageGroupInput = {
 };
 
 /**
+ * How many of a plan's or a ladder dispatch's own jobs may be in flight at once before a
+ * launch pass stops emitting — or no bound at all.
+ *
+ * The unbounded shape is its own variant rather than a large bound so that it is
+ * stored, reported, and shown as the instruction it is, and so that no bound the owner
+ * types can be mistaken for it.
+ */
+export type InFlightLimit =
+  | {
+      kind: "bounded";
+      /**
+       * The most jobs that may be in flight before a launch pass stops.
+       */
+      runs: number;
+    }
+  | { kind: "unbounded" };
+
+/**
  * Which axis a coverage plan's cell loop nests on — and therefore the order its
- * runs execute in, since a top-up emits cells in this order, `job.queue_seq` is
+ * runs execute in, since a launch pass emits cells in this order, `job.queue_seq` is
  * monotonic, and the dispatcher claims in ascending order.
  *
- * The console labels these "One case at a time" and "One model at a time". They are
- * deliberately *not* described to reviewers as depth- or breadth-first: the choice
- * is about what you want to be able to review together, not about tree traversal.
+ * The console labels these "One case at a time" and "One model at a time".
  */
 export type CoverageAxis = "case" | "combination";
 
 /**
- * How a plan is **fed**, as opposed to what it declares.
- *
- * Split from [`CoveragePlan`] because the two are edited by different gestures —
- * the members and the target are the plan's definition, these are the controls a
- * reviewer reaches for while it is running — so writing one can never clobber the
- * other. Flattened into [`CoveragePlanOut`] on the way out, so a reader still sees
- * one object.
- */
-export type CoverageSchedule = {
-  /**
-   * Which axis the cell loop nests on, and therefore the order runs execute in.
-   */
-  outerAxis: CoverageAxis;
-  /**
-   * Whether topping up is suspended. The mildest halting control: no new runs are
-   * emitted and everything already queued is left alone.
-   */
-  paused: boolean;
-  /**
-   * Whether submitting a review re-runs this plan's top-up automatically. Off by
-   * default, so an existing plan never silently starts enqueueing.
-   */
-  autoTopUp: boolean;
-  /**
-   * This plan's override of the account's review-buffer target, or null to inherit
-   * it. Null and `0` are different instructions — "no opinion" versus "never top
-   * up" — which is why this is nullable rather than defaulted to zero.
-   */
-  bufferTarget?: number;
-};
-
-/**
- * A reviewer's named coverage plan **as declared**: the groups it references, any
- * one-off members, and the target runs-per-cell. Persisted whole; one account may
- * hold many.
- *
- * How the plan is *fed* is [`CoverageSchedule`], stored beside this and never
- * written by a declaration save. Handlers return the two flattened together as
- * [`CoveragePlanOut`].
+ * An owner's named coverage plan: the groups it references, any one-off members, the
+ * target runs-per-cell, the order it launches in, and its runs-in-flight limit
+ * override. Persisted whole; one account may hold many.
  */
 export type CoveragePlan = {
   /**
@@ -168,7 +197,7 @@ export type CoveragePlan = {
    */
   id: string;
   /**
-   * The reviewer-chosen display name.
+   * The owner-chosen display name.
    */
   name: string;
   /**
@@ -191,6 +220,15 @@ export type CoveragePlan = {
    * One-off cases pinned directly on the plan (unioned with the groups).
    */
   cases: Array<ReviewPlanCase>;
+  /**
+   * Which axis the cell loop nests on, and therefore the order runs launch in.
+   */
+  outerAxis: CoverageAxis;
+  /**
+   * This plan's override of the account's runs-in-flight limit, or null to inherit
+   * it. Null, a bound of `0`, and `unbounded` are three different instructions.
+   */
+  inFlightLimit?: InFlightLimit;
   /**
    * RFC 3339 of when the plan was last saved.
    */
@@ -198,18 +236,21 @@ export type CoveragePlan = {
 };
 
 /**
- * One plan as a reader sees it: its declaration and its schedule, flattened into a
- * single object so `outerAxis`, `paused`, `autoTopUp`, and `bufferTarget` sit
- * alongside the plan's own fields. The split exists in the code and the store, not
- * in the reviewer's mental model.
+ * One plan as a reader sees it: its configuration, and whether it is filling — which
+ * only the fill and halt endpoints change.
  */
 export type CoveragePlanOut = {
+  /**
+   * Whether the plan is filling: launching its missing runs under its limit until
+   * every launchable cell is filled.
+   */
+  filling: boolean;
   /**
    * The plan's opaque id (minted on create).
    */
   id: string;
   /**
-   * The reviewer-chosen display name.
+   * The owner-chosen display name.
    */
   name: string;
   /**
@@ -233,29 +274,18 @@ export type CoveragePlanOut = {
    */
   cases: Array<ReviewPlanCase>;
   /**
-   * RFC 3339 of when the plan was last saved.
-   */
-  updatedAt: string;
-  /**
-   * Which axis the cell loop nests on, and therefore the order runs execute in.
+   * Which axis the cell loop nests on, and therefore the order runs launch in.
    */
   outerAxis: CoverageAxis;
   /**
-   * Whether topping up is suspended. The mildest halting control: no new runs are
-   * emitted and everything already queued is left alone.
+   * This plan's override of the account's runs-in-flight limit, or null to inherit
+   * it. Null, a bound of `0`, and `unbounded` are three different instructions.
    */
-  paused: boolean;
+  inFlightLimit?: InFlightLimit;
   /**
-   * Whether submitting a review re-runs this plan's top-up automatically. Off by
-   * default, so an existing plan never silently starts enqueueing.
+   * RFC 3339 of when the plan was last saved.
    */
-  autoTopUp: boolean;
-  /**
-   * This plan's override of the account's review-buffer target, or null to inherit
-   * it. Null and `0` are different instructions — "no opinion" versus "never top
-   * up" — which is why this is nullable rather than defaulted to zero.
-   */
-  bufferTarget?: number;
+  updatedAt: string;
 };
 
 /**
@@ -264,11 +294,13 @@ export type CoveragePlanOut = {
  */
 export type CoveragePlanInput = {
   /**
-   * The reviewer-chosen display name.
+   * The owner-chosen display name.
    */
   name: string;
   /**
    * The target number of runs desired for each `case × combination` cell.
+   * Rejected outside `MIN_RUNS_PER_CELL..=MAX_RUNS_PER_CELL` rather than corrected
+   * into range.
    */
   runsPerCell: number;
   /**
@@ -288,15 +320,14 @@ export type CoveragePlanInput = {
    */
   cases: Array<ReviewPlanCase>;
   /**
-   * The schedule to apply along with this save, or null to leave it alone.
-   *
-   * Nested and optional rather than flattened into the body, and that is the whole
-   * point: a console that saves an edited member list without sending a schedule
-   * cannot un-pause the plan or reset its buffer target as a side effect. On
-   * **create** an absent schedule means [`CoverageSchedule::default`] — today's
-   * behaviour exactly.
+   * Which axis the cell loop nests on. Defaults to `case`.
    */
-  schedule?: CoverageSchedule;
+  outerAxis: CoverageAxis;
+  /**
+   * The plan's runs-in-flight limit override, or null to inherit the account's. A
+   * bound is clamped to `MAX_IN_FLIGHT_LIMIT`.
+   */
+  inFlightLimit?: InFlightLimit;
 };
 
 /**
@@ -317,15 +348,31 @@ export type CoveragePlanSummary = {
    */
   runsPerCell: number;
   /**
-   * How many cells have met their target.
+   * How many cells are filled.
    */
-  cellsSatisfied: number;
+  cellsFilled: number;
   /**
    * The total number of cells.
    */
   cellsTotal: number;
   /**
-   * The total runs still to trigger across the plan.
+   * How many cells are blocked on infrastructure failures.
+   */
+  cellsBlocked: number;
+  /**
+   * The plan's progress in runs: the sum of every cell's `counted`.
+   */
+  runsDone: number;
+  /**
+   * The runs the plan asks for.
+   */
+  runsTotal: number;
+  /**
+   * The plan's own jobs in flight.
+   */
+  runsInFlight: number;
+  /**
+   * The total runs still to launch across the plan.
    */
   runsMissing: number;
   /**
@@ -333,20 +380,15 @@ export type CoveragePlanSummary = {
    */
   runsUnreviewed: number;
   /**
-   * Whether the plan is paused. Carried on the summary so the list can say why a
-   * plan with missing runs is not filling itself.
+   * Whether the plan is filling.
    */
-  paused: boolean;
-  /**
-   * Whether a submitted review tops this plan up.
-   */
-  autoTopUp: boolean;
+  filling: boolean;
 };
 
 /**
  * One cell of the coverage matrix: a plan case (at its pinned version) crossed
  * with a resolved combination, with the run/job counts that say how close it is to
- * the target and how much of it is waiting on the requester.
+ * the target.
  */
 export type CoverageCell = {
   /**
@@ -362,11 +404,18 @@ export type CoverageCell = {
    */
   variant: string;
   /**
-   * The harness.
+   * The engine this cell counts against, resolved: `none` where the pin names none.
+   * Always concrete, because a run recorded with no engine is a `none` run and the
+   * two must land in one cell.
+   */
+  engine: string;
+  /**
+   * The harness — `gg` on a gg cell.
    */
   harness: HarnessSlug;
   /**
-   * The model id.
+   * The model id: the one a harness cell's runs are launched with, and on a gg cell the
+   * one its bound set's root agent runs.
    */
   model: string;
   /**
@@ -374,38 +423,73 @@ export type CoverageCell = {
    */
   provider?: string;
   /**
+   * The gg configuration this cell's runs are launched from, as the member names it, or
+   * null on a harness cell.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name — what the cell is labelled by, and the
+   * first gg segment of its [identity](crate::db::CellKey). Null on a harness cell, and
+   * on a gg cell whose configuration no longer exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness cell.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * Why a launch pass cannot launch this cell, or null when it can.
+   *
+   * A cell whose member cannot be resolved is still counted and still reported — it keeps
+   * its place in the matrix carrying the reason — because a plan that silently got
+   * smaller is a plan whose missing runs nobody can explain.
+   */
+  unlaunchable?: string;
+  /**
    * The target run count (the plan's `runs_per_cell`).
    */
   desired: number;
   /**
-   * Completed runs for this cell, counted globally.
+   * The [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs):
+   * the first `desired` counted runs of the cell to land, whoever launched them, in the
+   * order they landed. Every other figure on the cell is computed over these.
    */
-  completed: number;
+  runIds: Array<string>;
+  /**
+   * How many runs the cell holds — the length of [`Self::run_ids`], so never more than
+   * `desired`. A counted run is the model's own result, a retried attempt once.
+   */
+  counted: number;
+  /**
+   * Whether the cell is filled: `counted >= desired`. Runs in flight do not fill it.
+   */
+  filled: boolean;
+  /**
+   * Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):
+   * its last three finished jobs failed on infrastructure, and a launch pass skips it
+   * until its owner retries it.
+   */
+  blocked: boolean;
   /**
    * In-flight jobs (queued / pending / dispatched / starting / running) for this
-   * cell, counted globally.
+   * cell, counted globally and read only up to what the cell still needs
+   * (`desired - counted`), so a filled cell has none.
    */
   inFlight: number;
   /**
    * How many of [`Self::in_flight`] are `pending` — deliberately held back rather
    * than merely waiting to be claimed, because their harness is at its parallelism
    * cap or (for a game jam) another run of the same jam is already going on that
-   * model.
-   *
-   * Surfaced separately because it is the answer to "why is my buffer full but
-   * nothing running?", which is otherwise indistinguishable from a stuck queue. It
-   * is a **subset** of `inFlight`, not an addition to it.
+   * model. A **subset** of `inFlight`, not an addition to it.
    */
   pending: number;
   /**
-   * How many of [`Self::completed`] the **requesting account** has not reviewed.
-   * The only per-account number on the cell: it changes nothing about what the
-   * cell needs, but it occupies the review buffer, which is what makes an
-   * otherwise mysteriously idle plan explicable.
+   * How many of the cell's runs are completed and not reviewed by the **requesting
+   * account**. Informational: it changes nothing about what the cell needs.
    */
   unreviewed: number;
   /**
-   * How many more runs to trigger: `max(0, desired - (completed + in_flight))`.
+   * How many more runs to launch: `max(0, desired - (counted + in_flight))`.
    */
   remaining: number;
   /**
@@ -427,7 +511,7 @@ export type CoverageCell = {
 export type CoverageMatrix = {
   /**
    * Every `case × combination` cell, in the plan's own emission order — which
-   * axis is outer is the plan's [`CoverageSchedule::outer_axis`], echoed below so
+   * axis is outer is the plan's [`CoveragePlan::outer_axis`], echoed below so
    * a reader knows what the order means without fetching the plan again.
    */
   cells: Array<CoverageCell>;
@@ -436,15 +520,32 @@ export type CoverageMatrix = {
    */
   outerAxis: CoverageAxis;
   /**
-   * How many cells have met their target (`remaining == 0`).
+   * How many cells are filled (`counted >= desired`; runs in flight do not count).
    */
-  cellsSatisfied: number;
+  cellsFilled: number;
   /**
    * The total number of cells.
    */
   cellsTotal: number;
   /**
-   * The sum of every cell's `remaining` — the total runs still to trigger.
+   * How many cells are blocked on infrastructure failures.
+   */
+  cellsBlocked: number;
+  /**
+   * The plan's progress in runs: the sum of every cell's `counted`.
+   */
+  runsDone: number;
+  /**
+   * The runs the plan asks for: the sum of every cell's `desired`.
+   */
+  runsTotal: number;
+  /**
+   * The plan's own jobs in flight — every job whose origin names the plan — which is
+   * what its limit counts.
+   */
+  runsInFlight: number;
+  /**
+   * The sum of every cell's `remaining` — the total runs still to launch.
    */
   runsMissing: number;
   /**
@@ -452,38 +553,35 @@ export type CoverageMatrix = {
    */
   runsPending: number;
   /**
-   * The sum of every cell's `unreviewed` — completed runs waiting on *you*.
+   * The sum of every cell's `unreviewed` — completed runs the requester has not
+   * reviewed. Informational.
    */
   runsUnreviewed: number;
   /**
-   * The plan's review-buffer occupancy: in-flight jobs plus unreviewed runs. When
-   * this has reached `bufferTarget`, a top-up will deliberately enqueue nothing,
-   * which is the difference between a finished plan and a full one.
-   */
-  runsOutstanding: number;
-  /**
-   * The buffer target in force for this plan (its own override, else the
+   * The runs-in-flight limit in force for this plan (its own override, else the
    * account's setting, else the backend default).
    */
-  bufferTarget: number;
+  inFlightLimit: InFlightLimit;
+  /**
+   * Whether the plan is filling.
+   */
+  filling: boolean;
 };
 
 /**
- * The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write.
- * One setting today; the resource exists because the review buffer is a property of
- * the *reviewer* (how much work they want waiting on them) rather than of any one
- * plan, with a per-plan override for the exceptions.
+ * The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write: the
+ * account's default runs-in-flight limit, which a plan or ladder may override.
  */
 export type CoverageSettings = {
   /**
-   * The account's default review-buffer target: how many runs a top-up may leave
-   * outstanding (in flight, or finished and unreviewed) before it stops.
+   * How many of one plan's or one ladder dispatch's jobs may be in flight at once, or
+   * `unbounded`.
    */
-  bufferTarget: number;
+  inFlightLimit: InFlightLimit;
   /**
-   * Whether [`Self::buffer_target`] is the account's own choice or the backend's
-   * compiled-in default because they have never chosen one. A `PUT` always makes
-   * it a choice.
+   * Whether [`Self::in_flight_limit`] is the account's own choice or the backend's
+   * compiled-in default because they have never chosen one. A `PUT` always makes it
+   * a choice.
    */
   isDefault: boolean;
 };
@@ -493,28 +591,26 @@ export type CoverageSettings = {
  */
 export type CoverageSettingsInput = {
   /**
-   * The review-buffer target to store, clamped to `MAX_BUFFER_TARGET`. `0` is a
-   * legitimate value — "never top me up automatically" — and is stored as such.
+   * The limit to store. A bound is clamped to `MAX_IN_FLIGHT_LIMIT`; a bound of `0` is
+   * a legitimate value — "launch nothing" — and `unbounded` is stored as itself.
    */
-  bufferTarget: number;
+  inFlightLimit: InFlightLimit;
 };
 
 /**
- * Why a top-up did no work. Distinguishing these matters: "paused" is a decision
- * the reviewer made and can undo, "busy" is a moment that will pass, and neither is
- * the same as a top-up that ran and found nothing to launch.
+ * Why a launch pass did no work. "busy" is a moment that will pass; the others are
+ * states the owner changes.
  */
-export type TopUpSkipped = "paused" | "busy";
+export type LaunchSkipped = "notFilling" | "notRunning" | "busy";
 
 /**
- * One cell a top-up launched, and the jobs it enqueued for it.
+ * One cell a launch pass launched, and the jobs it enqueued for it.
  */
-export type TopUpLaunch = {
+export type LaunchedCell = {
   /**
    * The ladder rung this cell belongs to, or null for a coverage plan (which has
-   * no rungs). Shared shape, because plans and ladders top up through the same
-   * code path and a console showing "what did that button just do" wants one
-   * answer format.
+   * no rungs). Shared shape, because plans and ladders launch through the same code
+   * path.
    */
   rungId?: string;
   /**
@@ -530,6 +626,11 @@ export type TopUpLaunch = {
    */
   variant: string;
   /**
+   * The engine the enqueued runs are built on, resolved: `none` where the cell's pin
+   * names none.
+   */
+  engine: string;
+  /**
    * The harness.
    */
   harness: HarnessSlug;
@@ -543,6 +644,21 @@ export type TopUpLaunch = {
    */
   provider?: string;
   /**
+   * The gg configuration the launched member names, or null on a harness member.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name, when it still exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness member.
+   *
+   * Reported for the same reason the blocked list reports it: `gg` and a root model are not
+   * a name — two configurations, or two arms of one, read identically without it.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
    * How many runs were enqueued for this cell — always the cell's whole shortfall,
    * never a partial cell.
    */
@@ -555,41 +671,127 @@ export type TopUpLaunch = {
 };
 
 /**
- * What a top-up did, reported in enough detail that an idle plan is never a
- * mystery: whether it ran at all, what the buffer allowed, and exactly what it
+ * One cell a launch pass **could not** launch, and why: a member that cannot be
+ * resolved, or a cell blocked on infrastructure failures.
+ *
+ * Reported per cell, beside the launches rather than instead of them: a pass that
+ * enqueued four cells and skipped two broken ones is working, and the owner needs to see
+ * both numbers to know that.
+ */
+export type BlockedCell = {
+  /**
+   * The ladder rung this cell belongs to, or null for a coverage plan.
+   */
+  rungId?: string;
+  /**
+   * The test-case slug.
+   */
+  slug: string;
+  /**
+   * The pinned version.
+   */
+  version: string;
+  /**
+   * The variant.
+   */
+  variant: string;
+  /**
+   * The engine the cell would have launched on, resolved: `none` where the pin names
+   * none.
+   */
+  engine: string;
+  /**
+   * The harness — `gg` on a gg member.
+   */
+  harness: HarnessSlug;
+  /**
+   * The combination's model id, empty when the member could not be resolved far enough
+   * to have one.
+   */
+  model: string;
+  /**
+   * The provider for a provider-routed harness, or null.
+   */
+  provider?: string;
+  /**
+   * The gg configuration the member names, or null on a harness member.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name, when it still exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness member.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * Why the cell could not be launched, in the words the owner has to act on.
+   */
+  reason: string;
+};
+
+/**
+ * What a launch pass did, reported in enough detail that an idle plan or ladder is
+ * never a mystery: whether it ran at all, what the limit allowed, and exactly what it
  * enqueued.
  */
-export type TopUpResult = {
+export type LaunchPassResult = {
   /**
-   * Why nothing was attempted, or null when the scheduler ran. A top-up that ran
-   * and enqueued nothing (a full buffer, or a satisfied plan) reports null here
-   * with `enqueued` zero — deliberately distinct from having been skipped.
+   * Why nothing was attempted, or null when the scheduler ran. A pass that ran and
+   * enqueued nothing (a full limit, or nothing missing) reports null here with
+   * `enqueued` zero.
    */
-  skipped?: TopUpSkipped;
+  skipped?: LaunchSkipped;
   /**
-   * The buffer target in force (the plan's override, else the account's setting,
-   * else the backend default).
+   * The runs-in-flight limit in force.
    */
-  bufferTarget: number;
+  inFlightLimit: InFlightLimit;
   /**
-   * The requester's buffer occupancy as the scheduler saw it, or null when it
-   * never ran.
+   * The plan's or dispatch's own jobs in flight as the scheduler saw them, or null
+   * when it never ran.
    */
-  outstanding?: number;
+  inFlight?: number;
   /**
    * How many runs were enqueued in total.
    */
   enqueued: number;
   /**
    * The cells that were launched, in the order they were emitted — which is the
-   * order they will execute and therefore be reviewed in.
+   * order they will execute in.
    */
-  cells: Array<TopUpLaunch>;
+  cells: Array<LaunchedCell>;
+  /**
+   * The cells the pass wanted to launch and could not, each with its reason. One
+   * broken member never stops the rest being launched, so this list and
+   * [`Self::cells`] are routinely both non-empty.
+   */
+  unlaunchable: Array<BlockedCell>;
+  /**
+   * How many not-yet-started jobs (`queued` or `pending`) a ladder whose gate stops
+   * early cancelled because the rung they belonged to was decided. Always `0` on a
+   * coverage plan, and on a ladder with `earlyStop` off.
+   */
+  earlyStopCanceled: number;
 };
 
 /**
- * One run in a scoped review queue: a completed run of this plan (or ladder) the
- * requesting account has not reviewed.
+ * The `POST /coverage-plans/{id}/cells/retry` body: the blocked cell to retry.
+ */
+export type PlanCellRetryInput = {
+  /**
+   * The cell's case, at its pinned version and engine.
+   */
+  case: ReviewPlanCase;
+  /**
+   * The cell's combination, as the plan holds it.
+   */
+  combination: ReviewPlanCombo;
+};
+
+/**
+ * One run in a scoped review queue: a completed run of this plan (or ladder dispatch)
+ * the requesting account has not reviewed.
  */
 export type CoverageQueueEntry = {
   /**
@@ -613,6 +815,10 @@ export type CoverageQueueEntry = {
    */
   variant: string;
   /**
+   * The engine the run was built on, resolved: `none` where the cell's pin names none.
+   */
+  engine: string;
+  /**
    * The harness.
    */
   harness: HarnessSlug;
@@ -620,6 +826,24 @@ export type CoverageQueueEntry = {
    * The model id the run was launched with.
    */
   model: string;
+  /**
+   * The gg configuration the run's cell names, or null on a harness cell.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness cell.
+   *
+   * The queue carries the member's whole identity rather than the run's harness and model,
+   * because on a gg cell those two are `gg` and a root model — the same two values for every
+   * configuration the plan crosses and for every arm of each. A worklist whose rows cannot
+   * be told apart is a worklist a reviewer cannot open in an informed order, and telling
+   * exactly those arms apart is what the plan was built for.
+   */
+  ggSlotModels?: { [key in string]: string };
   /**
    * RFC 3339 of when the run finished.
    */
@@ -631,10 +855,8 @@ export type CoverageQueueEntry = {
  */
 export type CoverageQueue = {
   /**
-   * The runs to review, in the order the plan or ladder emitted their cells —
-   * **not** newest-first like the global Unreviewed page. Reviewing walks the
-   * buffer in the order it was deliberately filled, which is what makes a case's
-   * repeats comparable against each other.
+   * The runs to review, in the plan's or ladder's own order — **not** newest-first
+   * like the global Unreviewed page — so a case's repeats sit together.
    */
   runs: Array<CoverageQueueEntry>;
   /**
@@ -646,25 +868,24 @@ export type CoverageQueue = {
 };
 
 /**
- * The `POST …/pause` body: the pause state to set. A body rather than two verbs so
- * the control is idempotent and a console can drive a toggle without tracking which
- * direction it is going.
+ * The runs a plan's cells hold, as `GET /coverage-plans/{id}/runs` returns them.
  */
-export type PauseInput = {
+export type CoveragePlanRuns = {
   /**
-   * Whether topping up should be suspended.
+   * The summary card of every run the plan's cells hold — each cell's
+   * [`CoverageCell::run_ids`] — in the matrix's cell order, and in the order the runs
+   * landed within a cell. A run beyond a cell's target is not here.
    */
-  paused: boolean;
+  runs: Array<RunSummary>;
 };
 
 /**
- * What a halt did — a plan's or a ladder's, which differ only in what they sweep.
+ * What a plan's halt or a ladder's stop did.
  *
  * The **count is the point**, not a nicety: a halt that reports only success cannot
- * be told apart from a halt whose scope was wrong, and the reviewer's next move
- * differs completely between "the queue was already empty" and "nothing I launched
- * was found". The plan or ladder is always left paused, which is why that is stated
- * here in prose rather than reported as a field that could only ever say `true`.
+ * be told apart from a halt whose scope was wrong. The plan always stops filling (and
+ * the dispatch always ends), which is why that is stated here in prose rather than
+ * reported as a field that could only ever say `true`.
  */
 export type HaltResult = {
   /**

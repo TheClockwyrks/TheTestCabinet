@@ -1,4 +1,5 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
 
 // The account section pages. Sign in and register are a single centered card over the
 // gallery backdrop with a vertical form; the account view (Profile tab) is a
@@ -54,48 +55,17 @@
   font-size: t.$font-sm;
 }
 
-.input {
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background: t.$color-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &::placeholder {
-    color: t.$color-text-muted;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
-}
-
-.primary {
+// The submit action sits at the form's leading edge rather than stretching across
+// the column.
+.submit {
   align-self: flex-start;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  padding: t.$space-sm t.$space-lg;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  background: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  color: t.$color-bg;
-  box-shadow: var(--ttc-glow);
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 }
 
 .error {
   margin: 0;
   color: t.$color-negative;
   font-size: t.$font-sm;
+  @include h.halo;
 }
 
 .alt {
@@ -166,21 +136,14 @@
   margin-top: t.$space-xs;
 }
 
-// The sign-out action, sitting at the identity card's trailing edge. A quiet,
-// outlined button (not the accent-filled `.primary`) so it doesn't compete with the
-// page's content.
-.signOut {
+// The sign-out action, sitting at the identity card's trailing edge. The shared
+// outlined button, taking the negative cue on hover rather than the accent since it
+// ends the session. Scoped under the card so the hover rule outranks the button's
+// own whichever order the stylesheets load in.
+.identityCard .signOut {
   align-self: center;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  padding: t.$space-sm t.$space-lg;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  background: transparent;
-  border: t.$border-hairline solid t.$color-border;
-  color: t.$color-text;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: t.$color-negative;
     color: t.$color-negative;
   }
@@ -235,6 +198,7 @@
 .muted {
   margin: 0;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // The native file input is driven by the "Change picture" button; kept in the DOM
@@ -243,45 +207,9 @@
   display: none;
 }
 
-// A quieter counterpart to `.primary` for the picture upload action.
-.secondary {
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  padding: t.$space-xs t.$space-md;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  background: transparent;
-  border: t.$border-hairline solid t.$color-border;
-  color: t.$color-text;
-
-  &:hover:not(:disabled) {
-    border-color: t.$color-accent;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+// The text-only "Remove" affordance beside the change button turns negative rather
+// than accent on hover: it takes the picture away. Scoped under the controls row so
+// the hover rule outranks the button's own whichever order the stylesheets load in.
+.pictureControls .removePicture:hover:not(:disabled) {
+  color: t.$color-negative;
 }
-
-// A text-only "Remove" affordance beside the change button.
-.linkButton {
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  padding: 0;
-  border: none;
-  background: none;
-  color: t.$color-text-muted;
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    color: t.$color-negative;
-    text-decoration: underline;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-

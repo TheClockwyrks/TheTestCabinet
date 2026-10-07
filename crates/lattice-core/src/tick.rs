@@ -8,14 +8,22 @@
 //!    respecting compaction).
 //! 2. **Inserters** advance their swing state machine (pickup → swing countdown →
 //!    drop).
-//! 3. **Belts** advance: compact each *run* (a chain of collinear same-direction
-//!    belts) as one long lane, so a packed run moves as a rigid block and items
-//!    cross tile seams by an ordinary step; then force the perpendicular
-//!    curve / side-load merges across runs (near lane, curves remap equal-length).
+//! 3. **Belts** advance: compact each *run* as one long lane, so a packed run moves
+//!    as a rigid block and items cross tile seams by an ordinary step. A run is a
+//!    chain of belts that end-feed one another either **collinearly** (`E → E`) or
+//!    through a **pure curve** (`E → S`, a 90° bend whose sole feed is the belt
+//!    before it) — a curve carries both lanes through the turn **preserved** (left
+//!    stays left, right stays right) at belt speed, exactly like a straight belt. Then
+//!    force the true perpendicular **side-load** merges across runs (near lane) — a
+//!    side-load being a belt that also has its own straight feed, or a second feeder.
 //! 4. **Splitters** balance (round-robin pull from two inputs, round-robin push to
-//!    two outputs, lanes preserved).
-//! 5. **Assemblers** craft (gate check, consume one input set, count `CRAFT` down,
-//!    deposit one output set).
+//!    two outputs, lanes preserved), then **lane splitters** unzip (pull the single
+//!    input and route each of its lanes to an output belt by lane, so only the outer
+//!    lanes of the outputs fill). Both are one phase over disjoint machines, so the
+//!    split into two passes within it is immaterial to the result.
+//! 5. **Crafters** — assemblers and furnaces alike, in placement order — craft
+//!    (gate check, consume one input set, count `CRAFT` down, deposit one output
+//!    set). A furnace's recipe lists coal, so it smelts only while fuelled.
 //! 6. **Sinks** consume everything that reached them this tick.
 //!
 //! The ordering is the contract: it is what makes "the state after *N* ticks" a
@@ -23,9 +31,9 @@
 //! compaction clamp item-by-item; an efficient submission stores gaps and updates
 //! lines in constant time, but must land on the *same* state this produces.
 
-use crate::prototypes::{INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
+use crate::prototypes::{self, INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
 use crate::scenario::{Dir, Lane};
-use crate::world::{LaneItem, LaneSide, Machine, World};
+use crate::world::{Belt, Crafter, LaneItem, LaneSide, Machine, World};
 
 impl World {
     /// Advance the world by one tick, running the six phases in order.
@@ -34,7 +42,8 @@ impl World {
         self.advance_inserters();
         self.advance_belts();
         self.advance_splitters();
-        self.advance_assemblers();
+        self.advance_lane_splitters();
+        self.advance_crafters();
         self.advance_sinks();
         self.tick += 1;
     }
@@ -109,21 +118,17 @@ impl World {
                     // the inserter (opposite its facing); the drop tile is in front.
                     let (px, py) = opposite(dir).step(x, y);
                     let (dx, dy) = dir.step(x, y);
-                    // Only grab when the target can take what we would carry *right
-                    // now*: otherwise the arm waits empty at the pickup rather than
-                    // grabbing an item and then stalling with it held over a full
-                    // target. The look-ahead peeks the item without removing it and
-                    // asks the target whether it would accept that item, then repeats
-                    // the identical selection with `try_pickup` to actually take it.
+                    // Choose and take what to grab this tick (or nothing) — see
+                    // `idle_pickup`. It only ever grabs an item the drop target can
+                    // take right now, so the arm never lifts an item it could not
+                    // deposit and then stalls holding it.
                     //
-                    // Two inserters racing one buffer both peek room and both grab in
+                    // Two inserters racing one buffer both see room and both grab in
                     // the same tick — when their swings finish, only one drop lands and
                     // the loser keeps holding (`swing_left == 1`, below). That is the
                     // one sanctioned case where an inserter hovers over its target with
                     // an item; a lone inserter never does.
-                    if let Some(peeked) = self.peek_pickup(px, py, dir)
-                        && self.would_accept_drop(dx, dy, dir, peeked)
-                        && let Some(item) = self.try_pickup(px, py, dir)
+                    if let Some(item) = self.idle_pickup(px, py, dir, dx, dy)
                         && let Machine::Inserter(ins) = &mut self.machines[index]
                     {
                         ins.held = Some(item);
@@ -159,16 +164,81 @@ impl World {
         }
     }
 
+    /// Choose and take the item an idle inserter grabs this tick, or `None` to wait.
+    ///
+    /// For a belt feeding a **crafter** (assembler or furnace) the selection is
+    /// target-aware ([`crafter_belt_choice`]): it grabs an item the crafter still
+    /// needs — reaching across to the far lane rather than stalling on a closer item
+    /// the crafter cannot currently take — filling a furnace's **fuel before its ore**
+    /// and an assembler's **emptiest input first**. For every other pickup or drop
+    /// target the behaviour is the original one: peek the closer lane's head (or the
+    /// source / output-buffer item) and take it only if the drop target would accept
+    /// it now. Either way the grabbed item is always one the target can accept this
+    /// tick, so the arm never lifts an item it cannot then deposit.
+    fn idle_pickup(&mut self, px: i32, py: i32, dir: Dir, dx: i32, dy: i32) -> Option<u16> {
+        let pickup = self.machine_at(px, py);
+        let drop = self.machine_at(dx, dy);
+        let belt_into_crafter = matches!(
+            (
+                pickup.map(|i| &self.machines[i]),
+                drop.map(|i| &self.machines[i]),
+            ),
+            (
+                Some(Machine::Belt(_)),
+                Some(Machine::Assembler(_) | Machine::Furnace(_)),
+            )
+        );
+        if belt_into_crafter {
+            let (pickup, drop) = (pickup.unwrap(), drop.unwrap());
+            // Decide which lane/item the crafter most needs, then take that lane's head.
+            let choice = {
+                let Machine::Belt(belt) = &self.machines[pickup] else {
+                    unreachable!()
+                };
+                let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) =
+                    &self.machines[drop]
+                else {
+                    unreachable!()
+                };
+                crafter_belt_choice(belt, dir, crafter)
+            };
+            let (side, _item) = choice?;
+            let Machine::Belt(belt) = &mut self.machines[pickup] else {
+                unreachable!()
+            };
+            return Some(belt.lanes[side.index()].remove(0).item);
+        }
+
+        // General case (belt → belt/sink, source, assembler output): the closer lane's
+        // head (or the source / output-buffer item), taken only if the drop target
+        // accepts it right now. The peek mirrors the take exactly.
+        let peeked = self.peek_pickup(px, py, dir)?;
+        if !self.would_accept_drop(dx, dy, dir, peeked) {
+            return None;
+        }
+        self.try_pickup(px, py, dir)
+    }
+
     /// Pick one item up from the tile at `(x, y)` for an inserter facing `dir`.
     /// From a belt it takes the **far lane first, then the near** (relative to the
     /// inserter); from an assembler's output buffer it takes any available output
     /// item; from a source it takes the source's item (infinite supply). Returns
     /// the picked item's index, or `None` if nothing was available.
+    ///
+    /// This is the target-agnostic selection used for every drop target except a
+    /// crafter; a belt feeding a crafter is routed through [`crafter_belt_choice`]
+    /// instead (see [`World::idle_pickup`]).
     fn try_pickup(&mut self, x: i32, y: i32, dir: Dir) -> Option<u16> {
         let target = self.machine_at(x, y)?;
         match &mut self.machines[target] {
             Machine::Belt(belt) => {
-                // Far lane first, then near, relative to the inserter's facing.
+                // The inserter takes the item on the lane physically CLOSER to it,
+                // reaching across to the other lane only when the closer one is empty.
+                // `near_far_lanes` names lanes relative to the inserter's FACING, but an
+                // inserter picks from BEHIND itself, so the lane it calls `far` (far from
+                // where the arm points) is the one physically closest to the inserter —
+                // hence `[far, near]` here is "closer lane first". Do NOT "fix" this to
+                // `[near, far]`: that makes it grab the farther lane.
                 let (near, far) = near_far_lanes(belt.dir, dir);
                 for side in [far, near] {
                     let lane = &mut belt.lanes[side.index()];
@@ -181,10 +251,10 @@ impl World {
                 }
                 None
             }
-            Machine::Assembler(assembler) => {
+            Machine::Assembler(crafter) | Machine::Furnace(crafter) => {
                 // Take one of any output item present (lowest item index for
                 // determinism).
-                let mut keys: Vec<u16> = assembler
+                let mut keys: Vec<u16> = crafter
                     .output
                     .iter()
                     .filter(|&(_, &c)| c > 0)
@@ -192,7 +262,7 @@ impl World {
                     .collect();
                 keys.sort_unstable();
                 let item = *keys.first()?;
-                if let Some(count) = assembler.output.get_mut(&item) {
+                if let Some(count) = crafter.output.get_mut(&item) {
                     *count -= 1;
                     return Some(item);
                 }
@@ -205,14 +275,16 @@ impl World {
 
     /// Peek the item an inserter facing `dir` **would** pick up from the tile at
     /// `(x, y)`, without removing it. Mirrors [`World::try_pickup`]'s selection
-    /// exactly — the far lane before the near for a belt, the lowest output item
-    /// index for an assembler, the source's item for a source — so the peeked item
+    /// exactly — the far lane before the near for a belt (the physically closer lane
+    /// first — see `try_pickup`), the lowest output item index for an assembler, the
+    /// source's item for a source — so the peeked item
     /// is the one an immediately-following `try_pickup` takes. Used by the inserter's
     /// look-ahead so it grabs only when the target can accept what it would carry.
     fn peek_pickup(&self, x: i32, y: i32, dir: Dir) -> Option<u16> {
         let target = self.machine_at(x, y)?;
         match &self.machines[target] {
             Machine::Belt(belt) => {
+                // `[far, near]` is the physically-closer lane first — see `try_pickup`.
                 let (near, far) = near_far_lanes(belt.dir, dir);
                 for side in [far, near] {
                     if let Some(front) = belt.lanes[side.index()].first() {
@@ -221,7 +293,7 @@ impl World {
                 }
                 None
             }
-            Machine::Assembler(assembler) => assembler
+            Machine::Assembler(crafter) | Machine::Furnace(crafter) => crafter
                 .output
                 .iter()
                 .filter(|&(_, &c)| c > 0)
@@ -246,7 +318,7 @@ impl World {
                 let (near, _) = near_far_lanes(belt.dir, dir);
                 self.try_force_onto_belt(target, near, item)
             }
-            Machine::Assembler(_) => self.try_assembler_input(target, item),
+            Machine::Assembler(_) | Machine::Furnace(_) => self.try_crafter_input(target, item),
             Machine::Sink(_) => {
                 self.consume_into_sink(target, item);
                 true
@@ -269,39 +341,26 @@ impl World {
                 let (near, _) = near_far_lanes(belt.dir, dir);
                 lane_accepts(&belt.lanes[near.index()], TILE - SPACING)
             }
-            Machine::Assembler(assembler) => {
-                let is_input = assembler
-                    .recipe
-                    .inputs
-                    .iter()
-                    .any(|t| crate::prototypes::item_index(t.item) == Some(item));
-                is_input && assembler.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
+            Machine::Assembler(crafter) | Machine::Furnace(crafter) => {
+                crafter_accepts(crafter, item)
             }
             Machine::Sink(_) => true,
             _ => false,
         }
     }
 
-    /// Add one `item` to an assembler's input buffer if it is a recipe input and
-    /// there is room (`< INPUT_CAP` of it). Returns whether it landed.
-    fn try_assembler_input(&mut self, index: usize, item: u16) -> bool {
-        let Machine::Assembler(assembler) = &mut self.machines[index] else {
+    /// Add one `item` to a crafter's (assembler or furnace) input buffer if the crafter
+    /// can take it — [`crafter_accepts`]: a recipe input with room, and, for a furnace,
+    /// only once its fuel buffer is full for a non-fuel input. Returns whether it landed.
+    fn try_crafter_input(&mut self, index: usize, item: u16) -> bool {
+        let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) = &mut self.machines[index]
+        else {
             return false;
         };
-        // Only accept items the recipe actually consumes.
-        let is_input = assembler
-            .recipe
-            .inputs
-            .iter()
-            .any(|t| crate::prototypes::item_index(t.item) == Some(item));
-        if !is_input {
+        if !crafter_accepts(crafter, item) {
             return false;
         }
-        let count = assembler.inputs.entry(item).or_insert(0);
-        if *count >= INPUT_CAP {
-            return false;
-        }
-        *count += 1;
+        *crafter.inputs.entry(item).or_insert(0) += 1;
         true
     }
 
@@ -427,14 +486,30 @@ impl World {
             if down_dir == dir {
                 continue; // collinear — same run, already advanced
             }
+            if self.is_pure_curve(down_index) {
+                // A pure curve is part of the feeder's RUN (lanes preserved, both flow
+                // at belt speed) — already advanced by run compaction. Only a genuine
+                // side-load (the target also has its own straight feed, or a second
+                // feeder) is a cross-run forcing merge handled here.
+                continue;
+            }
 
-            // A perpendicular hand-off (a side-load, or a curve) merges the feeder's
-            // lead item onto the target belt's **near** lane — the lane on the physical
-            // side the feeder approaches from — matching the side the feeder is on. A
-            // feeder from the north lands on the target's north lane, one from the
-            // south on its south lane, and so on. Both of the feeder's own lanes dump
-            // into that one near lane; the target's far lane is left for its own flow.
+            // A perpendicular side-load merges the feeder's lead items onto the target
+            // belt's **near** lane — the lane on the physical side the feeder approaches
+            // from. Both of the feeder's own lanes land on that one near lane, but each
+            // at the position along the target where it physically makes contact: the
+            // feeder lane that is **upstream** in the target's flow enters near the input
+            // edge (`TILE/2 + SPACING`), the **downstream** lane at its true contact
+            // point further along (`TILE/2 - SPACING`). Each lands only if that slot is
+            // free under the forcing rule, so with a compacted feeder the near lane is
+            // filled from the upstream lane, and the downstream lane backs up once the
+            // through-traffic reaches its slot — the real side-load behaviour, where the
+            // second belt's availability decides whether an item loads at its correct
+            // position. The target's far lane is left for its own flow.
             let (dest_side, _) = near_far_lanes(down_dir, dir);
+            let (fx, fy) = down_dir.step(0, 0); // the target's forward step
+            let (ux, uy) = (-fx, -fy); // upstream: the higher-`pos` direction
+            let (lx, ly) = left_offset(dir); // the feeder's left-lane physical offset
             for src_side in [LaneSide::Left, LaneSide::Right] {
                 let lead = match &self.machines[index] {
                     Machine::Belt(b) => b.lanes[src_side.index()].first().copied(),
@@ -444,7 +519,17 @@ impl World {
                 if lead.pos != 0 {
                     continue; // only an item that has reached the output edge crosses
                 }
-                if self.try_force_onto_belt(down_index, dest_side, lead.item)
+                // This lane's physical offset dotted with the upstream direction: +1 for
+                // the upstream lane (enters near the input edge), -1 for the downstream
+                // one (enters at its far contact point). The two lanes lie along the
+                // target's flow axis (the feeder is perpendicular), so this is exactly ±1.
+                let (ox, oy) = match src_side {
+                    LaneSide::Left => (lx, ly),
+                    LaneSide::Right => (-lx, -ly),
+                };
+                let along = ox * ux + oy * uy;
+                let dest_pos = (TILE as i32 / 2 + along * SPACING as i32) as u32;
+                if self.try_force_onto_belt_at(down_index, dest_side, lead.item, dest_pos)
                     && let Machine::Belt(b) = &mut self.machines[index]
                 {
                     b.lanes[src_side.index()].remove(0);
@@ -483,13 +568,14 @@ impl World {
             //    belt's LEFT lane, a right-lane item on a RIGHT lane. The splitter moves
             //    items across BELTS, never across lanes.
             //
-            //  - **Each (item type, lane) alternates its output belt** (the Factorio
-            //    splitter, balanced PER LANE). `out_pref`'s bit `t*2 + lane` names the
-            //    output belt the next item of type `t` on that lane prefers; it flips
-            //    after routing one. Keeping the cursor per lane is what makes one belt
-            //    with both lanes full spread over BOTH lanes of BOTH outputs — rather
-            //    than the two lanes flipping against each other and unzipping (top lane
-            //    to one output, bottom to the other, leaving two output lanes empty).
+            //  - **Each lane alternates its output belt, ignoring item type.** The
+            //    splitter tracks nothing per item type: it simply balances each input
+            //    lane across the SAME lane of the available output belts. `out_pref`'s
+            //    bit `lane` (0 = left, 1 = right) names the output belt the next item on
+            //    that lane prefers — whatever that item is — and flips after routing one.
+            //    The two lanes carry independent cursors, so a lane is only ever balanced
+            //    against the corresponding lane of the other output belt, never against
+            //    the other lane of its own belt.
             //
             // Within a lane the two input belts are tried starting from `in_first`
             // (flipped each tick) so that when both compete for one output lane neither
@@ -505,7 +591,10 @@ impl World {
                     let Some(item) = pull_lane_lead(self, in_belt, side) else {
                         continue;
                     };
-                    let bit = (item as usize) * 2 + lane;
+                    // Item-agnostic: the cursor is keyed by lane alone (bit 0 = left,
+                    // bit 1 = right), so every item on a lane shares one alternating
+                    // output-belt cursor regardless of its type.
+                    let bit = lane;
                     let pref = ((out_pref >> bit) & 1) as usize;
                     let mut landed: Option<usize> = None;
                     for belt in [pref, 1 - pref] {
@@ -517,8 +606,8 @@ impl World {
                         }
                     }
                     match landed {
-                        // Flip this (type, lane) cursor to the belt OPPOSITE the one it
-                        // landed on, so the next such item alternates.
+                        // Flip this lane's cursor to the belt OPPOSITE the one it landed
+                        // on, so the next item on this lane alternates.
                         Some(belt) => {
                             let mask = 1u16 << bit;
                             out_pref = (out_pref & !mask) | ((1 - belt as u16) << bit);
@@ -538,34 +627,88 @@ impl World {
         }
     }
 
-    // -- Phase 5: assemblers ------------------------------------------------
-
-    /// Advance every assembler's craft. If it is mid-craft, count down and deposit
-    /// the output set on completion. If it is idle and the input buffer holds a
-    /// full recipe set **and** the output buffer has room for the recipe's output
-    /// set, consume one input set and start the `CRAFT` countdown.
-    fn advance_assemblers(&mut self) {
+    /// Unzip every lane splitter: pull the **single input** (the belt behind the anchor
+    /// tile — the bottom cell has no input) and route each of its lanes to an output
+    /// belt **by lane**, not by balancing. Like the base splitter it retains no items
+    /// between ticks — each pulled item is placed this tick or returned to its input.
+    ///
+    /// The routing is fully deterministic (no cursor, hence no retained state):
+    ///
+    ///  - **The lane is preserved:** a left-lane item can only land on an output's LEFT
+    ///    lane, a right-lane item on a RIGHT lane.
+    ///  - **The output belt is chosen by lane:** a LEFT-lane item goes to output belt
+    ///    `0` (the top belt, downstream of the anchor); a RIGHT-lane item to output belt
+    ///    `1` (the bottom belt). Combined with lane preservation this lands the input's
+    ///    left lane on the top belt's left lane — its OUTER lane — and the input's right
+    ///    lane on the bottom belt's right lane, also outer. The two inner lanes never
+    ///    fill. There is no fallback to the other belt: if the target output is full or
+    ///    absent the item stalls (back pressure), so the outer-lanes-only invariant is
+    ///    exact. The two lanes route to different belts, so they never contend and no
+    ///    input-order fairness is needed.
+    fn advance_lane_splitters(&mut self) {
         for index in 0..self.machines.len() {
-            let Machine::Assembler(assembler) = &mut self.machines[index] else {
+            let Machine::LaneSplitter(lane_splitter) = &self.machines[index] else {
                 continue;
             };
-            if assembler.craft_left > 1 {
-                assembler.craft_left -= 1;
+            let (x, y, dir) = (lane_splitter.x, lane_splitter.y, lane_splitter.dir);
+            // The single input is the belt behind the anchor tile; `inputs[1]` (behind
+            // the second tile) is ignored — this machine has no second input.
+            let inputs = splitter_input_belts(self, x, y, dir);
+            let outputs = splitter_output_belts(self, x, y, dir);
+            let Some(in_belt) = inputs[0] else {
+                continue;
+            };
+
+            for side in [LaneSide::Left, LaneSide::Right] {
+                let Some(item) = pull_lane_lead(self, in_belt, side) else {
+                    continue;
+                };
+                // Route by lane to the single outer lane; no fallback. Left → belt 0
+                // (top), right → belt 1 (bottom), lane preserved.
+                let landed = match outputs[side.index()] {
+                    Some(out_belt) => self.try_force_onto_belt(out_belt, side, item),
+                    None => false,
+                };
+                if !landed {
+                    push_back(self, in_belt, side, item);
+                }
+            }
+        }
+    }
+
+    // -- Phase 5: crafters (assemblers and furnaces) ------------------------
+
+    /// Advance every crafter's craft — assemblers and furnaces alike, in scenario
+    /// placement order. If it is mid-craft, count down and deposit the output set on
+    /// completion. If it is idle and the input buffer holds a full recipe set **and**
+    /// the output buffer has room for the recipe's output set, consume one input set
+    /// and start the `CRAFT` countdown. A furnace runs the identical loop; its recipe
+    /// simply lists coal among the inputs, so a furnace with no coal buffered never
+    /// passes the gate and never smelts.
+    fn advance_crafters(&mut self) {
+        for index in 0..self.machines.len() {
+            let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) =
+                &mut self.machines[index]
+            else {
+                continue;
+            };
+            if crafter.craft_left > 1 {
+                crafter.craft_left -= 1;
                 continue;
             }
-            if assembler.craft_left == 1 {
+            if crafter.craft_left == 1 {
                 // Finishing tick: deposit one output set. The room check was done
                 // at craft start, so it always fits.
-                for term in assembler.recipe.outputs {
+                for term in crafter.recipe.outputs {
                     let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-                    *assembler.output.entry(idx).or_insert(0) += term.count;
+                    *crafter.output.entry(idx).or_insert(0) += term.count;
                 }
-                assembler.craft_left = 0;
+                crafter.craft_left = 0;
             }
             // Idle (craft_left == 0): try to start a new craft.
-            if can_start_craft(assembler) {
-                consume_input_set(assembler);
-                assembler.craft_left = assembler.recipe.craft;
+            if can_start_craft(crafter) {
+                consume_input_set(crafter);
+                crafter.craft_left = crafter.recipe.craft;
             }
         }
     }
@@ -574,7 +717,7 @@ impl World {
 
     /// Consume every item that has flowed onto a belt feeding a sink. An inbound
     /// belt facing into the sink hands its edge items to the sink; the sink also
-    /// directly absorbs anything dropped onto it (handled in [`try_drop`]).
+    /// directly absorbs anything dropped onto it (handled in [`try_drop`](Self::try_drop)).
     fn advance_sinks(&mut self) {
         for index in 0..self.machines.len() {
             let Machine::Sink(sink) = &self.machines[index] else {
@@ -728,6 +871,70 @@ fn near_far_lanes(belt_dir: Dir, actor_dir: Dir) -> (LaneSide, LaneSide) {
     }
 }
 
+/// Whether a crafter can take `item` right now: it is one of the recipe's inputs and
+/// its buffered count is below the cap. The single source of truth for crafter input
+/// acceptance — used by the inserter's pickup selection and by both the drop
+/// look-ahead ([`World::would_accept_drop`]) and the drop itself
+/// ([`World::try_crafter_input`]).
+fn crafter_accepts(crafter: &Crafter, item: u16) -> bool {
+    let is_input = crafter
+        .recipe
+        .inputs
+        .iter()
+        .any(|t| prototypes::item_index(t.item) == Some(item));
+    is_input && crafter.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
+}
+
+/// The pickup priority of `item` for a crafter, **lowest first**. A **furnace** fills
+/// its **fuel** (coal) before its ore, so fuel ranks ahead of everything else; then,
+/// for either machine, the **emptiest** input wins (its buffered count is the
+/// tiebreak), so an assembler fills whichever component it is shortest of. Equal ranks
+/// are broken by the caller toward the physically closer lane.
+///
+/// This is a **preference**, not a gate: a furnace still accepts ore whenever it has
+/// room (see [`crafter_accepts`]), so it never stalls waiting on fuel — a single loader
+/// simply takes coal ahead of ore whenever both are reachable at once.
+fn crafter_pickup_rank(crafter: &Crafter, item: u16) -> (u8, u16) {
+    let is_fuel = crafter.recipe.smelting && prototypes::item_index("coal") == Some(item);
+    let buffered = crafter.inputs.get(&item).copied().unwrap_or(0);
+    (if is_fuel { 0 } else { 1 }, buffered)
+}
+
+/// Which lane and item an inserter dropping into `crafter` should take off `belt`.
+///
+/// The candidates are the two lanes' head items, considered **closer lane first** (so
+/// a tie keeps the closer one — the same "prefer the near side" rule used when both
+/// sides offer the same item). Only items the crafter can currently take are eligible
+/// ([`crafter_accepts`]), so the inserter reaches across to the far lane instead of
+/// stalling on a closer item the crafter is full of or does not use; among the
+/// eligible ones it takes the highest priority ([`crafter_pickup_rank`]) — fuel before
+/// ore for a furnace, the emptiest input for an assembler. `None` when the belt offers
+/// nothing the crafter can take this tick.
+fn crafter_belt_choice(
+    belt: &Belt,
+    inserter_dir: Dir,
+    crafter: &Crafter,
+) -> Option<(LaneSide, u16)> {
+    let (near, far) = near_far_lanes(belt.dir, inserter_dir);
+    let mut best: Option<(LaneSide, u16, (u8, u16))> = None;
+    // `far` is the lane physically closer to the inserter (see `near_far_lanes`); take
+    // it first so a rank tie keeps the closer lane.
+    for side in [far, near] {
+        let Some(head) = belt.lanes[side.index()].first() else {
+            continue;
+        };
+        let item = head.item;
+        if !crafter_accepts(crafter, item) {
+            continue;
+        }
+        let rank = crafter_pickup_rank(crafter, item);
+        if best.is_none_or(|(_, _, best_rank)| rank < best_rank) {
+            best = Some((side, item, rank));
+        }
+    }
+    best.map(|(side, item, _)| (side, item))
+}
+
 /// Map a source's `lane` selector onto concrete lane sides of the downstream
 /// belt. `left`/`right` name the belt's own lanes (relative to its travel
 /// direction); `both` targets both, left then right.
@@ -808,21 +1015,22 @@ fn push_back(world: &mut World, belt_index: usize, side: LaneSide, item: u16) {
 }
 
 // ---------------------------------------------------------------------------
-// Assembler helpers.
+// Crafter helpers (shared by assemblers and furnaces).
 // ---------------------------------------------------------------------------
 
-/// Whether an idle assembler may start a craft: the input buffer holds a full
-/// recipe input set AND the output buffer has room for the recipe's output set.
-fn can_start_craft(assembler: &crate::world::Assembler) -> bool {
-    for term in assembler.recipe.inputs {
+/// Whether an idle crafter may start a craft: the input buffer holds a full recipe
+/// input set AND the output buffer has room for the recipe's output set. For a
+/// furnace the input set includes coal, so an unfuelled furnace fails the gate.
+fn can_start_craft(crafter: &crate::world::Crafter) -> bool {
+    for term in crafter.recipe.inputs {
         let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-        if assembler.inputs.get(&idx).copied().unwrap_or(0) < term.count {
+        if crafter.inputs.get(&idx).copied().unwrap_or(0) < term.count {
             return false;
         }
     }
-    for term in assembler.recipe.outputs {
+    for term in crafter.recipe.outputs {
         let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-        let have = assembler.output.get(&idx).copied().unwrap_or(0);
+        let have = crafter.output.get(&idx).copied().unwrap_or(0);
         if have + term.count > OUTPUT_CAP {
             return false;
         }
@@ -830,12 +1038,12 @@ fn can_start_craft(assembler: &crate::world::Assembler) -> bool {
     true
 }
 
-/// Consume one input set from an idle assembler's input buffer (called only when
+/// Consume one input set from an idle crafter's input buffer (called only when
 /// [`can_start_craft`] is true).
-fn consume_input_set(assembler: &mut crate::world::Assembler) {
-    for term in assembler.recipe.inputs {
+fn consume_input_set(crafter: &mut crate::world::Crafter) {
+    for term in crafter.recipe.inputs {
         let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-        if let Some(count) = assembler.inputs.get_mut(&idx) {
+        if let Some(count) = crafter.inputs.get_mut(&idx) {
             *count -= term.count;
         }
     }

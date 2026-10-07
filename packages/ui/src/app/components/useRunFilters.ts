@@ -14,6 +14,9 @@ import {
 // address a test-case version at all. These facets are the equality filters the
 // backend already applies server-side, surfaced as their own params so they AND
 // with each other and with `q` — and so a narrowed listing is a linkable URL.
+//
+// {@link RunFilterState.ggConfigId} rides in the URL beside them without a control of
+// its own, for the reason given on the field.
 
 /** The equality facets a run listing can be narrowed by. Each value is a recorded
  * identity (a slug, a version, or a raw model id), never a display name — the
@@ -54,6 +57,10 @@ const FACET_PARAMS: Record<RunFacetName, string> = {
 const LATEST_PARAM = "latest";
 const LATEST_OFF = "0";
 
+/** The gg-configuration key, matching the backend's `ggConfigId` query parameter so
+ * a listing narrowed by it is the same narrowing on either side of the wire. */
+const GG_CONFIG_PARAM = "ggConfigId";
+
 /** The free-text key, mirrored from {@link usePagedSearchParams} so `clear` can
  * drop it in the same write as the facets (two writes would race). */
 const QUERY_PARAM = "q";
@@ -62,6 +69,13 @@ const QUERY_PARAM = "q";
 export interface FixedFacets {
   testCase?: string;
   model?: string;
+  /** Pin the version facet out of the bar's hands. The case-detail Runs tab
+   * passes `""`: on that page the `?version=` param is the anchored
+   * coordinate's, not a facet — the tab scopes versions relative to the anchor
+   * instead — so the facet must read as unset, never count as active, and
+   * `clear` must leave the param alone (deleting it would silently re-anchor
+   * the whole page to the latest version). */
+  version?: string;
 }
 
 export interface RunFilterState extends PagedSearchParams {
@@ -79,12 +93,24 @@ export interface RunFilterState extends PagedSearchParams {
    */
   latestVersions: boolean;
   setLatestVersions: (on: boolean) => void;
+  /**
+   * The id of the gg configuration to narrow to, `""` when unset.
+   *
+   * A deep link's filter rather than a facet: a coverage cell's Runs link writes it
+   * so the listing holds exactly the runs behind the figure that was clicked, and the
+   * bar offers no control for it because a configuration is account-scoped tooling
+   * the public gallery has none of. It counts toward {@link activeCount} and
+   * {@link clear} drops it, so a listing narrowed by an id nothing on screen names
+   * still says it is filtered and can be widened in one click.
+   */
+  ggConfigId: string;
   /** How many filters are narrowing the listing right now (the free text counts as
    * one, and so does the version toggle when it has been turned *off*). Drives the
    * "clear" affordance and tells an over-filtered listing apart from an empty one. */
   activeCount: number;
-  /** Reset every settable filter — the text, the facets, and the version toggle —
-   * to its default, and return to the first page. Route-fixed facets stay. */
+  /** Reset every settable filter — the text, the facets, the version toggle, and the
+   * gg configuration — to its default, and return to the first page. Route-fixed
+   * facets stay. */
   clear: () => void;
 }
 
@@ -100,7 +126,11 @@ export interface RunFilterState extends PagedSearchParams {
  * query, and `clear` leaves them alone.
  */
 export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
-  const { testCase: fixedCase, model: fixedModel } = fixed;
+  const {
+    testCase: fixedCase,
+    model: fixedModel,
+    version: fixedVersion,
+  } = fixed;
   const paged = usePagedSearchParams();
   const { setQuery, committedQuery } = paged;
   const [params, setParams] = useSearchParams();
@@ -108,14 +138,15 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
   const facets = useMemo<RunFacetValues>(
     () => ({
       testCase: fixedCase ?? params.get(FACET_PARAMS.testCase) ?? "",
-      version: params.get(FACET_PARAMS.version) ?? "",
+      version: fixedVersion ?? params.get(FACET_PARAMS.version) ?? "",
       harness: params.get(FACET_PARAMS.harness) ?? "",
       model: fixedModel ?? params.get(FACET_PARAMS.model) ?? "",
     }),
-    [params, fixedCase, fixedModel],
+    [params, fixedCase, fixedModel, fixedVersion],
   );
 
   const latestVersions = params.get(LATEST_PARAM) !== LATEST_OFF;
+  const ggConfigId = params.get(GG_CONFIG_PARAM) ?? "";
 
   const setFacet = useCallback(
     (name: RunFacetName, value: string) => {
@@ -150,18 +181,30 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
     setQuery("");
     setParams((prev) => {
       const next = new URLSearchParams(prev);
-      for (const key of Object.values(FACET_PARAMS)) next.delete(key);
+      // Only the facets this state owns: a route-fixed facet's param is not the
+      // bar's to touch (on the case-detail Runs tab, `version` is the anchored
+      // coordinate's param).
+      for (const name of RUN_FACETS) {
+        if (!isFixed(name, fixed)) next.delete(FACET_PARAMS[name]);
+      }
       next.delete(LATEST_PARAM);
+      next.delete(GG_CONFIG_PARAM);
       next.delete(QUERY_PARAM);
       next.delete(PAGE_PARAM);
       return next;
     });
-  }, [setQuery, setParams]);
+  }, [setQuery, setParams, fixed]);
 
   const activeCount =
     (committedQuery.trim() ? 1 : 0) +
     RUN_FACETS.filter((name) => !isFixed(name, fixed) && facets[name]).length +
-    (latestVersions ? 0 : 1);
+    // The current-versions toggle counts only where the version dimension is
+    // the bar's to offer: a route that pins the version facet (the case-detail
+    // Runs tab, which scopes versions through its anchored coordinate) ignores
+    // the toggle entirely, so a stale `?latest=0` deep link must not read as an
+    // active filter there.
+    (isFixed("version", fixed) || latestVersions ? 0 : 1) +
+    (ggConfigId ? 1 : 0);
 
   return {
     ...paged,
@@ -169,6 +212,7 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
     setFacet,
     latestVersions,
     setLatestVersions,
+    ggConfigId,
     activeCount,
     clear,
   };
@@ -178,7 +222,8 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
 export function isFixed(name: RunFacetName, fixed: FixedFacets): boolean {
   return (
     (name === "testCase" && fixed.testCase !== undefined) ||
-    (name === "model" && fixed.model !== undefined)
+    (name === "model" && fixed.model !== undefined) ||
+    (name === "version" && fixed.version !== undefined)
   );
 }
 

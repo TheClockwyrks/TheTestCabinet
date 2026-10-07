@@ -1,0 +1,59 @@
+// audio/mute-control-toggles — the status bar's mute control silences the audio.
+//
+// `specs/ui.md` puts a mute control on the status bar, and `specs/controls.md`
+// has a contact pressed and released inside a status-bar control's region act
+// that control "exactly as its keyboard route does". So the bar's control flips
+// the same bit the `mute` action flips.
+//
+// THE KEY'S ROUTE IS ITS OWN POINT, `audio/mute-toggle`, so a build that binds
+// the key and never wires the bar control grades differently from one that wires
+// neither.
+//
+// WHERE THE BAR'S CONTROL IS. `specs/ui.md` hands the layout to the build, so the
+// build reports it: `specs/instrumentation.md`'s `controlRect("mute", null)` is
+// the region a contact drives the mute control from, and the press goes to the
+// middle of the region the build named. Nothing here searches the screen.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  layCamp,
+  openScene,
+  standAtCamp,
+  type Harness,
+} from "../harness";
+import { clickControl } from "../panels/mouse";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("flips the mute bit from the region the status bar reports", async () => {
+  openScene(h);
+  layCamp(h);
+  standAtCamp(h);
+  await h.advance(2);
+
+  const opened = h.snapshot().muted;
+  await clickControl(h, "mute");
+  // The snapshot carries the game's copy of the engine's bit, refreshed every
+  // update, so one frame past the press is where it is read.
+  await h.advance(1);
+  const afterClick = h.snapshot().muted;
+  captureStill(h, "bar");
+
+  assertEqual(opened, false, "specs/instrumentation.md");
+  assertEqual(
+    afterClick,
+    true,
+    "specs/ui.md: a press on the status bar's mute control toggles the audio",
+  );
+});

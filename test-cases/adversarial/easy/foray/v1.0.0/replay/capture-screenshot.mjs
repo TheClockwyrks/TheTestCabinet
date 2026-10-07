@@ -31,7 +31,9 @@ const server = createServer(async (req, res) => {
   try {
     const body = await readFile(path);
     const ext = path.slice(path.lastIndexOf("."));
-    res.writeHead(200, { "content-type": MIME[ext] || "application/octet-stream" });
+    res.writeHead(200, {
+      "content-type": MIME[ext] || "application/octet-stream",
+    });
     res.end(body);
   } catch {
     res.writeHead(404).end("not found");
@@ -50,10 +52,13 @@ page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
 await page.goto(url, { waitUntil: "networkidle" });
 // Wait for the engine to reconstruct and the first frame to draw.
-await page.waitForFunction(() => {
-  const el = document.getElementById("tick-label");
-  return el && /tick \d+ \/ [1-9]/.test(el.textContent);
-}, { timeout: 15000 });
+await page.waitForFunction(
+  () => {
+    const el = document.getElementById("tick-label");
+    return el && /tick \d+ \/ [1-9]/.test(el.textContent);
+  },
+  { timeout: 15000 },
+);
 
 // Scrub to roughly the middle of the match so agents, seeds and scores are live.
 await page.evaluate(() => {

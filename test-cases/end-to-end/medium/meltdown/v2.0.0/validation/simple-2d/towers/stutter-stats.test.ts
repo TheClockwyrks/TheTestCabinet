@@ -1,0 +1,237 @@
+// Meltdown — towers/stutter-stats: the Stutter carries the row specs/towers.md
+// gives it.
+//
+// THE ROW. "| Stutter | 2 | 40 | 5.0 | 7.0 | 2 | 4.2 | 60 | 0.5 | N, E |" — a 2x2 footprint, a build
+// cost of `40`, `5.0` tiles of range, `7.0` shots a second, `2`
+// base damage, `4.2` `heatPerShot`, a redline of `60`, a thermal mass of
+// `0.5`, and radiator faces local N, E. Every figure below is that row
+// and nothing else; what the figures MEAN is specs/combat.md's and
+// specs/heat.md's business, and the items in `combat/` and `heat/` are where the
+// rules that use them are decided.
+//
+// FOUR OF THE NINE ARE REPORTED AND FIVE ARE NOT. `size`, `redline` and
+// `radiatorFaces` are snapshot fields, and the build cost is the `spent` an
+// `addTower` opens a tower with (specs/instrumentation.md). Range, fire rate,
+// base damage, `heatPerShot` and mass exist only in what the tower DOES, so each
+// is measured out of the running game; `roster.ts` holds those drives and states
+// why each one isolates the figure it isolates.
+//
+// WHY MASS IS READ TWICE OVER. One per-shot gain is `heatPerShot / mass`, and a
+// single reading of it cannot tell `4.2` over `0.5` from `8.4` over `1.0`.
+// So the mass appears in a SECOND, independent reading — the air a lone Stutter
+// sheds over one frame, which specs/heat.md also divides by the mass — and the
+// pair pins both figures. At heat `80` the Stutter must shed `30.08` a second;
+// halving its mass reads `60.16` and doubling it reads `15.04`.
+//
+// WHY THE RANGE PROBE IS A PAIR AND NOT A NUMBER. specs/combat.md: a unit is in
+// range when it is "at most `range * TILE` logical units" from the footprint's
+// centre, and "a unit one logical unit further out is not in range". So the
+// boundary is read at exactly the resolution the specification states it at — one
+// mark a unit inside `95` must be acquired, one a unit outside it must not.
+// Each is posed on its own floor, so `targeting` answers the range question and
+// specs/combat.md's target rule has nothing to choose between.
+//
+// WHY THE SHOT COUNT IS TAKEN IN UNITS OF THE FIRST SHOT. The hp a shot removes
+// is the base damage figure, which this same row reads separately, so a count
+// taken in hit points would fail the RATE reading for a build whose rate is
+// perfect and whose damage is not. The count is a ratio of cumulative removals
+// instead: a build that fires twice as hard passes it, and one that fires twice
+// as often does not.
+//
+// THE STUTTER IS THE EXTREME OF THREE OF THE NINE FIGURES: the fastest fire
+// rate on the roster, the lowest mass, and the lowest redline. Its mass of
+// `0.5` is the one that doubles rather than divides, so a build that never
+// divides by mass at all reads its per-shot gain at `4.2` where `8.4` is
+// due, and its cooling at half what it must be.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+} from "../assert";
+import { TILE } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  poseTower,
+  startRun,
+  towerOf,
+  type Harness,
+} from "../harness";
+import { heatMultiplierOf } from "../thermal";
+import {
+  FREE_SITE,
+  airLossPerSecond,
+  coolingRate,
+  costOf,
+  figuresOf,
+  firstShotHeat,
+  localRadiators,
+  markTypeFor,
+  massOf,
+  redlineOf,
+  removalsAtShots,
+  sortedFaces,
+  targetsMarkAt,
+} from "./roster";
+
+/** The tower this row belongs to, and the unit its shots are read against. */
+const TOWER = "stutter";
+const MARK = markTypeFor(TOWER);
+
+/** The row itself, off the case's own seeded table rather than off the build. */
+const COST = costOf(TOWER); // 40
+const SIZE = 2;
+const RANGE_UNITS = figuresOf(TOWER).range * TILE; // 5.0 tiles, so 95
+const FIRE_RATE = figuresOf(TOWER).fireRate; // 7.0 shots a second
+const BASE_DAMAGE = figuresOf(TOWER).baseDamage; // 2
+const HEAT_PER_SHOT = figuresOf(TOWER).heatPerShot; // 4.2
+const REDLINE = redlineOf(TOWER); // 60
+const MASS = massOf(TOWER); // 0.5
+const RADIATORS = sortedFaces(localRadiators(TOWER)); // N and E
+
+/**
+ * How far either side of the range boundary a mark stands, in logical units.
+ *
+ * ONE UNIT, the resolution specs/combat.md states the boundary at: "at most
+ * `range * TILE`" is in range and "one logical unit further out is not". A mark a
+ * unit inside is inside on either reading of that bound — strict or inclusive —
+ * and one a unit outside is outside on both, so a conformant build needs no room
+ * here and the probe demands no particular reading of the "at most". It is
+ * geometry rather than a tolerance: it says where the two marks stand.
+ */
+const BOUNDARY_MARGIN = 1;
+
+/** The fire-interval checkpoints the drive stops at: none, one shot, then three. */
+const CHECKPOINTS = [0, 1, 3];
+
+/** Where the cooling reading is taken: a large air term, and clear of the trip. */
+const COOL_HEAT = 80;
+
+/**
+ * How close each measured figure must come, as decimal places.
+ *
+ * `DAMAGE_DIGITS` two places is `0.005` hp against the `0.7` one shot must
+ * remove at heat `0` (`2 * 0.35`). A build's own evaluation of one multiplication
+ * over figures the specification states exactly needs none of that room; the bound
+ * is orders below the distance to every other base damage on the roster.
+ *
+ * `COUNT_DIGITS` two places is `0.005` of a shot. Every shot of the drive removes
+ * the same amount — the heat is pinned, so the multiplier cannot move — so the
+ * ratio is an exact integer up to the float slack of a few subtractions. What the
+ * bound excludes is every neighbouring rate: a build one shot behind or ahead at
+ * the checkpoint reads a whole integer away.
+ *
+ * `GAIN_DIGITS` two places is `0.005` of a heat point against the `8.4` one
+ * shot must add. The reading is taken on a frame that opened at heat `0`, where
+ * the specification's arithmetic for it is one division and nothing else.
+ *
+ * `RATE_DIGITS` one place is `0.05` of a heat point per second against the
+ * `30.08` a lone Stutter sheds at heat `80` — well under a percent of it, and
+ * two orders below the distance to a wrong mass.
+ */
+const DAMAGE_DIGITS = 2;
+const COUNT_DIGITS = 2;
+const GAIN_DIGITS = 2;
+const RATE_DIGITS = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("The Stutter carries its stats", async () => {
+  // ---- The four the snapshot reports outright -----------------------------
+  startRun(h);
+  const id = poseTower(h, TOWER, FREE_SITE.col, FREE_SITE.row);
+  h.debug.setSelected(id);
+  await h.advance(1);
+  captureStill(h, "stutter");
+  const reported = towerOf(h.snapshot(), id);
+
+  assertEqual(reported.size, SIZE, `the ${TOWER}'s footprint side, in tiles`);
+  assertEqual(reported.redline, REDLINE, `the ${TOWER}'s redline`);
+  assertDeepEqual(
+    sortedFaces(reported.radiatorFaces),
+    RADIATORS,
+    `the ${TOWER}'s radiator faces at rotation 0, where world is local`,
+  );
+  assertEqual(
+    reported.spent,
+    COST,
+    `the ${TOWER}'s build cost, as the spent a fresh tower opens with`,
+  );
+  assertCloseTo(
+    reported.damage,
+    BASE_DAMAGE * heatMultiplierOf(0, REDLINE),
+    DAMAGE_DIGITS,
+    `the damage a ${TOWER} at heat 0 reports: base damage ${BASE_DAMAGE} ` +
+      `times the multiplier at heat 0 against a redline of ${REDLINE}`,
+  );
+
+  // ---- Range: a radius in tiles from the footprint centre ------------------
+  assertEqual(
+    await targetsMarkAt(h, TOWER, RANGE_UNITS - BOUNDARY_MARGIN),
+    true,
+    `a ${MARK} ${RANGE_UNITS - BOUNDARY_MARGIN} units from the ${TOWER}'s ` +
+      `footprint centre acquired, inside its ${RANGE_UNITS}`,
+  );
+  assertEqual(
+    await targetsMarkAt(h, TOWER, RANGE_UNITS + BOUNDARY_MARGIN),
+    false,
+    `a ${MARK} ${RANGE_UNITS + BOUNDARY_MARGIN} units from the ${TOWER}'s ` +
+      `footprint centre refused, beyond its ${RANGE_UNITS}`,
+  );
+
+  // ---- Base damage, then the fire rate in units of one shot ----------------
+  const removed = await removalsAtShots(h, TOWER, CHECKPOINTS);
+
+  assertEqual(
+    removed[0],
+    0,
+    `hp removed ${(0.5 / FIRE_RATE).toFixed(3)}s in, half an interval before ` +
+      `the ${TOWER}'s first shot at ${FIRE_RATE} shots a second`,
+  );
+  assertGreaterThan(
+    removed[1],
+    0,
+    `hp removed by the first shot, one ${(1 / FIRE_RATE).toFixed(3)}s interval in`,
+  );
+  assertCloseTo(
+    removed[1],
+    BASE_DAMAGE * heatMultiplierOf(0, REDLINE),
+    DAMAGE_DIGITS,
+    `hp one ${TOWER} shot removes at heat 0: base damage ${BASE_DAMAGE} times ` +
+      `the multiplier at heat 0 against a redline of ${REDLINE}`,
+  );
+  assertCloseTo(
+    removed[2] / removed[1],
+    CHECKPOINTS[2],
+    COUNT_DIGITS,
+    `shots resolved by ${((CHECKPOINTS[2] + 0.5) / FIRE_RATE).toFixed(3)}s at ` +
+      `${FIRE_RATE} shots a second, in units of the first shot`,
+  );
+
+  // ---- heatPerShot, then the mass that divides it and the air alike --------
+  assertCloseTo(
+    await firstShotHeat(h, TOWER),
+    HEAT_PER_SHOT / MASS,
+    GAIN_DIGITS,
+    `heat one shot adds to a ${TOWER} opening at 0: heatPerShot ` +
+      `${HEAT_PER_SHOT} over a mass of ${MASS}`,
+  );
+  assertCloseTo(
+    await coolingRate(h, TOWER, COOL_HEAT),
+    airLossPerSecond(TOWER, COOL_HEAT) / MASS,
+    RATE_DIGITS,
+    `heat per second a lone ${TOWER} at ${COOL_HEAT} sheds: its air term over ` +
+      `a mass of ${MASS}`,
+  );
+});

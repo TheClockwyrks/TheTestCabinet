@@ -167,8 +167,71 @@
             "sink"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "furnace": {
+              "$ref": "#/$defs/FurnaceState"
+            }
+          },
+          "required": [
+            "furnace"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The unzip splitter holds **no per-tick state**: its routing is fully\ndeterministic (a left-lane item always goes to the top output belt's left\n(outer) lane, a right-lane item to the bottom output belt's right (outer)\nlane), with no cursor and no retained items, so its body is empty.",
+          "properties": {
+            "lanesplitter": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "lanesplitter"
+          ],
+          "type": "object"
         }
       ]
+    },
+    "FurnaceState": {
+      "description": "A furnace's retained state — the same shape as an assembler's (input and output\nbuffers and a craft countdown), kept as its own type so the two machines stay\ndistinct in the canonical output and the renderer can tell a smelter from an\nassembler. `craft_left > 0` means the furnace is actively smelting this tick.",
+      "properties": {
+        "craft_left": {
+          "description": "Ticks remaining in the current smelt (`0` when not smelting).",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The input buffer: item id → count (ore and coal, empty when nothing buffered).",
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The output buffer: item id → count (the smelted plate).",
+          "type": "object"
+        }
+      },
+      "required": [
+        "inputs",
+        "output",
+        "craft_left"
+      ],
+      "type": "object"
     },
     "InserterPhase": {
       "description": "An inserter's swing-arm phase.",
@@ -265,7 +328,7 @@
       "type": "object"
     },
     "SplitterState": {
-      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only its two cursors are retained:\nthe per-(item-type, lane) output-preference bitfield ([`SplitterState::out_pref`])\nand the input-order cursor ([`SplitterState::in_first`]).",
+      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only its two cursors are retained:\nthe per-lane, item-agnostic output-preference bitfield ([`SplitterState::out_pref`])\nand the input-order cursor ([`SplitterState::in_first`]).",
       "properties": {
         "in_first": {
           "description": "Which input belt (`0`/`1`) the splitter tries first this tick (flips each tick\nfor input fairness).",
@@ -275,7 +338,7 @@
           "type": "integer"
         },
         "out_pref": {
-          "description": "The per-(item-type, lane) output alternation cursor: bit `t*2 + L` is the\noutput belt (`0`/`1`) the next item of item type `t` on lane `L` (`0` = left,\n`1` = right) will be sent to (it flips after each such item). Keeping it per\nlane balances each lane across both outputs; the input lane itself is preserved.",
+          "description": "The per-lane, **item-agnostic** output alternation cursor: bit `L` is the output\nbelt (`0`/`1`) the next item on lane `L` (`0` = left, `1` = right) will be sent to,\nwhatever the item's type (it flips after each item). Only the two low bits are\nused. Each lane's cursor is independent; the input lane itself is preserved.",
           "format": "uint16",
           "maximum": 65535,
           "minimum": 0,

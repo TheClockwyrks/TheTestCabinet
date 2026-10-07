@@ -1,4 +1,4 @@
-//! The `coverage_plan` table: a reviewer's named declarative coverage plan.
+//! The `coverage_plan` table: an account's named declarative coverage plan.
 //!
 //! Many rows per account (keyed by the auth-service `user_id`), each with an opaque
 //! `id`, a display name, and its own `runs_per_cell` target. A plan is **hybrid**:
@@ -9,12 +9,11 @@
 //! matrix. All list fields are JSON text, read and written whole like the other
 //! plan/review columns.
 //!
-//! The remaining columns are how a plan is *fed* rather than what it declares: the
-//! order it emits its cells in (`outer_axis`), how much unreviewed work it is
-//! willing to leave outstanding (`buffer_target`, over the account default), whether
-//! it tops itself up when a review lands (`auto_top_up`), whether it is suspended
-//! (`paused`), and the claim marker that stops two callers topping up at once
-//! (`topping_up_at`).
+//! The remaining columns are how a plan is *filled* rather than what it declares: the
+//! order it launches its cells in (`outer_axis`), how many of its own runs may be in
+//! flight at once (`in_flight_limit`, over the account default), the fill in progress
+//! (`fill_id`), and the claim that serializes launch passes (`launch_claimed_at`,
+//! `launch_requested`).
 
 use sea_orm::entity::prelude::*;
 
@@ -27,7 +26,7 @@ pub struct Model {
     /// The owning account's id (from the auth service, via the verified bearer
     /// token).
     pub user_id: String,
-    /// The reviewer-chosen display name (e.g. `Anthropic/E2E`).
+    /// The owner-chosen display name (e.g. `Anthropic/E2E`).
     pub name: String,
     /// The target number of runs desired for each `case × combination` cell.
     pub runs_per_cell: i32,
@@ -55,29 +54,35 @@ pub struct Model {
     /// emits runs in is the order they execute in; nothing in the dispatcher knows
     /// this column exists.
     pub outer_axis: String,
-    /// Whether topping up is suspended for this plan. The mildest of the three
-    /// halting controls: it stops new runs being emitted and deliberately leaves
-    /// everything already queued alone (`halt` is what additionally cancels).
-    pub paused: bool,
-    /// Whether submitting a review re-runs this plan's top-up automatically. Off by
-    /// default, and never inherited by an existing plan — a plan that quietly
-    /// enqueues work whenever the reviewer finishes a review has to be asked for.
-    pub auto_top_up: bool,
-    /// This plan's override of the account's buffer target, or `NULL` to inherit
-    /// `coverage_settings.buffer_target`. Nullable rather than defaulted because
-    /// "no opinion" and "explicitly zero" are different instructions.
-    #[sea_orm(nullable)]
-    pub buffer_target: Option<i32>,
-    /// RFC 3339 of when a top-up claimed this plan, or `NULL` when none is running.
+    /// This plan's override of the account's runs-in-flight limit, or `NULL` to inherit
+    /// `coverage_settings.in_flight_limit`. Nullable rather than defaulted because "no
+    /// opinion" and "explicitly zero" are different instructions.
     ///
-    /// Top-up is an endpoint the console calls rather than a background daemon, so
-    /// two tabs — or one fast double review-submit — can otherwise both observe the
-    /// same shortfall and both enqueue for it. A caller takes the plan by
-    /// conditionally updating this column and clears it when finished. It holds a
-    /// timestamp rather than a bare flag so a request that dies mid-top-up expires
-    /// out of the claim instead of wedging the plan forever.
+    /// A non-negative value is the bound itself; a **negative** value is the third
+    /// instruction, "no bound — launch everything", which the backend reads and writes as
+    /// its `InFlightLimit::Unbounded` and which no typed bound can ever collide with. The
+    /// same encoding is used by `ladder.in_flight_limit` and
+    /// `coverage_settings.in_flight_limit`.
     #[sea_orm(nullable)]
-    pub topping_up_at: Option<String>,
+    pub in_flight_limit: Option<i32>,
+    /// RFC 3339 of when a launch pass claimed this plan, or `NULL` when none is running.
+    ///
+    /// A pass is started by the owner (All missing, a cell Retry) and by every finished
+    /// run of a filling plan, so two can otherwise observe the same shortfall and both
+    /// enqueue for it. A pass takes the plan by conditionally updating this column and
+    /// clears it when finished; a timestamp rather than a flag, so a pass that dies
+    /// midway expires out of the claim instead of wedging the plan.
+    #[sea_orm(nullable)]
+    pub launch_claimed_at: Option<String>,
+    /// Whether another launch pass was asked for while the claim in
+    /// [`Self::launch_claimed_at`] was held. The holder runs that pass before it lets go.
+    pub launch_requested: bool,
+    /// The fill in progress, or `NULL` when the plan is not filling. Set by All missing,
+    /// cleared when every launchable cell is filled or the plan is halted. Every job a
+    /// fill launches carries it in its origin (`plan:<id>/<fill_id>`), so an automatic
+    /// retry of a job whose fill has ended is withheld.
+    #[sea_orm(nullable)]
+    pub fill_id: Option<String>,
     /// RFC 3339 of when the plan was last saved.
     pub updated_at: String,
 }

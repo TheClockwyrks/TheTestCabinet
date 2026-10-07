@@ -66,7 +66,7 @@ echo "Backfilling run media on ${cluster}/${namespace} via ${artifacts} — ${mo
 # Inside the backend container: configuration via env, then a shell that decodes the
 # base64 arg ($1) and runs it through node. `printf %s` (not echo) keeps the token
 # byte-exact. The pipe runs in the container's own `sh -c`, so it is honored.
-remote="kubectl -n ${namespace} exec deploy/tcab-backend -c backend -- \
+remote="kubectl -n ${namespace} exec deploy/the-test-cabinet-backend -c backend -- \
 env BACKEND=http://127.0.0.1:8787 ARTIFACTS=${artifacts} APPLY=${apply} RUN_ID=${RUN_ID:-} \
 sh -c 'printf %s \"\$1\" | base64 -d | node -' sh ${b64}"
 

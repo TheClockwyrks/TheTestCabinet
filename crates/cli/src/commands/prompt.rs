@@ -12,6 +12,7 @@ use anyhow::Context;
 use test_cabinet_core::{TestCaseCatalog, render_prompt};
 
 use crate::cli::PromptArgs;
+use crate::commands::engines;
 
 /// Resolve the test case version and variant, render the prompt, and print it.
 pub async fn execute(args: PromptArgs) -> anyhow::Result<()> {
@@ -23,9 +24,17 @@ pub async fn execute(args: PromptArgs) -> anyhow::Result<()> {
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
 
+    // The engine is part of the prompt, not just of the run: a template branches on
+    // the selected engine's slug and points at its seeded documentation, so the
+    // rendered text differs by engine and this command has to resolve one to render
+    // anything. `none` — the default — renders exactly the prompt every case had
+    // before engines existed.
+    let engine = engines::resolve_for_case(&args.engine, &test_case)
+        .with_context(|| format!("selecting engine `{}`", args.engine))?;
+
     // A locally-inspected prompt has no backend to source earlier game-jam entries
     // from, so it renders with none (and thus never the distinctness section).
-    let prompt = render_prompt(&test_case, variant, &[])
+    let prompt = render_prompt(&test_case, variant, &[], Some(&engine))
         .with_context(|| format!("rendering prompt for variant `{}`", args.variant))?;
 
     // The rendered prompt is the entire output, with no decoration, so it can be

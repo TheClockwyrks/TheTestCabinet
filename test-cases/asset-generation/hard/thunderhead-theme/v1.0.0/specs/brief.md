@@ -1,6 +1,6 @@
 # Thunderhead Theme — music brief
 
-You are composing the **main-menu theme** for *Thunderhead*, a real-time,
+You are composing the **main-menu theme** for _Thunderhead_, a real-time,
 combined-arms **fleet-command** game fought across an endless **cloud sea** of
 mountainous islands. This is the piece that plays over the **title screen** while
 the player sits at the menu — a long, grand, **cinematic overture** in the
@@ -17,7 +17,7 @@ whole.
 - It must **loop cleanly**: it plays on repeat under the menu for as long as the
   player lingers, so the end has to flow back into the opening with no click, gap,
   or jarring harmonic seam. Land the close so it leads back to the top.
-- Output is **stereo** — a wide, cinematic image (see *Stereo image* below).
+- Output is **stereo** — a wide, cinematic image (see _Stereo image_ below).
 
 ## Mood and character
 

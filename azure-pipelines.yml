@@ -1,334 +1,678 @@
-# Azure DevOps CI pipeline for The Test Cabinet — the primary CI system.
+# The pipeline: every gate a commit has to pass and, for a commit on the
+# staging branch, the publish and the deploy that follow.
 #
-# Validates every component the project ships: the Rust crates (the `tcab` CLI,
-# the `tcab-backend` server, the `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts`
-# services, and the libraries they share), the TypeScript front ends (the
-# gallery, the operator web console, and these docs), and the Tauri desktop app —
-# both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). Every
-# job delegates to a shared script under scripts/ci/, so the GitHub workflows run
-# exactly the same checks (see scripts/ci/README.md).
+# The gates run inside purpose-built CI images, one per track, pulled from
+# testcabinet.azurecr.io through the `the-test-cabinet-acr` service connection.
+# This pipeline builds none of them: it names an image and the agent pulls it
+# before the job starts. Each image is tagged with the commit whose run of
+# azure-pipelines-ci-images.yml built it, so the reference written below is a
+# reviewable statement of which images this commit ran in, which a floating tag
+# could never be. That pipeline is what builds and pushes them, and
+# ci/images/README.md says what is in each and why.
 #
-# Azure is the primary CI and covers Linux and Windows; macOS validation lives in
-# GitHub because Azure has no macOS agents. The `binary` job release-builds and
-# smoke-tests the shipped `tcab` binary on Linux and Windows so a release can
-# never publish a binary that is flat-out broken; macOS gets the same check on
-# GitHub, on demand (its `binary-macos.yml` workflow), since those runners are
-# costly and only needed at release time.
+# The commit is not written in this file. It lives in ci/images/tags.yml, a
+# variables template this pipeline includes, as its one variable,
+# `ciImageTag`. The template renders it carrying forty zeros rather than a
+# commit any image was built from, and the commit a workspace writes over them
+# is the workspace's own edit of it, which a template update carries through
+# its merge, so this file stays exactly what the template renders. Each job
+# names its image with a compile-time expression reading `ciImageTag` out of
+# that file, so the tag is written into the job before Azure pulls anything.
 #
-# The `desktop` job exists because the desktop app used to be validated ONLY by
-# the GitHub Release workflow, and a release duly failed on all three platforms
-# in a typecheck that nothing here had ever run. Nothing this pipeline can build
-# is left for a release to discover any more: the one remaining gap is macOS,
-# which no Azure agent can cover.
+# The loop, when a commit changes a file an image is built from: push it, and
+# the image pipeline's run on it pushes each track's image under that commit;
+# once that run has finished, write the commit into ci/images/tags.yml as
+# `ciImageTag` and push that, and the second commit's gates run in the new
+# images. Until the pin follows, the gates run in the images it names, so a
+# change to an image's files is complete when the pin follows it. Before this
+# pipeline's first run the same holds: queue the image pipeline, then pin the
+# commit it ran on.
 #
-# The YAML's only responsibilities are provisioning toolchains (Rust ships with
-# the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode),
-# reclaiming disk on the near-full hosted Ubuntu agents before the cargo jobs
-# (scripts/ci/free-disk-linux.sh), and caching.
+# The tool versions are the ones .devcontainer/docker-compose.yml pins: the CI
+# images read that same file for them, which is what keeps a gate passing here
+# exactly when it passes for a developer.
+#
+# Two tracks, not one. The Rust toolchain and the web toolchain wait on each
+# other for nothing — neither reads what the other writes — so the checks are
+# split between a job per toolchain and the two run at once.
+#
+# One check, one step. A step is the unit Azure times and reports, so a step
+# that ran several checks would say only what they cost together, and the one
+# getting slower could not be picked out of it. Every check therefore gets a
+# step of its own, named after the check, and no step is ever given a second
+# one. A check has a step in exactly one of the two tracks, which is what stops
+# one being dropped or run twice; ci/tests/test_wiring.py fails when one has a
+# step in neither or in both.
+#
+# A gate's step runs it the way `make gate` and a commit hook run it, through
+# the runner of the `ci` project (see ci/README.md). The hook framework's own
+# upstream checks have no gate script, so those run as `pre-commit run <id>`,
+# one step each, on the web track.
+#
+# The publish and the deploy stages follow the gates in the same run, and run
+# for the staging branch alone: one pipeline, with stages
+# conditioned on the branch, rather than a second pipeline started by the
+# first. One file is one `az pipelines create`, and a stage that follows the
+# gates builds the commit the gates passed by construction, with no resource
+# trigger naming a pipeline by a name the project has to keep in step. The
+# publish stage builds and pushes the image, and the deploy stage
+# rolls the staging overlay onto it; a commit on any other
+# branch runs the gates and nothing more.
+#
+# The variables below are the deployment's own, named from the project's slug
+# by the fleet's convention, so nothing in them is filled in by hand. A project
+# whose Azure names differ edits them here, and a template update carries the
+# edit. The deployment documentation under
+# apps/docs/src/content/docs/deployment/ says what each one names.
+#
+# What the project runs beyond the template's work is not written here but in
+# the files under .azure/project/, which this pipeline includes and which
+# belong to the project: its setup and its steps in each gate job, its jobs in
+# the gates stage, its steps before and after the deploy script, and its
+# stages after this file's. The template renders nothing under .azure/project/,
+# so what the project adds to its pipeline lives there, and this file keeps to
+# the template's shape plus the includes and the names above.
+#
+# Pull requests are not triggered from this file. Azure Repos ignores a `pr:`
+# block, and runs a pipeline on a pull request only through a build validation
+# policy on the target branch.
 
 trigger:
+  # One run for the pushes that arrive while a run is in flight, so a burst of
+  # commits to a branch costs one pass over the gates.
+  batch: true
   branches:
     include:
       - master
       - staging
+      - nightly
 
-pr:
-  branches:
-    include:
-      - master
+# The images the gate tracks run inside are named on each job, below, rather
+# than as container resources, because a job's `container:` accepts the
+# compile-time expression that reads the pinned commit out of ci/images/tags.yml.
+# `the-test-cabinet-acr` is a Docker Registry service connection to
+# testcabinet.azurecr.io holding push rights on it; push implies pull, so the one
+# connection serves this pipeline's pull and the image pipeline's push and
+# there is no second connection to keep in step. The pipeline is permitted to
+# use it the first time a run asks. Nothing here logs in: the agent pulls with
+# the connection's credentials before a job's first step runs, which is why
+# these jobs need no docker CLI and the images carry none.
+#
+# Each tag is the full forty-character id of the commit whose image pipeline
+# run pushed the image. A run pushes under its own commit alone and `latest` is
+# never used, so a reference names one image for as long as the registry keeps
+# it. The forty zeros are the placeholder a render carries; see the header.
 
 pool:
   vmImage: ubuntu-24.04
 
+# A list rather than a mapping, because a variables template is included only
+# from a list.
 variables:
-  # Stable, colorized logs; disable incremental artifacts that only bloat the
-  # cache on single-shot CI builds.
-  CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: "0"
-  # Debug info is by far the largest thing the dev/test build writes: measured on
-  # this workspace it is ~84% of a test executable, and the workspace's ~290 test
-  # binaries dominate `target/`. CI never attaches a debugger — it only needs
-  # readable panic backtraces — so emit line tables alone. That keeps file:line in
-  # backtraces while dropping the type/variable DWARF (`.debug_info`/`.debug_str`),
-  # cutting test executables ~69% and the whole `target/` from ~36 GB to ~14 GB.
-  # Without this the tree plus the tar the cache save writes beside it no longer
-  # fits on the hosted agent, which is what broke the "Cache cargo target" save.
-  # `test` inherits `dev`, but set both so the intent survives a profile change.
-  CARGO_PROFILE_DEV_DEBUG: line-tables-only
-  CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  # `ciImageTag`, the commit every CI image this pipeline pulls was built
+  # from, which the workspace writes over the placeholder the template renders.
+  # See the header.
+  - template: ci/images/tags.yml
+  # The directory on the agent's disk the Rust track keeps cargo's registry
+  # and git checkouts in, which is what its cache saves. The target directory
+  # is deliberately not under here: the test gate writes its JUnit report
+  # beneath the checkout's own `target/`, and moving CARGO_TARGET_DIR would
+  # leave the report where nothing publishes it.
+  - name: ciCache
+    value: $(Pipeline.Workspace)/ci-cache
+  # The registry the staging overlay pulls from, which the
+  # publish stage pushes to under the same name. Its first label is the registry's name,
+  # which is what `az acr login` takes.
+  - name: registry
+    value: testcabinet.azurecr.io
+  # The resource group the cluster the deploy stage rolls sits in, and the
+  # cluster's name.
+  - name: resourceGroup
+    value: testcabinet-staging-westus2-rg
+  - name: cluster
+    value: testcabinet-staging-westus2-aks
+  # The service connection the publish and deploy stages sign in through: a
+  # workload identity federation connection to an identity that may push to
+  # the registry and run commands on the cluster, and nothing else.
+  - name: serviceConnection
+    value: tcab-deploy
+  # The environment the deploy stage records each run against, which is where
+  # the history of what the cluster ran is read. A project creates it, with a
+  # branch control check on it; Azure DevOps creates one a pipeline names and
+  # it did not, but creates it with no check.
+  - name: deployEnvironment
+    value: tcab-staging
 
-jobs:
-  - job: rust
-    displayName: "Rust: lint, build & test (CLI, backend, dispatcher/driver/artifacts, core)"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # The hosted Ubuntu image ships ~95% full; free unused SDKs so the cargo
-      # target/ build and its cache save do not run the OS disk out of room.
-      - script: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home | "$(Agent.OS)"
-          path: $(HOME)/.cargo
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          # The debug level is part of the key: artifacts built at a different
-          # `debug` setting have a different fingerprint, so cargo rebuilds them
-          # but never evicts the originals — restoring a full-debug cache into a
-          # line-tables build would leave both in `target/` and put the disk
-          # straight back over the edge. Keying on it namespaces each setting to
-          # its own cache instead.
-          key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
-          path: target
-      # Installs the channel + components pinned by rust-toolchain.toml on first
-      # cargo use; print what resolved for easier debugging.
-      - script: rustup show
-        displayName: Show Rust toolchain
-      - script: ./scripts/ci/rust-lint.sh
-        displayName: Lint (rustfmt + clippy)
-      - script: ./scripts/ci/install-nextest.sh
-        displayName: Install cargo-nextest
-      - script: ./scripts/ci/rust-test.sh
-        displayName: Build & test
+stages:
+  - stage: gates
+    displayName: Gates
+    jobs:
+      # The Rust track: every check that compiles the workspace, and nothing
+      # else. The image carries no Node, so nothing here may reach for one.
+      - job: rust
+        displayName: Rust
+        # Every step of this job runs inside the Rust CI image, at the commit
+        # ci/images/tags.yml pins, which is what `container:` means: Azure
+        # pulls it with the `the-test-cabinet-acr` credentials before the
+        # first step, mounts the work directory into it, and runs each step
+        # there. Nothing in the job starts or stops a
+        # container of its own. A step that has to run on the agent instead
+        # says so with `target: host`, and the disk cleanup below is the one
+        # that does.
+        container:
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+          endpoint: the-test-cabinet-acr
+        # The most a Microsoft-hosted agent gives a private project.
+        timeoutInMinutes: 60
+        variables:
+          # The registry and the git checkouts, under the directory the cache
+          # task saves, which is the whole reason CARGO_HOME moves at all.
+          #
+          # The toolchain is deliberately NOT under here. It lives at
+          # RUSTUP_HOME and CARGO_HOME inside the image, under /usr/local, and
+          # /usr/local/cargo/bin is on the image's PATH — so repointing
+          # CARGO_HOME leaves cargo, rustup and cargo-nextest exactly where
+          # they are, and `cargo nextest` still resolves, because cargo looks
+          # for a `cargo-<name>` subcommand on PATH. That is a contract with
+          # ci/images/rust.Dockerfile, stated there too.
+          CARGO_HOME: $(ciCache)/cargo-home
+          # Incremental state is much of a target directory and no gate reads
+          # it. Cargo.toml's dev profile already keeps the debug information to
+          # line tables, so a failed test's backtrace still names its lines.
+          CARGO_INCREMENTAL: 0
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
 
-  - job: binary
-    displayName: "Binary: release build & smoke"
-    # The shipped binary is release-mode, so it is validated on every target
-    # platform Azure can run. macOS is validated on GitHub (no macOS agents
-    # here). Each leg release-builds `tcab`, runs the suite in release mode, and
-    # smoke-runs the produced binary; see scripts/ci/binary-smoke.sh.
-    strategy:
-      matrix:
-        linux:
-          imageName: ubuntu-24.04
-        windows:
-          imageName: windows-2022
-    pool:
-      vmImage: $(imageName)
-    variables:
-      # Pin a per-agent CARGO_HOME so the cache path is identical on Linux and
-      # Windows (the predefined $(HOME) is not set on Windows agents).
-      CARGO_HOME: $(Pipeline.Workspace)/.cargo
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # Linux only: reclaim the near-full hosted Ubuntu disk before the release
-      # target/ build and cache. The Windows agent's disk is not affected and the
-      # paths are Ubuntu-image specific, so it skips this.
-      - bash: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-        condition: eq(variables['Agent.OS'], 'Linux')
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home-release | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home-release | "$(Agent.OS)"
-          path: $(CARGO_HOME)
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          key: 'cargo-target-release | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target-release | "$(Agent.OS)"
-          path: target
-      - script: rustup show
-        displayName: Show Rust toolchain
-      # `bash` runs Git Bash on the Windows agent, so the one script drives every
-      # platform identically — including the cross-platform nextest install.
-      - bash: ./scripts/ci/install-nextest.sh
-        displayName: Install cargo-nextest
-      - bash: ./scripts/ci/binary-smoke.sh
-        displayName: Release build & smoke
+          # On the agent, not in the container, which is what `target: host`
+          # says. The SDKs it removes are the hosted image's own and are in no
+          # CI image, so run inside the container the step would free nothing
+          # and fail on a `sudo` these images deliberately do not carry.
+          - script: scripts/ci/free-disk.sh
+            displayName: Free disk space on the agent
+            target: host
 
-  - job: web
-    displayName: "Front ends: type-check & build (gallery, web console, docs)"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(HOME)/.npm
-      - script: ./scripts/ci/web-build.sh
-        displayName: Build website
+          # Two caches rather than one, because they are saved under different
+          # keys and restored at different rates: the registry changes only
+          # with the lockfile, while the build output changes with every
+          # commit. Each restore key is a shorter prefix of the one above it,
+          # so a miss restores the nearest earlier entry and warms the compile
+          # rather than starting from nothing.
+          - task: Cache@2
+            displayName: Restore the cargo registry
+            inputs:
+              key: 'cargo-home | v1 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
+              restoreKeys: |
+                cargo-home | v1 | "$(Agent.OS)" | rust-toolchain.toml
+              path: $(ciCache)
 
-  # The front-end unit suites. Its own job rather than steps on `web`, so a failing
-  # assertion reports as a failing test rather than as a failing build, and so it
-  # runs in parallel with it: the tests need only the small workspace runtime
-  # packages, not the app bundles.
-  - job: webtest
-    displayName: "Front ends: unit tests (vitest)"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(HOME)/.npm
-      - script: ./scripts/ci/web-test.sh
-        displayName: Test front ends
+          - task: Cache@2
+            displayName: Restore the build output
+            inputs:
+              key: 'cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
+              restoreKeys: |
+                cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml
+              path: target
 
-  # The Tauri desktop app, both halves — the React UI (apps/desktop) and the Rust
-  # shell (crates/desktop). It is its own job because it is the only one that
-  # needs BOTH toolchains plus the Linux GUI system libraries, and because it owns
-  # the crate `rust-lint.sh`/`rust-test.sh` exclude (so those runners stay free of
-  # that dependency): this is the only place `test-cabinet-desktop`'s clippy pass
-  # and unit tests run at all.
-  #
-  # It runs on the same two platforms as the `binary` job, for the same reason —
-  # they are the platforms Azure has agents for. macOS is validated when the
-  # Release workflow bundles the app, which is the project's one accepted CI gap.
-  - job: desktop
-    displayName: "Desktop app: build & test (UI + Tauri shell)"
-    strategy:
-      matrix:
-        linux:
-          imageName: ubuntu-24.04
-        windows:
-          imageName: windows-2022
-    pool:
-      vmImage: $(imageName)
-    variables:
-      # Pin per-agent tool caches so one cache path works on both Linux and
-      # Windows: the predefined $(HOME) is not set on Windows agents, and npm
-      # reads its cache location from `npm_config_cache` on every platform.
-      CARGO_HOME: $(Pipeline.Workspace)/.cargo
-      npm_config_cache: $(Pipeline.Workspace)/.npm
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # Linux only: reclaim the near-full hosted Ubuntu disk before the GUI
-      # libraries and the cargo target/ build land on it. The Windows agent's disk
-      # is not affected and the paths are Ubuntu-image specific, so it skips this.
-      - bash: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-        condition: eq(variables['Agent.OS'], 'Linux')
-      # Tauri v2's Linux backend compiles against the system WebKitGTK/GTK/tray
-      # libraries. The devcontainer already curates exactly this package set (and
-      # the Release workflow reuses the same script), so install from there rather
-      # than duplicating the list. Windows ships its web view with the OS.
-      - bash: ./.devcontainer/languages/rust/tauri.sh
-        displayName: Install Linux GUI libraries
-        condition: eq(variables['Agent.OS'], 'Linux')
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(npm_config_cache)
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home-desktop | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home-desktop | "$(Agent.OS)"
-          path: $(CARGO_HOME)
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          # Keyed on the debug level for the same reason as the `rust` job: a
-          # cache saved at a different `debug` setting is rebuilt but never
-          # evicted, so both copies would pile up in target/. Namespaced away from
-          # that job's cache because this one builds a different crate set.
-          key: 'cargo-target-desktop | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target-desktop | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
-          path: target
-      - script: rustup show
-        displayName: Show Rust toolchain
-      # `bash` runs Git Bash on the Windows agent, so the one script drives both
-      # platforms identically — including the cross-platform nextest install.
-      - bash: ./scripts/ci/install-nextest.sh
-        displayName: Install cargo-nextest
-      - bash: ./scripts/ci/desktop-build.sh
-        displayName: Build & test the desktop app
+          # The build output cache restores `target/` whole, the reports the
+          # last run's gates left under it among it. A gate that failed before
+          # writing its report would otherwise leave that run's report where
+          # this run's is read, so both report directories start empty.
+          - script: rm -rf target/gate-artifacts target/test-results
+            displayName: Clear the reports the cache restored
 
-  - job: specs
-    displayName: "Specs: markdown & spelling"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - script: ./scripts/ci/specs-lint.sh
-        displayName: Lint specs
+          # The project's own setup for this job, before its first check.
+          - template: .azure/project/setup-steps.yml
+            parameters:
+              job: rust
 
-  # Needs no toolchain and no history: the check reads the checked-out index, so
-  # a shallow clone is enough.
-  - job: frozen
-    displayName: "Frozen: test-case versions with recorded runs are unchanged"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - script: ./scripts/ci/frozen-check.sh
-        displayName: Verify frozen directories
+          # Setup is done, and every check below carries this variable as its
+          # condition instead of the implicit `succeeded()`. That is what makes
+          # a run report all of its failures rather than stop at the first, the
+          # way `make gate --keep-going` does for a developer. Setting a
+          # variable here, rather than writing `succeededOrFailed()` on each
+          # check, is what stops all of them running, and failing, when the
+          # setup above did not finish. A variable a step sets belongs to the
+          # job that set it, so each track sets its own.
+          - script: echo "##vso[task.setvariable variable=checksReady]true"
+            displayName: Ready to run the checks
 
-  - job: contract
-    displayName: "Contract: regenerate & check for drift"
-    # Regenerates the TS bindings + JSON Schemas from the Rust source and fails on
-    # any diff, so the contract's three representations can never drift apart.
-    # Needs both Rust (the generator) and Node (Prettier), so it runs on its own.
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # Frees unused SDKs before the codegen build populates cargo target/; the
-      # Node toolcache is left intact for UseNode below.
-      - script: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home | "$(Agent.OS)"
-          path: $(HOME)/.cargo
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          # The debug level is part of the key: artifacts built at a different
-          # `debug` setting have a different fingerprint, so cargo rebuilds them
-          # but never evicts the originals — restoring a full-debug cache into a
-          # line-tables build would leave both in `target/` and put the disk
-          # straight back over the edge. Keying on it namespaces each setting to
-          # its own cache instead.
-          key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
-          path: target
-      - script: rustup show
-        displayName: Show Rust toolchain
-      - script: ./scripts/ci/contract-drift.sh
-        displayName: Regenerate & check for drift
+          # One step per check, each run the way `make gate` runs it. A gate
+          # added under ci/gates/ needs a step here or on the web track, and
+          # ci/tests/test_wiring.py fails when it has none.
+          - script: uv run --quiet --project ci gate run rust-fmt
+            displayName: cargo fmt (--check)
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run rust-clippy
+            displayName: cargo clippy (warnings denied)
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run rust-doc
+            displayName: cargo doc (warnings denied)
+            condition: eq(variables['checksReady'], 'true')
+
+          # Naming an artifact directory is what has the test gate use
+          # nextest's `ci` profile and leave its JUnit report there. The path
+          # is relative to the checkout, which the gate finds for itself:
+          # every gate enters the workspace root before it does anything else.
+          - script: uv run --quiet --project ci gate run rust-test
+            displayName: cargo nextest (workspace)
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/rust-test
+
+          - task: PublishTestResults@2
+            displayName: Publish the Rust test results
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              # Where the step above told its gate to leave the report.
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/rust-test/junit.xml
+              testRunTitle: Rust tests
+              failTaskOnMissingResultsFile: false
+
+          # The doctests, which nextest cannot run, through the same runner.
+          # Stable cargo writes no report for them, so there is none to publish.
+          - script: uv run --quiet --project ci gate run rust-doctest
+            displayName: cargo doctests
+            condition: eq(variables['checksReady'], 'true')
+
+          # This project's own gates on this track, one step each like every
+          # gate above.
+          - script: uv run --quiet --project ci gate run contract-drift
+            displayName: "generated contract drift"
+            condition: eq(variables['checksReady'], 'true')
+
+          # The project's own steps for this job, after its last check and
+          # before the job's test results, which every job running a test gate
+          # ends with.
+          - template: .azure/project/steps.yml
+            parameters:
+              job: rust
+
+          # The job's test results, as the artifact a run's results are read
+          # from: every JUnit report a gate above left, in a folder named by
+          # the gate, and nothing else, so the screenshots and the coverage
+          # stay in the artifacts that already carry them. Both steps run
+          # whether the tests passed or failed, since a failing run is the one
+          # whose results matter most. The script sets `testResultsCollected`
+          # once it copied a report, and a job that wrote none publishes
+          # nothing. The name carries the job attempt, so a rerun publishes
+          # beside its first attempt rather than colliding with it.
+          - script: scripts/ci/collect-test-results.sh
+            displayName: Collect the test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+
+          - publish: $(Build.SourcesDirectory)/target/test-results
+            displayName: Publish the test results
+            artifact: test-results-rust-$(System.JobAttempt)
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'), eq(variables['testResultsCollected'], 'true'))
+
+      # The web track: the interface's checks, the documentation site's, and
+      # every check neither toolchain owns. The last group is the whole of the
+      # lint, format and prose checking and costs about a minute, so it rides
+      # the shorter track rather than paying a third job's setup for a track of
+      # its own.
+      - job: web
+        displayName: Web
+        # As on the Rust track above, with the web image instead.
+        container:
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${{ variables.ciImageTag }}
+          endpoint: the-test-cabinet-acr
+        timeoutInMinutes: 60
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
+
+          - script: scripts/ci/free-disk.sh
+            displayName: Free disk space on the agent
+            target: host
+
+          # The web track's checks *are* the npm workspace — eslint, tsc,
+          # vitest, prettier, markdownlint, cspell and astro all run out of
+          # node_modules — so it installs it. The script refuses a Node other
+          # than the one .devcontainer/docker-compose.yml pins, which is the
+          # same pin the image was built from.
+          - script: scripts/ci/npm-install.sh
+            displayName: Install the npm workspace
+
+          # pre-commit builds a hook's environment the first time it runs that
+          # hook. Doing them all here keeps that cost out of whichever check
+          # would otherwise have paid it, so each check's step reports the time
+          # its own check took and nothing else.
+          - script: pre-commit install-hooks
+            displayName: Install the hook environments
+
+          # The project's own setup for this job, before its first check.
+          - template: .azure/project/setup-steps.yml
+            parameters:
+              job: web
+
+          - script: echo "##vso[task.setvariable variable=checksReady]true"
+            displayName: Ready to run the checks
+
+          # The hook framework's own checks, from the pinned upstream
+          # repositories at the top of .pre-commit-config.yaml. They have no
+          # gate script, so each runs as the hook it is, over every file.
+          - script: pre-commit run check-added-large-files --all-files --show-diff-on-failure
+            displayName: Check for added large files
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-case-conflict --all-files --show-diff-on-failure
+            displayName: Check for case conflicts
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-executables-have-shebangs --all-files --show-diff-on-failure
+            displayName: Check that executables have shebangs
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-illegal-windows-names --all-files --show-diff-on-failure
+            displayName: Check for illegal Windows names
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-json --all-files --show-diff-on-failure
+            displayName: Check JSON
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-merge-conflict --all-files --show-diff-on-failure
+            displayName: Check for merge conflicts
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run end-of-file-fixer --all-files --show-diff-on-failure
+            displayName: Newline at end of file
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-shebang-scripts-are-executable --all-files --show-diff-on-failure
+            displayName: Check that shebang scripts are executable
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-symlinks --all-files --show-diff-on-failure
+            displayName: Check for broken symlinks
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-toml --all-files --show-diff-on-failure
+            displayName: Check TOML
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-vcs-permalinks --all-files --show-diff-on-failure
+            displayName: Check VCS permalinks
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-xml --all-files --show-diff-on-failure
+            displayName: Check XML
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-yaml --all-files --show-diff-on-failure
+            displayName: Check YAML
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run shellcheck --all-files --show-diff-on-failure
+            displayName: shellcheck
+            condition: eq(variables['checksReady'], 'true')
+
+          # This workspace's own gates, one step each, in
+          # .pre-commit-config.yaml's order.
+          - script: uv run --quiet --project ci gate run no-nul-bytes
+            displayName: NUL bytes in text files
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run devcontainer-declaration
+            displayName: devcontainer declaration
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run shell-tests
+            displayName: shell tests
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run web-lint
+            displayName: web lint (eslint)
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run web-typecheck
+            displayName: web typecheck (tsc -b)
+            condition: eq(variables['checksReady'], 'true')
+
+          # As the Rust job's test step does, the web tests name an artifact
+          # directory, which has the gate leave vitest's JUnit report there.
+          - script: uv run --quiet --project ci gate run web-test
+            displayName: web tests (vitest)
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test
+
+          - task: PublishTestResults@2
+            displayName: Publish the web test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+            inputs:
+              testResultsFormat: JUnit
+              # Where the web tests step told its gate to leave the report.
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-test/junit.xml
+              testRunTitle: Web tests
+              failTaskOnMissingResultsFile: false
+
+          # As the Rust job's test step does, the browser tests name an
+          # artifact directory, which has the gate leave its JUnit report there
+          # and has the suite give each browser instance a directory of its own
+          # beneath it for what a test attached: among it the screenshot an
+          # engine takes of a test that failed, which is otherwise lost with
+          # the rest of the working directory.
+          - script: uv run --quiet --project ci gate run web-browser-test
+            displayName: web browser tests (vitest, playwright)
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/web-browser-test
+
+          # Both whether the suite passed or failed, since a failure is when
+          # they are read. The artifact's name carries the job attempt, so a
+          # rerun of the job publishes beside its first attempt rather than
+          # colliding with it.
+          - publish: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test
+            displayName: Publish the web browser tests' report and screenshots
+            artifact: web-browser-test-$(System.JobAttempt)
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+
+          - task: PublishTestResults@2
+            displayName: Publish the web browser test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+            inputs:
+              testResultsFormat: JUnit
+              # Where the browser tests step told its gate to leave the report.
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test/junit.xml
+              testRunTitle: Web browser tests
+              failTaskOnMissingResultsFile: false
+
+          - script: uv run --quiet --project ci gate run web-build
+            displayName: web build (vite build)
+            condition: eq(variables['checksReady'], 'true')
+
+          # Rendered only for a project that deploys to Kubernetes, because
+          # the gate it runs is rendered only then. A step for a gate that is
+          # not there would fail every run of this track.
+          - script: uv run --quiet --project ci gate run k8s-manifests
+            displayName: kubernetes manifests
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run markdownlint
+            displayName: markdownlint
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run cspell
+            displayName: cspell
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run format
+            displayName: prettier (--check)
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run docs-typecheck
+            displayName: docs typecheck (astro check)
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run docs-build
+            displayName: docs build (astro build)
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run python-lint
+            displayName: ruff (check, format)
+            condition: eq(variables['checksReady'], 'true')
+
+          # The runner's own tests, which pytest reports as JUnit in the
+          # artifact directory the step names, as every test gate's does.
+          - script: uv run --quiet --project ci gate run ci-tests
+            displayName: ci tests (pytest)
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/ci-tests
+
+          - task: PublishTestResults@2
+            displayName: Publish the CI test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+            inputs:
+              testResultsFormat: JUnit
+              # Where the ci tests step told its gate to leave the report.
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/ci-tests/junit.xml
+              testRunTitle: CI tests
+              failTaskOnMissingResultsFile: false
+
+          # This project's own gates on this track, one step each like every
+          # gate above.
+          - script: uv run --quiet --project ci gate run frozen-paths
+            displayName: "frozen test-case versions"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run seeded-contract
+            displayName: "seeded contract vocabulary"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run spec-vocabulary
+            displayName: "seeded spec vocabulary"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run spec-prose
+            displayName: "spec prose (markdownlint, cspell)"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run audio-packs
+            displayName: "audio pack declarations"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run build-context
+            displayName: "Dockerfile build contexts"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run k8s-deploy-sets
+            displayName: "kubernetes deploy sets"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run ci-image-pins
+            displayName: "project jobs pin the Rust CI image"
+            condition: eq(variables['checksReady'], 'true')
+
+          # As the web tests do, the two test gates below name an artifact
+          # directory, which has each leave its JUnit report there for the
+          # collection at the end of the job.
+          - script: uv run --quiet --project ci gate run scripts-test
+            displayName: "script library tests (node --test)"
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/scripts-test
+
+          - script: uv run --quiet --project ci gate run workspace-test
+            displayName: "npm workspace tests (vitest)"
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/workspace-test
+
+          - script: uv run --quiet --project ci gate run validators-typecheck
+            displayName: "validator projects typecheck (tsc)"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run site-build
+            displayName: "gallery build (vite build)"
+            condition: eq(variables['checksReady'], 'true')
+
+          # The project's own steps for this job, after its last check and
+          # before the job's test results.
+          - template: .azure/project/steps.yml
+            parameters:
+              job: web
+
+          # As at the end of the Rust job, the job's test results as the
+          # artifact a run's results are read from, pass or fail.
+          - script: scripts/ci/collect-test-results.sh
+            displayName: Collect the test results
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
+
+          - publish: $(Build.SourcesDirectory)/target/test-results
+            displayName: Publish the test results
+            artifact: test-results-web-$(System.JobAttempt)
+            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'), eq(variables['testResultsCollected'], 'true'))
+
+      # The project's own jobs in the gates stage. A template cannot read
+      # `ciImageTag` itself (a `${{ variables.* }}` inside an included jobs
+      # template expands to nothing), so the Rust CI image its container jobs
+      # run in is named here, where the expression is the one the `rust` job
+      # above uses, and handed over.
+      - template: .azure/project/jobs.yml
+        parameters:
+          rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+
+  # The one image, the server's with the web app's bundle inside it, built
+  # and pushed under the commit's tag and `latest`. The staging branch
+  # alone, and only once the gates passed. The condition is
+  # this file's own, and every branch the trigger names may edit it; what holds
+  # a branch out is the branch control check on the service connection and on
+  # the environment, both set in the project's settings.
+  - stage: publish
+    displayName: Publish
+    dependsOn: gates
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/staging'))
+    jobs:
+      - job: server
+        displayName: the-test-cabinet-backend
+        timeoutInMinutes: 60
+        steps:
+          - template: .azure/publish-image.yml
+            parameters:
+              image: the-test-cabinet-backend
+              dockerfile: deployments/images/backend.Dockerfile
+              serviceConnection: ${{ variables.serviceConnection }}
+
+  # Once the image is in the registry. A deployment job records each run
+  # against the environment, which is where the history of what the cluster
+  # ran is read.
+  - stage: deploy
+    displayName: Deploy
+    dependsOn: publish
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/staging'))
+    jobs:
+      - deployment: staging
+        displayName: staging
+        timeoutInMinutes: 30
+        environment: ${{ variables.deployEnvironment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+
+                # The project's own steps before the deploy script.
+                - template: .azure/project/deploy-steps.yml
+                  parameters:
+                    phase: before
+                    serviceConnection: ${{ variables.serviceConnection }}
+
+                # The cluster is private, so the script reaches it through
+                # `az aks command invoke` rather than through a kubeconfig,
+                # signed in through the service connection.
+                - task: AzureCLI@2
+                  displayName: Apply the overlay and wait for the rollout
+                  inputs:
+                    azureSubscription: ${{ variables.serviceConnection }}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: scripts/ci/deploy.sh "$(Build.SourceVersion)"
+                  env:
+                    THE_TEST_CABINET_REGISTRY: $(registry)
+                    THE_TEST_CABINET_RESOURCE_GROUP: $(resourceGroup)
+                    THE_TEST_CABINET_CLUSTER: $(cluster)
+
+                # The project's own steps after the deploy script.
+                - template: .azure/project/deploy-steps.yml
+                  parameters:
+                    phase: after
+                    serviceConnection: ${{ variables.serviceConnection }}
+
+  # The project's own stages, after this file's.
+  - template: .azure/project/stages.yml

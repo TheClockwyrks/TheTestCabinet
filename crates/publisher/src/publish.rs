@@ -80,9 +80,7 @@ pub async fn release_with_runner<R: CommandRunner>(
 
     // Own the inputs the `ReleaseRequest` borrows for the lifetime of the release:
     // the collected implementation tree and the build directory found within it.
-    let artifacts = ArtifactCollection {
-        repo_path: run_dir.join("implementation"),
-    };
+    let artifacts = ArtifactCollection::new(run_dir.join("implementation"));
     let build_dir = find_build_output(&artifacts.repo_path);
 
     let request = ReleaseRequest {

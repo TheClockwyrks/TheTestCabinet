@@ -98,8 +98,21 @@ export type Branch = "A" | "B";
 // by straight-line DISTANCE from the tower's own position (independent of path progress).
 // STRONGEST / WEAKEST rank by the most / least remaining hit points. Support auras ignore
 // this — they affect every valid unit in range at once.
-export type TargetingMode = "first" | "last" | "nearest" | "farthest" | "strongest" | "weakest";
-export const TARGETING_ORDER: TargetingMode[] = ["first", "last", "nearest", "farthest", "strongest", "weakest"];
+export type TargetingMode =
+  | "first"
+  | "last"
+  | "nearest"
+  | "farthest"
+  | "strongest"
+  | "weakest";
+export const TARGETING_ORDER: TargetingMode[] = [
+  "first",
+  "last",
+  "nearest",
+  "farthest",
+  "strongest",
+  "weakest",
+];
 export const TARGETING_LABEL: Record<TargetingMode, string> = {
   first: "FIRST",
   last: "LAST",
@@ -150,8 +163,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 1.8,
     dmg: 1,
     detection: false,
-    branchA: { key: "A", name: "CHARGED", blurb: "a bigger bolt with a small energy splash" },
-    branchB: { key: "B", name: "SPREAD", blurb: "fans a shot at up to 3 targets, +range" },
+    branchA: {
+      key: "A",
+      name: "CHARGED",
+      blurb: "a bigger bolt with a small energy splash",
+    },
+    branchB: {
+      key: "B",
+      name: "SPREAD",
+      blurb: "fans a shot at up to 3 targets, +range",
+    },
   },
   ionizer: {
     kind: "ionizer",
@@ -166,8 +187,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 3.0,
     dmg: 1,
     detection: false,
-    branchA: { key: "A", name: "ARRAY", blurb: "faster, longer range, and SEES inert matter" },
-    branchB: { key: "B", name: "OVERCHARGE", blurb: "strips harder and arcs to a nearby atom" },
+    branchA: {
+      key: "A",
+      name: "ARRAY",
+      blurb: "faster, longer range, and SEES inert matter",
+    },
+    branchB: {
+      key: "B",
+      name: "OVERCHARGE",
+      blurb: "strips harder and arcs to a nearby atom",
+    },
   },
   cleaver: {
     kind: "cleaver",
@@ -182,8 +211,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 1.2,
     dmg: 2,
     detection: false,
-    branchA: { key: "A", name: "REND", blurb: "cleaves through a line of matter; deeper bond bonus" },
-    branchB: { key: "B", name: "IMPACTOR", blurb: "heavy specialist: big kinetic + splash on a crack" },
+    branchA: {
+      key: "A",
+      name: "REND",
+      blurb: "cleaves through a line of matter; deeper bond bonus",
+    },
+    branchB: {
+      key: "B",
+      name: "IMPACTOR",
+      blurb: "heavy specialist: big kinetic + splash on a crack",
+    },
   },
   reactor: {
     kind: "reactor",
@@ -198,8 +235,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 0.6,
     dmg: 2,
     detection: false,
-    branchA: { key: "A", name: "CHAIN", blurb: "wider blast that chains between heavies" },
-    branchB: { key: "B", name: "FALLOUT", blurb: "leaves an irradiated zone that damages and reveals" },
+    branchA: {
+      key: "A",
+      name: "CHAIN",
+      blurb: "wider blast that chains between heavies",
+    },
+    branchB: {
+      key: "B",
+      name: "FALLOUT",
+      blurb: "leaves an irradiated zone that damages and reveals",
+    },
   },
   beam: {
     kind: "beam",
@@ -214,8 +259,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 0.85,
     dmg: 4,
     detection: true,
-    branchA: { key: "A", name: "LANCE", blurb: "pierces the whole lane in one shot" },
-    branchB: { key: "B", name: "DISRUPTOR", blurb: "gains heavy damage and marks a target for +damage" },
+    branchA: {
+      key: "A",
+      name: "LANCE",
+      blurb: "pierces the whole lane in one shot",
+    },
+    branchB: {
+      key: "B",
+      name: "DISRUPTOR",
+      blurb: "gains heavy damage and marks a target for +damage",
+    },
   },
   catalyst: {
     kind: "catalyst",
@@ -230,8 +283,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 0,
     dmg: 0,
     detection: false,
-    branchA: { key: "A", name: "BROAD", blurb: "wider field, longer reveal linger" },
-    branchB: { key: "B", name: "REAGENT", blurb: "stronger excite: matter in-field takes +2 damage" },
+    branchA: {
+      key: "A",
+      name: "BROAD",
+      blurb: "wider field, longer reveal linger",
+    },
+    branchB: {
+      key: "B",
+      name: "REAGENT",
+      blurb: "stronger excite: matter in-field takes +2 damage",
+    },
   },
   moderator: {
     kind: "moderator",
@@ -246,8 +307,16 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     fireRate: 0,
     dmg: 0,
     detection: false,
-    branchA: { key: "A", name: "CRYOSTAT", blurb: "deeper slow that also grips heavies" },
-    branchB: { key: "B", name: "CONTAINMENT", blurb: "slow + makes matter in-field brittle (+1 damage)" },
+    branchA: {
+      key: "A",
+      name: "CRYOSTAT",
+      blurb: "deeper slow that also grips heavies",
+    },
+    branchB: {
+      key: "B",
+      name: "CONTAINMENT",
+      blurb: "slow + makes matter in-field brittle (+1 damage)",
+    },
   },
 };
 
@@ -304,7 +373,11 @@ function bump(s: EffStats, kind: TowerKind, level: number): void {
   s.dmg += level >= 2 ? 1 : 0; // tier II already adds a shell of punch
 }
 
-export function deriveStats(kind: TowerKind, level: 1 | 2 | 3, branch: Branch | null): EffStats {
+export function deriveStats(
+  kind: TowerKind,
+  level: 1 | 2 | 3,
+  branch: Branch | null,
+): EffStats {
   const def = TOWERS[kind];
   const s: EffStats = {
     range: def.range,
@@ -477,22 +550,126 @@ export interface MatterDef {
 // A cluster's atoms all carry ATOM_MAX_ELECTRONS unless its own `atomShells` says smaller.
 export const MATTER: Record<MatterType, MatterDef> = {
   // TOTAL SHELLS = its electron count, 1..6.
-  atom: { type: "atom", label: "ATOM", traits: [], element: 0, shells: 1, atoms: 1, atomShells: 0, bondHP: 0, speed: 0, leak: 0, radius: 11, decay: [] },
+  atom: {
+    type: "atom",
+    label: "ATOM",
+    traits: [],
+    element: 0,
+    shells: 1,
+    atoms: 1,
+    atomShells: 0,
+    bondHP: 0,
+    speed: 0,
+    leak: 0,
+    radius: 11,
+    decay: [],
+  },
   // TOTAL SHELLS 11 = bond 5 + 2 atoms of 3.
-  dimer: { type: "dimer", label: "DIMER", traits: ["bonded"], element: 0, shells: 3, atoms: 2, atomShells: 3, bondHP: 5, speed: 50, leak: 1, radius: 11, decay: [] },
+  dimer: {
+    type: "dimer",
+    label: "DIMER",
+    traits: ["bonded"],
+    element: 0,
+    shells: 3,
+    atoms: 2,
+    atomShells: 3,
+    bondHP: 5,
+    speed: 50,
+    leak: 1,
+    radius: 11,
+    decay: [],
+  },
   // TOTAL SHELLS 47 = bond 11 + 6 atoms of 6.
-  polymer: { type: "polymer", label: "POLYMER", traits: ["bonded"], element: 1, shells: 6, atoms: 6, atomShells: 6, bondHP: 11, speed: 40, leak: 2, radius: 12, decay: [] },
+  polymer: {
+    type: "polymer",
+    label: "POLYMER",
+    traits: ["bonded"],
+    element: 1,
+    shells: 6,
+    atoms: 6,
+    atomShells: 6,
+    bondHP: 11,
+    speed: 40,
+    leak: 2,
+    radius: 12,
+    decay: [],
+  },
   // TOTAL SHELLS 104 = bond 8 + 16 atoms of 6. The heaviest cluster: a modest pool over a
   // very large spray, so opening one floods the strippers behind it.
-  lattice: { type: "lattice", label: "LATTICE", traits: ["bonded"], element: 1, shells: 6, atoms: 16, atomShells: 6, bondHP: 8, speed: 34, leak: 4, radius: 15, decay: [] },
+  lattice: {
+    type: "lattice",
+    label: "LATTICE",
+    traits: ["bonded"],
+    element: 1,
+    shells: 6,
+    atoms: 16,
+    atomShells: 6,
+    bondHP: 8,
+    speed: 34,
+    leak: 4,
+    radius: 15,
+    decay: [],
+  },
   // TOTAL SHELLS = its electron count; an inert atom.
-  noble: { type: "noble", label: "NOBLE", traits: ["inert"], element: 0, shells: 3, atoms: 1, atomShells: 0, bondHP: 0, speed: 0, leak: 0, radius: 11, decay: [] },
+  noble: {
+    type: "noble",
+    label: "NOBLE",
+    traits: ["inert"],
+    element: 0,
+    shells: 3,
+    atoms: 1,
+    atomShells: 0,
+    bondHP: 0,
+    speed: 0,
+    leak: 0,
+    radius: 11,
+    decay: [],
+  },
   // TOTAL SHELLS 23 = 9 shells + alpha 6 + alpha 6 + beta 2.
-  heavy: { type: "heavy", label: "ISOTOPE", traits: ["heavy"], element: 1, shells: 9, atoms: 1, atomShells: 0, bondHP: 0, speed: 36, leak: 3, radius: 13, decay: ["alpha", "alpha", "beta"] },
+  heavy: {
+    type: "heavy",
+    label: "ISOTOPE",
+    traits: ["heavy"],
+    element: 1,
+    shells: 9,
+    atoms: 1,
+    atomShells: 0,
+    bondHP: 0,
+    speed: 36,
+    leak: 3,
+    radius: 13,
+    decay: ["alpha", "alpha", "beta"],
+  },
   // TOTAL SHELLS 23, shielded: the same isotope, sealed until it is detected.
-  shroud: { type: "shroud", label: "SHROUD", traits: ["inert", "heavy"], element: 1, shells: 9, atoms: 1, atomShells: 0, bondHP: 0, speed: 38, leak: 3, radius: 13, decay: ["alpha", "alpha", "beta"] },
+  shroud: {
+    type: "shroud",
+    label: "SHROUD",
+    traits: ["inert", "heavy"],
+    element: 1,
+    shells: 9,
+    atoms: 1,
+    atomShells: 0,
+    bondHP: 0,
+    speed: 38,
+    leak: 3,
+    radius: 13,
+    decay: ["alpha", "alpha", "beta"],
+  },
   // TOTAL SHELLS 47, shielded: a Polymer sealed until it is detected.
-  chelate: { type: "chelate", label: "CHELATE", traits: ["inert", "bonded"], element: 0, shells: 6, atoms: 6, atomShells: 6, bondHP: 11, speed: 44, leak: 2, radius: 12, decay: [] },
+  chelate: {
+    type: "chelate",
+    label: "CHELATE",
+    traits: ["inert", "bonded"],
+    element: 0,
+    shells: 6,
+    atoms: 6,
+    atomShells: 6,
+    bondHP: 11,
+    speed: 44,
+    leak: 2,
+    radius: 12,
+    decay: [],
+  },
   // TOTAL SHELLS 616 = bond 180 + 132 shells + 6 daughters (23 each) + 17 alpha + 32 beta.
   // A super-heavy nucleus behind its own containment pool. Cracking it is a fission chain:
   // it sheds daughter isotopes that are themselves heavy and must each be cracked in turn,
@@ -510,15 +687,61 @@ export const MATTER: Record<MatterType, MatterDef> = {
     leak: 12,
     radius: 22,
     decay: [
-      "beta", "alpha", "daughter", "beta", "alpha", "beta",
-      "alpha", "daughter", "beta", "alpha", "beta", "alpha",
-      "daughter", "beta", "alpha", "beta", "alpha", "daughter",
-      "beta", "alpha", "beta", "alpha", "daughter", "beta",
-      "alpha", "beta", "alpha", "daughter", "beta", "alpha",
-      "beta", "alpha", "beta", "alpha", "beta", "alpha",
-      "beta", "alpha", "beta", "alpha", "beta", "beta",
-      "beta", "beta", "beta", "beta", "beta", "beta",
-      "beta", "beta", "beta", "beta", "beta", "beta", "beta",
+      "beta",
+      "alpha",
+      "daughter",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "daughter",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "daughter",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "daughter",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "daughter",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "daughter",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "beta",
+      "alpha",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
+      "beta",
     ],
   },
 };
@@ -550,4 +773,3 @@ export function roundClearBonus(round: number): number {
 // gains TRAITS (combos). Regular atoms grow by their ELECTRON count (the ramp below);
 // bond pools, molecule length, and isotope HP grow by the round; speeds, bounties, leaks
 // and every tower stat stay fixed — only the matter grows.
-

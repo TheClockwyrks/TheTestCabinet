@@ -15,6 +15,7 @@ fn version(slug: &str, ingested: bool) -> IngestedVersion {
 fn report(versions: Vec<IngestedVersion>) -> IngestReport {
     IngestReport {
         test_case_versions: versions,
+        test_case_groups_changed: false,
     }
 }
 
@@ -40,5 +41,17 @@ fn all_versions_unchanged_does_not_change_store() {
 #[test]
 fn any_ingested_version_changes_store() {
     let r = report(vec![version("fathom", false), version("carom", true)]);
+    assert!(scan_changed_store(&r));
+}
+
+// A scan that changed only the test-case-group set still refreshes: the snapshot
+// exports the set as its own object, so a group edit with every version unchanged
+// must republish.
+#[test]
+fn a_changed_group_set_changes_store() {
+    let r = IngestReport {
+        test_case_versions: vec![version("fathom", false)],
+        test_case_groups_changed: true,
+    };
     assert!(scan_changed_store(&r));
 }

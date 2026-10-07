@@ -1,0 +1,151 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
+
+// The detail landing tab's Play presentation: the case-side showcase carousel,
+// the reference-implementation launch panel, and the description — stacked with
+// the tab body's usual panel gap. The carousel mirrors the run Play tab's
+// showcase (ShowcaseSection.module.scss) so the two surfaces read as one family.
+.play {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.carousel {
+  margin: 0;
+}
+
+// The staged entry. The media itself is sized by MediaView / the replay player
+// (full width, aspect kept); the figure only adds the caption below it.
+.stageFigure {
+  margin: 0;
+
+  img,
+  video {
+    border: t.$border-hairline solid t.$color-border;
+  }
+}
+
+.caption {
+  margin-top: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-align: center;
+  @include h.halo;
+}
+
+// A carousel file this host cannot serve (no resolver, or nothing behind the
+// name). A note rather than a broken viewer, matching MediaView's own
+// unsupported-kind presentation.
+.unavailable {
+  margin: 0;
+  padding: t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline dashed t.$color-border;
+  border-radius: t.$radius-sm;
+  @include h.halo;
+}
+
+// An image blown up into the fullscreen overlay: contained within the stage's
+// height, centred by the overlay's own stage styles.
+.expandedImage {
+  max-width: 100%;
+  object-fit: contain;
+}
+
+// The prev/next steppers flanking the thumbnail strip.
+.stripRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-top: t.$space-sm;
+}
+
+.step {
+  flex: none;
+  font-family: var(--ttc-font);
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: t.$color-surface-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: t.$color-surface;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+// One thumbnail per carousel entry, in carousel order; the strip scrolls rather
+// than wraps so the order stays readable.
+.strip {
+  display: flex;
+  gap: t.$space-sm;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  height: 3.5rem;
+  padding: 0;
+  overflow: hidden;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent-2;
+  }
+}
+
+.thumbActive {
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0 1px t.$color-accent;
+}
+
+.thumbImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// The lone play glyph, sized up a step so it holds the thumb on its own.
+.thumbGlyph {
+  font-size: t.$font-md;
+  color: t.$color-text-muted;
+}
+
+// The reference-implementation launch panel's copy, over the inline embed.
+.launchHeading {
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-md;
+}
+
+.launchNote {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The showcase description's prose. The Markdown primitive brings its themed
+// typography; this only reins in stray media an author might embed.
+.showcaseDescription {
+  img {
+    max-width: 100%;
+    height: auto;
+    border-radius: t.$radius-sm;
+  }
+}

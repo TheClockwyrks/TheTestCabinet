@@ -1,0 +1,10 @@
+# The C bindings `wit-bindgen` generates from crates/gg/wit, the staging tree the guest archive is
+# cut from, and the AST dump the catalogue is reflected out of. THIS PACKAGE COMMITS NOTHING:
+# `build.sh` writes its three artifacts into $GG_ARTIFACTS_OUT_DIR — the `OUT_DIR` of
+# crates/gg-sandbox-artifacts/cpp — and `signatures.sh` writes the catalogue into
+# $GG_SIGNATURES_OUT_DIR, which is crates/gg's.
+.build/
+
+# The reflector is a script rather than a package; nothing imports it twice in one process, so the
+# cache is noise.
+tools/__pycache__/

@@ -2,200 +2,112 @@
   "parts": [
     {
       "name": "body",
-      "pivot": [
-        32,
-        34,
-        29
-      ]
+      "pivot": [32, 34, 29]
     },
     {
       "name": "leg_fl_upper",
       "parent": "body",
-      "pivot": [
-        17,
-        33,
-        41
-      ]
+      "pivot": [17, 33, 41]
     },
     {
       "name": "leg_fl_lower",
       "parent": "leg_fl_upper",
-      "pivot": [
-        17,
-        20,
-        41
-      ]
+      "pivot": [17, 20, 41]
     },
     {
       "name": "leg_fl_foot",
       "parent": "leg_fl_lower",
-      "pivot": [
-        17,
-        6,
-        41
-      ]
+      "pivot": [17, 6, 41]
     },
     {
       "name": "leg_bl_upper",
       "parent": "body",
-      "pivot": [
-        17,
-        33,
-        15
-      ]
+      "pivot": [17, 33, 15]
     },
     {
       "name": "leg_bl_lower",
       "parent": "leg_bl_upper",
-      "pivot": [
-        17,
-        20,
-        15
-      ]
+      "pivot": [17, 20, 15]
     },
     {
       "name": "leg_bl_foot",
       "parent": "leg_bl_lower",
-      "pivot": [
-        17,
-        6,
-        15
-      ]
+      "pivot": [17, 6, 15]
     },
     {
       "name": "leg_fr_upper",
       "parent": "body",
-      "pivot": [
-        46,
-        33,
-        41
-      ]
+      "pivot": [46, 33, 41]
     },
     {
       "name": "leg_fr_lower",
       "parent": "leg_fr_upper",
-      "pivot": [
-        46,
-        20,
-        41
-      ]
+      "pivot": [46, 20, 41]
     },
     {
       "name": "leg_fr_foot",
       "parent": "leg_fr_lower",
-      "pivot": [
-        46,
-        6,
-        41
-      ]
+      "pivot": [46, 6, 41]
     },
     {
       "name": "leg_br_upper",
       "parent": "body",
-      "pivot": [
-        46,
-        33,
-        15
-      ]
+      "pivot": [46, 33, 15]
     },
     {
       "name": "leg_br_lower",
       "parent": "leg_br_upper",
-      "pivot": [
-        46,
-        20,
-        15
-      ]
+      "pivot": [46, 20, 15]
     },
     {
       "name": "leg_br_foot",
       "parent": "leg_br_lower",
-      "pivot": [
-        46,
-        6,
-        15
-      ]
+      "pivot": [46, 6, 15]
     },
     {
       "name": "head",
       "parent": "body",
-      "pivot": [
-        32,
-        51,
-        49
-      ]
+      "pivot": [32, 51, 49]
     },
     {
       "name": "guard_l",
       "parent": "body",
-      "pivot": [
-        24,
-        60,
-        42
-      ]
+      "pivot": [24, 60, 42]
     },
     {
       "name": "guard_r",
       "parent": "body",
-      "pivot": [
-        39,
-        60,
-        42
-      ]
+      "pivot": [39, 60, 42]
     },
     {
       "name": "crater_rim",
       "parent": "body",
-      "pivot": [
-        32,
-        64,
-        26
-      ]
+      "pivot": [32, 64, 26]
     },
     {
       "name": "core",
       "parent": "body",
-      "pivot": [
-        32,
-        49,
-        26
-      ]
+      "pivot": [32, 49, 26]
     },
     {
       "name": "core_flare",
       "parent": "body",
-      "pivot": [
-        32,
-        57,
-        26
-      ]
+      "pivot": [32, 57, 26]
     },
     {
       "name": "seams_back",
       "parent": "body",
-      "pivot": [
-        32,
-        63,
-        29
-      ]
+      "pivot": [32, 63, 29]
     },
     {
       "name": "seam_flank_l",
       "parent": "body",
-      "pivot": [
-        11,
-        46,
-        26
-      ]
+      "pivot": [11, 46, 26]
     },
     {
       "name": "seam_flank_r",
       "parent": "body",
-      "pivot": [
-        52,
-        46,
-        26
-      ]
+      "pivot": [52, 46, 26]
     }
   ],
   "joints": [
@@ -204,11 +116,7 @@
       "part": "body",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        32,
-        33,
-        29
-      ],
+      "pivot": [32, 33, 29],
       "min": -10.0,
       "max": 10.0,
       "rest": 0.0,
@@ -219,11 +127,7 @@
       "part": "body",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        32,
-        33,
-        29
-      ],
+      "pivot": [32, 33, 29],
       "min": -0.45,
       "max": 0.45,
       "rest": 0.0,
@@ -234,11 +138,7 @@
       "part": "body",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        32,
-        33,
-        29
-      ],
+      "pivot": [32, 33, 29],
       "min": -0.14,
       "max": 0.14,
       "rest": 0.0,
@@ -249,11 +149,7 @@
       "part": "leg_fl_upper",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        17,
-        33,
-        41
-      ],
+      "pivot": [17, 33, 41],
       "min": -4.0,
       "max": 9.0,
       "rest": 0.0,
@@ -264,11 +160,7 @@
       "part": "leg_fl_upper",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        17,
-        33,
-        41
-      ],
+      "pivot": [17, 33, 41],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -279,11 +171,7 @@
       "part": "leg_fl_lower",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        17,
-        20,
-        41
-      ],
+      "pivot": [17, 20, 41],
       "min": -0.8,
       "max": 0.3,
       "rest": 0.0,
@@ -294,11 +182,7 @@
       "part": "leg_fl_foot",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        17,
-        6,
-        41
-      ],
+      "pivot": [17, 6, 41],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -309,11 +193,7 @@
       "part": "leg_bl_upper",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        17,
-        33,
-        15
-      ],
+      "pivot": [17, 33, 15],
       "min": -4.0,
       "max": 9.0,
       "rest": 0.0,
@@ -324,11 +204,7 @@
       "part": "leg_bl_upper",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        17,
-        33,
-        15
-      ],
+      "pivot": [17, 33, 15],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -339,11 +215,7 @@
       "part": "leg_bl_lower",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        17,
-        20,
-        15
-      ],
+      "pivot": [17, 20, 15],
       "min": -0.8,
       "max": 0.3,
       "rest": 0.0,
@@ -354,11 +226,7 @@
       "part": "leg_bl_foot",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        17,
-        6,
-        15
-      ],
+      "pivot": [17, 6, 15],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -369,11 +237,7 @@
       "part": "leg_fr_upper",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        46,
-        33,
-        41
-      ],
+      "pivot": [46, 33, 41],
       "min": -4.0,
       "max": 9.0,
       "rest": 0.0,
@@ -384,11 +248,7 @@
       "part": "leg_fr_upper",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        46,
-        33,
-        41
-      ],
+      "pivot": [46, 33, 41],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -399,11 +259,7 @@
       "part": "leg_fr_lower",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        46,
-        20,
-        41
-      ],
+      "pivot": [46, 20, 41],
       "min": -0.8,
       "max": 0.3,
       "rest": 0.0,
@@ -414,11 +270,7 @@
       "part": "leg_fr_foot",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        46,
-        6,
-        41
-      ],
+      "pivot": [46, 6, 41],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -429,11 +281,7 @@
       "part": "leg_br_upper",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        46,
-        33,
-        15
-      ],
+      "pivot": [46, 33, 15],
       "min": -4.0,
       "max": 9.0,
       "rest": 0.0,
@@ -444,11 +292,7 @@
       "part": "leg_br_upper",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        46,
-        33,
-        15
-      ],
+      "pivot": [46, 33, 15],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -459,11 +303,7 @@
       "part": "leg_br_lower",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        46,
-        20,
-        15
-      ],
+      "pivot": [46, 20, 15],
       "min": -0.8,
       "max": 0.3,
       "rest": 0.0,
@@ -474,11 +314,7 @@
       "part": "leg_br_foot",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        46,
-        6,
-        15
-      ],
+      "pivot": [46, 6, 15],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -489,11 +325,7 @@
       "part": "head",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        32,
-        51,
-        49
-      ],
+      "pivot": [32, 51, 49],
       "min": -0.55,
       "max": 0.45,
       "rest": 0.0,
@@ -504,11 +336,7 @@
       "part": "guard_l",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        22,
-        56,
-        42
-      ],
+      "pivot": [22, 56, 42],
       "min": -0.25,
       "max": 0.25,
       "rest": 0.0,
@@ -519,11 +347,7 @@
       "part": "guard_r",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        41,
-        56,
-        42
-      ],
+      "pivot": [41, 56, 42],
       "min": -0.25,
       "max": 0.25,
       "rest": 0.0,
@@ -534,11 +358,7 @@
       "part": "core",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        32,
-        49,
-        26
-      ],
+      "pivot": [32, 49, 26],
       "min": -3.0,
       "max": 3.0,
       "rest": 0.0,
@@ -549,11 +369,7 @@
       "part": "core_flare",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        32,
-        57,
-        26
-      ],
+      "pivot": [32, 57, 26],
       "min": -3.0,
       "max": 4.0,
       "rest": 0.0,
@@ -564,11 +380,7 @@
       "part": "seams_back",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        32,
-        64,
-        29
-      ],
+      "pivot": [32, 64, 29],
       "min": -1.5,
       "max": 1.5,
       "rest": 0.0,
@@ -579,11 +391,7 @@
       "part": "seam_flank_l",
       "kind": "translation",
       "axis": "x",
-      "pivot": [
-        11,
-        46,
-        26
-      ],
+      "pivot": [11, 46, 26],
       "min": -1.5,
       "max": 1.5,
       "rest": 0.0,
@@ -594,11 +402,7 @@
       "part": "seam_flank_r",
       "kind": "translation",
       "axis": "x",
-      "pivot": [
-        52,
-        46,
-        26
-      ],
+      "pivot": [52, 46, 26],
       "min": -1.5,
       "max": 1.5,
       "rest": 0.0,
@@ -1594,14 +1398,8 @@
               "tMs": 1080,
               "value": 0.35,
               "interp": "bezier",
-              "outHandle": [
-                150.0,
-                0.1
-              ],
-              "inHandle": [
-                -110.0,
-                0.04
-              ]
+              "outHandle": [150.0, 0.1],
+              "inHandle": [-110.0, 0.04]
             },
             {
               "tMs": 1330,
@@ -1662,14 +1460,8 @@
               "tMs": 1080,
               "value": 0.27,
               "interp": "bezier",
-              "outHandle": [
-                150.0,
-                0.006
-              ],
-              "inHandle": [
-                -110.0,
-                0.003
-              ]
+              "outHandle": [150.0, 0.006],
+              "inHandle": [-110.0, 0.003]
             },
             {
               "tMs": 1330,

@@ -169,7 +169,9 @@ export function ColumnMenu({
                 role="menuitemcheckbox"
                 aria-checked={checked}
                 aria-disabled={locked || undefined}
-                title={locked ? "At least one column must stay visible" : undefined}
+                title={
+                  locked ? "At least one column must stay visible" : undefined
+                }
               >
                 <input
                   type="checkbox"

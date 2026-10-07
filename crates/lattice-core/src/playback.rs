@@ -22,9 +22,21 @@
 //! the oracle reconstructs exactly the factory the graded run computed.
 //!
 //! [`Snapshot::checksum`] rides along on every step, so a renderer can *prove* it:
-//! at a scheduled snapshot tick the stepped checksum must equal the one the run
+//! at a tick the run graded, the stepped checksum must equal the one the run
 //! recorded. That check is the analogue of Foray's replay-drift gate — it is what
-//! makes the frames "the run's factory" rather than merely a plausible one.
+//! makes the frames "the run's factory" rather than merely a plausible one — and it
+//! is performed, in the console's player, by
+//! `packages/ui/src/app/pages/runs/lattice/drift.ts`.
+//!
+//! It has two preconditions, both of which had to be built for the gate to mean
+//! anything. A run's recorded checksum has to be tied to real state: the host
+//! re-derives each returned snapshot's checksum from the entities returned with it
+//! (`lattice-host`'s `score_against`), so a checksum can no longer be a claim an
+//! engine simply asserts. And a graded tick has to fall inside the stretch playback
+//! shows: the scenario generator schedules snapshots inside
+//! [`PLAYBACK_WINDOW_TICKS`](crate::PLAYBACK_WINDOW_TICKS) for that reason. Before
+//! both existed, every frame a viewer could watch was ungraded, and an engine could
+//! pass while drawing a factory that visibly disagreed with the reference.
 
 use crate::scenario::{Entity, Grid, Scenario, ScenarioError};
 use crate::state::Snapshot;

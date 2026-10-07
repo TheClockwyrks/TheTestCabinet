@@ -4,9 +4,9 @@ import type {
   AnimationSpec,
   JointSpec,
   ModelSpec,
-} from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+} from "@clockwyrks/run-record";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import {
   fetchMeshesByPart,
   useVoxelArtifacts,
@@ -167,7 +167,7 @@ function VoxelSignals({ part }: { part: VoxelPartView }) {
         {part.operationCount}
         {part.actionsUrl ? (
           <>
-            {" — "}
+            {" · "}
             <a href={part.actionsUrl} target="_blank" rel="noreferrer">
               action log
             </a>
@@ -275,7 +275,10 @@ function animationSummary(animation: AnimationSpec): string {
 
 /** A part mesh's complexity: vertex and triangle counts (3 floats per vertex in
  * `positions`, 3 indices per triangle). */
-function meshComplexity(mesh: PartMesh): { vertices: number; triangles: number } {
+function meshComplexity(mesh: PartMesh): {
+  vertices: number;
+  triangles: number;
+} {
   return {
     vertices: Math.floor(mesh.positions.length / 3),
     triangles: Math.floor(mesh.indices.length / 3),
@@ -284,9 +287,7 @@ function meshComplexity(mesh: PartMesh): { vertices: number; triangles: number }
 
 /** Whole-model geometry stats across every part: total vertices/triangles and the
  * bounding-box size (in voxel units). `null` while the meshes are still loading. */
-function modelStats(
-  meshes: Record<string, PartMesh> | null,
-): {
+function modelStats(meshes: Record<string, PartMesh> | null): {
   vertices: number;
   triangles: number;
   size: [number, number, number] | null;
@@ -341,7 +342,9 @@ function GeometryStats({
     <div className={styles.voxelStats}>
       <span title="Bounding-box size (voxel units)">{size}</span>
       <span aria-hidden="true">·</span>
-      <span title="Total vertices">{stats.vertices.toLocaleString()} verts</span>
+      <span title="Total vertices">
+        {stats.vertices.toLocaleString()} verts
+      </span>
       <span aria-hidden="true">·</span>
       <span title="Total triangles">
         {stats.triangles.toLocaleString()} tris
@@ -487,10 +490,11 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
       <h3 className={`${styles.section} ${styles.leadHeading}`}>Rig preview</h3>
       <p className={styles.secondary}>
         Switch between the model's <strong>animations</strong> (the F-curve
-        choreographies it authored — an idle plays on its own, a named playable a
-        game triggers), its game-drivable <strong>joints</strong> (posed by a
-        slider), and its individual <strong>meshes</strong> (each part on its
-        own). Drag the model to orbit it.
+        choreographies it authored, where an idle plays on its own and a named
+        playable is triggered by a game), its game-drivable{" "}
+        <strong>joints</strong> (posed by a slider), and its individual{" "}
+        <strong>meshes</strong> (each part on its own). Drag the model to orbit
+        it.
       </p>
       {/* The mode switch spans the section (not the narrow sidebar), so its three
           labels always fit rather than overflowing the sidebar. */}
@@ -577,8 +581,8 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
                 })
               ) : (
                 <p className={styles.secondary}>
-                  This model exposes no game-drivable joints — its motion lives in
-                  the Animations tab.
+                  This model exposes no game-drivable joints. Its motion lives
+                  in the Animations tab.
                 </p>
               )
             ) : null}
@@ -616,7 +620,9 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
                       aria-pressed={selectedPart === part.name}
                       onClick={() => setSelectedPart(part.name)}
                     >
-                      <span className={styles.voxelPickerName}>{part.name}</span>
+                      <span className={styles.voxelPickerName}>
+                        {part.name}
+                      </span>
                       <span className={styles.voxelPickerSub}>
                         {c
                           ? `${c.vertices.toLocaleString()} verts · ${c.triangles.toLocaleString()} tris`

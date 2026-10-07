@@ -1,10 +1,12 @@
 //! Tests for manifest resolution, focused on the `[build]` command table.
 
 use std::fs;
+use std::path::Path;
 
 use super::{
-    AssetKind, BuildCommands, ErratumSeverity, MediaKind, SpecKind, TestCaseCatalog, TestType,
-    is_shippable_package, shippable_package_description,
+    AssetDimension, AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result,
+    SHIPPABLE_PACKAGES, SpecKind, TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
+    shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -12,7 +14,7 @@ use super::{
 /// at it. `manifest_extra` is spliced between the required
 /// `name`/`difficulty`/`tags`/`prompt` header and the single `base` variant, so a
 /// test can drop in a `[build]` table.
-fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("end-to-end/easy/demo/v1.0.0");
     fs::create_dir_all(version.join("variants")).expect("create version dir");
@@ -138,7 +140,7 @@ fn only_asset_generation_releases_no_source_repo() {
 
 /// A complete, valid asset-generation manifest. Tests clone this and mutate one
 /// thing to exercise a single validation rule.
-const VALID_ASSET_MANIFEST: &str = "\
+pub(super) const VALID_ASSET_MANIFEST: &str = "\
 slug = \"sprite\"\n\
 name = \"Sprite\"\n\
 difficulty = \"medium\"\n\
@@ -158,7 +160,7 @@ variants = [\"variants/base.toml\"]\n\
 /// return the catalog. An asset-generation case has no target image, so none is
 /// written. No operations schema is written either — the binary's `--help` is the
 /// contract.
-fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("asset-generation/medium/sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
@@ -524,6 +526,113 @@ fn end_to_end_rejects_sprite_sheet_kind() {
         .expect_err("asset_kind on an e2e case is rejected");
     assert!(
         format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
+    );
+}
+
+// --- `asset_dimension` (the full-stack run image) --------------------------
+
+/// The manifest body of a full-stack case, appended to the header
+/// [`catalog_with_manifest`] writes. A full-stack case is an end-to-end case that also
+/// produces its own assets, so it declares the same `[build]` table.
+const FULL_STACK_BODY: &str =
+    "type = \"full-stack\"\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"";
+
+#[test]
+fn full_stack_resolves_a_three_dimensional_asset_dimension() {
+    // `asset_dimension = "3d"` is what schedules a full-stack run onto the image that
+    // has `voxel`, `voxel-anim` and `particle-3d` on `PATH`, so it has to survive
+    // resolution onto the version the run image is selected from.
+    let (_dir, catalog) =
+        catalog_with_manifest(&format!("asset_dimension = \"3d\"\n{FULL_STACK_BODY}"));
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.test_type, TestType::FullStack);
+    assert_eq!(version.asset_dimension, AssetDimension::ThreeD);
+}
+
+#[test]
+fn full_stack_defaults_asset_dimension_to_two_dimensional() {
+    // A full-stack manifest that declares no `asset_dimension` — which is every one
+    // written before the key existed — keeps resolving onto the 2D image.
+    let (_dir, catalog) = catalog_with_manifest(FULL_STACK_BODY);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.asset_dimension, AssetDimension::TwoD);
+}
+
+#[test]
+fn asset_dimension_round_trips_as_its_two_wire_forms() {
+    // The wire spellings are `"2d"` and `"3d"` — the manifest spelling, the stored
+    // spelling, and the spelling that crosses the backend wire into a driver-run
+    // version are all the same string, so a case authored locally and one materialized
+    // from the backend resolve the same image.
+    for (dimension, wire) in [(AssetDimension::TwoD, "2d"), (AssetDimension::ThreeD, "3d")] {
+        let value = serde_json::to_value(dimension).expect("serialize");
+        assert_eq!(value, serde_json::json!(wire));
+        let parsed: AssetDimension = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(parsed, dimension);
+    }
+}
+
+#[test]
+fn only_full_stack_accepts_an_asset_dimension() {
+    // Full-stack is the only type with two images to pick between: every other type
+    // resolves its image without consulting the dimension at all, by the type alone or,
+    // for asset generation, by its `asset_kind`. So an `asset_dimension` on one selects
+    // nothing: it is a mistake worth rejecting rather than silently ignoring — the
+    // author believes they have chosen an image and has not. Asserted per type because
+    // asset generation reaches resolution through its own kind-guarded arms rather than
+    // the shared one the other types take, so a check that lived in the shared arm would
+    // let every asset-generation kind through.
+    let build = "[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"";
+    for (label, manifest_extra) in [
+        // End-to-end is the default type, so it declares no `type` at all.
+        ("end-to-end", format!("asset_dimension = \"3d\"\n{build}")),
+        (
+            "game-jam",
+            format!("asset_dimension = \"3d\"\ntype = \"game-jam\"\n{build}"),
+        ),
+        (
+            "adversarial",
+            "asset_dimension = \"3d\"\ntype = \"adversarial\"".to_string(),
+        ),
+        (
+            "performance",
+            "asset_dimension = \"3d\"\ntype = \"performance\"".to_string(),
+        ),
+    ] {
+        let (_dir, catalog) = catalog_with_manifest(&manifest_extra);
+        let err = catalog
+            .resolve("demo", "v1.0.0")
+            .expect_err("`asset_dimension` outside a full-stack case is rejected");
+        assert!(
+            format!("{err}").contains("`asset_dimension` is only valid for a full-stack case"),
+            "on a {label} case, got: {err}"
+        );
+    }
+
+    // A jam authored through its own `game-jam.toml` is rejected earlier still, by
+    // `deny_unknown_fields`: the jam manifest format has no `asset_dimension` at all,
+    // which is the strongest form of the same rule. Spliced in as a root key, ahead of
+    // the `[build]` table MINIMAL_JAM closes with — appended after it, TOML would read
+    // it as a `[build]` key instead.
+    let jam = MINIMAL_JAM.replace("[build]", "asset_dimension = \"3d\"\n[build]");
+    let err = catalog_with_jam(&jam)
+        .1
+        .resolve("trains", "v1.0.0")
+        .expect_err("`asset_dimension` in a game-jam.toml is rejected");
+    assert!(format!("{err}").contains("asset_dimension"), "got: {err}");
+
+    // And on an asset-generation case, whose image is chosen by `asset_kind`.
+    let manifest = VALID_ASSET_MANIFEST.replace(
+        "type = \"asset-generation\"\n",
+        "type = \"asset-generation\"\nasset_dimension = \"3d\"\n",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("`asset_dimension` on an asset-generation case is rejected");
+    assert!(
+        format!("{err}").contains("`asset_dimension` is only valid for a full-stack case"),
         "got: {err}"
     );
 }
@@ -1502,14 +1611,33 @@ fn every_shippable_package_carries_a_ui_description() {
     // Every shippable package a case may declare has a non-empty UI-only
     // description (the single source of truth the Inputs surfaces read), and an
     // unknown name resolves to `None`.
-    assert!(is_shippable_package("@test-cabinet/particle-runtime"));
-    assert!(
-        shippable_package_description("@test-cabinet/particle-runtime")
-            .is_some_and(|d| !d.is_empty()),
-        "particle-runtime should carry a non-empty description"
-    );
-    assert!(!is_shippable_package("@test-cabinet/not-a-real-package"));
-    assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
+    for package in SHIPPABLE_PACKAGES {
+        assert!(
+            is_shippable_package(package.name),
+            "`{}` is in the list, so it must be recognised as shippable",
+            package.name
+        );
+        assert!(
+            shippable_package_description(package.name).is_some_and(|d| !d.is_empty()),
+            "`{}` should carry a non-empty description",
+            package.name
+        );
+    }
+    assert!(!is_shippable_package("@clockwyrks/not-a-real-package"));
+    assert!(shippable_package_description("@clockwyrks/not-a-real-package").is_none());
+}
+
+#[test]
+fn the_shared_validator_harness_is_not_a_package_a_case_may_declare() {
+    // `@clockwyrks/case-harness` is staged into the same host package store as the
+    // shippable runtimes (scripts/stage-tcab-packages.mjs), and the vitest validator
+    // copies it into the STAGED validator project after the container is gone. This
+    // allowlist is the other direction entirely: what it admits, a case's manifest
+    // `packages` key may name, and the seeder then vendors into the run repository —
+    // in front of the model. Admitting the harness here would hand a model the suites
+    // it is about to be measured by, so its absence is asserted rather than assumed.
+    assert!(!is_shippable_package("@clockwyrks/case-harness"));
+    assert!(shippable_package_description("@clockwyrks/case-harness").is_none());
 }
 
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files
@@ -1518,7 +1646,7 @@ fn every_shippable_package_carries_a_ui_description() {
 /// the whole manifest, so it can place top-level keys (`workspace`, `init`)
 /// before the `[build]` table, and can seed the workspace directory the manifest
 /// points at.
-fn catalog_with_files(
+pub(super) fn catalog_with_files(
     manifest: &str,
     files: &[(&str, &str)],
 ) -> (tempfile::TempDir, TestCaseCatalog) {
@@ -1553,7 +1681,7 @@ fn catalog_with_files(
 /// keys and tables) spliced in between so a test can declare `workspace`/`init`
 /// before the build table and append specs/tables after it. A test needing more
 /// than the one `base` variant builds its manifest directly instead.
-fn manifest_with(body: &str, after_build: &str) -> String {
+pub(super) fn manifest_with(body: &str, after_build: &str) -> String {
     format!(
         "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
          changelog = \"changelog.md\"\n\
@@ -1586,20 +1714,20 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
     // seeds at the run root.
     let dests: Vec<String> = version
         .common_workspace
-        .iter()
+        .files()
         .map(|f| f.dest.display().to_string())
         .collect();
     assert!(dests.contains(&"package.json".to_string()), "{dests:?}");
     assert!(dests.contains(&"src/main.ts".to_string()), "{dests:?}");
     // A variant with no override inherits the common workspace.
     let base = version.variant("base").expect("base");
-    assert_eq!(version.workspace_for(base).len(), 2);
+    assert_eq!(version.workspace_for(base, "none").len(), 2);
 }
 
 #[test]
 fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // The case's own `package.json` already declares the package as its baked-in
@@ -1608,20 +1736,20 @@ fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency
         &manifest,
         &[(
             "workspaces/base/package.json",
-            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+            r#"{"name":"demo","dependencies":{"@clockwyrks/particle-runtime":"file:./.vendor/packages/@clockwyrks/particle-runtime"}}"#,
         )],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
         version.packages,
-        vec!["@test-cabinet/particle-runtime".to_string()]
+        vec!["@clockwyrks/particle-runtime".to_string()]
     );
 }
 
 #[test]
 fn packages_reject_an_unknown_name() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/not-a-real-package\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/not-a-real-package\"]\n",
         "",
     );
     let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
@@ -1634,7 +1762,7 @@ fn packages_reject_an_unknown_name() {
 #[test]
 fn packages_reject_a_workspace_package_json_that_does_not_declare_the_dependency() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // Shippable name, ships a package.json — but it does not depend on the package.
@@ -1654,7 +1782,7 @@ fn packages_reject_a_workspace_package_json_that_does_not_declare_the_dependency
 #[test]
 fn packages_reject_a_wrong_file_dependency_spec() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // Declares the package, but points somewhere other than the baked-in copy.
@@ -1662,7 +1790,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
         &manifest,
         &[(
             "workspaces/base/package.json",
-            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"^1.0.0"}}"#,
+            r#"{"name":"demo","dependencies":{"@clockwyrks/particle-runtime":"^1.0.0"}}"#,
         )],
     );
     let err = catalog
@@ -1671,7 +1799,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
     let msg = format!("{err}");
     assert!(msg.contains("must be"), "got: {err}");
     assert!(
-        msg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"),
+        msg.contains("file:./.vendor/packages/@clockwyrks/particle-runtime"),
         "got: {err}"
     );
 }
@@ -1679,7 +1807,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
 #[test]
 fn packages_require_a_workspace_package_json() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // The workspace exists but ships no package.json for the dependency to land in.
@@ -1693,8 +1821,7 @@ fn packages_require_a_workspace_package_json() {
 #[test]
 fn packages_are_end_to_end_only() {
     // `packages` is a root key, so it must precede the first table; prepend it.
-    let manifest =
-        format!("packages = [\"@test-cabinet/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
+    let manifest = format!("packages = [\"@clockwyrks/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
@@ -1705,13 +1832,208 @@ fn packages_are_end_to_end_only() {
     );
 }
 
+/// One starter project per engine, each shipping only the `package.json` an
+/// engine's dependency is written into at seed time. Their contents are irrelevant
+/// to the engine checks — unlike `packages`, the case does not declare the engine
+/// dependency itself — so each is the emptiest object that parses.
+pub(super) const ENGINE_WORKSPACE_FILES: &[(&str, &str)] = &[
+    ("workspaces/none/package.json", "{}"),
+    ("workspaces/simple-2d/package.json", "{}"),
+];
+
+/// The `[workspaces]` table naming one starter directory per engine in `engines`,
+/// matching the files [`ENGINE_WORKSPACE_FILES`] ships. Keys are quoted because an
+/// engine slug carries hyphens.
+pub(super) fn workspaces_table(engines: &[&str]) -> String {
+    let mut table = String::from("[workspaces]\n");
+    for engine in engines {
+        table.push_str(&format!("\"{engine}\" = \"workspaces/{engine}\"\n"));
+    }
+    table
+}
+
+/// A manifest in the engines format: `roots` are its root keys (`engines = [...]`),
+/// `tables` the table sections after `[build]`, and `workspaces` the engines the
+/// `[workspaces]` table names — empty for a case that ships no starter project.
+pub(super) fn engines_manifest_with(roots: &str, tables: &str, workspaces: &[&str]) -> String {
+    let table = if workspaces.is_empty() {
+        String::new()
+    } else {
+        workspaces_table(workspaces)
+    };
+    manifest_with(roots, &format!("{tables}\n{table}"))
+}
+
+#[test]
+fn engines_default_to_the_engineless_run() {
+    // A case that declares nothing still supports `none`: that is the run every
+    // case had before engines existed, so the resolved set is never empty.
+    let manifest = manifest_with("", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
+}
+
+#[test]
+fn engines_resolve_with_none_first_when_it_is_declared() {
+    // The readable form: `none` spelled out alongside the engine. It leads the
+    // resolved set, and declaring it is not a duplicate of the implicit entry.
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        "",
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(
+        version.engine_slugs(),
+        vec!["none".to_string(), "simple-2d".to_string()]
+    );
+}
+
+#[test]
+fn a_version_declaring_an_engine_supports_exactly_what_it_declares() {
+    // Once a version declares ANY engine, its supported set is exactly what it
+    // declares — `none` is not folded back in. A case whose workspace is written
+    // against a runtime (its `package.json` depending on the vendored engine)
+    // could not build engineless at all, so being held to offering that run would
+    // be a promise the case cannot keep. A case that genuinely builds both ways
+    // lists `none` alongside, which is
+    // `engines_resolve_with_none_first_when_it_is_declared` above.
+    let manifest = engines_manifest_with("engines = [\"simple-2d\"]\n", "", &["simple-2d"]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.engine_slugs(), vec!["simple-2d".to_string()]);
+}
+
+#[test]
+fn engines_reject_an_unknown_slug() {
+    let manifest = engines_manifest_with("engines = [\"not-an-engine\"]\n", "", &[]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown engine slug is rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("not a known engine"), "got: {err}");
+    // The message names the slugs that would have worked, so a typo is fixable
+    // from the error alone.
+    for slug in crate::engine::BUILT_IN_SLUGS {
+        assert!(msg.contains(*slug), "expected `{slug}` in: {err}");
+    }
+}
+
+#[test]
+fn engines_reject_a_duplicate() {
+    let manifest = engines_manifest_with("engines = [\"simple-2d\", \"simple-2d\"]\n", "", &[]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a repeated engine is rejected");
+    assert!(
+        format!("{err}").contains("declared more than once"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn engines_reject_none_declared_twice() {
+    // `none` is exempt from being a duplicate of the *implicit* entry, not from
+    // being declared twice itself.
+    let manifest = engines_manifest_with("engines = [\"none\", \"none\"]\n", "", &[]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a repeated `none` is rejected");
+    assert!(
+        format!("{err}").contains("declared more than once"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn engines_with_a_runtime_require_a_workspace_package_json() {
+    // The engine's `file:` dependency is written into the workspace `package.json`
+    // at seed time, so a case supporting an engine that vendors a runtime must ship
+    // one for the seeder to edit.
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        "",
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/none/README.md", "hi"),
+            ("workspaces/simple-2d/README.md", "hi"),
+        ],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an engine-declaring case without a package.json is rejected");
+    assert!(format!("{err}").contains("package.json"), "got: {err}");
+}
+
+#[test]
+fn engines_declaring_only_none_need_no_workspace_at_all() {
+    // `none` vendors no runtime, so there is no dependency to write and nothing to
+    // write it into — a case may declare it while shipping no workspace.
+    let manifest = engines_manifest_with("engines = [\"none\"]\n", "", &[]);
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
+}
+
+#[test]
+fn engines_are_end_to_end_only() {
+    // `engines` is a root key, so it must precede the first table; prepend it.
+    let manifest = format!("engines = [\"simple-2d\"]\n{VALID_ASSET_MANIFEST}");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("`engines` on an asset-generation case is rejected");
+    assert!(
+        format!("{err}").contains("only valid for an end-to-end, full-stack, or game-jam case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn supports_engine_agrees_with_the_resolved_set() {
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        "",
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.supports_engine("simple-2d"));
+    assert!(version.supports_engine("none"));
+    assert!(!version.supports_engine("not-an-engine"));
+    for slug in version.engine_slugs() {
+        assert!(version.supports_engine(&slug), "should support `{slug}`");
+    }
+}
+
+#[test]
+fn supports_engine_refuses_the_engineless_run_a_version_left_out() {
+    // The gate a run applies reads the same resolved set, so a version built
+    // against a runtime refuses `--engine none` rather than seeding a workspace
+    // whose `package.json` names a package nothing would vendor.
+    let manifest = engines_manifest_with("engines = [\"simple-2d\"]\n", "", &["simple-2d"]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.supports_engine("simple-2d"));
+    assert!(!version.supports_engine("none"));
+}
+
 #[test]
 fn workspace_dotfiles_are_not_seeded_except_the_allowlist() {
     // A dotfile in the workspace is skipped (matching how the backend copies a
     // version into its store), so it is not listed as a seeded workspace file —
     // except the allowlist a case may ship: `.gitignore` (so the published repo
-    // can exclude build artifacts) and `.cargo` (Cargo build config a Rust case
-    // needs). A `.cargo` directory is descended into and its contents seeded.
+    // can exclude build artifacts), `.cargo` (Cargo build config a Rust case
+    // needs), and the prettier config the `format` toolchain command reads. A
+    // `.cargo` directory is descended into and its contents seeded.
     let manifest = manifest_with("workspace = \"workspaces/base\"\n", "");
     let (_dir, catalog) = catalog_with_files(
         &manifest,
@@ -1719,20 +2041,28 @@ fn workspace_dotfiles_are_not_seeded_except_the_allowlist() {
             ("workspaces/base/Cargo.toml", "[package]"),
             ("workspaces/base/.gitignore", "/target/\n"),
             ("workspaces/base/.cargo/config.toml", "[build]\n"),
+            ("workspaces/base/.prettierrc.json", "{}\n"),
+            ("workspaces/base/.prettierignore", "dist/\n"),
             ("workspaces/base/.env", "SECRET=1"),
         ],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let mut dests: Vec<String> = version
         .common_workspace
-        .iter()
+        .files()
         .map(|f| f.dest.display().to_string())
         .collect();
     dests.sort();
     assert_eq!(
         dests,
-        [".cargo/config.toml", ".gitignore", "Cargo.toml"],
-        "`.gitignore` and `.cargo` are seeded; other dotfiles are skipped: {dests:?}"
+        [
+            ".cargo/config.toml",
+            ".gitignore",
+            ".prettierignore",
+            ".prettierrc.json",
+            "Cargo.toml"
+        ],
+        "the allowlisted dotfiles are seeded; other dotfiles are skipped: {dests:?}"
     );
 }
 
@@ -1741,6 +2071,8 @@ fn only_the_allowlisted_dotfiles_are_seeded() {
     use super::is_seeded_dotfile;
     assert!(is_seeded_dotfile(".gitignore"));
     assert!(is_seeded_dotfile(".cargo"));
+    assert!(is_seeded_dotfile(".prettierrc.json"));
+    assert!(is_seeded_dotfile(".prettierignore"));
     assert!(!is_seeded_dotfile(".git"));
     assert!(!is_seeded_dotfile(".tcab"));
     assert!(!is_seeded_dotfile(".env"));
@@ -1775,9 +2107,9 @@ fn a_variant_workspace_overrides_the_common_one() {
     let special = version.variant("special").expect("special");
 
     // The override replaces the common workspace rather than layering on it.
-    assert_eq!(version.workspace_for(base).len(), 1);
+    assert_eq!(version.workspace_for(base, "none").len(), 1);
     let special_dests: Vec<String> = version
-        .workspace_for(special)
+        .workspace_for(special, "none")
         .iter()
         .map(|f| f.dest.display().to_string())
         .collect();
@@ -1920,6 +2252,44 @@ fn a_folder_whose_versions_disagree_on_slug_is_rejected() {
     assert!(
         format!("{err}").contains("every version of a folder must declare the same slug"),
         "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_version_directory_without_a_manifest_is_skipped_not_a_broken_version() {
+    // A version's build artifacts (a `reference-impl/` with its `node_modules/`,
+    // `dist/`, …) can linger on disk after the manifest itself has moved to another
+    // branch, leaving a directory that looks like a version but carries no
+    // `test-case.toml`. Such a directory is not a version: discovery skips it rather
+    // than surfacing it as a broken one, so a single stray folder can't make the
+    // whole catalog fail to `list()`.
+    let dir = tempfile::tempdir().expect("temp dir");
+    write_slugged_case(dir.path(), "carom", "v1.0.0", "pong");
+    // A manifest-less `v2.0.1` alongside it, holding only leftover build output.
+    let orphan = dir
+        .path()
+        .join("end-to-end/easy/carom/v2.0.1/reference-impl/base");
+    fs::create_dir_all(&orphan).expect("orphan artifact dir");
+    fs::write(orphan.join("index.html"), "<html></html>").expect("orphan artifact");
+    let catalog = TestCaseCatalog::new(dir.path());
+
+    // The catalog still lists the case, and only the real (manifest-backed) version.
+    let cases = catalog
+        .list()
+        .expect("list skips the manifest-less directory");
+    let case = cases
+        .iter()
+        .find(|c| c.slug == "pong")
+        .expect("the real case is listed");
+    assert_eq!(
+        case.versions,
+        ["v1.0.0"],
+        "the manifest-less v2.0.1 is not counted as a version"
+    );
+    assert_eq!(
+        catalog.versions("carom").expect("versions"),
+        ["v1.0.0"],
+        "version discovery skips the manifest-less directory too"
     );
 }
 
@@ -2184,7 +2554,7 @@ fn audio_sample_resolves_its_format() {
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
          [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
-         sample_pack = \"naval-weapons@1\"\n\
+         packs = [\"naval-weapons@1.0.0\"]\n\
          [tool]\nbinary = \"sfx-sample\"\npreview = \"waveform.png\"\n\
          [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
     );
@@ -2196,12 +2566,13 @@ fn audio_sample_resolves_its_format() {
     let audio = version.audio.as_ref().expect("audio");
     assert_eq!(audio.sample_rate, 44100);
     assert_eq!(audio.channels, "stereo");
-    assert_eq!(audio.sample_pack.as_deref(), Some("naval-weapons@1"));
-    assert!(audio.instrument_bank.is_none());
+    // The palette is not part of the clip's output format: it is one ordered list
+    // for every test type.
+    assert_eq!(version.audio_packs, vec!["naval-weapons@1.0.0".to_string()]);
 }
 
 #[test]
-fn audio_sample_requires_a_sample_pack() {
+fn audio_sample_requires_one_pack() {
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
          [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
@@ -2211,8 +2582,12 @@ fn audio_sample_requires_a_sample_pack() {
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("a sfx-sample case without a sample_pack is rejected");
-    assert!(format!("{err}").contains("sample_pack"), "got: {err}");
+        .expect_err("a sfx-sample case declaring no pack is rejected");
+    assert!(
+        format!("{err}")
+            .contains("a `sfx-sample` case declares exactly one pack in audio.packs, not 0"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -2274,7 +2649,7 @@ fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let base = version.variant("base").expect("base variant");
     assert_eq!(
-        base.reference_impl.as_deref(),
+        version.reference_impl_for(base, crate::engine::NONE_SLUG),
         Some(version_dir.join("reference-impl/base").as_path()),
         "the reference implementation resolves to an absolute path inside the version folder",
     );
@@ -2286,8 +2661,132 @@ fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
     let bare_version = bare_catalog.resolve("demo", "v1.0.0").expect("resolve");
     let bare = bare_version.variant("base").expect("base variant");
     assert!(
-        bare.reference_impl.is_none(),
+        bare_version
+            .reference_impl_for(bare, crate::engine::NONE_SLUG)
+            .is_none(),
         "a variant that declares no reference_implementation has none",
+    );
+}
+
+/// A case supporting two engines, its `base` variant declaring `variant_extra`.
+///
+/// A case that declares an engine vendoring a runtime must ship a workspace
+/// `package.json` (the file the engine's `file:` dependency is written into when
+/// the run is seeded), so the fixture ships one. Both reference-implementation
+/// directories exist, so a rejection in these tests is about the *keying* and
+/// never about a missing directory.
+fn two_engine_catalog(variant_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let (dir, catalog) = catalog_with_manifest(
+        "engines = [\"none\", \"simple-2d\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [workspaces]\nnone = \"workspaces/none\"\n\"simple-2d\" = \"workspaces/simple-2d\"",
+    );
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    for engine in ["none", "simple-2d"] {
+        let dir = version_dir.join("workspaces").join(engine);
+        fs::create_dir_all(&dir).expect("create workspace dir");
+        fs::write(dir.join("package.json"), "{\"name\":\"demo\"}")
+            .expect("write workspace package.json");
+    }
+    for rel in ["reference-impl/base", "reference-impl-simple-2d/base"] {
+        fs::create_dir_all(version_dir.join(rel)).expect("create reference impl dir");
+        fs::write(
+            version_dir.join(rel).join("index.html"),
+            "<!doctype html><title>correct</title>",
+        )
+        .expect("write reference impl file");
+    }
+    fs::write(
+        version_dir.join("variants/base.toml"),
+        format!("slug = \"base\"\n{variant_extra}"),
+    )
+    .expect("write base variant");
+    (dir, catalog)
+}
+
+#[test]
+fn a_reference_implementation_is_keyed_by_engine() {
+    // The engine is a run dimension and the build a reference demonstrates differs
+    // under each — the engineless build writes its own frame loop, input, audio and
+    // diagnostics, the engine build hands all four to the runtime — so a case
+    // supporting two engines names one directory per engine, and each resolves to
+    // its own path.
+    let (dir, catalog) = two_engine_catalog(
+        "[reference_implementation]\nnone = \"reference-impl/base\"\n\
+         simple-2d = \"reference-impl-simple-2d/base\"\n",
+    );
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    assert_eq!(
+        version.reference_impl_for(base, "none"),
+        Some(version_dir.join("reference-impl/base").as_path()),
+        "the `none` engine gets the engineless build",
+    );
+    assert_eq!(
+        version.reference_impl_for(base, "simple-2d"),
+        Some(version_dir.join("reference-impl-simple-2d/base").as_path()),
+        "the `simple-2d` engine gets the build written against the engine",
+    );
+    assert!(
+        version.reference_impl_for(base, "no-such-engine").is_none(),
+        "an engine the case does not support has no reference implementation",
+    );
+}
+
+#[test]
+fn a_bare_reference_implementation_stands_for_every_supported_engine() {
+    // The string form is the readable spelling for a case whose one implementation
+    // is the answer whatever engine is selected, so it resolves for every supported
+    // engine rather than only for `none`.
+    let (dir, catalog) = two_engine_catalog("reference_implementation = \"reference-impl/base\"\n");
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let expected = Some(version_dir.join("reference-impl/base"));
+    for engine in &version.engine_slugs() {
+        assert_eq!(
+            version
+                .reference_impl_for(base, engine)
+                .map(Path::to_path_buf),
+            expected,
+            "the bare form stands for engine `{engine}`",
+        );
+    }
+}
+
+#[test]
+fn a_per_engine_reference_implementation_must_cover_every_supported_engine() {
+    // A table that omits a supported engine would leave a run on that engine with no
+    // authored answer to show, so it is rejected at resolution rather than surfacing
+    // as an empty "Reference" tab.
+    let (_dir, catalog) =
+        two_engine_catalog("[reference_implementation]\nnone = \"reference-impl/base\"\n");
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a per-engine table omitting a supported engine is rejected");
+    assert!(
+        format!("{err}").contains("names none for `simple-2d`"),
+        "unexpected error: {err}",
+    );
+}
+
+#[test]
+fn a_per_engine_reference_implementation_may_not_name_an_unsupported_engine() {
+    // Naming an engine the case does not support is a typo — the directory would
+    // never be built or deployed — so it fails the manifest rather than being
+    // ignored.
+    let (_dir, catalog) = two_engine_catalog(
+        "[reference_implementation]\nnone = \"reference-impl/base\"\n\
+         simple-2d = \"reference-impl-simple-2d/base\"\n\
+         no-such-engine = \"reference-impl/base\"\n",
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a per-engine table naming an unsupported engine is rejected");
+    assert!(
+        format!("{err}").contains("which this case does not support"),
+        "unexpected error: {err}",
     );
 }
 
@@ -2356,7 +2855,12 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
         !version.common_workspace.is_empty(),
         "the declared workspace is seeded",
     );
-    assert!(base.reference_impl.is_some(), "the reference impl resolved");
+    assert!(
+        version
+            .reference_impl_for(base, crate::engine::NONE_SLUG)
+            .is_some(),
+        "the reference impl resolved",
+    );
 
     // Every seeded source — common and variant specs, common and variant
     // workspace files — must live outside the reference-impl directory.
@@ -2368,13 +2872,13 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
         .chain(
             version
                 .common_workspace
-                .iter()
+                .files()
                 .map(|file| &file.source_path),
         )
         .chain(
             base.workspace
                 .iter()
-                .flatten()
+                .flat_map(crate::test_case::EngineWorkspaces::files)
                 .map(|file| &file.source_path),
         );
     for source in seeded_sources {
@@ -2390,7 +2894,7 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
 /// `test-cases/` root with a sibling `game-jams/` folder discovery folds in — and
 /// return the temp dir (kept alive) plus the catalog rooted at `test-cases/`.
 /// `manifest` is the full `game-jam.toml` body.
-fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     // An (empty) test-cases root so discovery has a catalog root to walk; the jam
     // lives in the sibling game-jams/ folder that `case_folders` folds in.
@@ -2411,7 +2915,7 @@ fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
 
 /// The smallest valid `game-jam.toml`: identity, prompt, changelog, and a `[build]`.
 /// No `difficulty`, no `variants`, none of the spec-driven tables.
-const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
+pub(super) const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
      changelog = \"changelog.md\"\nmax_runtime_hours = 8\n\
      [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n";
 
@@ -2446,7 +2950,9 @@ fn game_jam_surfaces_the_time_limit_in_its_prompt() {
     let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
     let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
     let variant = version.variants.first().expect("one variant");
-    let prompt = crate::render_prompt(&version, variant, &[]).expect("render prompt");
+    // No engine: a jam's time-limit line is engine-independent, and `None` is the
+    // engineless run every case supports.
+    let prompt = crate::render_prompt(&version, variant, &[], None).expect("render prompt");
     // `{{time_limit_hours}}` renders the case's max_runtime_hours (8) for the model.
     assert!(
         prompt.contains("You have 8 hours."),
@@ -2521,7 +3027,12 @@ fn instrumentation_and_item_validation_resolve() {
         .expect("review item");
     let validation = item.validation.as_ref().expect("validation");
     assert_eq!(validation.script_rel, "validation/spin.mjs");
-    assert!(validation.script.is_file());
+    assert!(
+        validation
+            .script
+            .as_deref()
+            .is_some_and(std::path::Path::is_file)
+    );
     assert_eq!(validation.outputs.len(), 2);
     assert_eq!(validation.outputs[0].id, "clip");
     assert_eq!(validation.outputs[0].kind, MediaKind::Video);
@@ -2610,6 +3121,110 @@ fn more_than_one_video_output_is_rejected() {
 }
 
 #[test]
+fn a_media_kind_is_inferred_from_an_extension() {
+    // The three kinds a case may name, and the answer for an extension that is none
+    // of them. A recording is the only non-pixel evidence a point can declare, and
+    // the reason the inference is not just image-or-video.
+    let kind = |name: &str| MediaKind::from_path(Path::new(name));
+    assert_eq!(kind("shots/title.PNG"), Some(MediaKind::Image));
+    assert_eq!(kind("clips/rally.webm"), Some(MediaKind::Video));
+    assert_eq!(kind("clips/rally.mp4"), Some(MediaKind::Video));
+    assert_eq!(kind("recordings/serve.json"), Some(MediaKind::Replay));
+    assert_eq!(kind("notes.txt"), None);
+    assert_eq!(kind("no-extension"), None);
+}
+
+#[test]
+fn a_recording_is_recognized_by_its_compound_extension() {
+    // A recording is stored gzipped, so its name carries two extensions and the
+    // single extension of `serve.json.gz` is `gz`, not `json.gz`. Every route that
+    // resolves stored media back to its kind depends on the compound suffix being
+    // matched against the whole name, so it is asserted here rather than left to the
+    // caller to remember.
+    let kind = |name: &str| MediaKind::from_path(Path::new(name));
+    assert_eq!(
+        Path::new("no-tunnel__serve.json.gz")
+            .extension()
+            .and_then(|ext| ext.to_str()),
+        Some("gz"),
+        "the premise: the standard extension of a stored recording is `gz`",
+    );
+    assert_eq!(kind("no-tunnel__serve.json.gz"), Some(MediaKind::Replay));
+    assert_eq!(
+        kind("media/NO-TUNNEL__SERVE.JSON.GZ"),
+        Some(MediaKind::Replay)
+    );
+    // Compression is how a recording travels rather than part of what it is, so an
+    // uncompressed one names the same kind.
+    assert_eq!(kind("recordings/serve.json"), Some(MediaKind::Replay));
+    // A gzipped anything-else is not a recording, and neither is a name that is
+    // nothing but the suffix.
+    assert_eq!(kind("archive/tree.tar.gz"), None);
+    assert_eq!(kind(".json.gz"), None);
+}
+
+#[test]
+fn a_replay_output_resolves_and_is_not_limited_to_one_per_script() {
+    // A clip is a property of the whole drive, so a script records at most one of
+    // them. A recording is armed and disarmed by the validator around whichever
+    // stretch of its scenario it wants evidence of, so a point may declare several —
+    // and each is a separate output with its own id. The one-video rule counts
+    // `video` alone, and this is what proves it does not reach `replay`.
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"serve\", kind = \"replay\" }, \
+         { id = \"rebound\", name = \"The rebound\", kind = \"replay\" }, \
+         { id = \"clip\", kind = \"video\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let item = version
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("review item");
+    let outputs = &item.validation.as_ref().expect("validation").outputs;
+    assert_eq!(outputs.len(), 3);
+    assert_eq!(outputs[0].kind, MediaKind::Replay);
+    assert_eq!(
+        outputs[0].name, "Serve",
+        "an unnamed output humanizes its id"
+    );
+    assert_eq!(outputs[1].kind, MediaKind::Replay);
+    assert_eq!(outputs[1].name, "The rebound");
+    assert_eq!(
+        outputs[2].kind,
+        MediaKind::Video,
+        "the one clip the script is allowed sits beside them",
+    );
+}
+
+#[test]
+fn a_reference_view_may_not_be_a_recording() {
+    // A reference view is the committed picture of the intended result a reviewer
+    // looks at beside the build. A recording carries no picture of its own — only
+    // the operations some build issued — so it is synthesized per validation rather
+    // than committed as a mockup, and naming one here is a manifest error.
+    let manifest = instrumented_manifest(
+        "[[reference]]\nview = \"title\"\nmedia = \"refs/title.json\"",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("refs/title.json", "{}")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a recording is not a reference view");
+    assert!(
+        format!("{err}").contains("draw-command recording"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn sub_item_validation_resolves() {
     // An item broken into sub-items carries its validation on the sub-items, not on
     // the item: each validated sub-item resolves its own driver, and a human-judged
@@ -2636,7 +3251,12 @@ fn sub_item_validation_resolves() {
     let a = item.sub_items.iter().find(|s| s.id == "a").expect("sub a");
     let validation = a.validation.as_ref().expect("sub-item validation");
     assert_eq!(validation.script_rel, "validation/a.mjs");
-    assert!(validation.script.is_file());
+    assert!(
+        validation
+            .script
+            .as_deref()
+            .is_some_and(std::path::Path::is_file)
+    );
     assert_eq!(validation.outputs.len(), 1);
     assert_eq!(validation.outputs[0].id, "clip");
     assert_eq!(validation.outputs[0].kind, MediaKind::Video);
@@ -2936,4 +3556,772 @@ fn errata_for_filters_case_wide_and_variant_scoped_entries() {
         applicable,
         vec!["global".to_string(), "base-only".to_string()]
     );
+}
+
+// --- the two workspace spellings ---------------------------------------------
+//
+// A case says which starter project a run is seeded with in exactly one way: one
+// `workspace` for the whole case, or one directory per engine in `[workspaces]`.
+// These pin both halves of that gate — what each spelling resolves as, and that a
+// case mixing them is refused by name.
+
+#[test]
+fn one_workspace_is_the_engineless_project() {
+    // A case naming a single `workspace` supports no engine, so its one directory
+    // is filed under the engineless run it is the project for.
+    let manifest = manifest_with("workspace = \"workspaces/base\"\n", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+
+    assert_eq!(version.engine_slugs(), vec!["none".to_string()]);
+    assert_eq!(
+        version.common_workspace.engines().collect::<Vec<_>>(),
+        vec!["none"],
+        "an engineless case's one project is the engineless run's",
+    );
+    let base = version.variant("base").expect("base");
+    assert_eq!(version.workspace_for(base, "none").len(), 1);
+}
+
+#[test]
+fn one_workspace_may_not_be_declared_alongside_an_engine() {
+    // A starter project is written against a runtime, so a case with one workspace
+    // cannot also name the engine that workspace would have to be for.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an engine alongside one `workspace` is rejected");
+    assert!(
+        format!("{err}").contains("`workspace` names one directory for the whole case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn the_two_workspace_spellings_may_not_be_mixed() {
+    // The refusal is by name rather than by silently ignoring one of them, so an
+    // author who wrote both is told which one a case may keep.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[workspaces]\nnone = \"workspaces/none\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{}"),
+            ("workspaces/none/package.json", "{}"),
+        ],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("`workspace` alongside `[workspaces]` is rejected");
+    assert!(
+        format!("{err}").contains("`workspace` names one directory for the whole case"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_variant_may_not_mix_the_two_spellings_either() {
+    // A variant spells its own starter project the way its case does, so the same
+    // gate applies to the variant files.
+    let manifest = engines_manifest_with("engines = [\"none\"]\n", "", &["none"]);
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/none/package.json", "{}"),
+            (
+                "variants/base.toml",
+                "slug = \"base\"\nworkspace = \"workspaces/none\"\n",
+            ),
+        ],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a variant's `workspace` in a per-engine case is rejected");
+    assert!(
+        format!("{err}").contains("variant `base` declares `workspace`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_per_engine_case_seeds_one_project_per_engine() {
+    // The whole point of the per-engine table: a run of each engine is seeded the
+    // project written for that engine, and the two are different sets of files.
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        "",
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/none/package.json", "{}"),
+            ("workspaces/none/src/host.ts", "// the runtime"),
+            ("workspaces/simple-2d/package.json", "{}"),
+        ],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base");
+
+    let dests = |engine: &str| -> Vec<String> {
+        let mut dests: Vec<String> = version
+            .workspace_for(base, engine)
+            .iter()
+            .map(|file| file.dest.display().to_string())
+            .collect();
+        dests.sort();
+        dests
+    };
+    assert_eq!(dests("none"), ["package.json", "src/host.ts"]);
+    assert_eq!(dests("simple-2d"), ["package.json"]);
+    assert!(
+        version.workspace_for(base, "not-an-engine").is_empty(),
+        "an engine the case does not support seeds nothing",
+    );
+}
+
+#[test]
+fn a_per_engine_workspace_table_must_cover_every_supported_engine() {
+    // Omitting one would leave a run of that engine with nothing to seed, which is
+    // an authoring slip worth a `tcab validate` rather than a spent run.
+    let manifest =
+        engines_manifest_with("engines = [\"none\", \"simple-2d\"]\n", "", &["simple-2d"]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a short `[workspaces]` table is rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("names no workspace for engine `none`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_per_engine_workspace_table_may_not_name_an_unsupported_engine() {
+    let manifest = engines_manifest_with("engines = [\"none\"]\n", "", &["none", "simple-2d"]);
+    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unsupported engine in `[workspaces]` is rejected");
+    assert!(
+        format!("{err}").contains("which this case does not support"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_variant_workspace_table_replaces_the_case_s_whole_table() {
+    // A variant cannot override one engine's project and inherit another's: the two
+    // halves would be different baselines of the same variant, so a variant that
+    // declares the table covers every engine the case supports.
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        "",
+        &["none", "simple-2d"],
+    )
+    .replace(
+        "variants = [\"variants/base.toml\"]",
+        "variants = [\"variants/base.toml\", \"variants/special.toml\"]",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/none/package.json", "{}"),
+            ("workspaces/simple-2d/package.json", "{}"),
+            ("special/none/package.json", "{}"),
+            ("special/none/extra.txt", "x"),
+            ("special/simple-2d/package.json", "{}"),
+            (
+                "variants/special.toml",
+                "slug = \"special\"\n[workspaces]\nnone = \"special/none\"\n\
+                 \"simple-2d\" = \"special/simple-2d\"\n",
+            ),
+        ],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base");
+    let special = version.variant("special").expect("special");
+
+    assert_eq!(version.workspace_for(base, "none").len(), 1);
+    assert_eq!(
+        version.workspace_for(special, "none").len(),
+        2,
+        "the variant's own project replaces the case's",
+    );
+    assert_eq!(version.workspace_for(special, "simple-2d").len(), 1);
+}
+
+#[test]
+fn a_per_engine_validator_must_exist_in_every_engine_s_project() {
+    // A point decided under one engine and left to the reviewer under another would
+    // be the same case graded two ways, so resolution holds the declaration against
+    // every project the case ships.
+    let review = "[review]\nformat = 2\n\
+                  [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+                  [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\n\
+                  failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n\
+                  validation = { script = \"gameplay/serve.test.ts\", outputs = [\
+                  { id = \"serve\", kind = \"video\" } ] }\n";
+    let files: &[(&str, &str)] = &[
+        ("workspaces/none/package.json", "{}"),
+        ("workspaces/simple-2d/package.json", "{}"),
+        ("validation/none/vitest.config.ts", "export default {}"),
+        ("validation/none/gameplay/serve.test.ts", "// check"),
+        ("validation/simple-2d/vitest.config.ts", "export default {}"),
+    ];
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{review}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, files);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a validator missing from one engine's project is rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("is not a file in engine `simple-2d`"),
+        "got: {err}"
+    );
+
+    // With the suite present in both projects it resolves, carrying no single host
+    // path — which engine's copy decides a run is the run's engine to say.
+    let mut with_both = files.to_vec();
+    with_both.push(("validation/simple-2d/gameplay/serve.test.ts", "// check"));
+    let (_dir, catalog) = catalog_with_files(&manifest, &with_both);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base");
+    let item = &version.review_items_for(base)[0];
+    let validation = item.sub_items[0]
+        .validation
+        .as_ref()
+        .expect("the sub-item carries its validator");
+    assert_eq!(validation.script, None);
+    assert_eq!(validation.script_rel, "gameplay/serve.test.ts");
+}
+
+// --- validator engine scoping (`validation.engines`) --------------------------
+
+/// The files a per-engine scoping fixture ships: one starter workspace and one
+/// validator project per engine, with `gameplay/serve.test.ts` in both projects and
+/// `hud/overlay.test.ts` only in the engineless one.
+const SCOPED_VALIDATOR_FILES: &[(&str, &str)] = &[
+    ("workspaces/none/package.json", "{}"),
+    ("workspaces/simple-2d/package.json", "{}"),
+    ("validation/none/vitest.config.ts", "export default {}"),
+    ("validation/none/gameplay/serve.test.ts", "// check"),
+    ("validation/none/hud/overlay.test.ts", "// check"),
+    ("validation/simple-2d/vitest.config.ts", "export default {}"),
+    ("validation/simple-2d/gameplay/serve.test.ts", "// check"),
+];
+
+/// A `[[review_item]]` graded as a whole and decided by the validator at `script`,
+/// with `extra` spliced into its `validation` table (the `engines` scoping under
+/// test, or nothing at all).
+fn scoped_item(id: &str, script: &str, extra: &str) -> String {
+    format!(
+        "[[review_item]]\nid = \"{id}\"\ntitle = \"{id}\"\ntext = \"t\"\nweight = 1\n\
+         failure_cap = \"scuffed\"\ndomains = [\"gameplay\"]\n\
+         validation = {{ script = \"{script}\", {extra}outputs = [\
+         {{ id = \"{id}\", kind = \"image\" }} ] }}\n"
+    )
+}
+
+/// A `[[review_item]]` broken into sub-items, each decided by the validator at
+/// `<id>/<sub>.test.ts` with `extra` spliced into its `validation` table.
+fn scoped_sub_items(id: &str, subs: &[(&str, &str)]) -> String {
+    let mut toml = format!(
+        "[[review_item]]\nid = \"{id}\"\ntitle = \"{id}\"\ntext = \"t\"\nweight = {}\n",
+        subs.len()
+    );
+    for (sub, extra) in subs {
+        toml.push_str(&format!(
+            "[[review_item.sub_item]]\nid = \"{sub}\"\ntitle = \"{sub}\"\n\
+             failure_cap = \"scuffed\"\ndomains = [\"gameplay\"]\n\
+             validation = {{ script = \"{id}/{sub}.test.ts\", {extra}outputs = [\
+             {{ id = \"{sub}\", kind = \"image\" }} ] }}\n"
+        ));
+    }
+    toml
+}
+
+/// Resolve a per-engine manifest supporting `none` and `simple-2d` whose review
+/// block is `review`, over `files`.
+fn resolve_scoped(review: &str, files: &[(&str, &str)]) -> Result<TestCaseVersion> {
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{review}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, files);
+    catalog.resolve("demo", "v1.0.0")
+}
+
+#[test]
+fn a_validator_scoped_to_one_engine_resolves_against_that_engine_s_project_alone() {
+    // The point the scoping exists for: a debug overlay the model writes itself in an
+    // engineless build and the engine draws otherwise. The suite ships in the
+    // engineless project only, and resolution holds the declaration against exactly
+    // the engines it names.
+    let version = resolve_scoped(
+        &scoped_item("overlay", "hud/overlay.test.ts", "engines = [\"none\"], "),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect("resolve");
+    let base = version.variant("base").expect("base");
+    let item = &version.review_items_for(base)[0];
+    let validation = item
+        .validation
+        .as_ref()
+        .expect("the item carries a validator");
+    assert_eq!(validation.engines, vec!["none".to_string()]);
+    assert!(validation.covers("none"));
+    assert!(!validation.covers("simple-2d"));
+}
+
+#[test]
+fn an_unscoped_validator_covers_every_engine_the_case_supports() {
+    // No `engines` is the whole supported set, which is what every manifest written
+    // before the key existed means.
+    let version = resolve_scoped(
+        &scoped_item("serve", "gameplay/serve.test.ts", ""),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect("resolve");
+    let base = version.variant("base").expect("base");
+    let validation = version.review_items_for(base)[0]
+        .validation
+        .clone()
+        .expect("the item carries a validator");
+    assert!(validation.engines.is_empty());
+    assert!(validation.covers("none"));
+    assert!(validation.covers("simple-2d"));
+}
+
+#[test]
+fn a_scoped_validator_missing_from_a_covered_engine_s_project_is_rejected() {
+    // Scoping narrows which projects must ship the suite; it does not excuse one the
+    // declaration still names.
+    let err = resolve_scoped(
+        &scoped_item(
+            "overlay",
+            "hud/overlay.test.ts",
+            "engines = [\"none\", \"simple-2d\"], ",
+        ),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect_err("a covered engine whose project lacks the suite is rejected");
+    assert!(
+        format!("{err}").contains("is not a file in engine `simple-2d`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_scoped_validator_shipped_to_an_uncovered_engine_is_rejected() {
+    // A suite sitting in the project of an engine the validator does not name is a
+    // file nothing will ever run — either the scoping or the file is wrong.
+    let mut files = SCOPED_VALIDATOR_FILES.to_vec();
+    files.push(("validation/simple-2d/hud/overlay.test.ts", "// check"));
+    let err = resolve_scoped(
+        &scoped_item("overlay", "hud/overlay.test.ts", "engines = [\"none\"], "),
+        &files,
+    )
+    .expect_err("a suite in an uncovered engine's project is rejected");
+    assert!(
+        format!("{err}").contains("which its `engines` does not name"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validation_engines_on_a_case_with_no_engine_are_rejected() {
+    // A case naming one `workspace` has no engine to scope to, so the key is refused
+    // by name rather than silently ignored.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[instrumentation]\nhandle = \"__demo\"\n\
+         [[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", engines = [\"none\"], \
+         outputs = [ { id = \"spin\", kind = \"image\" } ] }\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{}"),
+            ("validation/spin.mjs", "export default async () => ({});"),
+        ],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a case with no engine may not scope a validator");
+    assert!(
+        format!("{err}").contains("has engines to scope to"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_validator_scoped_to_an_unsupported_engine_is_rejected() {
+    let err = resolve_scoped(
+        &scoped_item(
+            "overlay",
+            "hud/overlay.test.ts",
+            "engines = [\"structured-2d\"], ",
+        ),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect_err("an engine the case does not support is a typo, not a scope");
+    assert!(
+        format!("{err}").contains("engine `structured-2d`, which this case does not support"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_validator_naming_the_same_engine_twice_is_rejected() {
+    let err = resolve_scoped(
+        &scoped_item(
+            "overlay",
+            "hud/overlay.test.ts",
+            "engines = [\"none\", \"none\"], ",
+        ),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect_err("a repeated slug is rejected");
+    assert!(
+        format!("{err}").contains("names engine `none` twice"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn the_engine_aware_checklist_drops_the_points_a_run_s_engine_does_not_carry() {
+    // Four points: one whole item scoped to `none`, one unscoped whole item, a
+    // category with one scoped and one unscoped point, and a category whose only
+    // point is scoped. A run on `simple-2d` carries the second and the surviving half
+    // of the third; a run on `none` carries all four.
+    let review = format!(
+        "{}{}{}{}",
+        scoped_item("overlay", "hud/overlay.test.ts", "engines = [\"none\"], "),
+        scoped_item("serve", "gameplay/serve.test.ts", ""),
+        scoped_sub_items("hud", &[("a", "engines = [\"none\"], "), ("b", "")]),
+        scoped_sub_items("gyre", &[("sway", "engines = [\"none\"], ")]),
+    );
+    let mut files = SCOPED_VALIDATOR_FILES.to_vec();
+    files.extend([
+        ("validation/none/hud/a.test.ts", "// check"),
+        ("validation/none/hud/b.test.ts", "// check"),
+        ("validation/none/gyre/sway.test.ts", "// check"),
+        ("validation/simple-2d/hud/b.test.ts", "// check"),
+    ]);
+    let version = resolve_scoped(&review, &files).expect("resolve");
+    let base = version.variant("base").expect("base");
+
+    let ids = |items: &[super::ReviewItem]| -> Vec<String> {
+        items.iter().map(|item| item.id.clone()).collect()
+    };
+    // The case's own checklist is what the case declares, engine or no engine.
+    assert_eq!(
+        ids(&version.review_items_for(base)),
+        ["overlay", "serve", "hud", "gyre"],
+    );
+
+    let engineless = version.review_items_for_engine(base, "none");
+    assert_eq!(ids(&engineless), ["overlay", "serve", "hud", "gyre"]);
+    assert_eq!(engineless[2].sub_items.len(), 2);
+
+    let engine = version.review_items_for_engine(base, "simple-2d");
+    assert_eq!(
+        ids(&engine),
+        ["serve", "hud"],
+        "the scoped whole item goes, and so does the category left with no points",
+    );
+    let surviving: Vec<&str> = engine[1]
+        .sub_items
+        .iter()
+        .map(|sub| sub.id.as_str())
+        .collect();
+    assert_eq!(surviving, ["b"], "the scoped point leaves its category");
+}
+
+// --- validator-rated versions: `failure_cap` + `domains` ----------------------
+
+/// The validator project files a per-engine (validator-rated) fixture ships: one
+/// starter workspace and one validator project per engine, with the `serve` suite
+/// present in each.
+const VALIDATOR_RATED_FILES: &[(&str, &str)] = &[
+    ("workspaces/none/package.json", "{}"),
+    ("workspaces/simple-2d/package.json", "{}"),
+    ("validation/none/vitest.config.ts", "export default {}"),
+    ("validation/none/gameplay/serve.test.ts", "// check"),
+    ("validation/simple-2d/vitest.config.ts", "export default {}"),
+    ("validation/simple-2d/gameplay/serve.test.ts", "// check"),
+];
+
+/// A `[review] format = 2` block with one `serve` item carrying `extra` keys beside
+/// its validation — the point a validator-rated fixture rates.
+fn serve_review(extra: &str) -> String {
+    format!(
+        "[review]\nformat = 2\n\
+         [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+         [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\n\
+         {extra}\
+         validation = {{ script = \"gameplay/serve.test.ts\", outputs = [\
+         {{ id = \"serve\", kind = \"video\" }} ] }}\n"
+    )
+}
+
+/// Resolve a per-engine (validator-rated) manifest whose review block is `review`.
+fn resolve_validator_rated(review: &str) -> Result<TestCaseVersion> {
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{review}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, VALIDATOR_RATED_FILES);
+    catalog.resolve("demo", "v1.0.0")
+}
+
+/// The rendered failure of resolving a validator-rated manifest with `review`.
+fn reject_validator_rated(review: &str) -> String {
+    let err = resolve_validator_rated(review).expect_err("the manifest should be refused");
+    format!("{err}")
+}
+
+#[test]
+fn a_per_engine_version_is_on_the_engine_format_and_validator_rated() {
+    // The per-engine spelling is what makes a version validator-rated: its
+    // functional rating is decided by the validators, so every graded point must say
+    // which domains a failure lowers and how far.
+    let version = resolve_validator_rated(&serve_review(
+        "failure_cap = \"scuffed\"\ndomains = [\"gameplay\"]\n",
+    ))
+    .expect("resolve");
+    assert!(version.engine_format);
+    assert!(version.validator_rated());
+
+    let base = version.variant("base").expect("base");
+    let items = version.review_items_for(base);
+    let point = &items[0].sub_items[0];
+    assert_eq!(point.failure_cap, Some(FailureCap::Scuffed));
+    assert_eq!(point.domains, vec!["gameplay".to_string()]);
+    // A category (the grouping item) carries no cap of its own.
+    assert_eq!(items[0].failure_cap, None);
+    assert!(items[0].domains.is_empty());
+
+    // The two keys reach the UI and the stored catalog in camelCase.
+    let json = serde_json::to_value(point).expect("serialize");
+    assert_eq!(json["failureCap"], "scuffed");
+    assert_eq!(json["domains"], serde_json::json!(["gameplay"]));
+}
+
+#[test]
+fn a_legacy_version_is_not_on_the_engine_format() {
+    // A version on the single-`workspace` spelling behaves exactly as it always has:
+    // reviewer-rated, with its resolved points carrying no cap and no domains — and
+    // those keys stay off the wire so a stored legacy definition gains no field.
+    let manifest = manifest_with(
+        "",
+        "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(!version.engine_format);
+    assert!(!version.validator_rated());
+    let item = &version.common_review_items[0];
+    assert_eq!(item.failure_cap, None);
+    assert!(item.domains.is_empty());
+    let json = serde_json::to_value(item).expect("serialize");
+    assert!(json.get("failureCap").is_none());
+    assert!(json.get("domains").is_none());
+    let json = serde_json::to_value(&version).expect("serialize");
+    assert_eq!(json["engineFormat"], false);
+}
+
+#[test]
+fn a_validator_rated_point_must_declare_a_failure_cap() {
+    let msg = reject_validator_rated(&serve_review("domains = [\"gameplay\"]\n"));
+    assert!(
+        msg.contains("review category `gameplay` item `serve` declares no `failure_cap`"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_validator_rated_point_must_declare_its_domains() {
+    let msg = reject_validator_rated(&serve_review("failure_cap = \"broken\"\n"));
+    assert!(
+        msg.contains("review category `gameplay` item `serve` declares no `domains`"),
+        "got: {msg}"
+    );
+    // An explicitly empty list is the same omission.
+    let msg = reject_validator_rated(&serve_review("failure_cap = \"broken\"\ndomains = []\n"));
+    assert!(msg.contains("declares no `domains`"), "got: {msg}");
+}
+
+#[test]
+fn a_validator_rated_point_must_carry_a_validator() {
+    // Behaviour is fully validator-decided on such a version, so a point nobody
+    // machine-checks has no way to be rated at all.
+    let review = "[review]\nformat = 2\n\
+                  [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+                  [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\n\
+                  failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n";
+    let msg = reject_validator_rated(review);
+    assert!(
+        msg.contains("review category `gameplay` item `serve` declares no `validation`"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_failure_cap_is_never_flawless() {
+    // A failure always costs something, so `flawless` is not a cap the manifest
+    // grammar admits.
+    let msg = reject_validator_rated(&serve_review(
+        "failure_cap = \"flawless\"\ndomains = [\"gameplay\"]\n",
+    ));
+    assert!(msg.contains("flawless"), "got: {msg}");
+}
+
+#[test]
+fn a_validator_rated_point_s_domains_must_be_declared_and_distinct() {
+    let msg = reject_validator_rated(&serve_review(
+        "failure_cap = \"broken\"\ndomains = [\"versus\"]\n",
+    ));
+    assert!(
+        msg.contains("names domain `versus` in `domains`, which is not declared"),
+        "got: {msg}"
+    );
+    let msg = reject_validator_rated(&serve_review(
+        "failure_cap = \"broken\"\ndomains = [\"gameplay\", \"gameplay\"]\n",
+    ));
+    assert!(
+        msg.contains("names domain `gameplay` twice in `domains`"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_variant_point_may_name_the_variant_s_own_domain_but_a_common_point_may_not() {
+    // A common item is rated on every variant, so it may only lower a common
+    // domain; a variant's own item may also lower that variant's domain.
+    let common = serve_review("failure_cap = \"broken\"\ndomains = [\"gameplay\", \"versus\"]\n");
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{common}"),
+        &["none", "simple-2d"],
+    );
+    let variant = "slug = \"base\"\n[[domain]]\nid = \"versus\"\ndescription = \"Two players.\"\n\
+                   [[review.categories]]\nid = \"versus\"\ntitle = \"Versus\"\n\
+                   [[review.categories.items]]\nid = \"controls\"\ntitle = \"Controls\"\n\
+                   failure_cap = \"great\"\ndomains = [\"versus\"]\n\
+                   validation = { script = \"gameplay/controls.test.ts\", outputs = [\
+                   { id = \"controls\", kind = \"video\" } ] }\n";
+    let mut files = VALIDATOR_RATED_FILES.to_vec();
+    files.push(("validation/none/gameplay/controls.test.ts", "// check"));
+    files.push(("validation/simple-2d/gameplay/controls.test.ts", "// check"));
+    files.push(("variants/base.toml", variant));
+    let (_dir, catalog) = catalog_with_files(&manifest, &files);
+    let msg = format!(
+        "{}",
+        catalog
+            .resolve("demo", "v1.0.0")
+            .expect_err("a common point naming a variant domain is refused")
+    );
+    assert!(
+        msg.contains("item `serve` names domain `versus` in `domains`, which is not declared"),
+        "got: {msg}"
+    );
+
+    // With the common point on the common domain only, the variant's own point may
+    // lower the variant's domain.
+    let common = serve_review("failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n");
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{common}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &files);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base");
+    let items = version.review_items_for(base);
+    let controls = &items[1].sub_items[0];
+    assert_eq!(controls.failure_cap, Some(FailureCap::Great));
+    assert_eq!(controls.domains, vec!["versus".to_string()]);
+}
+
+#[test]
+fn a_legacy_version_rejects_failure_cap_and_domains_by_name() {
+    // The reviewer gives a legacy run's rating, so the two validator-rating keys
+    // mean nothing there and are refused with a message that says why — in both
+    // review grammars.
+    let manifest = manifest_with(
+        "",
+        "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n\
+         failure_cap = \"broken\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let msg = format!(
+        "{}",
+        catalog.resolve("demo", "v1.0.0").expect_err("refused")
+    );
+    assert!(
+        msg.contains(
+            "review_item `serve` declares `failure_cap`, but only a case on the engine format"
+        ),
+        "got: {msg}"
+    );
+
+    let manifest = manifest_with(
+        "",
+        "[review]\nformat = 2\n\
+         [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+         [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\ndomains = [\"gameplay\"]\n",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let msg = format!(
+        "{}",
+        catalog.resolve("demo", "v1.0.0").expect_err("refused")
+    );
+    assert!(
+        msg.contains(
+            "review category `gameplay` item `serve` declares `domains`, but only a case on the engine format"
+        ),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_sub_divided_legacy_item_rates_per_sub_item_on_a_validator_rated_version() {
+    // The legacy `[[review_item]]` grammar is admitted on the engine format too; a
+    // sub-divided item is rated per sub-item, exactly as it is validated per
+    // sub-item, so item-level keys beside `sub_items` are refused.
+    let review = "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n\
+                  failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n\
+                  sub_item = [ { id = \"a\", title = \"A\", failure_cap = \"broken\", \
+                  domains = [\"gameplay\"], validation = { script = \"gameplay/serve.test.ts\", \
+                  outputs = [ { id = \"a\", kind = \"video\" } ] } } ]\n";
+    let msg = reject_validator_rated(review);
+    assert!(
+        msg.contains("review_item `serve` declares `sub_items` alongside an item-level"),
+        "got: {msg}"
+    );
+
+    let review = "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n\
+                  sub_item = [ { id = \"a\", title = \"A\", failure_cap = \"passable\", \
+                  domains = [\"gameplay\"], validation = { script = \"gameplay/serve.test.ts\", \
+                  outputs = [ { id = \"a\", kind = \"video\" } ] } } ]\n";
+    let version = resolve_validator_rated(review).expect("resolve");
+    let sub = &version.common_review_items[0].sub_items[0];
+    assert_eq!(sub.failure_cap, Some(FailureCap::Passable));
+    assert_eq!(sub.domains, vec!["gameplay".to_string()]);
 }

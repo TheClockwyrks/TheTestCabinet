@@ -13,11 +13,11 @@ top-left; `x` increases to the right, `y` increases downward (0–95). The image
 **3×3 grid of 32×32-pixel cells**; draw **one icon centered in each cell**, in this
 order (row by row, left to right):
 
-| Grid | Column 0 | Column 1 | Column 2 |
-| --- | --- | --- | --- |
-| **Row 0** | Health potion (red) | Mana potion (blue) | Steel sword |
-| **Row 1** | Round wooden shield | Gold coin | Treasure chest |
-| **Row 2** | Brass key | Gemmed ring | Rolled scroll |
+| Grid      | Column 0            | Column 1           | Column 2       |
+| --------- | ------------------- | ------------------ | -------------- |
+| **Row 0** | Health potion (red) | Mana potion (blue) | Steel sword    |
+| **Row 1** | Round wooden shield | Gold coin          | Treasure chest |
+| **Row 2** | Brass key           | Gemmed ring        | Rolled scroll  |
 
 Cell `(row, col)` spans `x` from `col×32` to `col×32 + 31` and `y` from `row×32` to
 `row×32 + 31`. Keep each icon inside its cell with a pixel or two of margin — do not
@@ -70,19 +70,19 @@ off-palette colors and anti-aliased fringes count against you). The **outline** 
 shared by every icon; each item takes its **lit** and **shadow** tones from the
 family noted below.
 
-| Role | Hex |
-| --- | --- |
-| Outline (all icons) | `#20141c` |
-| Potion red — lit | `#ff7d63` |
-| Potion red — shadow | `#c9303a` |
-| Potion blue — lit | `#6cbcff` |
-| Potion blue — shadow | `#265fbf` |
-| Steel — lit | `#e6eef3` |
-| Steel — shadow | `#7d909e` |
-| Gold / brass — lit | `#ffe08a` |
-| Gold / brass — shadow | `#c98a1e` |
-| Wood — lit | `#b87b45` |
-| Wood — shadow | `#7a4522` |
+| Role                     | Hex       |
+| ------------------------ | --------- |
+| Outline (all icons)      | `#20141c` |
+| Potion red — lit         | `#ff7d63` |
+| Potion red — shadow      | `#c9303a` |
+| Potion blue — lit        | `#6cbcff` |
+| Potion blue — shadow     | `#265fbf` |
+| Steel — lit              | `#e6eef3` |
+| Steel — shadow           | `#7d909e` |
+| Gold / brass — lit       | `#ffe08a` |
+| Gold / brass — shadow    | `#c98a1e` |
+| Wood — lit               | `#b87b45` |
+| Wood — shadow            | `#7a4522` |
 | Parchment (scroll paper) | `#f0e2bd` |
 
 Suggested family per icon (share tones freely to stay within the palette): the two

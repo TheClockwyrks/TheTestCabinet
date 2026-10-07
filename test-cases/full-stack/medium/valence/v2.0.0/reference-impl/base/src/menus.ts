@@ -20,7 +20,10 @@ export function menuItems(state: GameState, game: Game): MenuItem[] {
         { label: "HOW TO PLAY", action: "menu:howto" },
       ];
     case "mapselect":
-      return [...MAPS.map((m) => ({ label: m.name, action: `map:${m.id}` })), { label: "BACK", action: "menu:back" }];
+      return [
+        ...MAPS.map((m) => ({ label: m.name, action: `map:${m.id}` })),
+        { label: "BACK", action: "menu:back" },
+      ];
     case "howto":
       return [{ label: "BACK", action: "menu:back" }];
     case "paused":
@@ -32,7 +35,10 @@ export function menuItems(state: GameState, game: Game): MenuItem[] {
     case "victory":
     case "defeat":
       return [
-        { label: state === "victory" ? "PLAY AGAIN" : "TRY AGAIN", action: "menu:again" },
+        {
+          label: state === "victory" ? "PLAY AGAIN" : "TRY AGAIN",
+          action: "menu:again",
+        },
         { label: "MENU", action: "menu:menu" },
       ];
     default:

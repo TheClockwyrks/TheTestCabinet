@@ -27,6 +27,8 @@ impl BackendClient for StubBackend {
     }
     async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
         Ok(TestCaseVersion {
+            engine_format: false,
+            toolchain: None,
             // The debug-API handle plus a common item with an auto-validation driver
             // exercise the reporter-side validation path through materialization: the
             // handle is carried and the script is fetched, written beside the version,
@@ -62,6 +64,7 @@ impl BackendClient for StubBackend {
             r#match: None,
             replay: None,
             asset_kind: crate::test_case::AssetKind::Sprite,
+            asset_dimension: crate::test_case::AssetDimension::TwoD,
             sheet: None,
             voxel: None,
             model: None,
@@ -69,18 +72,23 @@ impl BackendClient for StubBackend {
             material: None,
             particle: None,
             audio: None,
+            audio_packs: Vec::new(),
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
                 kind: Default::default(),
             }],
-            common_workspace: vec![WorkspaceFile {
-                source_path: std::path::PathBuf::from("workspaces/base/package.json"),
-                dest: std::path::PathBuf::from("package.json"),
-            }],
+            common_workspace: EngineWorkspaces::from_iter([(
+                crate::engine::NONE_SLUG.to_string(),
+                vec![WorkspaceFile {
+                    source_path: std::path::PathBuf::from("workspaces/base/package.json"),
+                    dest: std::path::PathBuf::from("package.json"),
+                }],
+            )]),
             init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
             packages: Vec::new(),
+            engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
             variants: vec![Variant {
                 slug: "base".to_string(),
                 name: "Base".to_string(),
@@ -92,7 +100,8 @@ impl BackendClient for StubBackend {
                 review_items: vec![],
                 domains: vec![],
                 voxel: None,
-                reference_impl: None,
+                reference_impls: Default::default(),
+                showcase: None,
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
@@ -104,6 +113,8 @@ impl BackendClient for StubBackend {
             common_proofs: vec![],
             checks: vec![],
             common_review_items: vec![ReviewItem {
+                failure_cap: None,
+                domains: Vec::new(),
                 id: "ball-spin".to_string(),
                 title: "Ball spin".to_string(),
                 text: "The ball spins.".to_string(),
@@ -118,8 +129,9 @@ impl BackendClient for StubBackend {
                 scored: true,
                 validation: Some(crate::test_case::ReviewValidation {
                     // Store-relative until materialization roots it on disk.
-                    script: std::path::PathBuf::from("validation/ball-spin.mjs"),
+                    script: Some(std::path::PathBuf::from("validation/ball-spin.mjs")),
                     script_rel: "validation/ball-spin.mjs".to_string(),
+                    engines: Vec::new(),
                     outputs: vec![crate::test_case::ReviewOutput {
                         id: "spin".to_string(),
                         name: "Spin".to_string(),
@@ -231,11 +243,11 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
     // The workspace file is rooted at the store dir too, with its run-relative
     // dest preserved, and the init command carried through.
     assert_eq!(
-        version.common_workspace[0].source_path,
+        version.common_workspace.get(crate::engine::NONE_SLUG)[0].source_path,
         store.join("workspaces/base/package.json")
     );
     assert_eq!(
-        version.common_workspace[0].dest,
+        version.common_workspace.get(crate::engine::NONE_SLUG)[0].dest,
         std::path::PathBuf::from("package.json")
     );
     assert_eq!(version.init.as_deref(), Some("npm install"));
@@ -269,8 +281,8 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         .as_ref()
         .expect("the item carries its validation driver");
     assert_eq!(
-        item_validation.script,
-        store.join("validation/ball-spin.mjs")
+        item_validation.script.as_deref(),
+        Some(store.join("validation/ball-spin.mjs").as_path())
     );
     assert_eq!(item_validation.script_rel, "validation/ball-spin.mjs");
     assert_eq!(item_validation.outputs[0].id, "spin");
@@ -428,14 +440,18 @@ fn sample_record(id: &str) -> RunRecord {
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".to_string(),
+            gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: None,
         },
         environment: RunEnvironment {
             os: "Debian GNU/Linux 12".to_string(),
-            container_image: "ghcr.io/example/test-cabinet-claude@sha256:abc".to_string(),
+            container_image: "testcabinet.azurecr.io/test-cabinet-claude@sha256:abc".to_string(),
             node_version: None,
             auth_mode: crate::run_record::AuthMode::ApiKey,
         },
@@ -451,6 +467,7 @@ fn sample_record(id: &str) -> RunRecord {
                 comparable: Some(0.0),
                 actual: Some(0.0),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -475,7 +492,12 @@ fn sample_record(id: &str) -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
+        code_analysis: None,
+        toolchain: None,
+        showcase: None,
     }
 }
 
@@ -574,6 +596,122 @@ async fn read_run_parses_a_single_stored_run() {
     assert!(run.links.source_repo.is_none());
 }
 
+/// Serve one `201 Created` on a fresh local port and hand back the base URL plus
+/// a receiver that yields the request's body once it arrives — for proving what
+/// a client call puts on the wire, not just what it parses off it.
+async fn capture_once() -> (String, tokio::sync::oneshot::Receiver<String>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        // Read until the headers announce a body length that has fully arrived.
+        loop {
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw);
+            if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                let length = head
+                    .lines()
+                    .find_map(|line| {
+                        line.split_once(':').and_then(|(name, value)| {
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                    })
+                    .unwrap_or(0);
+                if body.len() >= length {
+                    break;
+                }
+            }
+        }
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        let body = text
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_string())
+            .unwrap_or_default();
+        let _ = tx.send(body);
+        let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+        let _ = socket.write_all(response.as_bytes()).await;
+        let _ = socket.flush().await;
+    });
+    (format!("http://{addr}"), rx)
+}
+
+#[tokio::test]
+async fn submit_review_posts_the_writeups_aesthetic_beside_its_ratings_and_checklist() {
+    // The writeup file's run-wide `aesthetic` tier and its `review.<id>` override
+    // lines are a validator-rated run's whole review channel, so the wire body has
+    // to carry both — a review that posts `ratings: []` alone is refused by the
+    // backend as empty.
+    use crate::review::{AestheticRating, ReviewVerdict, VerdictStatus, Writeup};
+    let (base, body) = capture_once().await;
+    let writeup = Writeup {
+        ratings: vec![],
+        aesthetic: Some(AestheticRating::Amazing),
+        body: "Gorgeous.".to_string(),
+        checklist: vec![ReviewVerdict {
+            id: "serve".to_string(),
+            status: VerdictStatus::Pass,
+            note: Some("works when driven by hand".to_string()),
+        }],
+    };
+
+    HttpBackendClient::new(base)
+        .submit_review("run-42", &writeup)
+        .await
+        .expect("submit review");
+
+    let posted: serde_json::Value =
+        serde_json::from_str(&body.await.expect("request body")).expect("json body");
+    assert_eq!(
+        posted,
+        serde_json::json!({
+            "ratings": [],
+            "aesthetic": "amazing",
+            "writeup": "Gorgeous.",
+            "checklist": [
+                { "id": "serve", "status": "pass", "note": "works when driven by hand" },
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn submit_review_omits_the_aesthetic_from_a_legacy_writeup() {
+    // A legacy writeup (functional ratings only) posts exactly what it always did.
+    use crate::review::{DomainRating, Rating, Writeup};
+    let (base, body) = capture_once().await;
+    let writeup = Writeup {
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
+        aesthetic: None,
+        body: "Solid.".to_string(),
+        checklist: vec![],
+    };
+
+    HttpBackendClient::new(base)
+        .submit_review("run-42", &writeup)
+        .await
+        .expect("submit review");
+
+    let posted: serde_json::Value =
+        serde_json::from_str(&body.await.expect("request body")).expect("json body");
+    assert!(posted.get("aesthetic").is_none());
+    assert_eq!(posted["ratings"][0]["rating"], "great");
+}
+
 #[tokio::test]
 async fn publish_run_parses_the_async_enqueue_ack() {
     // Publishing is async: the backend answers `202` with the enqueued publish
@@ -665,6 +803,7 @@ async fn resolve_version_carries_voxel_volume_and_rig() {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
         "testType": "asset-generation",
         "assetKind": "voxel-animation",
         "tool": { "binary": "voxel-anim", "preview": "{part}.png" },
@@ -727,6 +866,7 @@ async fn resolve_version_carries_instrumentation_and_item_validation() {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 1800,
+        "engines": [{ "slug": "none" }],
         "testType": "end-to-end",
         "instrumentation": { "handle": "__carom" },
         "promptTemplate": "",
@@ -765,8 +905,8 @@ async fn resolve_version_carries_instrumentation_and_item_validation() {
         .as_ref()
         .expect("the item's validation driver survives the wire");
     assert_eq!(
-        validation.script,
-        std::path::PathBuf::from("validation/ball-spin.mjs"),
+        validation.script.as_deref(),
+        Some(std::path::Path::new("validation/ball-spin.mjs")),
         "the script is the store-relative key until materialization roots it"
     );
     assert_eq!(validation.script_rel, "validation/ball-spin.mjs");
@@ -776,6 +916,54 @@ async fn resolve_version_carries_instrumentation_and_item_validation() {
     assert_eq!(
         validation.outputs[0].kind,
         crate::test_case::MediaKind::Image
+    );
+}
+
+#[tokio::test]
+async fn resolve_version_carries_the_engines_the_case_supports() {
+    // The engine dimension is gated on what the case declares, and a run resolved
+    // over HTTP is held to that gate in the driver pod. If the client synthesizes a
+    // support set instead of reading the served one, every engine-backed run
+    // enqueued through the backend dies on "unsupported engine" no matter what the
+    // case declares. Both spellings arrive: a bare engine and a pinned one.
+    let body = serde_json::json!({
+        "slug": "carom",
+        "version": "v3.0.0",
+        "name": "Carom",
+        "difficulty": "easy",
+        "tags": ["end-to-end"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 1800,
+        "engines": [
+            { "slug": "none" },
+            { "slug": "simple-2d", "minVersion": "1.0.0" }
+        ],
+        "testType": "end-to-end",
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("carom", "v3.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(version.engine_slugs(), vec!["none", "simple-2d"]);
+    let pinned = version.engine_support("simple-2d").expect("declared");
+    assert_eq!(pinned.min_version, Some(semver::Version::new(1, 0, 0)));
+    assert_eq!(pinned.max_version, None);
+    // The bare spelling constrains nothing, so the gate never needs a version for it.
+    assert!(
+        !version
+            .engine_support("none")
+            .expect("declared")
+            .is_bounded()
     );
 }
 
@@ -795,9 +983,10 @@ async fn resolve_version_decodes_object_shaped_packages() {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
         "testType": "full-stack",
         "packages": [
-            { "name": "@test-cabinet/particle-runtime", "description": "produced-effect runtime" }
+            { "name": "@clockwyrks/particle-runtime", "description": "produced-effect runtime" }
         ],
         "promptTemplate": "",
         "commonSpecs": [],
@@ -813,5 +1002,82 @@ async fn resolve_version_decodes_object_shaped_packages() {
         .await
         .expect("resolve version");
 
-    assert_eq!(version.packages, vec!["@test-cabinet/particle-runtime"]);
+    assert_eq!(version.packages, vec!["@clockwyrks/particle-runtime"]);
+}
+
+#[tokio::test]
+async fn resolve_version_carries_the_full_stack_asset_dimension_across_the_wire() {
+    // A dispatcher-scheduled run is always backend-driven: the driver materializes its
+    // version through `resolve_version` and core resolves the run image off what comes
+    // back. So `assetDimension` has to survive the wire, or a 3D full-stack case
+    // silently resolves the 2D image and the run dies inside the container on the first
+    // `voxel` invocation — a failure a local `tcab run` (which resolves off the on-disk
+    // manifest) would never reproduce.
+    let body = serde_json::json!({
+        "slug": "gantry",
+        "version": "v1.0.0",
+        "name": "Gantry",
+        "difficulty": "medium",
+        "tags": ["simulation"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
+        "testType": "full-stack",
+        "assetDimension": "3d",
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("gantry", "v1.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(
+        version.asset_dimension,
+        crate::test_case::AssetDimension::ThreeD
+    );
+}
+
+#[tokio::test]
+async fn resolve_version_defaults_the_asset_dimension_when_the_backend_omits_it() {
+    // A store written before the discriminator existed serves no `assetDimension` at
+    // all. That must resolve to the 2D image rather than failing the whole body, which
+    // is what an absent `#[serde(default)]` would do — and would take every case with
+    // it, not just full-stack ones.
+    let body = serde_json::json!({
+        "slug": "junction",
+        "version": "v1.0.0",
+        "name": "Junction",
+        "difficulty": "hard",
+        "tags": ["simulation"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
+        "testType": "full-stack",
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("junction", "v1.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(
+        version.asset_dimension,
+        crate::test_case::AssetDimension::TwoD
+    );
 }

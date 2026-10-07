@@ -37,14 +37,14 @@ recoil) and **highest** when it pushes off (passing into the high point), and th
 arms swing in **counter-time** to the legs — as the right leg drives forward the
 right arm swings back, and vice versa.
 
-| Frame | Pose | What it looks like |
-| --- | --- | --- |
-| 0 | **Contact** | Lead leg reaches forward and plants; trailing leg stretched back. Body at mid height. Arms opposed — the arm opposite the lead leg swings forward. |
-| 1 | **Recoil / down** | Body at its **lowest** — the support leg bends to absorb the landing, the free leg lifts and folds up behind. A little squash through the body. |
-| 2 | **Passing** | The free leg swings **forward under the body**; the figure is roughly upright and **rising**, weight rolling onto the support foot. |
-| 3 | **High point / up** | **Push-off** — body at its **highest**, briefly airborne, legs stretched apart front and back, arms at full swing. A little stretch through the body. |
-| 4 | **Return (descending)** | Coming back down — the opposite foot now reaches forward toward the next contact, mirroring frame 0's leg action, body dropping from the high point. |
-| 5 | **Return (settle)** | The reaching foot plants and the body dips again, the tail of the stride that carries momentum straight back into the **contact** of frame 0 for a seamless loop. |
+| Frame | Pose                    | What it looks like                                                                                                                                                |
+| ----- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | **Contact**             | Lead leg reaches forward and plants; trailing leg stretched back. Body at mid height. Arms opposed — the arm opposite the lead leg swings forward.                |
+| 1     | **Recoil / down**       | Body at its **lowest** — the support leg bends to absorb the landing, the free leg lifts and folds up behind. A little squash through the body.                   |
+| 2     | **Passing**             | The free leg swings **forward under the body**; the figure is roughly upright and **rising**, weight rolling onto the support foot.                               |
+| 3     | **High point / up**     | **Push-off** — body at its **highest**, briefly airborne, legs stretched apart front and back, arms at full swing. A little stretch through the body.             |
+| 4     | **Return (descending)** | Coming back down — the opposite foot now reaches forward toward the next contact, mirroring frame 0's leg action, body dropping from the high point.              |
+| 5     | **Return (settle)**     | The reaching foot plants and the body dips again, the tail of the stride that carries momentum straight back into the **contact** of frame 0 for a seamless loop. |
 
 Make it read as **one appealing hero**:
 
@@ -68,17 +68,17 @@ Make it read as **one appealing hero**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Outline | `#2a2118` |
-| Skin | `#f2c290` |
+| Role          | Hex       |
+| ------------- | --------- |
+| Outline       | `#2a2118` |
+| Skin          | `#f2c290` |
 | Skin — shadow | `#c98f5a` |
-| Shirt | `#e5533b` |
-| Shirt — dark | `#a8321f` |
-| Pants | `#3b6ea5` |
-| Pants — dark | `#274a70` |
-| Boots | `#4b3a2a` |
-| Hair | `#8a5a2c` |
+| Shirt         | `#e5533b` |
+| Shirt — dark  | `#a8321f` |
+| Pants         | `#3b6ea5` |
+| Pants — dark  | `#274a70` |
+| Boots         | `#4b3a2a` |
+| Hair          | `#8a5a2c` |
 
 ## Working the tool
 

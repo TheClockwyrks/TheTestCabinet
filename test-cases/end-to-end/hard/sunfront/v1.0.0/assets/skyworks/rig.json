@@ -2,38 +2,22 @@
   "parts": [
     {
       "name": "pad",
-      "pivot": [
-        35,
-        0,
-        35
-      ]
+      "pivot": [35, 0, 35]
     },
     {
       "name": "mast",
       "parent": "pad",
-      "pivot": [
-        35,
-        15,
-        35
-      ]
+      "pivot": [35, 15, 35]
     },
     {
       "name": "turbine",
       "parent": "mast",
-      "pivot": [
-        35,
-        47,
-        35
-      ]
+      "pivot": [35, 47, 35]
     },
     {
       "name": "door",
       "parent": "pad",
-      "pivot": [
-        35,
-        21,
-        55
-      ]
+      "pivot": [35, 21, 55]
     }
   ],
   "joints": [
@@ -42,11 +26,7 @@
       "part": "turbine",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        35,
-        47,
-        35
-      ],
+      "pivot": [35, 47, 35],
       "min": -6.5,
       "max": 6.5,
       "rest": 0.0,
@@ -57,11 +37,7 @@
       "part": "door",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        35,
-        21,
-        55
-      ],
+      "pivot": [35, 21, 55],
       "min": 0.0,
       "max": 14.0,
       "rest": 0.0,

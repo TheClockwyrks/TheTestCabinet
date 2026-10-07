@@ -10,7 +10,7 @@ use std::time::Duration;
 use k8s_openapi::api::core::v1::EnvVar;
 
 use crate::config::{
-    DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_LIMIT, DEFAULT_DRIVER_MEMORY_REQUEST,
+    DEFAULT_DRIVER_CPU_LIMIT, DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_REQUEST,
     DriverResources,
 };
 use test_cabinet_core::run_record::HarnessSlug;
@@ -28,9 +28,16 @@ fn claim() -> ClaimedJob {
             harness: HarnessSlug::Claude,
             model: "anthropic/claude".to_string(),
             orchestrator: Some("one-shot".to_string()),
+            engine: None,
             max_runtime_seconds: Some(600),
             auth_mode: None,
             retry_count: None,
+            gg_capability_set: None,
+            gg_model_windows: Default::default(),
+            gg_model_providers: Default::default(),
+            gg_model_modalities: Default::default(),
+            gg_model_prices: Default::default(),
+            model_prices: None,
         },
     }
 }
@@ -40,7 +47,7 @@ fn config() -> Config {
     Config {
         backend_url: "http://backend:8787".to_string(),
         service_token: "service-tok".to_string(),
-        driver_image: "ghcr.io/example/tcab-driver:latest".to_string(),
+        driver_image: "registry.example.com/example/tcab-driver:latest".to_string(),
         namespace: "tcab".to_string(),
         sandbox_namespace: "tcab".to_string(),
         driver_service_account: Some("tcab-driver".to_string()),
@@ -49,12 +56,12 @@ fn config() -> Config {
         job_ttl_seconds: 300,
         // Mirrors what `DriverResources::from_env` resolves by default: the memory
         // request and limit are ONE value (see `DEFAULT_DRIVER_MEMORY_REQUEST`), and
-        // CPU is left unbounded.
+        // the CPU limit is set (see `DEFAULT_DRIVER_CPU_LIMIT`).
         driver_resources: DriverResources {
             cpu_request: Some(DEFAULT_DRIVER_CPU_REQUEST.to_string()),
             memory_request: Some(DEFAULT_DRIVER_MEMORY_REQUEST.to_string()),
-            cpu_limit: None,
-            memory_limit: Some(DEFAULT_DRIVER_MEMORY_LIMIT.to_string()),
+            cpu_limit: Some(DEFAULT_DRIVER_CPU_LIMIT.to_string()),
+            memory_limit: None,
         },
         publisher_resources: DriverResources::default(),
         driver_secrets: vec!["tcab-driver-secrets".to_string()],
@@ -68,10 +75,10 @@ fn config() -> Config {
             ("TCAB_K8S_RUN_MEMORY_LIMIT".to_string(), "4Gi".to_string()),
             (
                 "TCAB_K8S_IMAGE_PULL_SECRETS".to_string(),
-                "ghcr-pull".to_string(),
+                "registry-pull".to_string(),
             ),
         ],
-        publisher_image: Some("ghcr.io/example/tcab-publisher:latest".to_string()),
+        publisher_image: Some("registry.example.com/example/tcab-publisher:latest".to_string()),
         publisher_secrets: vec!["tcab-publisher-secrets".to_string()],
         passthrough_publisher_env: vec![
             (
@@ -115,7 +122,7 @@ fn sets_the_driver_image() {
     let job = build_driver_job(&claim(), &config()).unwrap();
     assert_eq!(
         container(&job).image.as_deref(),
-        Some("ghcr.io/example/tcab-driver:latest"),
+        Some("registry.example.com/example/tcab-driver:latest"),
     );
 }
 
@@ -179,7 +186,7 @@ fn passes_the_k8s_resource_requests_through() {
     );
     assert_eq!(
         map["TCAB_K8S_IMAGE_PULL_SECRETS"].value.as_deref(),
-        Some("ghcr-pull"),
+        Some("registry-pull"),
     );
 }
 
@@ -452,7 +459,7 @@ fn publish_job_sets_the_publisher_image_and_container_name() {
     assert_eq!(c.name, "publisher");
     assert_eq!(
         c.image.as_deref(),
-        Some("ghcr.io/example/tcab-publisher:latest"),
+        Some("registry.example.com/example/tcab-publisher:latest"),
     );
 }
 
@@ -611,32 +618,34 @@ fn driver_container_carries_resource_requests() {
     assert_eq!(requests["cpu"].0, DEFAULT_DRIVER_CPU_REQUEST);
     assert_eq!(requests["memory"].0, DEFAULT_DRIVER_MEMORY_REQUEST);
 
-    // The memory LIMIT is rendered too, and equals the request: a node then reserves
-    // exactly what the driver may use, so the driver can neither be killed to satisfy
-    // another pod's growth nor cause another pod to be. The CPU limit stays absent —
-    // over-limit CPU is throttled, not killed.
+    // NO memory limit is rendered. A memory limit is a cgroup ceiling enforced by
+    // SIGKILL, and a driver OOM-killed after its harness session has finished destroys
+    // a run that has already paid for every API call — so the driver carries a request
+    // (the node's reservation, and what lowers its OOM score) and no ceiling. The CPU
+    // limit IS rendered: it is what keeps the post-run toolchain's fan-out, and so the
+    // driver's memory footprint, a property of the pod rather than of the node, and
+    // over-limit CPU throttles rather than kills (see `DEFAULT_DRIVER_CPU_LIMIT`).
     let limits = resources
         .limits
         .as_ref()
-        .expect("the memory limit is rendered by default");
-    assert_eq!(limits["memory"].0, DEFAULT_DRIVER_MEMORY_LIMIT);
-    assert_eq!(
-        limits["memory"].0, requests["memory"].0,
-        "a gap between the driver's memory request and limit is memory the scheduler \
-         has promised twice"
+        .expect("the CPU limit is rendered by default");
+    assert!(
+        !limits.contains_key("memory"),
+        "a driver memory limit is an OOM kill waiting for the first run that outgrows it"
     );
-    assert!(!limits.contains_key("cpu"));
+    assert_eq!(limits["cpu"].0, DEFAULT_DRIVER_CPU_LIMIT);
 }
 
 #[test]
 fn publish_container_carries_its_own_resources() {
     // The publish Job's container used to carry no `resources` at all, which put its
-    // pod in `BestEffort` — first evicted, highest OOM score — and, more importantly,
-    // made the sum of limits on whatever node it landed on unknowable. It is sized
+    // pod in `BestEffort` — first evicted, highest OOM score — and left it free to
+    // crowd a sandbox pod off whatever node it landed on. Unlike a run pod it keeps a
+    // memory limit: a killed publish loses no API spend and is retried. It is sized
     // independently of the driver, so this asserts the publisher's own values reach
     // the Job rather than the driver's leaking into it.
     let mut config = config();
-    config.publisher_image = Some("ghcr.io/example/tcab-publisher:latest".to_string());
+    config.publisher_image = Some("registry.example.com/example/tcab-publisher:latest".to_string());
     config.publisher_resources = DriverResources {
         cpu_request: Some("100m".to_string()),
         memory_request: Some("1Gi".to_string()),
@@ -693,14 +702,70 @@ fn driver_container_limits_are_applied_when_configured() {
 
 #[test]
 fn driver_container_omits_resources_when_all_are_blank() {
-    // The deliberate opt-out (every quantity blanked — both requests AND the memory
-    // limit, which now defaults) must omit the field rather than serialize an empty
+    // The deliberate opt-out (every quantity blanked — both requests AND the CPU
+    // limit, which defaults) must omit the field rather than serialize an empty
     // `resources: {}`.
     let mut config = config();
     config.driver_resources = DriverResources::default();
 
     let job = build_driver_job(&claim(), &config).unwrap();
     assert!(container(&job).resources.is_none());
+}
+
+#[test]
+fn no_shipped_manifest_sets_a_memory_limit_on_a_run_pod() {
+    // The Rust default above guarantees the driver container carries no memory limit,
+    // but the SANDBOX pod's memory limit is a plain env passthrough
+    // (`TCAB_K8S_RUN_MEMORY_LIMIT`), and the driver's own can be re-added by any
+    // overlay setting `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT`. Either would silently
+    // put the OOM kill back on a run pod, so this walks every manifest under
+    // deployments/k8s and refuses an uncommented `name:` entry for either variable.
+    // A limit is a cgroup ceiling enforced by SIGKILL, and a run pod killed by it
+    // destroys a run that has already paid for its API calls
+    // (see `DEFAULT_DRIVER_MEMORY_REQUEST`).
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deployments/k8s");
+    let mut offenders = Vec::new();
+    let mut stack = vec![root.clone()];
+    let mut seen = 0usize;
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("deployments/k8s is readable") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+                continue;
+            }
+            seen += 1;
+            let text = std::fs::read_to_string(&path).expect("manifest is readable");
+            for (index, line) in text.lines().enumerate() {
+                let line = line.trim_start();
+                if line.starts_with('#') {
+                    continue;
+                }
+                for var in [
+                    "TCAB_K8S_RUN_MEMORY_LIMIT",
+                    "TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT",
+                ] {
+                    if line.starts_with("- name:") && line.contains(var) {
+                        offenders.push(format!(
+                            "{}:{}: {line}",
+                            path.strip_prefix(&root).unwrap_or(&path).display(),
+                            index + 1
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(seen > 0, "no manifests found under {}", root.display());
+    assert!(
+        offenders.is_empty(),
+        "a shipped manifest sets a memory limit on a run pod, which is an OOM kill \
+         waiting for the first run that outgrows it:\n{}",
+        offenders.join("\n")
+    );
 }
 
 #[test]

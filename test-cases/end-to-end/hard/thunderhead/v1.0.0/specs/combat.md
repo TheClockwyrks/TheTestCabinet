@@ -196,16 +196,16 @@ identity (following the table). Health is hull HP; "defense" is the power's para
 speed is top speed in `u/s`; primary range is the main weapon's max range in world
 units. All values are **fixed** — implement them as written.
 
-| Archetype | Hull HP | Top speed (`u/s`) | Primary range | Notes |
-| --- | --- | --- | --- | --- |
-| Battleship | `8000` | `24` | `760` (artillery) | Heaviest guns and armor; the slowest |
-| Carrier | `6000` | `30` | — (air wing) | Lightly gunned; fields aircraft |
-| Cruiser | `3000` | `40` | `420` | The escort workhorse; strong AA |
-| Destroyer | `1500` | `64` | `300` | Fast; torpedoes and sub-hunt |
-| Submarine | `1200` | `28` | `440` (torpedo) | Murk-native; fragile if caught surfaced |
-| Fighter | `150` | `260` | `150` (guns) | Air superiority |
-| Bomber | `400`–`800` | `150`–`190` | ordnance | Heavier and slower the more turrets |
-| Support | `2000` | `36` | self-defense only | Tender / carrier-station / lodestar |
+| Archetype  | Hull HP     | Top speed (`u/s`) | Primary range     | Notes                                   |
+| ---------- | ----------- | ----------------- | ----------------- | --------------------------------------- |
+| Battleship | `8000`      | `24`              | `760` (artillery) | Heaviest guns and armor; the slowest    |
+| Carrier    | `6000`      | `30`              | — (air wing)      | Lightly gunned; fields aircraft         |
+| Cruiser    | `3000`      | `40`              | `420`             | The escort workhorse; strong AA         |
+| Destroyer  | `1500`      | `64`              | `300`             | Fast; torpedoes and sub-hunt            |
+| Submarine  | `1200`      | `28`              | `440` (torpedo)   | Murk-native; fragile if caught surfaced |
+| Fighter    | `150`       | `260`             | `150` (guns)      | Air superiority                         |
+| Bomber     | `400`–`800` | `150`–`190`       | ordnance          | Heavier and slower the more turrets     |
+| Support    | `2000`      | `36`              | self-defense only | Tender / carrier-station / lodestar     |
 
 Per-power modifiers (applied to the baseline):
 

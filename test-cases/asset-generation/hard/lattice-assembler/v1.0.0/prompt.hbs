@@ -1,5 +1,5 @@
-Draw the **Lattice Assembler**, an 8-frame **sprite sheet** of an industrial
-crafting machine, using only the drawing tool.
+Draw the **Lattice Assembler**, a 24-frame **sprite sheet** of an industrial
+crafting machine in three upgrade tiers, using only the drawing tool.
 
 The Lattice Assembler is the **3×3 crafting machine** in Lattice, a deterministic
 top-down factory simulation: it occupies a 3×3 block of tiles, consumes inputs,
@@ -7,8 +7,20 @@ and counts up crafting ticks to produce an output. You are drawing the *machine*
 and its working animation — not the items it crafts and not the belts around it.
 Lattice is drawn **flat**: every sprite is a clean 2D shape seen straight from
 above, with **no faux-3D height** — the brief's **The style** section is the thing
-to get right. Across the eight frames the machine must read as **actively making
-something**; how you show that is your choice.
+to get right. You draw the machine at **three tiers**, each an eight-frame craft
+loop:
+
+- **Tier 1 — frames 0–7:** the base machine, with **amber** hazard markings.
+- **Tier 2 — frames 8–15:** a reinforced, faster machine with **red-orange** hazard
+  markings and more mechanical detail.
+- **Tier 3 — frames 16–23:** the most advanced, fastest machine with **blue** hazard
+  markings, the densest detail, and a subtle energy glow.
+
+Across each tier's eight frames the machine must read as **actively making
+something**; how you show that is your choice. The three tiers share one grey-blue
+chassis, footprint, silhouette, and teal working state, differing only in hazard
+accent color, mechanical detail, and playback speed, so they read as one machine
+progressively upgraded.
 
 ## How drawing works
 
@@ -44,7 +56,9 @@ implementation that matches the specification exactly.
 Build the Lattice Assembler sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: a flat, top-down 2D 3×3 industrial machine
 drawn in each of its 96×96 frames, its grey-blue chassis holding still while a
-working area animates across the eight frames so the loop reads as the machine
-actively making something, wrapping seamlessly from frame 7 back to frame 0. When
-you are satisfied, stop: the recorded per-frame action logs are your finished
-submission.
+working area animates across each tier's eight frames so the loop reads as the
+machine actively making something, wrapping seamlessly. The three tiers share one
+chassis, footprint, and teal working state, differing only in hazard accent color
+(amber, red-orange, blue), mechanical detail, and playback speed, so they read as
+one machine progressively upgraded. When you are satisfied, stop: the recorded
+per-frame action logs are your finished submission.

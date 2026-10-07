@@ -3,8 +3,10 @@
 //! Each handler is a stub that calls into [`test_cabinet_core`] where the surface
 //! exists and otherwise reports that the orchestration is not implemented yet.
 
+pub mod analyze;
 pub mod auth;
 pub mod capture_baselines;
+pub mod engines;
 pub mod event_printer;
 pub mod harnesses;
 pub mod orchestrators;
@@ -14,4 +16,5 @@ pub mod publish_asset_reference;
 pub mod publish_reference;
 pub mod run;
 pub mod seed;
+pub mod test_case_groups;
 pub mod validate;

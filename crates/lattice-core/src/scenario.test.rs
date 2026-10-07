@@ -71,6 +71,35 @@ fn unknown_prototype_references_are_rejected() {
 }
 
 #[test]
+fn the_furnace_and_assembler_recipe_classes_are_enforced() {
+    // Smelting recipes run only on furnaces; everything else only on assemblers.
+    let grid = r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 10,
+                    "snapshots": [10], "entities": [ ENTITY ] }"#;
+    let parse = |ent: &str| Scenario::parse(grid.replace("ENTITY", ent).as_bytes());
+
+    // A furnace running a smelting recipe: fine.
+    assert!(parse(r#"{ "type": "furnace", "x": 1, "y": 1, "recipe": "iron-plate" }"#).is_ok());
+    // An assembler running a non-smelting recipe: fine.
+    assert!(parse(r#"{ "type": "assembler", "x": 1, "y": 1, "recipe": "iron-gear" }"#).is_ok());
+
+    // A smelting recipe on an assembler is rejected.
+    assert_eq!(
+        parse(r#"{ "type": "assembler", "x": 1, "y": 1, "recipe": "iron-plate" }"#),
+        Err(ScenarioError::SmeltingOnAssembler("iron-plate".into()))
+    );
+    // A non-smelting recipe on a furnace is rejected.
+    assert_eq!(
+        parse(r#"{ "type": "furnace", "x": 1, "y": 1, "recipe": "iron-gear" }"#),
+        Err(ScenarioError::NonSmeltingOnFurnace("iron-gear".into()))
+    );
+    // An unknown recipe on either is still an unknown-recipe error.
+    assert_eq!(
+        parse(r#"{ "type": "furnace", "x": 1, "y": 1, "recipe": "nope" }"#),
+        Err(ScenarioError::UnknownRecipe("nope".into()))
+    );
+}
+
+#[test]
 fn an_offgrid_anchor_is_rejected() {
     let offgrid = minimal_json().replace(
         "\"x\": 2, \"y\": 1, \"dir\": \"W\"",

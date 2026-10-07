@@ -1,0 +1,114 @@
+# Spectra — Controls
+
+Spectra is played from the keyboard, and its menus also take a pointer and touch,
+as `specs/ui.md` states. This file defines every action the game answers to, the
+keys bound to it, and which screen reads which. What the ship does when it moves
+and fires is in `specs/ship.md`, and the screens the menu actions move between are
+in `specs/ui.md`.
+
+{{#if (eq engine.slug "none")}}
+## How input reaches the game
+
+This game stands on no engine, so the keyboard belongs to the runtime layer you
+write. It listens to the page and reports which keys are down, by their
+`KeyboardEvent.code` values, along with the press edge of each. Every key below is
+named by its `code`, so a binding is a physical key rather than a layout-dependent
+character.
+
+The same layer carries the pointer and the touch contacts `specs/ui.md` drives the
+menus with. It listens to the page for them and reports where each one is, in the
+stage's logical units through the same canvas fit the game is drawn under, along
+with the press and the release edges of each.
+{{else}}
+## How input reaches the game
+
+Input reaches the game as named actions from the {{engine.name}} engine, which
+documents them in the `engine/` directory at the root of this repository. The game
+registers the layout `LAYOUT` (`dpad-4-two-buttons`), which carries four-way
+movement and two buttons, and registers every action in `ACTIONS` against the keys
+`BINDINGS` gives it. `BINDINGS` names each key by its `KeyboardEvent.code`, so a
+binding is a physical key rather than a layout-dependent character.
+
+The whole of `ACTIONS` is registered, so both buttons of the layout fire, and
+`discharge` is registered beyond the layout.
+{{/if}}
+
+## The actions
+
+| Action | Effect |
+| --- | --- |
+| `left` | Moves the ship left. |
+| `right` | Moves the ship right. |
+| `up` | Moves a menu highlight up. |
+| `down` | Moves a menu highlight down. |
+| `a` | Fires. |
+| `b` | Flips the ship's band. |
+| `discharge` | Releases a discharge. |
+| `confirm` | Takes the highlighted menu item. |
+| `back` | Leaves the current screen. |
+| `pause` | Pauses live play, and resumes it from the paused screen. |
+| `mute` | Toggles sound, from any screen. |
+
+`left`, `right`, and `a` are read as holds: the ship travels while a direction is
+held, and a held `a` fires every `FIRE_INTERVAL` for as long as the cooldown, the
+cap, and the lockout allow a shot, as `specs/ship.md` states. `up`, `down`, `b`,
+`discharge`, `confirm`, `back`, `pause`, and `mute` are read as press edges, once
+per press: holding one of them acts exactly once.
+
+## The bindings
+
+| Action | Keys |
+| --- | --- |
+| `left` | `ArrowLeft`, `KeyA` |
+| `right` | `ArrowRight`, `KeyD` |
+| `up` | `ArrowUp`, `KeyW` |
+| `down` | `ArrowDown`, `KeyS` |
+| `a` | `Space`, `ArrowUp`, `KeyW` |
+| `b` | `KeyF`, `ShiftLeft`, `ShiftRight` |
+| `discharge` | `KeyX` |
+| `confirm` | `Enter`, `Space` |
+| `back` | `Escape` |
+| `pause` | `Escape`, `KeyP` |
+| `mute` | `KeyM` |
+
+Several keys drive more than one action. `Space` drives `a` and `confirm`,
+`ArrowUp` and `KeyW` drive `a` and `up`, and `Escape` drives `back` and `pause`. The
+screen decides which one applies, by the table below, so no key ever does two things
+at once.
+
+## What each screen reads
+
+| Screen | Reads |
+| --- | --- |
+| `title` | `up`, `down`, `confirm`, `mute` |
+| `howto` | `back`, `mute` |
+| `stageIntro` | `mute` |
+| `inWave` | `left`, `right`, `a`, `b`, `discharge`, `pause`, `mute` |
+| `paused` | `up`, `down`, `confirm`, `back`, `pause`, `mute` |
+| `stageCleared` | `mute` |
+| `gameOver` | `up`, `down`, `confirm`, `mute` |
+
+`pause` on the `inWave` screen opens the paused screen; `pause` and `back` on the
+paused screen both return to the live wave, with the wave exactly as it was.
+
+## Menus
+
+Every menu is vertical and is driven by `up`, `down`, and `confirm`. `up` and `down`
+move the highlight by one item and wrap at both ends, so moving down from the last
+item highlights the first and moving up from the first highlights the last.
+`confirm` takes the highlighted item. `specs/ui.md` states each screen's items and
+where each one leads, and the pointer and touch rules that drive the same menus
+directly rather than through one of the actions above.
+
+## The debug overlay
+
+{{#if (eq engine.slug "none")}}
+The read-only debug overlay `specs/instrumentation.md` describes is shown and hidden
+by the backtick key, `KeyboardEvent.code` `Backquote`. It is off when the game
+starts, and it works on every screen. The overlay and its toggle are part of the
+runtime layer you write, and they are not one of Spectra's actions.
+{{else}}
+The read-only debug overlay is the engine's, shown and hidden by the backtick key,
+`KeyboardEvent.code` `Backquote` (`OVERLAY_KEY`), and off when the game starts. It
+is not one of Spectra's actions. What it shows is in `specs/instrumentation.md`.
+{{/if}}

@@ -21,13 +21,25 @@ import { Minimap } from "./render/minimap";
 import { PlacementGhost } from "./render/ghost";
 import { gridCellCenter } from "./render/terrain";
 import {
-  buildCost, upgradeCost, levelBonus, type BuildStructure,
+  buildCost,
+  upgradeCost,
+  levelBonus,
+  type BuildStructure,
 } from "./sim/world";
 import { distance } from "./mathutil";
 import {
-  BUILD_PALETTE_ORDER, BUILD_CELL_SIZE, BUILD_GRID_COLS, BUILD_GRID_ROWS,
-  PLAYER_GRID_ORIGIN, PLAYER_BASE, PLAYER_RELIQUARY, BASE_HP, UNIT_STATS,
-  SOLAR_EXTRACTOR_INCOME_BY_LEVEL, MAX_STRUCTURE_LEVEL, SELL_REFUND_FRACTION,
+  BUILD_PALETTE_ORDER,
+  BUILD_CELL_SIZE,
+  BUILD_GRID_COLS,
+  BUILD_GRID_ROWS,
+  PLAYER_GRID_ORIGIN,
+  PLAYER_BASE,
+  PLAYER_RELIQUARY,
+  BASE_HP,
+  UNIT_STATS,
+  SOLAR_EXTRACTOR_INCOME_BY_LEVEL,
+  MAX_STRUCTURE_LEVEL,
+  SELL_REFUND_FRACTION,
 } from "./constants";
 
 /** What the player currently has selected (a build structure by id, or a fixed one). */
@@ -149,12 +161,18 @@ export class Game {
     this.armed = null;
     this.ghost.hide();
     this.render.setPanEnabled(false);
-    this.menus.setMatchOver(this.match.world.result === "player", this.match.world.waveNumber);
+    this.menus.setMatchOver(
+      this.match.world.result === "player",
+      this.match.world.waveNumber,
+    );
     this.menus.show("match-over");
   }
 
   private leaveToTitle(): void {
-    if (this.match) { this.match.dispose(); this.match = null; }
+    if (this.match) {
+      this.match.dispose();
+      this.match = null;
+    }
     this.armed = null;
     this.selected = null;
     this.ghost.hide();
@@ -196,7 +214,10 @@ export class Game {
   private sellSelected(): void {
     if (this.state !== "in-match" || !this.match) return;
     const s = this.selectedStructure(this.match);
-    if (s) { this.match.world.sell(s); this.selected = null; }
+    if (s) {
+      this.match.world.sell(s);
+      this.selected = null;
+    }
   }
 
   // --- Picking + click handling ------------------------------------------
@@ -209,7 +230,8 @@ export class Game {
       const cell = this.cellAt(g.x, g.z);
       // place() is affordability- and occupancy-guarded; a rejected placement is a
       // no-op and the ghost already shows the invalid colour (specs/flow.md).
-      if (cell) this.match.world.place("player", this.armed, cell.col, cell.row);
+      if (cell)
+        this.match.world.place("player", this.armed, cell.col, cell.row);
       return;
     }
     this.selectAt(g);
@@ -221,10 +243,19 @@ export class Game {
       const cell = this.cellAt(g.x, g.z);
       if (cell) {
         const s = this.match!.world.structureAt("player", cell.col, cell.row);
-        if (s) { this.selected = { kind: "structure", id: s.id }; return; }
+        if (s) {
+          this.selected = { kind: "structure", id: s.id };
+          return;
+        }
       }
-      if (distance(g, PLAYER_BASE) <= BASE_PICK_RADIUS) { this.selected = { kind: "base" }; return; }
-      if (distance(g, PLAYER_RELIQUARY) <= RELIQUARY_PICK_RADIUS) { this.selected = { kind: "reliquary" }; return; }
+      if (distance(g, PLAYER_BASE) <= BASE_PICK_RADIUS) {
+        this.selected = { kind: "base" };
+        return;
+      }
+      if (distance(g, PLAYER_RELIQUARY) <= RELIQUARY_PICK_RADIUS) {
+        this.selected = { kind: "reliquary" };
+        return;
+      }
     }
     this.selected = null;
   }
@@ -233,20 +264,33 @@ export class Game {
   private cellAt(x: number, z: number): { col: number; row: number } | null {
     const col = Math.round((x - PLAYER_GRID_ORIGIN.x) / BUILD_CELL_SIZE);
     const row = Math.round((z - PLAYER_GRID_ORIGIN.z) / BUILD_CELL_SIZE);
-    if (col < 0 || col >= BUILD_GRID_COLS || row < 0 || row >= BUILD_GRID_ROWS) return null;
+    if (col < 0 || col >= BUILD_GRID_COLS || row < 0 || row >= BUILD_GRID_ROWS)
+      return null;
     const c = gridCellCenter("player", col, row);
-    if (Math.abs(x - c.x) > BUILD_CELL_SIZE / 2 || Math.abs(z - c.z) > BUILD_CELL_SIZE / 2) return null;
+    if (
+      Math.abs(x - c.x) > BUILD_CELL_SIZE / 2 ||
+      Math.abs(z - c.z) > BUILD_CELL_SIZE / 2
+    )
+      return null;
     return { col, row };
   }
 
   private updateGhost(): void {
-    if (this.state !== "in-match" || !this.match || !this.armed || !this.pointer.inside) {
+    if (
+      this.state !== "in-match" ||
+      !this.match ||
+      !this.armed ||
+      !this.pointer.inside
+    ) {
       this.ghost.hide();
       return;
     }
     const g = this.render.pickGround(this.pointer.x, this.pointer.y);
     const cell = g ? this.cellAt(g.x, g.z) : null;
-    if (!cell) { this.ghost.hide(); return; }
+    if (!cell) {
+      this.ghost.hide();
+      return;
+    }
     const c = gridCellCenter("player", cell.col, cell.row);
     const allowed =
       this.match.world.cellFree("player", cell.col, cell.row) &&
@@ -279,10 +323,19 @@ export class Game {
     }
     if (this.selected.kind === "reliquary") {
       const r = w.reliquaries.player;
-      return { kind: "fixed", name: "Reliquary", hp: r.hp, max: r.maxHp, note: "Regenerates +4 HP/s when undamaged" };
+      return {
+        kind: "fixed",
+        name: "Reliquary",
+        hp: r.hp,
+        max: r.maxHp,
+        note: "Regenerates +4 HP/s when undamaged",
+      };
     }
     const s = this.selectedStructure(match);
-    if (!s) { this.selected = null; return null; }
+    if (!s) {
+      this.selected = null;
+      return null;
+    }
     return this.buildPanel(match, s);
   }
 
@@ -322,7 +375,10 @@ export class Game {
   private selectedStructure(match: Match): BuildStructure | null {
     if (!this.selected || this.selected.kind !== "structure") return null;
     const id = this.selected.id;
-    return match.world.structures.find((s) => s.id === id && s.team === "player") ?? null;
+    return (
+      match.world.structures.find((s) => s.id === id && s.team === "player") ??
+      null
+    );
   }
 
   // --- Input -------------------------------------------------------------
@@ -333,7 +389,10 @@ export class Game {
     const canvas = this.render.domElement;
     canvas.addEventListener("pointerdown", (e) => {
       if (this.state !== "in-match") return;
-      if (e.button === 2) { this.disarm(); return; }
+      if (e.button === 2) {
+        this.disarm();
+        return;
+      }
       if (e.button !== 0) return;
       this.onLeftClick(e.clientX, e.clientY);
     });
@@ -346,7 +405,9 @@ export class Game {
       this.pointer.y = e.clientY;
       this.pointer.inside = true;
     });
-    canvas.addEventListener("pointerleave", () => { this.pointer.inside = false; });
+    canvas.addEventListener("pointerleave", () => {
+      this.pointer.inside = false;
+    });
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -358,29 +419,45 @@ export class Game {
 
     // In-match shortcuts.
     const shortcut = SHORTCUTS[e.code];
-    if (shortcut) { this.arm(shortcut); return; }
+    if (shortcut) {
+      this.arm(shortcut);
+      return;
+    }
     switch (e.code) {
-      case "KeyU": this.upgradeSelected(); break;
-      case "KeyX": this.sellSelected(); break;
-      case "KeyP": this.toPaused(); break;
+      case "KeyU":
+        this.upgradeSelected();
+        break;
+      case "KeyX":
+        this.sellSelected();
+        break;
+      case "KeyP":
+        this.toPaused();
+        break;
       case "Escape":
         if (this.armed) this.disarm();
         else if (this.selected) this.selected = null;
         else this.toPaused();
         break;
-      default: break;
+      default:
+        break;
     }
   }
 
   // --- Headless drive hooks (screenshot proofs) --------------------------
 
   /** Test hook: jump straight into a live match. */
-  debugStartMatch(): void { this.enterMatch(); }
+  debugStartMatch(): void {
+    this.enterMatch();
+  }
   /** Test hook: arm a build type as if the palette entry were clicked. */
-  debugArm(type: BuildStructureType): void { this.arm(type); }
+  debugArm(type: BuildStructureType): void {
+    this.arm(type);
+  }
   /** Test hook: place the armed (or given) type on a grid cell. */
   debugPlace(type: BuildStructureType, col: number, row: number): boolean {
-    return this.match ? this.match.world.place("player", type, col, row) !== null : false;
+    return this.match
+      ? this.match.world.place("player", type, col, row) !== null
+      : false;
   }
   /** Test hook: select the friendly structure occupying a grid cell. */
   debugSelectCell(col: number, row: number): void {
@@ -389,9 +466,13 @@ export class Game {
     this.selected = s ? { kind: "structure", id: s.id } : null;
   }
   /** Test hook: open the pause menu. */
-  debugPause(): void { this.toPaused(); }
+  debugPause(): void {
+    this.toPaused();
+  }
   /** Test hook: the live match (for headless proof + performance drives), or null. */
-  get liveMatch(): Match | null { return this.match; }
+  get liveMatch(): Match | null {
+    return this.match;
+  }
   /** Test hook: force the match to end for a side. */
   debugEndMatch(winner: "player" | "enemy"): void {
     if (!this.match) return;
@@ -400,13 +481,22 @@ export class Game {
     this.toMatchOver();
   }
   /** The current state (for tests). */
-  get currentState(): GameState { return this.state; }
+  get currentState(): GameState {
+    return this.state;
+  }
 }
 
 /** Keyboard shortcut -> build type (specs/flow.md: 1-9, 0 = tenth unit, E = Extractor). */
 const SHORTCUTS: Record<string, BuildStructureType | undefined> = {
-  Digit1: BUILD_PALETTE_ORDER[0], Digit2: BUILD_PALETTE_ORDER[1], Digit3: BUILD_PALETTE_ORDER[2],
-  Digit4: BUILD_PALETTE_ORDER[3], Digit5: BUILD_PALETTE_ORDER[4], Digit6: BUILD_PALETTE_ORDER[5],
-  Digit7: BUILD_PALETTE_ORDER[6], Digit8: BUILD_PALETTE_ORDER[7], Digit9: BUILD_PALETTE_ORDER[8],
-  Digit0: BUILD_PALETTE_ORDER[9], KeyE: "solar-extractor",
+  Digit1: BUILD_PALETTE_ORDER[0],
+  Digit2: BUILD_PALETTE_ORDER[1],
+  Digit3: BUILD_PALETTE_ORDER[2],
+  Digit4: BUILD_PALETTE_ORDER[3],
+  Digit5: BUILD_PALETTE_ORDER[4],
+  Digit6: BUILD_PALETTE_ORDER[5],
+  Digit7: BUILD_PALETTE_ORDER[6],
+  Digit8: BUILD_PALETTE_ORDER[7],
+  Digit9: BUILD_PALETTE_ORDER[8],
+  Digit0: BUILD_PALETTE_ORDER[9],
+  KeyE: "solar-extractor",
 };

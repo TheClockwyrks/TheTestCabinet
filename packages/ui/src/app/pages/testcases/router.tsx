@@ -100,9 +100,10 @@ export function testCasesRoutes() {
         path={routePatterns.testCaseArena}
         element={<TestCaseArenaPage />}
       />
-      {/* The Reference tab is shown only for an end-to-end case whose selected
-          variant carries a reference build; the page itself degrades to a short
-          placeholder for a variant that declares none. */}
+      {/* The Reference tab is shown only for a case that has a reference: a
+          deployed build, published frames, or (the performance case) the bundled
+          factory playbacks. The page itself degrades to a short placeholder for a
+          case that has none. */}
       <Route
         path={routePatterns.testCaseReference}
         element={<TestCaseReferencePage />}

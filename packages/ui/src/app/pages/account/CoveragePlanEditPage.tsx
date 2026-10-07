@@ -1,46 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
+import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import type {
   CoverageAxis,
   CoverageGroup,
   CoveragePlanInput,
   CoveragePlanOut,
+  InFlightLimit,
   ReviewPlanCase,
   ReviewPlanCombo,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
+import { SettingRow } from "../../components/SettingRow";
 import { routes } from "../../routes";
 import {
   AxisPicker,
-  BufferTargetField,
+  InFlightLimitField,
   ComboPicker,
   CasePicker,
+  DEFAULT_COVERAGE_AXIS,
 } from "./coveragePickers";
+import { DEFAULT_IN_FLIGHT_LIMIT } from "./inFlightLimit";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The backend's compiled-in review-buffer default, shown as the placeholder until
-// the account's own setting resolves. Only ever a display fallback: the number that
-// actually applies is whatever `GET /coverage-settings` reports, and an empty
-// override field defers to it rather than to this.
-const FALLBACK_BUFFER_TARGET = 10;
+/** The run target a new plan starts with, and the one its control resets to. */
+const DEFAULT_RUNS_PER_CELL = 3;
 
 // The coverage plan editor (`/account/coverage/new` and `/account/coverage/:planId/
-// edit`): name, runs-per-cell, how the plan is fed (run order, review buffer,
-// auto-top-up), the reusable groups the plan references, and any one-off
+// edit`): name, runs-per-cell, how the plan is filled (run order, runs-in-flight
+// limit), the reusable groups the plan references, and any one-off
 // combinations/cases pinned directly. Referenced groups are pointers — editing a
 // group later reshapes this plan — while one-offs live on the plan. Save creates or
 // updates and returns to the plans list. Console-only; gated on a signed-in account.
 //
-// The schedule fields travel in the save body's nested `schedule`, and the plan's
-// `paused` state is carried through untouched from what was loaded: pausing and
-// halting are the dashboard's controls, and saving an edited member list here must
-// never resume a plan somebody deliberately stopped.
+// A plan is a standing matrix, so a save applies at once: a plan that is filling
+// launches whatever cells the edit added. Saving never starts or stops filling; that
+// is the dashboard's All missing and Halt.
 export function CoveragePlanEditPage() {
   const { planId } = useParams();
   const editing = Boolean(planId);
@@ -55,19 +57,30 @@ export function CoveragePlanEditPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [runsPerCell, setRunsPerCell] = useState(3);
+  // The target every cell is filled to. Held as the text the operator typed so the
+  // field can be cleared and retyped; the save refuses while it says nothing usable.
+  const runsPerCellField = useNumberFieldState(DEFAULT_RUNS_PER_CELL, {
+    label: "Runs per cell",
+    min: 1,
+    max: 100,
+    integer: true,
+  });
+  const runsPerCell = runsPerCellField.value ?? DEFAULT_RUNS_PER_CELL;
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [caseGroupIds, setCaseGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
   const [cases, setCases] = useState<ReviewPlanCase[]>([]);
-  // How the plan is fed. `outerAxis`/`autoTopUp` default to today's behaviour so a
-  // plan created here is fed exactly as one created before this existed.
-  const [outerAxis, setOuterAxis] = useState<CoverageAxis>("case");
-  const [autoTopUp, setAutoTopUp] = useState(false);
-  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
-  // Carried, never edited here — see the note on this page's purpose above.
-  const [paused, setPaused] = useState(false);
-  const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
+  // How the plan is filled: the order its cells launch in, and its override of the
+  // account's runs-in-flight limit (null inherits it).
+  const [outerAxis, setOuterAxis] = useState<CoverageAxis>(
+    DEFAULT_COVERAGE_AXIS,
+  );
+  const [inFlightLimit, setInFlightLimit] = useState<InFlightLimit | null>(
+    null,
+  );
+  const [accountLimit, setAccountLimit] = useState<InFlightLimit>(
+    DEFAULT_IN_FLIGHT_LIMIT,
+  );
 
   useEffect(() => {
     if (!backend || !token) {
@@ -92,15 +105,13 @@ export function CoveragePlanEditPage() {
             setError("That plan no longer exists.");
           } else {
             setName(plan.name);
-            setRunsPerCell(Math.max(1, plan.runsPerCell || 1));
+            runsPerCellField.set(Math.max(1, plan.runsPerCell || 1));
             setComboGroupIds(plan.comboGroupIds);
             setCaseGroupIds(plan.caseGroupIds);
             setCombos(plan.combos);
             setCases(plan.cases);
             setOuterAxis(plan.outerAxis);
-            setAutoTopUp(plan.autoTopUp);
-            setBufferTarget(plan.bufferTarget ?? null);
-            setPaused(plan.paused);
+            setInFlightLimit(plan.inFlightLimit ?? null);
           }
         }
         setLoading(false);
@@ -116,20 +127,21 @@ export function CoveragePlanEditPage() {
       .catch(() => {
         /* optional; the model field stays free-text */
       });
-    // The account default the buffer override falls back to, fetched only so the
+    // The account default the limit override falls back to, fetched only so the
     // field can *show* what an empty value inherits. Failing to read it must not
     // block editing the plan, so the placeholder simply keeps the compiled-in
     // fallback.
     backend
       .getCoverageSettings?.(token)
-      .then((s) => active && setAccountBuffer(s.bufferTarget))
+      .then((s) => active && setAccountLimit(s.inFlightLimit))
       .catch(() => {
         /* optional; the placeholder stays the compiled-in default */
       });
     return () => {
       active = false;
     };
-  }, [backend, token, editing, planId]);
+    // `runsPerCellField.set` is referentially stable (see components/NumberField).
+  }, [backend, token, editing, planId, runsPerCellField.set]);
 
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
@@ -151,7 +163,10 @@ export function CoveragePlanEditPage() {
   const savable =
     name.trim().length > 0 &&
     (comboGroupIds.length > 0 || combos.length > 0) &&
-    (caseGroupIds.length > 0 || cases.length > 0);
+    (caseGroupIds.length > 0 || cases.length > 0) &&
+    // A plan with no run target fills nothing, so an emptied or out-of-range field
+    // refuses the save rather than being corrected in place.
+    runsPerCellField.valid;
 
   async function onSave() {
     if (!token || !savable) return;
@@ -162,16 +177,11 @@ export function CoveragePlanEditPage() {
       caseGroupIds,
       combos,
       cases,
-      schedule: {
-        outerAxis,
-        // Whatever the plan was loaded as (false for a new plan): the dashboard owns
-        // this control, and a member edit is not a decision to resume.
-        paused,
-        autoTopUp,
-        // Omitted rather than sent as 0 when there is no override — null means
-        // "inherit my account default", 0 means "never top this plan up".
-        ...(bufferTarget === null ? {} : { bufferTarget }),
-      },
+      outerAxis,
+      // Omitted when there is no override — absent means "inherit my account
+      // default", a bound of 0 means "launch nothing", and no limit means
+      // "everything at once".
+      ...(inFlightLimit === null ? {} : { inFlightLimit }),
     };
     setBusy(true);
     setError(null);
@@ -200,7 +210,7 @@ export function CoveragePlanEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit coverage plans — they are saved to your account.
+          Sign in to edit coverage plans. They are saved to your account.
         </p>
       </PageLayout>
     );
@@ -217,8 +227,6 @@ export function CoveragePlanEditPage() {
         </div>
       </header>
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
-
       {loading ? (
         <LoadingState label="Loading…" />
       ) : (
@@ -234,52 +242,42 @@ export function CoveragePlanEditPage() {
             />
           </label>
 
-          <label className={exec.runCountField}>
-            <span className={exec.fieldLabel}>Runs per cell</span>
-            <input
-              className={exec.input}
-              type="number"
-              min={1}
-              max={100}
-              step={1}
-              value={runsPerCell}
-              onChange={(e) => {
-                const n = Math.floor(Number(e.target.value));
-                setRunsPerCell(
-                  Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
-                );
-              }}
-            />
-          </label>
-
-          <p className={exec.sectionLabel}>Run order</p>
+          {/* Runs-per-cell sits with the filling rather than with the members it
+              multiplies: it is the target every cell is filled toward, so it is read
+              alongside the limit that decides how much of it runs at once. */}
+          <p className={exec.sectionLabel}>Filling the plan</p>
+          <SettingRow
+            label="Runs per cell"
+            description="How many runs every combination does on every case in the matrix."
+            help="A cell is one combination on one case. Raising this lengthens the plan rather than starting more runs at once — the runs-in-flight limit is what caps how many run together. Raise it later for more evidence; filling launches only the new shortfall."
+            modified={runsPerCellField.raw !== String(DEFAULT_RUNS_PER_CELL)}
+            onReset={() => runsPerCellField.set(DEFAULT_RUNS_PER_CELL)}
+          >
+            {(id) => (
+              // The column is too narrow to read a sentence in, so the field shows
+              // only its invalid state here and the action row below says why the
+              // save is refused.
+              <NumberField
+                id={id}
+                wrapperClassName={styles.settingNumber}
+                showProblem={false}
+                {...runsPerCellField.bounds}
+                value={runsPerCellField.raw}
+                onChange={runsPerCellField.setRaw}
+              />
+            )}
+          </SettingRow>
           <AxisPicker value={outerAxis} onChange={setOuterAxis} />
-
-          <BufferTargetField
-            value={bufferTarget}
-            accountDefault={accountBuffer}
-            onChange={setBufferTarget}
+          <InFlightLimitField
+            value={inFlightLimit}
+            accountDefault={accountLimit}
+            onChange={setInFlightLimit}
           />
-          <label className={styles.controlToggle}>
-            <input
-              type="checkbox"
-              checked={autoTopUp}
-              onChange={(e) => setAutoTopUp(e.target.checked)}
-            />
-            Top up this plan when I submit a review
-          </label>
-          <p className={styles.fieldHint}>
-            A top-up walks the cells in the order above, skips the ones already
-            at their target, and enqueues whole cases at a time until the buffer
-            is full — so a case&rsquo;s repeats arrive together and can be
-            reviewed against each other. Pausing and halting live on the
-            plan&rsquo;s dashboard.
-          </p>
 
-          <p className={exec.sectionLabel}>Model groups</p>
+          <p className={exec.sectionLabel}>Combination groups</p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet — create some on the Groups tab, or pin
+              No combination groups yet. Create some on the Groups tab, or pin
               one-off combinations below.
             </p>
           ) : (
@@ -309,7 +307,7 @@ export function CoveragePlanEditPage() {
           <p className={exec.sectionLabel}>Case groups</p>
           {caseGroupsList.length === 0 ? (
             <p className={styles.empty}>
-              No case groups yet — create some on the Groups tab, or pin one-off
+              No case groups yet. Create some on the Groups tab, or pin one-off
               cases below.
             </p>
           ) : (
@@ -334,13 +332,21 @@ export function CoveragePlanEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>
-            One-off harness / model combinations
-          </p>
+          <p className={exec.sectionLabel}>One-off combinations</p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
 
           <p className={exec.sectionLabel}>One-off test cases</p>
           <CasePicker cases={cases} onChange={setCases} />
+
+          <SubmitNotice message={error} />
+          {/* Why the save is refused, beside the button refusing it. Static rather
+              than a SubmitNotice: it is the state of the form, not the outcome of a
+              press, so it must not scroll the page to itself as the operator types. */}
+          {runsPerCellField.message && (
+            <p className={`${exec.notice} ${exec.warn}`}>
+              {runsPerCellField.message}
+            </p>
+          )}
 
           <div className={styles.editorActions}>
             <button

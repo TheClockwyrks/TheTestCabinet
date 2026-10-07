@@ -2,7 +2,7 @@
 # that serves the console in-cluster and exposes the console + the four services over
 # an INTERNAL ingress-nginx (VPN-reachable, never public) at host-per-service
 # `*.testcabinet.ai` names with TLS from cert-manager. Layered onto an environment
-# overlay via its `components:` list (today overlays/azure-prod, task-3), so the
+# overlay via its `components:` list (today overlays/prod, task-3), so the
 # including overlay's `namespace:` directive retargets these resources to that
 # environment's namespace and its `images:` transformer rewrites the tcab-web image —
 # exactly as it does the base and the postgres/observability/keyvault-csi components.
@@ -16,11 +16,13 @@
 #                          artifacts/arena, plus grafana → the observability
 #                          component's tcab-lgtm), each with a cert-manager-issued TLS
 #                          cert. The grafana route depends on the observability
-#                          component + the azure-prod overlay's auth-lockdown patch.
-#   3. clusterissuer.yaml — the cert-manager ClusterIssuer (Let's Encrypt prod,
-#                          Cloudflare DNS-01) the Ingresses reference.
-#   4. networkpolicy.yaml — admits the ingress-nginx namespace through the base's
+#                          component + the prod overlay's auth-lockdown patch.
+#   3. networkpolicy.yaml — admits the ingress-nginx namespace through the base's
 #                          default-deny-ingress to each routed service + tcab-web.
+#
+# The cert-manager ClusterIssuer the Ingresses reference (Let's Encrypt prod,
+# Cloudflare DNS-01) is cluster-scoped, so it lives in ../../cluster/internal-ingress
+# and is applied with the other cluster prerequisites.
 #
 # Prerequisites (out of band — see task-4 / the deployment runbook): the ingress-nginx
 # controller (Azure internal LB) and cert-manager (with CRDs) are Helm-installed, the
@@ -40,5 +42,4 @@ components:
 
 resources:
   - ingress.yaml
-  - clusterissuer.yaml
   - networkpolicy.yaml

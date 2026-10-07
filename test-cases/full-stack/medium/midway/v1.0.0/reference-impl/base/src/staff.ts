@@ -8,7 +8,16 @@ import { TUNE } from "./constants";
 import { applyHappiness } from "./guests";
 import { advancePath, idx, regionAt, tileAt } from "./park";
 import { inspectRide, repairRide } from "./rides";
-import type { Attraction, Cell, Cue, FxKind, Guest, Staff, StaffZone, World } from "./types";
+import type {
+  Attraction,
+  Cell,
+  Cue,
+  FxKind,
+  Guest,
+  Staff,
+  StaffZone,
+  World,
+} from "./types";
 import type { Rng } from "./rng";
 
 export interface StaffCtx {
@@ -96,7 +105,8 @@ export function findLitterTarget(s: Staff, ctx: StaffCtx): Cell | null {
   for (let row = 0; row < w.rows; row++) {
     for (let col = 0; col < w.cols; col++) {
       const t = w.tiles[idx(col, row)]!;
-      if (t.kind !== "path" || t.region !== region || t.litter <= bestLitter) continue;
+      if (t.kind !== "path" || t.region !== region || t.litter <= bestLitter)
+        continue;
       if (!inZone(col, row, s.zone)) continue;
       bestLitter = t.litter;
       best = { col, row };
@@ -160,9 +170,12 @@ export function findBrokenRide(s: Staff, ctx: StaffCtx): Attraction | null {
   let bestD = Infinity;
   for (const a of ctx.attractions) {
     if (a.category !== "ride" || a.state !== "broken" || !a.connected) continue;
-    if (regionAt(ctx.world, a.entrance.col, a.entrance.row) !== region) continue;
+    if (regionAt(ctx.world, a.entrance.col, a.entrance.row) !== region)
+      continue;
     if (!inZone(a.entrance.col, a.entrance.row, s.zone)) continue;
-    const d = Math.abs(a.entrance.col - s.tile.col) + Math.abs(a.entrance.row - s.tile.row);
+    const d =
+      Math.abs(a.entrance.col - s.tile.col) +
+      Math.abs(a.entrance.row - s.tile.row);
     if (d < bestD) {
       bestD = d;
       best = a;
@@ -178,7 +191,8 @@ function pickRideToInspect(s: Staff, ctx: StaffCtx): Attraction | null {
   let bestAge = 8; // don't bother inspecting a freshly-checked ride
   for (const a of ctx.attractions) {
     if (a.category !== "ride" || !a.connected) continue;
-    if (regionAt(ctx.world, a.entrance.col, a.entrance.row) !== region) continue;
+    if (regionAt(ctx.world, a.entrance.col, a.entrance.row) !== region)
+      continue;
     if (!inZone(a.entrance.col, a.entrance.row, s.zone)) continue;
     if (a.inspectTimer > bestAge) {
       bestAge = a.inspectTimer;
@@ -195,7 +209,8 @@ function stepEntertainer(s: Staff, dt: number, ctx: StaffCtx): void {
   for (const g of ctx.guests) {
     const dx = g.x - s.x;
     const dy = g.y - s.y;
-    if (dx * dx + dy * dy <= r2) applyHappiness(g, TUNE.guests.entertainerBoost * dt);
+    if (dx * dx + dy * dy <= r2)
+      applyHappiness(g, TUNE.guests.entertainerBoost * dt);
   }
   if (s.state === "idle") patrol(s, ctx);
   else if (s.state === "walking" && arrive(s, dt)) s.state = "idle";
@@ -242,5 +257,10 @@ function arrive(s: Staff, dt: number): boolean {
 
 function inZone(col: number, row: number, zone: StaffZone | null): boolean {
   if (!zone) return true;
-  return col >= zone.col && col < zone.col + zone.w && row >= zone.row && row < zone.row + zone.h;
+  return (
+    col >= zone.col &&
+    col < zone.col + zone.w &&
+    row >= zone.row &&
+    row < zone.row + zone.h
+  );
 }

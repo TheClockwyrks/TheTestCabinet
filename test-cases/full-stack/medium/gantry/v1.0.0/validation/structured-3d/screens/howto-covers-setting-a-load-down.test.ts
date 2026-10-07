@@ -1,0 +1,138 @@
+// screens/howto-covers-setting-a-load-down — the how-to explains setting a load
+// down on its pad, square to it.
+//
+// specs/ui.md, "How to play": "`howto` explains the game in a player's words:
+// … and setting a load down inside the tolerances." This point is the last item
+// of that list.
+//
+// WHAT THE TOLERANCES ARE is fixed by specs/rigging.md, whose "Releasing" table
+// judges a set-down on three tests: the position ("distance from lift point to
+// target position at most `PLACE_POS_TOL`"), the yaw ("the wrapped difference
+// between load yaw and target yaw at most `PLACE_YAW_TOL` degrees") and the
+// speed. This point is the position and the yaw, so the copy is asked for three
+// things: the act of setting a load down, the pad the position is measured to,
+// and the load being square to it.
+//
+// NO FIGURE IS ASKED FOR. specs/ui.md wants the how-to "in a player's words",
+// and a player is told to put the load down on its pad and square, not to put it
+// down within `0.5` units and `10` degrees — so a check that demanded the
+// numbers would fail a build that explained the rule exactly as asked.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { drawnTextLines } from "../case-harness/index";
+import { createHarness, type Harness } from "../harness";
+
+/** Setting a load down, the pad it goes on, and being square to it. */
+const TOPICS = [
+  {
+    topic: "setting the load down",
+    terms: [
+      /\breleases?\b/i,
+      /\bsets? .{0,20}down\b/i,
+      /\bsetting .{0,20}down\b/i,
+      /\bputs? .{0,20}down\b/i,
+      /\bset down\b/i,
+      /\bdrops? it\b/i,
+    ],
+  },
+  {
+    topic: "the pad it goes on",
+    terms: [/\bpads?\b/i, /\btargets?\b/i, /\bfootprints?\b/i],
+  },
+  {
+    topic: "being square to the pad",
+    terms: [
+      /\bsquare/i,
+      /\byaw\b/i,
+      /\baligned?\b/i,
+      /\blined up\b/i,
+      /\bturned\b/i,
+      /\bstraight\b/i,
+      /\bangle\b/i,
+      /\bfacing\b/i,
+      /\borientation\b/i,
+    ],
+  },
+] as const;
+
+/* -------------------------------------------------------------------------- */
+/* Reading the copy the how-to screen drew                                    */
+/* -------------------------------------------------------------------------- */
+//
+// The how-to screen is words, so this point is decided on the words the frame
+// actually drew. The harness records every operation the game makes on the
+// screen layer — the 2D pass the engine composites over the WebGL yard — and
+// `h.screenCalls()` hands that record back with every text call measured, so
+// `drawnTextLines` can fold the frame's `fillText` and `strokeText` calls into
+// the logical runs they spell. A build that letter-spaces a heading draws it a
+// glyph per call, and the specification fixes the copy and not its spacing, so
+// the copy is read off the runs and never off the call split. It answers the
+// last CLOSED frame, so a frame is advanced before it is read.
+//
+// MATCHING IS BY TERM, NEVER BY SENTENCE. specs/ui.md fixes WHAT the how-to
+// screen explains and leaves every word of it to the build ("in a player's
+// words"), so a check that wanted a phrase would fail a build that explained the
+// same thing perfectly well in different words. What it looks for is the game's
+// own vocabulary — the names specs/controls.md, specs/program.md and
+// specs/structure.md give the things being explained — with the ordinary
+// synonyms a player's words would reach for.
+
+/**
+ * Every run of text the how-to screen drew, folded into one block.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ */
+async function howtoCopy(h: Harness): Promise<string> {
+  await h.debug.setScreen("howto");
+  await h.advance(1);
+  return drawnTextLines(await h.screenCalls()).join("\n");
+}
+
+/** The topics the copy does not name, in the order they are listed. */
+function unnamed(
+  copy: string,
+  topics: readonly {
+    readonly topic: string;
+    readonly terms: readonly RegExp[];
+  }[],
+): string {
+  return topics
+    .filter(({ terms }) => !terms.some((term) => term.test(copy)))
+    .map(({ topic }) => topic)
+    .join(", ");
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("names setting a load down on its pad and square to it", async () => {
+  const copy = await howtoCopy(h);
+  await h.capture("howto-release", "The how-to copy on setting a load down");
+
+  assertGreaterThan(
+    copy.length,
+    0,
+    "the length of the copy the how-to screen drew (specs/ui.md)",
+  );
+
+  assertEqual(
+    unnamed(copy, TOPICS),
+    "",
+    "what the how-to copy leaves unnamed of setting a load down, the pad it " +
+      "goes on, and being square to it (specs/ui.md, specs/rigging.md)",
+  );
+});

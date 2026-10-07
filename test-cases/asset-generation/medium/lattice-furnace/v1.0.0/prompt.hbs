@@ -1,0 +1,50 @@
+Draw the **Lattice furnace**, a 12-frame **sprite sheet** of a top-down coal-fired
+smelter in a factory simulation, using only the drawing tool.
+
+The furnace is a renderer sprite for **Lattice**, a flat top-down factory
+simulation. It is a compact **2×2 smelter** that burns **coal** to melt ore into
+plates, drawn from straight above and **non-directional** (symmetric, never rotated
+by the renderer). The twelve frames form two loops: an **off** idle (frames 0–3)
+where the firebox is cold and dark, and a **smelting** loop (frames 4–11) where the
+firebox blazes with a roiling fire and a pulsing white-hot core. Draw the furnace and
+its **coal fuel**, but **no ore or plate** — the renderer draws the items the furnace
+is smelting, so a fixed ore baked in would wrongly show the same cargo every frame.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. You
+build the sheet by calling it **one operation at a time**, each targeting a frame
+with `--frame <index>`. The ordered operations you issue are recorded to a per-frame
+action log, and that log is your submission.
+
+Each frame is its **own separate 64×64 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-rect --frame 0 --x 5 --y 5 --width 54 --height 54 --color "#5a6472"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the furnace sprite sheet up operation by operation until each
+`frames/<index>.png` matches the brief: a flat top-down 2×2 coal-fired smelter on
+the shared steel chassis, its coal fuel drawn and no ore drawn, with a cold dark
+firebox in the off frames (0–3) and a blazing, roiling firebox with a pulsing
+white-hot core in the smelting frames (4–11), each loop seamless and the chassis
+holding still. When you are satisfied, stop: the recorded per-frame action logs are
+your finished submission.

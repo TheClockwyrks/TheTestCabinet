@@ -1,15 +1,15 @@
 //! The `ladder_rung` table: one step of a [`ladder`](crate::ladder)'s climb.
 //!
-//! A rung is exactly one test case, pinned to an exact `(slug, version, variant)` —
-//! the same triple a coverage plan's cases carry — plus its place in the ordering.
+//! A rung is exactly one test case, pinned to an exact `(slug, version, variant, engine)`
+//! — the same pin a coverage plan's cases carry — plus its place in the ordering.
 //! Rungs are real rows rather than a JSON list on the ladder because they are
 //! ordered, individually reorderable, individually re-pinnable, and referenced by id
-//! from every recorded outcome.
+//! from every dispatch's snapshot and recorded outcome.
 //!
-//! The case a rung names must be a **reviewable** test type: the gate reads this
-//! account's reviews, and the auto-graded types are excluded from the unreviewed
-//! queue entirely, so a rung holding one would never resolve. That is enforced where
-//! rungs are written, not by the schema.
+//! The case a rung names must be a **validator-rated** version: the gate reads only the
+//! validators' rating, so a rung holding a version whose functional rating only a
+//! reviewer supplies would never resolve. That is enforced where rungs are written and
+//! again at Run, not by the schema.
 
 use sea_orm::entity::prelude::*;
 
@@ -20,10 +20,11 @@ pub struct Model {
     /// primary key.
     ///
     /// Deliberately not the position: rungs get reordered and re-pinned to newer case
-    /// versions, and every [`ladder_outcome`](crate::ladder_outcome) references this
-    /// id, so it has to survive both. A positional identifier would silently
-    /// reattribute a combination's recorded verdicts to a different case the moment
-    /// the ladder was reordered.
+    /// versions, and a dispatch's snapshot, its jobs' origins and its
+    /// [`ladder_dispatch_outcome`](crate::ladder_dispatch_outcome) rows all reference
+    /// this id, so it has to survive both. A positional identifier would silently
+    /// reattribute a climber's recorded verdicts to a different case the moment the
+    /// ladder was reordered.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     /// The owning ladder's id.
@@ -39,6 +40,15 @@ pub struct Model {
     pub version: String,
     /// The variant to climb (e.g. `base`).
     pub variant: String,
+    /// The engine to climb on (e.g. `simple-2d`), or `NULL` for the `none` engine — the
+    /// engineless run every case supports, and what every rung declared before the
+    /// column existed asked for.
+    ///
+    /// Part of the pin because a result is only comparable within one engine: the same
+    /// case at the same version and variant on two engines is two rungs, and each is
+    /// counted and gated on its own.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub engine: Option<String>,
     /// This rung's override of the ladder's `runs_per_cell`, or `NULL` to inherit it.
     /// Lets a pivotal step demand more evidence than the rest of the climb without
     /// making every rung more expensive.

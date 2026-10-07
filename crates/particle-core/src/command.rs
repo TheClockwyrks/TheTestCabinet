@@ -61,7 +61,7 @@ impl Command {
 }
 
 /// Append one [`Op`] to the configured log, reporting the log's new size — unless it
-/// would push the system past the live-particle [budget](crate::budget), in which case
+/// would push the system past the live-particle [budget], in which case
 /// nothing is recorded and the projection is reported instead.
 ///
 /// The check runs on every operation rather than only the obviously expensive ones,

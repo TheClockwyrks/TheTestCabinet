@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
-import { Pagination } from "@test-cabinet/ui";
+import { Pagination } from "@clockwyrks/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { RunFilters } from "../../components/RunFilters";
 import { useRunFilters } from "../../components/useRunFilters";
 import { useResetPageOnChange } from "../../components/usePagedSearchParams";
@@ -28,18 +29,21 @@ const PAGE_SIZE = 20;
 // here the full history is browsable a page at a time. Each page is a server query
 // (the console's backend offset endpoint, the static site's in-memory index), so
 // only one page of summaries is ever held: a header sort re-queries in that order,
-// and the filter bar's debounced search and equality facets narrow server-side. An
-// unpublished (and so unreviewed) run takes its place in that one sorted, paged
-// order — the consoles draw from the backend's `any` slice rather than merging a
-// locally-held worklist in ahead of it. Only in-progress runs, which have no record
-// to list yet, are still pinned to the first page.
+// and the filter bar's debounced search (test case, harness, model, or gg
+// configuration) and equality facets narrow server-side. An unpublished (and so
+// unreviewed) run takes its place in that one sorted, paged order — the consoles
+// draw from the backend's `any` slice rather than merging a locally-held worklist
+// in ahead of it. Only in-progress runs, which have no record to list yet, are
+// still pinned to the first page.
 export function RunsPage() {
   const { canExecute, localIds, writeups, queryRunSummaries } =
     useGalleryData();
   const { inProgress, refreshToken } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const findModel = useFindModel();
   const filters = useRunFilters();
-  const { page, setPage, committedQuery, facets, latestVersions } = filters;
+  const { page, setPage, committedQuery, facets, latestVersions, ggConfigId } =
+    filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -77,15 +81,20 @@ export function RunsPage() {
   });
   const { sort, dir } = sortStateToQuery(table.controls.sort);
 
-  // Fetch one page whenever the search, the active sort, or the page changes. The
-  // prior rows stay on screen until the new page resolves (no empty flash).
+  // Fetch one page whenever the search, the active sort, or the page changes — and
+  // whenever the runs runtime bumps its refresh token, which is what a run
+  // FINISHING does. The prior rows stay on screen until the new page resolves (no
+  // empty flash).
   //
-  // Re-queried on `refreshToken` as well as the usual inputs, the same as the
-  // Unpublished and Failures tabs: a run that finishes leaves the in-flight list
-  // above and becomes a record that belongs in this listing, and without this the
-  // row would simply vanish until the next navigation went and looked. That token
-  // is bumped by the console stream's `finished` run events, so a completed run now
-  // takes its place in the list as it happens.
+  // That last dependency is load-bearing, not a nicety. The listing is entirely
+  // server-paged, while a run still executing exists only in the runtime's
+  // in-progress list — so the moment it completes the runtime prunes it from that
+  // list and the run lives solely in the record this query returns. Without the
+  // re-query it vanishes from the page it was just on until a reload, which is
+  // exactly what a filtered listing made obvious: the live row matching the filter
+  // disappeared on completion rather than settling into place as a finished one.
+  // The same token also fires on a publish, a kill, and a delete, each of which
+  // reshapes this listing too.
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -101,6 +110,10 @@ export function RunsPage() {
       version: facets.version || undefined,
       harness: facets.harness || undefined,
       model: facets.model || undefined,
+      // Set only by a coverage cell's Runs link, which narrows to the runs behind
+      // one cell's figure. The bar carries no control for it (see
+      // `useRunFilters`), so it reaches the query straight from the URL.
+      ggConfigId: ggConfigId || undefined,
       latestVersions,
       sort,
       dir,
@@ -123,6 +136,7 @@ export function RunsPage() {
     page,
     needle,
     facets,
+    ggConfigId,
     latestVersions,
     sort,
     dir,
@@ -134,12 +148,14 @@ export function RunsPage() {
   // same way, so jump back to the first page here.
   useResetPageOnChange(setPage, `${sort}:${dir}`);
 
+  // The backend's `total` counts exactly the rows the same query can serve, so a
+  // page this sizes is a page that holds rows.
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
 
-  // If the result set shrank under the current page (the total dropped below the
-  // requested offset), fall back onto the last real page so the list can't strand
-  // on an out-of-range, empty window.
+  // If the result set shrank under the current page (a run deleted or unpublished
+  // between the pager being sized and this read), fall back onto the last real page
+  // so the list can't strand on an out-of-range, empty window.
   useEffect(() => {
     if (!loading && page > pageCount - 1)
       setPage(pageCount - 1, { replace: true });
@@ -151,23 +167,27 @@ export function RunsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--runs"
-          blink
-          comment={<>// every result the cabinet has produced</>}
-        />
-        {canExecute && (
-          <div className={exec.headerActions}>
-            <Link className={exec.secondary} to={routes.accountCoverage()}>
-              Coverage plans
-            </Link>
-            <Link className={exec.primary} to={routes.runNew()}>
-              + New run
-            </Link>
-          </div>
-        )}
-      </div>
+      {/* Both of the header's rows are the header's own, so both run the full width of
+          the page: the stop cluster's trailing edge lines up with the New-run button's
+          rather than stopping short of it. */}
+      <PromptHeader
+        command="--runs"
+        blink
+        comment={<>// every result the cabinet has produced</>}
+        titleActions={
+          canExecute ? (
+            <>
+              <Link className={exec.secondary} to={routes.accountCoverage()}>
+                Coverage plans
+              </Link>
+              <Link className={exec.primary} to={routes.runNew()}>
+                + New run
+              </Link>
+            </>
+          ) : undefined
+        }
+        actions={canStop ? <StopRunsControls /> : undefined}
+      />
 
       <div className={styles.controls}>
         <RunsTabs active="runs" />
@@ -212,9 +232,11 @@ export function RunsPage() {
 }
 
 // Case-insensitive haystack for an in-progress run: its test case (display name
-// and slug), harness, model (catalog name and raw id), and variant. Finished rows
-// are narrowed by the server's own free-text match over the recorded identity
-// columns; an in-progress run has no record to query, so it is matched here.
+// and slug), harness, model (catalog name and raw id), variant, and — for a gg run
+// — the configuration name its row shows in place of the model. Finished rows are
+// narrowed by the server's own free-text match over the recorded identity columns
+// (which include the lifted gg configuration name); an in-progress run has no
+// record to query, so it is matched here.
 function activeSearchText(
   run: InProgressRun,
   findModel: (id: string, harness?: string) => ModelSummary | undefined,
@@ -227,6 +249,7 @@ function activeSearchText(
     run.variant,
     model?.name ?? "",
     run.modelId,
+    run.ggPreset ?? "",
   ]
     .join(" ")
     .toLowerCase();

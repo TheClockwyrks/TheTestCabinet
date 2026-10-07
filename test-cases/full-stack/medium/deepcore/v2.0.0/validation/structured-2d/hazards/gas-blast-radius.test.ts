@@ -1,0 +1,132 @@
+// hazards/gas-blast-radius — the blast reaches GAS_BLAST_TILES and no further.
+//
+// `specs/hazards.md` bounds the damage by distance: a detonation deals its hull
+// "when the miner's center is within `GAS_BLAST_TILES` of the pocket's center,
+// and nothing beyond that radius". So one pocket is detonated with the miner's
+// centre one tile from it and another with the miner's centre two tiles from it,
+// on either side of the stated `1.5`, and the hull is read at each.
+//
+// WHY THE POCKET IS BLOWN RATHER THAN DRILLED. A drill reaches one cell, so a
+// miner drilling a pocket is always inside the radius; there is no way to cut a
+// cell two tiles away. `specs/items.md` gives the other trigger — "A gas pocket
+// in the block detonates exactly as a drilled one does" — and Plastic Explosives
+// clear the `5x5` block centred on the miner, which reaches two cells out. Both
+// halves of this check use it, so the two readings differ in the distance alone.
+//
+// Travel is gated so the shove cannot carry the miner across the boundary the
+// check is measuring, and the drill is gated because nothing here is cut.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { GAS_BLAST_TILES, PLASTIC_EXPLOSIVES_RADIUS, TILE } from "../constants";
+import {
+  captureReplay,
+  cellCenter,
+  createHarness,
+  minerCenter,
+  openScene,
+  pinDrill,
+  pinMiner,
+  standOn,
+  type CellRef,
+  type Harness,
+  type TileRead,
+} from "../harness";
+import { armHull, bandRow, HAZARD_COL } from "./scene";
+
+/** The tier whose hull survives a rockbed detonation with room to read it. */
+const HULL_TIER = 5;
+
+/**
+ * The frames the recording runs before the first input and after the last.
+ *
+ * These bound the CLIP a reviewer watches, not the check: nothing below is
+ * asserted against them. A bracket that opened on the input and closed on the
+ * result would hand a reviewer a flicker a few frames long, so the recorder is
+ * armed with the world at rest and runs on once the behavior has settled.
+ */
+const RUN_UP = 15;
+const SETTLE_FRAMES = 30;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/**
+ * Stand the miner on `(HAZARD_COL, floorRow)`, pose a pocket `offset` cells to
+ * its east, blow the block, and report the hull lost and the distance the blast
+ * was read at.
+ */
+async function blastAt(
+  floorRow: number,
+  offset: number,
+): Promise<{ tiles: number; pocket: CellRef; loss: number; tile: TileRead }> {
+  standOn(h, HAZARD_COL, floorRow);
+  h.debug.setItemCount("plastic-explosives", 1);
+  armHull(h, HULL_TIER);
+  // A frame before the pose is read, so the cell the snapshot puts the miner in
+  // is one the build's own tick has settled on rather than one read between a
+  // pose and the next tick.
+  await h.advance(1);
+  const posed = h.snapshot();
+  const pocket: CellRef = {
+    col: posed.miner.col + offset,
+    row: posed.miner.row,
+  };
+  h.debug.setTile(pocket.col, pocket.row, "gas");
+  // The run-up: the pocket sits there, undetonated, with the world at rest, so
+  // the recording opens on the arrangement rather than on the flash.
+  await h.advance(RUN_UP);
+
+  const centre = minerCenter(posed.miner);
+  const at = cellCenter(pocket.col, pocket.row);
+  const tiles = Math.hypot(centre.x - at.x, centre.y - at.y) / TILE;
+
+  h.debug.useItem("plastic-explosives");
+  await h.advance(SETTLE_FRAMES);
+  const after = h.snapshot();
+  return {
+    tiles,
+    pocket,
+    loss: posed.miner.hull - after.miner.hull,
+    tile: h.tileAt(pocket.col, pocket.row),
+  };
+}
+
+it("costs hull inside the radius and nothing at all beyond it", async () => {
+  openScene(h);
+  pinMiner(h);
+  pinDrill(h);
+  const row = bandRow(h.snapshot(), "rockbed");
+
+  const readings = await captureReplay(h, "radius", async () => {
+    const near = await blastAt(row, 1);
+    const far = await blastAt(row + 6, PLASTIC_EXPLOSIVES_RADIUS);
+    return { near, far };
+  });
+
+  // Both pockets really did detonate: each cell is open tunnel afterwards.
+  assertEqual(readings.near.tile.kind, "tunnel", "specs/items.md");
+  assertEqual(readings.far.tile.kind, "tunnel", "specs/items.md");
+
+  // The near pose was inside the radius and the far pose outside it.
+  assertLessThan(readings.near.tiles, GAS_BLAST_TILES, "specs/hazards.md");
+  assertGreaterThan(readings.far.tiles, GAS_BLAST_TILES, "specs/hazards.md");
+
+  assertGreaterThan(
+    readings.near.loss,
+    0,
+    "specs/hazards.md, a detonation inside the radius",
+  );
+  assertEqual(
+    readings.far.loss,
+    0,
+    "specs/hazards.md, a detonation beyond the radius",
+  );
+});

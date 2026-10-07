@@ -1,0 +1,14 @@
+# The `warhead` case showcase, captured from `references/structured-2d/warhead` in
+# live play. `showcase/capture/README.md` records how each file was produced.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "Half a minute of play, armored rocks worn down and torpedoes spent"
+
+[[media]]
+file = "mid-wave.png"
+name = "A mid-wave field, the torpedo charge rebuilding"
+
+[[media]]
+file = "torpedo-run.png"
+name = "A torpedo closing on the rock it destroys"

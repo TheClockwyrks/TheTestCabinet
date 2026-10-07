@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunVariantState } from "../../../data/useRunVariant";
 import { RunInputsPage } from "./RunInputsPage";
@@ -28,7 +28,8 @@ const RESOLVED: RunVariantState = {
     referenceScreenshots: [],
     reviewItems: [],
     domains: [],
-    referenceBuild: null,
+    validatorRated: false,
+    referenceBuilds: {},
     referenceSheet: null,
   },
   status: "ready",
@@ -68,17 +69,18 @@ function run(): RunRecord {
 
 describe("RunInputsPage", () => {
   // The seeded READMEs are inputs like any other, so they belong in the same
-  // accordion, under the paths the model read them at.
+  // file tree, under the paths the model read them at, grouped apart from the
+  // variant's own inputs.
   it("lists each seeded previous entry as an input file", () => {
     render(<RunInputsPage />);
 
     expect(
-      screen.getByText("previous-entries/entry-01.md"),
+      screen.getByRole("button", { name: "previous-entries/entry-01.md" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("previous-entries/entry-02.md"),
+      screen.getByRole("button", { name: "previous-entries/entry-02.md" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Previous entry")).toHaveLength(2);
+    expect(screen.getByText("Previous entries")).toBeInTheDocument();
   });
 
   // Inline, in full — the point of recording the READMEs on the run is that what

@@ -82,7 +82,7 @@ run image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sampl
 and committed under [`assets/`](assets/) — see the case's `specs/assets.md`, whose
 electrical-VFX section is the headline. At runtime the game only *loads* those committed
 files; the tools are not invoked by the build. The particle bursts are played live through
-**`@test-cabinet/particle-runtime`** (vendored under [`vendor/`](vendor/) so a plain
+**`@clockwyrks/particle-runtime`** (vendored under [`vendor/`](vendor/) so a plain
 `npm ci` resolves it outside the monorepo), and the sounds through the Web Audio API.
 
 ## Controls
@@ -172,6 +172,6 @@ served from any base path, including a per-run sub-path.
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems, and
   audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime`.
+  `@clockwyrks/particle-runtime`.
 - [`scripts/`](scripts/) — the asset-generation scripts (`gen-*.sh`) that produce the
   sprites, sprite-sheets, particle systems, and audio under `assets/`.

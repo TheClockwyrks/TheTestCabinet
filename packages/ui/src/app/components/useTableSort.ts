@@ -98,7 +98,9 @@ function compareKeys(a: string | number, b: string | number): number {
 export function sortRows<T>(
   rows: readonly T[],
   sort: SortState | null,
-  sortKeyFor: (columnId: string) => ((row: T) => string | number | null) | undefined,
+  sortKeyFor: (
+    columnId: string,
+  ) => ((row: T) => string | number | null) | undefined,
 ): T[] {
   if (!sort) return [...rows];
   const key = sortKeyFor(sort.columnId);
@@ -113,7 +115,10 @@ export function sortRows<T>(
     }
     // Both non-null here (the guard above returned otherwise); TS can't narrow
     // across the two decorated objects, so assert it.
-    const base = compareKeys(a.value as string | number, b.value as string | number);
+    const base = compareKeys(
+      a.value as string | number,
+      b.value as string | number,
+    );
     if (base !== 0) return sort.direction === "asc" ? base : -base;
     return a.index - b.index;
   });

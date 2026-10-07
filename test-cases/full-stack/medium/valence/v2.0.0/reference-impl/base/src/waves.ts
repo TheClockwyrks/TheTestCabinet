@@ -41,12 +41,37 @@ interface Group {
 }
 
 // Group constructors, one per roster entry, so a table row reads as its composition.
-const a = (n: number, electrons: number): Group => ({ type: "atom", n, electrons });
-const shielded = (n: number, electrons: number): Group => ({ type: "noble", n, electrons, inert: true });
-const dimer = (n: number, inert = false): Group => ({ type: "dimer", n, inert });
-const isotope = (n: number, inert = false): Group => ({ type: "heavy", n, inert });
-const polymer = (n: number, inert = false): Group => ({ type: "polymer", n, inert });
-const lattice = (n: number, inert = false): Group => ({ type: "lattice", n, inert });
+const a = (n: number, electrons: number): Group => ({
+  type: "atom",
+  n,
+  electrons,
+});
+const shielded = (n: number, electrons: number): Group => ({
+  type: "noble",
+  n,
+  electrons,
+  inert: true,
+});
+const dimer = (n: number, inert = false): Group => ({
+  type: "dimer",
+  n,
+  inert,
+});
+const isotope = (n: number, inert = false): Group => ({
+  type: "heavy",
+  n,
+  inert,
+});
+const polymer = (n: number, inert = false): Group => ({
+  type: "polymer",
+  n,
+  inert,
+});
+const lattice = (n: number, inert = false): Group => ({
+  type: "lattice",
+  n,
+  inert,
+});
 
 // The round table (specs/matter.md). Groups are listed in release order.
 const WAVE_TABLE: Group[][] = [
@@ -114,7 +139,11 @@ function bossCount(round: number): number {
   return BOSS_ROUNDS.includes(round) ? 1 : 0;
 }
 
-export function buildWave(round: number, _mode: CampaignMode, pathCount = 2): Wave {
+export function buildWave(
+  round: number,
+  _mode: CampaignMode,
+  pathCount = 2,
+): Wave {
   const r = Math.max(1, Math.min(TOTAL_ROUNDS, Math.round(round)));
   const lanes = Math.max(1, pathCount);
   const groups: Group[] = [...(WAVE_TABLE[r - 1] ?? [])];
@@ -126,7 +155,8 @@ export function buildWave(round: number, _mode: CampaignMode, pathCount = 2): Wa
   // minimum (specs/matter.md). Once rounds are large the factor is 1 and has no effect.
   let natural = 0;
   for (const g of groups) natural += g.n * BURST_MS[g.type] + GROUP_GAP_MS;
-  const stretch = natural > 0 && natural < MIN_SPAN_MS ? MIN_SPAN_MS / natural : 1;
+  const stretch =
+    natural > 0 && natural < MIN_SPAN_MS ? MIN_SPAN_MS / natural : 1;
 
   const events: SpawnEvent[] = [];
   let t = 600;
@@ -134,7 +164,13 @@ export function buildWave(round: number, _mode: CampaignMode, pathCount = 2): Wa
   for (const g of groups) {
     const step = BURST_MS[g.type] * stretch;
     for (let i = 0; i < g.n; i++) {
-      events.push({ atMs: Math.round(t), type: g.type, lane, electrons: g.electrons, inert: g.inert });
+      events.push({
+        atMs: Math.round(t),
+        type: g.type,
+        lane,
+        electrons: g.electrons,
+        inert: g.inert,
+      });
       // Rotate lanes WITHIN the group, so on a multi-path map every path receives the same
       // kind of matter at the same time (specs/board.md).
       lane = ((lane + 1) % lanes) as Lane;
@@ -143,10 +179,22 @@ export function buildWave(round: number, _mode: CampaignMode, pathCount = 2): Wa
     t += GROUP_GAP_MS * stretch;
   }
 
-  const durationMs = events.length ? events[events.length - 1]!.atMs + 1200 : 1200;
+  const durationMs = events.length
+    ? events[events.length - 1]!.atMs + 1200
+    : 1200;
 
   // Distinct types, in a stable preview order.
-  const order: MatterType[] = ["atom", "noble", "dimer", "polymer", "lattice", "heavy", "chelate", "shroud", "macromass"];
+  const order: MatterType[] = [
+    "atom",
+    "noble",
+    "dimer",
+    "polymer",
+    "lattice",
+    "heavy",
+    "chelate",
+    "shroud",
+    "macromass",
+  ];
   const present = new Set(events.map((e) => e.type));
   const types = order.filter((t2) => present.has(t2));
 

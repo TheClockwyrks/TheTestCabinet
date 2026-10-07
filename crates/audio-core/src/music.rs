@@ -12,6 +12,7 @@ use crate::effect::Effect;
 use crate::format::{Channels, RenderParams};
 use crate::midi::{MidiNote, MidiScore, MidiTrack, TICKS_PER_QUARTER};
 use crate::sample::SampleLibrary;
+use crate::staged::PackKind;
 use crate::synth::{EnvCurve, Envelope, Voice, Wave};
 
 /// The default tempo when a piece sets none.
@@ -335,13 +336,14 @@ pub fn parse_pitch(s: &str) -> Result<u8, String> {
     Ok(midi as u8)
 }
 
-/// Render the folded piece to interleaved PCM. `library` supplies bank instruments
-/// (pass `None` — or leave it empty — to render bank instruments as a fallback synth).
+/// Render the folded piece to interleaved PCM. `library` supplies the bank
+/// instruments, so a track whose instrument is neither a synth waveform nor an
+/// instrument the library carries is an error naming that instrument.
 pub fn render_music(
     project: &MusicProject,
     params: &RenderParams,
     library: Option<&SampleLibrary>,
-) -> Vec<f32> {
+) -> Result<Vec<f32>, String> {
     let chan = params.channels.count();
     let beat_ms = project.beat_ms();
     // Clip length = the latest note end, capped at the format max.
@@ -362,7 +364,7 @@ pub fn render_music(
     for track in &project.tracks {
         let mut track_buf = vec![0.0f32; clip_samples];
         let env = track_env(track);
-        let instrument = resolve_instrument(&track.instrument, library);
+        let instrument = resolve_instrument(&track.name, &track.instrument, library)?;
         for note in &track.notes {
             match &instrument {
                 Instrument::Synth(wave) => {
@@ -400,7 +402,7 @@ pub fn render_music(
         pan_into(&mut mix, &track_buf, track.pan, params);
     }
     normalize_peak(&mut mix);
-    mix
+    Ok(mix)
 }
 
 /// The amplitude envelope for a track's notes: its preset, or a musical default.
@@ -441,26 +443,42 @@ struct SampledInstrument {
 }
 
 /// Resolve an instrument name to a playable voice. A synth waveform name maps to that
-/// oscillator; otherwise, if the name is a baked bank instrument, it plays that sample.
-/// A bank instrument with no baked audio (an empty/absent library) falls back to a
-/// mellow triangle, so a run still renders without a pack (a graceful degrade).
-fn resolve_instrument(instrument: &str, library: Option<&SampleLibrary>) -> Instrument {
+/// oscillator; otherwise the name addresses an instrument in the run's bank and plays
+/// its sample. A name that is neither is an error naming the track it was declared on,
+/// so a typo or a bank the run does not carry is reported rather than played as some
+/// other instrument.
+fn resolve_instrument(
+    track: &str,
+    instrument: &str,
+    library: Option<&SampleLibrary>,
+) -> Result<Instrument, String> {
     match instrument.to_ascii_lowercase().as_str() {
-        "sine" => return Instrument::Synth(Wave::Sine),
-        "square" => return Instrument::Synth(Wave::Square),
-        "saw" | "sawtooth" => return Instrument::Synth(Wave::Saw),
-        "triangle" => return Instrument::Synth(Wave::Triangle),
-        "noise" => return Instrument::Synth(Wave::Noise),
+        "sine" => return Ok(Instrument::Synth(Wave::Sine)),
+        "square" => return Ok(Instrument::Synth(Wave::Square)),
+        "saw" | "sawtooth" => return Ok(Instrument::Synth(Wave::Saw)),
+        "triangle" => return Ok(Instrument::Synth(Wave::Triangle)),
+        "noise" => return Ok(Instrument::Synth(Wave::Noise)),
         _ => {}
     }
-    match load_bank_instrument(instrument, library) {
-        Some(sampled) => Instrument::Sample(sampled),
-        None => Instrument::Synth(Wave::Triangle),
-    }
+    load_bank_instrument(instrument, library)
+        .map(Instrument::Sample)
+        .ok_or_else(|| {
+            let bank = match library.filter(|lib| !lib.is_empty()) {
+                Some(lib) => format!(
+                    "an instrument in {} (browse it with `list-instruments`)",
+                    lib.describe(PackKind::InstrumentBank)
+                ),
+                None => PackKind::InstrumentBank.none_staged(),
+            };
+            format!(
+                "track `{track}`: instrument `{instrument}` is neither a synth waveform \
+                 (sine, square, saw, triangle, noise) nor {bank}"
+            )
+        })
 }
 
-/// Load a bank instrument's baked sample, or `None` if there is no library, no entry
-/// named `instrument` (matched case-sensitively, as authored), or no baked audio.
+/// Load a bank instrument's sample, or `None` if there is no library, no entry named
+/// `instrument` (matched case-sensitively, as authored), or no audio behind it.
 fn load_bank_instrument(
     instrument: &str,
     library: Option<&SampleLibrary>,

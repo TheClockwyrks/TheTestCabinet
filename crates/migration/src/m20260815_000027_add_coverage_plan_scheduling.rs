@@ -16,7 +16,8 @@
 //!   dispatcher changes.
 //! - `buffer_target` overrides the account-wide default in `coverage_settings` for
 //!   this one plan. Nullable, because "no override" must be distinguishable from
-//!   an explicit `0`; the account default applies when it is `NULL`.
+//!   an explicit `0`; the account default applies when it is `NULL`. A negative
+//!   value is the third instruction, "no bound" (see the entity's docs).
 //! - `auto_top_up` decides whether submitting a review re-runs the top-up for this
 //!   plan, and `paused` suspends topping up entirely without touching the queue
 //!   (the milder of the three halting controls — `halt` additionally cancels).
@@ -62,7 +63,8 @@ impl MigrationTrait for Migration {
                 .default(false)
                 .to_owned(),
             // Nullable: `NULL` means "use the account's `coverage_settings` default",
-            // which is a different statement from an explicit buffer of `0`.
+            // which is a different statement from an explicit buffer of `0` — or from
+            // a negative value, which the backend reads as "no bound".
             ColumnDef::new(CoveragePlan::BufferTarget)
                 .integer()
                 .to_owned(),

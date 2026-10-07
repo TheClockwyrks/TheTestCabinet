@@ -1,0 +1,49 @@
+// The **programs** module's implementation: the lowering, the call and the lift.
+//
+// Nothing here is model-facing — every word a model reads about these functions is on their
+// declarations, in `gg/programs.hpp`.
+
+#include "gg/programs.hpp"
+
+#include "runtime.hpp"
+#include "wire.hpp"
+
+namespace gg {
+
+namespace programs {
+
+std::vector<programs::program_summary> history() {
+  test_cabinet_gg_programs_list_program_summary_t ret{};
+  test_cabinet_gg_types_api_error_t err{};
+  if (!test_cabinet_gg_programs_history(&ret, &err)) detail::fail(err);
+  std::vector<programs::program_summary> summaries =
+      detail::lift_each(ret.ptr, ret.len, detail::lift_program_summary);
+  test_cabinet_gg_programs_list_program_summary_free(&ret);
+  return summaries;
+}
+
+std::string get(std::string_view id) {
+  detail::scratch scratch;
+  sandbox_string_t lowered = scratch.str(id);
+  sandbox_string_t ret{};
+  test_cabinet_gg_types_api_error_t err{};
+  if (!test_cabinet_gg_programs_get(&lowered, &ret, &err)) detail::fail(err);
+  std::string source = detail::lift(ret);
+  sandbox_string_free(&ret);
+  return source;
+}
+
+void rerun(std::string_view source) {
+  detail::scratch scratch;
+  sandbox_string_t lowered = scratch.str(source);
+  test_cabinet_gg_types_api_error_t err{};
+  if (!test_cabinet_gg_programs_rerun(&lowered, &err)) detail::fail(err);
+}
+
+// The member function the summary offers, which is the same capability reached from the value that
+// already carries the id.
+std::string program_summary::source() const { return programs::get(id); }
+
+}  // namespace programs
+
+}  // namespace gg

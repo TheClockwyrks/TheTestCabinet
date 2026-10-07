@@ -1,93 +1,88 @@
-// Assemble a baked audio sample pack / instrument bank from a committed manifest.
+// Publish the normalized audio objects one pack needs into the audio object store.
 //
-// `sfx-sample`'s **sample library** and `music`'s **instrument bank** are the fixed
-// audio palettes those tools ship with, baked into their run-container image at build
-// time (a run container is offline, so nothing is fetched at run time). The audio
-// files themselves are NOT committed to this repository — see
-// `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md`
-// ("The sample library") and `containers/README.md`
-// ("The sample library and instrument bank"). What the repo commits is a small
-// per-pack manifest, `containers/sample-packs/<pack>.toml`, listing for each entry a
-// stable `name`, `tags`, `description`, permissive `license`, a source `url`, and a
-// `sha256` content hash.
+// A pack (`containers/sample-packs/<pack>.toml`) is a collection of CLIP IDS plus the
+// presentation and the `[normalize]` profile that pack applies. The clip bytes live in
+// the private audio bucket, never in this repository, and in two shapes:
 //
-// This script turns one of those manifests into a **content-addressed pack**: it
-//   1. parses and validates the manifest,
-//   2. fetches each named source URL,
-//   3. VERIFIES the fetched bytes against the declared `sha256` (a mismatch aborts),
-//   4. NORMALIZES each source (sample rate / channels / loudness / trim / format) to a
-//      PCM-16 `.wav` the `audio-core` loader can `decode_pcm16` — shelling out to
-//      `ffmpeg` (with a clear note, and a documented raw-copy skeleton, when it is
-//      unavailable),
-//   5. writes a loader-facing baked manifest (`pack.toml`) alongside the normalized
-//      `<name>.wav` files — the exact on-disk layout `crates/audio-core/src/sample.rs`
-//      reads (a `*.toml` with `sample_rate` + `[[sample]]` entries, and `<file>` audio
-//      beside it), and
-//   6. assembles a deterministic tarball and prints its **sha256 digest** — the value
-//      the `sfx-sample` / `music` image build pins the pack by — and, with `--publish`,
-//      uploads it to R2 and records the pin (see the `--publish` note below).
+//   sources/<clip-id>                      the original bytes, uploaded once at ingest
+//   normalized/<clip-id>/<profile-id>.wav  that clip rendered under one profile
 //
-// The normalize + pack step is a runnable skeleton where a full audio pipeline is out
-// of reach (no `ffmpeg`): it still produces a correct layout and a stable digest, and
-// says loudly what it stubbed. The manifest parse and the sha256 verify are real.
+// This script owns the second shape. For each entry of each named pack it resolves the
+// clip through `containers/sample-packs/clips.toml`, derives the pack's `profile-id`,
+// and asks whether `normalized/<clip-id>/<profile-id>.wav` is already recorded in
+// `containers/sample-packs/objects.lock.json`. For anything missing it downloads
+// `sources/<clip-id>` from the store, verifies the bytes hash to the clip id,
+// normalizes them to a PCM-16 WAV with `ffmpeg`, and — with `--publish` — uploads the
+// result and records its key, digest and size in the lock.
+//
+// Publishing the normalized bytes once is what makes an image build reproducible:
+// every later consumer downloads a finished `.wav` instead of re-deriving it, so the
+// baked audio no longer depends on the local `ffmpeg` build's loudness normalization.
+// The work is per clip and per profile, so editing one entry of a pack publishes one
+// object and leaves the rest of the pack alone.
+//
+// INGEST IS A DIFFERENT STEP. Freesound is contacted only when a clip is first
+// ingested, by a developer, once per clip (`scripts/curate-instrument-bank.mjs --ingest`;
+// see `containers/sample-packs/README.md`). This script reads clip bytes only from The
+// Test Cabinet's own store, and a pack naming a clip whose source object is not in the
+// lock is an error telling the developer to ingest it.
 //
 // Usage:
-//   node scripts/build-sample-pack.mjs <pack>              # containers/sample-packs/<pack>.toml
-//   node scripts/build-sample-pack.mjs --manifest <path>   # an explicit manifest path
-//   node scripts/build-sample-pack.mjs <pack> --check      # parse + validate only (no fetch)
-//   node scripts/build-sample-pack.mjs <pack> --out <dir>  # output root (default: dist/sample-packs)
-//   node scripts/build-sample-pack.mjs <pack> --publish    # also upload + pin the built pack
+//   node scripts/build-sample-pack.mjs <pack>...            publish what those packs need
+//   node scripts/build-sample-pack.mjs --all                every pack in the directory
+//   node scripts/build-sample-pack.mjs <pack> --check        parse + validate, no network
+//   node scripts/build-sample-pack.mjs <pack> --publish      upload + record the lock
+//   node scripts/build-sample-pack.mjs <pack> --verify       also HEAD each locked object
+//   node scripts/build-sample-pack.mjs <pack> --force        re-normalize locked objects
 //   node scripts/build-sample-pack.mjs --help
 //
-// `--check` performs the manifest parse + validation without touching the network, so
-// it is the cheap way to confirm a manifest (including the committed EXAMPLE ones)
-// parses. A real build (no `--check`) fetches every source and will fail on the
-// EXAMPLE manifests' placeholder URLs by design — replace those first.
+// `--check` parses the registry, the pack manifests and the lock, validates every
+// clip reference and license, and reports which objects a publish would produce. It
+// touches neither the network nor `ffmpeg`, so it is the cheap way to confirm a
+// manifest edit. Without `--check` and without `--publish` the script does the real
+// work but stops short of uploading, which rehearses a publish with the read-only
+// presign credentials.
 //
-// SOURCE CACHE: every fetched source is cached by its declared sha256 under
-// `dist/sample-packs/.cache/` (override with `TCAB_SAMPLE_SRC_CACHE`), so a rebuild
-// re-reads a clip it already has rather than re-fetching it from Freesound. The cache
-// is keyed by content hash, so it can never serve stale bytes: a hash change is a new
-// key. Delete the cache dir to force a clean re-fetch.
-//
-// `--publish` uploads the built tarball to the private R2 bucket and records its
-// object key + digest in `containers/sample-packs/packs.lock.json` (the pin
-// `containers/build.sh` reads to bake the pack into the `sfx-sample`/`music` image).
-// It reads the write-scoped PUBLISH credentials from the environment (repo-root
-// `.env` locally); publishing is a deliberate, local curation step — CI never writes.
+// Credentials come from the environment (repo-root `.env` locally). `--publish` needs
+// the write-scoped PUBLISH pair; a rehearsal needs only the read-scoped PRESIGN pair.
+// Publishing is a deliberate, local curation step, and CI never writes.
 
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
-  existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import { basename, join, resolve } from "node:path";
 
+import {
+  CLIPS_PATH,
+  OBJECTS_LOCK_PATH,
+  PACKS_DIR,
+  packPath,
+  readClips,
+  readObjectsLock,
+  readPack,
+  resolveEntry,
+  writeObjectsLock,
+} from "./lib/audio-store.mjs";
 import { loadDotEnv } from "./lib/env.mjs";
-import { putObject, r2ConfigFromEnv } from "./lib/r2.mjs";
-import { LOCK_PATH, readLock } from "./presign-sample-pack.mjs";
+import {
+  getObject,
+  headObject,
+  putObject,
+  r2ConfigFromEnv,
+} from "./lib/r2.mjs";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PACKS_DIR = join(repoRoot, "containers", "sample-packs");
-const DEFAULT_OUT = join(repoRoot, "dist", "sample-packs");
-// Content-addressed cache of fetched sources, stable across `--out` overrides so a
-// rebuild never re-fetches a clip it already has (keyed by declared sha256).
-const CACHE_DIR = process.env.TCAB_SAMPLE_SRC_CACHE
-  ? resolve(process.env.TCAB_SAMPLE_SRC_CACHE)
-  : join(DEFAULT_OUT, ".cache");
-
-// A source's license must be CC0 or otherwise permissive so a produced clip is freely
-// usable in a test case and a published run. We accept a known-permissive set outright
-// and hard-reject the tell-tale NonCommercial / NoDerivatives CC restrictions; anything
-// else is allowed with a warning so an unusual-but-permissive SPDX id is not blocked.
+// A clip's license must be CC0 or otherwise permissive so a produced clip is freely
+// usable in a test case and a published run. A known-permissive set is accepted
+// outright and the tell-tale NonCommercial / NoDerivatives CC restrictions are
+// rejected; anything else is allowed with a warning so an unusual-but-permissive SPDX
+// id is not blocked.
 const PERMISSIVE_LICENSES = new Set([
   "CC0",
   "CC0-1.0",
@@ -101,12 +96,30 @@ const PERMISSIVE_LICENSES = new Set([
   "CC-BY-4.0",
 ]);
 
-/** Log a normal progress line. */
+const HELP = `build-sample-pack — publish the normalized audio one pack needs
+
+Usage:
+  node scripts/build-sample-pack.mjs <pack>...        publish what those packs need
+  node scripts/build-sample-pack.mjs --all            every pack in containers/sample-packs
+  node scripts/build-sample-pack.mjs <pack> --check   parse + validate only (no network)
+  node scripts/build-sample-pack.mjs <pack> --publish upload + record objects.lock.json
+  node scripts/build-sample-pack.mjs <pack> --verify  HEAD each already-locked object
+  node scripts/build-sample-pack.mjs <pack> --force   re-normalize objects already locked
+  node scripts/build-sample-pack.mjs --manifest <path>  an explicit manifest path
+  node scripts/build-sample-pack.mjs --help
+
+Resolves each entry's clip through clips.toml, derives the pack's normalize profile
+id, downloads sources/<clip-id> from the audio object store, normalizes it to PCM-16
+WAV with ffmpeg, and with --publish uploads normalized/<clip-id>/<profile-id>.wav and
+records it in objects.lock.json. Clip bytes are read only from the store; ingest is
+the only step that contacts Freesound.`;
+
+/** Log progress. */
 function log(msg) {
   process.stdout.write(`${msg}\n`);
 }
 
-/** Log a warning to stderr (does not abort). */
+/** Log a warning (does not abort). */
 function warn(msg) {
   process.stderr.write(`WARN: ${msg}\n`);
 }
@@ -117,196 +130,73 @@ function fail(msg) {
   process.exit(1);
 }
 
-const HELP = `build-sample-pack — assemble a baked audio sample pack / instrument bank
+/** sha256 hex of a Buffer/Uint8Array. */
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
-Usage:
-  node scripts/build-sample-pack.mjs <pack>              containers/sample-packs/<pack>.toml
-  node scripts/build-sample-pack.mjs --manifest <path>   an explicit manifest path
-  node scripts/build-sample-pack.mjs <pack> --check      parse + validate only (no fetch)
-  node scripts/build-sample-pack.mjs <pack> --out <dir>  output root (default: dist/sample-packs)
-  node scripts/build-sample-pack.mjs <pack> --publish    upload the built pack to R2 + pin it
-  node scripts/build-sample-pack.mjs --help
-
-Reads a committed pack manifest (name/tags/description/license/url/sha256 per entry),
-fetches and sha256-verifies each source (caching each by hash so a rebuild does not
-re-fetch), normalizes it to a PCM-16 .wav via ffmpeg, writes the loader-facing layout
-audio-core expects, tars it deterministically, and prints the resulting sha256 digest.
-With --publish it also uploads the tarball to the private R2 bucket and records its
-key + digest in containers/sample-packs/packs.lock.json (the pin build.sh reads).`;
-
-/** Minimal flag parser (no positional/flag interleaving surprises). */
+/** Parse the command line into `{ packs, manifests, all, check, publish, verify, force }`. */
 function parseArgs(argv) {
   const opts = {
-    pack: null,
-    manifest: null,
-    out: DEFAULT_OUT,
+    packs: [],
+    manifests: [],
+    all: false,
     check: false,
     publish: false,
+    verify: false,
+    force: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
       log(HELP);
       process.exit(0);
+    } else if (a === "--all") {
+      opts.all = true;
     } else if (a === "--check") {
       opts.check = true;
     } else if (a === "--publish") {
       opts.publish = true;
+    } else if (a === "--verify") {
+      opts.verify = true;
+    } else if (a === "--force") {
+      opts.force = true;
     } else if (a === "--manifest") {
-      opts.manifest = argv[++i] ?? fail("--manifest needs a path");
-    } else if (a === "--out") {
-      opts.out = resolve(argv[++i] ?? fail("--out needs a path"));
+      const value = argv[++i];
+      if (value === undefined) fail("--manifest needs a path");
+      opts.manifests.push(resolve(value));
     } else if (a.startsWith("-")) {
       fail(`unknown flag ${a} (try --help)`);
-    } else if (opts.pack === null) {
-      opts.pack = a;
     } else {
-      fail(`unexpected extra argument ${a} (try --help)`);
+      opts.packs.push(a);
     }
+  }
+  if (opts.check && opts.publish) {
+    fail("--check and --publish are mutually exclusive");
   }
   return opts;
 }
 
-/** Resolve the manifest path from either `--manifest <path>` or a bare `<pack>` name. */
-function resolveManifestPath(opts) {
-  if (opts.manifest) return resolve(opts.manifest);
-  if (!opts.pack) {
-    fail(
-      "name a pack (e.g. `sfx-core`) or pass --manifest <path> (see --help)",
-    );
-  }
-  // Accept either the bare stem or a `<pack>.toml` for convenience.
-  const stem = opts.pack.endsWith(".toml") ? opts.pack.slice(0, -5) : opts.pack;
-  return join(PACKS_DIR, `${stem}.toml`);
+/** Every pack manifest committed under `containers/sample-packs/`. */
+function allPackPaths() {
+  return readdirSync(PACKS_DIR)
+    .filter((f) => f.endsWith(".toml") && f !== basename(CLIPS_PATH))
+    .sort()
+    .map((f) => join(PACKS_DIR, f));
 }
 
-/**
- * Parse + validate a committed manifest. Returns
- * `{ name, version, kind, normalize, entries }` with entries carrying the source
- * `url`/`sha256`/`license` and browse metadata. Aborts on any structural problem.
- */
-function loadManifest(path) {
-  let raw;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (err) {
-    fail(`reading manifest ${path}: ${err.message}`);
+/** The manifest paths this invocation works on, from `<pack>`, `--manifest` and `--all`. */
+function resolveManifestPaths(opts) {
+  const paths = [...opts.manifests, ...opts.packs.map((p) => packPath(p))];
+  if (opts.all) paths.push(...allPackPaths());
+  if (paths.length === 0) {
+    fail("name a pack (e.g. `gm-lite`), or pass --all (see --help)");
   }
-  let doc;
-  try {
-    doc = parseToml(raw);
-  } catch (err) {
-    fail(`parsing manifest ${path}: ${err.message}`);
-  }
-
-  const name = requireStr(doc, "name", path);
-  const version = requireStr(doc, "version", path);
-  // `sample-pack` (sfx-sample) or `instrument-bank` (music); free-form but recorded.
-  const kind = typeof doc.kind === "string" ? doc.kind : "sample-pack";
-
-  const norm = doc.normalize ?? {};
-  const normalize = {
-    sample_rate: intOr(norm.sample_rate, 44100),
-    channels: intOr(norm.channels, 1),
-    loudness_lufs: numOr(norm.loudness_lufs, -23),
-    true_peak_dbfs: numOr(norm.true_peak_dbfs, -1),
-    trim_silence: norm.trim_silence !== false,
-    max_duration_ms: intOr(norm.max_duration_ms, 5000),
-  };
-  if (normalize.channels !== 1 && normalize.channels !== 2) {
-    fail(
-      `${path}: normalize.channels must be 1 or 2, got ${normalize.channels}`,
-    );
-  }
-  if (normalize.max_duration_ms > 5000) {
-    // The clip cap is 5000ms; a source may be longer but the baked sample should not
-    // silently exceed what a run can place.
-    warn(
-      `${path}: normalize.max_duration_ms ${normalize.max_duration_ms} exceeds the 5000ms clip ceiling`,
-    );
-  }
-
-  // Entries live under [[sample]] and/or [[instrument]] — the loader aliases both, so
-  // an instrument bank may use whichever table reads best. Merge in declaration order.
-  const rawEntries = [
-    ...(Array.isArray(doc.sample) ? doc.sample : []),
-    ...(Array.isArray(doc.instrument) ? doc.instrument : []),
-  ];
-  if (rawEntries.length === 0) {
-    fail(`${path}: no [[sample]] / [[instrument]] entries`);
-  }
-
-  const seen = new Set();
-  const entries = rawEntries.map((e, i) => {
-    const where = `${path} entry #${i + 1}`;
-    const entryName = requireStr(e, "name", where);
-    if (seen.has(entryName)) fail(`${where}: duplicate name "${entryName}"`);
-    seen.add(entryName);
-    const url = requireStr(e, "url", `${where} (${entryName})`);
-    const sha256 = requireStr(
-      e,
-      "sha256",
-      `${where} (${entryName})`,
-    ).toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(sha256)) {
-      fail(
-        `${where} (${entryName}): sha256 must be 64 hex chars, got "${sha256}"`,
-      );
-    }
-    const license = requireStr(e, "license", `${where} (${entryName})`);
-    checkLicense(license, entryName);
-    // Instrument-bank pitch metadata (see `crates/audio-core/src/sample.rs`): the MIDI
-    // note the sample was recorded at, and whether it is pitched (melodic, transposed
-    // per note) or unpitched (percussion, played native). Optional and only meaningful
-    // for `music`; carried through to the baked pack.toml when present, else the loader
-    // defaults (60 / true) apply.
-    let root_note;
-    if (e.root_note !== undefined) {
-      if (
-        !Number.isInteger(e.root_note) ||
-        e.root_note < 0 ||
-        e.root_note > 127
-      ) {
-        fail(
-          `${where} (${entryName}): root_note must be a MIDI integer 0..127`,
-        );
-      }
-      root_note = e.root_note;
-    }
-    const pitched = typeof e.pitched === "boolean" ? e.pitched : undefined;
-    return {
-      name: entryName,
-      tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
-      description: typeof e.description === "string" ? e.description : "",
-      license,
-      url,
-      sha256,
-      root_note,
-      pitched,
-    };
-  });
-
-  return { name, version, kind, normalize, entries };
-}
-
-function requireStr(obj, key, where) {
-  const v = obj?.[key];
-  if (typeof v !== "string" || v.length === 0) {
-    fail(`${where}: missing required string field "${key}"`);
-  }
-  return v;
-}
-
-function intOr(v, dflt) {
-  return Number.isFinite(v) ? Math.trunc(v) : dflt;
-}
-
-function numOr(v, dflt) {
-  return Number.isFinite(v) ? v : dflt;
+  return [...new Set(paths)];
 }
 
 /** Reject NC/ND licenses; warn on anything not in the known-permissive set. */
-function checkLicense(license, entryName) {
+function checkLicense(license, clipId, where) {
   const up = license.toUpperCase();
   if (
     up.includes("-NC") ||
@@ -315,116 +205,100 @@ function checkLicense(license, entryName) {
     up.includes("NODERIV")
   ) {
     fail(
-      `sample "${entryName}": non-permissive license "${license}" (NC/ND clips cannot ship)`,
+      `clip ${clipId} (${where}): non-permissive license "${license}" — NC/ND clips cannot ship`,
     );
   }
   if (!PERMISSIVE_LICENSES.has(up)) {
     warn(
-      `sample "${entryName}": license "${license}" is not in the known-permissive set — confirm it is CC0/permissive`,
+      `clip ${clipId} (${where}): license "${license}" is not in the known-permissive set — confirm it is CC0 or otherwise permissive`,
     );
   }
 }
 
-/** True if `ffmpeg` is invocable. */
-function haveFfmpeg() {
+/**
+ * Build the work plan for the named packs: one job per distinct
+ * `normalized/<clip-id>/<profile-id>.wav` key, carrying the clip, the profile and the
+ * pack entries that want it, plus the source objects the lock does not record. Every
+ * clip reference and license is validated here, so a returned plan either describes
+ * work that can succeed or names exactly what is missing.
+ */
+function planPacks(packs, clips, lock) {
+  const jobs = new Map();
+  const unpublishedSources = new Map();
+  for (const pack of packs) {
+    for (const entry of pack.entries) {
+      const resolved = resolveEntry(pack, entry, clips);
+      const where = `${pack.name} "${entry.name}"`;
+      checkLicense(resolved.license, resolved.clip, where);
+
+      if (lock[resolved.source_key] === undefined) {
+        unpublishedSources.set(resolved.source_key, where);
+      }
+
+      const job = jobs.get(resolved.normalized_key) ?? {
+        key: resolved.normalized_key,
+        clip: resolved.clip,
+        source_key: resolved.source_key,
+        profile_id: pack.profile_id,
+        normalize: pack.normalize,
+        wanted_by: [],
+      };
+      job.wanted_by.push(where);
+      jobs.set(job.key, job);
+    }
+  }
+  return { jobs: [...jobs.values()], unpublishedSources };
+}
+
+/**
+ * Abort when any clip a job needs has no `sources/<clip-id>` in the lock. The bytes to
+ * normalize come from the store and from nowhere else, so an unpublished source is a
+ * developer instruction to ingest the clip rather than something to fetch.
+ */
+function requirePublishedSources(jobs, unpublishedSources) {
+  const blocking = jobs.filter((job) => unpublishedSources.has(job.source_key));
+  if (blocking.length === 0) return;
+  const lines = blocking.map(
+    (job) => `         ${job.source_key}  (${job.wanted_by.join(", ")})`,
+  );
+  fail(
+    `${blocking.length} clip${blocking.length === 1 ? " has" : "s have"} no source object in ${OBJECTS_LOCK_PATH}:\n` +
+      `${lines.join("\n")}\n` +
+      "       Their source bytes are not in the object store. Seed every registered clip with\n" +
+      "       node scripts/curate-instrument-bank.mjs --seed-sources --publish, commit\n" +
+      `       the updated ${basename(OBJECTS_LOCK_PATH)}, then re-run this publish.`,
+  );
+}
+
+/** Abort unless `ffmpeg` is invocable: normalization has no fallback. */
+function requireFfmpeg() {
   try {
     execFileSync("ffmpeg", ["-version"], { stdio: "ignore" });
-    return true;
   } catch {
-    return false;
-  }
-}
-
-/** sha256 hex of a Buffer/Uint8Array. */
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-/**
- * A source hosted on Freesound. Its per-sample `url` is a preview transcode on the
- * Freesound CDN (`cdn.freesound.org/previews/…`) — the token-tier download that needs
- * only a free API key, never the OAuth2 flow the original files require. The preview
- * CDN currently serves those files without auth once the URL is known, but a curator
- * finds and verifies them through the authenticated API, so we send the token when one
- * is set: harmless if the CDN ignores it, and future-proof if it ever starts gating.
- * See `containers/sample-packs/README.md` ("Freesound sources").
- */
-function isFreesound(url) {
-  try {
-    return /(^|\.)freesound\.org$/.test(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-}
-
-/** Fetch a URL to a Buffer, following redirects; aborts on a non-OK response. A
- * Freesound URL carries the `FREESOUND_API_KEY` token when one is in the environment
- * (see {@link isFreesound}). */
-async function fetchBytes(url) {
-  const headers = {};
-  if (isFreesound(url) && process.env.FREESOUND_API_KEY) {
-    headers.Authorization = `Token ${process.env.FREESOUND_API_KEY}`;
-  }
-  let res;
-  try {
-    res = await fetch(url, { redirect: "follow", headers });
-  } catch (err) {
-    fail(`fetching ${url}: ${err.message}`);
-  }
-  if (!res.ok) fail(`fetching ${url}: HTTP ${res.status} ${res.statusText}`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-/**
- * Return a source's bytes, verified against its declared sha256, reading the
- * content-addressed cache first and only fetching (then caching) on a miss. Because
- * the cache is keyed by the declared hash, a cache hit is verified by construction;
- * a fetch is re-verified, and a mismatch aborts. Returns `{ bytes, cached }`.
- */
-async function fetchCachedVerified(entry) {
-  const cachePath = join(CACHE_DIR, entry.sha256);
-  if (existsSync(cachePath)) {
-    const bytes = readFileSync(cachePath);
-    if (sha256(bytes) === entry.sha256) return { bytes, cached: true };
-    // A corrupt/truncated cache file: drop it and re-fetch below.
-    warn(`cached "${entry.name}" failed its hash — re-fetching`);
-    rmSync(cachePath, { force: true });
-  }
-  const bytes = await fetchBytes(entry.url);
-  const got = sha256(bytes);
-  if (got !== entry.sha256) {
     fail(
-      `sha256 mismatch for "${entry.name}":\n  declared ${entry.sha256}\n  fetched  ${got}`,
+      "ffmpeg is not on PATH. Normalized bytes are the published artifact, so a publish\n" +
+        "       cannot substitute an unnormalized copy. Install ffmpeg and re-run.",
     );
   }
-  mkdirSync(CACHE_DIR, { recursive: true });
-  writeFileSync(cachePath, bytes);
-  return { bytes, cached: false };
 }
 
 /**
- * Normalize one verified source buffer to a PCM-16 mono/stereo `.wav` at the pack's
- * target rate. With ffmpeg: resample, downmix, trim leading/trailing silence, loudness-
- * and true-peak-normalize, cap the duration, and encode `pcm_s16le`. Without ffmpeg:
- * a documented skeleton — copy the verified bytes through so the layout + digest are
- * still produced, and warn that the audio is NOT normalized (and may not be PCM-16).
- * Returns the output `.wav` bytes.
+ * Normalize one verified source buffer to a PCM-16 WAV under `profile`: resample,
+ * downmix, trim leading and trailing near-silence, loudness- and true-peak-normalize,
+ * cap the duration, and encode `pcm_s16le`. `work` is a per-run temporary directory
+ * that is created empty and removed afterwards, so no output of a previous run can
+ * survive into this one's bytes.
  */
-function normalize(normalizeSpec, entry, ffmpeg, tmp, srcBytes) {
-  const entryName = entry.name;
-  if (!ffmpeg) {
-    warn(
-      `ffmpeg not found — writing "${entryName}" UNNORMALIZED (skeleton copy; install ffmpeg for a real pack)`,
-    );
-    return srcBytes;
-  }
-  const inPath = join(tmp, `${entryName}.src`);
-  const outPath = join(tmp, `${entryName}.norm.wav`);
-  writeFileSync(inPath, srcBytes);
+function normalizeClip(profile, clipId, work, srcBytes) {
+  const inPath = join(work, `${clipId}.src`);
+  const outPath = join(work, `${clipId}.wav`);
+  rmSync(inPath, { force: true });
+  rmSync(outPath, { force: true });
+  writeFileSync(inPath, srcBytes, { mode: 0o644 });
 
   const filters = [];
-  if (normalizeSpec.trim_silence) {
-    // Trim leading and trailing near-silence (reverse trick trims the tail).
+  if (profile.trim_silence) {
+    // Trim leading and trailing near-silence (the reverse trick trims the tail).
     filters.push(
       "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.02",
       "areverse",
@@ -433,7 +307,7 @@ function normalize(normalizeSpec, entry, ffmpeg, tmp, srcBytes) {
     );
   }
   filters.push(
-    `loudnorm=I=${normalizeSpec.loudness_lufs}:TP=${normalizeSpec.true_peak_dbfs}:LRA=11`,
+    `loudnorm=I=${profile.loudness_lufs}:TP=${profile.true_peak_dbfs}:LRA=11`,
   );
 
   const args = [
@@ -444,11 +318,11 @@ function normalize(normalizeSpec, entry, ffmpeg, tmp, srcBytes) {
     "-af",
     filters.join(","),
     "-ar",
-    String(normalizeSpec.sample_rate),
+    String(profile.sample_rate),
     "-ac",
-    String(normalizeSpec.channels),
+    String(profile.channels),
     "-t",
-    (normalizeSpec.max_duration_ms / 1000).toFixed(3),
+    (profile.max_duration_ms / 1000).toFixed(3),
     "-c:a",
     "pcm_s16le",
     outPath,
@@ -456,219 +330,223 @@ function normalize(normalizeSpec, entry, ffmpeg, tmp, srcBytes) {
   try {
     execFileSync("ffmpeg", args, { stdio: "ignore" });
   } catch (err) {
-    fail(`normalizing "${entryName}" with ffmpeg: ${err.message}`);
+    fail(`normalizing clip ${clipId} with ffmpeg: ${err.message}`);
   }
-  return readFileSync(outPath);
+
+  const wav = readFileSync(outPath);
+  rmSync(inPath, { force: true });
+  rmSync(outPath, { force: true });
+  assertPcm16Wav(wav, clipId);
+  return wav;
 }
 
 /**
- * Duration in ms of a PCM-16 WAV, read from its header (data-chunk bytes / byte-rate).
- * Returns 0 for a non-WAV skeleton copy — the loader defaults `duration_ms` to 0.
+ * Abort unless `bytes` is a PCM-16 WAV. The staged image bakes these bytes and the
+ * loader decodes them at startup, so a malformed encode has to fail here rather than
+ * inside a run container.
  */
-function wavDurationMs(bytes) {
+function assertPcm16Wav(bytes, clipId) {
+  const bad = (why) =>
+    fail(`normalized clip ${clipId} is not a PCM-16 WAV (${why})`);
   if (
     bytes.length < 44 ||
     bytes.toString("ascii", 0, 4) !== "RIFF" ||
     bytes.toString("ascii", 8, 12) !== "WAVE"
   ) {
-    return 0;
+    bad("missing RIFF/WAVE header");
   }
-  // Walk chunks to find `fmt ` (byte rate) and `data` (size).
-  let byteRate = 0;
-  let dataLen = 0;
   let off = 12;
   while (off + 8 <= bytes.length) {
     const id = bytes.toString("ascii", off, off + 4);
     const size = bytes.readUInt32LE(off + 4);
     if (id === "fmt " && off + 8 + 16 <= bytes.length) {
-      byteRate = bytes.readUInt32LE(off + 8 + 8);
-    } else if (id === "data") {
-      dataLen = size;
+      const format = bytes.readUInt16LE(off + 8);
+      const bits = bytes.readUInt16LE(off + 8 + 14);
+      if (format !== 1) bad(`audio format ${format}, expected 1 (PCM)`);
+      if (bits !== 16) bad(`${bits}-bit samples, expected 16`);
+      return;
     }
     off += 8 + size + (size % 2);
   }
-  if (byteRate === 0) return 0;
-  return Math.round((dataLen / byteRate) * 1000);
+  bad("no fmt chunk");
 }
 
-/**
- * Tar a directory deterministically (sorted, zeroed owner/mtime) and return the
- * tarball's sha256. GNU tar's reproducibility flags make the digest a pure function of
- * the pack's content, so it is a stable content address. Shells out to `tar`.
- */
-function tarDigest(dir, outTar) {
-  try {
-    execFileSync(
-      "tar",
-      [
-        "--sort=name",
-        "--mtime=@0",
-        "--owner=0",
-        "--group=0",
-        "--numeric-owner",
-        "--format=gnu",
-        "-cf",
-        outTar,
-        "-C",
-        dir,
-        ".",
-      ],
-      { stdio: "ignore" },
-    );
-  } catch (err) {
-    fail(
-      `assembling tarball with tar: ${err.message} (GNU tar with --sort/--mtime is required for a deterministic digest)`,
-    );
-  }
-  return sha256(readFileSync(outTar));
+/** Human-readable one-line summary of a normalize profile. */
+function describeProfile(profile) {
+  return (
+    `${profile.sample_rate}Hz / ${profile.channels}ch / ` +
+    `${profile.loudness_lufs} LUFS / TP ${profile.true_peak_dbfs} dBFS / ` +
+    `${profile.trim_silence ? "trim" : "no-trim"} / cap ${profile.max_duration_ms}ms`
+  );
 }
 
 async function main() {
-  loadDotEnv(); // FREESOUND_API_KEY (fetch) + PUBLISH credentials (--publish)
   const opts = parseArgs(process.argv.slice(2));
-  const manifestPath = resolveManifestPath(opts);
-  log(`manifest: ${manifestPath}`);
+  const manifestPaths = resolveManifestPaths(opts);
 
-  const manifest = loadManifest(manifestPath);
-  log(
-    `pack: ${manifest.name}@${manifest.version} (${manifest.kind}) — ${manifest.entries.length} entr${manifest.entries.length === 1 ? "y" : "ies"}`,
-  );
-  log(
-    `normalize: ${manifest.normalize.sample_rate}Hz / ${manifest.normalize.channels}ch / ` +
-      `${manifest.normalize.loudness_lufs} LUFS / TP ${manifest.normalize.true_peak_dbfs} dBFS / ` +
-      `${manifest.normalize.trim_silence ? "trim" : "no-trim"} / cap ${manifest.normalize.max_duration_ms}ms`,
-  );
-  for (const e of manifest.entries) {
-    log(`  - ${e.name}  [${e.tags.join(", ")}]  <${e.license}>`);
+  const clips = readClips();
+  const lock = readObjectsLock();
+  const packs = manifestPaths.map((path) => readPack(path, clips));
+
+  for (const pack of packs) {
+    log(
+      `pack ${pack.name}@${pack.version} (${pack.kind}) — ${pack.entries.length} entries, profile ${pack.profile_id}`,
+    );
+    log(`  normalize: ${describeProfile(pack.normalize)}`);
   }
+
+  const { jobs, unpublishedSources } = planPacks(packs, clips, lock);
+  const pending = jobs.filter((j) => opts.force || lock[j.key] === undefined);
+  log("");
+  log(
+    `${jobs.length} distinct normalized object${jobs.length === 1 ? "" : "s"}; ` +
+      `${jobs.length - pending.length} already in ${basename(OBJECTS_LOCK_PATH)}, ${pending.length} to produce`,
+  );
+  for (const job of pending)
+    log(`  - ${job.key}  (${job.wanted_by.join(", ")})`);
 
   if (opts.check) {
     log("");
+    if (unpublishedSources.size > 0) {
+      log(
+        `${unpublishedSources.size} clip source object${unpublishedSources.size === 1 ? " is" : "s are"} not in the lock, so a publish would stop on ${unpublishedSources.size === 1 ? "it" : "them"}:`,
+      );
+      for (const [key, where] of [...unpublishedSources].sort()) {
+        log(`  - ${key}  (${where})`);
+      }
+      log(
+        "  Seed them: node scripts/curate-instrument-bank.mjs --seed-sources --publish",
+      );
+      log("");
+    }
     log(
-      "check OK — manifest parses and validates. (No fetch performed; run without --check to build.)",
+      pending.length === 0
+        ? "check OK — every clip resolves and every normalized object is published."
+        : `check OK — manifests valid. Run with --publish to produce the ${pending.length} missing object${pending.length === 1 ? "" : "s"}.`,
     );
     return;
   }
 
-  const ffmpeg = haveFfmpeg();
-  if (!ffmpeg) {
-    warn(
-      "ffmpeg not on PATH: normalization is stubbed to a raw copy. Install ffmpeg to produce a real, PCM-16-normalized pack.",
+  requirePublishedSources(pending, unpublishedSources);
+  loadDotEnv();
+  const cfg = r2ConfigFromEnv(opts.publish ? "publish" : "presign");
+
+  if (opts.verify) await verifyLocked(cfg, jobs, lock, opts);
+
+  if (pending.length === 0) {
+    log("");
+    log(
+      "nothing to do — every normalized object this pack needs is published.",
     );
+    return;
   }
 
-  const outRoot = opts.out;
-  const packDirName = `${manifest.name}-${manifest.version}`;
-  const stageDir = join(outRoot, packDirName);
-  mkdirSync(stageDir, { recursive: true });
-  const tmp = mkdtempSync(join(tmpdir(), "sample-pack-"));
-
-  const bakedEntries = [];
+  requireFfmpeg();
+  const work = mkdtempSync(join(tmpdir(), "sample-pack-"));
   try {
-    for (const e of manifest.entries) {
-      const { bytes: src, cached } = await fetchCachedVerified(e);
-      log(
-        cached
-          ? `cached ${e.name} (sha256 ok, ${src.length} bytes)`
-          : `fetched ${e.name}: ${e.url} (sha256 ok, ${src.length} bytes)`,
-      );
+    for (const job of pending) {
+      const src = await getObject({ ...cfg, key: job.source_key });
+      const got = sha256(src);
+      if (got !== job.clip) {
+        fail(
+          `${job.source_key} does not hash to its clip id:\n  expected ${job.clip}\n  got      ${got}\n` +
+            "  The stored source was replaced out of band; re-ingest the clip.",
+        );
+      }
+      const expected = lock[job.source_key];
+      if (expected?.sha256 !== undefined && expected.sha256 !== got) {
+        fail(
+          `${job.source_key} does not match ${basename(OBJECTS_LOCK_PATH)} (expected ${expected.sha256}, got ${got})`,
+        );
+      }
+      log("");
+      log(`${job.clip}: source ${src.length} bytes, verified`);
 
-      const wav = normalize(manifest.normalize, e, ffmpeg, tmp, src);
-      const file = `${e.name}.wav`;
-      writeFileSync(join(stageDir, file), wav);
-      const baked = {
-        name: e.name,
-        tags: e.tags,
-        duration_ms: wavDurationMs(wav),
-        description: e.description,
-        file,
+      const wav = normalizeClip(job.normalize, job.clip, work, src);
+      const digest = sha256(wav);
+      log(`  normalized -> ${wav.length} bytes, sha256 ${digest}`);
+
+      if (!opts.publish) {
+        log(`  not uploaded (pass --publish to upload ${job.key})`);
+        continue;
+      }
+      await putObject({
+        ...cfg,
+        key: job.key,
+        body: wav,
+        contentType: "audio/wav",
+      });
+      lock[job.key] = {
+        bucket: cfg.bucket,
+        sha256: digest,
+        bytes: wav.length,
       };
-      // Carry instrument-bank pitch metadata into the baked manifest when the source
-      // set it (a sample pack omits both, and the loader defaults to 60 / true).
-      if (e.root_note !== undefined) baked.root_note = e.root_note;
-      if (e.pitched !== undefined) baked.pitched = e.pitched;
-      bakedEntries.push(baked);
+      writeObjectsLock(lock);
+      log(`  uploaded ${cfg.bucket}/${job.key} and recorded it in the lock`);
     }
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
   }
 
-  // The loader-facing baked manifest: exactly what `audio-core`'s `load_pack` reads —
-  // a `*.toml` with `sample_rate` and `[[sample]]` entries beside the audio files.
-  const baked = {
-    name: manifest.name,
-    version: manifest.version,
-    kind: manifest.kind,
-    sample_rate: manifest.normalize.sample_rate,
-    channels: manifest.normalize.channels,
-    sample: bakedEntries,
-  };
-  writeFileSync(join(stageDir, "pack.toml"), `${stringifyToml(baked)}\n`);
-  log(
-    `wrote baked layout: ${stageDir}/ (pack.toml + ${bakedEntries.length} .wav)`,
-  );
-
-  const outTar = join(outRoot, `${packDirName}.tar`);
-  const digest = tarDigest(stageDir, outTar);
-  const shaRef = `sha256:${digest}`;
-  log(`wrote tarball: ${outTar}`);
   log("");
-  log(`pack digest: ${shaRef}`);
-
   if (opts.publish) {
-    await publishPack(manifest, outTar, shaRef);
-    return;
+    log(
+      `Commit ${OBJECTS_LOCK_PATH} together with the manifest change, so CI and other`,
+    );
+    log(
+      "machines can stage the audio store with scripts/stage-audio-store.mjs.",
+    );
+  } else {
+    log("Rehearsal complete — nothing was uploaded. Re-run with --publish.");
   }
-
-  log("");
-  log(
-    "Not published (pass --publish to upload + pin). To pin by hand instead:",
-  );
-  log(`  --build-arg SAMPLE_PACK=${manifest.name}@${manifest.version} \\`);
-  log(`  --build-arg SAMPLE_PACK_SHA256=${shaRef} \\`);
-  log(
-    `  --build-arg SAMPLE_PACK_URL=<object-storage URL of ${packDirName}.tar>`,
-  );
 }
 
 /**
- * Upload the built tarball to the private R2 bucket and record its pin (object key
- * + digest) in `containers/sample-packs/packs.lock.json`, the source of truth
- * `containers/build.sh` reads to bake the pack into the image. The object key is
- * versioned (`<name>/<version>/<name>-<version>.tar`) so a published version is
- * immutable — bumping a pack's `version` is what changes its key and digest.
+ * Probe every already-locked object with a HEAD, reporting one that is absent from the
+ * bucket or whose size disagrees with the lock. Neither is repaired here: an absent
+ * normalized object is re-produced with `--force`, and an absent source has to be
+ * re-ingested.
  */
-async function publishPack(manifest, tarPath, shaRef) {
-  const cfg = r2ConfigFromEnv("publish");
-  const ref = `${manifest.name}@${manifest.version}`;
-  const key = `${manifest.name}/${manifest.version}/${manifest.name}-${manifest.version}.tar`;
-  const body = readFileSync(tarPath);
-
+async function verifyLocked(cfg, jobs, lock, opts) {
+  const keys = new Set();
+  for (const job of jobs) {
+    for (const key of [job.source_key, job.key]) {
+      if (lock[key] !== undefined) keys.add(key);
+    }
+  }
   log("");
-  log(`publish: PUT ${cfg.bucket}/${key} (${body.length} bytes)`);
-  await putObject({ ...cfg, key, body, contentType: "application/x-tar" });
-  log("  uploaded");
-
-  const lock = readLock();
-  lock[ref] = { bucket: cfg.bucket, key, sha256: shaRef };
-  // Write with sorted keys for a stable, review-friendly diff.
-  const sorted = Object.fromEntries(
-    Object.keys(lock)
-      .sort()
-      .map((k) => [k, lock[k]]),
-  );
-  writeFileSync(LOCK_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
-  log(`pinned ${ref} in ${LOCK_PATH}`);
-  log("");
-  log(
-    "Commit containers/sample-packs/packs.lock.json so CI and other machines can",
-  );
-  log(
-    "build the sfx-sample/music image from this pack. `./containers/build.sh` will",
-  );
-  log(
-    "presign a download URL from the pin automatically — no build args to pass.",
-  );
+  log(`verifying ${keys.size} locked objects against ${cfg.bucket}`);
+  let bad = 0;
+  for (const key of [...keys].sort()) {
+    const head = await headObject({ ...cfg, key });
+    if (head === null) {
+      warn(`${key} is recorded in the lock but absent from ${cfg.bucket}`);
+      bad++;
+      continue;
+    }
+    const want = lock[key]?.bytes;
+    if (
+      typeof want === "number" &&
+      head.bytes !== null &&
+      head.bytes !== want
+    ) {
+      warn(`${key} is ${head.bytes} bytes in the bucket, ${want} in the lock`);
+      bad++;
+    }
+  }
+  if (bad > 0 && !opts.force) {
+    fail(
+      `${bad} locked object${bad === 1 ? "" : "s"} disagree with the bucket — re-publish with --force, or re-ingest the affected clips`,
+    );
+  }
+  if (bad === 0) log("  all locked objects present and sized as recorded");
 }
 
-main().catch((err) => fail(err?.stack ?? String(err)));
+// An unexpected throw reports its message; set `TCAB_AUDIO_DEBUG=1` for the stack.
+main().catch((err) =>
+  fail(
+    process.env.TCAB_AUDIO_DEBUG
+      ? (err?.stack ?? String(err))
+      : (err?.message ?? String(err)),
+  ),
+);

@@ -2,137 +2,77 @@
   "parts": [
     {
       "name": "foundation",
-      "pivot": [
-        40,
-        0,
-        40
-      ]
+      "pivot": [40, 0, 40]
     },
     {
       "name": "tier1",
       "parent": "foundation",
-      "pivot": [
-        40,
-        8,
-        40
-      ]
+      "pivot": [40, 8, 40]
     },
     {
       "name": "tier2",
       "parent": "tier1",
-      "pivot": [
-        40,
-        20,
-        40
-      ]
+      "pivot": [40, 20, 40]
     },
     {
       "name": "tier3",
       "parent": "tier2",
-      "pivot": [
-        40,
-        33,
-        40
-      ]
+      "pivot": [40, 33, 40]
     },
     {
       "name": "summit",
       "parent": "tier3",
-      "pivot": [
-        40,
-        44,
-        40
-      ]
+      "pivot": [40, 44, 40]
     },
     {
       "name": "crown",
       "parent": "summit",
-      "pivot": [
-        40,
-        48,
-        40
-      ]
+      "pivot": [40, 48, 40]
     },
     {
       "name": "beacon_mast",
       "parent": "crown",
-      "pivot": [
-        40,
-        48,
-        40
-      ]
+      "pivot": [40, 48, 40]
     },
     {
       "name": "lantern",
       "parent": "beacon_mast",
-      "pivot": [
-        40,
-        55,
-        40
-      ]
+      "pivot": [40, 55, 40]
     },
     {
       "name": "crest",
       "parent": "lantern",
-      "pivot": [
-        40,
-        58,
-        40
-      ]
+      "pivot": [40, 58, 40]
     },
     {
       "name": "banner_l",
       "parent": "tier2",
-      "pivot": [
-        25,
-        30,
-        66
-      ]
+      "pivot": [25, 30, 66]
     },
     {
       "name": "banner_r",
       "parent": "tier2",
-      "pivot": [
-        54,
-        30,
-        66
-      ]
+      "pivot": [54, 30, 66]
     },
     {
       "name": "banner_sl",
       "parent": "tier2",
-      "pivot": [
-        13,
-        30,
-        40
-      ]
+      "pivot": [13, 30, 40]
     },
     {
       "name": "banner_sr",
       "parent": "tier2",
-      "pivot": [
-        66,
-        30,
-        40
-      ]
+      "pivot": [66, 30, 40]
     },
     {
       "name": "banner_ul",
       "parent": "tier3",
-      "pivot": [
-        29,
-        41,
-        58
-      ]
+      "pivot": [29, 41, 58]
     },
     {
       "name": "banner_ur",
       "parent": "tier3",
-      "pivot": [
-        50,
-        41,
-        58
-      ]
+      "pivot": [50, 41, 58]
     }
   ],
   "joints": [
@@ -141,11 +81,7 @@
       "part": "tier1",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        8,
-        40
-      ],
+      "pivot": [40, 8, 40],
       "min": -0.6,
       "max": 2.6,
       "rest": 0.0,
@@ -156,11 +92,7 @@
       "part": "tier2",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        20,
-        40
-      ],
+      "pivot": [40, 20, 40],
       "min": -0.6,
       "max": 2.6,
       "rest": 0.0,
@@ -171,11 +103,7 @@
       "part": "tier3",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        33,
-        40
-      ],
+      "pivot": [40, 33, 40],
       "min": -0.5,
       "max": 1.6,
       "rest": 0.0,
@@ -186,11 +114,7 @@
       "part": "summit",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        44,
-        40
-      ],
+      "pivot": [40, 44, 40],
       "min": -0.5,
       "max": 1.6,
       "rest": 0.0,
@@ -201,11 +125,7 @@
       "part": "crown",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        48,
-        40
-      ],
+      "pivot": [40, 48, 40],
       "min": -0.5,
       "max": 1.8,
       "rest": 0.0,
@@ -216,11 +136,7 @@
       "part": "crown",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        40,
-        48,
-        40
-      ],
+      "pivot": [40, 48, 40],
       "min": -0.45,
       "max": 0.45,
       "rest": 0.0,
@@ -231,11 +147,7 @@
       "part": "lantern",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        40,
-        55,
-        40
-      ],
+      "pivot": [40, 55, 40],
       "min": -13.0,
       "max": 13.0,
       "rest": 0.0,
@@ -246,11 +158,7 @@
       "part": "lantern",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        55,
-        40
-      ],
+      "pivot": [40, 55, 40],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -261,11 +169,7 @@
       "part": "crest",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        40,
-        58,
-        40
-      ],
+      "pivot": [40, 58, 40],
       "min": -0.2,
       "max": 2.4,
       "rest": 0.0,
@@ -276,11 +180,7 @@
       "part": "banner_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        25,
-        30,
-        66
-      ],
+      "pivot": [25, 30, 66],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -291,11 +191,7 @@
       "part": "banner_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        54,
-        30,
-        66
-      ],
+      "pivot": [54, 30, 66],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -306,11 +202,7 @@
       "part": "banner_sl",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        13,
-        30,
-        40
-      ],
+      "pivot": [13, 30, 40],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -321,11 +213,7 @@
       "part": "banner_sr",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        66,
-        30,
-        40
-      ],
+      "pivot": [66, 30, 40],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -336,11 +224,7 @@
       "part": "banner_ul",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        29,
-        41,
-        58
-      ],
+      "pivot": [29, 41, 58],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -351,11 +235,7 @@
       "part": "banner_ur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        50,
-        41,
-        58
-      ],
+      "pivot": [50, 41, 58],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -626,23 +506,14 @@
               "tMs": 260,
               "value": -0.35,
               "interp": "bezier",
-              "outHandle": [
-                430.0,
-                0.0
-              ]
+              "outHandle": [430.0, 0.0]
             },
             {
               "tMs": 1060,
               "value": 2.24,
               "interp": "bezier",
-              "outHandle": [
-                120.0,
-                0.0
-              ],
-              "inHandle": [
-                -260.0,
-                0.62
-              ]
+              "outHandle": [120.0, 0.0],
+              "inHandle": [-260.0, 0.62]
             },
             {
               "tMs": 1330,
@@ -678,23 +549,14 @@
               "tMs": 440,
               "value": -0.32,
               "interp": "bezier",
-              "outHandle": [
-                430.0,
-                0.0
-              ]
+              "outHandle": [430.0, 0.0]
             },
             {
               "tMs": 1240,
               "value": 2.24,
               "interp": "bezier",
-              "outHandle": [
-                120.0,
-                0.0
-              ],
-              "inHandle": [
-                -260.0,
-                0.6
-              ]
+              "outHandle": [120.0, 0.0],
+              "inHandle": [-260.0, 0.6]
             },
             {
               "tMs": 1510,
@@ -730,23 +592,14 @@
               "tMs": 620,
               "value": -0.24,
               "interp": "bezier",
-              "outHandle": [
-                400.0,
-                0.0
-              ]
+              "outHandle": [400.0, 0.0]
             },
             {
               "tMs": 1420,
               "value": 1.22,
               "interp": "bezier",
-              "outHandle": [
-                110.0,
-                0.0
-              ],
-              "inHandle": [
-                -250.0,
-                0.34
-              ]
+              "outHandle": [110.0, 0.0],
+              "inHandle": [-250.0, 0.34]
             },
             {
               "tMs": 1670,
@@ -782,23 +635,14 @@
               "tMs": 790,
               "value": -0.2,
               "interp": "bezier",
-              "outHandle": [
-                380.0,
-                0.0
-              ]
+              "outHandle": [380.0, 0.0]
             },
             {
               "tMs": 1590,
               "value": 1.2,
               "interp": "bezier",
-              "outHandle": [
-                110.0,
-                0.0
-              ],
-              "inHandle": [
-                -240.0,
-                0.32
-              ]
+              "outHandle": [110.0, 0.0],
+              "inHandle": [-240.0, 0.32]
             },
             {
               "tMs": 1830,
@@ -834,23 +678,14 @@
               "tMs": 960,
               "value": -0.18,
               "interp": "bezier",
-              "outHandle": [
-                380.0,
-                0.0
-              ]
+              "outHandle": [380.0, 0.0]
             },
             {
               "tMs": 1800,
               "value": 1.55,
               "interp": "bezier",
-              "outHandle": [
-                90.0,
-                0.0
-              ],
-              "inHandle": [
-                -230.0,
-                0.45
-              ]
+              "outHandle": [90.0, 0.0],
+              "inHandle": [-230.0, 0.45]
             },
             {
               "tMs": 2080,
@@ -891,10 +726,7 @@
               "tMs": 1800,
               "value": 0.3,
               "interp": "bezier",
-              "outHandle": [
-                160.0,
-                0.0
-              ]
+              "outHandle": [160.0, 0.0]
             },
             {
               "tMs": 2060,
@@ -925,10 +757,7 @@
               "tMs": 900,
               "value": 1.1,
               "interp": "bezier",
-              "outHandle": [
-                300.0,
-                1.6
-              ]
+              "outHandle": [300.0, 1.6]
             },
             {
               "tMs": 1900,

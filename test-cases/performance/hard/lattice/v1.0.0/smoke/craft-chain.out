@@ -1,7 +1,7 @@
 [
   {
     "tick": 300,
-    "checksum": "fnv1a64:92364a72e0b6602f",
+    "checksum": "fnv1a64:f86f9c6a4ada5840",
     "entities": [
       {
         "source": {
@@ -95,8 +95,9 @@
         }
       },
       {
-        "assembler": {
+        "furnace": {
           "inputs": {
+            "coal": 8,
             "iron-ore": 8
           },
           "output": {},
@@ -104,6 +105,17 @@
         }
       },
       {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
         "inserter": {
           "phase": "idle",
           "swing_left": 0
@@ -122,28 +134,35 @@
         }
       },
       {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 3
         }
       },
       {
         "assembler": {
           "inputs": {},
           "output": {},
-          "craft_left": 55
+          "craft_left": 59
         }
       },
       {
         "inserter": {
-          "phase": "return",
-          "swing_left": 8
+          "phase": "swing",
+          "held": "iron-gear",
+          "swing_left": 4
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-gear": 3
+            "iron-gear": 2
           }
         }
       }
@@ -151,7 +170,7 @@
   },
   {
     "tick": 600,
-    "checksum": "fnv1a64:583d026a55a44d11",
+    "checksum": "fnv1a64:1317024f0b524639",
     "entities": [
       {
         "source": {
@@ -245,12 +264,24 @@
         }
       },
       {
-        "assembler": {
+        "furnace": {
           "inputs": {
+            "coal": 8,
             "iron-ore": 8
           },
           "output": {},
           "craft_left": 22
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
         }
       },
       {
@@ -277,6 +308,12 @@
         }
       },
       {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
         "inserter": {
           "phase": "idle",
           "swing_left": 0
@@ -288,7 +325,7 @@
             "iron-plate": 1
           },
           "output": {},
-          "craft_left": 11
+          "craft_left": 15
         }
       },
       {
@@ -308,7 +345,7 @@
   },
   {
     "tick": 900,
-    "checksum": "fnv1a64:02edb84f07650852",
+    "checksum": "fnv1a64:139fbf00110c9fa5",
     "entities": [
       {
         "source": {
@@ -402,12 +439,24 @@
         }
       },
       {
-        "assembler": {
+        "furnace": {
           "inputs": {
+            "coal": 8,
             "iron-ore": 8
           },
           "output": {},
           "craft_left": 10
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -429,18 +478,23 @@
         }
       },
       {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
         "inserter": {
-          "phase": "return",
-          "swing_left": 7
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 3
         }
       },
       {
         "assembler": {
-          "inputs": {
-            "iron-plate": 1
-          },
+          "inputs": {},
           "output": {},
-          "craft_left": 31
+          "craft_left": 35
         }
       },
       {

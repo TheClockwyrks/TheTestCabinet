@@ -1,0 +1,17 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/gg/query-batch-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /gg/query/batch`: several queries answered from **one** read of\nthe document index.\n\nA dashboard's panels almost always share a filter and differ only in their\naggregation, so answering them one request at a time re-resolves the same corpus\nN times and — because the index refreshes on a timer — can even answer two panels\nof the same board from two different corpora, which reads as a data bug. One\nbatch, one snapshot, one consistent board.",
+  "properties": {
+    "queries": {
+      "default": [],
+      "description": "The queries to evaluate, at most [`GG_QUERY_MAX_BATCH`] of them.",
+      "items": {
+        "$ref": "https://docs.testcabinet.ai/schema/gg/query.schema.json"
+      },
+      "type": "array"
+    }
+  },
+  "title": "GgQueryBatch",
+  "type": "object"
+}

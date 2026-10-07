@@ -2,10 +2,9 @@ slug = "sunfront"
 experimental = true
 # The Test Cabinet test case manifest.
 #
-# Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, which proofs the
-# build must submit, and which validation checks run. The harness reads this file
-# to resolve a `TestCaseVersion`.
+# Declares, for this exact version, which files are seeded into a run and which
+# validation checks run. The harness reads this file to resolve a
+# `TestCaseVersion`.
 
 # Human-readable display name for this test case.
 name = "Sunfront"
@@ -62,8 +61,7 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # This version offers a single `base` variant — the standard Skirmish match on the
-# one fixed front. It supplies the `title` view's menu mockup; `gameplay` and
-# `game-over` are common. Future versions/variants are expected to add rule twists
+# one fixed front. Future versions/variants are expected to add rule twists
 # (a larger front, a resource-drought opener, a no-air roster) on top of this base.
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = ["variants/base.toml"]
@@ -106,19 +104,19 @@ assets = [
 ]
 
 # Provided library packages: core bakes each into the run image and vendors it into
-# the run repository under `.tcab/packages/` at seed time (see the end-to-end
+# the run repository under `.vendor/packages/` at seed time (see the end-to-end
 # `packages` manifest key). The build imports both by bare name.
-# `@test-cabinet/voxel-runtime` is the model runtime: it decodes each entity's
+# `@clockwyrks/voxel-runtime` is the model runtime: it decodes each entity's
 # `meshes/*.glb` parts and poses/animates the rigid voxel rig from its `rig.json`
 # authored animations (its `three` binding builds the vertex-colored geometry the
-# build instances). `@test-cabinet/particle-runtime` is the effect runtime the build
+# build instances). `@clockwyrks/particle-runtime` is the effect runtime the build
 # imports (its `three` binding) to PLAY the provided muzzle-flash particle systems by
 # simulating them live — the same library the effects were authored against. The
-# workspace `package.json` must depend on each via the exact `file:./.tcab/packages/…`
+# workspace `package.json` must depend on each via the exact `file:./.vendor/packages/…`
 # spec (already declared in `workspaces/base/package.json`) so `npm ci` resolves them
 # to the vendored copies; the build then imports them by bare name. See
 # `specs/assets.md`. This is a root key, so it must precede the first table header.
-packages = ["@test-cabinet/voxel-runtime", "@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/voxel-runtime", "@clockwyrks/particle-runtime"]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -155,60 +153,6 @@ source = "specs/flow.md"
 [[spec]]
 source = "specs/standard.md"
 
-# Proof of implementation: instructs the build to capture evidence at the exact
-# paths the `[[proof]]` entries below declare. The paths in this spec and in the
-# `[[proof]]` entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup the harness renders to a screenshot and seeds as a visual target. The
-# `title` view is variant-specific (declared per variant); `gameplay` and
-# `game-over` look the same in every variant.
-[[reference]]
-view = "gameplay"
-path = "reference/gameplay.html"
-
-[[reference]]
-view = "game-over"
-path = "reference/game-over.html"
-
-# Proof of implementation, requested for every variant. Each declares a `dest`
-# path (relative to the run workspace root) the build must write a screenshot or
-# `.webm` clip to; `specs/proof.md` instructs the build to produce them at exactly
-# these paths. Validation records whether each turned up (informational). The media
-# kind is inferred from the extension: `.png` is an image, `.webm` a video.
-[[proof]]
-id = "title"
-name = "Title menu"
-dest = "proof/title.png"
-
-[[proof]]
-id = "gameplay"
-name = "In-match"
-dest = "proof/gameplay.png"
-
-[[proof]]
-id = "game-over"
-name = "Match over"
-dest = "proof/game-over.png"
-
-[[proof]]
-id = "wave"
-name = "Wave march clip"
-dest = "proof/wave.webm"
-
-[[proof]]
-id = "wireframe"
-name = "Wireframe frame"
-dest = "proof/wireframe.png"
-
-# Reference-similarity checks (opt-in) are intentionally not declared. The
-# reference screenshots are seeded as illustrative examples of the screens, not
-# layouts to reproduce, so menus and screens are left to the model's design and
-# are reviewed by a human rather than scored against a baseline. The automated
-# load check still runs.
-
 # Scoring domains. A reviewer rates each independently while playing the build,
 # and the run's overall rating is the WORST across them — a polished economy
 # cannot mask a broken combat model or a trivial AI. Every case declares at least
@@ -241,8 +185,6 @@ title = "Wave clock"
 text = "Waves fire on the clock — the first at 20 s, then every 45 s — and on each wave every spawner a side owns emits exactly one unit of its type at that side's muster line. The countdown is shown and resets each wave."
 weight = 1
 domain = "economy"
-reference = "gameplay"
-proof = "wave"
 
 [[review_item]]
 id = "income"
@@ -278,8 +220,6 @@ title = "Front-line tug-of-war"
 text = "Units advance along the diagonal, acquire the nearest enemy they can damage, and stop to fight; the front line drifts toward the losing side. Two equal armies grind to a rough stalemate near the center of the diagonal front, so advantage comes from economy and counters, not a lopsided default. Units hold a target rather than jittering."
 weight = 2
 domain = "combat"
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "fog-of-war"
@@ -287,8 +227,6 @@ title = "Fog of war"
 text = "The enemy staging yard is fully hidden under fog — its structures and placements are never visible. In the lane, enemy units, Reliquary, and base are drawn only while within the vision of a player unit, base, or Reliquary, never as stale ghosts in the fog. Because the camera pans across the arena and shows only part of it, scrolling to a stretch of the field where the player has no unit or structure shows only fog there — no units or structures are drawn outside the player's vision."
 weight = 3
 domain = "combat"
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "reliquary-aegis"
@@ -310,8 +248,6 @@ title = "Win and loss"
 text = "A base has 1200 HP; the match ends the instant either base is razed, going to a match-over screen that shows VICTORY or DEFEAT and the wave count, with PLAY AGAIN and MENU. Razing the enemy base is the only win condition."
 weight = 2
 domain = "combat"
-reference = "game-over"
-proof = "game-over"
 
 [[review_item]]
 id = "ai-opponent"
@@ -325,15 +261,12 @@ id = "states-complete"
 title = "Game states"
 text = "Every state is reachable and behaves correctly: title menu, how-to-play, the live match, pause (resume/restart/quit with the simulation frozen), and match-over (play again/menu)."
 weight = 1
-reference = "title"
-proof = "title"
 
 [[review_item]]
 id = "renderer-3d"
 title = "3D rendering, camera & wireframe"
 text = "The battlefield renders as a real 3D world in WebGL/WebGPU — provided unit and structure models with real height on generated terrain — seen through a low oblique command camera (a real perspective view at a fixed angle, not a flat top-down map); a flat top-down or purely-2D rendering does not satisfy this case. The game sustains a playable frame rate in a heavy late-match battle, the performance overlay shows the live FPS, and wireframe mode reveals the geometry of the models, terrain, structures, and effects."
 weight = 2
-proof = "wireframe"
 
 [[review_item]]
 id = "hud-complete"
@@ -352,8 +285,6 @@ id = "camera-navigation"
 title = "Scrolling command camera"
 text = "The battlefield is shown through a low oblique command camera at a fixed pitch and zoom that frames only a portion of the arena — the whole map is never visible at once — while always showing the full width of the combat lane, so the player never zooms out or pans sideways to see the lane's full width. The player pans the camera along the lane (edge-scroll and arrow/WASD keys) to view from their own corner up toward the enemy, and the default view on load is centered on the player's corner."
 weight = 1
-reference = "gameplay"
-proof = "gameplay"
 
 [[review_item]]
 id = "provided-models"
@@ -364,7 +295,5 @@ weight = 2
 [[review_item]]
 id = "plays-muzzle-flashes"
 title = "Plays the provided muzzle flashes"
-text = "When a unit fires a weapon, the build plays one instance of that unit's provided muzzle-flash particle system (seeded under `assets/effects/`, selected per unit by the `muzzle` key in `assets/models.json`) at its muzzle, oriented along the barrel — simulated live via the seeded `@test-cabinet/particle-runtime`, not a hand-coded or substituted effect — once per shot, in sync with the unit's firing cadence so the flash rate matches its fire rate: the small-arms flash for the Sentinel/Trooper/Flakhound/Sunhawk, the heavy-cannon blast for the Bombard/Monolith/Aegis (at each firing turret), and the rail-lance discharge for the Lancer. Melee units (Scarab, Bulwark) and the support Lumen play none. Because the systems are simulated, each flash varies slightly while its character stays the same."
+text = "When a unit fires a weapon, the build plays one instance of that unit's provided muzzle-flash particle system (seeded under `assets/effects/`, selected per unit by the `muzzle` key in `assets/models.json`) at its muzzle, oriented along the barrel — simulated live via the seeded `@clockwyrks/particle-runtime`, not a hand-coded or substituted effect — once per shot, in sync with the unit's firing cadence so the flash rate matches its fire rate: the small-arms flash for the Sentinel/Trooper/Flakhound/Sunhawk, the heavy-cannon blast for the Bombard/Monolith/Aegis (at each firing turret), and the rail-lance discharge for the Lancer. Melee units (Scarab, Bulwark) and the support Lumen play none. Because the systems are simulated, each flash varies slightly while its character stays the same."
 weight = 2
-reference = "gameplay"
-proof = "wave"

@@ -40,7 +40,7 @@ becomes the settler's priority over ordinary work.
   space). Low mood degrades a settler's behavior: a **badly-moody settler works
   slowly, dawdles, or refuses low-priority work**, and at the extreme may stop
   contributing until things improve. Mood never itself kills a settler; it is the
-  pressure that makes keeping the colony *comfortable*, not merely alive, matter.
+  pressure that makes keeping the colony _comfortable_, not merely alive, matter.
 
 Show each settler's needs and mood in the HUD roster (`specs/flow.md`) so the player
 can see someone going hungry, exhausted, or breaking before it costs the colony.

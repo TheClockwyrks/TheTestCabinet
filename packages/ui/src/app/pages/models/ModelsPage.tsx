@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useRef, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -14,7 +14,12 @@ import { useModelConfig } from "../../data/useModelConfig";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
 import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
+import { ProvidersView } from "./ProvidersView";
 import styles from "./ModelsPage.module.scss";
+import exec from "../runs/RunExec.module.scss";
+// The Models section reuses the Test Cases page's tab-bar styles so the two
+// catalog-style surfaces read identically (the same borrow the Other page makes).
+import tabStyles from "../testcases/TestCasesPage.module.scss";
 
 // One column of the model catalog: its header and grid track, how it renders a
 // row, and — when sortable — the key it orders by. Every data column is optional
@@ -78,10 +83,12 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     min: 64,
     numeric: true,
     optional: true,
-    sortKey: (model) => perMillion(model.prices?.uncachedInput ?? null),
+    // The catalog's headline price is the curated list price — the figure a
+    // run's comparable cost is computed from — not the observed billed rate.
+    sortKey: (model) => perMillion(model.listPrice?.uncachedInput ?? null),
     render: (model) => (
       <Price
-        value={perMillion(model.prices?.uncachedInput ?? null)}
+        value={perMillion(model.listPrice?.uncachedInput ?? null)}
         label="Input"
       />
     ),
@@ -93,9 +100,12 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     min: 64,
     numeric: true,
     optional: true,
-    sortKey: (model) => perMillion(model.prices?.output ?? null),
+    sortKey: (model) => perMillion(model.listPrice?.output ?? null),
     render: (model) => (
-      <Price value={perMillion(model.prices?.output ?? null)} label="Output" />
+      <Price
+        value={perMillion(model.listPrice?.output ?? null)}
+        label="Output"
+      />
     ),
   },
   {
@@ -121,12 +131,34 @@ const MODEL_COLUMN_BY_ID = new Map(
   MODEL_COLUMNS.map((column) => [column.id, column]),
 );
 
+// The Models section's tabs, in display order. Each is its own route so the
+// selection is in the URL and survives a reload: the catalog itself at the
+// section root, and the per-provider statistics beside it.
+export type ModelsTab = "models" | "providers";
+
+const MODELS_TABS: ReadonlyArray<{
+  tab: ModelsTab;
+  label: string;
+  to: string;
+}> = [
+  { tab: "models", label: "Models", to: routes.models() },
+  { tab: "providers", label: "Providers", to: routes.modelsProviders() },
+];
+
+interface ModelsPageProps {
+  /** Which tab this route renders. Defaults to the catalog, so the section root
+   * (`/models`, the topbar target) needs no prop. */
+  tab?: ModelsTab;
+}
+
 // Models: the curated catalog as a dense, column-aligned table — one row per
-// model showing its provider, name, comparable per-token input/output prices,
+// model showing its provider, name, list-price input/output rates per Mtok,
 // and context window, each row linking to the model's detail page. Rows default
 // to catalog order; the headers can be clicked to sort by any column, columns are
 // user-resizable, and the optional columns can be shown/hidden via the picker.
-export function ModelsPage() {
+// The Providers tab beside it reports per-provider health folded from recorded
+// gg runs and probe evidence.
+export function ModelsPage({ tab = "models" }: ModelsPageProps) {
   const { models, status } = useModels();
   // The add affordance shows only where curating a model is possible (a signed-in
   // console with a config-capable backend); it is null (hidden) otherwise.
@@ -154,85 +186,132 @@ export function ModelsPage() {
   return (
     <PageLayout>
       <section className={styles.section}>
-        <div className={styles.header}>
-          <PromptHeader
-            command="--models"
-            blink
-            comment={<>// the models we put through the cabinet</>}
-          />
-          {config && (
-            <Link className={styles.addButton} to={routes.modelNew()}>
-              + Add model
-            </Link>
-          )}
+        <PromptHeader
+          command={tab === "models" ? "--models" : "--providers"}
+          blink
+          comment={
+            tab === "models" ? (
+              <>// the models we put through the cabinet</>
+            ) : (
+              <>// who served the calls, and how that went</>
+            )
+          }
+          titleActions={
+            tab === "models" && config ? (
+              <Link className={exec.primary} to={routes.modelNew()}>
+                + Add model
+              </Link>
+            ) : undefined
+          }
+        />
+
+        <div className={tabStyles.controls}>
+          <nav className={tabStyles.tabs} aria-label="Models sections">
+            {MODELS_TABS.map((entry) => (
+              <NavLink
+                key={entry.tab}
+                to={entry.to}
+                className={
+                  entry.tab === tab
+                    ? `${tabStyles.tab} ${tabStyles.tabActive}`
+                    : tabStyles.tab
+                }
+              >
+                {entry.label}
+              </NavLink>
+            ))}
+          </nav>
         </div>
 
-        {/* The three states are distinct and must read that way: a fetch in
-            flight is a wait, an unreachable backend is a fault, and only a
-            resolved-but-empty catalog is genuinely "no models yet". Reporting
-            the first two as the third told a visitor the cabinet was empty
-            while it was still being read. */}
-        {status === "loading" ? (
-          <LoadingState label="Loading models…" />
-        ) : status === "error" ? (
-          <p className={styles.empty}>
-            Couldn&apos;t reach the backend — the model catalog is unavailable.
-          </p>
-        ) : models.length === 0 ? (
-          <p className={styles.empty}>No models are in the catalog yet.</p>
-        ) : (
-          <div className={styles.wrap}>
-            <div className={styles.menuAnchor}>
-              <ColumnMenu
-                ref={menuRef}
-                columns={MODEL_COLUMNS}
-                isVisible={isVisible}
-                onToggle={toggle}
-              />
-            </div>
-            <div className={styles.table} ref={table.containerRef}>
-              <div
-                className={`${styles.row} ${styles.head}`}
-                data-ttc-head
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  menuRef.current?.openAt(event.clientX, event.clientY);
-                }}
-              >
-                {visible.map((column, index) => (
-                  <SortableHeaderCell
-                    key={column.id}
-                    columnId={column.id}
-                    label={column.label}
-                    numeric={column.numeric}
-                    sortable={typeof column.sortKey === "function"}
-                    sort={sort}
-                    onSort={cycle}
-                    handle={table.handle(index)}
-                  />
-                ))}
-              </div>
-              {sorted.map((model) => (
-                <Link
-                  key={model.slug}
-                  to={routes.modelDetail(model.slug)}
-                  className={styles.row}
-                >
-                  {visible.map((column) => (
-                    <Fragment key={column.id}>{column.render(model)}</Fragment>
-                  ))}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+        {tab === "providers" ? <ProvidersView /> : renderCatalog()}
       </section>
     </PageLayout>
   );
+
+  // The catalog tab's body, split out so the tabbed return above stays
+  // readable.
+  function renderCatalog() {
+    // Render order: DATA first, read state second. A catalog with rows in it is
+    // rendered whatever the last read did — the gallery KEEPS a loaded catalog
+    // when a refresh fails (see `useLiveGallery`), and the refresh token is
+    // bumped by every finished run, so branching on `status` ahead of the rows
+    // let one network blip replace the whole table with an unavailability
+    // notice and throw away the catalog that was being retained. A failed read
+    // over rows is STALE DATA: the rows stay and the failure is said above
+    // them.
+    //
+    // Only with nothing to show do the three read states decide, and they are
+    // distinct: a fetch in flight is a wait, an unreachable backend is a fault,
+    // and only a resolved-but-empty catalog is genuinely "no models yet".
+    if (models.length === 0) {
+      return status === "loading" ? (
+        <LoadingState label="Loading models…" />
+      ) : status === "error" ? (
+        <p className={styles.empty}>
+          Couldn&apos;t reach the backend, so the model catalog is unavailable.
+        </p>
+      ) : (
+        <p className={styles.empty}>No models are in the catalog yet.</p>
+      );
+    }
+    return (
+      <>
+        {status === "error" && (
+          <p className={styles.stale} role="alert">
+            Couldn&apos;t reach the backend, so this catalog may be out of date.
+          </p>
+        )}
+        <div className={styles.wrap}>
+          <div className={styles.menuAnchor}>
+            <ColumnMenu
+              ref={menuRef}
+              columns={MODEL_COLUMNS}
+              isVisible={isVisible}
+              onToggle={toggle}
+            />
+          </div>
+          <div className={styles.table} ref={table.containerRef}>
+            <div
+              className={`${styles.row} ${styles.head}`}
+              data-ttc-head
+              onContextMenu={(event) => {
+                event.preventDefault();
+                menuRef.current?.openAt(event.clientX, event.clientY);
+              }}
+            >
+              {visible.map((column, index) => (
+                <SortableHeaderCell
+                  key={column.id}
+                  columnId={column.id}
+                  label={column.label}
+                  numeric={column.numeric}
+                  sortable={typeof column.sortKey === "function"}
+                  sort={sort}
+                  onSort={cycle}
+                  handle={table.handle(index)}
+                />
+              ))}
+            </div>
+            {sorted.map((model) => (
+              <Link
+                key={model.slug}
+                to={routes.modelDetail(model.slug)}
+                className={styles.row}
+              >
+                {visible.map((column) => (
+                  <Fragment key={column.id}>{column.render(model)}</Fragment>
+                ))}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
 }
 
-// A per-token price cell, right-aligned to align like printed figures, or a muted
-// dash when the catalog has no resolved price for this model.
+// A per-Mtok price cell, right-aligned to align like printed figures, or a
+// muted dash when the catalog has no list price for this model.
 function Price({ value, label }: { value: number | null; label: string }) {
   return (
     <span

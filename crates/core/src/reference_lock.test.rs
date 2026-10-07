@@ -6,22 +6,50 @@ use super::*;
 #[test]
 fn set_and_entries_for_env_round_trip() {
     let mut lock = ReferenceLock::default();
-    lock.set("prod", "carom", "v1.1.0", "base", "https://a.pages.dev");
-    lock.set("prod", "carom", "v1.1.0", "gyre", "https://b.pages.dev");
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "base",
+        "none",
+        "https://a.pages.dev",
+    );
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "gyre",
+        "none",
+        "https://b.pages.dev",
+    );
+    // The same variant on another engine is a separate build with its own URL.
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "base",
+        "simple-2d",
+        "https://a-s2d.pages.dev",
+    );
     lock.set(
         "staging",
         "carom",
         "v1.1.0",
         "base",
+        "none",
         "https://staging-a.pages.dev",
     );
 
     let mut prod = lock.entries_for_env("prod").expect("prod is present");
-    prod.sort_by(|a, b| a.variant.cmp(&b.variant));
-    assert_eq!(prod.len(), 2);
+    prod.sort_by(|a, b| (&a.variant, &a.engine).cmp(&(&b.variant, &b.engine)));
+    assert_eq!(prod.len(), 3);
     assert_eq!(prod[0].variant, "base");
+    assert_eq!(prod[0].engine, "none");
     assert_eq!(prod[0].url, "https://a.pages.dev");
-    assert_eq!(prod[1].variant, "gyre");
+    assert_eq!(prod[1].variant, "base");
+    assert_eq!(prod[1].engine, "simple-2d");
+    assert_eq!(prod[1].url, "https://a-s2d.pages.dev");
+    assert_eq!(prod[2].variant, "gyre");
 
     // The environments are independent — staging holds only its own URL.
     let staging = lock.entries_for_env("staging").expect("staging is present");
@@ -32,8 +60,22 @@ fn set_and_entries_for_env_round_trip() {
 #[test]
 fn set_overwrites_a_redeploy_in_place() {
     let mut lock = ReferenceLock::default();
-    lock.set("prod", "carom", "v1.1.0", "base", "https://old.pages.dev");
-    lock.set("prod", "carom", "v1.1.0", "base", "https://new.pages.dev");
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "base",
+        "none",
+        "https://old.pages.dev",
+    );
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "base",
+        "none",
+        "https://new.pages.dev",
+    );
 
     let entries = lock.entries_for_env("prod").unwrap();
     assert_eq!(
@@ -63,8 +105,22 @@ fn entries_for_env_distinguishes_absent_from_empty() {
 fn serializes_transparently_env_first_and_sorted() {
     let mut lock = ReferenceLock::default();
     // Insert out of order to prove BTreeMap sorts the serialized keys.
-    lock.set("prod", "shatter", "v1.0.1", "base", "https://s.pages.dev");
-    lock.set("prod", "carom", "v1.1.0", "base", "https://c.pages.dev");
+    lock.set(
+        "prod",
+        "shatter",
+        "v1.0.1",
+        "base",
+        "none",
+        "https://s.pages.dev",
+    );
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "base",
+        "none",
+        "https://c.pages.dev",
+    );
 
     let json = serde_json::to_string(&lock).unwrap();
     // No wrapper object (transparent), env first, and `carom` before `shatter`.
@@ -86,7 +142,14 @@ fn save_then_load_round_trips() {
     let path = dir.join(REFERENCE_LOCK_FILENAME);
 
     let mut lock = ReferenceLock::default();
-    lock.set("prod", "carom", "v1.1.0", "base", "https://a.pages.dev");
+    lock.set(
+        "prod",
+        "carom",
+        "v1.1.0",
+        "base",
+        "none",
+        "https://a.pages.dev",
+    );
     lock.save(&path).unwrap();
 
     let loaded = ReferenceLock::load(&path).unwrap().expect("file exists");

@@ -45,7 +45,10 @@ export function SpriteSheetPlayer({
 
   // Scale the small frame up to a crisp display box (integer factor so pixels
   // stay square), at least 1:1.
-  const scale = Math.max(1, Math.floor(DISPLAY / Math.max(frameWidth, frameHeight)));
+  const scale = Math.max(
+    1,
+    Math.floor(DISPLAY / Math.max(frameWidth, frameHeight)),
+  );
   const width = frameWidth * scale;
   const height = frameHeight * scale;
 

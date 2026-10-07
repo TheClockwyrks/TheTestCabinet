@@ -1,0 +1,662 @@
+# Coil — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Coil carries a small debugging and automation surface, `window.__coil`, so the
+game can be driven and inspected from code without pressing a key or waiting on
+real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__coil` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a read of the game's state or a pose of one part of it. A pose
+sets one thing, and the game's own tick, turning, collision, pellet placement,
+and scoring run from there exactly as they do in play, so a scenario driven from
+code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Coil carries a small debugging and automation surface so the game can be driven
+and inspected from code without pressing a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `CoilState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<CoilState>`, and
+returns the next `CoilState`; a reading takes the state the same way and returns
+what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setScore(s, 120))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A pose sets one thing, and the
+game's own tick, turning, collision, pellet placement, and scoring run from there
+exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand. `src/game.ts` declares and exports its type, `CoilDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Coil carries a small debugging and automation surface so the game can be driven
+and inspected from code without pressing a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its heading names, arranges the running game through the same
+systems play uses, and returns nothing; a reading takes no parameters, returns
+plain data built at the call, and changes nothing. A pose sets one thing, and the
+game's own tick, turning, collision, pellet placement, and scoring run from there
+exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand. Coil runs in one level for the whole session and every screen
+is a value of the state's screen field, so a pose that changes the screen takes
+effect at the call rather than riding a level transition. `src/game.ts` declares
+and exports its type, `CoilDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A render-free core
+
+The surface rests on the simulation being steppable apart from its drawing. Two
+properties make it so.
+
+- A fixed timestep, decoupled from rendering. The simulation advances in whole
+  ticks of `TICK_SECONDS` (`0.125`), fed by the elapsed time the game is handed
+  and carrying the remainder, as `specs/movement.md` states. A step therefore
+  means the same thing whatever the frame rate, and drawing advances nothing.
+- A render-free core. Game state advances from the elapsed time the game is
+  handed, with no canvas and no wall clock, so a driver steps it headlessly. The
+  dependency runs one way: the simulation reads nothing from the renderer. Where
+  the next pellet lands is decided from the board alone, never from anything the
+  renderer holds.
+
+The one draw the game makes is the cell a pellet spawns on, drawn uniformly from
+the valid set `specs/board.md` defines. `setNextPellet` below poses the outcome
+of the next such draw, `pelletRespawn` holds the automatic draw off while a
+scenario is arranged, and `drawPelletCell` performs the draw on its own, apart
+from any spawn.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for the registered actions or for the overlay.
+That layer delivers the actions the game registers from the key bindings
+`specs/controls.md` fixes, so a dispatched keyboard event steers the snake, works
+the menus, pauses and mutes exactly as a player's key does, and it draws and
+toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else if (eq engine.slug "simple-2d")}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame and a scripted clock takes it off real time, it drives the
+actions the game registers so a dispatched keyboard event steers the snake
+exactly as a player's key does, and it draws and toggles the debug overlay.
+{{else}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame and a scripted clock takes it off real time, it drives the
+actions the player controller reads so a dispatched keyboard event steers the
+snake exactly as a player's key does, and it draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Coil's, under Diagnostics below.
+
+## The driver
+
+The driver is the hold the surface takes on the game's moving parts, and it is
+three switches rather than one, because a scenario holds one faculty still while
+it watches another. Each switch is on when the game is played, each is restored
+by `reset`, each is set by its own operation below, and each is reported by the
+snapshot.
+
+| Switch | While it is on | While it is off |
+| --- | --- | --- |
+| `steering` | Step 1 of the tick takes the oldest buffered turn and applies it, and a steering request the player makes is taken into the buffer. | Step 1 takes nothing and no request is taken into the buffer, so `turns` stays empty and `dir` holds the value it carries. The head still advances each tick along `dir`. |
+| `travel` | Steps 2 to 5 of the tick run: the head advances one cell, collision resolves, the chain grows or drops its tail, and an eaten pellet scores. | The head does not advance, so steps 2 to 5 do not run: nothing collides, nothing is eaten, and the chain holds the cells it stands on however long the scenario runs. |
+| `pelletRespawn` | Step 5 places the next pellet as soon as one is eaten, on the cell `setNextPellet` posed when that cell is valid and otherwise on a cell drawn uniformly from the valid set `specs/board.md` defines. | Step 5 places none, so an eaten pellet leaves the board without one. No cell is looked for, so the board-cleared ending is not reached this way, and a cell `setNextPellet` posed stays posed. |
+
+Step 6 runs on every tick whatever the switches say, so the combo window drains
+by `TICK_SECONDS` and lapses on schedule even while the snake is held still, and
+`ticks` counts every tick that resolves.
+
+A switch changes only what it names. Nothing is moved, no figure changes, no cue
+plays, and the game carries on drawing the board as it stands. Turning a switch
+back on resumes that faculty from wherever the game stands, with no catching up
+for the ticks it was off.
+
+The snake is the one body the board always holds, so no operation takes it off
+the board. A scenario that is not about the snake poses whatever chain suits it
+and turns `travel` off, which leaves the chain occupying its cells and doing
+nothing at all.
+{{#if (eq variant.slug "maze")}}
+The pellet and the obstacle cells are placed and removed outright.
+{{else}}
+The pellet is placed and removed outright.
+{{/if}}
+
+## The operations
+
+The surface carries `version` (`COIL_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans, and `col`
+and `row` are the integer cell coordinates `specs/board.md` defines.
+
+Each pose sets one thing and leaves the rest of the game as it stands, so a
+caller that wants several things arranged makes several calls, in the order it
+wants them. Nothing a caller does not ask for happens.
+
+A pose reaches the value it names whatever the game's own rules would have
+allowed a player to arrive at, and it never declines, clamps, or quietly settles
+for something nearer. Where the game stands is not a condition on it either: no
+operation asks which screen is up, where the snake is, or whether what it writes
+could have been reached by playing, because a player's route to a thing is not
+this surface's route to it. What the game's own systems make of a world posed
+that way is the next tick's answer rather than this call's.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation's first parameter is the current state, `DeepReadonly<CoilState>`.
+A pose returns the next `CoilState`, built from the one it was handed, which it
+leaves as it was; a reading returns what it read. The headings below name the
+parameters that follow the state.
+{{/if}}
+
+An argument outside the domain its operation states is invalid, and the call
+fails loudly rather than guessing what was meant. So is a call whose subject is
+not in the condition the operation states, such as a menu index no menu on the
+current screen holds. A call the game has no defined state for is the one thing
+an operation does not carry out, and it says so by failing: no operation returns
+with the state as it was and no operation settles for a value nearer than the
+one it was given.
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop feeding elapsed time to the simulation, so no tick runs until
+`advance` runs one. `setAutoStep(true)` returns the game to advancing itself,
+which is how a build starts and how it is played. It changes no game state.
+
+Drawing and input are unaffected either way: the loop keeps rendering and keeps
+reading the actions, so a menu still answers a key press and a steering request
+still lands in the buffer while the simulation is held. The snapshot reports the
+switch as `autoStep`.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a
+real frame, the same update the loop runs followed by a render, so the tick
+resolves exactly as `specs/movement.md` states and the canvas reflects it.
+
+The simulation consumes elapsed time into whole ticks and carries the remainder,
+so `advance(1, 1)` and `advance(1, 60)` both run eight ticks and reach the same
+state.
+
+`seconds` is at least `0` and `frames` is a whole number of at least `1`.
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario driven from code calls
+`setAutoStep(false)` first.
+
+{{/if}}
+{{#if (eq engine.slug "simple-2d")}}
+### `reset(state)`
+{{else}}
+### `reset()`
+{{/if}}
+
+Restores every field the snapshot reports to its opening value: the `title`
+screen with `menuIndex` and `titleIndex` at `0`, the score and the best score at
+`0`, the combo multiplier at `1` with its window closed, `ticks` and `simTime` at
+`0`, the snake back to the starting chain of `specs/board.md` facing `right`, an
+empty turn buffer, no live pellet,
+{{#if (eq variant.slug "maze")}}
+the obstacle course back to `OBSTACLE_CELLS`,
+{{else}}
+no obstacle cell on the board,
+{{/if}}
+no posed pellet cell, and all three driver switches on.
+{{#if (eq engine.slug "none")}}
+A reset also re-arms manual stepping, leaving the game off the wall clock, so
+`autoStep` reads `false` after one rather than the `true` a freshly loaded build
+opens on.
+{{/if}}
+
+`muted` is untouched, because muting is a player preference rather than a value a
+round opens with.
+
+A reset leaves the game indistinguishable from a freshly started session, so
+anything else the build keeps across frames is derived from what a reset
+restores.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `reconcile(state)`
+{{else}}
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the game as it now
+stands, without advancing anything. Coil reports its board, its switches and its
+figures straight off the state, so the readings that follow from something else
+are few and named here.
+{{#if (eq engine.slug "simple-2d")}}
+They are the hit regions `menuItemRect` answers with, which follow from the
+screen the game is on, so after a pose they answer for the screen the game shows
+now rather than the one it showed before.
+{{else}}
+They are the hit regions `menuItemRect` answers with, which follow from the
+screen the game is on, and `muted`, which is the game's copy of the mute bit the
+layer beneath it owns; after a pose each answers for the game as it is now
+rather than as it was before.
+{{/if}}
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `ticks` and `simTime` are untouched, no
+tick resolves, the head advances nowhere, nothing collides, nothing is eaten,
+the combo window drains by nothing, no buffered turn is taken, and the pellet
+generator is not drawn from. It plays no cue, changes no screen, and places no
+pellet. It moves nothing to make a reading agree, so a chain posed across a
+cell an obstacle was added to afterwards stays exactly where it was posed and
+reads as it is. The best score is the update's, so a score posed above it is
+still the next update's to raise, and nothing here flips the mute bit itself.
+Calling it twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the
+simulation is on the wall clock.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `CoilState`, built from the one it was
+handed, which it leaves as it was, so a build that works every one of those
+readings out at the call returns a state equal to the one it was given. `muted`
+is not this call's: the mute bit is the {{engine.name}} engine's, and it reaches
+the state through the frame that carries it.
+{{/if}}
+
+{{#if (eq engine.slug "simple-2d")}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `menuItemRect(state, index)`
+{{else}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `menuItemRect(index)`
+{{/if}}
+
+A pure reading of the hit region item `index` occupies on the menu the current
+screen shows, returned as `{ x, y, w, h }` in the logical units of
+`specs/overview.md`: `x` and `y` are the region's top-left corner, `w` and `h`
+its size. It is the region a pointer selects that item from, as `specs/ui.md`
+states. It reports position alone, and what a pointer or a touch contact does
+over that region stays in the game's own input handling. It changes nothing.
+
+`index` is a whole number of at least `0`. The reading answers `null` rather than
+failing on `"playing"`, which shows no menu, and whenever `index` names no item
+of the menu the current screen shows: a caller asks where an item is before it
+knows what the current menu holds, so `null` is this reading's answer for an item
+that is not there.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScreen(state, screen)`
+{{else}}
+### `setScreen(screen)`
+{{/if}}
+
+Sets `screen` to one of the six values `specs/ui.md` names, and changes no other
+field. The highlight stays where it stood, the board keeps whatever the other
+operations posed on it, and the game carries on under its own rules from there,
+so ticks resolve on `"playing"` and nothing advances on the rest. Moving to
+`"playing"` this way runs the tick over the board as it stands rather than laying
+out a fresh round. The screen is the whole record of a round having ended, so a
+game moved back to `"playing"` plays on from the board as it stands and never
+returns itself to the screen the round ended on.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setMenuIndex(state, index)`
+{{else}}
+### `setMenuIndex(index)`
+{{/if}}
+
+Sets `menuIndex` to `index`, the item the current screen's menu highlights,
+counted from `0`. `index` is a whole number the current screen's menu holds. On
+`"playing"`, which carries no menu, `0` is the only valid index. It moves nothing
+and accepts nothing; a scenario that wants the highlighted item accepted reads
+`confirm` in the ordinary way.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScore(state, points)`
+{{else}}
+### `setScore(points)`
+{{/if}}
+
+Sets the running score to `points`, a whole number of at least `0`. Play carries
+on from that figure, so the next pellet eaten adds `PELLET_POINTS * M` to it. It
+leaves the best score as it stands at the call, and the rule in
+`specs/scoring.md` applies from there, so a posed score above the best raises the
+best as soon as the game next updates.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setBest(state, points)`
+{{else}}
+### `setBest(points)`
+{{/if}}
+
+Sets the session's best score to `points`, a whole number of at least `0`. It
+leaves the running score as it stands, and the rule in `specs/scoring.md` applies
+from there, so a best posed below the live score is raised back to it as soon as
+the game next updates.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setCombo(state, multiplier)`
+{{else}}
+### `setCombo(multiplier)`
+{{/if}}
+
+Sets the combo multiplier `M` to `multiplier`, a whole number in
+`[1, COMBO_MAX]`. It leaves the window as it stands, so posing a live combo is
+this call followed by `setComboWindow`.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setComboWindow(state, seconds)`
+{{else}}
+### `setComboWindow(seconds)`
+{{/if}}
+
+Sets the simulation time left on the combo window, in seconds, from `0` to
+`COMBO_WINDOW` (`3.5`). At `0` the window is closed and the next pellet scores at
+an `M` of `1`. It leaves the multiplier as it stands. The window drains from the
+posed value at step 6 of each tick, on the ordinary schedule.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setSnake(state, cells)`
+{{else}}
+### `setSnake(cells)`
+{{/if}}
+
+Poses the snake as the chain `cells`, a list of `{ col, row }` in the shape the
+snapshot reports them, from the head at index `0` to the tail at the last index.
+The chain replaces whatever the snake was, so its length becomes the length of
+`cells`. A valid chain holds at least one cell, every cell is an interior cell
+carrying no obstacle, each cell after the first is orthogonally adjacent to the
+one before it, and no cell is repeated.
+
+It sets the chain alone. The direction, the turn buffer, the pellet, and the
+score are left as they stand, so a scenario that wants the snake facing a
+particular way calls `setDirection` as well. The next tick advances and resolves
+collision from exactly this chain.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setDirection(state, dir)`
+{{else}}
+### `setDirection(dir)`
+{{/if}}
+
+Sets the direction the snake is travelling in to `dir`, one of `"up"`, `"down"`,
+`"left"`, and `"right"`. It leaves the buffered turns as they stand and moves the
+snake nowhere. The next tick advances the head in this direction unless step 1
+turns it first.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearTurns(state)`
+{{else}}
+### `clearTurns()`
+{{/if}}
+
+Empties the buffer of steering requests, leaving `turns` empty. The direction the
+snake travels in is untouched, and nothing is moved: a request taken out this way
+was never applied, so it turns nothing.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setSnakeSteering(state, enabled)`
+{{else}}
+### `setSnakeSteering(enabled)`
+{{/if}}
+
+Turns the snake's steering on or off, as the driver above describes. Steering is
+on by default and a `reset` restores it. With it off the snake keeps the
+direction it holds however long the scenario runs, whatever keys are pressed, and
+its travel is untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setSnakeTravel(state, enabled)`
+{{else}}
+### `setSnakeTravel(enabled)`
+{{/if}}
+
+Turns the snake's travel on or off, as the driver above describes. Travel is on
+by default and a `reset` restores it. With it off the chain holds the cells it
+stands on however long the scenario runs, and its steering is untouched: a
+buffered turn is still taken and `dir` still changes, so the snake sets off in
+the new direction the moment travel is turned back on.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPellet(state, col, row)`
+{{else}}
+### `setPellet(col, row)`
+{{/if}}
+
+Places the live pellet on cell `(col, row)`, replacing whatever pellet was on the
+board. The cell is an interior cell holding no snake segment and no obstacle. The
+next tick eats it normally when the head advances into it, and the eat scores,
+grows the chain, and places the next pellet exactly as an ordinary eat does.
+Placing a pellet is not spawning one: no draw is made, so a cell `setNextPellet`
+posed stays posed.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearPellet(state)`
+{{else}}
+### `clearPellet()`
+{{/if}}
+
+Takes the pellet off the board, leaving `pellet` at `null`. Nothing is eaten, so
+it scores nothing, grows nothing, and places nothing in its stead. The board
+stays without a pellet until one is placed or a real eat replaces it, and the
+round carries on.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPelletRespawn(state, enabled)`
+{{else}}
+### `setPelletRespawn(enabled)`
+{{/if}}
+
+Turns the pellet's respawn on or off, as the driver above describes. Respawn is
+on by default and a `reset` restores it. With it off an eaten pellet is not
+replaced, so a scenario watching one eat is not met by a pellet landing somewhere
+it did not choose.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setNextPellet(state, col, row)`
+{{else}}
+### `setNextPellet(col, row)`
+{{/if}}
+
+Poses the outcome of the next pellet spawn. `(col, row)` is a cell of the grid,
+`col` in `[0, GRID_COLS - 1]` and `row` in `[0, GRID_ROWS - 1]`. The next spawn
+the game makes, which is step 5 of the tick that eats with respawn on or the
+first pellet a fresh round lays, places the pellet on that cell in place of the
+random draw when the cell is in the valid set `specs/board.md` defines at that
+moment. A posed cell outside the valid set at that moment is discarded and the
+spawn draws at random. Either way that spawn consumes the pose, and every spawn
+after it draws at random again until the next call. A spawn that finds the valid
+set empty, which is the board-cleared ending, places no pellet and consumes the
+pose the same way.
+
+Whether the cell is valid is decided at the spawn rather than at the call, so a
+posed cell may be a wall cell, or hold a snake segment or an obstacle, when it
+is posed. A call before the spawn replaces the pose, and the pose stands across
+screens and through any eat that places no pellet until a spawn consumes it or a
+`reset` clears it. Posing the next spawn moves nothing: the live pellet, the
+chain, and every figure are left as they stand. The snapshot reports the pose as
+`nextPellet`, and `null` once it is consumed.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `drawPelletCell(state)`
+{{else}}
+### `drawPelletCell()`
+{{/if}}
+
+A reading that performs the pellet draw alone. It returns a cell drawn uniformly
+from the valid set `specs/board.md` defines on the board as it stands at the
+call, as `{ col, row }`, and `null` when that set is empty. Each call is a fresh
+draw, so two calls may answer different cells.
+
+It is the draw and nothing else, so it places nothing and changes nothing: the
+live pellet, the chain, every figure, and a cell `setNextPellet` posed are left
+as they stand. The pose is neither taken nor consumed, because a pose replaces a
+spawn's draw and this reading is no spawn.
+{{#if (eq variant.slug "maze")}}
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearObstacles(state)`
+{{else}}
+### `clearObstacles()`
+{{/if}}
+
+Takes every obstacle cell off the board at once, leaving `obstacles` empty. The
+cells become ordinary interior cells: the head crosses them safely and a pellet
+may spawn on them. The wall border is untouched, because the border is the
+board's edge rather than an obstacle. The board stays clear until a call adds an
+obstacle back, or until a `reset` lays the course again.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `addObstacle(state, col, row)`
+{{else}}
+### `addObstacle(col, row)`
+{{/if}}
+
+Adds one obstacle cell at `(col, row)`, an interior cell holding no snake segment
+and not the pellet's cell. A cell that already carries an obstacle is left as it
+is. The added cell is fatal to the head and closed to a pellet spawn from the
+call onward, exactly as a cell of the laid course is, and it is drawn the same
+way.
+{{/if}}
+
+## Snapshot shape
+
+{{#if (eq engine.slug "simple-2d")}}
+`snapshot` returns:
+{{else}}
+`snapshot()` returns:
+{{/if}}
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "paused" | "gameover" | "cleared",
+  menuIndex: <number>,   // the highlighted item, 0 on a screen with no menu
+  titleIndex: <number>,  // the title menu's remembered selection
+  mode: {{#if (eq variant.slug "maze")}}"maze"{{else}}"classic"{{/if}},
+  score: <number>,
+  best: <number>,        // the best score of the session
+  combo: <number>,       // the multiplier M, in [1, COMBO_MAX]
+  comboWindow: <number>, // seconds left on the window; 0 is closed
+  muted: <boolean>,
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,   // whether the frame loop advances the simulation
+{{/if}}
+  ticks: <number>,       // ticks resolved since the last reset
+  simTime: <number>,     // simulation time accumulated since then, in seconds
+  dir: "up" | "down" | "left" | "right",
+  turns: ["up" | "down" | "left" | "right"],  // buffered requests, oldest first
+  snake: [{ col: <number>, row: <number> }],  // head first, tail last
+  pellet: { col: <number>, row: <number> } | null,
+  obstacles: [{ col: <number>, row: <number> }],
+  steering: <boolean>,       // whether the snake's steering is running
+  travel: <boolean>,         // whether the snake's body travels
+  pelletRespawn: <boolean>,  // whether an eaten pellet is replaced
+  nextPellet: { col: <number>, row: <number> } | null,  // the posed next spawn
+}
+```
+
+The shape is fixed and every field is present on every screen. `snake` lists the
+chain from the head at index `0` to the tail at the last index, so its length is
+the snake's length in cells. `turns` lists the steering requests waiting on the
+buffer, oldest first, and holds at most `TURN_QUEUE_MAX` of them. `pellet` is the
+live pellet, and it is `null` only when no pellet is on the board, which is the
+case on the `cleared` screen. `nextPellet` is the cell the last `setNextPellet`
+posed for the next spawn, and `null` while no pose stands.
+{{#if (eq variant.slug "maze")}}
+`obstacles` lists the obstacle cells currently on the board, in any order, which
+is the course `specs/mode.md` fixes until a call changes it.
+{{else}}
+`obstacles` is empty, because this mode places no obstacle cell.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+`autoStep` is `true` while the frame loop advances the simulation from the wall
+clock, which is how a build starts and how it is played, and `false` while
+`setAutoStep(false)` holds the simulation off it.
+
+{{/if}}
+Every field is read straight off the game's state, so what the snapshot reports
+is what the game holds. Four are kept honest rather than posed.
+
+| Field | Kept honest by |
+| --- | --- |
+| `muted` | Mirroring the runtime's mute bit into the state every frame. |
+| `ticks` | Counting every tick the simulation resolves, from `0` at a `reset`. |
+| `simTime` | Accumulating the delta time of every update on the `playing` screen, from `0` at a `reset`. |
+| `mode` | The one mode the game ships, so it is the same on every screen. |
+
+Of those four, `muted` is the only one that follows from something outside the
+state: `ticks` and `simTime` accumulate and `mode` is fixed, so neither is a
+reading a call could bring into agreement with anything. A build is free to read
+the mute bit — and the hit regions `menuItemRect` reports — at the read or to
+keep either as a stored copy, and `reconcile` is what brings a stored copy back
+into agreement after a pose.
+
+## Diagnostics
+
+{{#if (eq engine.slug "none")}}
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources.
+{{else}}
+The engine's debug overlay shows the values the game registers with it as
+diagnostic sources.
+{{/if}}
+Register at least the current `screen`, the score and the best score, the combo
+multiplier and the seconds left on its window, the snake's direction, its length,
+and its head cell, and the pellet cell, the same facts the snapshot reports. Keep
+each one short enough to read on a line, and keep every source a pure read, so
+watching the overlay leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, the backtick key (`KeyboardEvent.code` `Backquote`) shows and hides it,
+it is off when the game starts, and it reads the game without changing it. It is
+a diagnostic layer rather than part of the game's presentation, so keep it
+visually plain and clearly separate from the HUD.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Coil's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<CoilState>`, and reads off that argument. Drawing the panel,
+toggling it with the backtick key (`KeyboardEvent.code` `Backquote`), and keeping
+it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Coil's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of
+no arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel, toggling it with the backtick key (`KeyboardEvent.code` `Backquote`), and
+keeping it read-only are the engine's.
+{{/if}}

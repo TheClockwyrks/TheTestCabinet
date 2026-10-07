@@ -42,7 +42,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 1024;
 /// before it is lagged.
 ///
 /// Sized for the *run-event* topic, not the alerts: a run publishes one alert but
-/// half a dozen lifecycle transitions, and a bulk cancel or a coverage top-up moves
+/// half a dozen lifecycle transitions, and a bulk cancel or a launch pass moves
 /// hundreds of runs in one go. The buffer is shared by every connected stream
 /// regardless of its topics, so it must absorb the noisiest producer or a console
 /// watching only the quiet topic would be lagged by traffic it never asked for.
@@ -367,7 +367,7 @@ impl Notifier {
     /// The receiver is taken **before** the id is published to the client, so nothing
     /// can be lost between registering and subscribing.
     pub fn open_stream(&self) -> StreamHandle {
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = cuid2::create_id();
         let receiver = self.tx.subscribe();
         let topics = Arc::new(StreamTopics::new());
         self.streams

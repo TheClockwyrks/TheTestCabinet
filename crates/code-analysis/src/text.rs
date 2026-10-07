@@ -1,0 +1,148 @@
+//! Line accounting, shared by both front ends and by every size-only file.
+//!
+//! Counting lines is the one measurement every file contributes to, including the ones no
+//! parser touches, so it lives outside both front ends and takes a single scan.
+
+/// How a file's comments are written, which is all the line counter needs to know about a
+/// language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommentStyle {
+    /// `//` to end of line, `/* … */` spanning lines. TypeScript, JavaScript, JSX and Rust
+    /// all share it, which is why one style covers both front ends.
+    CFamily,
+    /// No comment syntax the counter recognises. Every non-blank line is code.
+    ///
+    /// Used for the size-only files — JSON, Markdown, shaders, data. Guessing at their
+    /// comment syntax would cost a lexer per format to move lines between two buckets that
+    /// are already reported separately.
+    None,
+}
+
+/// What a scan of one file's text found.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LineCounts {
+    /// Lines that are neither blank nor wholly a comment.
+    pub code: u32,
+    /// Lines that are wholly a comment.
+    pub comment: u32,
+    /// Lines that are empty or whitespace.
+    pub blank: u32,
+}
+
+impl LineCounts {
+    /// Every line the scan saw.
+    pub fn total(self) -> u32 {
+        self.code + self.comment + self.blank
+    }
+
+    /// Fold another file's counts into this one.
+    pub fn add(&mut self, other: Self) {
+        self.code += other.code;
+        self.comment += other.comment;
+        self.blank += other.blank;
+    }
+}
+
+/// Count `source`'s lines under `style`.
+///
+/// A line holding both code and a trailing comment counts as **code**: the question these
+/// figures answer is how much the model wrote, and a line that does something is a line
+/// that does something regardless of what follows it. Only a line whose entire content is
+/// comment counts as comment.
+///
+/// String literals are not tracked, so a `//` inside a string on an otherwise blank line
+/// is miscounted as a comment. That is a two-lexer problem for a one-bucket answer, and it
+/// moves a line between two figures that are both reported.
+pub fn count_lines(source: &str, style: CommentStyle) -> LineCounts {
+    let mut counts = LineCounts::default();
+    let mut in_block = false;
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // A blank line *inside* a block comment is comment, not blank: it is part of
+            // the prose, and counting it as blank would make a long doc comment read as
+            // whitespace.
+            if in_block {
+                counts.comment += 1;
+            } else {
+                counts.blank += 1;
+            }
+            continue;
+        }
+        if style == CommentStyle::None {
+            counts.code += 1;
+            continue;
+        }
+        let (has_code, ends_in_block) = scan_c_family_line(trimmed, in_block);
+        if has_code {
+            counts.code += 1;
+        } else {
+            counts.comment += 1;
+        }
+        in_block = ends_in_block;
+    }
+    counts
+}
+
+/// Walk one already-trimmed line of C-family source, reporting whether any of it was code
+/// and whether a block comment is still open at the end.
+fn scan_c_family_line(line: &str, mut in_block: bool) -> (bool, bool) {
+    let bytes = line.as_bytes();
+    let mut index = 0;
+    let mut has_code = false;
+    while index < bytes.len() {
+        if in_block {
+            if bytes[index] == b'*' && bytes.get(index + 1) == Some(&b'/') {
+                in_block = false;
+                index += 2;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            // Nothing after a line comment can be code.
+            break;
+        }
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            in_block = true;
+            index += 2;
+            continue;
+        }
+        if !bytes[index].is_ascii_whitespace() {
+            has_code = true;
+        }
+        index += 1;
+    }
+    (has_code, in_block)
+}
+
+/// Whether `bytes` look like a binary rather than text.
+///
+/// A NUL byte in the first block is the same heuristic `git` and `grep` use, and it is the
+/// one that catches the files an extension list misses — a model's compiled wasm, a
+/// renamed image, a checked-in binary fixture.
+pub fn looks_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(8 * 1024).any(|byte| *byte == 0)
+}
+
+/// Whether `source` announces itself as generated output rather than authored code.
+///
+/// Only the first few lines are examined, because that is where every generator writes its
+/// banner and because a file that mentions the phrase in its middle is discussing it.
+pub fn looks_generated(source: &str) -> bool {
+    const MARKERS: [&str; 4] = [
+        "@generated",
+        "Code generated by",
+        "DO NOT EDIT",
+        "do not edit this file",
+    ];
+    source
+        .lines()
+        .take(5)
+        .any(|line| MARKERS.iter().any(|marker| line.contains(marker)))
+}
+
+#[cfg(test)]
+#[path = "text.test.rs"]
+mod tests;

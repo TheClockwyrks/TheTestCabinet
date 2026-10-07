@@ -1,0 +1,113 @@
+# The default Spectra variant: SORTIE — the straight sortie, in which a shot of
+# the wrong band is simply wasted. Listed first in the case manifest's `variants`,
+# so it is the default and an unqualified run is a run of it. Every path here
+# resolves against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The straight sortie: match the band or the shot is wasted, and the swarm always brings both."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The one rule the two modes disagree about lives in a COMMON spec that branches on
+# this variant's slug when it is rendered: `specs/mode.md.hbs` becomes Sortie, whose
+# main-menu entry is LAUNCH and whose mismatched shot leaves the drone exactly as it
+# was. Everything else in the seeded set — the bands, the ship, the swarm, the three
+# drones, the stages, the run, the scoring, the screens, the art and the debug
+# surface — is identical under both modes and is declared commonly in
+# `test-case.toml`. So there is no spec of any kind to put here. If you came to this
+# file to add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# What the game looks like played correctly, shown before anyone runs it: a
+# sustained stretch of real play — a wave flying in and assembling, dives peeling
+# off, the ship flipping to match and again to shield, a Prism broken shell-then-core,
+# a spectral inversion, and a discharge wiping the air — plus stills of a mid-wave
+# field carrying both bands and of the title screen. All of it is captured from
+# `references/none/base` driven through this case's own validator harness, and every
+# outcome on screen arises from the game's own rules under scripted key input: posing
+# an outcome through the debug surface would be fabrication. The ENGINELESS reference
+# is the one it is taken from because only that project runs in a real browser, where
+# the recorder can carry the seeded sprite art into the recording; the two
+# engine-backed projects render headless and record every sprite as an opaque handle,
+# which is right for a validator's evidence and blank for a showcase.
+# `showcase/base/showcase.toml` lists the media; `showcase/base/showcase.md` carries
+# the description, and `showcase/capture/README.md` says how each file was produced.
+showcase = "showcase/base"
+
+# The authored, *correct* static build of this variant — the case-variant analogue
+# of a run's `links.playableBuild`. It names a directory (resolved against the
+# version folder) holding a buildable web project; it is built out-of-band with this
+# case's `[build]` install/build commands run from that directory (its static output
+# landing in `dist/`, exactly like a run's build) and deployed like a published run
+# build via `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run** — handing a model the finished game would defeat the
+# test — so it takes no part in this variant's seed set.
+#
+# The key is a table keyed by engine slug, because the build a reference demonstrates
+# differs under each: `references/none/base` carries its own runtime layer (frame
+# loop, canvas fit, keyboard input, audio, overlay, and the `window.__spectra`
+# surface), `references/simple-2d/base` hands all of that to the engine package
+# resolved from the repository's `packages/simple-2d` and ships the game as
+# `src/game.ts` beside the seeded entry point, and `references/structured-2d/base`
+# writes the game inside the gameplay framework resolved from
+# `packages/structured-2d`. The game every one implements is identical, which is what
+# makes a run on one engine comparable with a run on another. The table must name
+# every engine the case supports and nothing else, and the resolver checks both
+# directions.
+#
+# This is also what `tcab capture-baselines` drives to produce the baseline half of
+# this variant's validation media: the same vitest validator suites that decide a
+# run's points, run against the authored answer. The validators are written from the
+# specs, never from the reference; the reference only demonstrates them passing.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# No `[workspaces]` override. This variant's seeded starter projects ARE the case's
+# common table (`workspaces/none`, `workspaces/base/simple-2d`,
+# `workspaces/base/structured-2d`), so there is nothing to replace. The overload
+# variant does override it, because its seeded `src/constants.ts` carries figures
+# and menu copy this one's does not.
+
+# No `[[domain]]`. Sortie changes only the band system, and the band system is
+# already the common `polarity` domain, so this variant's own point below is rated
+# within the common set rather than adding a domain a base run has and an overload
+# run does not.
+
+# --- Sortie ----------------------------------------------------------------
+# Sortie's whole difference from the other mode is what a MISMATCHED shot does to the
+# drone, so that is what this category grades, and every point is rated within the common
+# `polarity` domain. That the bullet is consumed is specs/bands.md's rule under either
+# mode and is graded commonly by `bands.mismatch-consumes-bullet`; that the drone is not
+# destroyed is graded commonly by `bands.mismatch-spares`. What is left — and it is only
+# this mode's — is that the drone is otherwise UNCHANGED.
+[[review.categories]]
+id = "sortie"
+title = "Sortie"
+[[review.categories.items]]
+id = "mismatch-wasted"
+title = "A mismatched shot is wasted"
+description = "A wrong-band shot leaves the drone exactly as it was: alive, in the same phase, at the same slot, with the same band, and neither redirected nor otherwise changed."
+domains = ["polarity"]
+failure_cap = "broken"
+validation = { script = "sortie/mismatch-wasted.test.ts", outputs = [
+  { id = "unchanged", name = "The drone the wrong-band shot left unchanged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mismatch-scores-nothing"
+title = "A mismatched shot scores nothing"
+description = "A wrong-band shot adds nothing to the score."
+domains = ["polarity", "arcade"]
+failure_cap = "passable"
+validation = { script = "sortie/mismatch-scores-nothing.test.ts", outputs = [
+  { id = "score", name = "The score unchanged by the wrong-band shot", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mismatch-fills-no-resonance"
+title = "A mismatched shot fills nothing"
+description = "A wrong-band shot adds nothing to the resonance meter."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "sortie/mismatch-fills-no-resonance.test.ts", outputs = [
+  { id = "meter", name = "The meter unchanged by the wrong-band shot", kind = "image" },
+] }

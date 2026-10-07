@@ -52,6 +52,16 @@ impl Dir {
         let (dx, dy) = self.delta();
         (x + dx, y + dy)
     }
+
+    /// The opposite direction.
+    pub fn opposite(self) -> Dir {
+        match self {
+            Dir::N => Dir::S,
+            Dir::S => Dir::N,
+            Dir::E => Dir::W,
+            Dir::W => Dir::E,
+        }
+    }
 }
 
 /// Which lane(s) of a belt a fixture acts on. `left`/`right` are relative to the
@@ -104,16 +114,35 @@ pub enum Entity {
     /// perpendicular-clockwise of `dir` (for E/W: `(x, y+1)`; for N/S:
     /// `(x+1, y)`).
     Splitter { x: i32, y: i32, dir: Dir },
+    /// A two-tile **unzip** splitter. Same footprint as
+    /// [`Splitter`](Entity::Splitter), but it takes a **single input** (the belt
+    /// behind its anchor tile) and routes each of that belt's lanes to an output belt
+    /// **by lane**: the left lane to the top output belt's left (outer) lane, the
+    /// right lane to the bottom output belt's right (outer) lane. Only the two outer
+    /// lanes of the outputs carry items.
+    LaneSplitter { x: i32, y: i32, dir: Dir },
     /// A swing arm. Picks up from the tile *behind* it and drops onto the tile
     /// *in front*, set by `dir`.
     /// There is one kind of inserter, so this carries no tier — every inserter
     /// swings at the single `SWING` constant from the prototype table.
     Inserter { x: i32, y: i32, dir: Dir },
     /// A 3×3 crafting machine anchored at `(x, y)`, covering `(x..x+3, y..y+3)`.
+    /// Runs any **non-smelting** recipe (gears, cable, circuits, machines).
     Assembler {
         x: i32,
         y: i32,
         /// A recipe name from the prototype table (`"iron-gear"`, …).
+        recipe: String,
+    },
+    /// A 2×2 coal-fired smelter anchored at `(x, y)`, covering `(x..x+2, y..y+2)`.
+    /// A furnace is the only machine that runs a **smelting** recipe
+    /// (`"iron-plate"` / `"copper-plate"`), turning raw ore into a plate by burning
+    /// coal; it has a smaller footprint than the assembler and never smelts without
+    /// coal in its buffer.
+    Furnace {
+        x: i32,
+        y: i32,
+        /// A smelting recipe name from the prototype table.
         recipe: String,
     },
     /// A test fixture that emits `item` onto `lane` of the downstream belt once
@@ -141,8 +170,10 @@ impl Entity {
         match self {
             Entity::Belt { x, y, .. }
             | Entity::Splitter { x, y, .. }
+            | Entity::LaneSplitter { x, y, .. }
             | Entity::Inserter { x, y, .. }
             | Entity::Assembler { x, y, .. }
+            | Entity::Furnace { x, y, .. }
             | Entity::Source { x, y, .. }
             | Entity::Sink { x, y, .. } => (*x, *y),
         }
@@ -181,8 +212,12 @@ pub enum ScenarioError {
     BadSnapshots,
     /// A belt referenced an unknown tier.
     UnknownBeltTier(String),
-    /// An assembler referenced an unknown recipe.
+    /// An assembler or furnace referenced an unknown recipe.
     UnknownRecipe(String),
+    /// An assembler referenced a smelting recipe (smelting is a furnace's job).
+    SmeltingOnAssembler(String),
+    /// A furnace referenced a non-smelting recipe (a furnace only smelts).
+    NonSmeltingOnFurnace(String),
     /// A source referenced an unknown item.
     UnknownItem(String),
     /// A source declared `period == 0` (would emit every tick / divide by zero).
@@ -211,6 +246,15 @@ impl std::fmt::Display for ScenarioError {
             }
             ScenarioError::UnknownBeltTier(t) => write!(f, "unknown belt tier {t:?}"),
             ScenarioError::UnknownRecipe(r) => write!(f, "unknown recipe {r:?}"),
+            ScenarioError::SmeltingOnAssembler(r) => {
+                write!(
+                    f,
+                    "smelting recipe {r:?} cannot run on an assembler (use a furnace)"
+                )
+            }
+            ScenarioError::NonSmeltingOnFurnace(r) => {
+                write!(f, "non-smelting recipe {r:?} cannot run on a furnace")
+            }
             ScenarioError::UnknownItem(i) => write!(f, "unknown item {i:?}"),
             ScenarioError::ZeroPeriod => write!(f, "a source's period must be positive"),
             ScenarioError::OffGrid { x, y } => write!(f, "entity anchor ({x},{y}) is off the grid"),
@@ -266,11 +310,20 @@ impl Scenario {
                         return Err(ScenarioError::UnknownBeltTier(tier.clone()));
                     }
                 }
-                Entity::Assembler { recipe, .. } => {
-                    if prototypes::recipe(recipe).is_none() {
-                        return Err(ScenarioError::UnknownRecipe(recipe.clone()));
+                Entity::Assembler { recipe, .. } => match prototypes::recipe(recipe) {
+                    None => return Err(ScenarioError::UnknownRecipe(recipe.clone())),
+                    Some(r) if r.smelting => {
+                        return Err(ScenarioError::SmeltingOnAssembler(recipe.clone()));
                     }
-                }
+                    Some(_) => {}
+                },
+                Entity::Furnace { recipe, .. } => match prototypes::recipe(recipe) {
+                    None => return Err(ScenarioError::UnknownRecipe(recipe.clone())),
+                    Some(r) if !r.smelting => {
+                        return Err(ScenarioError::NonSmeltingOnFurnace(recipe.clone()));
+                    }
+                    Some(_) => {}
+                },
                 Entity::Source { item, period, .. } => {
                     if prototypes::item_index(item).is_none() {
                         return Err(ScenarioError::UnknownItem(item.clone()));
@@ -280,7 +333,10 @@ impl Scenario {
                     }
                 }
                 // Nothing to validate: these carry no prototype reference.
-                Entity::Splitter { .. } | Entity::Inserter { .. } | Entity::Sink { .. } => {}
+                Entity::Splitter { .. }
+                | Entity::LaneSplitter { .. }
+                | Entity::Inserter { .. }
+                | Entity::Sink { .. } => {}
             }
         }
         Ok(())

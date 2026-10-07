@@ -1,7 +1,10 @@
 import { Link } from "react-router";
 import { routes } from "../routes";
-import { useNotifications, type AppNotification } from "../runtime/notifications";
-import styles from "./NotificationToast.module.scss";
+import {
+  useNotifications,
+  type AppNotification,
+} from "../runtime/notifications";
+import styles from "./toasts.module.scss";
 
 interface NotificationToastProps {
   notification: AppNotification;
@@ -24,7 +27,7 @@ export function NotificationToast({
   const failed = notification.outcome === "failed";
 
   const heading = (
-    <span className={styles.title} data-failed={failed ? "" : undefined}>
+    <span className={styles.title} data-tone={failed ? "error" : "success"}>
       {notification.title}
     </span>
   );
@@ -35,14 +38,14 @@ export function NotificationToast({
         {notification.runId ? (
           <Link
             to={routes.runDetail(notification.runId)}
-            className={styles.link}
+            className={styles.lines}
             onClick={() => closeToast?.()}
           >
             {heading}
             <span className={styles.body}>{notification.body}</span>
           </Link>
         ) : (
-          <div className={styles.link}>
+          <div className={styles.lines}>
             {heading}
             <span className={styles.body}>{notification.body}</span>
           </div>

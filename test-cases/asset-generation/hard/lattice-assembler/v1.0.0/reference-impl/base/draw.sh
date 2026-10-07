@@ -97,13 +97,31 @@ HOLE_R=9 # lightening holes bored through the body, one between each pair of tee
 BORE_R=6 # the gear's central bore, where the glow shows through
 
 # --- Palette (the brief's table, and nothing else) -----------------------------
+#
+# The grey-blue chassis and the teal working state are IDENTICAL in every tier —
+# they are what make the three machines one family. Only the hazard accent is
+# recoloured tier to tier (amber, then red-orange, then blue), and the pale-blue
+# energy glow appears in tier 3 alone. `set_haz` selects the hazard tone for the
+# tier being drawn; nothing else about the palette changes.
 OUTLINE='#1b1d21'
 CH_LIGHT='#6a7884'
 CH_MID='#4d5a64'
 CH_DARK='#36424b'
 TEAL='#38c6d6'
 TEAL_PALE='#9af0f7'
-AMBER='#e6b329'
+GLOW='#a9d4ff' # tier-3 energy glow only
+
+# Select the hazard accent for the tier being drawn. The teal working state and
+# the grey-blue chassis are untouched — a glance at the hazard colour alone tells
+# the tiers apart. (The tier-3 blue rides the chassis markings; do not confuse it
+# with the teal working state, which never changes.)
+set_haz() {
+	case $1 in
+	1) HAZARD='#e6b329' ;; # amber
+	2) HAZARD='#e6602a' ;; # red-orange
+	3) HAZARD='#2f7fe6' ;; # blue
+	esac
+}
 
 # --- Turning the gear with integer arithmetic ----------------------------------
 #
@@ -185,10 +203,10 @@ hazard() {
 	sense=$5
 	if [ "$dir" = h ]; then
 		draw-sheet fill-rect --frame "$frame" --x "$x" --y "$y" \
-			--width "$HAZ_RUN" --height "$BAND_H" --color "$AMBER"
+			--width "$HAZ_RUN" --height "$BAND_H" --color "$HAZARD"
 	else
 		draw-sheet fill-rect --frame "$frame" --x "$x" --y "$y" \
-			--width "$BAND_H" --height "$HAZ_RUN" --color "$AMBER"
+			--width "$BAND_H" --height "$HAZ_RUN" --color "$HAZARD"
 	fi
 	if [ "$sense" -gt 0 ]; then
 		near=$((BAND_H - 1))
@@ -304,10 +322,58 @@ port() {
 	fi
 }
 
-# --- The sheet -----------------------------------------------------------------
+# Tier 2 and 3 reinforcement, drawn on the LEFT half (and on centred shapes)
+# BEFORE the mirror, so both halves match to the pixel and the footprint never
+# grows. Everything here is extra mechanical detail on the SAME chassis: tier 2
+# adds a secondary panel seam and corner-bracket bolts; tier 3 adds the densest
+# plating line and the pale-blue energy glow tracing the chassis frame. The teal
+# working state and the machine's silhouette are untouched.
+reinforce() {
+	rf=$1
+	rt=$2
+	# tier 2+: a secondary panel seam on the edge plate, just inside the top-face
+	# border — richer plating that changes nothing about the outline.
+	seam2=$((TOP_IN + 2))
+	draw-sheet stroke-rect --frame "$rf" --x "$seam2" --y "$seam2" \
+		--width "$((SIZE - 2 * seam2))" --height "$((SIZE - 2 * seam2))" \
+		--color "$CH_MID"
+	# tier 2+: corner-bracket bolts — the studs that turn each corner's single
+	# stud into an L-bracket. Drawn on the left half; the mirror gives the right.
+	bolt "$rf" "$BOLT_IN" "$BOLT_OUT"
+	bolt "$rf" "$BOLT_OUT" "$BOLT_IN"
+	bolt "$rf" "$BOLT_IN" "$((SIZE - BOLT_OUT - BOLT))"
+	bolt "$rf" "$BOLT_OUT" "$((SIZE - BOLT_IN - BOLT))"
+	if [ "$rt" -lt 3 ]; then
+		return 0
+	fi
+	# tier 3: the densest plating — a third seam line — and the energy glow, a
+	# thin pale-blue bloom tracing the very edge of the top face (the chassis
+	# frame). The glow tone appears in no other tier.
+	seam3=$((TOP_IN + 4))
+	draw-sheet stroke-rect --frame "$rf" --x "$seam3" --y "$seam3" \
+		--width "$((SIZE - 2 * seam3))" --height "$((SIZE - 2 * seam3))" \
+		--color "$CH_DARK"
+	draw-sheet stroke-rect --frame "$rf" --x "$TOP_IN" --y "$TOP_IN" \
+		--width "$((SIZE - 2 * TOP_IN))" --height "$((SIZE - 2 * TOP_IN))" \
+		--color "$GLOW"
+}
 
-frame=0
-while [ "$frame" -lt "$FRAMES" ]; do
+# --- The sheet -----------------------------------------------------------------
+#
+# Three tiers of eight frames each, all drawn by the SAME body below from the SAME
+# per-frame geometry and the SAME crafting animation — only `set_haz` (the hazard
+# accent) and the tier-gated `reinforce` pass differ, which is exactly what the
+# brief asks the three tiers to be. `loop` (0..7) is the position within the tier's
+# craft loop and drives the gear and the glow, so all three tiers animate
+# identically; the renderer plays the higher tiers back faster.
+
+tier=1
+while [ "$tier" -le 3 ]; do
+	set_haz "$tier"
+	base=$(((tier - 1) * FRAMES)) # 0, 8, 16
+	loop=0
+	while [ "$loop" -lt "$FRAMES" ]; do
+		frame=$((base + loop))
 	# 1. The block. Six concentric squares, drawn floor-first: the contact
 	#    shadow grounding it, the two bevel tones falling away from the top, the
 	#    seam, and the lit top face inset inside them all. Because they are
@@ -370,6 +436,10 @@ while [ "$frame" -lt "$FRAMES" ]; do
 		--y0 "$((SIZE - BOLT_OUT - BOLT - 2))" --x1 "$((BOLT_IN - 1))" \
 		--y1 "$((SIZE - BOLT_IN))" --color "$CH_MID"
 
+	# 6b. Tiers 2 and 3: the reinforcement pass, on the left half before the
+	#     mirror so the two halves stay identical.
+	[ "$tier" -ge 2 ] && reinforce "$frame" "$tier"
+
 	# 7. Everything above was drawn on the left half only (or centred and already
 	#    symmetric), so one mirror finishes the chassis and guarantees the two
 	#    halves match to the pixel. It happens before the core is drawn: mirroring
@@ -397,7 +467,7 @@ while [ "$frame" -lt "$FRAMES" ]; do
 	#    frames: darkest at frame 0, brightest at frame 4, and back down — with
 	#    frame 7 one step above frame 0, so the wrap 7 -> 0 is the same size step
 	#    as every other and the pulse does not stutter at the seam.
-	swing=$((frame - FRAMES / 2))
+	swing=$((loop - FRAMES / 2))
 	if [ "$swing" -lt 0 ]; then swing=$((-swing)); fi
 	glow=$((FRAMES / 2 - swing))
 
@@ -417,7 +487,7 @@ while [ "$frame" -lt "$FRAMES" ]; do
 	pitch=$((TURN / TEETH))
 	tooth=0
 	while [ "$tooth" -lt "$TEETH" ]; do
-		angle=$((tooth * pitch + frame * SPIN))
+		angle=$((tooth * pitch + loop * SPIN))
 		draw-sheet fill-circle --frame "$frame" \
 			--cx "$((CX + $(scaled "$(cos_q "$angle")" "$TOOTH_R")))" \
 			--cy "$((CY + $(scaled "$(sin_q "$angle")" "$TOOTH_R")))" \
@@ -435,7 +505,7 @@ while [ "$frame" -lt "$FRAMES" ]; do
 	#     as a static cog, six holes swinging round it is not.
 	hole=0
 	while [ "$hole" -lt "$TEETH" ]; do
-		angle=$((hole * pitch + pitch / 2 + frame * SPIN))
+		angle=$((hole * pitch + pitch / 2 + loop * SPIN))
 		draw-sheet fill-circle --frame "$frame" \
 			--cx "$((CX + $(scaled "$(cos_q "$angle")" "$HOLE_R")))" \
 			--cy "$((CY + $(scaled "$(sin_q "$angle")" "$HOLE_R")))" \
@@ -455,5 +525,7 @@ while [ "$frame" -lt "$FRAMES" ]; do
 			--r "$((glow - 2))" --color "$TEAL_PALE"
 	fi
 
-	frame=$((frame + 1))
+		loop=$((loop + 1))
+	done
+	tier=$((tier + 1))
 done

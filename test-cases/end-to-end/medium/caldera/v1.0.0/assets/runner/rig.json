@@ -2,101 +2,57 @@
   "parts": [
     {
       "name": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "ridge",
       "parent": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "head",
       "parent": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "leg_fl",
       "parent": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "leg_fr",
       "parent": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "leg_bl",
       "parent": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "leg_br",
       "parent": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "foot_fl",
       "parent": "leg_fl",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "foot_fr",
       "parent": "leg_fr",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "foot_bl",
       "parent": "leg_bl",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "foot_br",
       "parent": "leg_br",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     }
   ],
   "joints": [
@@ -105,11 +61,7 @@
       "part": "leg_fl",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        6,
-        7,
-        30
-      ],
+      "pivot": [6, 7, 30],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -120,11 +72,7 @@
       "part": "leg_fr",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        13,
-        7,
-        30
-      ],
+      "pivot": [13, 7, 30],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -135,11 +83,7 @@
       "part": "leg_bl",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        6,
-        7,
-        14
-      ],
+      "pivot": [6, 7, 14],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -150,11 +94,7 @@
       "part": "leg_br",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        13,
-        7,
-        14
-      ],
+      "pivot": [13, 7, 14],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -165,11 +105,7 @@
       "part": "foot_fl",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        4,
-        4,
-        30
-      ],
+      "pivot": [4, 4, 30],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -180,11 +116,7 @@
       "part": "foot_fr",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        15,
-        4,
-        30
-      ],
+      "pivot": [15, 4, 30],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -195,11 +127,7 @@
       "part": "foot_bl",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        4,
-        4,
-        14
-      ],
+      "pivot": [4, 4, 14],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -210,11 +138,7 @@
       "part": "foot_br",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        15,
-        4,
-        14
-      ],
+      "pivot": [15, 4, 14],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -225,11 +149,7 @@
       "part": "head",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        10,
-        36
-      ],
+      "pivot": [9, 10, 36],
       "min": -0.9,
       "max": 0.9,
       "rest": 0.0,
@@ -240,11 +160,7 @@
       "part": "body",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        6,
-        18
-      ],
+      "pivot": [9, 6, 18],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -255,11 +171,7 @@
       "part": "body",
       "kind": "translation",
       "axis": "z",
-      "pivot": [
-        9,
-        6,
-        18
-      ],
+      "pivot": [9, 6, 18],
       "min": -3.0,
       "max": 7.0,
       "rest": 0.0,
@@ -270,11 +182,7 @@
       "part": "ridge",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        13,
-        18
-      ],
+      "pivot": [9, 13, 18],
       "min": -0.3,
       "max": 0.3,
       "rest": 0.0,

@@ -1,0 +1,93 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/breakpoints" as bp;
+
+// The unsaved-changes prompt. Modal, because the question it asks decides what
+// happens to work the operator has already done — there is nothing useful to do
+// on the page behind it until it is answered.
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  // Above the notifications sidebar (50) and every in-page popover (20), below
+  // the fullscreen playable embed (100), which is the only thing that outranks a
+  // question about unsaved work.
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-md;
+  background: color-mix(in srgb, t.$color-bg 82%, transparent);
+}
+
+.panel {
+  // Wide enough for the three choices on one line. The dialog's whole point is that
+  // leaving unsaved work is a three-way decision, and the three are only comparable when
+  // they are read as a row — so the panel is sized against the widest set of labels it
+  // carries ("Keep editing" + "Discard changes" + "Create configuration") rather than
+  // against the prose above them, which would wrap harmlessly at any width.
+  //
+  // That widest triple is ~39rem of button at this font, which a 40rem panel could not
+  // hold: the row overflowed the panel's own border on the configuration editor's create
+  // path. The floor is the triple plus a gutter, and it pairs with the stacking rule
+  // below, whose breakpoint is this width — so there is no viewport at which the panel
+  // is both a row and wider than the screen.
+  width: min(46rem, 100%);
+  padding: t.$space-lg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  box-shadow: 0 1rem 3rem color-mix(in srgb, t.$color-bg 70%, transparent);
+}
+
+.title {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.body {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// Why the Save button is refused — sat above the actions so the disabled button
+// is never unexplained.
+.blocked {
+  margin: t.$space-sm 0 0;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}
+
+.actions {
+  display: flex;
+  // One row or a column, never a broken row: a set of three buttons wrapping two-and-one
+  // reads as two groups of choices, which is exactly what this dialog must not say. The
+  // narrow-screen rule below is the only place they stack, and there they stack all
+  // three. The labels hold their own line for the same reason.
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: t.$space-sm;
+  margin-top: t.$space-lg;
+
+  > button {
+    // The panel above is sized to hold all three whole, so this never bites. It is
+    // the backstop for the next label nobody measured: such a button gives way and
+    // clips its own text rather than shouldering the row past the panel's border,
+    // which is the failure this row had. (No ellipsis to go with the clip — the label
+    // is an anonymous flex item of an `inline-flex` button, which `text-overflow` does
+    // not reach.)
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  // Stacked on a narrow screen, safest choice first — the same order the row
+  // reads in, so the button under a thumb is never the destructive one by
+  // accident. The breakpoint is the panel's own width above, so the row stacks
+  // exactly when the screen stops being able to hold it.
+  @include bp.below(t.$bp-md) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

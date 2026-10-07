@@ -1,0 +1,104 @@
+// runs/speed-up-raises-the-step — during a run the `speed-up` action moves the
+// speed setting one step up, and the run then advances at the new step's rate.
+//
+// THE RULE. "`SPEEDS` is `[1, 3, 10, 30]` cycles per second, indexed by the speed
+// setting `0` to `3`; `DEFAULT_SPEED_INDEX` is `1`. The speed actions of
+// `specs/controls.md` move the setting one step and stop at `0` and at `3`"
+// (`specs/simulation.md`, Cycles and the clock). `specs/controls.md` binds the
+// action and names when it is live: "`speed-up` | `Period` | Editor, during a run:
+// the next step of `SPEEDS`", and its screen table gives "`editor`, `running` or
+// `paused`" the row that reads it. `specs/editor.md` says the same: "While the
+// status is `running` or `paused` ... `speed-up` and `speed-down` move the speed
+// step."
+//
+// THE CONFIGURATION. A live run on a posed challenge with an EMPTY machine and an
+// EMPTY field, so nothing can fault, nothing can be delivered, and nothing but the
+// clock moves under the frames this check drives. The run is left at the step
+// `startRun` sets it to, `DEFAULT_SPEED_INDEX` (`1`), which is the step the item
+// starts from; that is read back before the press rather than assumed.
+//
+// THE VERDICT is in two parts, because the item is. First, one press of `speed-up`
+// leaves `sim.speed` at `2`. Second, the run then advances at `SPEEDS[2]` — `10`
+// cycles per second — which is read as a whole second of game time, spread over
+// sixty frames, completing exactly ten cycles and landing the fraction back where
+// it stood. The second part is what makes the first more than a number in a field:
+// a build that moved the setting and went on running at the old rate fails here.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNear, assertNotNull } from "../assert";
+import {
+  DEFAULT_SPEED_INDEX,
+  FRACTION_TOLERANCE,
+  SPEEDS,
+  TICK_HZ,
+} from "../constants";
+import { BARE } from "../fixtures";
+import {
+  captureStill,
+  createHarness,
+  openBareRun,
+  pressAction,
+  type Harness,
+} from "../harness";
+
+/** The step one `speed-up` from `DEFAULT_SPEED_INDEX` reaches. */
+const RAISED = DEFAULT_SPEED_INDEX + 1;
+
+/** The span the rate is measured over, and the frames it is divided into. */
+const ONE_SECOND = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("moves sim.speed from 1 to 2, and runs at 10 cycles per second from there", async () => {
+  await openBareRun(h, { challenge: BARE });
+
+  const opened = await h.snapshot();
+  assertNotNull(
+    opened.sim,
+    "startRun leaves a live run, which is when speed-up is read",
+  );
+  assertEqual(
+    opened.sim?.status,
+    "running",
+    "the run is running, which is one of the two statuses that read the speed actions",
+  );
+  assertEqual(
+    opened.sim?.speed,
+    DEFAULT_SPEED_INDEX,
+    `a run starts at DEFAULT_SPEED_INDEX (${DEFAULT_SPEED_INDEX}), the step this point starts from`,
+  );
+
+  await pressAction(h, "speed-up");
+  await captureStill(h, "stepped-up");
+
+  const raised = await h.snapshot();
+  assertEqual(
+    raised.sim?.speed,
+    RAISED,
+    `speed-up moves the setting one step up, to ${RAISED}`,
+  );
+
+  const before = await h.snapshot();
+  await h.advanceSeconds(ONE_SECOND, TICK_HZ);
+
+  const after = await h.snapshot();
+  assertEqual(
+    (after.sim?.cycle ?? -1) - (before.sim?.cycle ?? 0),
+    SPEEDS[RAISED],
+    `the run advances at SPEEDS[${RAISED}] (${SPEEDS[RAISED]}) cycles per second from there`,
+  );
+  assertNear(
+    after.sim?.fraction ?? -1,
+    before.sim?.fraction ?? -1,
+    FRACTION_TOLERANCE,
+    `one second at ${SPEEDS[RAISED]} cycles per second is a whole number of cycles, so the fraction lands where it stood`,
+  );
+});

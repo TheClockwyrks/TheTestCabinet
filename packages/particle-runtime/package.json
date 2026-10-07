@@ -1,10 +1,10 @@
 {
-  "name": "@test-cabinet/particle-runtime",
+  "name": "@clockwyrks/particle-runtime",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Framework-agnostic particle-system simulator plus optional three.js and 2D-canvas bindings, consumed by the in-repo viewer and real games. The particle analogue of @test-cabinet/voxel-runtime: a system is simulated, not posed.",
+  "description": "Framework-agnostic particle-system simulator plus optional three.js and 2D-canvas bindings, consumed by the in-repo viewer and real games. The particle analogue of @clockwyrks/voxel-runtime: a system is simulated, not posed.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -30,15 +30,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@test-cabinet/run-record": "*"
+    "@clockwyrks/asset-contract": "*"
   },
   "peerDependencies": {
-    "three": "~0.182.0"
+    "three": "~0.185.0"
   },
   "devDependencies": {
-    "@types/three": "~0.182.0",
-    "three": "~0.182.0",
-    "typescript": "^5",
-    "vitest": "^3"
+    "@types/three": "~0.185.0",
+    "three": "~0.185.0",
+    "typescript": "^6",
+    "vitest": "^5"
   }
 }

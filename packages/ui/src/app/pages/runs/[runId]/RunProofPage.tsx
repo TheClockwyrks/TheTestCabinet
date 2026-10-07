@@ -1,5 +1,5 @@
-import { Panel, SpecAccordion, type AccordionEntry } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { Panel, SpecAccordion, type AccordionEntry } from "@clockwyrks/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { MediaView } from "../../../components/MediaView";
 import { useGalleryData } from "../../../data/galleryContext";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";

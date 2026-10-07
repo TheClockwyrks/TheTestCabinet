@@ -1,0 +1,237 @@
+# Kessler — The assets this build produces
+
+Kessler ships with no pre-made art and no pre-made sound. This machine carries
+asset tools on its `PATH`, and every sprite, sheet, particle system, cue, and
+music bed the game shows or plays is produced with them during this build,
+committed to the repository, and bundled by it. This file is the contract: what
+to produce, which tool produces it, where the file lands, and how the build
+reaches it.
+
+Production is a one-time step. The tools belong to this machine and are absent
+when the project is installed and rebuilt elsewhere, so the committed files are
+the assets: `npm ci` and `npm run build` invoke no tool, and the built site
+fetches nothing from outside its own `dist/`. A build that shells out to a
+generation tool fails wherever the tools are absent, even though the game is
+complete.
+
+## The tools
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | one sprite, a PNG | the planet and the five salvage pod sprites |
+| `draw-sheet` | a sprite sheet, one PNG per frame | the ball's spin |
+| `particle-2d` | a particle system, a `system.json` | the destruction burst, the impact spark, the burn-up |
+| `sfx-synth` | a procedural sound, a `.wav` | the cues |
+| `sfx-sample` | a sampled sound over the sample pack, a `.wav` | the cues, where a sampled layer suits one better |
+| `music` | sequenced music over an instrument bank, a `.wav` and a `.mid` | the two music beds |
+
+Each is a command-line tool, and `<tool> --help` states its operations
+(`<tool> <operation> --help` for one operation's flags). Each records the
+operations run against it and then renders the finished file, which you commit
+at the path this file names. Produce these files with these tools; pre-made
+art, a downloaded sound, or a bundled font standing in for a produced file does
+not meet this contract.
+
+## The look
+
+The mood is cold orbital demolition: hard vacuum, glass, and sunlight on dead
+metal, with the planet below the one warm thing in view. Palette, type, and
+styling are yours, chosen once and held across every sprite, effect, screen,
+and sound so the game reads as one place.
+
+## Scale
+
+The 1000 x 1000 logical stage fits the viewport's short side, so at the
+reference 1000-pixel fit one logical unit covers one screen pixel. Every sprite
+is authored at the canvas size its table row states and drawn at that size in
+logical units, centered on the object it depicts, so nothing is scaled at draw
+time.
+
+## Where the files land, and how they are loaded
+
+Every produced file sits under `assets/` at the root of this repository, at the
+path named below, and is committed.
+
+{{#if (eq engine.slug "none")}}
+The build loads them itself. Every URL it requests resolves against the page
+rather than against the origin root, so the site runs unchanged whether it is
+served from the root of a static host or mounted under a sub-path. A
+root-absolute URL such as `/assets/sprites/planet.png` does not meet this: it
+resolves against the origin and fails under a sub-path.
+{{else}}
+The {{engine.name}} engine provides the asset loader and the audio cue bus,
+both documented in the `engine/` directory at the root of this repository. The
+loader resolves every path under one root, `assets/`, relative to the page the
+build is served from, so the build asks it for a path written relative to that
+root, such as `sprites/planet.png` and `audio/paddle-bounce.wav`, rather than
+constructing a URL of its own. Each audio cue below is bound to its produced
+file through the cue bus, under its name in `CUES`.
+{{/if}}
+
+## The sprites
+
+Produce each of these on a transparent, straight-alpha canvas, and draw it at
+native size, centered on its object.
+
+| Sprite | Files | Tool | Canvas |
+| --- | --- | --- | --- |
+| Planet | `assets/sprites/planet.png` | `draw` | 160 x 160 |
+| Salvage pods | `assets/sprites/pods/widen.png`, `narrow.png`, `multiball.png`, `shield.png`, `pierce.png` | `draw` | 24 x 24 each |
+| Ball spin | `assets/sprites/ball/0.png` to `5.png` | `draw-sheet` | 24 x 24 per frame |
+
+The planet sprite is drawn centered on the stage center, its disc 140 pixels
+across on the 160-pixel canvas, so the disc fills the planet's footprint and
+the margin is free for atmosphere or glow. Each pod sprite is drawn on its
+falling pod, and the HUD may reuse the pod sprites as its active-effect
+indicators. The five pod kinds are told apart from each other at 24 pixels, in
+flight, without reading a label.
+
+### The ball sheet
+
+Six frames, one PNG per frame, produced with `draw-sheet` and emitted as
+separate files rather than as regions of one image. Every ball, the parked
+ball included, is drawn from the sheet: the frames play `0` through `5` in
+order and wrap, advancing one frame per 5 ticks of simulation time, with each
+ball's phase counted from its own spawn tick. The spin runs on simulation
+time.
+
+### The art bar
+
+- The planet reads as a planet at a glance rather than as a flat disc, and its
+  disc fills the 140-pixel footprint.
+- The five pod sprites are pairwise distinguishable while falling, so a player
+  decides whether to catch one from its look alone.
+- The six ball frames read as one continuous spin rather than a flicker, and
+  the ball separates from the field at any position on the stage.
+- Every sprite reads on the dark field, and none of them relies on a background
+  behind it.
+
+## The particle effects
+
+Produce each of these with `particle-2d` as a `system.json`, and play it live.
+
+| System | File | Fired at |
+| --- | --- | --- |
+| Destruction burst | `assets/particles/burst.json` | the arc center of a destroyed target |
+| Impact spark | `assets/particles/spark.json` | the contact point of a deflector, containment, or shield reflection |
+| Burn-up | `assets/particles/burnup.json` | a ball or pod reaching the planet |
+
+Each system is authored radially symmetric, so an instance reads correctly at
+any angle around the planet; placing and scaling an instance at its event's
+position is the build's code. Each play of a system varies, and that variation
+is correct.
+
+Play them through `@clockwyrks/particle-runtime`, an installed dependency
+imported by its bare name, using its `./canvas` binding: a player is
+constructed over a parsed system and a 2D rendering context and advanced each
+frame with that frame's delta, and it simulates the system and composites the
+particles itself. Its options carry the seed, the composite mode, and whether
+the context is cleared before compositing, and the package's own types are the
+authoritative API.
+{{#if (eq engine.slug "none")}}
+The build hands the player the same context it draws the field into, so an
+effect sits over the frame at the position of the event that raised it.
+{{else if (eq engine.slug "simple-2d")}}
+The context is the one `render` receives, so a live effect advances on the
+frame delta `update` was handed and sits over the frame at the position of the
+event that raised it.
+{{else}}
+A draw component is what puts a player's output on the field: the context is
+the one that component's own `draw` is handed, so an effect takes its place in
+the layer order like any other picture, at the position of the event that
+raised it.
+{{/if}}
+
+## The sound
+
+Produce a distinct sound for each of the thirteen cues, under exactly these
+file names. The event each cue plays on is fixed in the file that specifies
+the event.
+
+| Cue | File | Tool |
+| --- | --- | --- |
+| `paddle-bounce` | `assets/audio/paddle-bounce.wav` | `sfx-synth` or `sfx-sample` |
+| `field-bounce` | `assets/audio/field-bounce.wav` | `sfx-synth` or `sfx-sample` |
+| `target-hit` | `assets/audio/target-hit.wav` | `sfx-synth` or `sfx-sample` |
+| `target-break` | `assets/audio/target-break.wav` | `sfx-synth` or `sfx-sample` |
+| `shield-reflect` | `assets/audio/shield-reflect.wav` | `sfx-synth` or `sfx-sample` |
+| `pod-catch` | `assets/audio/pod-catch.wav` | `sfx-synth` or `sfx-sample` |
+| `pod-catch-narrow` | `assets/audio/pod-catch-narrow.wav` | `sfx-synth` or `sfx-sample` |
+| `pod-burn` | `assets/audio/pod-burn.wav` | `sfx-synth` or `sfx-sample` |
+| `ball-lost` | `assets/audio/ball-lost.wav` | `sfx-synth` or `sfx-sample` |
+| `wave-clear` | `assets/audio/wave-clear.wav` | `sfx-synth` or `sfx-sample` |
+| `game-over` | `assets/audio/game-over.wav` | `sfx-synth` or `sfx-sample` |
+| `menu-move` | `assets/audio/menu-move.wav` | `sfx-synth` or `sfx-sample` |
+| `menu-select` | `assets/audio/menu-select.wav` | `sfx-synth` or `sfx-sample` |
+
+`sfx-synth` builds a sound from synth voices alone, and `sfx-sample` layers
+over the `combat-core` sample pack, which `list-samples` browses. Use whichever
+suits each cue.
+
+### The music beds
+
+Produce two beds with `music`, which may sequence the `synthwave` and
+`gm-lite` instrument banks (`list-instruments` browses them), synth waveforms,
+or both. `music` writes a `.wav` and a `.mid` beside it; the
+`.wav` is what the game plays, and keeping the `.mid` is optional.
+
+| Bed | File | Loops on |
+| --- | --- | --- |
+| Title bed | `assets/audio/music-title.wav` | `title` and `howto` |
+| Play bed | `assets/audio/music-play.wav` | `playing`, `waveclear`, and `paused` |
+
+The game-over screen plays no bed, so the `game-over` cue rings out over
+silence. Confirming QUIT stops the play bed and the title bed resumes. Each
+bed runs at least 12 seconds and loops without an audible seam: the step
+between the file's last sample and its first is no larger than the largest step
+the bed's own material takes, the half second either side of the junction
+carries at least a tenth of the bed's own level, and the level across the
+junction, read over the second either side, moves by no more than `6` decibels.
+Each bed sits under the cues rather than competing with them.
+
+### The sound bar
+
+- The palette is cold, glassy, and spacey, and the thirteen cues and two beds
+  sound like one game.
+- `target-break` is clearly distinct from `target-hit`, so a destruction is
+  heard as a destruction on a busy field.
+- `pod-catch-narrow` is told from `pod-catch` by ear alone, so a bad catch is
+  heard as bad news.
+- `game-over` is the heaviest sound in the game, clearly longer and lower than
+  every other cue, and unmistakable as the end of a session.
+- `menu-move` and `menu-select` are short and light, so working a menu never
+  drowns a bed.
+
+{{#if (eq engine.slug "none")}}
+Each cue plays from its produced file on the event that fires it, and each bed
+plays from its produced file and loops continuously under the screens listed
+above.
+{{else if (eq engine.slug "simple-2d")}}
+Bind each name in `CUES` to its file with `api.audio.load`, play a cue on its
+event, and run the beds through `api.audio.loop` and `api.audio.stop`.
+{{else}}
+Bind each name in `CUES` to its file through the engine's `audio.load`, play a
+cue on its event, and run the beds through the world's `audio.loop` and
+`audio.stop`.
+{{/if}}
+
+## What stays drawn in code
+
+No produced file covers the following. Each is rendered by the build, and the
+file named beside it fixes its behavior and what a player must read.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The starfield background and the containment field | `specs/field.md` |
+| The three rings and their targets, including the damaged state | `specs/rings.md` |
+| The deflector | `specs/deflector-and-ball.md` |
+| The shield ring | `specs/pods.md` |
+| The HUD, every screen, menu, and all text | `specs/screens.md` |
+| The debug overlay | `specs/instrumentation.md` |
+
+## Genuinely produced
+
+The planet, every pod, and every ball frame on screen is a produced sprite;
+every burst, spark, and burn-up is a simulated particle system; and every cue
+and both beds are produced sound. Everything the game shows and plays traces to
+a file produced here or to the chrome drawn in code above.

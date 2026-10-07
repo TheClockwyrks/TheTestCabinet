@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -21,7 +21,21 @@ vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../../components/PromptHeader", () => ({
-  PromptHeader: () => null,
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
 }));
 // The monitor resolves the run's case from the gallery data to decide whether to
 // show the asset view; these tests don't exercise that, so stub the hook with an
@@ -76,8 +90,7 @@ function makeWorkers(deliver: (handlers: Handlers) => void) {
     active: {
       id: "w1",
       label: "Worker",
-      url: null,
-      local: true,
+      url: "https://worker.example",
       client,
       identity: null,
       backendMatch: "unknown",
@@ -134,9 +147,9 @@ describe("RunMonitorPage", () => {
     expect(subscribeToRun).toHaveBeenCalledTimes(1);
     // The completion notice is stable and the streamed events remain in the feed.
     expect(screen.getByText(/Run complete/i)).toBeInTheDocument();
-    // The feed is labelled, with the run id beneath it and a Follow toggle that
-    // defaults to active (auto-following).
-    expect(screen.getByText("Live Event Feed")).toBeInTheDocument();
+    // The feed is just the feed — no label strip of its own — and its Follow toggle
+    // rides the page header, where it defaults to active (auto-following).
+    expect(screen.queryByText("Live Event Feed")).not.toBeInTheDocument();
     const follow = screen.getByRole("button", { name: "Follow" });
     expect(follow).toHaveAttribute("aria-pressed", "true");
     // The type shows once, in its own column; the detail no longer repeats it.
@@ -229,7 +242,11 @@ describe("RunMonitorPage", () => {
 
   it("reports a canceled outcome as an intentional stop, not a failure", async () => {
     const { value } = makeWorkers((handlers) => {
-      handlers.onDone({ kind: "canceled", message: "canceled by operator" });
+      handlers.onDone({
+        kind: "canceled",
+        message: "canceled by operator",
+        record: null,
+      });
     });
 
     renderMonitor(value);

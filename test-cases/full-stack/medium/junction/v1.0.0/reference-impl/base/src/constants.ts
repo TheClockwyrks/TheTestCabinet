@@ -36,7 +36,20 @@ export const FIXED_STEP = 1 / TICK_HZ; // seconds per tick (render interpolates 
 export const TICKS_PER_MONTH = 24; // ⇒ 4 s/month at 1× — the budget period beat
 export const SPEEDS = [1, 2, 3] as const; // normal / fast / faster tick multipliers
 export const START_MONTH = { month: 0, year: 2027 } as const; // HUD clock; renders `MMM YYYY`
-export const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+export const MONTH_NAMES = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+];
 
 // ---- Palette & font (specs/overview.md) ----------------------------------------
 export const COL = {
@@ -247,20 +260,132 @@ export interface ToolDef {
 }
 
 export const TOOLS: ToolDef[] = [
-  { tool: "zoneRes", label: "RES", name: "RESIDENTIAL ZONE", icon: "icons/zone_r", color: COL.res, cost: COST.zoneRes, upkeep: 0, drag: true, span: false },
-  { tool: "zoneCom", label: "COM", name: "COMMERCIAL ZONE", icon: "icons/zone_c", color: COL.com, cost: COST.zoneCom, upkeep: 0, drag: true, span: false },
-  { tool: "zoneInd", label: "IND", name: "INDUSTRIAL ZONE", icon: "icons/zone_i", color: COL.ind, cost: COST.zoneInd, upkeep: 0, drag: true, span: false },
-  { tool: "road", label: "ROAD", name: "ROAD", icon: "icons/road", color: COL.road, cost: COST.road, upkeep: UPKEEP.road, drag: true, span: true },
-  { tool: "rail", label: "RAIL", name: "RAIL LINE", icon: "icons/rail", color: COL.rail, cost: COST.rail, upkeep: UPKEEP.rail, drag: true, span: true },
-  { tool: "station", label: "STATN", name: "STATION", icon: "icons/station", color: COL.station, cost: COST.station, upkeep: UPKEEP.station, drag: false, span: false },
-  { tool: "plant", label: "PWR", name: "POWER PLANT", icon: "utility/plant", color: COL.power, cost: COST.plant, upkeep: UPKEEP.plant, drag: false, span: false },
-  { tool: "wire", label: "WIRE", name: "POWER LINE", icon: "utility/wire", color: COL.power, cost: COST.wire, upkeep: UPKEEP.wire, drag: true, span: true },
-  { tool: "source", label: "WTR", name: "WATER SOURCE", icon: "utility/source", color: COL.pipe, cost: COST.source, upkeep: UPKEEP.source, drag: false, span: false },
-  { tool: "pipe", label: "PIPE", name: "WATER PIPE", icon: "utility/pipe", color: COL.pipe, cost: COST.pipe, upkeep: UPKEEP.pipe, drag: true, span: true },
-  { tool: "bulldoze", label: "RAZE", name: "BULLDOZE", icon: "icons/bulldoze", color: COL.text2, cost: COST.bulldoze, upkeep: 0, drag: true, span: false },
+  {
+    tool: "zoneRes",
+    label: "RES",
+    name: "RESIDENTIAL ZONE",
+    icon: "icons/zone_r",
+    color: COL.res,
+    cost: COST.zoneRes,
+    upkeep: 0,
+    drag: true,
+    span: false,
+  },
+  {
+    tool: "zoneCom",
+    label: "COM",
+    name: "COMMERCIAL ZONE",
+    icon: "icons/zone_c",
+    color: COL.com,
+    cost: COST.zoneCom,
+    upkeep: 0,
+    drag: true,
+    span: false,
+  },
+  {
+    tool: "zoneInd",
+    label: "IND",
+    name: "INDUSTRIAL ZONE",
+    icon: "icons/zone_i",
+    color: COL.ind,
+    cost: COST.zoneInd,
+    upkeep: 0,
+    drag: true,
+    span: false,
+  },
+  {
+    tool: "road",
+    label: "ROAD",
+    name: "ROAD",
+    icon: "icons/road",
+    color: COL.road,
+    cost: COST.road,
+    upkeep: UPKEEP.road,
+    drag: true,
+    span: true,
+  },
+  {
+    tool: "rail",
+    label: "RAIL",
+    name: "RAIL LINE",
+    icon: "icons/rail",
+    color: COL.rail,
+    cost: COST.rail,
+    upkeep: UPKEEP.rail,
+    drag: true,
+    span: true,
+  },
+  {
+    tool: "station",
+    label: "STATN",
+    name: "STATION",
+    icon: "icons/station",
+    color: COL.station,
+    cost: COST.station,
+    upkeep: UPKEEP.station,
+    drag: false,
+    span: false,
+  },
+  {
+    tool: "plant",
+    label: "PWR",
+    name: "POWER PLANT",
+    icon: "utility/plant",
+    color: COL.power,
+    cost: COST.plant,
+    upkeep: UPKEEP.plant,
+    drag: false,
+    span: false,
+  },
+  {
+    tool: "wire",
+    label: "WIRE",
+    name: "POWER LINE",
+    icon: "utility/wire",
+    color: COL.power,
+    cost: COST.wire,
+    upkeep: UPKEEP.wire,
+    drag: true,
+    span: true,
+  },
+  {
+    tool: "source",
+    label: "WTR",
+    name: "WATER SOURCE",
+    icon: "utility/source",
+    color: COL.pipe,
+    cost: COST.source,
+    upkeep: UPKEEP.source,
+    drag: false,
+    span: false,
+  },
+  {
+    tool: "pipe",
+    label: "PIPE",
+    name: "WATER PIPE",
+    icon: "utility/pipe",
+    color: COL.pipe,
+    cost: COST.pipe,
+    upkeep: UPKEEP.pipe,
+    drag: true,
+    span: true,
+  },
+  {
+    tool: "bulldoze",
+    label: "RAZE",
+    name: "BULLDOZE",
+    icon: "icons/bulldoze",
+    color: COL.text2,
+    cost: COST.bulldoze,
+    upkeep: 0,
+    drag: true,
+    span: false,
+  },
 ];
 
-export const TOOL_BY_KIND: Record<Tool, ToolDef> = Object.fromEntries(TOOLS.map((t) => [t.tool, t])) as Record<Tool, ToolDef>;
+export const TOOL_BY_KIND: Record<Tool, ToolDef> = Object.fromEntries(
+  TOOLS.map((t) => [t.tool, t]),
+) as Record<Tool, ToolDef>;
 
 // The zone kind a zoning tool paints (null for non-zoning tools).
 export const TOOL_ZONE: Partial<Record<Tool, ZoneKind>> = {

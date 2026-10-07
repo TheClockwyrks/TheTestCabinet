@@ -1,0 +1,36 @@
+Review the work for this issue against its requirements. The work is in your
+current working directory.
+
+{{issueBrief}}
+{{#if history}}
+
+## Earlier review feedback
+Check whether each point below was addressed. Do not repeat one that was.
+{{#each history}}
+{{#if approved}}
+- `{{reviewer}}` approved the work.
+{{else}}
+- `{{reviewer}}` requested changes:
+{{#each items}}
+  - {{this}}
+{{/each}}
+{{/if}}
+{{/each}}
+{{/if}}
+
+## What changed
+{{#if changes.baseline}}
+Against `{{changes.baseline}}`:
+{{/if}}
+{{#if changes.summary}}
+```
+{{changes.summary}}
+```
+{{else}}
+Nothing changed. Unless the work was already present, request the missing work.
+{{/if}}
+
+## Your verdict
+Approve only if the work satisfies every completion criterion and stays in
+scope. Otherwise request changes, listing each one: what is wrong, and what to
+change.

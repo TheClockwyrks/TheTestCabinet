@@ -1,0 +1,484 @@
+// cascade/flight — the posed flight this group's checks stand a card up in.
+//
+// LOCAL TO THIS GROUP. Nothing outside `validation/structured-2d/cascade/`
+// imports it, so it lives here rather than in the shared harness; it is scenario
+// arrangement alone, and it holds no threshold and no figure the specification
+// fixes. Every number a check asserts is stated in the check that asserts it.
+//
+// WHY A POSED FLIGHT AND NOT A CASCADE. specs/victory.md fixes what one card in
+// flight does each frame: it is accelerated, moved, bounced off the floor,
+// stamped onto the painted layer, and retired past a side edge. A whole cascade
+// puts fifty-two of them on the table at once, and reading one parabola out of
+// fifty-two would grade the launch order and the launch velocities on every
+// point that is really about gravity. So a flight check clears the table, turns
+// the launching off, and adds back exactly the cards its own requirement
+// concerns, which is the isolation the guidance asks for.
+//
+// THE SCREEN IS `won`. specs/victory.md states the flight rules of "a running
+// cascade", and the cascade runs on the won screen, so that is the screen a
+// posed flyer is given. `setLaunching(false)` is what keeps the flight to the
+// cards the check added: off, no further card leaves the foundations, and every
+// card already in flight keeps flying, bouncing, painting, and retiring
+// (specs/instrumentation.md).
+//
+// THE CLOCK IS THE GROUP'S, NOT THE SUITE'S. A flight integrates under
+// acceleration, and a quantity under acceleration is not independent of how an
+// interval was divided into frames, so a check that reads a flight builds its
+// harness at `CASCADE_HZ` — 1/240 s frames, fine enough that a figure quantised
+// to a frame boundary still meets the tolerances the checks state.
+// {@link createFlightHarness} is that one call, written once so no check in the
+// group can quietly step at some other rate. The checks that read something OTHER
+// than a flight take their clock from here too and each says why it must:
+// {@link createRunoutHarness} for the three that wait a whole cascade out, and
+// {@link createCadenceHarness} for the one that reads the launch clock.
+
+import { fail } from "../assert";
+import {
+  FOUNDATION_COUNT,
+  FOUNDATION_X,
+  LAUNCH_VY,
+  TOP_ROW_Y,
+  type Rect,
+} from "../constants";
+import {
+  card,
+  createHarness,
+  flyerById,
+  framesFor,
+  KING,
+  openTable,
+  poseFlyer,
+  secondsFor,
+  CASCADE_HZ,
+  type CardSpec,
+  type CascadeSnapshot,
+  type Harness,
+  type HarnessOptions,
+  type Rgb,
+  type SnapshotCard,
+  type SnapshotFlyer,
+} from "../harness";
+
+/** A harness whose clock steps the frames this whole group reads at. */
+export function createFlightHarness(): Promise<Harness> {
+  return createHarness({ hz: CASCADE_HZ });
+}
+
+/** Whole frames of this group's clock covering `duration` seconds. */
+export function flightFrames(duration: number): number {
+  return framesFor(duration, CASCADE_HZ);
+}
+
+/** Seconds of game time in `frames` frames of this group's clock. */
+export function flightSeconds(frames: number): number {
+  return secondsFor(frames, CASCADE_HZ);
+}
+
+/**
+ * The frame a RUN-OUT is stepped in — neither this group's {@link CASCADE_HZ} nor
+ * the suite's `TICK_HZ`.
+ *
+ * Three checks in this group have to sit through the whole victory cascade before
+ * they can read anything: `cascade-completes`, `launch-takes-top-card` and
+ * `trail-survives-completion`. Twelve and a half seconds of game time at
+ * `CASCADE_HZ` is three thousand frames, and every one of them renders up to
+ * fifty-two card faces into a real canvas — so the WAIT, and not the reading, is
+ * what those three cost, and what they cost is what a busy host turns into a
+ * timeout against a build that did nothing wrong. `trail-accumulates` steps here
+ * too, for the same reason over a shorter drive, and so do `screens`'
+ * `won-shows-message` and `won-press-deals`, which wait out the same cascade.
+ *
+ * NONE OF THEM READS AN ACCELERATED QUANTITY, which is the whole reason this
+ * group otherwise steps finely: they read the cascade's own end flag, the launched
+ * count, the flight being empty, which card left which foundation, the text the
+ * frame after it drew, and how much of the table is painted — facts about where
+ * the cascade ended and what it carried there, none of them quantised to a
+ * frame.
+ *
+ * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
+ * it, and specs/victory.md integrates both exactly however an interval is divided
+ * into frames: the launch clock adds each frame's delta, so the fifty-second launch
+ * falls at the same game time whatever the frames were, and a card retires on `x`
+ * alone, which advances by `vx * dt` at a `vx` the flight never changes. What
+ * gravity and the floor do to `y` in between is the one part a coarser frame moves,
+ * and it is exactly what {@link CASCADE_HZ} is for.
+ *
+ * Thirty is a frame length an ordinary machine really delivers, so the ending these
+ * three watch is an ending a player could sit through. A launch interval of `0.18`
+ * s is still five frames at it, so a frame carries at most one launch.
+ */
+export const RUNOUT_HZ = 30;
+
+/**
+ * A harness whose clock steps the frames a run-out is waited out in.
+ *
+ * `options` is everything else `createHarness` takes, minus the `hz` this fixes —
+ * which is how a run-out that reads PIXELS and never opens the draw log asks for
+ * `recordDrawCalls: false` and stops paying for a record of every one of the
+ * hundreds of thousands of operations it drives past.
+ */
+export function createRunoutHarness(
+  options: Omit<HarnessOptions, "hz"> = {},
+): Promise<Harness> {
+  return createHarness({ ...options, hz: RUNOUT_HZ });
+}
+
+/** Whole frames of the run-out clock covering `duration` seconds. */
+export function runoutFrames(duration: number): number {
+  return framesFor(duration, RUNOUT_HZ);
+}
+
+/**
+ * The frame the LAUNCH CADENCE is watched in — neither {@link CASCADE_HZ} nor
+ * {@link RUNOUT_HZ}.
+ *
+ * `launch-cadence` reads two facts about the launch clock over three seconds of a
+ * running cascade: how many cards left, and the mean gap between them. Neither is
+ * a frame-rate quantity. specs/victory.md's clock adds each frame's delta and
+ * carries what it does not spend, so the k-th card leaves at
+ * `k * LAUNCH_INTERVAL` however the interval was divided into frames, and a frame
+ * decides only which frame a launch is OBSERVED on. Stepped at
+ * {@link CASCADE_HZ} that one check spends seven hundred and twenty rendered
+ * frames reading seventeen launches.
+ *
+ * A COARSER FRAME ALSO READS THE CARRY, which is half of what the rule states. At
+ * `1 / 240` s the interval is `43.2` frames, so a build that ZEROED its clock
+ * where the specification subtracts the interval launches every forty-fourth
+ * frame: a cadence `1.9` percent wide and a count those three seconds cannot tell
+ * from the requirement. At `1 / 40` s the interval is `7.2` frames, so the same
+ * build launches every eighth — a `0.2` s cadence, and fifteen cards over the
+ * hold rather than seventeen.
+ *
+ * FORTY RATHER THAN {@link RUNOUT_HZ} because of what the observation rounds. A
+ * launch is read at the end of the frame it happened in, so the mean over the
+ * hold's gaps carries that rounding: at `1 / 40` s the seventeenth card's `2.88`
+ * s is read at `2.9`, and the mean lands `0.31` ms under the interval, a twelfth
+ * of the two percent that check allows. The run-out's thirty would spend a
+ * quarter of the same allowance on the same rounding.
+ */
+export const CADENCE_HZ = 40;
+
+/** A harness whose clock steps the frames a launch cadence is watched in. */
+export function createCadenceHarness(): Promise<Harness> {
+  return createHarness({ hz: CADENCE_HZ });
+}
+
+/** Whole frames of the cadence clock covering `duration` seconds. */
+export function cadenceFrames(duration: number): number {
+  return framesFor(duration, CADENCE_HZ);
+}
+
+/**
+ * A cleared table on the won screen, with nothing in flight, nothing painted,
+ * and no card launching.
+ *
+ * The world every check in this group opens with. `openTable` resets the game
+ * and empties the thirteen piles; the flight, the painted layer, and the
+ * launching are then cleared and gated explicitly rather than left to `reset`'s
+ * defaults, so the scenario a check poses is the scenario it stated.
+ *
+ * The painting gate is left OFF, which is this group's rule: the painted layer
+ * is the subject of three checks and a distraction to the other twenty-two, and
+ * a recording armed around a cascade that is blitting a full-screen layer every
+ * frame spends the recorder's budget on pixels rather than on the motion the
+ * check is about. The three trail checks turn it back on themselves.
+ */
+export function openFlight(h: Harness): void {
+  openTable(h);
+  h.debug.setScreen("won");
+  h.debug.setLaunching(false);
+  h.debug.setTrailPainting(false);
+  h.debug.clearFlyers();
+  h.debug.clearTrail();
+}
+
+/** Where a posed card starts, and how fast it is going. */
+export interface FlyerPose {
+  /** The card's TOP-LEFT, in logical stage units. */
+  x: number;
+  y: number;
+  /** Its velocity, in logical units per second. */
+  vx: number;
+  vy: number;
+  /** Which card it is. Defaults to the King of spades. */
+  card?: CardSpec;
+}
+
+/**
+ * Add one card to the flight at a stated position and velocity, and hand back
+ * its id.
+ *
+ * The shared harness's `poseFlyer` does the adding and reads the id off the
+ * flyer `addFlyer` appended (specs/instrumentation.md, Identity); this is the
+ * same call written as one pose object, because every check in this group states
+ * a start as a position and a velocity together. Which card it is decides
+ * nothing about the flight, so it defaults to one card and a check names another
+ * only where it wants two apart.
+ */
+export function poseFlight(h: Harness, pose: FlyerPose): number {
+  return poseFlyer(
+    h,
+    pose.card ?? card("spades", KING),
+    pose.x,
+    pose.y,
+    pose.vx,
+    pose.vy,
+  );
+}
+
+/**
+ * Perform `count` launch draws through `drawLaunchVx` and hand back what each
+ * returned, in order.
+ *
+ * specs/instrumentation.md has `drawLaunchVx` perform exactly the draw a launch
+ * performs and nothing else, so this is the launch's `vx` read without the
+ * launch: no cascade is run, no card is launched, and nothing is in flight. A
+ * value that is not a finite number is failed here, because a check comparing
+ * it against a range would otherwise report the range.
+ */
+export function drawLaunches(h: Harness, count: number): number[] {
+  return Array.from({ length: count }, (_, index) => {
+    const value: unknown = h.debug.drawLaunchVx();
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      fail(
+        "drawLaunchVx() to return a finite number, the signed vx it drew " +
+          "(specs/instrumentation.md)",
+        `draw ${index + 1} returned ${JSON.stringify(value)}`,
+      );
+    }
+    return value;
+  });
+}
+
+/**
+ * How long the drawn speeds are flown for before the still is taken, in
+ * seconds. A picture's duration and nothing a check asserts: long enough for
+ * the fan of cards to show which way each drawn speed carries its card.
+ */
+const DRAWN_FLIGHT_SECONDS = 0.6;
+
+/**
+ * Put the drawn speeds on the table for the still: one card in flight per
+ * value, launched from the foundation anchors in turn at `LAUNCH_VY`, and flown
+ * for {@link DRAWN_FLIGHT_SECONDS} so the fan is visible.
+ *
+ * Arrangement for the picture alone. Nothing a `launch-vx` check asserts is read
+ * from the flyers this poses; the draws were read before it ran.
+ */
+export async function poseDrawnFlight(
+  h: Harness,
+  speeds: readonly number[],
+): Promise<void> {
+  openFlight(h);
+  for (const [index, vx] of speeds.entries()) {
+    poseFlight(h, {
+      x: FOUNDATION_X[index % FOUNDATION_COUNT],
+      y: TOP_ROW_Y,
+      vx,
+      vy: LAUNCH_VY,
+    });
+  }
+  await h.advance(flightFrames(DRAWN_FLIGHT_SECONDS));
+}
+
+/**
+ * The flyer with that id, or a failure naming the ids the flight does hold.
+ *
+ * A card added through the surface keeps its id until it retires
+ * (specs/instrumentation.md), so a check that posed a flyer and cannot find it
+ * has a verdict rather than a missing reading.
+ */
+export function flyerOf(snapshot: CascadeSnapshot, id: number): SnapshotFlyer {
+  const found = flyerById(snapshot, id);
+  if (found === undefined) {
+    fail(
+      `snapshot() to report the flyer with id ${id}: a flyer added through the ` +
+        "surface keeps its id until it retires (specs/instrumentation.md)",
+      snapshot.flyers.map((flyer) => flyer.id),
+    );
+  }
+  return found;
+}
+
+/** A flyer either side of the frame a floor bounce happened on. */
+export interface Bounce {
+  /** Whether a bounce was seen at all inside the frames allowed. */
+  hit: boolean;
+  /** Frames advanced up to and including the frame the bounce happened on. */
+  frames: number;
+  /** The flyer at the end of the frame BEFORE the bounce, still descending. */
+  before: SnapshotFlyer;
+  /** The flyer at the end of the frame the bounce happened on, now ascending. */
+  after: SnapshotFlyer;
+}
+
+/**
+ * Fly the card one frame at a time until the floor turns it around, and report
+ * it either side of that frame.
+ *
+ * The bounce is found by the reversal alone: the frame a descending flyer (`vy`
+ * above zero) ends ascending (`vy` below zero) is the frame the floor acted on
+ * it, which is what specs/victory.md's third step does and the only thing it
+ * does to `vy`'s sign. Nothing here reads a position, so a build that seats a
+ * bounced card somewhere other than the floor still gets its bounce found, and
+ * the check that cares about the seating is the one that fails it.
+ *
+ * The frames are stepped one at a time because the readings the bounce checks
+ * make are of the frame itself: the speed carried in, the speed carried out, and
+ * the position the card was left at. A sweep that sampled every few frames would
+ * read a card that had already flown on.
+ */
+export async function flyToBounce(
+  h: Harness,
+  id: number,
+  maxFrames: number,
+): Promise<Bounce> {
+  let before = flyerOf(h.snapshot(), id);
+  for (let frames = 1; frames <= maxFrames; frames += 1) {
+    await h.advance(1);
+    const after = flyerOf(h.snapshot(), id);
+    if (before.vy > 0 && after.vy < 0) {
+      return { hit: true, frames, before, after };
+    }
+    before = after;
+  }
+  return { hit: false, frames: maxFrames, before, after: before };
+}
+
+/**
+ * The bounce this check was driving for, or a failure naming the flight that
+ * never reached the floor.
+ *
+ * A posed card aimed down at the floor that never turns around has not bounced,
+ * and specs/victory.md says it must, so this is a verdict rather than a missing
+ * reading.
+ */
+export function bounced(bounce: Bounce, context: string): Bounce {
+  if (!bounce.hit) {
+    fail(
+      `a descending card to leave the floor ascending within ${bounce.frames} ` +
+        `frames (specs/victory.md: ${context})`,
+      `vy stayed at ${bounce.after.vy} with y at ${bounce.after.y}`,
+    );
+  }
+  return bounce;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Watching a cascade launch                                                  */
+/* -------------------------------------------------------------------------- */
+//
+// The launch checks read what a running cascade did, so they are the one part of
+// this group that does NOT pose its own flight: the cascade is entered through
+// the game's own win path (`startCascade`) and then watched. What each one needs
+// is the same three facts about every launch the run carried, which is what a
+// `Launch` is.
+//
+// A LAUNCH IS A CARD ARRIVING IN THE FLIGHT, not the `launched` counter moving.
+// The two agree in a conformant build, and reading the arrival is the more
+// direct of the pair: it is the card itself, with the velocity it left with and
+// the foundation it came off, none of which the counter carries. The counter is
+// what `cascade-completes` reads.
+
+/** One card leaving a foundation for the flight, as the frame it happened on saw it. */
+export interface Launch {
+  /** The game time at the end of the frame it launched on, in seconds. */
+  at: number;
+  /** The foundation it came off, or `-1` where no foundation lost a card. */
+  foundation: number;
+  /**
+   * The card that foundation's TOP held on the frame before, or `null` where no
+   * foundation lost a card.
+   *
+   * Read before the launch rather than assumed, so a check can hold the card that
+   * went into the air against the card the launch was supposed to take.
+   */
+  took: SnapshotCard | null;
+  /** The card, as the snapshot reported it on that frame. */
+  flyer: SnapshotFlyer;
+}
+
+/** Which foundation lost a card between two snapshots, or `-1` where none did. */
+function shrankFoundation(before: number[], after: number[]): number {
+  return after.findIndex((count, index) => count < (before[index] ?? 0));
+}
+
+/**
+ * Step `frames` frames one at a time, reporting every card that entered the
+ * flight.
+ *
+ * One frame at a time because a launch's velocity is what the launch gave it:
+ * read a few frames later, `vy` has been through gravity. Which clock those frames
+ * come off is the caller's: the checks that read a launch VELOCITY step this
+ * group's own (1/240 s), `launch-cadence` steps {@link CADENCE_HZ}, and
+ * `launch-takes-top-card`, which reads only which card left which foundation,
+ * steps {@link RUNOUT_HZ}. All three are finer than the launch interval
+ * specs/victory.md fixes, so a frame carries at most one launch whichever it is
+ * and each is reported on its own.
+ *
+ * `stop` ends the sweep early when it has seen everything the check asked for.
+ */
+export async function watchLaunches(
+  h: Harness,
+  frames: number,
+  stop: (launches: readonly Launch[]) => boolean = () => false,
+): Promise<Launch[]> {
+  const launches: Launch[] = [];
+  let before = h.snapshot();
+  const seen = new Set(before.flyers.map((flyer) => flyer.id));
+
+  for (let frame = 0; frame < frames; frame += 1) {
+    await h.advance(1);
+    const after = h.snapshot();
+    for (const flyer of after.flyers) {
+      if (seen.has(flyer.id)) continue;
+      seen.add(flyer.id);
+      const foundation = shrankFoundation(
+        before.foundations.map((pile) => pile.length),
+        after.foundations.map((pile) => pile.length),
+      );
+      const held =
+        foundation >= 0 ? (before.foundations[foundation] ?? []) : [];
+      launches.push({
+        at: after.simTime,
+        foundation,
+        took: held.length > 0 ? held[held.length - 1] : null,
+        flyer,
+      });
+    }
+    if (stop(launches)) return launches;
+    before = after;
+  }
+  return launches;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reading how much of the table has been painted                             */
+/* -------------------------------------------------------------------------- */
+//
+// Two checks in this group ask how much of the table is painted, and both ask it
+// the same way: sample the stage on a grid, once bare and once later, and count
+// the cells whose colour has moved. Sampling the SAME cell either side is what
+// makes the reading independent of the build's palette — the case fixes none —
+// so neither the tolerance nor the share that counts as enough lives here. Both
+// are stated by the check that asserts them.
+
+/** The rendered colour at the centre of each cell of a grid over `rect`. */
+export function sampleGrid(
+  h: Harness,
+  rect: Rect,
+  cols: number,
+  rows: number,
+): Rgb[] {
+  const samples: Rgb[] = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const [r, g, b] = h.pixel(
+        rect.x + (rect.w * (col + 0.5)) / cols,
+        rect.y + (rect.h * (row + 0.5)) / rows,
+      );
+      samples.push({ r, g, b });
+    }
+  }
+  return samples;
+}

@@ -30,8 +30,12 @@ fn sample_record() -> RunRecord {
             harness_slug: HarnessSlug::Codex,
             harness_version: Some("0.139.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             // Dots are not repo-name-safe; the slug must reduce them to hyphens.
             model_id: "gpt-5.4-mini".to_string(),
+            gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),
@@ -54,6 +58,7 @@ fn sample_record() -> RunRecord {
                 comparable: Some(0.2667),
                 actual: Some(0.2667),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -78,7 +83,12 @@ fn sample_record() -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
+        code_analysis: None,
+        toolchain: None,
+        showcase: None,
     }
 }
 
@@ -367,9 +377,7 @@ fn publisher_for(
 async fn release_code_creates_a_public_repo_and_commits_before_the_push() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,
@@ -427,9 +435,7 @@ async fn release_code_creates_a_public_repo_and_commits_before_the_push() {
 async fn release_playable_build_deploys_and_captures_the_wrangler_url() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,
@@ -463,9 +469,7 @@ async fn release_code_skips_the_commit_when_the_working_tree_is_already_clean() 
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) =
         publisher_for(dir.path(), MockRunner::with_clean_tree(false));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,
@@ -499,9 +503,7 @@ async fn release_code_of_an_asset_generation_run_creates_no_repo() {
     // (or touch git at all), and the run carries no source link.
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let mut record = sample_record();
     record.subject.test_type = crate::test_case::TestType::AssetGeneration;
     let request = ReleaseRequest {
@@ -536,9 +538,7 @@ async fn release_code_of_an_artifactless_failure_creates_no_repo() {
     for state in [RunState::HarnessError, RunState::Hung] {
         let dir = tempfile::tempdir().expect("tempdir");
         let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
-        let artifacts = ArtifactCollection {
-            repo_path: impl_dir,
-        };
+        let artifacts = ArtifactCollection::new(impl_dir);
         let mut record = sample_record();
         record.status.state = state;
         let request = ReleaseRequest {
@@ -570,9 +570,7 @@ async fn release_playable_build_of_an_artifactless_failure_deploys_nothing() {
     for state in [RunState::HarnessError, RunState::Hung] {
         let dir = tempfile::tempdir().expect("tempdir");
         let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
-        let artifacts = ArtifactCollection {
-            repo_path: impl_dir,
-        };
+        let artifacts = ArtifactCollection::new(impl_dir);
         let mut record = sample_record();
         record.status.state = state;
         let request = ReleaseRequest {
@@ -600,9 +598,7 @@ async fn release_code_reuses_an_existing_repo_but_still_pushes() {
     let dir = tempfile::tempdir().expect("tempdir");
     // The repo already exists, so the existence probe reports it present.
     let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(true));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,
@@ -640,9 +636,7 @@ async fn release_code_retries_the_push_through_the_propagation_lag() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) =
         publisher_for(dir.path(), MockRunner::new(false).failing_first_pushes(2));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,
@@ -674,9 +668,7 @@ async fn release_code_fails_when_the_push_never_succeeds() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) =
         publisher_for(dir.path(), MockRunner::new(false).failing_first_pushes(99));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,
@@ -702,9 +694,7 @@ async fn release_code_fails_when_the_push_never_succeeds() {
 async fn release_playable_build_without_a_build_dir_skips_the_deploy() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
-    let artifacts = ArtifactCollection {
-        repo_path: impl_dir,
-    };
+    let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
         record: &record,

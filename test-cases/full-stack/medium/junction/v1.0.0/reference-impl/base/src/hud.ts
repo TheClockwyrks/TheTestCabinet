@@ -32,7 +32,14 @@ import type { Clickable } from "./types";
 
 // ---- Shared canvas primitives (used by hud / overlays / render) ----------------
 
-export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+export function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
@@ -61,7 +68,8 @@ export function text(
     const chars = [...s];
     const adv = size * 0.6 + letter;
     const total = chars.length * adv;
-    let cx = align === "center" ? x - total / 2 : align === "right" ? x - total : x;
+    let cx =
+      align === "center" ? x - total / 2 : align === "right" ? x - total : x;
     ctx.textAlign = "left";
     for (const c of chars) {
       ctx.fillText(c, cx, y);
@@ -75,7 +83,15 @@ export function text(
 
 // Blit a produced sprite centred at (cx,cy), sized w×h, optionally rotated — always with
 // nearest-neighbour sampling so the pixel art stays crisp (specs/assets.md).
-export function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, w: number, h: number, ang = 0): void {
+export function blit(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  ang = 0,
+): void {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx, cy);
@@ -92,12 +108,28 @@ export function hexA(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-export function inRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+export function inRect(
+  px: number,
+  py: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 
 // Word-wrap `s` into `maxW`, drawing each line; returns the number of lines drawn.
-export function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string, lineHeight = 18): number {
+export function wrap(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  maxW: number,
+  size: number,
+  color: string,
+  lineHeight = 18,
+): number {
   ctx.font = `400 ${size}px ${FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -119,7 +151,12 @@ export function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: num
   return n;
 }
 
-export function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): number {
+export function lineCount(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  maxW: number,
+  size: number,
+): number {
   ctx.font = `400 ${size}px ${FONT}`;
   const words = s.split(" ");
   let line = "";
@@ -198,7 +235,16 @@ function vital(
 }
 
 // A small horizontal fill meter (power/water balance), red when the supply falls short.
-function meter(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, frac: number, color: string, short: boolean): void {
+function meter(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  frac: number,
+  color: string,
+  short: boolean,
+): void {
   roundRect(ctx, x, y, w, h, h / 2);
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.fill();
@@ -210,7 +256,13 @@ function meter(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   }
 }
 
-function drawTopStrip(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, clicks: Clickable[], muted: boolean): void {
+function drawTopStrip(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  clicks: Clickable[],
+  muted: boolean,
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, 0, STAGE_W, TOP_H);
   ctx.strokeStyle = "rgba(255,255,255,0.06)";
@@ -222,36 +274,127 @@ function drawTopStrip(ctx: CanvasRenderingContext2D, game: Game, assets: Assets,
 
   const b = game.budget;
   const near = b.treasury <= DEBT_LIMIT * 0.5;
-  vital(ctx, assets, "icons/money", "TREASURY", money(b.treasury), 14, b.treasury < 0 ? COL.alert : near ? COL.alert : COL.money);
-  vital(ctx, assets, null, "BALANCE / MO", signedMoney(b.balance), 208, b.balance < 0 ? COL.alert : COL.money);
-  vital(ctx, assets, "icons/pop", "POPULATION", game.stats.population.toLocaleString("en-US"), 356, COL.text);
+  vital(
+    ctx,
+    assets,
+    "icons/money",
+    "TREASURY",
+    money(b.treasury),
+    14,
+    b.treasury < 0 ? COL.alert : near ? COL.alert : COL.money,
+  );
+  vital(
+    ctx,
+    assets,
+    null,
+    "BALANCE / MO",
+    signedMoney(b.balance),
+    208,
+    b.balance < 0 ? COL.alert : COL.money,
+  );
+  vital(
+    ctx,
+    assets,
+    "icons/pop",
+    "POPULATION",
+    game.stats.population.toLocaleString("en-US"),
+    356,
+    COL.text,
+  );
 
   const pw = game.stats.power;
-  const px = vital(ctx, assets, "icons/power", "POWER", `${Math.round(servedPct(pw.supply, pw.demand) * 100)}%`, 520, pw.demand > pw.supply ? COL.alert : COL.power);
-  meter(ctx, px + 46, 30, 54, 7, servedPct(pw.supply, pw.demand), COL.power, pw.demand > pw.supply);
+  const px = vital(
+    ctx,
+    assets,
+    "icons/power",
+    "POWER",
+    `${Math.round(servedPct(pw.supply, pw.demand) * 100)}%`,
+    520,
+    pw.demand > pw.supply ? COL.alert : COL.power,
+  );
+  meter(
+    ctx,
+    px + 46,
+    30,
+    54,
+    7,
+    servedPct(pw.supply, pw.demand),
+    COL.power,
+    pw.demand > pw.supply,
+  );
 
   const wt = game.stats.water;
-  const wx = vital(ctx, assets, "icons/water", "WATER", `${Math.round(servedPct(wt.supply, wt.demand) * 100)}%`, 690, wt.demand > wt.supply ? COL.alert : COL.pipe);
-  meter(ctx, wx + 46, 30, 54, 7, servedPct(wt.supply, wt.demand), COL.pipe, wt.demand > wt.supply);
+  const wx = vital(
+    ctx,
+    assets,
+    "icons/water",
+    "WATER",
+    `${Math.round(servedPct(wt.supply, wt.demand) * 100)}%`,
+    690,
+    wt.demand > wt.supply ? COL.alert : COL.pipe,
+  );
+  meter(
+    ctx,
+    wx + 46,
+    30,
+    54,
+    7,
+    servedPct(wt.supply, wt.demand),
+    COL.pipe,
+    wt.demand > wt.supply,
+  );
 
   // ---- right-hand control cluster (right-to-left) + clock ----
   let rx = STAGE_W - 12;
   rx -= 34;
-  ctrlButton(ctx, clicks, rx, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 34);
+  ctrlButton(
+    ctx,
+    clicks,
+    rx,
+    muted ? "♪̸" : "♪",
+    "mute",
+    muted ? COL.text3 : COL.text,
+    34,
+  );
   rx -= 8;
   rx -= 34;
-  ctrlButton(ctx, clicks, rx, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.money : COL.text, 34);
+  ctrlButton(
+    ctx,
+    clicks,
+    rx,
+    game.paused ? "▶" : "❚❚",
+    "pause",
+    game.paused ? COL.money : COL.text,
+    34,
+  );
   rx -= 8;
   rx -= 40;
   ctrlButton(ctx, clicks, rx, `${game.speed}x`, "speed", COL.text, 40);
   rx -= 8;
   rx -= 96;
-  ctrlButton(ctx, clicks, rx, `◱ ${game.overlay.toUpperCase()}`, "overlay", game.overlay === "none" ? COL.text2 : COL.text, 96);
+  ctrlButton(
+    ctx,
+    clicks,
+    rx,
+    `◱ ${game.overlay.toUpperCase()}`,
+    "overlay",
+    game.overlay === "none" ? COL.text2 : COL.text,
+    96,
+  );
   rx -= 14;
 
   const clock = `${MONTH_NAMES[game.clock.month]} ${game.clock.year}`;
   const speedGlyph = game.paused ? "❚❚" : CLOCK_MUTED_SPEED[game.speed - 1]!;
-  text(ctx, speedGlyph, rx, 32, 13, game.paused ? COL.money : COL.text2, "right", "700");
+  text(
+    ctx,
+    speedGlyph,
+    rx,
+    32,
+    13,
+    game.paused ? COL.money : COL.text2,
+    "right",
+    "700",
+  );
   text(ctx, clock, rx - 34, 32, 15, COL.text, "right", "700", 1);
 
   // ---- alert chip (only when a condition is live) ----
@@ -262,7 +405,10 @@ function drawTopStrip(ctx: CanvasRenderingContext2D, game: Game, assets: Assets,
     const chipW = tw + 44;
     const cx = rx - 34 - ctx.measureText(clock).width - 20 - chipW;
     const chipX = Math.max(wx + 120, cx);
-    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(game.stats.monthsSurvived + performance.now() / 400));
+    const pulse =
+      0.6 +
+      0.4 *
+        Math.abs(Math.sin(game.stats.monthsSurvived + performance.now() / 400));
     roundRect(ctx, chipX, 16, chipW, 32, 8);
     ctx.fillStyle = hexA(COL.alert, 0.18 * pulse + 0.08);
     ctx.fill();
@@ -274,7 +420,15 @@ function drawTopStrip(ctx: CanvasRenderingContext2D, game: Game, assets: Assets,
   }
 }
 
-function ctrlButton(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, color: string, w: number): void {
+function ctrlButton(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  label: string,
+  action: string,
+  color: string,
+  w: number,
+): void {
   const y = 14;
   const h = 34;
   roundRect(ctx, x, y, w, h, 6);
@@ -298,11 +452,12 @@ const PAL_W = 54;
 const PAL_PITCH = 58;
 
 function drawRciMeters(ctx: CanvasRenderingContext2D, game: Game): void {
-  const bars: { key: "res" | "com" | "ind"; letter: string; value: number }[] = [
-    { key: "res", letter: "R", value: game.rci.r },
-    { key: "com", letter: "C", value: game.rci.c },
-    { key: "ind", letter: "I", value: game.rci.d },
-  ];
+  const bars: { key: "res" | "com" | "ind"; letter: string; value: number }[] =
+    [
+      { key: "res", letter: "R", value: game.rci.r },
+      { key: "com", letter: "C", value: game.rci.c },
+      { key: "ind", letter: "I", value: game.rci.d },
+    ];
   const top = BOT_TOP + 4;
   const bottom = BOT_Y + 44;
   const mid = (top + bottom) / 2;
@@ -332,11 +487,27 @@ function drawRciMeters(ctx: CanvasRenderingContext2D, game: Game): void {
       ctx.fillStyle = hexA(color, 0.45);
       ctx.fillRect(x, mid, RCI_W, h);
     }
-    text(ctx, bar.letter, x + RCI_W / 2, bottom + 8, 10, color, "center", "800");
+    text(
+      ctx,
+      bar.letter,
+      x + RCI_W / 2,
+      bottom + 8,
+      10,
+      color,
+      "center",
+      "800",
+    );
   });
 }
 
-function drawPalette(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, clicks: Clickable[], pointerX: number, pointerY: number): void {
+function drawPalette(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  clicks: Clickable[],
+  pointerX: number,
+  pointerY: number,
+): void {
   const y = BOT_TOP + 2;
   const h = 52;
   TOOLS.forEach((def, i) => {
@@ -345,34 +516,77 @@ function drawPalette(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, 
     const afford = game.budget.treasury >= def.cost;
     const hover = inRect(pointerX, pointerY, x, y, PAL_W, h);
     roundRect(ctx, x, y, PAL_W, h, 6);
-    ctx.fillStyle = active ? hexA(def.color, 0.22) : hover ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.03)";
+    ctx.fillStyle = active
+      ? hexA(def.color, 0.22)
+      : hover
+        ? "rgba(255,255,255,0.06)"
+        : "rgba(255,255,255,0.03)";
     ctx.fill();
     ctx.strokeStyle = active ? def.color : "rgba(255,255,255,0.10)";
     ctx.lineWidth = active ? 2 : 1;
     ctx.stroke();
     ctx.save();
     ctx.globalAlpha = afford ? 1 : 0.4;
-    blit(ctx, assets.sprite(iconOf(def.tool)), x + PAL_W / 2, y + 18, 18, 18, 0);
+    blit(
+      ctx,
+      assets.sprite(iconOf(def.tool)),
+      x + PAL_W / 2,
+      y + 18,
+      18,
+      18,
+      0,
+    );
     ctx.restore();
-    text(ctx, def.label, x + PAL_W / 2, y + 40, 9, active ? def.color : afford ? COL.text2 : COL.text3, "center", "700", 0.5);
+    text(
+      ctx,
+      def.label,
+      x + PAL_W / 2,
+      y + 40,
+      9,
+      active ? def.color : afford ? COL.text2 : COL.text3,
+      "center",
+      "700",
+      0.5,
+    );
     clicks.push({ x, y, w: PAL_W, h, action: `tool:${def.tool}` });
   });
 }
 
 // The tax stepper — `TAX 9% ◂ ▸`, also bound to [ / ] by the input layer (DESIGN §5.1).
-export function drawTax(ctx: CanvasRenderingContext2D, game: Game, x: number, clicks: Clickable[]): number {
+export function drawTax(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  x: number,
+  clicks: Clickable[],
+): number {
   const y = BOT_TOP + 8;
   text(ctx, "TAX", x, y + 10, 10, COL.text3, "left", "600", 1);
   const pct = Math.round(game.budget.taxRate * 100);
   const high = game.budget.taxRate >= TAX_MAX * 0.75;
-  text(ctx, `${pct}%`, x + 30, y + 10, 18, high ? COL.ind : COL.text, "left", "700");
+  text(
+    ctx,
+    `${pct}%`,
+    x + 30,
+    y + 10,
+    18,
+    high ? COL.ind : COL.text,
+    "left",
+    "700",
+  );
   const bx = x + 74;
   stepBtn(ctx, clicks, bx, y - 2, "◂", "taxDown");
   stepBtn(ctx, clicks, bx + 26, y - 2, "▸", "taxUp");
   return bx + 26 + 22;
 }
 
-function stepBtn(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, glyph: string, action: string): void {
+function stepBtn(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  y: number,
+  glyph: string,
+  action: string,
+): void {
   const w = 22;
   const h = 26;
   roundRect(ctx, x, y, w, h, 5);
@@ -390,17 +604,48 @@ function drawCostReadout(ctx: CanvasRenderingContext2D, game: Game): void {
   const rx = STAGE_W - 14;
   const tool = game.activeTool;
   if (!tool) {
-    text(ctx, "SELECT A TOOL", rx, BOT_TOP + 20, 12, COL.text3, "right", "600", 1);
-    text(ctx, "◂ ▸ or drag to build", rx, BOT_TOP + 38, 10, COL.text3, "right", "400");
+    text(
+      ctx,
+      "SELECT A TOOL",
+      rx,
+      BOT_TOP + 20,
+      12,
+      COL.text3,
+      "right",
+      "600",
+      1,
+    );
+    text(
+      ctx,
+      "◂ ▸ or drag to build",
+      rx,
+      BOT_TOP + 38,
+      10,
+      COL.text3,
+      "right",
+      "400",
+    );
     return;
   }
   const def = TOOLS.find((t) => t.tool === tool)!;
   text(ctx, def.name, rx, BOT_TOP + 18, 13, def.color, "right", "700", 0.5);
-  const line = tool === "bulldoze" ? `$${def.cost}/tile · refunds` : def.upkeep > 0 ? `$${def.cost}/tile · $${def.upkeep}/mo` : `$${def.cost}/tile`;
+  const line =
+    tool === "bulldoze"
+      ? `$${def.cost}/tile · refunds`
+      : def.upkeep > 0
+        ? `$${def.cost}/tile · $${def.upkeep}/mo`
+        : `$${def.cost}/tile`;
   text(ctx, line, rx, BOT_TOP + 38, 11, COL.text2, "right", "500");
 }
 
-function drawBottomStrip(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, clicks: Clickable[], pointerX: number, pointerY: number): void {
+function drawBottomStrip(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  clicks: Clickable[],
+  pointerX: number,
+  pointerY: number,
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, BOT_Y, STAGE_W, 720 - BOT_Y);
   ctx.strokeStyle = "rgba(255,255,255,0.06)";
@@ -425,7 +670,15 @@ function drawBottomStrip(ctx: CanvasRenderingContext2D, game: Game, assets: Asse
 }
 
 // ---- Entry ---------------------------------------------------------------------
-export function drawHud(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, clicks: Clickable[], pointerX: number, pointerY: number, muted: boolean): void {
+export function drawHud(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  clicks: Clickable[],
+  pointerX: number,
+  pointerY: number,
+  muted: boolean,
+): void {
   drawTopStrip(ctx, game, assets, clicks, muted);
   drawBottomStrip(ctx, game, assets, clicks, pointerX, pointerY);
 }

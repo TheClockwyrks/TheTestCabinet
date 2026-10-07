@@ -1,11 +1,11 @@
 # Sunfront Rail-Lance Muzzle Flash — particle brief
 
-You are authoring the **rail-lance muzzle flash** for *Sunfront*, a real-time
+You are authoring the **rail-lance muzzle flash** for _Sunfront_, a real-time
 tug-of-war of solar-powered war automatons — the thin, searing energy discharge
 that flares from the tip of a **rail-lance**, the long-range piercing weapon of the
 game's marksman unit. It is a **one-shot** effect: **one discharge per shot**. The
 game plays a fresh instance each time a unit fires, in sync with its firing cadence,
-so the flash rate matches how fast the unit fires. You are authoring the *effect* as
+so the flash rate matches how fast the unit fires. You are authoring the _effect_ as
 a **system**, not a single frozen frame.
 
 ## The field
@@ -111,12 +111,12 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed in the discharge (no smoke greys, no fire-orange, and no
 blues, greens, or purples; this is a warm solar-energy discharge, not team-tinted):
 
-| Role | Hex |
-| --- | --- |
+| Role               | Hex       |
+| ------------------ | --------- |
 | Searing white core | `#fffdf5` |
-| Hot gold energy | `#ffd24a` |
-| Amber edge | `#ff9e2c` |
-| Deep amber fade | `#d4661a` |
+| Hot gold energy    | `#ffd24a` |
+| Amber edge         | `#ff9e2c` |
+| Deep amber fade    | `#d4661a` |
 
 A natural read: the **discharge core** runs `#fffdf5` → `#ffd24a`; the **bolt** runs
 `#ffd24a` → `#ff9e2c` → `#d4661a` as it travels and fades; the **crackle** runs
@@ -126,19 +126,19 @@ A natural read: the **discharge core** runs `#fffdf5` → `#ffd24a`; the **bolt*
 
 The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
 you **author a system**, not individual particles — emitters, forces, and
-per-particle size/opacity/color curves that the review UI and the game **simulate
-live**. Build it up in sensible layers: add the discharge-core, energy-bolt, and
-crackle-mote emitters (as timed bursts at the shot instant); set the forces (forward
-projection via emission, light drag, little-to-no gravity, and a velocity stretch on
-the bolt); then set each emitter's color gradient, opacity curve, and size curve.
-Keep the timeline a **one-shot** so the effect fires once and decays to empty (the
-game replays it per shot).
+per-particle size/opacity/color curves that the game, or any viewer that plays
+it, **simulates live**. Build it up in sensible layers: add the discharge-core,
+energy-bolt, and crackle-mote emitters (as timed bursts at the shot instant);
+set the forces (forward projection via emission, light drag, little-to-no
+gravity, and a velocity stretch on the bolt); then set each emitter's color
+gradient, opacity curve, and size curve. Keep the timeline a **one-shot** so the
+effect fires once and decays to empty (the game replays it per shot).
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the flare, the thin
+slightly from play to play**; judge its _character_ — the read, the flare, the thin
 forward bolt — across replays and from multiple orbit angles, not any single frame.
 The field size, duration, and fps are already seeded in a config beside your
 workspace, so no operation needs those flags. Run `particle-3d --help` for the

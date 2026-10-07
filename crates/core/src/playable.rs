@@ -5,17 +5,14 @@
 //! A *published* run deploys that build to its own Cloudflare Pages host, where it
 //! lives at the host root and its absolute asset references (`/assets/…`) resolve
 //! (see [`crate::publish`]). But a reviewer must be able to play an *unpublished*
-//! run too — that is the entire point of reviewing before publishing — so a runner
-//! serves the same on-disk build locally: the worker over HTTP, the desktop core
-//! over a custom URI scheme. Both reach for the helpers here so the build is
-//! discovered and served identically.
+//! run too — that is the entire point of reviewing before publishing — so the
+//! artifact service serves the same on-disk build over HTTP, discovering and
+//! serving it through the helpers here.
 //!
-//! The same dual-serving story applies to a run's proof-of-implementation media —
-//! the screenshots and clips the agent wrote as evidence (see
-//! [`serve_proof_file`]). A published run's proofs are uploaded to the backend, but
-//! an unpublished run's sit in its collected tree, so the worker serves them over
-//! HTTP and the desktop core over its proof URI scheme — again from one shared
-//! resolver here.
+//! The same applies to a run's proof-of-implementation media — the screenshots and
+//! clips the agent wrote as evidence (see [`serve_proof_file`]). A published run's
+//! proofs are uploaded to the backend, but an unpublished run's sit in its collected
+//! tree, so the artifact service serves them over HTTP from the resolver here.
 //!
 //! Serving under a per-run sub-path (rather than a host root) is the one wrinkle.
 //! A Vite build emitted with the default `base: "/"` references its assets
@@ -25,6 +22,7 @@
 //! `src`/`href` references so the injected base applies (a `<base href>` does not
 //! affect already-absolute `/…` URLs). Non-HTML assets are served byte-for-byte.
 
+use crate::content_labels::{self, ContentLabels};
 use std::path::{Path, PathBuf};
 
 /// Candidate static build-output directory names a run's implementation may
@@ -83,8 +81,11 @@ pub fn serve_build_file(
 /// HTTP or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedProofFile {
-    /// The `Content-Type` to send, derived from the file extension.
+    /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
     /// The proof media bytes, served verbatim.
     pub body: Vec<u8>,
 }
@@ -109,10 +110,27 @@ pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
     let proof = record.validation.proofs.iter().find(|p| p.id == proof_id)?;
 
     let body = std::fs::read(run_dir.join("implementation").join(&proof.dest)).ok()?;
+    let labels = proof_labels(proof_labelled_name(&proof.dest, file));
     Some(ServedProofFile {
-        content_type: proof_content_type(file),
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
         body,
     })
+}
+
+/// The name a proof's bytes are labelled from: its recorded `dest`, falling back to
+/// the requested name when the dest carries no usable extension.
+///
+/// A proof is *addressed* as `<proof-id>.<ext>`, and that name keeps only the last
+/// extension — `<proof-id>.gz` for a `dest` of `shots/rally.json.gz`, which cannot
+/// say whether the gzip frames a document or is one. The dest carries the whole
+/// compound suffix, so the labels come from it (see [`crate::content_labels`]).
+pub fn proof_labelled_name<'a>(dest: &'a str, file: &'a str) -> &'a str {
+    let base = dest.rsplit('/').next().unwrap_or(dest);
+    match base.rfind('.') {
+        Some(dot) if dot > 0 && dot + 1 < base.len() => base,
+        _ => file,
+    }
 }
 
 /// The file extension a proof is served under, derived from its `dest` path: the
@@ -142,11 +160,14 @@ pub fn proof_served_extension(dest: &str) -> String {
 /// console serves verbatim; but the snapshot builder transcodes it to H.264
 /// `.mp4` so the public gallery plays on every browser (webm/VP8 does not on
 /// iOS/Safari). So a `Video` proof publishes as `mp4` regardless of its `dest`,
-/// while an `Image` proof publishes under its recorded extension unchanged.
+/// while an `Image` or `Replay` proof publishes under its recorded extension
+/// unchanged — there is no second format either of those is converted into.
 pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) -> String {
     match kind {
         crate::test_case::MediaKind::Video => "mp4".to_string(),
-        crate::test_case::MediaKind::Image => proof_served_extension(dest),
+        crate::test_case::MediaKind::Image | crate::test_case::MediaKind::Replay => {
+            proof_served_extension(dest)
+        }
     }
 }
 
@@ -154,11 +175,19 @@ pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) 
 /// HTTP or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedValidationFile {
-    /// The `Content-Type` to send, derived from the file extension.
+    /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
 }
+
+/// The host namespace directory produced trees carried before it was renamed to
+/// `.vendor`. Runs collected under the old name are immutable history, so every
+/// read-back path keeps resolving it.
+const LEGACY_VENDOR_DIR: &str = ".tcab";
 
 /// Resolve and read one synthesized validation media file from a produced run's
 /// output directory, for serving to a reviewer the same way [`serve_proof_file`]
@@ -169,26 +198,85 @@ pub struct ServedValidationFile {
 /// addressable media name a debug script's output is stored under —
 /// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
 /// for the reference implementation (see `crate::validator::validation_media_name`).
-/// The bytes live in the collected tree under `.tcab/validation/`, so this reads
-/// straight from `implementation/.tcab/validation/<file>`. Returns `None` when the
+/// The bytes live in the collected tree under `.vendor/validation/`, so this reads
+/// straight from `implementation/.vendor/validation/<file>`. Returns `None` when the
 /// file is missing or the name would escape the directory — the caller maps that to
 /// a 404.
+///
+/// The same directory also holds a recording's **shared image store** —
+/// `img.<id>.png` and `img.<id>.bin`, the deduplicated bitmaps and pixel buffers a
+/// recording's entries name rather than carry (see
+/// [`crate::VALIDATION_IMAGE_PREFIX`]). Those names are flat single segments like
+/// every other one here, so they are served by this function and its route with no
+/// change: that a store file resolves through exactly the lookup the recording it
+/// belongs to resolved through is the whole reason the reference on an entry is a
+/// file name and not a URL.
+///
+/// Trees collected before the host namespace was renamed carry the same media under
+/// `.tcab/validation/`. Those runs are immutable and are still served, so a miss in
+/// the current directory falls back to the legacy one rather than 404ing history.
 pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidationFile> {
     // The name is a single flat segment; reject any path separator or traversal so a
     // request can only ever name a file directly inside the validation media dir.
     if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
         return None;
     }
-    let body = std::fs::read(
-        run_dir
-            .join("implementation")
-            .join(".tcab")
-            .join("validation")
-            .join(file),
-    )
-    .ok()?;
+    let implementation = run_dir.join("implementation");
+    let body = [".vendor", LEGACY_VENDOR_DIR].into_iter().find_map(|dir| {
+        std::fs::read(implementation.join(dir).join("validation").join(file)).ok()
+    })?;
+    let labels = proof_labels(file);
     Some(ServedValidationFile {
-        content_type: proof_content_type(file),
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
+        body,
+    })
+}
+
+/// A showcase file resolved from a run, ready to write to an HTTP or IPC
+/// response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedShowcaseFile {
+    /// The `Content-Type` to send, derived from the file name.
+    pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
+    /// The media bytes, served verbatim.
+    pub body: Vec<u8>,
+}
+
+/// Resolve and read one of a run's [showcase](crate::RunShowcase) files from a
+/// produced run's output directory, for serving to a reviewer the same way
+/// [`serve_validation_file`] serves validation media.
+///
+/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
+/// `run-record.json` and its collected `implementation/` tree. `file` is the plain
+/// file name a showcase entry (or an image the description references) carries —
+/// the showcase directory is a flat namespace by construction — so this reads
+/// straight from `implementation/showcase/<file>`. `showcase.toml` is refused so
+/// this route exposes exactly the namespace the backend store mirror holds (the
+/// manifest is capture-side input, already folded into the record). Returns `None`
+/// when the file is missing or the name would escape the directory — the caller
+/// maps that to a 404.
+///
+/// A `.json.gz` replay is labelled as the JSON it is with the gzip declared as the
+/// body's framing (exactly as validation replays are), so a browser inflates it
+/// transparently before the player sees it.
+pub fn serve_showcase_file(run_dir: &Path, file: &str) -> Option<ServedShowcaseFile> {
+    // The name is a single flat segment; reject any path separator or traversal so a
+    // request can only ever name a file directly inside the showcase dir.
+    if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
+        return None;
+    }
+    if file == "showcase.toml" {
+        return None;
+    }
+    let body = std::fs::read(run_dir.join("implementation").join("showcase").join(file)).ok()?;
+    let labels = showcase_labels(file);
+    Some(ServedShowcaseFile {
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
         body,
     })
 }
@@ -197,8 +285,11 @@ pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidat
 /// or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedAssetFile {
-    /// The `Content-Type` to send, derived from the file extension.
+    /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
 }
@@ -226,9 +317,7 @@ pub struct ServedAssetFile {
 /// it routes through the one-segment `/asset/{file}` endpoints unchanged.
 ///
 /// Returns `None` when the run record, its asset result, the named frame, the
-/// artifact, or the file is missing — the caller maps that to a 404. The desktop
-/// core serves the same artifacts over its `tcab-asset://` scheme from this
-/// resolver.
+/// artifact, or the file is missing — the caller maps that to a 404.
 pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     let (kind, frame) = parse_asset_request(file)?;
 
@@ -326,6 +415,13 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     } else {
         let performance = record.validation.performance.as_ref()?;
         match kind {
+            // The run's own engine module (`engine.wasm`), served under its
+            // run-level `module_wasm` name — parsed as kind `engine` (it carries no
+            // `-<index>` suffix). Browser playback loads and steps this one wasm to
+            // reconstruct the factory across every scenario; only a run whose build
+            // emitted a module records one. Without this arm the console's module URL
+            // 404s even though the bytes were uploaded, and playback cannot start.
+            "engine" => performance.module_wasm.as_deref()?,
             // Each scored case's scenario is one entry in `cases`, addressed by its
             // index: `scenario.json` (frame `None`) is the first case,
             // `scenario-<i>.json` selects case `i`. Browser playback fetches this
@@ -339,8 +435,10 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     };
 
     let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;
+    let labels = asset_labels(file);
     Some(ServedAssetFile {
-        content_type: asset_content_type(file),
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
         body,
     })
 }
@@ -359,41 +457,70 @@ fn parse_asset_request(file: &str) -> Option<(&str, Option<u32>)> {
     Some((stem, None))
 }
 
-/// The `Content-Type` for an asset-generation artifact, by file extension: the
+/// The labels for an asset-generation artifact, by file name: the
 /// regenerated/preview images are PNG, the action log is JSON.
-fn asset_content_type(file: &str) -> &'static str {
+fn asset_labels(file: &str) -> ContentLabels {
     let ext = Path::new(file)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase);
     match ext.as_deref() {
-        Some("png") => "image/png",
-        Some("json") => "application/json",
-        Some("glb") => "model/gltf-binary",
-        Some("gif") => "image/gif",
-        Some("wav") => "audio/wav",
-        Some("mid" | "midi") => "audio/midi",
-        _ => "application/octet-stream",
+        Some("png") => ContentLabels::plain("image/png"),
+        Some("json") => ContentLabels::plain("application/json"),
+        Some("glb") => ContentLabels::plain("model/gltf-binary"),
+        Some("gif") => ContentLabels::plain("image/gif"),
+        Some("wav") => ContentLabels::plain("audio/wav"),
+        Some("mid" | "midi") => ContentLabels::plain("audio/midi"),
+        Some("wasm") => ContentLabels::plain("application/wasm"),
+        Some("gz") => content_labels::for_gz(file),
+        _ => ContentLabels::plain("application/octet-stream"),
     }
 }
 
-/// The `Content-Type` for a proof media file, by file extension — the image and
-/// video formats a proof's `dest` may name (see
-/// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back
-/// to a binary stream.
-fn proof_content_type(file: &str) -> &'static str {
+/// The labels for a proof media file, by file name — the image, video, and
+/// recording formats a proof's `dest` (or a validation output) may name (see
+/// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back to
+/// a binary stream.
+fn proof_labels(file: &str) -> ContentLabels {
     let ext = Path::new(file)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase);
     match ext.as_deref() {
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("webp") => "image/webp",
-        Some("gif") => "image/gif",
-        Some("webm") => "video/webm",
-        Some("mp4") => "video/mp4",
-        _ => "application/octet-stream",
+        Some("png") => ContentLabels::plain("image/png"),
+        Some("jpg" | "jpeg") => ContentLabels::plain("image/jpeg"),
+        Some("webp") => ContentLabels::plain("image/webp"),
+        Some("gif") => ContentLabels::plain("image/gif"),
+        Some("webm") => ContentLabels::plain("video/webm"),
+        Some("mp4") => ContentLabels::plain("video/mp4"),
+        // The raw RGBA bytes of a `pixels` entry a recording keeps beside itself
+        // (`img.<id>.bin` — see [`crate::VALIDATION_IMAGE_PREFIX`]): four bytes per
+        // pixel in row order and no header of its own, because the entry that names
+        // it carries the dimensions. The fallback arm below would already label it
+        // this way; it is named explicitly so a reader of this match knows the store
+        // is served from here and does not "tidy" the arm away.
+        Some("bin") => ContentLabels::plain("application/octet-stream"),
+        // A draw-command recording, stored gzipped (`<name>.json.gz`), is a JSON
+        // document that travels compressed — so it is labelled as the JSON it is,
+        // with the gzip declared as the body's framing.
+        Some("gz") => content_labels::for_gz(file),
+        // An uncompressed recording, and any other JSON media a proof names.
+        Some("json") => ContentLabels::plain("application/json"),
+        _ => ContentLabels::plain("application/octet-stream"),
+    }
+}
+
+/// The labels for a showcase file, by file name: the proof formats (the showcase's
+/// media kinds are inferred by the same extension rule) plus the markdown
+/// description itself, which is also a plain file in the directory.
+fn showcase_labels(file: &str) -> ContentLabels {
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("md") => ContentLabels::plain("text/markdown; charset=utf-8"),
+        _ => proof_labels(file),
     }
 }
 

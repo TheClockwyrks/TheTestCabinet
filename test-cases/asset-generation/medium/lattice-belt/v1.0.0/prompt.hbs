@@ -1,34 +1,38 @@
-Draw the **Lattice transport belt** in both its forms, as a 16-frame **sprite
-sheet** of an animated factory conveyor, using only the drawing tool.
+Draw the **Lattice transport belt** in both its forms and all three upgrade tiers,
+as a 48-frame **sprite sheet** of an animated factory conveyor, using only the
+drawing tool.
 
 The belt is a renderer sprite for **Lattice**, a grid-based factory simulation
 drawn flat and top-down; the belt is its ground-level layer, drawn as a flat 2D
-surface seen from straight above. You are drawing **two forms of the
-same belt**:
+surface seen from straight above. You are drawing **two forms** of the same belt —
+a **straight** segment flowing East and a **curve** that turns it 90 degrees (flow
+enters West, leaves South, curving clockwise) — at **three tiers**:
 
-- **Frames 0–7 — the straight belt**, one tile of conveyor **flowing to the right
-  (East)**.
-- **Frames 8–15 — the curve**, one corner tile where that same belt turns 90
-  degrees: flow **enters at the West edge travelling East** and **leaves at the
-  South edge travelling South**, curving clockwise.
+- **Tier 1 — frames 0–15** (straight `0`–`7`, curve `8`–`15`): the base belt, with
+  **amber** movers.
+- **Tier 2 — frames 16–31** (straight `16`–`23`, curve `24`–`31`): a reinforced,
+  faster belt with **red-orange** movers and more mechanical detail.
+- **Tier 3 — frames 32–47** (straight `32`–`39`, curve `40`–`47`): the most
+  advanced, fastest belt with **blue-cyan** movers, the densest detail, and a
+  subtle energy glow.
 
-Each form is a dark **single** continuous metal surface — one belt whose full
-width carries two items side by side, not two belts — with rails along its edges,
-tread blades patterned across the surface, and a central row of amber chevrons
-painted on it. In each form the **whole surface — blades and chevrons together —
-scrolls downstream** across its eight frames, so the belt itself reads as moving
-and each loop is seamless. The renderer rotates and mirrors these two sprites for
-every other direction and corner, so you draw only the East-flowing straight belt
-and only the West-in / South-out curve.
+Each form is a dark **single** continuous metal surface — one belt whose full width
+carries two items side by side, not two belts — with rails along its edges, tread
+blades patterned across the surface, and a central row of accent chevrons painted
+on it. In each form the **whole surface — blades and chevrons together — scrolls
+downstream** across its eight frames, so the belt itself reads as moving and each
+loop is seamless. The renderer rotates and mirrors these sprites for every other
+direction and corner, so you draw only the East-flowing straight belt and only the
+West-in / South-out curve, per tier.
 
-**The two forms must match.** They are one belt, so a straight tile feeding a
-corner has to read as a single conveyor changing direction rather than two
-different belts meeting at a seam. That means building both from one construction
-language (the same palette, the same rails, the same blade and chevron pitch),
-making the curve's mouths butt flush against a straight tile edge for edge, and
-scrolling both in phase so the pattern flows through the junction without a jump.
-The brief specifies exactly what each of those requires; it is the substance of
-this case, not a finishing touch.
+**Everything must read as one belt.** Within a tier the two forms must match, so a
+straight tile feeding a corner reads as a single conveyor changing direction:
+build both from one construction language, butt the curve's mouths flush against a
+straight tile, and scroll both in phase. Across the tiers the belt must read as one
+family progressively upgraded — the same metal body, cross-section, and silhouette
+throughout, changing only the accent color, the amount of mechanical detail, and
+the loop's playback speed. The brief specifies exactly what each of those requires;
+it is the substance of this case, not a finishing touch.
 
 ## How drawing works
 
@@ -63,11 +67,13 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the sprite sheet up operation by operation until each `frames/<index>.png`
-matches the brief: eight frames of a straight East-flowing belt tile that tiles
-horizontally, eight frames of a 90-degree corner tile sweeping from a full-width
-West entry face round to a full-width South exit face, both built from the same
-palette, rails, tread blades and chevrons, both scrolling their whole surface
-downstream by the same step each frame so each loop closes seamlessly, and the two
-meeting flush and in phase so a belt feeding the corner flows through it. When you
-are satisfied, stop: the recorded per-frame action logs are your finished
-submission.
+matches the brief: for every tier, eight frames of a straight East-flowing belt
+tile that tiles horizontally and eight frames of a 90-degree corner tile sweeping
+from a full-width West entry face round to a full-width South exit face — each
+scrolling its whole surface downstream by the same step each frame so the loop
+closes seamlessly, and the two forms meeting flush and in phase so a belt feeding
+the corner flows through it. The three tiers share one metal body, cross-section,
+and silhouette, differing only in accent color (amber, red-orange, blue-cyan),
+mechanical detail, and playback speed, so they read as one belt progressively
+upgraded. When you are satisfied, stop: the recorded per-frame action logs are your
+finished submission.

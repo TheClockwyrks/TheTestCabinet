@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Builds every run-container image for this machine's architecture and pushes each
+# to the registry as `test-cabinet-<name>:<sha>-<arch>`.
+#
+#   scripts/ci/run-images.sh <gg-binary> <sha>
+#
+# The images are the ones containers/image-names.sh lists, which is the set a run
+# resolves, plus the gg toolchain builder the `-gg` variants copy out of. They are
+# built by containers/build.sh with `--gg-selfcheck`, which drives `gg selfcheck`
+# inside each `-gg` environment representative between its build and its push, so a
+# variant carrying a dead language arm never reaches the registry. <gg-binary> is the
+# static gg the pipeline built for this architecture.
+#
+# The build is native: the pipeline runs this once on an amd64 agent and once on an
+# arm64 agent, and scripts/ci/manifest.sh fuses the arch tags into the multi-arch
+# `<sha>` that TCAB_CONTAINER_TAG pins. The audio store is built by its own job
+# (`containers/build.sh audio-store`), because the driver image needs it before the
+# run images are done. The caller is already logged in to the registry.
+set -euo pipefail
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
+
+if [[ $# -ne 2 ]]; then
+	echo "usage: scripts/ci/run-images.sh <gg-binary> <sha>" >&2
+	exit 1
+fi
+readonly GG_BINARY="$1"
+readonly SHA="$2"
+
+arch="$(ci_arch)"
+log_file="$(mktemp)"
+trap 'rm -f "$log_file"' EXIT
+
+mapfile -t names < <(./containers/image-names.sh)
+
+# RECLAIM=1 is what makes the set fit: build.sh removes each pushed image once nothing later
+# in the build order is FROM it and prunes the builder cache as it advances, because twenty-
+# seven `-gg` variants each holding a 2.2 GB /opt/gg is ~60 GB against an agent's ~40. It is a
+# separate switch from PUSH because it is destructive beyond the build — the builder prune
+# takes every cache mount on the daemon — and `containers/README.md` documents a developer
+# running PUSH=1 from their own box. THIS IS THE ONLY CALLER THAT SHOULD SET IT: here the
+# daemon belongs to a single-use CI agent (both pools give every job a fresh VM with an empty
+# builder), so there is nothing to lose and a full set to gain.
+# REUSE_INPUTS is what makes an unchanged image cost one registry round trip: the table
+# names every image's inputs digest, and build.sh retags the pushed image that digest
+# already names instead of building and pushing it again (its header section "Reusing
+# what the registry already holds"). The table is written here, from this checkout's
+# index, so the digests describe the commit being built.
+inputs_file="$(mktemp)"
+trap 'rm -f "$log_file" "$inputs_file"' EXIT
+scripts/ci/run-image-inputs.sh >"$inputs_file"
+log "building ${#names[@]} run images as ${CI_REGISTRY}/test-cabinet-<name>:${SHA}-${arch}, reusing those whose inputs are unchanged"
+PUSH=1 RECLAIM=1 REUSE_INPUTS="$inputs_file" IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \
+	./containers/build.sh --gg-selfcheck "$GG_BINARY" "${names[@]}" 2>&1 | tee "$log_file"
+
+# The self-check has to have run, not merely have been asked for. A refactor that
+# drops the flag above would still build and push every image, so each environment
+# representative's `gg selfcheck ok:` line is required by name. The names are written
+# out rather than read from build.sh, because a list derived from the thing under test
+# would agree with it however wrong it became.
+for image in sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg; do
+	if ! grep -Fq "gg selfcheck ok: ${image}" "$log_file"; then
+		echo "run-images.sh: containers/build.sh pushed without running gg selfcheck in ${image}." >&2
+		echo "Restore --gg-selfcheck on the build above; see containers/build.sh's header." >&2
+		exit 1
+	fi
+	echo "gg selfcheck ran in ${image}"
+done

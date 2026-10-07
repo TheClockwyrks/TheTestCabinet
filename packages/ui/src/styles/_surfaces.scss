@@ -4,3 +4,19 @@
 // (where one exists, as on the public site) reads through at one consistent
 // opacity. Each panel still owns its own border color and glow.
 $panel-bg: color-mix(in srgb, t.$color-surface 88%, transparent);
+
+// The whole surface card, in one declaration: the shared translucent background
+// inside a neon-outlined, softly glowing box. The `Panel` primitive is this mixin
+// and nothing else, so reach for the component first — this exists for the cards
+// that must stay a `<section>`, a `<figure>` or a `<ul>` for their semantics and
+// so cannot be a `<div>` the primitive renders. Taking the treatment from here
+// rather than restating it keeps every card on the same surface when it changes.
+@mixin panel($pad: t.$space-lg) {
+  padding: $pad;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: $panel-bg;
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 22%, transparent),
+    inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 8%, transparent);
+}

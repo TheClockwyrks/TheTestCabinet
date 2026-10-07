@@ -74,6 +74,14 @@
       "description": "The terminal reason, present on a `finished` event that failed or was\ncanceled.",
       "type": ["string", "null"]
     },
+    "engine": {
+      "description": "The [engine](crate::engine) the run is built on, as its slug. `None` is the\n`none` engine, exactly as an absent `engine` on the launch request is.\n\nIt rides with the harness and the model because those three plus the case pin\nare a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),\nand an in-flight run has no record to read one out of. A console listing the runs\nbehind one cell — a ladder rung, a plan's cell — would otherwise show a live row\nfrom every other engine's cell of the same case, and count it toward a figure it\nwill never join.",
+      "type": ["string", "null"]
+    },
+    "ggPreset": {
+      "description": "The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job\nwas launched from, lifted out of its stored capability set. A gg run has no\nsingle harness model — [`model_id`](Self::model_id) is only its representative\nprimary-slot binding — so the active-run list identifies a gg row by its\nconfiguration instead. `None` for every third-party-harness job (which carries\nno capability set) and for a gg job assembled by hand rather than from a named\nconfiguration.",
+      "type": ["string", "null"]
+    },
     "harnessSlug": {
       "description": "The harness driving the run, as its slug string.",
       "type": "string"
@@ -93,6 +101,10 @@
     "runId": {
       "description": "The run (job) this is about. Named `runId` to match `ActiveJobOut`, which is\nthe shape this event maintains — the console keys its in-flight list on it.",
       "type": "string"
+    },
+    "startedAt": {
+      "description": "RFC 3339 of when the run itself began: the moment the driver reported\n`starting`, which it does immediately before taking the `started_at` the\nproduced record's `startedAt` is measured from, so the two name the same moment.\n\nIt is the anchor because it is the closest any state transition sits to the\nstart the record itself reports. A console ticking a duration from the enqueue\ntime would bill a run for every minute it waited behind a parallelism cap;\nanchoring on `dispatched` would bill it for pod scheduling and the image pull,\nand on `running` would drop the setup that `run_time_seconds` counts.\n\nA duration ticked from here is elapsed wall clock and reads higher than the\n`run_time_seconds` the finished run reports. That figure is the run's measured\ntime, frozen when its container is torn down and with the container's\n`scheduling_wait` subtracted. The job holds at `running` through the post-run\nstages and the validation pass that follow teardown, so a live figure carries\nthose as well and steps down by their total once the run lands.\n\n`None` means the run has not started — it is still queued, pending, or\ndispatched — and is what a console renders as a dash rather than a zero.",
+      "type": ["string", "null"]
     },
     "state": {
       "$ref": "#/$defs/JobState",

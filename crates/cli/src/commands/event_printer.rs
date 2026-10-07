@@ -42,6 +42,9 @@ const SYSTEM: Style = fg(AnsiColor::White);
 const UNKNOWN: Style = fg(AnsiColor::BrightBlack);
 const WARNING: Style = fg(AnsiColor::Yellow).bold();
 const ERROR: Style = fg(AnsiColor::Red).bold();
+// Per-turn token usage is a quiet diagnostic between the activity lines, so it
+// reads in the same dim grey as the unknown/system asides.
+const USAGE: Style = fg(AnsiColor::BrightBlack);
 
 /// Print one normalized event as a single colored, labeled line.
 ///
@@ -97,6 +100,16 @@ fn render(event: &HarnessEvent) -> String {
             &orchestration_text(*action, subagent_name.as_deref()),
         ),
         EventKind::System { message, .. } => labeled(SYSTEM, "system", message),
+        EventKind::Usage { tokens, cost } => labeled(USAGE, "usage", &usage_text(tokens, *cost)),
+        // gg's native telemetry carry. The gg executor also emits mapped
+        // human-facing variants (agent/command/write/…) alongside these, so the
+        // rendered feed already shows the activity; render the raw gg event under a
+        // dim label so the native stream is still visible without duplicating it.
+        EventKind::Gg { event } => labeled(
+            UNKNOWN,
+            "gg",
+            &serde_json::to_string(event).unwrap_or_default(),
+        ),
         EventKind::Unknown { raw } => labeled(UNKNOWN, "·", &raw.to_string()),
         EventKind::Warning { message, .. } => labeled(WARNING, "warn", message),
         EventKind::Error { message, .. } => labeled(ERROR, "error", message),
@@ -132,6 +145,33 @@ fn path_with_range(path: &str, start: Option<u32>, end: Option<u32>) -> String {
         (Some(start), Some(end)) if start != end => format!("{path}:{start}-{end}"),
         (Some(start), _) => format!("{path}:{start}"),
         _ => path.to_string(),
+    }
+}
+
+/// Summarize a per-turn usage event as a compact one-liner, naming only the token
+/// classes the harness reported (an unreported class is omitted rather than shown
+/// as zero) and the per-turn cost when one is reported.
+fn usage_text(tokens: &test_cabinet_core::metrics::TokenCounts, cost: Option<f64>) -> String {
+    let mut parts = Vec::new();
+    if let Some(input) = tokens.uncached_input {
+        parts.push(format!("in {input}"));
+    }
+    if let Some(cached) = tokens.cached_input {
+        parts.push(format!("cached {cached}"));
+    }
+    if let Some(output) = tokens.output {
+        parts.push(format!("out {output}"));
+    }
+    if let Some(reasoning) = tokens.reasoning {
+        parts.push(format!("reason {reasoning}"));
+    }
+    if let Some(cost) = cost {
+        parts.push(format!("${cost:.4}"));
+    }
+    if parts.is_empty() {
+        "no usage reported".to_string()
+    } else {
+        parts.join(" · ")
     }
 }
 

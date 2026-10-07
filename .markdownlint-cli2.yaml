@@ -1,35 +1,61 @@
-# markdownlint-cli2 configuration for The Test Cabinet.
+# markdownlint-cli2 configuration.
 #
-# Scoped to the authored test-case specifications under `test-cases/**` and the
-# game-jam briefs under `game-jams/**`, which is the prose a case/jam version ships
-# to a model. Keeping it lint-clean keeps it readable and the rendered catalog tidy.
-# See the `lint:md` script in `package.json` and the test-case authoring/variant
-# guides under `apps/docs/src/content/docs/guides/`.
+# Scoped to every Markdown file in the workspace. Naming the whole tree and
+# listing the exceptions is the smaller list and the safe one: a page added
+# anywhere is checked from the moment it is written, where a list of
+# directories leaves a page outside it as prose nothing checks.
 
 config:
-  # Fenced code blocks used for plain text shouldn't need a language tag.
   fenced-code-language: false
-  # Use dashes for unordered lists.
   ul-style:
     style: dash
-  # Hard limit of 90 characters; the target we write to is 80.
   line-length:
     line_length: 90
-    # Spec tables (measurements, view listings) often exceed the prose line length.
     tables: false
-  # Specs reuse subsection names (e.g. "Mode") under different parent sections.
   no-duplicate-heading:
     siblings_only: true
-  # Whether descriptive link text is needed is too context-dependent to enforce.
   descriptive-link-text: false
-  # Some specs are site-embedded fragments (e.g. a case's `description.md` is
-  # rendered under the case title on the detail page), so they intentionally open
-  # at a subsection heading rather than a top-level h1.
   first-line-heading: false
+  no-inline-html:
+    allowed_elements: []
 
-# Ignore files ignored by `.gitignore` (e.g. rendered reference screenshots).
 gitignore: true
 
 globs:
-  - test-cases/**/*.md
-  - game-jams/**/*.md
+  - "**/*.md"
+  - "**/*.mdx"
+
+# `gitignore: true` above keeps the build outputs and the installed packages
+# out. It does not cover `.git` itself, because git does not ignore its own
+# directory, and a repository is not prose. The environments and the build and
+# scratch directories a workspace makes are left out whether or not a
+# `.gitignore` names them. A path a project leaves out beyond these, such as a
+# submodule with gates of its own, is added here, to `cspell.json`'s
+# `ignorePaths` and to `.prettierignore` together, so the gates never disagree
+# about a path.
+ignores:
+  - ".git/**"
+  - "**/.venv/**"
+  - "**/build/**"
+  - "tmp/**"
+  - "cold-storage/**"
+  - "tasks/**/done/**"
+  - ".claude/workflows/**"
+  - ".claude/worktrees/**"
+  - "crates/gg/src/probe_fixtures/**"
+  - "crates/gg/src/sandbox/guests/**"
+  - "crates/foray-core/schemas/*.json"
+  - "crates/lattice-core/schemas/*.json"
+  - "test-cases/performance/hard/lattice/*/cases/*.json"
+  - "**/*.hbs"
+  - "**/.build/**"
+  - "**/.spago/**"
+  - "**/.vendor/**"
+  - "**/vendor/**"
+  - "**/.gg/**"
+  - "packages/gg-sandbox-purescript/output/**"
+  - "runs/**"
+  - "tcab-store/**"
+  - "tcab-artifacts/**"
+  - ".tcab-driver/**"
+  - "reference-previews/**"

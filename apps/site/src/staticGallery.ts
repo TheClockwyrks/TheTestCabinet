@@ -1,26 +1,41 @@
 import { useCallback, useEffect, useState } from "react";
-import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
-import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
-import { readTextWithProgress } from "@test-cabinet/ui/client";
+import type { RunRecord, RunSubject } from "@clockwyrks/run-record";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
+import type { HarnessEvent, ProgressCallback } from "@clockwyrks/ui/client";
+import { readOutcome, readTextWithProgress } from "@clockwyrks/ui/client";
 import {
+  DEFAULT_ENGINE_SLUG,
   findModelByModelId,
+  foldCabinetStats,
   runSummaryPage,
   toModelSummary,
   toRunSummary,
+  type CabinetStats,
+  type CaseVariantRef,
   type GalleryDataInput,
   type RunDetail,
   type RunQuery,
-} from "@test-cabinet/ui/app";
+  type VariantSummary,
+} from "@clockwyrks/ui/app";
 import {
   runSummaries as publishedRunSummaries,
   writeups as publishedWriteups,
   reviews as publishedReviews,
   testCases as catalogTestCases,
   models as catalogModels,
+  comparisons as publishedComparisons,
+  testCaseGroups as publishedTestCaseGroups,
+  ggRuns as publishedGgRuns,
+  codeAnalysisUrls as publishedCodeAnalysisUrls,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
+  validationStorePrefixes as publishedValidationStorePrefixes,
+  showcaseMediaUrls as publishedShowcaseMediaUrls,
+  caseShowcaseMediaUrls as publishedCaseShowcaseMediaUrls,
   validationBaselineUrls as publishedValidationBaselineUrls,
+  baselineStorePrefixes as publishedBaselineStorePrefixes,
   referenceMediaUrls as publishedReferenceMediaUrls,
 } from "virtual:tcab-snapshot";
 
@@ -34,6 +49,28 @@ import {
 // `canExecute` is false and `inProgress` is empty.
 
 const LOCAL_RUNS_URL = "/__local-runs__/index.json";
+
+/**
+ * Where one file of a recording's shared image store is, under `prefix`.
+ *
+ * The store is the one media the snapshot does NOT list file by file. A run's — or
+ * a case version's — store holds a distinct file per unique image its recordings
+ * drew, and this module's lookup tables are inlined into the chunk every visitor
+ * downloads before the home page renders, so listing them would put hundreds of
+ * kilobytes of JavaScript in front of every visitor for URLs one replay on one page
+ * will ever ask for. Instead each namespace carries a single URL prefix and the name
+ * the recording itself carries completes it, which works because a store file's name
+ * is a hash of its bytes and is published verbatim.
+ *
+ * The `img.` prefix MIRRORS `IMAGE_STORE_PREFIX` in
+ * `packages/case-harness/src/replay/store.ts` and `VALIDATION_IMAGE_PREFIX` in
+ * `crates/core/src/validator.rs`; a declared output never carries it, so asking here
+ * first costs a declared name nothing.
+ */
+function storeUrl(prefix: string | undefined, file: string): string | null {
+  if (prefix === undefined || !file.startsWith("img.")) return null;
+  return `${prefix}${file}`;
+}
 
 interface LocalRunsResponse {
   runs?: RunRecord[];
@@ -87,7 +124,20 @@ export function useStaticGallery(): GalleryDataInput {
   // full record (they are unreviewed previews, so no reviews / null rating is
   // correct). The published summary index stays internal to this module (queried by
   // `queryRunSummaries` below); it is never exposed whole.
-  const producedSummaries = local.map((run) => toRunSummary(run, []));
+  // A dev-only local run is a legacy-shaped preview: the site has no store to say
+  // whether it is validator-rated, so it carries neither channel decided.
+  const producedSummaries = local.map((run) =>
+    toRunSummary({
+      id: run.id,
+      record: run,
+      reviews: [],
+      published: false,
+      rating: null,
+      aesthetic: null,
+      validatorRated: false,
+      score: null,
+    }),
+  );
 
   // The public gallery lists only models that a run has actually used. The
   // catalog already surfaces any model with a recorded run automatically, so the
@@ -124,6 +174,43 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // The inputs one run was given: the variant of the run's OWN case version,
+  // rendered for the run's OWN engine. The snapshot carries a document per
+  // published version, so an older version resolves out of
+  // `priorVariantsByVersion` rather than the latest version's variants; and it
+  // carries each variant's
+  // prompt and specs re-rendered per engine, so a run on an engine reads that
+  // engine's rendering. The engineless slug is the top-level pair, which is what a
+  // run selecting no engine received. A version, variant, or engine this snapshot
+  // does not carry resolves null, which the Inputs tab reports as unavailable.
+  const readCaseVariant = useCallback(
+    async (ref: CaseVariantRef): Promise<VariantSummary | null> => {
+      const testCase = catalogTestCases.find(
+        (entry) => entry.slug === ref.slug,
+      );
+      if (!testCase) return null;
+      const variants =
+        ref.version === testCase.latestVersion
+          ? testCase.variants
+          : testCase.priorVariantsByVersion[ref.version];
+      const variant = variants?.find((entry) => entry.slug === ref.variant);
+      if (!variant) return null;
+      if (ref.engine === DEFAULT_ENGINE_SLUG) return variant;
+      const rendering = variant.engineRenderings[ref.engine];
+      if (!rendering) return null;
+      return {
+        ...variant,
+        prompt: rendering.prompt,
+        seededInputs: rendering.seededInputs,
+        // The starter workspace is engine-keyed exactly as the prompt and specs
+        // are (a starter project is written against a runtime), so the
+        // rendering's set replaces the variant's engineless one too.
+        workspace: rendering.workspace,
+      };
+    },
+    [],
+  );
+
   // Local previews take precedence over the published framing on id collision.
   const writeups = { ...publishedWriteups, ...localWriteups };
 
@@ -135,28 +222,50 @@ export function useStaticGallery(): GalleryDataInput {
   // The Events tab's data source on the static site: a published run's normalized
   // event stream, emitted at build time as a per-run static asset by
   // vite-plugin-snapshot (raw harness output is never published). A run without
-  // events (or one published before they were captured) resolves to an empty
-  // stream rather than failing. Stable identity so the Events tab doesn't refetch
-  // on every render.
+  // events (or one published before they were captured) has no asset at all, and
+  // that 404 is an absence: an empty stream, which the tab renders as a run that
+  // recorded none. Every other outcome — offline, a 500, a truncated body that
+  // won't parse — is a read that FAILED and is thrown, so the tab reports the
+  // failure instead of showing an empty feed for events that exist. Stable
+  // identity so the Events tab doesn't refetch on every render.
   const fetchRunEvents = useCallback(
     async (runId: string, onProgress?: ProgressCallback) => {
       const url = `${import.meta.env.BASE_URL}run-events/${encodeURIComponent(
         runId,
       )}.json`;
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return { events: [], raw: null };
-        // The published event asset can be large, so stream it with transfer
-        // progress for the Events tab's progress bar.
-        const text = await readTextWithProgress(response, onProgress);
-        const events = JSON.parse(text) as HarnessEvent[];
-        return { events, raw: null };
-      } catch {
+      const response = await fetch(url);
+      if (readOutcome(response, `events for run ${runId}`) === "absent") {
         return { events: [], raw: null };
       }
+      // The published event asset can be large, so stream it with transfer
+      // progress for the Events tab's progress bar.
+      const text = await readTextWithProgress(response, onProgress);
+      const events = JSON.parse(text) as HarnessEvent[];
+      return { events, raw: null };
     },
     [],
   );
+
+  // The Code tab's explorer tier on the static site: a published run's unbounded
+  // code-analysis document, emitted at build time as its own generation-keyed snapshot
+  // object and fetched here on demand (the bounded summary rides on the record, so the
+  // provenance strip and figure table never wait on this).
+  //
+  // A run absent from the URL map resolves to `null`, which the tab renders as "never
+  // analysed" — the honest reading, since the corpus is deliberately not backfilled and
+  // therefore starts on the day the analyzer shipped. Stable identity so the tab doesn't
+  // refetch on every render.
+  const readCodeAnalysis = useCallback(async (runId: string) => {
+    const url = publishedCodeAnalysisUrls[runId];
+    if (!url) return null;
+    const response = await fetch(url);
+    // A listed object the store no longer holds is still an absence ("never
+    // analysed"); a read that failed for any other reason is reported as one.
+    if (readOutcome(response, `code analysis for run ${runId}`) === "absent") {
+      return null;
+    }
+    return (await response.json()) as CodeAnalysisDocument;
+  }, []);
 
   // Lazily resolve one run's detail — its full record plus every review. The
   // bundle no longer inlines full records: a published run's record is emitted at
@@ -173,20 +282,45 @@ export function useStaticGallery(): GalleryDataInput {
       const runReviews = publishedReviews[runId] ?? [];
       const localRun = localById.get(runId);
       // A dev-only local run is by definition not published; everything the
-      // static site serves as an emitted asset is.
+      // static site serves as an emitted asset is. It is also a legacy-shaped
+      // preview (no store to decide its channels).
       if (localRun)
-        return { record: localRun, reviews: runReviews, published: false };
+        return {
+          record: localRun,
+          reviews: runReviews,
+          published: false,
+          validatorRated: false,
+          rating: null,
+          aesthetic: null,
+          // Lifted off the record the same way the rating channels are, so a
+          // page reads `run.showcase` directly.
+          showcase: localRun.showcase ?? null,
+        };
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
       )}.json`;
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return null;
-        const record = (await response.json()) as RunRecord;
-        return { record, reviews: runReviews, published: true };
-      } catch {
-        return null;
-      }
+      const response = await fetch(url);
+      // Only the store's own 404 means this gallery holds no such run, which is
+      // what the run-detail layout prints as "No run found". An offline visitor,
+      // a 500 from the CDN, or a body that won't parse is a read that FAILED and
+      // throws, so the layout reports the failure instead — the same contract
+      // the console's `readRun` follows, and the reason this host must not
+      // collapse the two into one null.
+      if (readOutcome(response, `run ${runId}`) === "absent") return null;
+      const record = (await response.json()) as RunRecord;
+      // The published summary card carries the store's word on the two rating
+      // channels and whether the run is validator-rated — the same fields the
+      // console reads off `GET /runs/{id}`.
+      const summary = publishedRunSummaries.find((s) => s.id === runId);
+      return {
+        record,
+        reviews: runReviews,
+        published: true,
+        validatorRated: summary?.validatorRated ?? false,
+        rating: summary?.rating ?? null,
+        aesthetic: summary?.aesthetic ?? null,
+        showcase: record.showcase ?? null,
+      };
     },
     // `localById` is rebuilt each render, but its only varying input is the loaded
     // local runs (the published set is no longer inlined); key on that.
@@ -219,6 +353,19 @@ export function useStaticGallery(): GalleryDataInput {
     [localRuns],
   );
 
+  // The cabinet's headline figures, folded locally from the inlined published
+  // summary index with the mirror of the backend's `fold_cabinet_stats` — the
+  // static analog of the console's `GET /stats/cabinet`. The site's corpus is
+  // the published snapshot alone (the backend's additionally counts unpublished
+  // runs), so the figures are the published cabinet's. Pure and in-memory, so it
+  // never rejects; async only to satisfy the host contract. Stable identity so
+  // the home page doesn't refetch on every render.
+  const getCabinetStats = useCallback(
+    async (): Promise<CabinetStats | null> =>
+      foldCabinetStats(publishedRunSummaries, new Date()),
+    [],
+  );
+
   // A published run's proof media, resolved at build time to absolute snapshot
   // URLs keyed by run id then served file name (`<proof-id>.<ext>`). Produced
   // (local, dev-only) runs are not published, so they have no snapshot media.
@@ -245,19 +392,55 @@ export function useStaticGallery(): GalleryDataInput {
   // dev-only) runs are not published, so they have no snapshot media.
   const validationMediaUrl = useCallback(
     (runId: string, file: string): string | null =>
-      publishedValidationMediaUrls[runId]?.[file] ?? null,
+      publishedValidationMediaUrls[runId]?.[file] ??
+      storeUrl(publishedValidationStorePrefixes[runId], file),
     [],
   );
 
-  // A published case variant's *baseline* validation media (the reference
-  // implementation's debug-script outputs), resolved at build time and keyed
-  // case-scoped by a `<slug>/<version>/<variant>` subject key then the flat
+  // A published run's showcase media (the carousel files, plus any image the
+  // description references), resolved at build time to absolute snapshot URLs keyed
+  // by run id then the recorded file name (a video's `.webm` request resolving to
+  // its published `.mp4`). Produced (local, dev-only) runs are not published, so
+  // they have no snapshot media.
+  const showcaseMediaUrl = useCallback(
+    (runId: string, file: string): string | null =>
+      publishedShowcaseMediaUrls[runId]?.[file] ?? null,
+    [],
+  );
+
+  // A CASE variant's authored showcase media (the carousel captured from the
+  // reference implementation) — the case-side counterpart of the run showcase
+  // above, resolved at build time and keyed case-scoped by a
+  // `<slug>/<version>/<variant>` subject key then the authored file name (a
+  // video's `.webm` request resolving to its published `.mp4`). Null for a
+  // variant with no published showcase, and the surfaces then degrade exactly
+  // like the run showcase.
+  const caseShowcaseMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null =>
+      publishedCaseShowcaseMediaUrls[`${slug}/${version}/${variant}`]?.[file] ??
+      null,
+    [],
+  );
+
+  // A published reference build's *baseline* validation media (the reference
+  // implementation's declared outputs), resolved at build time and keyed case-scoped
+  // by a `<slug>/<version>/<engine>/<variant>` subject key then the flat
   // `<item>__<output>.<ext>` name — the same file name the actual media is requested
-  // under, resolved through the case-scoped map instead of the run-scoped one.
+  // under, resolved through the case-scoped map instead of the run-scoped one. The
+  // engine is in the key because a variant has one reference implementation per
+  // engine, and a run is only comparable against the one it was built on.
   const validationBaselineUrl = useCallback(
     (subject: RunSubject, file: string): string | null => {
-      const subjectKey = `${subject.testCaseSlug}/${subject.testCaseVersion}/${subject.variant}`;
-      return publishedValidationBaselineUrls[subjectKey]?.[file] ?? null;
+      const subjectKey = `${subject.testCaseSlug}/${subject.testCaseVersion}/${subject.engineSlug}/${subject.variant}`;
+      return (
+        publishedValidationBaselineUrls[subjectKey]?.[file] ??
+        storeUrl(publishedBaselineStorePrefixes[subjectKey], file)
+      );
     },
     [],
   );
@@ -287,8 +470,14 @@ export function useStaticGallery(): GalleryDataInput {
     reviews,
     runsLoading: loading,
     queryRunSummaries,
+    getCabinetStats,
     testCases,
     testCasesStatus: "ready",
+    // The test-case groups, baked into the snapshot at build time and already in
+    // display order. Empty when the snapshot predates them, and the home page
+    // then renders no group leaderboards.
+    testCaseGroups: publishedTestCaseGroups,
+    readCaseVariant,
     readTestCase,
     // The model catalog is baked into the snapshot at build time, so it is always
     // resolved; the site has no backend to mutate it, so the config affordances
@@ -296,18 +485,34 @@ export function useStaticGallery(): GalleryDataInput {
     // run has actually used, so run-less curated entries don't show here.
     models,
     modelsStatus: "ready",
+    // The published harness comparisons, baked into the snapshot at build time and
+    // rendered read-only (no backend to create/run/publish — those affordances gate
+    // on `canExecute`, which is false here). A single comparison is resolved by id
+    // for the detail view.
+    comparisons: publishedComparisons as Comparison[],
+    readComparison: (id: string) =>
+      (publishedComparisons as Comparison[]).find((c) => c.id === id) ?? null,
     canExecute: false,
+    // The exported gg document corpus, inlined at build time. This is the whole of the
+    // site's analysis surface: `useGgSource` evaluates every query against these
+    // documents in the browser with the mirrored evaluator, so `/gg/query` makes no
+    // request at all. A snapshot without the corpus (one published before the export
+    // existed) leaves this undefined, and the section is simply not mounted.
+    ggData: publishedGgRuns ?? undefined,
     // The public gallery has no backend to ask for a Grafana URL, and its readers
     // have no access to one — the observability stack is VPN-only. Always null, so
     // the run view never offers a link nobody could follow.
     grafanaUrl: null,
     fetchRunEvents,
+    readCodeAnalysis,
     // The host's lazy single-run fetcher; the gallery context's `fetchRun`
     // delegates to it (falling back to the in-memory `runs` internally).
     readRun: fetchRun,
     proofMediaUrl,
     assetMediaUrl,
     validationMediaUrl,
+    showcaseMediaUrl,
+    caseShowcaseMediaUrl,
     validationBaselineUrl,
     referenceMediaUrl,
   };

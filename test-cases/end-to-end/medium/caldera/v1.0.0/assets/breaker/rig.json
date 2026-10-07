@@ -2,119 +2,67 @@
   "parts": [
     {
       "name": "pelvis",
-      "pivot": [
-        22,
-        16,
-        17
-      ]
+      "pivot": [22, 16, 17]
     },
     {
       "name": "torso",
       "parent": "pelvis",
-      "pivot": [
-        22,
-        22,
-        18
-      ]
+      "pivot": [22, 22, 18]
     },
     {
       "name": "head",
       "parent": "torso",
-      "pivot": [
-        22,
-        34,
-        25
-      ]
+      "pivot": [22, 34, 25]
     },
     {
       "name": "arm_l",
       "parent": "torso",
-      "pivot": [
-        5,
-        32,
-        23
-      ]
+      "pivot": [5, 32, 23]
     },
     {
       "name": "arm_r",
       "parent": "torso",
-      "pivot": [
-        40,
-        32,
-        23
-      ]
+      "pivot": [40, 32, 23]
     },
     {
       "name": "ram_l",
       "parent": "arm_l",
-      "pivot": [
-        5,
-        22,
-        24
-      ]
+      "pivot": [5, 22, 24]
     },
     {
       "name": "ram_r",
       "parent": "arm_r",
-      "pivot": [
-        40,
-        22,
-        24
-      ]
+      "pivot": [40, 22, 24]
     },
     {
       "name": "thigh_l",
       "parent": "pelvis",
-      "pivot": [
-        15,
-        18,
-        17
-      ]
+      "pivot": [15, 18, 17]
     },
     {
       "name": "thigh_r",
       "parent": "pelvis",
-      "pivot": [
-        30,
-        18,
-        17
-      ]
+      "pivot": [30, 18, 17]
     },
     {
       "name": "shin_l",
       "parent": "thigh_l",
-      "pivot": [
-        15,
-        10,
-        17
-      ]
+      "pivot": [15, 10, 17]
     },
     {
       "name": "shin_r",
       "parent": "thigh_r",
-      "pivot": [
-        30,
-        10,
-        17
-      ]
+      "pivot": [30, 10, 17]
     },
     {
       "name": "foot_l",
       "parent": "shin_l",
-      "pivot": [
-        15,
-        3,
-        15
-      ]
+      "pivot": [15, 3, 15]
     },
     {
       "name": "foot_r",
       "parent": "shin_r",
-      "pivot": [
-        30,
-        3,
-        15
-      ]
+      "pivot": [30, 3, 15]
     }
   ],
   "joints": [
@@ -123,11 +71,7 @@
       "part": "pelvis",
       "kind": "translation",
       "axis": "x",
-      "pivot": [
-        22,
-        16,
-        17
-      ],
+      "pivot": [22, 16, 17],
       "min": -4.0,
       "max": 4.0,
       "rest": 0.0,
@@ -138,11 +82,7 @@
       "part": "pelvis",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        22,
-        16,
-        17
-      ],
+      "pivot": [22, 16, 17],
       "min": -3.0,
       "max": 3.0,
       "rest": 0.0,
@@ -153,11 +93,7 @@
       "part": "pelvis",
       "kind": "translation",
       "axis": "z",
-      "pivot": [
-        22,
-        16,
-        17
-      ],
+      "pivot": [22, 16, 17],
       "min": -4.0,
       "max": 4.0,
       "rest": 0.0,
@@ -168,11 +104,7 @@
       "part": "pelvis",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        22,
-        16,
-        17
-      ],
+      "pivot": [22, 16, 17],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -183,11 +115,7 @@
       "part": "pelvis",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        22,
-        16,
-        17
-      ],
+      "pivot": [22, 16, 17],
       "min": -0.5,
       "max": 0.5,
       "rest": 0.0,
@@ -198,11 +126,7 @@
       "part": "pelvis",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        22,
-        16,
-        17
-      ],
+      "pivot": [22, 16, 17],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -213,11 +137,7 @@
       "part": "torso",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        22,
-        22,
-        18
-      ],
+      "pivot": [22, 22, 18],
       "min": -0.9,
       "max": 0.6,
       "rest": 0.0,
@@ -228,11 +148,7 @@
       "part": "torso",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        22,
-        22,
-        18
-      ],
+      "pivot": [22, 22, 18],
       "min": -0.35,
       "max": 0.35,
       "rest": 0.0,
@@ -243,11 +159,7 @@
       "part": "torso",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        22,
-        22,
-        18
-      ],
+      "pivot": [22, 22, 18],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -258,11 +170,7 @@
       "part": "head",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        22,
-        34,
-        25
-      ],
+      "pivot": [22, 34, 25],
       "min": -0.6,
       "max": 0.6,
       "rest": 0.0,
@@ -273,11 +181,7 @@
       "part": "head",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        22,
-        34,
-        25
-      ],
+      "pivot": [22, 34, 25],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -288,11 +192,7 @@
       "part": "arm_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        32,
-        23
-      ],
+      "pivot": [5, 32, 23],
       "min": -0.8,
       "max": 0.9,
       "rest": 0.0,
@@ -303,11 +203,7 @@
       "part": "arm_l",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        5,
-        32,
-        23
-      ],
+      "pivot": [5, 32, 23],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -318,11 +214,7 @@
       "part": "arm_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        40,
-        32,
-        23
-      ],
+      "pivot": [40, 32, 23],
       "min": -0.8,
       "max": 0.9,
       "rest": 0.0,
@@ -333,11 +225,7 @@
       "part": "arm_r",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        40,
-        32,
-        23
-      ],
+      "pivot": [40, 32, 23],
       "min": -0.4,
       "max": 0.4,
       "rest": 0.0,
@@ -348,11 +236,7 @@
       "part": "ram_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        22,
-        24
-      ],
+      "pivot": [5, 22, 24],
       "min": -0.7,
       "max": 0.8,
       "rest": 0.0,
@@ -363,11 +247,7 @@
       "part": "ram_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        40,
-        22,
-        24
-      ],
+      "pivot": [40, 22, 24],
       "min": -0.7,
       "max": 0.8,
       "rest": 0.0,
@@ -378,11 +258,7 @@
       "part": "thigh_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        15,
-        18,
-        17
-      ],
+      "pivot": [15, 18, 17],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -393,11 +269,7 @@
       "part": "thigh_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        30,
-        18,
-        17
-      ],
+      "pivot": [30, 18, 17],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -408,11 +280,7 @@
       "part": "thigh_l",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        15,
-        18,
-        17
-      ],
+      "pivot": [15, 18, 17],
       "min": -0.3,
       "max": 0.3,
       "rest": 0.0,
@@ -423,11 +291,7 @@
       "part": "thigh_r",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        30,
-        18,
-        17
-      ],
+      "pivot": [30, 18, 17],
       "min": -0.3,
       "max": 0.3,
       "rest": 0.0,
@@ -438,11 +302,7 @@
       "part": "shin_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        15,
-        10,
-        17
-      ],
+      "pivot": [15, 10, 17],
       "min": -1.2,
       "max": 0.05,
       "rest": 0.0,
@@ -453,11 +313,7 @@
       "part": "shin_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        30,
-        10,
-        17
-      ],
+      "pivot": [30, 10, 17],
       "min": -1.2,
       "max": 0.05,
       "rest": 0.0,
@@ -468,11 +324,7 @@
       "part": "foot_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        15,
-        3,
-        15
-      ],
+      "pivot": [15, 3, 15],
       "min": -0.8,
       "max": 0.6,
       "rest": 0.0,
@@ -483,11 +335,7 @@
       "part": "foot_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        30,
-        3,
-        15
-      ],
+      "pivot": [30, 3, 15],
       "min": -0.8,
       "max": 0.6,
       "rest": 0.0,

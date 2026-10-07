@@ -59,7 +59,10 @@ export class Input {
     );
     window.addEventListener("keydown", (e) => {
       // Keep the page from scrolling on Space / arrows while playing.
-      if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
+      if (
+        [" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+      )
+        e.preventDefault();
       this.held.add(e.key);
       if (!e.repeat) this.keys.push(e.key); // one discrete action per physical press
     });
@@ -77,7 +80,10 @@ export class Input {
   }
 
   toLogical(clientX: number, clientY: number): Point {
-    return { x: (clientX - this.offX) / this.scale, y: (clientY - this.offY) / this.scale };
+    return {
+      x: (clientX - this.offX) / this.scale,
+      y: (clientY - this.offY) / this.scale,
+    };
   }
 
   get pointerLogical(): Point {
@@ -88,7 +94,11 @@ export class Input {
   heldAny(...keys: string[]): boolean {
     for (const k of keys) {
       if (this.held.has(k)) return true;
-      if (k.length === 1 && (this.held.has(k.toLowerCase()) || this.held.has(k.toUpperCase()))) return true;
+      if (
+        k.length === 1 &&
+        (this.held.has(k.toLowerCase()) || this.held.has(k.toUpperCase()))
+      )
+        return true;
     }
     return false;
   }

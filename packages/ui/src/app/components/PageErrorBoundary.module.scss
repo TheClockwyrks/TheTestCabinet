@@ -1,0 +1,52 @@
+@use "../styles/tokens" as t;
+
+// The panel a caught page error is reported in. It sits in the ordinary page
+// body — the topbar and section nav are still above it — so it is styled as one
+// bordered block rather than a full-screen takeover: the app is not down, this
+// page is.
+.panel {
+  max-width: 44rem;
+  margin: t.$space-xl auto;
+  padding: t.$space-lg;
+  border: t.$border-hairline solid t.$color-negative;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+}
+
+.title {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-lg;
+  color: t.$color-negative;
+}
+
+.body {
+  margin: 0 0 t.$space-md;
+  color: t.$color-text-muted;
+}
+
+// The error's own message. It is arbitrary text of arbitrary length, so it
+// wraps rather than widening the panel or scrolling the page sideways.
+.detail {
+  margin: 0;
+  padding: t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg-2;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  margin: t.$space-md 0 0;
+}
+
+.link {
+  color: t.$color-accent;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}

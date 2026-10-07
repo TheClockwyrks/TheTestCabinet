@@ -1,87 +1,216 @@
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router";
+import { describe, expect, it, vi } from "vitest";
 import type {
-  LadderClimber,
-  LadderProgress,
-} from "@test-cabinet/run-record/ladders";
-import { ladderSummary } from "./LaddersPage";
+  LadderDispatchSummary,
+  LadderSummary,
+  SlotCounts,
+} from "@clockwyrks/run-record/ladders";
+import {
+  BackendProvider,
+  type BackendContextValue,
+} from "../../../client/context";
+import { LaddersPage, ladderCardView } from "./LaddersPage";
 
-function climber(over: Partial<LadderClimber> = {}): LadderClimber {
+vi.mock("../../components/PageLayout", () => ({
+  PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("../../components/PromptHeader", () => ({
+  PromptHeader: ({ titleActions }: { titleActions?: ReactNode }) => (
+    <>{titleActions}</>
+  ),
+}));
+vi.mock("../../components/ConfirmDialog", () => ({
+  useConfirm: () => ({ confirm: async () => true, alert: async () => {} }),
+}));
+vi.mock("../../../client/auth", () => ({
+  useAuth: () => ({ token: "t0" }),
+}));
+
+function slots(over: Partial<SlotCounts> = {}): SlotCounts {
   return {
-    key: "claude|opus",
-    harness: "claude",
-    model: "opus",
-    priority: 0,
-    focused: false,
-    held: false,
-    status: "climbing",
-    outcomes: [],
+    total: 12,
+    running: 0,
+    blocked: 0,
+    passed: 0,
+    failed: 0,
+    pending: 0,
+    skipped: 0,
     ...over,
-  } as LadderClimber;
-}
-
-// A climber standing on rung `position` has cleared exactly the rungs below it; one
-// with no current rung has topped out and cleared them all.
-function at(
-  position: number,
-  over: Partial<LadderClimber> = {},
-): LadderClimber {
-  return climber({
-    currentRung: { position } as LadderClimber["currentRung"],
-    ...over,
-  });
-}
-
-function progress(climbers: LadderClimber[]): LadderProgress {
-  return {
-    ladderId: "l1",
-    outerAxis: "rung",
-    rungs: [0, 1, 2, 3].map((position) => ({
-      id: `r${position}`,
-      position,
-      slug: `case-${position}`,
-      version: "v1.0.0",
-      variant: "base",
-      latestVersion: "v1.0.0",
-      stale: false,
-    })),
-    climbers,
-    climbersToppedOut: climbers.filter((c) => c.status === "toppedOut").length,
-    climbersWalled: climbers.filter((c) => c.status === "walled").length,
-    runsMissing: 0,
-    runsUnreviewed: 2,
-    runsOutstanding: 0,
-    bufferTarget: 10,
   };
 }
 
-// A card's bar measures rungs cleared across every climber, not climbers finished: a
-// board where four of five models are walled halfway is most of the way through the
-// work, and "0 topped out" would describe it as if nothing had happened.
-describe("ladderSummary", () => {
-  it("counts the rungs below each climber as cleared", () => {
-    const summary = ladderSummary(progress([at(2), at(1)]));
-    expect(summary.rungsCleared).toBe(3);
-    expect(summary.rungsTotal).toBe(8);
-    expect(summary.donePct).toBeCloseTo(37.5);
-  });
+function summary(
+  dispatch: LadderDispatchSummary | null,
+  over: Partial<LadderSummary> = {},
+): LadderSummary {
+  return {
+    id: "l1",
+    name: "Easy to hard",
+    rungs: 4,
+    runsPerCell: 2,
+    climbers: 3,
+    dispatch,
+    ...over,
+  };
+}
 
-  it("credits a topped-out climber with the whole climb", () => {
-    const summary = ladderSummary(
-      progress([climber({ status: "toppedOut" }), at(0)]),
+// Worked example A: 3 climbers × 4 rungs at 2 runs/rung (rung 4 asks 3), so 27 runs.
+// A passed rungs 1–2 and has one of rung 3's runs counted; B failed rung 1 and skips
+// the rest; C has rung 1's two runs in flight.
+const A = summary({
+  id: "d1",
+  status: "running",
+  startedAt: "2026-10-02T10:00:00Z",
+  slots: slots({ running: 2, passed: 2, failed: 1, skipped: 3, pending: 4 }),
+  runs: { total: 27, done: 14, inFlight: 3 },
+});
+
+// Worked example C: A, then Stop without cancelling running runs.
+const C = summary({
+  id: "d1",
+  status: "stopped",
+  startedAt: "2026-10-02T10:00:00Z",
+  endedAt: "2026-10-02T11:00:00Z",
+  slots: slots({ passed: 2, failed: 1, skipped: 9 }),
+  runs: { total: 27, done: 24, inFlight: 3 },
+});
+
+// The card is a configuration headline and the latest dispatch's totals: a bar of runs
+// done (a full bar means nothing is left to execute) and rung-slot totals under it,
+// never a per-climber breakdown.
+describe("ladderCardView", () => {
+  it("describes the configuration only", () => {
+    expect(ladderCardView(A).description).toBe(
+      "4 rungs · 2 runs/rung · 3 climbers",
     );
-    expect(summary.rungsCleared).toBe(4);
-    expect(summary.toppedOut).toBe(1);
+    expect(
+      ladderCardView(summary(null, { rungs: 1, climbers: 1 })).description,
+    ).toBe("1 rung · 2 runs/rung · 1 climber");
+    expect(
+      ladderCardView(summary(null, { rungs: 1, climbers: 1, runsPerCell: 1 }))
+        .description,
+    ).toBe("1 rung · 1 run/rung · 1 climber");
   });
 
-  it("reports walled climbers, which is the answer a ladder produces", () => {
-    const summary = ladderSummary(
-      progress([at(1, { status: "walled" }), at(3)]),
+  it("reads a ladder never run as Not run yet with an empty bar and zeros", () => {
+    const view = ladderCardView(summary(null));
+    expect(view.badge).toBe("Not run yet");
+    expect(view.donePct).toBe(0);
+    expect(view.counts).toEqual({
+      running: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+    });
+  });
+
+  it("draws a running dispatch's bar from runs done of the total", () => {
+    const view = ladderCardView(A);
+    expect(view.badge).toBe("Running");
+    expect(view.donePct).toBeCloseTo((14 / 27) * 100);
+    expect(view.counts).toEqual({
+      running: 2,
+      passed: 2,
+      failed: 1,
+      skipped: 3,
+    });
+    expect(view.title).toBe("14 of 27 runs done · 3 in flight · 4 pending");
+  });
+
+  it("counts a stopped dispatch's never-run slots as skipped", () => {
+    const view = ladderCardView(C);
+    expect(view.badge).toBe("Stopped");
+    expect(view.counts.skipped).toBe(9);
+    expect(view.counts.running).toBe(0);
+    expect(view.donePct).toBeCloseTo((24 / 27) * 100);
+  });
+
+  it("reads a finished dispatch as a full bar", () => {
+    const view = ladderCardView(
+      summary({
+        id: "d1",
+        status: "finished",
+        startedAt: "2026-10-02T10:00:00Z",
+        endedAt: "2026-10-02T12:00:00Z",
+        slots: slots({ passed: 5, failed: 2, skipped: 5 }),
+        runs: { total: 27, done: 27, inFlight: 0 },
+      }),
     );
-    expect(summary.walled).toBe(1);
-    expect(summary.unreviewed).toBe(2);
+    expect(view.badge).toBe("Finished");
+    expect(view.donePct).toBe(100);
   });
 
-  it("does not divide by zero on a ladder nobody is climbing", () => {
-    expect(ladderSummary(progress([])).donePct).toBe(0);
+  it("folds blocked slots into running and calls them out on hover", () => {
+    const view = ladderCardView(
+      summary({
+        id: "d1",
+        status: "running",
+        startedAt: "2026-10-02T10:00:00Z",
+        slots: slots({ running: 1, blocked: 1 }),
+        runs: { total: 27, done: 0, inFlight: 1 },
+      }),
+    );
+    expect(view.counts.running).toBe(2);
+    expect(view.title).toMatch(/· 1 blocked/);
+  });
+});
+
+function renderList(list: LadderSummary[]) {
+  const value = {
+    client: { getLaddersSummary: vi.fn().mockResolvedValue(list) },
+    identity: null,
+    status: "ready",
+    error: null,
+    url: null,
+    setUrl: () => {},
+  } as unknown as BackendContextValue;
+  return render(
+    <MemoryRouter>
+      <BackendProvider value={value}>
+        <LaddersPage />
+      </BackendProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe("LaddersPage", () => {
+  it("shows the configuration, the status, the bar and the slot totals", async () => {
+    const { container } = renderList([A]);
+    await waitFor(() => expect(screen.getByText("Easy to hard")).toBeTruthy());
+    expect(screen.getByText("4 rungs · 2 runs/rung · 3 climbers")).toBeTruthy();
+    expect(screen.getByText("Running")).toBeTruthy();
+    const bar = screen.getByRole("progressbar");
+    expect(bar.getAttribute("aria-valuenow")).toBe("52");
+    expect(bar.getAttribute("title")).toBe(
+      "14 of 27 runs done · 3 in flight · 4 pending",
+    );
+    expect(container.textContent).toMatch(
+      /2 running · 2 passed · 1 failed · 3 skipped/,
+    );
+    // High level only: nothing about reviews, nothing per climber.
+    const card = screen.getByText("Easy to hard").parentElement!;
+    expect(card.textContent).not.toMatch(/review/i);
+    expect(card.textContent).not.toMatch(/opus|claude/i);
+  });
+
+  it("keeps the same slots for a ladder never run", async () => {
+    const { container } = renderList([summary(null)]);
+    await waitFor(() => expect(screen.getByText("Not run yet")).toBeTruthy());
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "0",
+    );
+    expect(container.textContent).toMatch(
+      /0 running · 0 passed · 0 failed · 0 skipped/,
+    );
+  });
+
+  it("says what a ladder is and how to start one when there are none", async () => {
+    renderList([]);
+    await waitFor(() =>
+      expect(screen.getByText(/You have no ladders yet/)).toBeTruthy(),
+    );
+    expect(screen.getByText(/Press Run ladder/)).toBeTruthy();
   });
 });

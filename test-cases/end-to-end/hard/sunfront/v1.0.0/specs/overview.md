@@ -175,25 +175,25 @@ The look is **sunlit desert war**: warm sand under a low sun, two legions told
 apart by a single team color — the player's warm **Ember** amber, the enemy's
 cool **Azure**. The canonical palette and type are defined below; match them.
 
-| Element | Color |
-| --- | --- |
-| Sand field (background) | `#9c8452` |
-| Sand shadow / lane banding | `#7a663d` |
-| Rock and terrain detail | `#5a4a30` |
-| Staging-yard panel | `#241a10` |
-| Fog of war (unexplored) | `#150f08` |
-| Player team — Ember | `#ff8a3d` |
-| Player team — Ember light | `#ffc061` |
-| Enemy team — Azure | `#46b4e0` |
-| Enemy team — Azure light | `#8fd8f2` |
+| Element                       | Color     |
+| ----------------------------- | --------- |
+| Sand field (background)       | `#9c8452` |
+| Sand shadow / lane banding    | `#7a663d` |
+| Rock and terrain detail       | `#5a4a30` |
+| Staging-yard panel            | `#241a10` |
+| Fog of war (unexplored)       | `#150f08` |
+| Player team — Ember           | `#ff8a3d` |
+| Player team — Ember light     | `#ffc061` |
+| Enemy team — Azure            | `#46b4e0` |
+| Enemy team — Azure light      | `#8fd8f2` |
 | Neutral structure / Reliquary | `#ecd58c` |
-| Health bar — healthy | `#7ed957` |
-| Health bar — critical | `#ff5c5a` |
-| Primary text | `#f4ecd8` |
-| Secondary text | `#c7b487` |
-| Faint text / hints | `#8a7a58` |
-| Selection / valid placement | `#ffc061` |
-| Invalid placement | `#ff5c5a` |
+| Health bar — healthy          | `#7ed957` |
+| Health bar — critical         | `#ff5c5a` |
+| Primary text                  | `#f4ecd8` |
+| Secondary text                | `#c7b487` |
+| Faint text / hints            | `#8a7a58` |
+| Selection / valid placement   | `#ffc061` |
+| Invalid placement             | `#ff5c5a` |
 
 - Use a **monospace** type family for all text (resource counts, menus, labels,
   timers). Do not depend on a web font that must be downloaded; a system
@@ -201,7 +201,7 @@ cool **Azure**. The canonical palette and type are defined below; match them.
 - Units and structures use their **provided models** (`specs/assets.md`), **tinted
   to their owner's team color** (Ember for the player, Azure for the enemy) so the two
   legions read apart at a glance, with the team **energy accent** (a core, visor, or
-  eye) in the team's *light* shade. Light the scene and keep enough contrast against
+  eye) in the team's _light_ shade. Light the scene and keep enough contrast against
   the sand that the models read clearly; the neutral Reliquary keeps its own color
   with the owner's accent.
 - Bases, Reliquaries, and structures each carry a **health bar** when damaged
@@ -217,25 +217,3 @@ The build is a small state machine (defined fully in `specs/flow.md`): a
 **title / main menu**, a **how-to-play** screen, the **in-match** game, a
 **paused** overlay, and a **match-over** screen. Every state must be reachable
 and behave as `specs/flow.md` describes.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look. The
-in-match reference is **HUD-only** — a flat mockup cannot fake the 3D battlefield
-convincingly, so the gameplay reference shows the HUD overlay (its layout, palette,
-and type) over a neutral viewport; you render the 3D world itself from this
-specification.
-
-- `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — the in-match **HUD** over a neutral viewport: the sol
-  and income readout, the wave number and countdown, both base health bars, the build
-  palette, a selected-structure panel, and the performance overlay.
-- `reference/game-over.png` — the match-over screen.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.
-</content>
-</invoke>

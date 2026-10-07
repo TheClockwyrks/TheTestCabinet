@@ -1,0 +1,15 @@
+# The base variant's carousel, in the order it is presented. The replay leads:
+# it is the entry the catalog's preview stage plays, and it is sustained real
+# play rather than a moment. The two stills come from the same take.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "A dive through the trench, played to a bonus drifter"
+
+[[media]]
+file = "sonar-sweep.png"
+name = "A sonar pulse crossing as the Flarefish takes its fix"
+
+[[media]]
+file = "hunted.png"
+name = "The ink spent, the Gloamfin a few tiles off"

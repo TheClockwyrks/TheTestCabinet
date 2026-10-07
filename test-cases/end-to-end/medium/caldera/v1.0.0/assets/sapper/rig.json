@@ -2,173 +2,97 @@
   "parts": [
     {
       "name": "hub",
-      "pivot": [
-        11,
-        26,
-        13
-      ]
+      "pivot": [11, 26, 13]
     },
     {
       "name": "spine",
       "parent": "hub",
-      "pivot": [
-        11,
-        29,
-        13
-      ]
+      "pivot": [11, 29, 13]
     },
     {
       "name": "head",
       "parent": "spine",
-      "pivot": [
-        11,
-        43,
-        16
-      ]
+      "pivot": [11, 43, 16]
     },
     {
       "name": "leg_rf_femur",
       "parent": "hub",
-      "pivot": [
-        14,
-        27,
-        16
-      ]
+      "pivot": [14, 27, 16]
     },
     {
       "name": "leg_rf_tibia",
       "parent": "leg_rf_femur",
-      "pivot": [
-        18,
-        33,
-        17
-      ]
+      "pivot": [18, 33, 17]
     },
     {
       "name": "leg_lf_femur",
       "parent": "hub",
-      "pivot": [
-        9,
-        27,
-        16
-      ]
+      "pivot": [9, 27, 16]
     },
     {
       "name": "leg_lf_tibia",
       "parent": "leg_lf_femur",
-      "pivot": [
-        5,
-        33,
-        17
-      ]
+      "pivot": [5, 33, 17]
     },
     {
       "name": "leg_rb_femur",
       "parent": "hub",
-      "pivot": [
-        14,
-        27,
-        11
-      ]
+      "pivot": [14, 27, 11]
     },
     {
       "name": "leg_rb_tibia",
       "parent": "leg_rb_femur",
-      "pivot": [
-        18,
-        33,
-        10
-      ]
+      "pivot": [18, 33, 10]
     },
     {
       "name": "leg_lb_femur",
       "parent": "hub",
-      "pivot": [
-        9,
-        27,
-        11
-      ]
+      "pivot": [9, 27, 11]
     },
     {
       "name": "leg_lb_tibia",
       "parent": "leg_lb_femur",
-      "pivot": [
-        5,
-        33,
-        10
-      ]
+      "pivot": [5, 33, 10]
     },
     {
       "name": "arm_r",
       "parent": "hub",
-      "pivot": [
-        14,
-        28,
-        16
-      ]
+      "pivot": [14, 28, 16]
     },
     {
       "name": "forearm_r",
       "parent": "arm_r",
-      "pivot": [
-        14,
-        27,
-        18
-      ]
+      "pivot": [14, 27, 18]
     },
     {
       "name": "blade_ru",
       "parent": "forearm_r",
-      "pivot": [
-        14,
-        27,
-        20
-      ]
+      "pivot": [14, 27, 20]
     },
     {
       "name": "blade_rl",
       "parent": "forearm_r",
-      "pivot": [
-        14,
-        27,
-        20
-      ]
+      "pivot": [14, 27, 20]
     },
     {
       "name": "arm_l",
       "parent": "hub",
-      "pivot": [
-        9,
-        28,
-        16
-      ]
+      "pivot": [9, 28, 16]
     },
     {
       "name": "forearm_l",
       "parent": "arm_l",
-      "pivot": [
-        9,
-        27,
-        18
-      ]
+      "pivot": [9, 27, 18]
     },
     {
       "name": "blade_lu",
       "parent": "forearm_l",
-      "pivot": [
-        9,
-        27,
-        20
-      ]
+      "pivot": [9, 27, 20]
     },
     {
       "name": "blade_ll",
       "parent": "forearm_l",
-      "pivot": [
-        9,
-        27,
-        20
-      ]
+      "pivot": [9, 27, 20]
     }
   ],
   "joints": [
@@ -177,11 +101,7 @@
       "part": "leg_rf_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        14,
-        27,
-        16
-      ],
+      "pivot": [14, 27, 16],
       "min": -0.9,
       "max": 0.9,
       "rest": 0.0,
@@ -192,11 +112,7 @@
       "part": "leg_rf_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        18,
-        33,
-        17
-      ],
+      "pivot": [18, 33, 17],
       "min": -1.4,
       "max": 0.6,
       "rest": 0.0,
@@ -207,11 +123,7 @@
       "part": "leg_lf_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        27,
-        16
-      ],
+      "pivot": [9, 27, 16],
       "min": -0.9,
       "max": 0.9,
       "rest": 0.0,
@@ -222,11 +134,7 @@
       "part": "leg_lf_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        33,
-        17
-      ],
+      "pivot": [5, 33, 17],
       "min": -1.4,
       "max": 0.6,
       "rest": 0.0,
@@ -237,11 +145,7 @@
       "part": "leg_rb_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        14,
-        27,
-        11
-      ],
+      "pivot": [14, 27, 11],
       "min": -0.9,
       "max": 0.9,
       "rest": 0.0,
@@ -252,11 +156,7 @@
       "part": "leg_rb_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        18,
-        33,
-        10
-      ],
+      "pivot": [18, 33, 10],
       "min": -1.4,
       "max": 0.6,
       "rest": 0.0,
@@ -267,11 +167,7 @@
       "part": "leg_lb_femur",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        27,
-        11
-      ],
+      "pivot": [9, 27, 11],
       "min": -0.9,
       "max": 0.9,
       "rest": 0.0,
@@ -282,11 +178,7 @@
       "part": "leg_lb_tibia",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        33,
-        10
-      ],
+      "pivot": [5, 33, 10],
       "min": -1.4,
       "max": 0.6,
       "rest": 0.0,
@@ -297,11 +189,7 @@
       "part": "arm_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        14,
-        28,
-        16
-      ],
+      "pivot": [14, 28, 16],
       "min": -0.8,
       "max": 0.8,
       "rest": 0.0,
@@ -312,11 +200,7 @@
       "part": "arm_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        28,
-        16
-      ],
+      "pivot": [9, 28, 16],
       "min": -0.8,
       "max": 0.8,
       "rest": 0.0,
@@ -327,11 +211,7 @@
       "part": "blade_ru",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        14,
-        27,
-        20
-      ],
+      "pivot": [14, 27, 20],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -342,11 +222,7 @@
       "part": "blade_rl",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        14,
-        27,
-        20
-      ],
+      "pivot": [14, 27, 20],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -357,11 +233,7 @@
       "part": "blade_lu",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        27,
-        20
-      ],
+      "pivot": [9, 27, 20],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -372,11 +244,7 @@
       "part": "blade_ll",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        9,
-        27,
-        20
-      ],
+      "pivot": [9, 27, 20],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,

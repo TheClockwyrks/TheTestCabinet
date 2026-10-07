@@ -159,7 +159,7 @@ export function notificationFromPush(push: RunNotification): AppNotification {
       title: "Publish failed",
       // Both halves matter: the reason alone doesn't say which run stayed
       // unpublished, and the identity alone doesn't say why it did.
-      body: push.message ? `${identity} — ${push.message}` : identity,
+      body: push.message ? `${identity}: ${push.message}` : identity,
       read: false,
       createdAt: Date.now(),
     };

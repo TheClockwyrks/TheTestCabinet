@@ -1,46 +1,63 @@
-import { ReferencePlayable } from "../../../components/PlayableEmbed";
+import { Navigate, useLocation } from "react-router";
+import { hasReferencePlayback } from "../../../data/testCaseReference";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
+import { routes } from "../../../routes";
+import { ReferencePlaybackView } from "./ReferencePlaybackView";
 import { ReferenceSheetView } from "./ReferenceSheetView";
 
 // The Reference tab (`/test-cases/:slug/reference`): the authored, in-repo,
-// versioned *correct* answer for the selected variant. What that is depends on what
-// the case produces, so this tab renders one of two things:
+// versioned *correct* answer for the selected coordinate. What that is depends on
+// what the case produces, so this tab renders one of two things:
 //
-//   • An end-to-end / full-stack variant's reference is a deployed static build, so
-//     it is embedded inline. It is the case-variant analogue of a run's Play tab —
-//     but where a run's build is unedited model code shown behind a caveat, a
-//     reference implementation is the correct build (already redacted at publish),
-//     so it loads inline with a fullscreen toggle and no caveat.
-//   • An asset-generation variant's reference is *data*, not a page: the rendered
-//     frames plus the action log each was drawn from, published to the snapshot
-//     bucket. There is nothing to embed, so they are rendered natively — see
-//     `ReferenceSheetView`.
+//   • An asset-generation variant's reference is *data*, not a page: the published
+//     reference FRAMES plus the action log each frame was drawn from, published to
+//     the snapshot bucket. There is nothing to embed, so they are rendered natively
+//     — see `ReferenceSheetView`.
+//   • A performance case produces neither a page nor an image but an ENGINE, so its
+//     reference is what the authoritative engine does: the scored factories, played
+//     in the browser through the vendored `lattice-core` wasm — see
+//     `ReferencePlaybackView`.
 //
-// A variant carries at most one of the two signals in practice (a case is a single
-// test type), so the branch is a genuine either/or rather than a precedence
-// decision; `referenceBuild` is checked first only because it is the older shape.
+// A case carries at most one of the two in practice (a case is a single test type),
+// so the branches are a genuine either/or rather than a precedence decision. The
+// playback is checked first because it is the only one keyed off the CASE rather
+// than the selected variant — it ships with the bundle, so it needs no per-variant
+// signal.
 //
-// The layout only surfaces this tab for a variant carrying one of them, so reaching
-// it normally means one is present. A hand-typed URL (or a variant switch to one
-// with neither) still resolves here, where `ReferencePlayable` degrades to a short
-// "no reference implementation" placeholder.
+// This tab used to also host an end-to-end / full-stack variant's deployed
+// reference BUILD. That embed now lives on the detail landing tab's Play surface
+// (beside the showcase carousel), so a coordinate with neither playback nor a
+// `referenceSheet` — whether it has builds, or nothing at all — no longer has a
+// Reference tab, and a hand-typed URL (or a variant switch to such a coordinate)
+// redirects to the landing rather than rendering a duplicate or an empty page. The
+// redirect keeps the query string, so the anchored coordinate survives the hop.
 export function TestCaseReferencePage() {
   return (
     <TestCaseDetailLayout tab="reference">
-      {({ testCase, variant }) =>
-        !variant.referenceBuild && variant.referenceSheet ? (
+      {({ testCase, variant, version }) =>
+        hasReferencePlayback(testCase) ? (
+          <ReferencePlaybackView />
+        ) : variant.referenceSheet ? (
           <ReferenceSheetView
             testCase={testCase}
+            version={version}
             variant={variant}
             referenceSheet={variant.referenceSheet}
           />
         ) : (
-          <ReferencePlayable
-            referenceBuild={variant.referenceBuild}
-            variantName={variant.name}
-          />
+          <RedirectToLanding slug={testCase.slug} />
         )
       }
     </TestCaseDetailLayout>
+  );
+}
+
+// The redirect target for a coordinate with no reference of its own. A component
+// (rather than an inline `<Navigate>`) because the current search string is read
+// with a hook, and the layout's children prop is a plain render function.
+function RedirectToLanding({ slug }: { slug: string }) {
+  const { search } = useLocation();
+  return (
+    <Navigate to={{ pathname: routes.testCaseDetail(slug), search }} replace />
   );
 }

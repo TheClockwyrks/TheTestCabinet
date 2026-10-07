@@ -4,7 +4,6 @@
 
 use super::*;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, timeout};
 
 /// A [`PreviewSink`] that forwards each frame onto a channel the test drains.
 struct ChannelSink(mpsc::UnboundedSender<AssetPreview>);
@@ -44,10 +43,7 @@ async fn forwards_a_valid_frame_to_the_sink() {
     .await
     .expect("send frame");
 
-    let preview = timeout(Duration::from_secs(2), rx.recv())
-        .await
-        .expect("a frame arrives before the timeout")
-        .expect("the sink channel stays open");
+    let preview = rx.recv().await.expect("the sink channel stays open");
     assert_eq!(preview.frame, 3);
     assert_eq!(preview.operation_count, 7);
     assert_eq!(
@@ -64,31 +60,37 @@ async fn forwards_a_valid_frame_to_the_sink() {
     );
 }
 
+/// A frame bearing another token is read and dropped. Asserted on the connection's own reader
+/// rather than on the sink, because a sink that received nothing cannot tell a dropped frame from
+/// one still on its way.
 #[tokio::test]
 async fn drops_a_frame_with_the_wrong_token() {
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    let live = LivePreview::start(std::sync::Arc::new(ChannelSink(tx)))
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind listener");
-    let endpoint = live.endpoint().clone();
+    let address = listener.local_addr().expect("listener address").to_string();
 
-    send_frame(
-        &loopback(&endpoint.endpoint),
-        "not-the-token",
-        0,
-        1,
-        b"bytes",
-        &[],
-        &[],
-        &[],
-    )
-    .await
-    .expect("send frame");
+    let sending = tokio::spawn(async move {
+        send_frame(&address, "not-the-token", 0, 1, b"bytes", &[], &[], &[]).await
+    });
+    let (stream, _) = listener.accept().await.expect("the frame connects");
+    assert!(
+        read_frame(stream, "the-run-token").await.is_none(),
+        "a mismatched token must be dropped"
+    );
+    let _ = sending.await.expect("the sender finished");
 
-    // The wrong token must yield nothing; give the listener a moment to (not)
-    // deliver before concluding the frame was dropped.
-    let result = timeout(Duration::from_millis(300), rx.recv()).await;
-    assert!(result.is_err(), "a mismatched token must be dropped");
+    // The same frame with the run's token is read, so what dropped the first was the token.
+    let address = listener.local_addr().expect("listener address").to_string();
+    let sending = tokio::spawn(async move {
+        send_frame(&address, "the-run-token", 0, 1, b"bytes", &[], &[], &[]).await
+    });
+    let (stream, _) = listener.accept().await.expect("the frame connects");
+    assert!(
+        read_frame(stream, "the-run-token").await.is_some(),
+        "the same frame with the right token is read"
+    );
+    let _ = sending.await.expect("the sender finished");
 }
 
 #[tokio::test]
@@ -117,10 +119,7 @@ async fn forwards_a_skinned_glb_and_rig_body() {
     .await
     .expect("send frame");
 
-    let preview = timeout(Duration::from_secs(2), rx.recv())
-        .await
-        .expect("a frame arrives before the timeout")
-        .expect("the sink channel stays open");
+    let preview = rx.recv().await.expect("the sink channel stays open");
     assert_eq!(
         preview.skinned_glb.as_deref(),
         Some(
@@ -170,10 +169,7 @@ async fn forwards_an_audio_body() {
     .await
     .expect("send frame");
 
-    let preview = timeout(Duration::from_secs(2), rx.recv())
-        .await
-        .expect("a frame arrives before the timeout")
-        .expect("the sink channel stays open");
+    let preview = rx.recv().await.expect("the sink channel stays open");
     assert_eq!(
         preview.audio.as_deref(),
         Some(

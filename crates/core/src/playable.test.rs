@@ -228,6 +228,9 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
                 "performance/medium.scenario.json",
                 b"{\"version\":1,\"n\":1}",
             ),
+            // The run's engine module, uploaded under its `module_wasm` name — a
+            // minimal wasm header is enough to prove the bytes round-trip.
+            ("engine.wasm", b"\0asm\x01\0\0\0"),
         ],
     );
 
@@ -236,6 +239,11 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
     assert_eq!(served.body, b"{\"version\":1,\"n\":0}");
     let served = serve_asset_file(dir.path(), "scenario-1.json").expect("case 1");
     assert_eq!(served.body, b"{\"version\":1,\"n\":1}");
+    // The engine module is served under `engine.wasm` (parsed as kind `engine`)
+    // with the wasm content type, so browser playback can load and step it.
+    let served = serve_asset_file(dir.path(), "engine.wasm").expect("engine module");
+    assert_eq!(served.content_type, "application/wasm");
+    assert_eq!(served.body, b"\0asm\x01\0\0\0");
     // A case that recorded no scenario is a miss, not a panic.
     assert!(serve_asset_file(dir.path(), "scenario-2.json").is_none());
     // So is an out-of-range case index.
@@ -463,7 +471,11 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "anthropic/claude-opus-4".to_string(),
+            gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: None,
@@ -486,6 +498,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
                 comparable: Some(0.0),
                 actual: Some(0.0),
             },
+            ..RunMetrics::default()
         },
         validation,
         links: RunLinks {
@@ -497,7 +510,12 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
+        code_analysis: None,
+        toolchain: None,
+        showcase: None,
     };
     fs::write(
         dir.path().join("run-record.json"),
@@ -526,13 +544,28 @@ fn serves_proof_media_by_id_at_its_recorded_dest() {
 }
 
 #[test]
-fn proof_content_type_follows_the_request_extension() {
+fn proof_labels_follow_the_recorded_dest() {
     let dir = run_dir_with_proofs(
         &[("title", "proof/title.png", MediaKind::Image)],
         &[("proof/title.png", b"\x89PNG\r\n")],
     );
     let served = serve_proof_file(dir.path(), "title.png").unwrap();
     assert_eq!(served.content_type, "image/png");
+    assert_eq!(served.content_encoding, None);
+}
+
+#[test]
+fn a_proof_recording_keeps_its_compound_suffix_through_the_labels() {
+    // A proof is addressed as `<id>.<ext>`, which keeps only the last extension, so
+    // the request name alone says `gz` and cannot tell a framed document from a gzip
+    // one. The recorded dest carries the whole `.json.gz`, and that is what decides.
+    let dir = run_dir_with_proofs(
+        &[("rally", "proof/rally.json.gz", MediaKind::Replay)],
+        &[("proof/rally.json.gz", &[0x1f, 0x8b, 0x08, 0x00])],
+    );
+    let served = serve_proof_file(dir.path(), "rally.gz").expect("proof served");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.content_encoding, Some("gzip"));
 }
 
 #[test]
@@ -590,14 +623,14 @@ fn proof_without_a_record_is_none() {
 
 #[test]
 fn serves_synthesized_validation_media_from_the_collected_tree() {
-    // Validation media is stored flat under `.tcab/validation/` and served by its
+    // Validation media is stored flat under `.vendor/validation/` and served by its
     // exact addressable name — actual and its `.baseline` sibling.
     let dir = run_dir_with_validation(
         ValidationSummary::default(),
         &[
-            (".tcab/validation/spin__rally.webm", b"webm-bytes"),
+            (".vendor/validation/spin__rally.webm", b"webm-bytes"),
             (
-                ".tcab/validation/spin__rally.baseline.webm",
+                ".vendor/validation/spin__rally.baseline.webm",
                 b"baseline-bytes",
             ),
         ],
@@ -611,10 +644,115 @@ fn serves_synthesized_validation_media_from_the_collected_tree() {
 }
 
 #[test]
+fn serves_validation_media_a_run_collected_under_the_previous_host_namespace() {
+    // Trees collected before the host namespace was renamed to `.vendor` hold the same
+    // media under `.tcab/`. Those runs are immutable, so the rename must not turn a
+    // reviewer's already-recorded proof into a 404.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[(".tcab/validation/spin__rally.webm", b"legacy-bytes")],
+    );
+    let served = serve_validation_file(dir.path(), "spin__rally.webm").expect("legacy served");
+    assert_eq!(served.content_type, "video/webm");
+    assert_eq!(served.body, b"legacy-bytes");
+}
+
+#[test]
+fn a_served_recording_is_labelled_as_the_framed_json_it_is() {
+    // A recording is stored and served compressed. The bytes travel exactly as they
+    // are stored, and the response says both what the resource is and how the body
+    // is framed, so the browser inflates it and the player parses JSON.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[(
+            ".vendor/validation/no-tunnel__serve.json.gz",
+            &[0x1f, 0x8b, 0x08, 0x00],
+        )],
+    );
+    let served =
+        serve_validation_file(dir.path(), "no-tunnel__serve.json.gz").expect("recording served");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.content_encoding, Some("gzip"));
+    assert_eq!(served.body, vec![0x1f, 0x8b, 0x08, 0x00]);
+}
+
+#[test]
+fn a_served_still_declares_no_framing() {
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[(".vendor/validation/no-tunnel__serve.png", b"png-bytes")],
+    );
+    let served = serve_validation_file(dir.path(), "no-tunnel__serve.png").expect("still served");
+    assert_eq!(served.content_type, "image/png");
+    assert_eq!(served.content_encoding, None);
+}
+
+#[test]
+fn a_recordings_shared_image_store_is_served_from_the_same_flat_namespace() {
+    // The store is what a recording's image entries name instead of carrying base64
+    // of their pixels, and it is deliberately *not* a new kind of resource: the files
+    // sit in the validation media directory under flat single-segment names, so this
+    // route serves them with no change and the console resolves them through the very
+    // lookup it resolved the recording with.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[
+            (".vendor/validation/img.9f2c1ab4.png", b"\x89PNG-sprite"),
+            (".vendor/validation/img.7ee01d33.bin", b"\x01\x02\x03\x04"),
+        ],
+    );
+
+    let bitmap = serve_validation_file(dir.path(), "img.9f2c1ab4.png").expect("bitmap served");
+    assert_eq!(bitmap.content_type, "image/png");
+    assert_eq!(bitmap.content_encoding, None);
+
+    // A pixel buffer is four raw bytes per pixel with no header of its own — the
+    // entry that names it carries the dimensions — so it is served as the opaque
+    // stream it is, unframed, and the player reads its length against those.
+    let pixels = serve_validation_file(dir.path(), "img.7ee01d33.bin").expect("pixels served");
+    assert_eq!(pixels.content_type, "application/octet-stream");
+    assert_eq!(pixels.content_encoding, None);
+    assert_eq!(pixels.body, b"\x01\x02\x03\x04".to_vec());
+}
+
+#[test]
 fn validation_media_requests_cannot_escape_the_dir() {
     let dir = run_dir_with_validation(ValidationSummary::default(), &[]);
     // A traversal or nested path is refused; a missing file is a plain miss.
     assert!(serve_validation_file(dir.path(), "../run-record.json").is_none());
     assert!(serve_validation_file(dir.path(), "sub/inner.png").is_none());
     assert!(serve_validation_file(dir.path(), "missing.png").is_none());
+}
+
+#[test]
+fn serves_showcase_files_from_the_collected_tree() {
+    // Showcase files are stored flat under `implementation/showcase/` and served by
+    // their plain names — the carousel media, an image the description references,
+    // and the description file itself. The manifest is refused: it is capture-side
+    // input, already folded into the record, and the backend store never holds it.
+    let dir = TempDir::new().unwrap();
+    let showcase = dir.path().join("implementation").join("showcase");
+    std::fs::create_dir_all(&showcase).unwrap();
+    std::fs::write(showcase.join("title.png"), b"png-bytes").unwrap();
+    std::fs::write(showcase.join("showcase.md"), b"# My Game").unwrap();
+    std::fs::write(showcase.join("showcase.toml"), b"[[media]]").unwrap();
+    std::fs::write(showcase.join("clip.json.gz"), [0x1f, 0x8b, 0x08, 0x00]).unwrap();
+
+    let image = serve_showcase_file(dir.path(), "title.png").expect("image served");
+    assert_eq!(image.content_type, "image/png");
+    assert_eq!(image.body, b"png-bytes");
+    let description = serve_showcase_file(dir.path(), "showcase.md").expect("description served");
+    assert_eq!(description.content_type, "text/markdown; charset=utf-8");
+    // A showcase replay is a JSON document travelling gzip-framed, exactly as a
+    // validation recording is, so the browser inflates it before the player sees it.
+    let replay = serve_showcase_file(dir.path(), "clip.json.gz").expect("replay served");
+    assert_eq!(replay.content_type, "application/json");
+    assert_eq!(replay.content_encoding, Some("gzip"));
+    assert_eq!(replay.body, vec![0x1f, 0x8b, 0x08, 0x00]);
+
+    assert!(serve_showcase_file(dir.path(), "showcase.toml").is_none());
+    // A traversal or nested path is refused; a missing file is a plain miss.
+    assert!(serve_showcase_file(dir.path(), "../run-record.json").is_none());
+    assert!(serve_showcase_file(dir.path(), "sub/inner.png").is_none());
+    assert!(serve_showcase_file(dir.path(), "missing.png").is_none());
 }

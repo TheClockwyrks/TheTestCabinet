@@ -2,329 +2,381 @@
 title: Ladders
 ---
 
-A **ladder** is an ordered series of test cases that harness+model combinations
-climb one step at a time, stopping at the first step they cannot clear. Where a
-[coverage plan](/components/backend/coverage/) asks *"have I run this yet?"* and
-treats its cells as an unordered set, a ladder asks *"how far does this model
-get?"* and treats its steps as a sequence with a meaning: rung three is harder
-than rung two, so the rung a model stops at **is** the result.
+A **ladder** is an ordered series of test cases that
+[combinations](/components/backend/coverage/#combinations) climb one step at a
+time, stopping at the first step they fail. Where a
+[coverage plan](/components/backend/coverage/) asks "have I run this yet?" and
+treats its cells as an unordered set, a ladder asks "how far does this model
+get?" and treats its steps as a sequence: rung three is harder than rung two, so
+the rung a model stops at is the result.
 
-A ladder is a sibling of the coverage plan, not a mode of it. It shares the
-plan's machinery wholesale — the same
-[global counting](/components/backend/coverage/#counts-are-global-judgement-is-yours),
-the same [review buffer and top-up](/components/backend/coverage/#the-review-buffer),
-the same [pause / halt / halt all](/components/backend/coverage/#pausing-and-halting),
-the same [emission-order-is-execution-order](/components/backend/coverage/#emission-order-is-execution-order)
-mechanism, and the same `coverage_group` pointers for its members. What it adds is
-an order, a gate, and per-combination progress. Read the
-[coverage plan page](/components/backend/coverage/) first; this page covers only
+A ladder is a sibling of the coverage plan rather than a mode of it. It shares
+the plan's [counting rules](/components/backend/coverage/#which-runs-count), the
+[runs-in-flight limit](/components/backend/coverage/#the-runs-in-flight-limit),
+the [launch pass](/components/backend/coverage/#a-launch-pass) and its claim, and
+the same `coverage_group` pointers for its members. Read the
+[coverage plan page](/components/backend/coverage/) first. This page covers only
 the difference.
+
+## A configuration and its dispatches
+
+A ladder is a configuration, and it does nothing by itself. The configuration
+holds:
+
+- a name;
+- the [rungs](#rungs), each a validator-rated pinned case;
+- the [climbers](#climbers), as combination groups and one-off combinations;
+- the [gate](#the-gate): its floor, its threshold, `unloadedCountsAsBroken`, and
+  `earlyStop`;
+- the runs per rung, which a rung may override;
+- the runs-in-flight limit, or null to inherit the account's;
+- the climb order, `outerAxis`.
+
+Pressing Run starts a **dispatch** of the configuration as it stands at that
+moment. Editing the configuration never touches a running dispatch, and applies
+to the next Run.
+
+### How a ladder dispatch flows
+
+1. The owner presses Run. The backend snapshots the configuration: the rungs and
+   their targets, the climbers resolved from the groups and one-offs, the gate,
+   the climb order, and the limit in force. It mints a dispatch id and launches
+   rung one for every climber, up to the limit.
+2. Each run completes and its validators rate it at push time.
+3. Every finished run of the dispatch makes the backend run a launch pass, which
+   evaluates the gate on each climber's current rung.
+4. A climber that passes its rung moves to the next one, which the same pass
+   launches. A climber that fails a rung stops there.
+5. The dispatch is **Finished** once every climber has completed or failed and
+   none of its runs is in flight. The owner may stop it earlier.
+
+A ladder holds at most one running dispatch, so Run is unavailable while one is
+running. A Run after a dispatch ended replaces it.
+
+### A dispatch owns its runs
+
+Only runs the dispatch launched count for its gate and its progress. A launch
+pass stamps every job with the origin `ladder:<ladderId>/<dispatchId>/<rungId>`,
+and the dispatch reads its evidence through that origin. Runs of an earlier
+dispatch, of a coverage plan, or launched by hand never count, even on the same
+cell. That is what makes running the same configuration twice measure it twice.
+
+Within a dispatch a rung and a climber are one cell of their own, so a ladder may
+pin the same case on two rungs without the two sharing runs.
+
+### No history
+
+The ladder keeps only its latest dispatch: enough to show its progress while it
+runs and its final standing until the next Run. Pressing Run replaces it. The
+runs themselves are the results, and stay in the run list like any run.
+
+### Stopping a dispatch
+
+- **Stop** ends the dispatch and cancels its `queued` and `pending` jobs. Runs
+  already dispatched or running finish, and count for nothing further.
+- **Stop and cancel running** also cancels its `dispatched`, `starting`, and
+  `running` jobs. Those are partly or wholly paid for, so the console confirms it
+  first.
+
+Both report how many jobs they cancelled. A stopped dispatch launches nothing
+more, and its status is **Stopped**.
+
+A launch pass checks that its dispatch is still the ladder's running one
+immediately before it enqueues, and again after. A Stop that lands during a pass
+therefore never leaves a refilled queue behind: the pass either enqueues nothing
+or cancels the jobs it just enqueued, and only those. An automatic retry is
+checked the same way: a retry enqueued while the Stop swept is cancelled once it
+exists.
+
+Deleting a ladder deletes its dispatch and leaves the dispatch's jobs alone,
+since they record the ladder only as their origin. Cancelling them as well means
+stopping first.
 
 ## Rungs
 
-A **rung** is exactly one test case, pinned to an exact `(slug, version, variant)`.
-The rungs' order, low to high, *is* the climb.
+A **rung** is exactly one
+[pinned case](/components/backend/coverage/#pinned-cases): a slug, an exact
+version, a variant, and the engine the rung's runs are built on, with an absent
+engine meaning `none`. The rungs' order, low to high, is the climb.
 
-Each rung carries a **stable opaque id**, minted when the rung is added and never
-reused — emphatically not its position. Rungs get reordered, and rungs get bumped
-to a newer version of their case; every recorded verdict references this id, so a
-positional identifier would silently reattribute a climber's history to a different
-case the moment the ladder was rearranged. `POST /ladders/{id}/rungs/order` takes a
-permutation of those ids and nothing else: a reorder must not be able to edit a rung
-in passing, and edits go through `PUT /ladders/{id}` where the consequences are
-visible.
+A rung's pin is its identity within the climb, so one ladder holds the same case
+at the same version and variant twice when the two pins name different engines.
+Clearing a case with a runtime underneath is a different achievement from
+clearing it with nothing.
 
-A rung may override the ladder's `runsPerCell` with its own `runs`, so one pivotal
-step can demand more evidence without making the whole climb more expensive.
+Each rung carries a stable opaque id, minted when the rung is added and never
+reused. A dispatch's snapshot and every job it launches reference that id.
+`POST /ladders/{id}/rungs/order` takes a permutation of those ids and nothing
+else, and edits go through `PUT /ladders/{id}`.
 
-Ladders are capped at fifty rungs. Past a few dozen steps a ladder is a coverage
-plan wearing a costume, and every climber's progress walk grows with the length.
+A rung may override the ladder's `runsPerCell` with its own `runs`, so one
+pivotal step can demand more evidence without making the whole climb more
+expensive. Ladders are capped at fifty rungs.
 
-### Test types a rung may not hold
+The editor flags a rung whose pinned version is no longer the newest ingested
+one. A Run uses whatever version the configuration pins.
 
-Two test types are **rejected at author time** with an explicit message rather than
-being allowed to stall a climb weeks later:
+### A rung must be validator-rated
 
-- **[Performance](/testing/performance/overview/)** cases are graded automatically
-  and are excluded from every reviewer worklist. Nobody can ever clear one, so its
-  runs would stay unjudged permanently — occupying the review buffer *and* leaving
-  the gate undecided forever.
-- **[Game jam](/testing/game-jam/overview/)** cases are reviewed on a graded
-  category scale (💩→💎) and record no domain ratings at all, so even a fully
-  reviewed jam run yields no [rating](/terminology/#rating) for the gate to compare
-  against its floor.
+Every rung pins a [validator-rated](/terminology/#validator-rated) case version,
+because the gate reads only the ratings validators decide. Three kinds of case
+version are rejected when a ladder is saved and again when it is run, each with
+an explicit message:
 
-Both belong in a coverage plan, which wants runs to exist rather than verdicts to
-compare, and the error says so. Silently stalling would be the genuinely hard
-failure to diagnose: a ladder that looks healthy and never moves.
+- A **legacy** version, whose functional rating only a reviewer supplies, so its
+  runs would never be rated without one.
+- A **[performance](/testing/performance/overview/)** case, which is graded on
+  its own scale and records no functional rating.
+- A **[game jam](/testing/game-jam/overview/)** case, which is reviewed on a
+  graded category scale and records no domain ratings.
 
-A rung pinned to a version the backend has not ingested is *allowed* — the driver
-reports that far better than an author-time check can.
+All three belong in a coverage plan, and the error says so.
+
+A rung pinned to a version the backend has not ingested, or to an engine the
+pinned version does not declare, is allowed. The driver reports that far better
+than an author-time check can.
 
 ## Climbers
 
 The combinations that climb are called **climbers**, and they are referenced
 through the same `kind = "combo"` coverage groups a plan uses, plus any one-off
-combinations pinned on the ladder. One saved set of models therefore drives both a
-plan and a ladder, and editing the group reshapes both.
+combinations pinned on the ladder. One saved set of models therefore drives both
+a plan and a ladder. A climber is either shape a
+[combination](/components/backend/coverage/#combinations) takes, so a
+[gg configuration](/gg/configurations/) climbs beside a third-party harness and
+is measured against the same gate.
 
-**Progress is stored per combination, never as one ladder-wide pointer.** This is
-not a storage detail; it is what makes a ladder a standing object rather than a
-one-shot sweep. Add a model to a ladder that has been running for a month and it
-starts at rung one while everyone else carries on from where they were. A single
-"the ladder is on rung four" cursor would either drag the newcomer to rung four
-untested or drag everyone else back to rung one.
+Every climber carries a **key**, the canonical text a dispatch records its
+climber state against. A harness climber's key is its `harness|model|provider`
+triple, and a gg climber's is the configuration it names and the models it binds.
+The key has to distinguish two gg climbers running one configuration on different
+models, since those are the two arms a ladder exists to separate.
 
-Each climber also carries steering, set through `POST /ladders/{id}/climbers`:
+A dispatch climbs its climbers in their resolved declaration order: the
+referenced groups' members in group order, then the one-offs. A gg climber's
+configuration is resolved when each of its runs launches.
 
-- **`priority`** — climb-order weight, higher first. It pushes one model to the
-  front of the feed **without reordering the ladder**, which would change what every
-  *other* climber is measured against.
-- **`focused`** — a "watch this one" flag, and the tiebreak between equal
-  priorities.
-- **`held`** — stop this climber where it stands (see
-  [manual control](#manual-control-in-both-directions)).
+A dispatch finds its own runs by each climber's **cells**: the harness, the
+launch model, and for a gg climber the configuration's id and the models its
+bound set runs. The cells are pinned on the climber when it first resolves, at
+Run or at the first launch pass that can resolve it. They are never resolved
+again, so editing or deleting a gg configuration mid-dispatch cannot hide the
+runs the dispatch already made. Those runs keep counting, and a climber with
+runs in flight keeps running. A climber whose configuration now resolves to
+other cells is held [`unlaunchable`](#where-a-climber-stands), since its new runs
+would land where the dispatch never looks. Restoring the configuration, or a
+Stop and a new Run, resolves it.
 
-A combination with no steering row sorts as priority zero, unfocused, which is how a
-newly added model takes its place at the back without anything having to be written
-for it.
+Two declarations that resolve to the same cells are one climber. A Run stores
+the first and drops the other, so a dispatch never launches or judges one set of
+runs twice. A climber that first resolves mid-dispatch to cells another climber
+already holds is held `unlaunchable`.
 
 ### Where a climber stands
 
-`GET /ladders/{id}/progress` reports one of five statuses per climber. "Stopped" has
-three genuinely different causes and conflating them makes a ladder impossible to
-act on:
+Within a dispatch a climber is in one of four statuses:
 
-| status | meaning | whose move |
-| --- | --- | --- |
-| `climbing` | runs are still to complete on the current rung | the ladder's |
-| `awaitingReview` | the rung ran everything it was going to; it is waiting on *your* review | yours |
-| `walled` | the current rung was failed | yours, if you disagree |
-| `held` | stopped by hand | yours |
-| `toppedOut` | every rung cleared | nobody's — it is done |
+| status      | console wording           | meaning                                           |
+| ----------- | ------------------------- | ------------------------------------------------- |
+| `running`   | Running rung X            | its current rung is undecided and can be launched |
+| `blocked`   | Blocked at rung X: reason | its current rung is undecided and cannot progress |
+| `failed`    | Failed at rung X          | it failed rung X                                  |
+| `completed` | Completed                 | it passed every rung                              |
 
-`awaitingReview` is the state a full review buffer is made of, and separating it
-from `climbing` is what lets a dashboard say "nothing will move until you look"
-instead of leaving an idle ladder looking broken.
+A `blocked` climber carries a reason naming its fix:
 
-The board is a **read**: verdicts the gate has resolved but nobody has written down
-yet are computed live and flagged `recorded: false`. They are persisted by the next
-top-up, which is a write endpoint. A `GET` that silently advanced climbers would
-make refreshing a dashboard part of the climb.
+| reason         | cause                                    | fix                       |
+| -------------- | ---------------------------------------- | ------------------------- |
+| `unlaunchable` | the combination cannot be launched       | fix the cause, then Retry |
+| `failing`      | the rung's recent runs all failed        | fix the cause, then Retry |
+| `unrated`      | completed runs carry no validator rating | re-push the runs, or Stop |
+
+A blocked climber keeps its dispatch running, so a Retry resumes the climb
+within it. A dispatch whose blocked climbers cannot be helped is ended with Stop.
+
+### Rung slots
+
+The unit every rung count is reported in is the **rung slot**: one climber on one
+rung. A dispatch of three climbers over four rungs has twelve rung slots, and each
+is in one of six states:
+
+| slot status | meaning                                                                       |
+| ----------- | ----------------------------------------------------------------------------- |
+| `running`   | the climber's current rung, undecided, with runs launched or waiting for room |
+| `blocked`   | the climber's current rung, undecided and [blocked](#where-a-climber-stands)  |
+| `passed`    | the gate passed it                                                            |
+| `failed`    | the gate failed it                                                            |
+| `pending`   | not reached yet, while the dispatch is running                                |
+| `skipped`   | never to run: the climber failed an earlier rung, or the dispatch ended first |
+
+When a dispatch is stopped, every slot that was `running`, `blocked`, or
+`pending` becomes `skipped`.
+
+### A blocked climber
+
+A climber's current rung is blocked as `failing` when its three most recent
+terminal jobs in this dispatch all failed with no run that counts, as described
+under [a blocked cell](/components/backend/coverage/#a-blocked-cell). A job whose
+run ended on the model's own failure counts toward the gate, so it breaks the
+streak.
+
+`POST /ladders/{id}/climbers/retry` retries a climber blocked as `failing` or
+`unlaunchable`. The retry is recorded on the dispatch's climber, only jobs that
+ended after it count toward the streak, and the launch pass that follows
+relaunches the rung under the dispatch's limit. A retry of an `unlaunchable`
+climber resolves its combination again, which helps once its configuration or
+its model's catalog entry has been fixed.
 
 ## The gate
 
-There is exactly **one** rule, parameterised — not a menu of modes:
+There is exactly one rule, parameterised:
 
 ```text
-advance when count(my runs on this rung rated FLOOR or better) >= THRESHOLD
+pass when count(runs on this rung rated FLOOR or better) >= THRESHOLD
 ```
 
-- **`floor`** is a [rating](/terminology/#rating) — `flawless`, `great`,
+- **`floor`** is a [rating](/terminology/#rating): `flawless`, `great`,
   `passable`, `scuffed`, or `broken`. A run rated at the floor or better passes.
-- **`threshold`** is either an absolute run **count** or a **fraction** of the
-  rung's completed runs, compared as `count >= fraction * completed`.
+- **`threshold`** is either an absolute run count or a fraction of the rung's
+  runs, compared as `count >= fraction * runs`.
 
-The gate is stored per ladder, not per rung: a ladder is one question asked of an
-ordered series of cases, so the bar it sets is the ladder's, and a rung only varies
-how many runs it takes to answer.
+A rung's verdict is `passed` or `failed`. An undecided rung has no verdict.
 
-Two parameters cover the shapes reviewers actually ask for without any of them
-being a special case in the code. At five runs per rung:
+The gate is stored per ladder rather than per rung. A ladder is one question
+asked of an ordered series of cases, so the bar it sets is the ladder's, and a
+rung only varies how many runs it takes to answer.
 
-| what you mean | `floor` | `threshold` | what happens |
-| --- | --- | --- | --- |
-| stop when over half are broken | `scuffed` | fraction `0.5` | 2.5 runs must be scuffed-or-better, so three must be — a climber walls once three of the five are broken |
-| stop when all are broken | `scuffed` | count `1` | one playable run is enough to advance; the wall needs every run broken |
-| pass if any run is passable+ | `passable` | count `1` | a single genuinely decent run carries the rung, however bad the rest are |
+The default gate is floor `scuffed` with a threshold count of `1`: one playable
+run passes the rung, and failing it takes every run broken.
 
-The second row is the **default gate**: the gentlest rule that still stops a
-hopeless climb. A fractional bar is measured against the run count the rung *will*
-finish with, not the count it has so far, so the bar does not drift as runs land one
-by one.
+### What the gate reads
 
-### What the gate is allowed to read
+The gate reads the runs the dispatch launched for that rung and climber that
+[count](/components/backend/coverage/#which-runs-count). A completed run is read
+at its validator rating: the functional rating the
+[validators decide](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
+from the run record and the case version's checklist, with the toolchain gate on
+top. A run of the model's own failure is read as `broken`, whatever
+`unloadedCountsAsBroken` says.
 
-Only the **requesting account's own** judgement — the worst domain within that one
-account's single review of the run. A run's stored `rating` is the worst domain
-across *every* reviewer, so gating on it would let a stranger's harsh review wall
-someone else's ladder. See
-[counts are global, judgement is yours](/components/backend/coverage/#counts-are-global-judgement-is-yours).
+The run's stored `rating` folds in every reviewer's checklist overrides, so the
+gate never reads it, and it never reads a review. The backend lifts the validator
+rating onto the run row as `validator_rating` when the run is pushed, and a
+re-push rewrites it.
 
-Two things are decided without waiting for a review:
+A completed run whose build never loaded counts as `broken` outright when the
+ladder's `unloadedCountsAsBroken` is on, which it is by default.
 
-- **A run whose build never loaded counts as `broken` outright**, when the ladder's
-  `unloadedCountsAsBroken` is on — which it is by **default**. There is nothing for
-  a reviewer to play, so waiting for a human to say so both stalls the climb and
-  holds a review-buffer slot hostage. The unloaded verdict overrides a recorded
-  review rather than being averaged with it: it is the harshest rating there is, and
-  a review of a build that never loaded cannot be describing something that ran.
-- **A failed or canceled *job* is never a wall at all**, and never reaches the gate.
-  Infrastructure failures are retried (`job.attempt`); a node eviction is not
-  evidence about a model. Only **completed runs** feed the gate.
+A completed run with no validator rating, which happens when the backend did not
+hold the case version when the run was pushed, counts as unrated. It can still
+pass later, so the gate treats it as a possible pass in both directions, and a
+rung left with only unrated runs short of its bar is `blocked` as `unrated`.
 
-### Deciding early, or not
+### When a rung is decided
 
-`earlyStop` is **off by default**, and this is the decision most likely to look
-wrong at first glance.
+A rung is judged against the number of runs it will finish with:
 
-With it off, a rung **completes all of its runs** even when the outcome is already
-certain — the gate answers "not decided yet" while runs remain, however obvious the
-verdict is. That is deliberate: the runs are *evidence* as much as they are a gate.
-Five runs of a case on a model are worth having in full, and a ladder that stops at
-run two leaves a permanently thinner record of the exact model everyone will want
-to look at hardest.
+```text
+final   = max(target, counted + inFlight)
+pending = final - counted
+```
 
-Turned on, the gate decides the moment the outcome is determined and the ladder
-cancels that rung's still-queued runs. That is the right trade when the ladder is
-being used to save money rather than to build a record.
+`target` is the rung's runs, `counted` the dispatch's runs of the slot that
+count, and `inFlight` the dispatch's jobs of the slot still in flight. A
+fractional threshold is measured against `final`, so the bar does not drift as
+runs land one by one, and an extra run in flight raises it.
 
-Either way the decision is conservative in both directions, so an outcome never has
-to be taken back as more evidence lands: **advance** only when the runs already in
-hand clear the bar (every unreviewed and still-running run could come back broken
-and the answer would not change), **wall** only when they cannot possibly clear it
-(every remaining run could come back flawless and it would still fall short), and
-**undecided** in between.
+`earlyStop` is off by default. With it off, a rung is undecided while `pending`
+is above zero, so it completes every run it started even when the outcome is
+already certain, because the runs are evidence as much as they are a gate.
 
-The evidence behind any of those answers is reported as a `tally` —
-completed, judged, unjudged, passing, pending, and the number of passing runs
-required — so a dashboard can say *why* a climber is walled or waiting without
-re-deriving the floor and unloaded-run rules a second time and getting them subtly
-different.
+With `earlyStop` on, the gate decides the moment the outcome is certain, counting
+every pending run as a possible pass and as a possible failure. It passes only
+when the runs already counted clear the bar, fails only when they cannot clear it
+even if every pending and unrated run passes, and is undecided in between. The
+launch pass that records the decision cancels the slot's `queued` and `pending`
+jobs. A job already dispatched or running finishes, and its run is kept.
 
-## Manual control in both directions
+Either way an outcome never has to be taken back as more evidence lands. The
+evidence behind any answer is reported as a `tally`: counted, rated, unrated,
+passing, pending, in flight, and the number of passing runs required.
 
-The gate is a computed opinion, and a reviewer can disagree with it either way.
-Both directions are reversible and neither destroys what the gate said.
+## Launching runs
 
-- **Down: `hold`.** Stops a climber where it stands. It does **not** pretend a rung
-  was decided, so clearing the hold resumes the climb from exactly where it left
-  off. This is the control for "I do not want to spend any more on this model right
-  now", which is not the same claim as "this model failed".
-- **Up: `promote` (or `wall`).** `POST /ladders/{id}/outcomes` imposes a verdict on
-  a rung the gate has already decided — advancing past a wall it built, or walling a
-  rung its runs passed.
+A running dispatch launches its runs in a launch pass: it records every verdict
+the gate can now decide, then enqueues what the climb needs, up to the
+dispatch's limit. A launch pass of a ladder is the plan's
+[launch pass](/components/backend/coverage/#a-launch-pass) with one restriction:
+only a climber's current rung is ever launched. Running rung five for a model
+that failed rung two would answer a question the dispatch has already answered.
 
-An override is stored **beside** the automatic verdict, never over it. Three
-consequences follow, and all three are the point:
+`outerAxis` selects which loop is outer, with the same
+emission-order-is-execution-order mechanism a plan uses:
 
-1. A later recompute can never silently undo an override.
-2. Clearing the override restores exactly what the gate itself says.
-3. The disagreement between reviewer and gate stays legible, which is the record
-   worth keeping.
+- **`rung`**, the default, brings every climber up one rung before anyone moves
+  on, which is what makes a ladder comparable across models.
+- **`combination`** takes one climber as far as it gets before starting the next,
+  answering "how far does this model get?" soonest.
 
-Overriding a rung that is not decided yet is a `409`: there is nothing to promote
-*past*, and the control for "stop here regardless" is a hold, which does not pretend
-a rung was decided.
+The dispatch's runs in flight are its jobs in `queued`, `pending`, `dispatched`,
+`starting`, or `running`, across every rung. A bound of `0` launches nothing, so
+a dispatch under it cannot climb.
 
-## Version pins and honest history
+The backend runs a launch pass of the running dispatch when it is started, when
+one of its climbers is retried, when one of its jobs reaches a terminal state,
+and once at startup. A job feeds only the dispatch its origin names, and only
+while that dispatch is running. A failed job that enqueued an automatic retry
+feeds nothing. A canceled job feeds its dispatch as it feeds a plan, as described
+under [when launch passes
+run](/components/backend/coverage/#when-launch-passes-run), so a run cancelled
+by hand is launched again. The pass runs as the ladder's owner after the job's
+status is stored, so a failed pass never fails the driver's report.
 
-Every recorded verdict stores the **exact case version it was decided against**.
-That is part of the verdict's identity, not decoration.
+Every pass launches under the limit in the snapshot of the dispatch it reads. A
+pass that serves a request left during another pass can be reading a newer
+dispatch than the one that took the claim, and launches it under that
+dispatch's own limit.
 
-Rungs pin exact versions, and cases get revised. When a rung is bumped to a newer
-version, a verdict earned on the old one is neither erased nor silently inherited:
-it is kept, flagged `stale`, and no longer allowed to govern the climb — the rung is
-re-opened, because a model clearing v1.0.0 says nothing certain about v1.1.0.
-Re-pinning back restores it. A ladder that quietly carried old verdicts forward
-would be claiming evidence it does not have.
+A launch pass that finds every climber completed or failed and nothing of the
+dispatch in flight marks the dispatch Finished.
 
-The board also reports each rung's `latestVersion` and whether the pin has fallen
-behind, so bumping is an informed choice rather than something noticed months later.
+## Progress
 
-## A ladder starts disabled
+`GET /ladders/{id}/progress` reports the configuration's rungs, the latest
+dispatch, and every climber of that dispatch with its status, its blocked reason,
+its current rung's cell and tally, and the status of each of its rung slots.
+Progress is a read. Verdicts the gate has resolved that no launch pass has
+written down yet are computed live and persisted by the next pass.
 
-**Creating a ladder enqueues nothing.** A new ladder is created *disabled*, and stays
-that way until its reviewer enables it from the dashboard — the one gesture that says
-"start spending on this climb".
+A dispatch reports its status, its rung-slot counts in each slot status, and its
+runs:
 
-This is the one place a ladder deliberately departs from the
-[coverage plan](/components/backend/coverage/#topping-up), and the reason is what a
-ladder is for. A plan is a declaration of runs that ought to exist, so filling its
-buffer as soon as someone looks at it is doing what was asked. A ladder is a *question*
-— how far does each of these models get? — and the act of writing the question down is
-not the act of paying for the answer. A climb is also the easy thing to get wrong on
-the first save: the wrong variant, a version nobody has ingested, thirty models where
-five were meant. Enabling separately is the beat in which that is noticed.
+- **total** is the sum over rung slots of the rung's target runs;
+- **done** is the runs that need no more executing, summed per slot as below;
+- **in flight** is the dispatch's jobs still in flight.
 
-Three consequences follow, and all three are the point:
+| slot status                   | runs done                        |
+| ----------------------------- | -------------------------------- |
+| `running`, `blocked`          | `min(counted, target)`           |
+| `passed`, `failed`, `skipped` | `target - min(inFlight, target)` |
+| `pending`                     | `0`                              |
 
-- **Opening the dashboard is a read.** It never enqueues. A reviewer can look at a
-  ladder they have deliberately stopped without restarting it, which is exactly what
-  someone does after killing a run that was failing.
-- **Disabling stops new work only.** It is the same flag as a pause: nothing further is
-  enqueued, and runs already queued or in flight carry on to completion. Cancelling
-  those is [halt](/components/backend/coverage/#pausing-and-halting), which is a
-  separate, louder control precisely because it throws work away.
-- **`autoTopUp` is on by default**, and that is safe *because* of the above: it can only
-  ever feed a ladder somebody has already enabled. Once a ladder is climbing, the review
-  that decides a rung is the natural moment to ask for the next one's runs, and a ladder
-  that needed a button pressed after every review would look broken.
+A decided or skipped slot needs no more runs, so its whole target is done once
+its runs in flight finish. When done equals total, nothing is left to execute in
+the dispatch.
 
-So an enabled ladder is fed by exactly three gestures — enabling it, pressing **Top up
-now**, and submitting a review — and a disabled one by none. A top-up of a disabled
-ladder answers `skipped: "paused"` and enqueues nothing, whoever called it.
+A ladder with no dispatch reports its status as Not run yet. The ladder's status
+is one of Not run yet, Running, Finished, or Stopped.
 
-## Feeding a ladder
+### Reviewing a dispatch's runs
 
-A ladder's top-up is the plan's top-up with one restriction: **only a climber's
-current rung is ever launched.** That is what makes it a ladder rather than a plan —
-running rung five for a model that is walled at rung two would be spending money to
-answer a question the ladder has already refused to ask.
-
-`outerAxis` selects which loop is outer, with the same emission-order-is-execution-
-order mechanism a plan uses:
-
-- **`rung`** (the default) — bring every climber up one rung before anyone moves on.
-  The board advances as a row, which is what makes a ladder comparable across
-  models. The console calls it **"Rung by rung"**.
-- **`combination`** — take one climber as far as it gets before starting the next.
-  The board advances as a column, and answers "how far does *this* model get?"
-  soonest. The console calls it **"Model by model"**.
-
-Everything else is shared: whole cells, the
-[harness-parallelism preference](/components/backend/coverage/#harness-parallelism-comes-first)
-that keeps one throttled harness from spending the whole buffer while a climber on
-another sits idle, the account-wide buffer target with a
-per-ladder override, the per-ladder claim that serializes concurrent top-ups,
-`autoTopUp` firing on review submit (see [above](#a-ladder-starts-disabled) for what
-differs — when it is on by default, and what it cannot start), and
-`GET /ladders/{id}/queue` returning the unreviewed-by-you runs **in the ladder's own
-order**. On a ladder that last one matters more than it does on a plan: the review
-*is* the verdict, so reviewing in the order the buffer was filled is what decides
-climbers in the order the ladder meant to decide them.
-
-### Feeding and reviewing are different sets of rungs
-
-The restriction above is on **launching**, and only on launching. What the ladder
-offers for review — and what occupies the review buffer — is every rung each climber
-has **reached**: the ones it advanced past, the one it stands on, and the one it
-walled at.
-
-The two sets have to differ, because the gate decides a rung as soon as the runs in
-hand settle it. Under the default gate that is one review of a five-run rung, so a
-queue drawn from the current rung alone would delete four paid-for runs from the
-board the instant the reviewer judged the first — a list of a dozen runs that
-collapses to nothing after two reviews, while the buffer it was still occupying
-reported itself full. The same holds in the other direction: a walled climber's runs
-are the very ones a re-review would unwall it with, and a **hold** stops spending
-rather than reviewing.
-
-So the buffer counts every reached rung's unreviewed runs, and that is deliberate
-backpressure rather than an accounting detail. A ladder whose reviewer has fallen
-behind stops launching until they catch up, which is the one thing the buffer exists
-to do; the alternative is a climb that races ahead spending on runs nobody will ever
-look at. The dashboard's **buffered** and **to review** figures and the queue
-underneath it are all drawn from that one set, so they can never disagree about which
-runs are waiting.
-
-Deleting a ladder deliberately leaves the jobs it launched alone. They record the
-ladder only as their origin, and deleting the ladder you launched from is not a
-reason to throw away runs that already cost money. [Halt](/components/backend/coverage/#pausing-and-halting)
-first if that is what you meant.
+`GET /ladders/{id}/queue` returns the latest dispatch's completed runs its owner
+has not reviewed, in the ladder's own order, so they can be given an aesthetic
+rating and a writeup. Progress reports their count as `runsUnreviewed`. The queue
+neither blocks nor feeds the climb.
 
 ## Endpoints
 
 The ladder surface is specified in the
-[HTTP API](/components/backend/api/#coverage-plans-ladders-and-the-review-buffer),
-alongside the coverage-plan endpoints it mirrors.
+[HTTP API](/components/backend/api/#ladders), alongside the coverage-plan
+endpoints it mirrors.

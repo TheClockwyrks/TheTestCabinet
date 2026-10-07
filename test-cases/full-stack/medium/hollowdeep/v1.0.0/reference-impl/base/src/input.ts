@@ -53,7 +53,11 @@ export class Input {
       this.clientX = e.clientX;
       this.clientY = e.clientY;
       if (this.leftDown) {
-        if (!this.didDrag && Math.hypot(e.clientX - this.downX, e.clientY - this.downY) > DRAG_THRESHOLD) {
+        if (
+          !this.didDrag &&
+          Math.hypot(e.clientX - this.downX, e.clientY - this.downY) >
+            DRAG_THRESHOLD
+        ) {
           this.didDrag = true;
         }
         if (this.didDrag) {
@@ -88,7 +92,8 @@ export class Input {
     // Release on the window so a drag that ends off the canvas still resolves.
     window.addEventListener("mouseup", (e) => {
       if (e.button === 0 && this.leftDown) {
-        if (this.didDrag && this.dragging) this.dragEnds.push({ ...this.dragging });
+        if (this.didDrag && this.dragging)
+          this.dragEnds.push({ ...this.dragging });
         else this.clicks.push(this.toLogical(e.clientX, e.clientY));
         this.leftDown = false;
         this.didDrag = false;
@@ -111,7 +116,10 @@ export class Input {
 
     window.addEventListener("keydown", (e) => {
       // Keep the page from scrolling on Space / arrows while playing.
-      if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
+      if (
+        [" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+      )
+        e.preventDefault();
       this.keys.push(e.key);
       this.held.add(e.key.toLowerCase());
     });
@@ -135,7 +143,10 @@ export class Input {
   }
 
   toLogical(clientX: number, clientY: number): { x: number; y: number } {
-    return { x: (clientX - this.offX) / this.scale, y: (clientY - this.offY) / this.scale };
+    return {
+      x: (clientX - this.offX) / this.scale,
+      y: (clientY - this.offY) / this.scale,
+    };
   }
 
   get pointerLogical(): { x: number; y: number } {

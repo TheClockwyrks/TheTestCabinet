@@ -1,0 +1,16 @@
+// The clang module gg's shell imports to reach the canonical ABI, and the reason the model's own
+// file cannot reach it.
+//
+// `gg-shell.h` used to arrive through `swiftc -import-objc-header`, which is MODULE-scoped: every
+// file of the program's Swift module — the model's `main.swift` included — opened with the whole
+// generated wire, `malloc`, `free` and the program's own entry-point symbol already in scope, with
+// no line anyone wrote. A clang module map is the same declarations behind a name, and a Swift
+// `import` of one is FILE-scoped, so `shell.swift` writes `import GgShell` and reaches them and
+// nothing else in the module does.
+//
+// `export *` re-exports what `gg-shell.h` includes — `sandbox.h` and `stdlib.h` — because the shell
+// calls `sandbox_string_dup` and `malloc` as directly as it calls `__main_argc_argv`.
+module GgShell {
+    header "gg-shell.h"
+    export *
+}

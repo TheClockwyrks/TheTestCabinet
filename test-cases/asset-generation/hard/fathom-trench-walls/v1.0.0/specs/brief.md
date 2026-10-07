@@ -1,12 +1,12 @@
 # Fathom Trench Walls — drawing brief
 
-You are drawing the **Fathom trench tileset**, a **sprite sheet** for *Fathom*,
+You are drawing the **Fathom trench tileset**, a **sprite sheet** for _Fathom_,
 a bioluminescent deep-sea maze chase. The trench is a tile-locked maze of
 flooded rock corridors: a glowing forager grazes them while predators hunt.
 You are drawing the **walls** of that maze in the classic rounded pac-man style
 (re-themed as raised deep-sea rock), plus the corridor **floor**, the unrevealed
 **fog**, and the den **gate**. The renderer picks the right wall tile for each
-board cell from its neighbors (an *autotile*), so your wall tiles must form a
+board cell from its neighbors (an _autotile_), so your wall tiles must form a
 consistent, seamless set.
 
 These are **TILES, not sprites.** Each one fills its **entire 32×32 cell, edge to
@@ -36,24 +36,24 @@ the wall in the neighboring cell — no rounded face there. An **open** (unset)
 side means that edge faces a corridor: give it a **rounded, raised outer wall
 face** against the floor. Draw all sixteen:
 
-| Frame | Bits | Connected sides | Piece |
-| --- | --- | --- | --- |
-| 0 | – | none | isolated pillar (rounded on all four sides) |
-| 1 | N | up | stub capped below, open left/right (bottom end of a vertical wall) |
-| 2 | E | right | stub capped left (left end of a horizontal wall) |
-| 3 | N+E | up, right | elbow — corridor turns (rounded on the lower-left) |
-| 4 | S | down | stub capped above (top end of a vertical wall) |
-| 5 | N+S | up, down | **vertical straight** (open left and right) |
-| 6 | E+S | right, down | elbow (rounded on the upper-left) |
-| 7 | N+E+S | up, right, down | **T-junction**, open to the left |
-| 8 | W | left | stub capped right (right end of a horizontal wall) |
-| 9 | N+W | up, left | elbow (rounded on the lower-right) |
-| 10 | E+W | left, right | **horizontal straight** (open top and bottom) |
-| 11 | N+E+W | up, right, left | **T-junction**, open downward |
-| 12 | S+W | down, left | elbow (rounded on the upper-right) |
-| 13 | N+S+W | up, down, left | **T-junction**, open to the right |
-| 14 | E+S+W | right, down, left | **T-junction**, open upward |
-| 15 | all | up, right, down, left | cross / fully-enclosed interior (flush all sides) |
+| Frame | Bits  | Connected sides       | Piece                                                              |
+| ----- | ----- | --------------------- | ------------------------------------------------------------------ |
+| 0     | –     | none                  | isolated pillar (rounded on all four sides)                        |
+| 1     | N     | up                    | stub capped below, open left/right (bottom end of a vertical wall) |
+| 2     | E     | right                 | stub capped left (left end of a horizontal wall)                   |
+| 3     | N+E   | up, right             | elbow — corridor turns (rounded on the lower-left)                 |
+| 4     | S     | down                  | stub capped above (top end of a vertical wall)                     |
+| 5     | N+S   | up, down              | **vertical straight** (open left and right)                        |
+| 6     | E+S   | right, down           | elbow (rounded on the upper-left)                                  |
+| 7     | N+E+S | up, right, down       | **T-junction**, open to the left                                   |
+| 8     | W     | left                  | stub capped right (right end of a horizontal wall)                 |
+| 9     | N+W   | up, left              | elbow (rounded on the lower-right)                                 |
+| 10    | E+W   | left, right           | **horizontal straight** (open top and bottom)                      |
+| 11    | N+E+W | up, right, left       | **T-junction**, open downward                                      |
+| 12    | S+W   | down, left            | elbow (rounded on the upper-right)                                 |
+| 13    | N+S+W | up, down, left        | **T-junction**, open to the right                                  |
+| 14    | E+S+W | right, down, left     | **T-junction**, open upward                                        |
+| 15    | all   | up, right, down, left | cross / fully-enclosed interior (flush all sides)                  |
 
 The four elbows (3, 6, 9, 12) must be the **same corner piece rotated**, and the
 four T-junctions (7, 11, 13, 14) the **same T rotated** — so corridors turn and
@@ -87,12 +87,12 @@ and from the rock walls. It sits on the same floor as frame 16.
 
 The tileset is the trench itself. Use only these colors:
 
-| Role | Hex | Notes |
-| --- | --- | --- |
-| Wall rock | `#16293d` | the main raised rock-wall body |
-| Wall rim light | `#24506b` | lighter rim along the raised top/open faces and rounded corners — the bevel that makes walls read as rounded; also the den-gate bars |
-| Floor (open water) | `#0a1422` | the revealed corridor ground (darker than the walls) |
-| Fog (unrevealed) | `#03060c` | the unrevealed dark; also the deepest shadow/outline along a wall's closed under-edges and crevices |
+| Role               | Hex       | Notes                                                                                                                                |
+| ------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Wall rock          | `#16293d` | the main raised rock-wall body                                                                                                       |
+| Wall rim light     | `#24506b` | lighter rim along the raised top/open faces and rounded corners — the bevel that makes walls read as rounded; also the den-gate bars |
+| Floor (open water) | `#0a1422` | the revealed corridor ground (darker than the walls)                                                                                 |
+| Fog (unrevealed)   | `#03060c` | the unrevealed dark; also the deepest shadow/outline along a wall's closed under-edges and crevices                                  |
 
 The rock walls (`#16293d` with a `#24506b` rim) must read as **raised** above the
 darker open-water **floor** (`#0a1422`); the fog (`#03060c`) is the darkest of

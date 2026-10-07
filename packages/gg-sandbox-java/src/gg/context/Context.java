@@ -1,0 +1,166 @@
+package gg.context;
+
+import gg.ApiError;
+import gg.ApiErrorCode;
+import gg.internal.Coding;
+import gg.internal.Read;
+import gg.internal.Value;
+import java.util.List;
+
+/**
+ * Reclaim room in the context window.
+ *
+ * <p>In the order a full window wants them: drop file views that are done with, move whole turns
+ * into the archive and search it for what was moved, and restart the window from a summary.
+ *
+ * <p>These calls act on the conversation rather than on the workspace.
+ *
+ * @ggmodule context
+ */
+public final class Context {
+    private Context() {
+    }
+
+    /**
+     * Drop what one file, or every file, put in the context window, and report what that freed.
+     *
+     * <p>Called with nothing it drops every file read into the window. The files on disk are
+     * untouched either way: this forgets what was read rather than what exists.
+     *
+     * @return what the eviction reclaimed
+     * @ggop context.evict_file_view
+     */
+    public static ReclaimReport evictFileView() {
+        return Read.reclaimReport(Coding.call("context.evict_file_view", Value.none()));
+    }
+
+    /**
+     * Drop the contents of one file read into the context window.
+     *
+     * @param path The file whose views to drop.
+     * @return what the eviction reclaimed
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is empty; the
+     *     overload that takes none is how every file view is dropped.
+     * @ggop context.evict_file_view
+     */
+    public static ReclaimReport evictFileView(String path) {
+        return Read.reclaimReport(Coding.call("context.evict_file_view", Value.of(path)));
+    }
+
+    /**
+     * Move whole turns out of the context window, and report what that freed.
+     *
+     * <p>Every result carries a header with its turn number and roughly what holding it costs, which
+     * is what the spans are named from: a span is inclusive at both ends, so
+     * {@code new Context.TurnRange(4, 19)} archives turns 4 through 19. An archived turn's own
+     * messages are dropped; its results are kept and stay searchable with {@link #searchArchive}.
+     *
+     * @param ranges The inclusive spans of turn numbers to move out of the window.
+     * @return what the archive reclaimed
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a span whose ends are not turn
+     *     numbers.
+     * @ggop context.archive_thread
+     */
+    public static ReclaimReport archiveThread(TurnRange... ranges) {
+        Value[] spans = new Value[ranges.length];
+        for (int index = 0; index < ranges.length; index++) {
+            spans[index] = Value.record()
+                    .put("start", Value.of(ranges[index].from()))
+                    .put("end", Value.of(ranges[index].to()));
+        }
+        return Read.reclaimReport(Coding.call("context.archive_thread", Value.list(spans)));
+    }
+
+    /**
+     * Search archived history for a case-insensitive substring, most recent first, up to eight hits.
+     *
+     * <p>{@code archiveEmpty} separates "nothing has been archived yet" from "the search matched
+     * nothing".
+     *
+     * @param query The substring to look for. Matching is case-insensitive.
+     * @return what the search found, and whether there was anything to search
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty query.
+     * @ggop context.search_archive
+     */
+    public static ArchiveSearch searchArchive(String query) {
+        return Read.archiveSearch(Coding.call("context.search_archive", Value.of(query)));
+    }
+
+    /**
+     * Compact the context window: the detailed thread is dropped and restarted from a summary.
+     *
+     * <p>Skills, memories and the task list are kept as they are, and each named file is read
+     * afresh. gg asks for this call when the window is full, and refuses every other call until it
+     * arrives. This is the one call gg does not refuse while a compaction is in flight.
+     *
+     * <p>It does not stop the program: it registers the request and returns, and the rewrite happens
+     * once the program has ended. Everything not in the summary and not re-read is gone.
+     *
+     * @param summary What the restarted window opens with.
+     * @param files The paths to read afresh into the restarted window. Naming none reads nothing
+     *     back.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a blank summary.
+     * @ggop context.compact
+     */
+    public static void compact(String summary, String... files) {
+        Coding.call("context.compact", Value.of(summary), Value.texts(files));
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // The types a reclaim hands back
+    // -------------------------------------------------------------------------------------------
+
+    /**
+     * An inclusive span of turn numbers, which is the unit an archive moves.
+     *
+     * <p>The numbers are the ones on the header of every result, so {@code new TurnRange(4, 19)}
+     * means exactly the turns numbered 4 through 19, both ends included.
+     *
+     * @param from The first turn in the span.
+     * @param to The last turn in the span, inclusive.
+     */
+    public record TurnRange(int from, int to) {
+    }
+
+    /**
+     * What a reclaim actually freed from the live context window.
+     *
+     * @param items How many context items were dropped from the live window.
+     * @param reclaimedTokens Approximately how many tokens that freed.
+     * @param paths The workspace paths whose views were evicted. Empty for an archive.
+     * @param detail The prose summary of what was reclaimed.
+     */
+    public record ReclaimReport(int items, int reclaimedTokens, List<String> paths, String detail) {
+    }
+
+    /**
+     * What a search of the archive found.
+     *
+     * @param archiveEmpty Whether nothing has been archived yet, so there was nothing to search.
+     * @param hits The matches, most recent first, at most eight.
+     */
+    public record ArchiveSearch(boolean archiveEmpty, List<ArchiveHit> hits) {
+    }
+
+    /**
+     * One archived message that matched a search.
+     *
+     * @param seq The archived message's sequence number.
+     * @param role Who said it.
+     * @param text The message text.
+     */
+    public record ArchiveHit(int seq, MessageRole role, String text) {
+    }
+
+    /** Who said an archived message. */
+    public enum MessageRole {
+        /** The system prompt. */
+        SYSTEM,
+        /** A turn's input — a result, a view, or an operator's instruction. */
+        USER,
+        /** A reply the session produced. */
+        ASSISTANT,
+        /** A tool result, on a session that made tool calls rather than writing programs. */
+        TOOL
+    }
+}

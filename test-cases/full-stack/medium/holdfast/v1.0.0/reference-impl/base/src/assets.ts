@@ -13,14 +13,32 @@
 // their FxKind ("muzzle"/"blood"/"impact"/"fire"/"explosion"/"dust"), and the .wav clips
 // by their cue name plus the two looped beds ("ambient", "music").
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Cue, FxKind } from "./types";
 
-const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
-const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
-const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", { eager: true, query: "?url", import: "default" });
+const pngUrls = import.meta.glob<string>("../assets/**/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", {
+  eager: true,
+  import: "default",
+});
+const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
 
-const FX_KINDS: FxKind[] = ["muzzle", "blood", "impact", "fire", "explosion", "dust"];
+const FX_KINDS: FxKind[] = [
+  "muzzle",
+  "blood",
+  "impact",
+  "fire",
+  "explosion",
+  "dust",
+];
 const CUE_KINDS: Cue[] = ["gunshot", "hit", "build", "alarm"];
 export type AudioName = Cue | "ambient" | "music";
 

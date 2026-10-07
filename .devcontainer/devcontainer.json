@@ -1,29 +1,32 @@
 {
-	"name": "The Test Cabinet",
-	"dockerComposeFile": [
-		"docker-compose.yml",
-		"docker-compose.local.yml"
-	],
-	"service": "dev",
-	"workspaceFolder": "/workspaces/the-test-cabinet",
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"rust-lang.rust-analyzer",
-				"tamasfe.even-better-toml",
-				"DavidAnson.vscode-markdownlint",
-				"EditorConfig.EditorConfig",
-				"timonwong.shellcheck",
-				"yzhang.markdown-all-in-one",
-				"aaron-bond.better-comments"
-			]
-		}
-	},
-	"forwardPorts": [],
-	// The cargo-target named volume persists across rebuilds; if it was ever
-	// created root-owned (e.g. before the Dockerfile pre-created its mountpoint),
-	// reclaim it for the container user so CARGO_TARGET_DIR stays writable.
-	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually')",
-	"postStartCommand": "bash .devcontainer/tools/docker-socket-access.sh || true; if [ -S /tmp/ssh-agent.sock ]; then rm -f /tmp/devcontainer-ssh-agent.sock && (sudo socat UNIX-LISTEN:/tmp/devcontainer-ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock >/tmp/ssh-agent-socat.log 2>&1 &); fi",
-	"updateRemoteUserUID": false
+  "name": "The Test Cabinet",
+  // What the container is built and run from lives in the compose file: its
+  // image, the versions it installs, the sockets it is given and the
+  // namespace it runs in. This file names that declaration and the service in
+  // it, and states what belongs to an editor rather than to a container.
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "dev",
+  "workspaceFolder": "/workspaces/the-test-cabinet",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "DavidAnson.vscode-markdownlint",
+        "EditorConfig.EditorConfig",
+        "timonwong.shellcheck",
+        "yzhang.markdown-all-in-one",
+        "aaron-bond.better-comments",
+        "astro-build.astro-vscode"
+      ]
+    }
+  },
+  // The ports the project serves on, each labelled with what serves there. The
+  // documentation site's dev server (`npm run --workspace apps/docs dev`, the
+  // `docs` command in .nyxsis/project.toml) binds Astro's default, 4321.
+  "forwardPorts": [4321],
+  "portsAttributes": { "4321": { "label": "Documentation site" } },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "bash .devcontainer/post-start.sh",
+  "updateRemoteUserUID": false
 }

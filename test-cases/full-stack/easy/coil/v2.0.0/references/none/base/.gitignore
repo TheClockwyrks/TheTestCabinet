@@ -1,0 +1,25 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`.
+dist/
+build/
+out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Asset-authoring scratch. Only the finished PNG, `.wav`, and `.mid` files under
+# `assets/` are committed, never the intermediate configuration, action log, or
+# preview files an asset tool leaves beside what it produced.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+assets/**/*.preview.gif
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log

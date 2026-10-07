@@ -20,7 +20,6 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
-use uuid::Uuid;
 
 use test_cabinet_core::accounts::{Account, AuthnResponse, LoginRequest, RegisterRequest};
 
@@ -107,7 +106,7 @@ async fn register(
         .map_err(|_| ApiError::internal("could not hash password"))?;
     let now = now_rfc3339();
     let account = user::Model {
-        id: Uuid::new_v4().to_string(),
+        id: cuid2::create_id(),
         username: username.to_string(),
         display_name: display_name.to_string(),
         password_hash,
@@ -171,7 +170,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Sta
 async fn mint(state: &AppState, account: &user::Model, now: &str) -> Result<AuthnResponse> {
     let raw = secret::generate_token();
     let row = token::Model {
-        id: Uuid::new_v4().to_string(),
+        id: cuid2::create_id(),
         user_id: account.id.clone(),
         token_hash: secret::hash_token(&raw),
         created_at: now.to_string(),

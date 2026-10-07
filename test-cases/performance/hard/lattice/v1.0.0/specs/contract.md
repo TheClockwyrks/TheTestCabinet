@@ -39,6 +39,7 @@ schema is `schemas/scenario.json`; the shape is:
     { "type": "splitter", "x": 12, "y": 5, "dir": "E" }, // covers (12,5),(12,6)
     { "type": "inserter", "x": 14, "y": 6, "dir": "N" },
     { "type": "assembler", "x": 14, "y": 7, "recipe": "iron-gear" }, // 3×3 block
+    { "type": "furnace", "x": 3, "y": 3, "recipe": "iron-plate" }, // 2×2 block, smelts
     { "type": "sink", "x": 20, "y": 5, "dir": "W" },
   ],
 }
@@ -87,6 +88,13 @@ of one snapshot is:
         "craft_left": 12,
       },
     },
+    {
+      "furnace": {
+        "inputs": { "iron-ore": 3, "coal": 2 },
+        "output": { "iron-plate": 1 },
+        "craft_left": 20,
+      },
+    },
     { "sink": { "consumed": { "iron-gear": 4123 } } },
   ],
 }
@@ -96,13 +104,16 @@ of one snapshot is:
   `{ "sink": {...} }`, …) and the array stays **parallel to the scenario's
   `entities`**, in placement order.
 - A **belt** lists each lane's items from the output end backward (ascending
-  `pos`). A **splitter** carries only its two cursors — `out_pref` (the
-  per-(item-type, lane) output-preference bitfield) and `in_first` (which input belt
+  `pos`). A **splitter** carries only its two cursors — `out_pref` (the per-lane,
+  item-agnostic output-preference bitfield) and `in_first` (which input belt
   it tries first this tick). An
   **inserter** carries `phase` (`"idle"|"swing"`), the held item (omitted when
   none), and `swing_left`. An **assembler** carries its `inputs`/`output` count
-  maps (empty maps allowed) and `craft_left`. A **source** carries `emit_phase`
-  (= `tick % period`). A **sink** carries its `consumed` count map.
+  maps (empty maps allowed) and `craft_left`. A **furnace** carries the identical
+  shape as an assembler (`inputs`/`output`/`craft_left`) — it is the same crafter,
+  distinguished only by its `furnace` tag and its smelting recipe. A **source**
+  carries `emit_phase` (= `tick % period`). A **sink** carries its `consumed` count
+  map.
 - The validator compares **only the `checksum`** per snapshot. The full state is
   for your own debugging when a training scenario diverges — `lattice run` tells
   you the first mismatching snapshot tick, and the full state lets you find the

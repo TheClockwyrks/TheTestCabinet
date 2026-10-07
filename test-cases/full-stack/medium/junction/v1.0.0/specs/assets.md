@@ -23,14 +23,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so **all HUD/dashboard/overlay chrome is
 drawn in code** (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | zone buildings (per tier), road/rail/station tiles, power/water tiles, vehicles, HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | animated signals/crossings, construction, vehicle cycles |
-| `particle-2d` | a particle system → a `system.json` | pollution haze, construction dust, milestone fireworks |
-| `sfx-synth` | a procedural sound → a `.wav` | build / chime / alert cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer build / notification / alert cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the ambient city music bed |
+| Tool          | Produces                                                       | Used for                                                                                   |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `draw`        | one sprite → a PNG                                             | zone buildings (per tier), road/rail/station tiles, power/water tiles, vehicles, HUD icons |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                          | animated signals/crossings, construction, vehicle cycles                                   |
+| `particle-2d` | a particle system → a `system.json`                            | pollution haze, construction dust, milestone fireworks                                     |
+| `sfx-synth`   | a procedural sound → a `.wav`                                  | build / chime / alert cues from raw synthesis                                              |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`                | richer build / notification / alert cues                                                   |
+| `music`       | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient city music bed                                                                 |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is the
@@ -51,9 +51,9 @@ initialize / operate / render commands and how to name the output path.
   particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or sequenced
   notes and `render` a PCM `.wav`; `music` also emits a portable `.mid` score alongside
-  its `.wav`. `sfx-sample` and `music` draw on a **baked sample pack / instrument bank**
-  already in the image (browse it via `list-samples` / the tool's help); a synth from
-  `sfx-synth` needs no pack.
+  its `.wav`. `sfx-sample` draws on the `combat-core` sample pack and `music` on the
+  `gm-lite` instrument bank, both present in the container (browse them with
+  `list-samples` and `list-instruments`); a synth from `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -68,8 +68,8 @@ like `/runs/<id>/build/`). So:
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory glob
   (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true, query:
-  '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+'?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 
@@ -138,7 +138,7 @@ junction, the construction sequence while a lot builds — advancing frames on a
 the motion reads. It is fine to reuse art across cycles; the point is that at least a
 couple of things visibly animate from produced sheets rather than being static.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The city's atmospheric and celebratory effects are **particle systems** you author with
 `particle-2d` and **play live** — not flat tints or hand-coded effects. `particle-2d`
@@ -153,7 +153,7 @@ Produce at least:
 - **Milestone fireworks** — a **one-shot** celebratory burst for a milestone
   (`specs/flow.md`) — a first rail line, a population threshold, a maxed district.
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a
@@ -180,8 +180,8 @@ Audio API. Land them under, for example, `assets/audio/`.
   player lays a road or building), a **notification chime** (a milestone or a completed
   development), and an **alert** (budget or utility trouble) with `sfx-synth` and/or
   `sfx-sample`, and a soft **ambient city hum** loop. `sfx-synth` builds a
-  sound from synth voices alone; `sfx-sample` layers over the baked sample pack (browse
-  it via `list-samples`) for a richer result — use whichever suits each cue.
+  sound from synth voices alone; `sfx-sample` layers over the `combat-core` sample pack
+  (browse it with `list-samples`) for a richer result — use whichever suits each cue.
 - **Music** — produce a **calm ambient city music bed** with `music`: a slow, warm,
   low-key loop under the city — unobtrusive, the kind of bed a builder plays for hours.
   `music` emits both a `.wav` (the ready asset you play) and a `.mid` score alongside it;
@@ -209,13 +209,13 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   bankruptcy (`specs/flow.md`).
 - The **data overlays** — the **traffic** (per-link load → gridlock), **utility**
   (served/unserved), and **pollution/land-value** overlays (`specs/controls.md`) are
-  drawn in code from the computed simulation fields. (The pollution *haze* is the
+  drawn in code from the computed simulation fields. (The pollution _haze_ is the
   produced particle system; the toggleable analytic overlay coloring tiles is code.)
 - **Selection and tool feedback** — the zone/road/rail/utility previews, the placement
   ghost, the hovered-tile cursor, illegal-placement rejection, and the cost readout
   (`specs/controls.md`).
 - The **pollution overlay's driving** — the logic that spawns and scales the produced
-  haze system from the tile pollution field (the *system* is produced; deciding where
+  haze system from the tile pollution field (the _system_ is produced; deciding where
   and how strongly to play it is code).
 
 ## Genuinely produce the assets — this is the point here

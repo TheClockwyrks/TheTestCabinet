@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
-import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  GradeBadge,
+  RatingBadge,
+  canonicalModelId,
+} from "@clockwyrks/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
+import { createAssetCache } from "../../data/assetCache";
 import { grafanaTraceUrl } from "../../data/grafanaTraceUrl";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useFindModel } from "../../data/useModels";
@@ -21,21 +28,25 @@ import {
   worstRating,
 } from "../../data/ratings";
 import { frameReviews } from "../../data/frameReview";
-import { describeRunState, hasPlayableOutcome } from "../../data/runState";
+import { describeRunState, hasPlayableBuild } from "../../data/runState";
 import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
-// link reads as active. The `verdict` key names the run's default tab, which
-// reads as "Verdict" for a human-reviewed run and "Results" for a
-// results-scored run (a performance run scored on fuel, an adversarial run on
-// its match records) — one route, two labels.
+// link reads as active. The `play` key names the run's landing tab (the bare run
+// URL) where the run has a playable build; the `verdict` key names its Verdict
+// tab, which leads instead when there is no Play tab and reads as "Verdict" for
+// a human-reviewed run and "Results" for a results-scored run (a performance run
+// scored on fuel, an adversarial run on its match records) — one route, two
+// labels.
 export type RunDetailTab =
   | "verdict"
   | "play"
   | "inputs"
   | "proof"
   | "metrics"
+  | "gg"
+  | "code"
   | "events"
   | "metadata";
 
@@ -51,14 +62,17 @@ interface RunDetailLayoutProps {
    * The tab body, given the resolved run, its framed review (if any), the raw
    * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
    * tabs read reviews from here rather than the console's global reviews map —
-   * and whether the run is already published (the review editor offers no Publish
-   * action once it is).
+   * whether the run is already published (the review editor offers no Publish
+   * action once it is), and whether it is validator-rated (its verdict is read off
+   * the record — reviewer overrides folded in — and reviews add the run-wide
+   * aesthetic channel).
    */
   children: (ctx: {
     run: RunRecord;
     review: ParsedWriteup | undefined;
     reviews: StoredReview[];
     published: boolean;
+    validatorRated: boolean;
   }) => ReactNode;
 }
 
@@ -69,7 +83,30 @@ interface RunDetailLayoutProps {
 // chrome immediately on a tab switch (the background fetch still refreshes it),
 // so the title and tabs stay stable across every tab — only a run never fetched
 // this session shows the full-body loading state, and only on its first view.
-const runDetailCache = new Map<string, RunDetail>();
+//
+// **Bounded at 12 runs.** This was a bare `Map` that nothing ever evicted, which
+// is the leak-with-a-lookup-on-it the "Immutable asset caching" rule in the UI
+// component doc exists to rule out: a console left open while a reviewer walks a
+// leaderboard held every run record it had ever resolved — each one a whole
+// `RunRecord` plus its full per-reviewer review list — for the life of the tab.
+// The unit here is RUNS, not tabs: all nine tabs of one run share one entry, so
+// 12 is twelve runs flipped between, which is more than a reviewer holds in play
+// in one comparison pass and far fewer than a session's whole walk. The values
+// are parsed documents with no portable size, so — like the other
+// parsed-document caches — the count is the whole bound.
+//
+// **Read with `peek`/`put`, never `load`.** A run record is NOT immutable the way
+// a produced artifact is: a review can be added to it and an unpublished run can
+// be published. That is why this layout refetches in the background on every
+// mount and overwrites the entry with what came back, and why `load` — which
+// answers a hit with the stored promise and starts no fetch — would be the wrong
+// primitive here. `peek` seeds the first frame; the refetch that follows `put`s
+// the fresh record, which is also what keeps this run at the fresh end of the
+// eviction order.
+const runDetailCache = createAssetCache<RunDetail>({
+  name: "run detail",
+  maxEntries: 12,
+});
 
 // Shared chrome for every run detail tab: the test case / harness title row, the
 // subject line with the harness version pushed to the right, and the tab
@@ -106,12 +143,18 @@ export function RunDetailLayout({
   // Seed from the session cache so a run already viewed renders its chrome on the
   // first frame of a tab switch, with no blank while the refresh fetch runs.
   const [detail, setDetail] = useState<RunDetail | null>(() =>
-    runId ? (runDetailCache.get(runId) ?? null) : null,
+    runId ? (runDetailCache.peek(runId) ?? null) : null,
   );
   const [fetching, setFetching] = useState(true);
+  // The read's own failure, kept apart from "the read settled with no record".
+  // A run whose fetch threw is a run this page could not READ, which says nothing
+  // about whether the store holds it — and a run the operator has just canceled
+  // is exactly the case where the two get confused.
+  const [failure, setFailure] = useState<string | null>(null);
   useEffect(() => {
     if (!runId) {
       setDetail(null);
+      setFailure(null);
       setFetching(false);
       return;
     }
@@ -119,15 +162,22 @@ export function RunDetailLayout({
     // Reset to whatever the cache holds for this id: the record itself on a tab
     // switch (chrome stays put), or null on a fresh run (the full-body loading
     // state shows until the fetch lands). Either way the fetch below refreshes it.
-    setDetail(runDetailCache.get(runId) ?? null);
+    setDetail(runDetailCache.peek(runId) ?? null);
+    setFailure(null);
     setFetching(true);
     fetchRunRef
       .current(runId)
       .then((resolved) => {
-        if (resolved) runDetailCache.set(runId, resolved);
-        if (active) setDetail(resolved);
+        if (!active) return;
+        if (resolved) runDetailCache.put(runId, resolved);
+        setDetail(resolved);
       })
-      .catch(() => active && setDetail(null))
+      .catch((cause: unknown) => {
+        if (!active) return;
+        // The cached record, if there is one, stays on screen: a refresh that
+        // failed must not take a page that was rendering fine down with it.
+        setFailure(String(cause));
+      })
       .finally(() => {
         if (active) setFetching(false);
       });
@@ -143,10 +193,15 @@ export function RunDetailLayout({
       <PageLayout>
         {fetching ? (
           // A full-body branded loading state (the topbar stays), centred rather
-          // than a small spinner stranded in the corner. "No run found" is shown
-          // only once the fetch settles with no record.
+          // than a small spinner stranded in the corner.
           <LoadingState label="Loading run…" />
+        ) : failure ? (
+          // The read FAILED. Whether the store holds this run is the question the
+          // failed read was asked, so the page reports the failure instead of
+          // answering it.
+          <LoadFailureState subject={`the run “${runId}”`} detail={failure} />
         ) : (
+          // The read SETTLED with no record: genuinely not there.
           <p className={styles.notFound}>
             No run found for &ldquo;{runId}&rdquo;.
           </p>
@@ -160,6 +215,22 @@ export function RunDetailLayout({
   // can link to the model page. `routes.modelDetail` keys on the model's slug,
   // and an id with no catalog match falls back to the plain canonical id text.
   const model = findModel(subject.modelId, subject.harnessSlug);
+  // How many models *besides* the one named above the run bound. A gg run binds one
+  // model per agent profile, so `subject.modelId` — its primary — is the whole story
+  // only when every profile shares it; naming it alone would report a run that spent on
+  // five models as a single-model run. The extras read as a `+N` beside the primary
+  // (the same convention the launch summary uses), with the full list on hover, so the
+  // header stays a subject line rather than becoming a roster. Zero for every non-gg
+  // run, which binds exactly one model.
+  const otherModelIds = subject.ggCapabilitySet
+    ? [
+        ...new Set(
+          (subject.ggCapabilitySet.agents ?? [])
+            .map((a) => a.modelId)
+            .filter((id) => id && id !== subject.modelId),
+        ),
+      ]
+    : [];
   const isLocal = localIds.has(run.id);
   // The run's per-reviewer breakdown, fetched with the record — the detail layer's
   // source of truth for reviews (the console's global reviews map is no longer
@@ -186,13 +257,27 @@ export function RunDetailLayout({
   // run (matches) — has no reviewer verdict; the two share the auto-scored
   // Results tab and skip every review affordance.
   const isResultsScored = isPerformance || isAdversarial;
-  // The headline badge shows the run's overall rating — the worst across its
-  // per-domain ratings. A results-scored run has no reviewer rating to show, so
-  // it shows no badge.
-  const overallRating =
-    review && !isResultsScored
-      ? worstRating(review.ratings.map((r) => r.rating))
-      : null;
+  // Whether the run is validator-rated — the store's word, lifted with the detail.
+  const validatorRated = detail?.validatorRated ?? false;
+  // The headline badge shows the run's overall FUNCTIONAL rating. On a legacy run
+  // that is the worst across the review's per-domain ratings; on a validator-rated
+  // run it is the store's validator-decided rating, present from completion and
+  // never the reviewer's to give — so a local writeup cannot displace it. A
+  // results-scored run has no reviewer rating to show, so it shows no badge.
+  const overallRating = isResultsScored
+    ? null
+    : validatorRated
+      ? (detail?.rating ?? null)
+      : review
+        ? worstRating(review.ratings.map((r) => r.rating))
+        : null;
+  // The AESTHETIC badge beside it: the worst run-wide tier any reviewer gave (a
+  // local writeup's tier wins, as an in-progress edit must show before it is
+  // published), or nothing while no review has rated the channel — which is
+  // every legacy run, whose reviews carry none.
+  const overallAesthetic = isResultsScored
+    ? null
+    : (review?.aesthetic ?? detail?.aesthetic ?? null);
   // A game jam declares no scoring domains, so it has no rating to be worst
   // across: the reviewer's whole-game overall grade is its headline badge
   // instead. It rides the aggregate review's checklist under the reserved
@@ -201,19 +286,15 @@ export function RunDetailLayout({
   const overallGrade =
     review && !isResultsScored ? overallGradeOf(review.checklist) : null;
 
-  // None of an asset-generation run (a static asset), an adversarial run (a match
-  // replay), or a performance run (a wasm engine scored on fuel) produces a
-  // hostable playable build, so none has a Play tab: an asset run shows its result
-  // on the Verdict tab, while a performance run and an adversarial run each show
-  // their result on the Results tab (fuel scores and match records respectively).
-  // A run that never produced a build to host (catastrophic, timed-out, or
-  // infrastructure) likewise has no Play tab regardless of type
-  // (`hasPlayableOutcome` is the single gate for that distinction).
-  const hasPlayableBuild =
-    hasPlayableOutcome(run.status.state) &&
-    run.subject.testType !== "asset-generation" &&
-    run.subject.testType !== "adversarial" &&
-    !isPerformance;
+  // Whether the run has a build to host on a Play tab (`hasPlayableBuild` is the
+  // single gate — it excludes the three types with nothing playable and any run
+  // whose state produced no build). With one, Play is the landing tab at the bare
+  // run URL and leads the strip; without one there is no Play tab at all — the
+  // bare URL redirects to the Verdict tab, which leads as before: an asset run
+  // shows its result on the Verdict tab, while a performance run and an
+  // adversarial run each show their result on the Results tab (fuel scores and
+  // match records respectively).
+  const playable = hasPlayableBuild(run);
   // The Proof tab is only meaningful when there is proof to show, so a case (or
   // game jam) that requests none hides it entirely rather than showing an empty
   // "requests no proof" page. What counts is the proof-of-implementation media a
@@ -225,20 +306,41 @@ export function RunDetailLayout({
   // declares no media of its own — so neither has anything left to prove on a
   // separate tab.
   const hasProof = !isAdversarial && run.validation.proofs.length > 0;
+  // Whether this run was conducted by gg, The Test Cabinet's own harness. Keyed off
+  // the recorded capability set (a gg run always has one), so an old record whose
+  // harness slug reads differently still resolves correctly.
+  const isGg = subject.harnessSlug === "gg" || Boolean(subject.ggCapabilitySet);
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
+    // Play first when present — it is the landing tab at the bare run URL —
+    // then Verdict/Results, which leads when there is nothing to play.
+    ...(playable
+      ? [{ key: "play" as const, label: "Play", to: routes.runDetail(run.id) }]
+      : []),
     {
       key: "verdict",
       label: isResultsScored ? "Results" : "Verdict",
-      to: routes.runDetail(run.id),
+      to: routes.runVerdict(run.id),
     },
-    ...(hasPlayableBuild
-      ? [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]
-      : []),
     { key: "inputs", label: "Inputs", to: routes.runInputs(run.id) },
     ...(hasProof
       ? [{ key: "proof" as const, label: "Proof", to: routes.runProof(run.id) }]
       : []),
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
+    // A gg run is the one run type The Test Cabinet has first-party telemetry for,
+    // so it gets the rich view its live monitor showed — rebuilt from the recorded
+    // stream — rather than losing it the moment the run ends.
+    ...(isGg
+      ? [{ key: "gg" as const, label: "gg", to: routes.runGg(run.id) }]
+      : []),
+    // The static read of the code the model wrote. Gated on the run actually carrying an
+    // analysis rather than on its harness: the analyzer is harness-agnostic (analysing a
+    // directory involves no harness-specific work, so restricting the tab would cost
+    // coverage for nothing), but the corpus is deliberately not backfilled, so every run
+    // recorded before it shipped has nothing to show and gets no tab rather than an empty
+    // one.
+    ...(run.codeAnalysis
+      ? [{ key: "code" as const, label: "Code", to: routes.runCode(run.id) }]
+      : []),
     { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },
   ];
@@ -262,6 +364,7 @@ export function RunDetailLayout({
             ) : (
               overallGrade && <GradeBadge status={overallGrade} />
             )}
+            {overallAesthetic && <AestheticBadge rating={overallAesthetic} />}
             {isLocal && <UnpublishedTag />}
           </h2>
           <span className={styles.harness}>{subject.harnessSlug}</span>
@@ -277,9 +380,38 @@ export function RunDetailLayout({
               </Link>
             ) : (
               canonicalModelId(subject.modelId)
+            )}
+            {otherModelIds.length > 0 && (
+              <span
+                className={styles.extraModels}
+                title={otherModelIds.join(", ")}
+              >
+                {" "}
+                +{otherModelIds.length}
+              </span>
             )}{" "}
             &middot; test case {subject.testCaseVersion} &middot;{" "}
             <span className={styles.variant}>{subject.variant}</span> variant
+            &middot;{" "}
+            {/* The engine sits beside the variant because it is the same kind of
+                fact: a run dimension chosen at launch that decides what the build
+                was written against. A result is only comparable with another
+                result on the SAME engine, so a reviewer reading this page has to
+                be able to see which one produced it without opening Metadata.
+                The vendored runtime version rides in the tooltip rather than the
+                line — it matters when two runs of one engine disagree, which is
+                not most of the time. */}
+            <span
+              className={styles.engine}
+              title={
+                subject.engineVersion
+                  ? `Engine runtime v${subject.engineVersion}`
+                  : undefined
+              }
+            >
+              {subject.engineSlug}
+            </span>{" "}
+            engine
           </span>
           {subject.harnessVersion && (
             <span className={styles.harnessVersion}>
@@ -338,7 +470,7 @@ export function RunDetailLayout({
             — without this gate `useWorkers` throws and blanks the run page. */}
           {/* Download the run's whole produced tree — source, build, media, and logs
             — as one gzip tar from the artifact service. Gated on `canExecute`: this
-            is an internal affordance for the consoles (web + Tauri), not something
+            is an internal affordance for the web console, not something
             the public gallery offers, and the static site supplies no resolver
             anyway. A run whose tree the host cannot serve resolves to null and the
             link is simply absent.
@@ -386,11 +518,26 @@ export function RunDetailLayout({
               </a>
             );
           })()}
-          {canExecute && <RunDeleteControl runId={run.id} />}
+          {/* The run's OWN publish state, off the record this page just resolved,
+              rather than the produced worklist — which lags behind a run that was
+              canceled moments ago and used to make its Delete control disappear
+              entirely until the page was reloaded. */}
+          {canExecute && (
+            <RunDeleteControl
+              runId={run.id}
+              published={detail?.published ?? false}
+            />
+          )}
         </div>
       </div>
 
-      {children({ run, review, reviews, published: detail?.published ?? false })}
+      {children({
+        run,
+        review,
+        reviews,
+        published: detail?.published ?? false,
+        validatorRated,
+      })}
     </PageLayout>
   );
 }

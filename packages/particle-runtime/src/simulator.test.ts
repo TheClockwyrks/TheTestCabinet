@@ -5,7 +5,10 @@ import type { ParticleSystem } from "./contract";
 import { ParticleSimulator } from "./simulator";
 
 function loadSystem(name: string): ParticleSystem {
-  const raw = readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), "utf8");
+  const raw = readFileSync(
+    fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)),
+    "utf8",
+  );
   return JSON.parse(raw) as ParticleSystem;
 }
 
@@ -73,8 +76,14 @@ describe("ParticleSimulator — loop vs one-shot", () => {
 
   it("a looping burst re-fires after it has decayed, where a one-shot never does", () => {
     // Same effect, looping vs one-shot: both decay to empty; only the loop recovers.
-    const looping = new ParticleSimulator({ ...burst, loop: true }, { seed: 1 });
-    const oneShot = new ParticleSimulator({ ...burst, loop: false }, { seed: 1 });
+    const looping = new ParticleSimulator(
+      { ...burst, loop: true },
+      { seed: 1 },
+    );
+    const oneShot = new ParticleSimulator(
+      { ...burst, loop: false },
+      { seed: 1 },
+    );
 
     // Two full cycles, so a looping burst crosses the duration boundary and re-fires.
     const loopCounts = play(looping, burst.durationMs * 2, burst.fps);
@@ -215,7 +224,10 @@ describe("ParticleSimulator — the live-particle cap", () => {
   });
 
   it("honours a lower `maxParticles` for a constrained client", () => {
-    const sim = new ParticleSimulator(runaway(), { seed: 1, maxParticles: 250 });
+    const sim = new ParticleSimulator(runaway(), {
+      seed: 1,
+      maxParticles: 250,
+    });
     play(sim, 2000, 60);
     expect(sim.liveCount).toBe(250);
   });

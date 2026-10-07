@@ -1,5 +1,275 @@
 {
   "$defs": {
+    "GgErrorSummary": {
+      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn, the same judgement the\n[error ceilings](GgRunLimits) are enforced on. Without the rollup a run that failed a third of\nits turns and finished anyway would be, in the durable record, indistinguishable from one that\nnever failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)\n  or in any per-kind or per-type counter. The program handled it, which is the entire point of\n  the typed tool surface, and charging it to the model's error budget would make the one\n  capability that *expects* failures the one that cannot survive them. It is counted — see\n  [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a\n  model fighting the same `not-found` forty times is among the most actionable facts a run has.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
+      "properties": {
+        "byType": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind\n— the breakdown a *\"top error types\"* ranking is built from, keyed by\n[`GgTurnErrorType::wire_id`].\n\nTwo invariants hold: it sums to [`errors`](Self::errors), and regrouping it by\n[`GgTurnErrorType::kind`] reproduces the five named counters above exactly.\nThe named counters stay because persisted records, stored queries and the console's\nside-by-side split all read them; this joins them rather than replacing them.\n\n# Why a string key rather than the enum\n\nA map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first\ntime a newer gg wrote a type an older backend or console had never heard of — a run recorded\ntoday must still read back tomorrow, which is exactly what an open breakdown is for. With a\nstring key an unknown type degrades to one unlabelled row in a ranking instead. The\ncompile-time totality this codebase normally insists on is not lost, only moved: the\nproducing side is the enum, and the generated label table is total over it, so a type cannot\nbe added without being labelled.\n\nEmpty — and omitted from the wire — for a run with no errors, and only for one: it sums to\n[`errors`](Self::errors), so an empty map and a zero there are the same statement.",
+          "type": "object"
+        },
+        "errors": {
+          "description": "Turns whose outcome was an [error](GgTurnOutcome::Error). At most [`turns`](Self::turns), and\nexactly the sum of the per-kind counters below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAbortChars": {
+          "description": "Characters of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts\n— the companion of [`loop_abort_words`](Self::loop_abort_words), and the finer of the two\nmeasures, since a reply's final partial word is never counted as a word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAbortWords": {
+          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price here: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill. Its price is read back at session end from\nOpenRouter's generation endpoint into the run's [total](GgSessionSummary::cost) and never\nits [work](GgSessionSummary::work_cost), since the reply produced no program and no tool\ncall. A reply the lookup could not price is counted in\n[`GgSessionSummary::loop_abort_unpriced`].",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAborts": {
+          "description": "Responses discarded mid-stream by [loop detection](GgLoopDetection). **Not** an error turn —\na discarded attempt is retried, and the turn is judged on what the retry produced — and\ncounted here because it is money and wall-clock spent on nothing, which is the cost the\ncapability exists to bound and the figure that says whether arming it was worth it.\n\nAlways `0` for a run whose agents all left loop detection disarmed, which is the default.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxConsecutive": {
+          "description": "The longest **consecutive-error run any single agent reached** — the peak of the same\ncounter [`max_consecutive_errors`](GgRunLimits::max_consecutive_errors) is enforced on.\n\nA maximum over agents rather than a run-wide streak: the counter is per agent (turns from\ntwo agents interleave arbitrarily on a parallel run, so a run-wide streak would be an\nartefact of scheduling), which is why each `TurnOutcome` event carries its agent's running\ncount rather than leaving this to be re-derived here.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "missingCompletion": {
+          "description": "Errors of kind [`missing_completion`](GgTurnErrorKind::MissingCompletion).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelApi": {
+          "description": "Errors of kind [`model_api`](GgTurnErrorKind::ModelApi) — including a reply that\n[looped](GgLoopDetection) on every attempt.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "programFault": {
+          "description": "Errors of kind [`program_fault`](GgTurnErrorKind::ProgramFault).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sandboxLimit": {
+          "description": "Errors of kind [`sandbox_limit`](GgTurnErrorKind::SandboxLimit).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "toolFailures": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "**Calls** that failed, by [failure class](GgCallFailure) — a different population from\neverything above, which counts *turns*.\n\nFolded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it\ncounts every failed tool dispatch in either execution mode, whether or not the program that\nmade it caught the failure and carried on. Keyed by [`GgCallFailure::wire_id`], and open for\nthe reason [`by_type`](Self::by_type) is.\n\nIt counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that\nnever reached a tool is not here: a carve-out no tool backs, and a call the membrane refused\nbefore dispatch, have an [`ApiResult`](GgTelemetryKind::ApiResult) carrying their class and\nno `ToolResult` at all. Those are on the stream and a console folds them from there; they\nare deliberately not summed into this map, because a rollup whose population is \"some of one\nsurface plus some of another\" is a number nobody can check.",
+          "type": "object"
+        },
+        "transpile": {
+          "description": "Errors of kind [`transpile`](GgTurnErrorKind::Transpile).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "turns": {
+          "description": "Turns recorded across every agent, whatever their outcome — the denominator every rate here\nis read against, and one per model call the run made.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turns",
+        "errors",
+        "maxConsecutive",
+        "modelApi",
+        "transpile",
+        "programFault",
+        "sandboxLimit",
+        "missingCompletion",
+        "loopAborts",
+        "loopAbortWords",
+        "loopAbortChars"
+      ],
+      "type": "object"
+    },
+    "GgLoopDetection": {
+      "additionalProperties": false,
+      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\n**An armed detector writes all five knobs.** What the rule trips on is the whole set of them\ntogether — a lookback, a frequency, a breadth, a persistence and a backstop — so a detector\narmed on figures nobody chose measures gg rather than the model, and an armed detector missing\nany of them refuses the launch. An **unarmed** one owes none of them, and a knob written on one\nis still read and still judged as written, which is what keeps the armed and unarmed arms of one\ncomparison the same document with one switch moved. A knob **set** to a value that cannot bound\nanything — a zero window, a zero threshold, a demand for no offenders — is a launch **failure**,\non the same terms as [`GgRunLimits`].\n\nThe one exception is a declaration gg arms exactly as written and which is merely provably\ninert: [`min_offenders`](Self::min_offenders) above\n[`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the\nletter, so it warns rather than refusing.\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether the detector runs for this agent at all. `false`, which is what a profile that says\nnothing about loop detection reads as, leaves the agent on gg's ordinary non-streaming\ntransport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
+          "type": "boolean"
+        },
+        "maxResponseChars": {
+          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Written and required on the terms\n[`window_words`](Self::window_words) is; `0` turns the backstop off and leaves only the\nrepetition rule, which is a declaration rather than an omission.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minOffenders": {
+          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Written and required on the terms [`window_words`](Self::window_words) is.\n\nMore than one is worth asking for because a single very common token (`the`, `0,`, a brace)\nis ordinary; a loop repeats a whole fragment, so it saturates several words together.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minSaturatedRun": {
+          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "repeatThreshold": {
+          "description": "`P` — how many times a single word may occur within the [window](Self::window_words) before\nit counts as an *offender*. Written and required on the terms\n[`window_words`](Self::window_words) is.\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "windowWords": {
+          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive, and the minimum sample: the repetition rule cannot fire until\nthis many words have arrived.\n\nOne of the five knobs an **armed** detector writes. What the rule trips on is the five of\nthem together, so a detector armed on figures nobody chose would measure gg rather than the\nmodel, and an armed detector missing any of them refuses the launch. An unarmed detector owes\nnone of them, and a knob written on one is still read and still judged as written.\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "GgProviderStat": {
+      "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
+      "properties": {
+        "cacheMisses": {
+          "description": "Replies this provider served that were an unexpected cache miss, folded from the\n[`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a\nprovider that never missed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "calls": {
+          "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when any of them reported one."
+        },
+        "errors": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] — the same open,\nstring-keyed breakdown [`GgErrorSummary::by_type`] is, and omitted when empty on the same\nterms.",
+          "type": "object"
+        },
+        "modelId": {
+          "description": "The model this slice's agent was running on, as the agent's own\n[`Usage`](GgTelemetryKind::Usage) deltas named it. `None` for a turn or rejection recorded\nbefore the agent's first usage delta named one.",
+          "type": ["string", "null"]
+        },
+        "provider": {
+          "description": "OpenRouter's name for the upstream provider that served this slice's calls. `None` for the\nslice of calls that named none — a gateway that stamps no provider, or a turn whose call\nproduced no reply to name one (a model timeout).",
+          "type": ["string", "null"]
+        },
+        "rejected": {
+          "description": "Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this\nslice's provider served. `0`, and omitted, for the ordinary slice with none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stalls": {
+          "description": "Requests sent to this provider whose stream went\n[`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from\nthe [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider\nthat never stalled.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens those calls reported, summed in the shared [`TokenCounts`] units."
+        },
+        "turns": {
+          "description": "Turns attributed to this slice: each [`TurnOutcome`](GgTelemetryKind::TurnOutcome) lands on\nthe provider its own call named, or on the providerless slice when it named none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "working": {
+          "description": "The turns among them that worked — a [progressed](GgTurnOutcome::Progressed) or\n[finished](GgTurnOutcome::Finished) outcome.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["calls", "tokens", "turns", "working"],
+      "type": "object"
+    },
+    "GgRejectedResponses": {
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage\nnever counts as the run's **work** — a degenerate generation must not make a run's work look\nexpensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every\nother request's, and \"how often does this model cap out, and what did those attempts cost?\" is\na question the owner asks of the durable record. Folded from the\n[`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when the provider reported any — in the run's\n[total cost](GgSessionSummary::cost), never its\n[work cost](GgSessionSummary::work_cost)."
+        },
+        "count": {
+          "description": "How many replies were rejected.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens the provider billed for them, summed — absent from the run's\n[work](GgSessionSummary::work_cost) figures by design, and inside its\n[total](GgSessionSummary::cost) ones like every other request's."
+        }
+      },
+      "required": ["count", "tokens"],
+      "type": "object"
+    },
+    "GgUndocumentedCalls": {
+      "description": "**Calls a model wrote without having read what they do** — the measurement of whether a model\nfollows the one discipline [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) discovery is built\non.\n\ngg's prompt names the modules an agent holds and no function inside any of them, so a model\ncannot know a call's signature until it has searched the documentation and opened a\n[documentation view](GgContextSource::DocsView) of the name. A view a program opens arrives in\nthe window on the turn *after* the program that opened it, which is why the prompt states the\ndiscipline as *open a documentation view of each function you intend to call, and write the call\non a later turn*. This counts the calls that broke it: the operation was called while no\ndocumentation view of it stood in the window from an earlier turn.\n\n# It is a measurement and never a gate\n\nNothing is refused, nothing is retried and no [turn outcome](GgTurnOutcome) changes: the program\ncompiled, ran and did its work, so no [error ceiling](GgRunLimits) observes any of this and none\nof it reaches the [error rollup](GgErrorSummary). What it is evidence about is the **model**. A\nmodel that repeatedly calls functions it never looked up is writing signatures from memory, and\na run where that number is large is a run whose model should not be given this surface — which\nis a conclusion nobody could reach from a record that only showed the calls that happened to\ncompile.\n\nIt is a **lower bound**, and deliberately so. A guessed signature that did not compile never\nreaches a call site, so it is counted nowhere here; what is counted is the guess that happened to\nbe right about the shape while still being a guess.\n\n# Why the operations are carried and not only the count\n\nA bare count says a model guessed and not at what. Forty calls of `files.read_file` is a model\nthat never opened the one page it needed; forty different operations once each is a model\nignoring the mechanism outright. Those are different findings with different remedies, and only\nthe breakdown tells them apart.",
+      "properties": {
+        "calls": {
+          "description": "How many such calls were made. Exactly the sum of [`operations`](Self::operations)'s values.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operations": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The same calls broken down by **which** operation was called, keyed by gg's own rendered\n[operation id](GgTelemetryKind::ApiCall) (`files.read_file`) rather than by any arm's\nspelling — so eleven language arms' findings are counted under one key.\n\nOpen (a string key) for the reason [`GgErrorSummary::by_type`] is: an operation added to gg's\nvocabulary joins the breakdown without a schema change, and a reader that has never heard of\none degrades to an unlabelled row rather than failing to read the record at all.\n\nEmpty — and omitted from the wire — exactly when [`calls`](Self::calls) is `0`.",
+          "type": "object"
+        }
+      },
+      "required": ["calls"],
+      "type": "object"
+    },
     "LinksOut": {
       "description": "A run's outbound links as the snapshot carries them.",
       "properties": {
@@ -41,6 +311,37 @@
       "required": ["id", "kind", "key"],
       "type": "object"
     },
+    "RunShowcase": {
+      "description": "A run's showcase: the model's own presentation of the game it built, captured\nonto the record from the produced tree's `showcase/` directory (see\n`docs/showcase.md`). The description is `showcase/showcase.md`; the carousel is\n`showcase/showcase.toml`'s `[[media]]` tables, in their declared order.\n\nThe media *bytes* do not ride the record — they are uploaded from the produced\ntree and served per run at `/runs/<id>/showcase/<file>` alongside the run's\nproof, asset, and validation media; this block carries only the description\ntext and the carousel's file names, captions, and kinds.",
+      "properties": {
+        "description": {
+          "description": "The player-facing markdown description, in the style of a store page. It may\nreference images beside it in `showcase/` by bare relative path\n(`![Title](title.png)`), which a renderer resolves against the run's served\nshowcase files. Capped at capture; a longer description is truncated on a\nchar boundary with a trailing marker.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in the order the model declared it — carousel order is\npresentation order. Capped at capture; entries whose files were missing or\noversized were dropped there, so every entry named here was present and\nwithin bounds when the record was assembled.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMedia"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
+      "type": "object"
+    },
+    "RunShowcaseOut": {
+      "description": "A [showcase](test_cabinet_core::RunShowcase) file exposed in a per-run document —\na carousel media file, or an image the description references. `file` is the\nrecorded name the gallery requests (the plain file name in the produced tree's\n`showcase/`); `key` is its snapshot-relative object key, whose bytes are the\nmedia as published — a video transcoded to `.mp4`, so `key` and `file` differ in\nextension for a clip while the name the UI requests still resolves through the\nstatic gallery's map (the validation-media convention).",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": ["file", "key"],
+      "type": "object"
+    },
     "RunValidationMediaOut": {
       "description": "A synthesized *actual* validation media file exposed in a per-run document — one\ndebug-script output captured from the model's build. `file` is the flat\n`<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the\noutput's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`\nis its snapshot-relative object key, whose bytes are the media as published — a\nvideo transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while\nthe flat name the UI requests still resolves through the static gallery's map.",
       "properties": {
@@ -52,6 +353,25 @@
         }
       },
       "required": ["file", "key"],
+      "type": "object"
+    },
+    "ShowcaseMedia": {
+      "description": "One entry of a [showcase](RunShowcase)'s media carousel.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the run's `showcase/` directory (a plain file name,\nno subdirectories), which is also its name under the run's served\n`/runs/<id>/showcase/<file>` route.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind",
+          "description": "The kind of media, inferred from the file's extension by the same rule as a\ndeclared proof ([`MediaKind::from_path`]): `.png` an image, `.json.gz` a\ndraw-command replay, `.webm` a video."
+        },
+        "name": {
+          "description": "The model's short caption for this entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
       "type": "object"
     }
   },
@@ -65,6 +385,10 @@
         "$ref": "#/$defs/RunAssetOut"
       },
       "type": "array"
+    },
+    "codeAnalysisKey": {
+      "description": "The snapshot-relative key of the run's **unbounded**\n[code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —\nevery authored file, every scored function, every import edge, cycle and clone\ngroup — published as its own object so the public Code tab can fetch it on demand\nrather than inflating this document (and therefore every run's page load) with a\ntier only one tab reads.\n\nContent-stable and **generation-keyed**\n(`media/runs/<id>/code-analysis/v<analyzerVersion>.json`), so a refresh that finds\nthe object already in the bucket references it without re-reading or re-uploading\nthe bytes — and a *re-analysis under a newer generation* mints a different key\nrather than silently overwriting figures a published snapshot still points at.\n\n`None` when the run was never analysed, and also when it was but the document's\nbytes are no longer readable (the backend store is ephemeral) — the bounded summary\non the record survives either way, so the tab degrades to the figures instead of\noffering a link that 404s.",
+      "type": ["string", "null"]
     },
     "events": {
       "description": "The run's recorded normalized event stream (a JSON array), omitted when the\nrun captured none. The site emits this as a per-run static asset its Events\ntab fetches; raw harness output is never included."
@@ -94,6 +418,13 @@
       "minimum": 0,
       "type": "integer"
     },
+    "showcaseMedia": {
+      "description": "The run's [showcase](test_cabinet_core::RunShowcase) files — the carousel\nmedia plus any image the description references — named by snapshot-relative\nkey. Empty for a run whose record carries no showcase (every record written\nbefore the field existed), and possibly a subset of the carousel when a\nfile's bytes could not be read. Always emitted (possibly empty); the static\ngallery treats it as optional so a snapshot written before this field\nexisted still loads.",
+      "items": {
+        "$ref": "#/$defs/RunShowcaseOut"
+      },
+      "type": "array"
+    },
     "validationMedia": {
       "description": "The run's synthesized *actual* automated-validation media (the model build's\nper-review-item debug-script outputs), named by snapshot-relative key. Empty\nwhen the run declares no debug scripts (or none produced media). The case-scoped\n*baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always\nemitted (possibly empty); the static gallery treats it as optional so a snapshot\nwritten before this field existed still loads.",
       "items": {
@@ -109,7 +440,8 @@
     "links",
     "proofMedia",
     "validationMedia",
-    "assetMedia"
+    "assetMedia",
+    "showcaseMedia"
   ],
   "title": "PerRun",
   "type": "object"

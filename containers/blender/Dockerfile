@@ -9,7 +9,7 @@
 # `apps/docs/src/content/docs/testing/asset-generation/blender-binaries.md`).
 #
 # UNLIKE EVERY OTHER RUN IMAGE, this one is NOT built `FROM` the shared base image. The
-# reason is Blender itself. Blender ships **official Linux desktop builds for x86-64 only**
+# reason is Blender itself. Blender ships **official Linux builds for x86-64 only**
 # — `download.blender.org` has no `linux-arm64` tarball, and neither conda-forge nor the
 # PyPI `bpy` wheels cover linux-aarch64 — so on the arm64 hosts this project runs on there
 # is no upstream Blender to bake in. The only modern, arch-parity Blender that installs

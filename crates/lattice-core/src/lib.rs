@@ -66,6 +66,20 @@ pub mod playback;
 #[cfg(all(target_arch = "wasm32", feature = "playback-abi"))]
 mod abi;
 
+/// How many ticks from tick 0 browser playback shows — the stretch of a scenario a
+/// viewer can actually watch.
+///
+/// Owned here, unconditionally, because three otherwise-unrelated places must agree
+/// on it and none of them can be the owner: `lattice-sdk`'s playback ABI bounds a
+/// submission's cached frames to it, the case's `gen-reference.mjs` cuts the
+/// reference scenarios to it, and the scenario generator (`lattice-cli`'s `gen`)
+/// schedules a graded snapshot **on** it. That last one is why the constant is not
+/// behind the `playback` feature: a scored snapshot schedule that did not reach into
+/// the watched window would leave every tick a reviewer can see ungraded, which is
+/// exactly how an engine's playback came to differ from the reference while its run
+/// passed.
+pub const PLAYBACK_WINDOW_TICKS: u64 = 2500;
+
 // Re-export the most-used types at the crate root for ergonomic callers (the CLI,
 // the host, the SDK, the reference engines).
 pub use checksum::{checksum_string, fnv1a64};
@@ -73,7 +87,7 @@ pub use engine::Engine;
 pub use scenario::{Dir, Entity, Grid, Lane, SCENARIO_VERSION, Scenario, ScenarioError};
 pub use state::{
     AssemblerState, BeltItem, BeltState, EntityState, InserterPhase, InserterState, SinkState,
-    Snapshot, SplitterState, canonical_bytes,
+    Snapshot, SplitterState, UnknownItem, canonical_bytes, canonical_bytes_checked,
 };
 pub use world::World;
 

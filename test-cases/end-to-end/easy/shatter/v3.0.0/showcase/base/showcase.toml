@@ -1,0 +1,14 @@
+# The `base` case showcase, captured from `references/structured-2d/base` in live
+# play. `showcase/capture/README.md` records how each file was produced.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "Half a minute of play, a wave cleared and the saucer hunting"
+
+[[media]]
+file = "mid-wave.png"
+name = "A shot streaking away across a mid-wave field"
+
+[[media]]
+file = "the-saucer.png"
+name = "The saucer weaving in, its shot already away"

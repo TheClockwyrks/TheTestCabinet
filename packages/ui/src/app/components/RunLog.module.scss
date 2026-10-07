@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 @use "../styles/surfaces" as s;
 @use "../styles/breakpoints" as bp;
 
@@ -51,9 +52,10 @@
   // visible edge. Without this the grid tracks overflow the box (which stays at
   // the panel width) once resized columns exceed it, leaving the styling to stop
   // mid-row while the cells scroll on past. `fit-content` still collapses to the
-  // panel at rest, so flexible tracks keep absorbing slack and cells truncate;
-  // the per-scope `min-width` below (raised to at least `100%`) keeps every row
-  // filling the visible width.
+  // panel when the columns fit, so flexible tracks keep absorbing slack, and
+  // `min-width` keeps every row filling the visible width. When they don't fit,
+  // each flexible track holds its floor (`minmax(<min>px, <n>fr)`, set by
+  // useResizableColumns) and the row grows past the panel, which then scrolls.
   width: fit-content;
   min-width: 100%;
 }
@@ -65,25 +67,29 @@
   // identical when unset or for a non-resizable instance.
   grid-template-columns: var(
     --ttc-cols,
-    1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem
+    1.2rem minmax(96px, 1fr) 6.5rem 5.5rem 5.5rem minmax(112px, 1.6fr) 5rem 5rem
+      9rem
   );
-  min-width: max(100%, 46rem);
 }
 
 .log[data-scope="variant"] .row {
   // caret · harness · model · tokens · cost · rating
   // Resizable via `--ttc-cols` (see the global scope above); the fallback is the
   // resting template used until the user drags a header boundary.
-  grid-template-columns: var(--ttc-cols, 1.2rem 7rem 1.6fr 5rem 5rem 6rem);
-  min-width: max(100%, 30rem);
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem 6.5rem minmax(112px, 1.6fr) 5rem 5rem 9rem
+  );
 }
 
 .log[data-scope="model"] .row {
   // caret · test · harness · variant · tokens · cost · rating
   // Resizable via `--ttc-cols` (see the global scope above); the fallback is the
   // resting template used until the user drags a header boundary.
-  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 5rem 5rem 6rem);
-  min-width: max(100%, 40rem);
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem minmax(96px, 1fr) 6.5rem 5.5rem 5rem 5rem 9rem
+  );
 }
 
 .log[data-scope="reviews"] .row {
@@ -93,9 +99,8 @@
   // fallback is the resting template used until the user drags a header boundary.
   grid-template-columns: var(
     --ttc-cols,
-    1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem
+    1.2rem minmax(96px, 1fr) 6.5rem 5.5rem minmax(112px, 1.6fr) 9rem 9rem
   );
-  min-width: max(100%, 46rem);
 }
 
 // Dim the reviews table while a new page loads, keeping the prior rows in place
@@ -136,7 +141,7 @@ a.row {
 
   a.row:hover & {
     opacity: 1;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -312,12 +317,21 @@ a.row:hover .selectCell .spinner,
     color: t.$color-negative;
   }
 
-  // A harness error is a distinct kind of failure (the harness exited early), and
-  // a hang is its silent twin, so tint both with the caution color to set them
-  // apart from the model-output tiers.
+  // A harness error is a distinct kind of failure (the harness exited early), a
+  // hang is its silent twin, and a spent execution ceiling is the harness stopping
+  // itself on a bound the configuration armed, so tint all three with the caution
+  // color to set them apart from the model-output tiers.
   &[data-state="harness_error"],
+  &[data-state="limit_exceeded"],
   &[data-state="hung"] {
     color: t.$color-warning;
+  }
+
+  // A canceled run is not a failure at all — an operator stopped it. Mute it so it
+  // reads as a deliberate stop rather than something the model did wrong, while
+  // still being visible in the list.
+  &[data-state="canceled"] {
+    color: t.$color-text-muted;
   }
 }
 
@@ -407,6 +421,8 @@ a.row:hover .selectCell .spinner,
 .rating {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   font-size: 0.7rem;
 }
 
@@ -465,8 +481,7 @@ a.row:hover .selectCell .spinner,
     width: auto;
   }
 
-  // Neutralize the per-scope fixed templates / min-widths so nothing forces an
-  // overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
+  // Neutralize the per-scope fixed templates so nothing forces an overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
   .log[data-scope="global"] .row,
   .log[data-scope="variant"] .row,
   .log[data-scope="model"] .row,
@@ -487,6 +502,17 @@ a.row:hover .selectCell .spinner,
   // spinner still flows into the card and pins to its corner via the rule below.
   .selectCell {
     display: contents;
+  }
+
+  // `display: contents` removes the cell's box but not its `::before`: that
+  // transparent hit layer is still generated, and with the cell no longer a
+  // positioning context its absolute insets resolve against the log's `.wrap`
+  // instead, so it stretches over the whole log. Every tap on any card then lands
+  // on the checkbox's click handler, which swallows the event to keep a toggle
+  // from navigating — and nothing ever opens a run. There is no checkbox to hit on
+  // a phone, so the hit layer goes with it.
+  .selectCell::before {
+    display: none;
   }
 
   .selectBox {

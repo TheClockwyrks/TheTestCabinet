@@ -7,7 +7,8 @@ use foray_core::board::Team;
 
 use super::*;
 use crate::test_case::{
-    AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
+    AssetDimension, AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec,
+    TestCaseVersion, TestType,
 };
 
 /// The committed Foray case folder, where the baseline `references/*.wasm` live.
@@ -19,10 +20,12 @@ fn case_root() -> PathBuf {
 /// resolves quickly even when neither baseline sweeps.
 fn foray_version(max_ticks: u32) -> TestCaseVersion {
     TestCaseVersion {
+        toolchain: None,
         instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),
@@ -62,6 +65,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -69,11 +73,13 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
-        common_workspace: Vec::new(),
+        common_workspace: Default::default(),
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
+        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

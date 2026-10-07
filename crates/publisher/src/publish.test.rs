@@ -84,7 +84,11 @@ fn sample_record() -> RunRecord {
             harness_slug: HarnessSlug::Codex,
             harness_version: Some("0.139.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
+            engine_slug: "none".to_string(),
+            engine_version: None,
             model_id: "gpt-5.4-mini".to_string(),
+            gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),
@@ -107,6 +111,7 @@ fn sample_record() -> RunRecord {
                 comparable: Some(0.2667),
                 actual: Some(0.2667),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -131,7 +136,12 @@ fn sample_record() -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
+        code_analysis: None,
+        toolchain: None,
+        showcase: None,
     }
 }
 

@@ -11,7 +11,7 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime"
+    "@clockwyrks/particle-runtime": "file:vendor/particle-runtime"
   },
   "devDependencies": {
     "playwright": "1.61.0",

@@ -2,79 +2,104 @@
 title: Review a Run
 ---
 
-Every published run carries one or more hand-written
-[reviews](/components/core/results/#reviews) — each a writeup, a rating for each
-scoring [domain](/terminology/#domain), and a verdict on each of the case's
-[reviewer-checklist](/testing/end-to-end/manifests/) items — authored after playing
-the build. The verdicts and the items' point weights produce each review's
-[score](/terminology/#score); across a run's reviews the score is averaged and the
-overall rating is the worst. Every review is attributed to the
-[account](/components/backend/overview/#accounts) that wrote it, a run may carry
-**one review per account** (often from people other than whoever
-produced it), and publishing refuses a run with no review. You review a *produced*
-run — one whose build is playable off the
-[artifact service](/components/artifacts/overview/) — before it is published. The
-full workflow is in
+## Overview
+
+A review is a writeup and a rating, authored after playing the build. On a
+[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
+validators have decided the checklist, the functional rating, and the score,
+so the review rates the run's aesthetics with a single tier and may override
+individual checklist verdicts, which recomputes that review's score and
+functional rating. On a legacy run the review rates function per scoring
+domain and adds a verdict on each reviewer-checklist item; those verdicts and
+the items' point weights produce the review's score. Either way a run's score
+averages across its reviews and its rating is the worst across them; a
+validator-rated run with no reviews keeps the validators' own figures.
+
+Every review is attributed to the account that wrote it and a run carries one
+review per account. Publishing a legacy run requires at least one review; a
+validator-rated run can be reviewed before or after it is published. The full
+workflow is
 [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
 
-## Review in a console
+## Review in the web console
 
-The [Tauri desktop app](/components/tauri/overview/) and the
-[web console](/components/web/overview/) are the primary way to review.
-[Sign in](/quickstarts/setup/register-and-login/), then open the finished run, play its
-build, and fill in the review editor:
+The [web console](/components/web/overview/) is the primary way to review.
+[Sign in](/quickstarts/setup/register-and-login/), open the finished run, play
+its build, and fill in the review editor:
 
-- Work the **reviewer checklist** — one item at a time, with a rail of every item
-  alongside (answered items marked done) so you can move freely. Each item shows
-  its point **weight** and gets a binary verdict (**pass** / **fail**), optionally
-  with a note. When the item pairs them, the question shows the case's
-  **expected** reference beside the agent's **submitted**
-  [proof of implementation](/components/core/validation/#proofs) — image or video
-  — so you compare the target against the evidence before judging. The console
-  will not let you save the review or publish the run until every item has a
-  verdict and every domain is rated (the **completeness gate**).
-- Pick a **rating** for each scoring **domain** and write the prose **writeup**.
-  The run's overall rating is the worst across the domains; its score is the
-  weight of the passed items over the total.
+- Read the checklist. Items are presented one at a time, with a rail of every
+  item alongside. On a validator-rated run each item arrives pre-filled with
+  the validator's verdict, shown desaturated until you override it, alongside
+  its assertions and media; untouched items keep the validators' verdicts. On
+  a legacy run each item shows its point weight and takes a pass or fail
+  verdict plus an optional note, and answered ones are marked done. When the
+  item declares them, the case's expected reference is shown beside the
+  agent's submitted [proof](/components/core/validation/#proofs).
+- Rate the run: one aesthetic tier for the whole build on a validator-rated
+  run, or each scoring domain on the functional scale on a legacy run, and
+  write the prose writeup. Saving the review requires the rating, and on a
+  legacy run every domain rated and every item answered.
 
-Every run also has a **Proof** tab listing all the proof media the build
-submitted (and any it didn't), browsable independent of the checklist.
+The web console submits the review and publishes as two separate actions. A
+run's Proof tab lists every proof the build submitted, browsable independent of
+the checklist.
 
-The console writes the review to `runs/<id>/writeup.md` for you.
+## Edit a review
 
-## Editing a review you already submitted
+Re-submitting from the same account updates that account's review in place. Use
+Edit review on your own review to revise a verdict, a rating, or the writeup.
 
-An account reviews a run **once** — re-submitting from the same account updates that
-review in place rather than adding another. Use **Edit review** (on your own review,
-from any signed-in console that can submit) to revise a verdict, rating, or the
-writeup after the fact.
-
-Verdicts that [automated validation](/components/core/validation/) decided are
-recoverable in an edit: a point whose answer differs from the machine's carries a
-**Restore** control, and the rail's **Restore validator verdicts** puts every
-overridden point back at once (notes are kept). See
+A verdict [automated validation](/components/core/validation/) decided is
+recoverable in an edit: a point whose answer differs from the machine's
+carries a Restore control, and the checklist rail's Restore validator verdicts
+puts every overridden point back at once, keeping the notes. See
 [overriding and restoring an automated verdict](/guides/development/reviewing-test-run-results/#overriding-and-restoring-an-automated-verdict).
 
-An edit that actually changes something requires a short **note explaining what
-changed** — the reviewer must say why. Each edit is preserved as a **revision** in the
-review's public **edit history**, alongside an autogenerated **diff** (which ratings
-flipped, which verdicts changed, whether the writeup was revised). The review's first
-submission time is kept; an **edited** marker records the latest revision. A
-re-submission that changes nothing is a no-op and needs no note.
+An edit that changes something requires a short note explaining what changed.
+Each edit is kept as a revision in the review's public edit history alongside a
+generated diff of the ratings, verdicts, and writeup. The review keeps its first
+submission time and records an edited marker for the latest revision.
 
 ## Review from the CLI
 
-From a [signed-in](/quickstarts/setup/register-and-login/) shell, submit a review for a
-pushed run with its writeup file, attributed to your account:
+From a [signed-in](/quickstarts/setup/register-and-login/) shell, submit a review
+for a stored run by its backend run id:
 
 ```sh
-tcab review runs/<id>/run-record.json --writeup runs/<id>/writeup.md
+tcab review <run-id> --writeup writeup.md
 ```
 
-The review file is also hand-editable. Create `runs/<id>/writeup.md` beside the
-run's `run-record.json`, with a `rating.<domain>:` line per scoring domain in
-YAML frontmatter and any checklist verdicts as `review.<id>: <status> [note]`
-lines (a sub-itemed item uses one `review.<item>.<sub>:` line per sub-item):
+`--writeup` defaults to `writeup.md` in the working directory. The file opens
+with YAML frontmatter followed by the prose body. For a validator-rated run
+the frontmatter carries one bare `aesthetic` line rating the whole run, plus
+an optional `review.<id>` line per verdict override, with a binary `pass` or
+`fail` status and any remainder kept as the note:
+
+```markdown
+---
+aesthetic: good
+review.obstacle-bank: pass the validator's precondition never armed the bank
+---
+
+Clean pixel art and a satisfying paddle thunk. The versus screen reuses the solo
+layout without adjusting for two players, so it feels cramped.
+```
+
+Legacy per-domain `aesthetic.<domain>` lines still parse and collapse to the
+worst tier named. The review is rejected while the aesthetic tier is missing
+or a `rating.*` line is present. The aesthetic rating is one of:
+
+- `legendary`: exceptionally beautiful; reserved for a build that stands out
+  from every other run of the case.
+- `amazing`: the normal maximum, flawless presentation.
+- `good`: looks and plays well with minor rough edges.
+- `okay`: passable presentation with rough edges a player notices.
+- `slop`: scuffed or broken presentation.
+
+For a legacy run the frontmatter carries a `rating.<domain>` line per scoring
+domain and a `review.<id>` line per checklist verdict. A sub-itemed checklist
+item takes one `review.<item>.<sub>` line per sub-item, and the first word of a
+verdict is its status with any remainder kept as the note:
 
 ```markdown
 ---
@@ -89,33 +114,25 @@ Single player feels right. Versus has a serve bug that resets the score, so it's
 playable but scuffed.
 ```
 
-Each domain's rating must be one of:
+Each functional rating is one of:
 
-- **flawless** — to spec, no noticeable bugs.
-- **great** — to spec; minor issues that don't impact playability.
-- **passable** — to spec and playable, but with rough edges beyond a great run's
-  minor issues; not enough to deviate from spec or impair play.
-- **scuffed** — mostly to spec; playable but noticeably deviates from spec or
-  has bugs that affect play.
-- **broken** — doesn't follow the spec, or is unplayable.
+- `flawless`: to spec, no noticeable bugs.
+- `great`: to spec, with minor issues that leave playability intact.
+- `passable`: to spec and playable, with rough edges beyond a great run's minor
+  issues.
+- `scuffed`: mostly to spec. Playable, though noticeably deviating from spec or
+  carrying bugs that affect play.
+- `broken`: deviates from the spec, or is unplayable.
 
-The body must not be empty, and a run cannot be published while any declared
-domain is unrated or any declared checklist item — or sub-item — is missing its
-verdict. The run's overall rating is the worst across its domains.
+The body must carry prose. A legacy run is publishable once every declared
+domain is rated and every declared checklist item and sub-item has a verdict.
 
-## Preview the build
-
-To preview an unpublished run the way a visitor will — outside a console — run
-the gallery dev server; it scans `runs/` and plays each run's local build where
-one exists:
-
-```sh
-npm run dev -w @test-cabinet/site
-```
-
-The overall rating badge, score, and writeup preview exactly as they will once
-live.
+A [game jam](/testing/game-jam/overview/) run rates no domains: its checklist
+verdicts use the graded tiers `broken`, `poor`, `neutral`, `great`, and
+`incredible`, including the reserved `overall` item that becomes the run's
+rating.
 
 ## Next step
 
-[Publish a Run](/quickstarts/devops/publish-a-run/) once the review is in place.
+[Publish a Run](/quickstarts/devops/publish-a-run/) once the review is in place,
+or straight away for a validator-rated run.

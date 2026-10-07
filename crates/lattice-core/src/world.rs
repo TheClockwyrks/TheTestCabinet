@@ -25,8 +25,8 @@ use std::collections::HashMap;
 use crate::prototypes::{self, Recipe};
 use crate::scenario::{Dir, Entity, Lane, Scenario};
 use crate::state::{
-    AssemblerState, BeltItem, BeltState, EntityState, InserterPhase, InserterState, SinkState,
-    Snapshot, SplitterState,
+    AssemblerState, BeltItem, BeltState, EntityState, FurnaceState, InserterPhase, InserterState,
+    SinkState, Snapshot, SplitterState,
 };
 
 /// Which of a belt's two lanes. Stored as an index so it can address an array.
@@ -68,8 +68,13 @@ pub struct LaneItem {
 pub enum Machine {
     Belt(Belt),
     Splitter(Splitter),
+    LaneSplitter(LaneSplitter),
     Inserter(Inserter),
-    Assembler(Assembler),
+    Assembler(Crafter),
+    /// A 2×2 coal-fired smelter. Structurally a [`Crafter`] like the assembler —
+    /// same buffers, recipe pointer, and craft countdown — but with a smaller
+    /// footprint, its own canonical kind tag, and a smelting recipe.
+    Furnace(Crafter),
     Source(Source),
     Sink(Sink),
 }
@@ -93,19 +98,31 @@ pub struct Splitter {
     pub x: i32,
     pub y: i32,
     pub dir: Dir,
-    /// Per-(item-type, **lane**) output alternation cursor: for each item type `t`
-    /// and lane `L` (left/right), bit `t*2 + L` is the output belt (`0`/`1`) the next
-    /// item of that type ON THAT LANE should go to. After routing one it flips to the
-    /// other belt — the Factorio splitter's balancing. Keeping the cursor **per lane**
-    /// (not shared across lanes) is what balances *each* lane across both output belts:
-    /// one belt with both lanes full spreads over **both lanes of both outputs**,
-    /// instead of the two lanes flipping against each other and unzipping (top-lane to
-    /// one belt, bottom-lane to the other, leaving two output lanes empty). The cursor
+    /// Per-**lane** output alternation cursor, **item-agnostic**: bit `L` (`0` = left
+    /// lane, `1` = right lane) is the output belt (`0`/`1`) the next item on that lane
+    /// should go to, whatever that item's type. After routing one it flips to the other
+    /// belt. Only the two low bits are used; the rest are always `0`. Each lane's cursor
+    /// is independent, so a lane is balanced only against the **corresponding lane** of
+    /// the other output belt — never against the other lane of its own belt. The cursor
     /// chooses only the **belt**; the input **lane is preserved**.
     pub out_pref: u16,
     /// Which input belt (`0`/`1`) is tried first this tick, flipped each tick so that
     /// when two input belts compete for one output lane neither starves.
     pub in_first: u8,
+}
+
+/// A two-tile **unzip** splitter. Same footprint as the balancing [`Splitter`], but
+/// it takes a **single input** (the belt behind its anchor tile — the bottom cell has
+/// no input) and unzips that one belt's two lanes onto the two outputs: a **left**-lane
+/// item goes to the top output belt's **left** (outer) lane, a **right**-lane item to
+/// the bottom output belt's **right** (outer) lane. So the two inner lanes of the
+/// outputs stay empty and the flow is split onto the two outer lanes. The routing is
+/// fully deterministic and holds no items between ticks, so it retains no state.
+#[derive(Debug, Clone)]
+pub struct LaneSplitter {
+    pub x: i32,
+    pub y: i32,
+    pub dir: Dir,
 }
 
 /// A swing arm running a small state machine on an integer timer.
@@ -122,9 +139,13 @@ pub struct Inserter {
     pub swing_left: u16,
 }
 
-/// A 3×3 crafting machine.
+/// A crafting machine: an input buffer, an output buffer, a fixed recipe, and a
+/// craft countdown. Both the 3×3 [`Machine::Assembler`] and the 2×2
+/// [`Machine::Furnace`] are `Crafter`s — they share the identical craft loop (the
+/// crafters phase in [`crate::tick`]) and inserter interaction; only their
+/// footprint, canonical kind tag, and recipe class differ.
 #[derive(Debug, Clone)]
-pub struct Assembler {
+pub struct Crafter {
     pub x: i32,
     pub y: i32,
     pub recipe: &'static Recipe,
@@ -173,7 +194,7 @@ pub struct World {
     /// The machines, parallel to the scenario's `entities`.
     pub machines: Vec<Machine>,
     /// Anchor / footprint tile → machine index. A 3×3 assembler registers all
-    /// nine of its tiles; a 2-tile splitter both of its.
+    /// nine of its tiles; a 2×2 furnace all four; a 2-tile splitter both of its.
     tiles: HashMap<(i32, i32), usize>,
     /// Maximal chains of **collinear, same-direction** belts that end-feed one
     /// another, each ordered **downstream-first** (index 0 is the most-downstream
@@ -181,7 +202,7 @@ pub struct World {
     /// run moves forward as a single rigid block — the frozen-belt property the
     /// spec requires. Perpendicular connections (curves / side-loads) are *not*
     /// part of a run; they merge across runs by forcing. Derived once from the
-    /// static layout. See [`crate::tick::World::advance_belts`].
+    /// static layout. See [`World::advance_belts`].
     pub(crate) runs: Vec<Vec<usize>>,
 }
 
@@ -217,6 +238,18 @@ impl World {
                         in_first: 0,
                     })
                 }
+                Entity::LaneSplitter { x, y, dir } => {
+                    // Same two-tile footprint as the balancing splitter: the anchor
+                    // plus one step perpendicular-clockwise of `dir`.
+                    let (sx, sy) = splitter_second_tile(*x, *y, *dir);
+                    tiles.insert((*x, *y), index);
+                    tiles.insert((sx, sy), index);
+                    Machine::LaneSplitter(LaneSplitter {
+                        x: *x,
+                        y: *y,
+                        dir: *dir,
+                    })
+                }
                 Entity::Inserter { x, y, dir } => {
                     tiles.insert((*x, *y), index);
                     Machine::Inserter(Inserter {
@@ -234,7 +267,23 @@ impl World {
                             tiles.insert((*x + dx, *y + dy), index);
                         }
                     }
-                    Machine::Assembler(Assembler {
+                    Machine::Assembler(Crafter {
+                        x: *x,
+                        y: *y,
+                        recipe: prototypes::recipe(recipe).expect("validated recipe"),
+                        inputs: HashMap::new(),
+                        output: HashMap::new(),
+                        craft_left: 0,
+                    })
+                }
+                Entity::Furnace { x, y, recipe } => {
+                    // A 2×2 block, anchored at its top-left like the assembler.
+                    for dy in 0..2 {
+                        for dx in 0..2 {
+                            tiles.insert((*x + dx, *y + dy), index);
+                        }
+                    }
+                    Machine::Furnace(Crafter {
                         x: *x,
                         y: *y,
                         recipe: prototypes::recipe(recipe).expect("validated recipe"),
@@ -291,8 +340,15 @@ impl World {
         self.tiles.get(&(x, y)).copied()
     }
 
+    /// Whether belt `idx` is a pure curve (a run continuation, not a side-load) —
+    /// see [`belt_is_pure_curve`].
+    pub(crate) fn is_pure_curve(&self, idx: usize) -> bool {
+        belt_is_pure_curve(&self.machines, &self.tiles, idx)
+    }
+
     /// Every machine's footprint tiles, parallel to the scenario's `entities` — a
-    /// 3×3 assembler yields nine, a two-tile splitter two, everything else one.
+    /// 3×3 assembler yields nine, a 2×2 furnace four, a two-tile splitter two,
+    /// everything else one.
     ///
     /// This exists so a *renderer* never re-derives placement geometry. The rule
     /// that a splitter's second tile sits perpendicular-clockwise of its flow (and
@@ -322,34 +378,90 @@ impl World {
     }
 }
 
-/// Assemble the belt [`runs`](World::runs): maximal chains of collinear,
-/// same-direction belts that end-feed one another, each ordered downstream-first.
+/// Whether belt `idx` is a **pure curve**: its only belt feeder is a single
+/// *perpendicular* belt, so flow turns 90° through it with no straight-through feed
+/// and no second side-load. A pure curve is a **continuation of its feeder's run** —
+/// the two lanes carry through the turn preserved (left stays left, right stays
+/// right) and both flow at belt speed, exactly like a straight belt that happens to
+/// bend — not a side-load, which forces one lane across per tick. A belt with a
+/// collinear feeder, no feeder, or two or more feeders is NOT a pure curve (a
+/// side-load or a junction), and keeps the forcing behaviour.
+pub(crate) fn belt_is_pure_curve(
+    machines: &[Machine],
+    tiles: &HashMap<(i32, i32), usize>,
+    idx: usize,
+) -> bool {
+    let belt = |i: usize| match &machines[i] {
+        Machine::Belt(b) => Some(b),
+        _ => None,
+    };
+    let Some(b) = belt(idx) else { return false };
+    let mut belt_feeders = 0;
+    let mut feeder_dir = None;
+    for d in [Dir::N, Dir::S, Dir::E, Dir::W] {
+        let (tx, ty) = d.step(b.x, b.y);
+        let Some(&fi) = tiles.get(&(tx, ty)) else {
+            continue;
+        };
+        // Anything on the neighbour tile that points back toward `idx` FEEDS it. A
+        // pure curve is fed by exactly one thing — a single perpendicular belt — so a
+        // source, an inserter, or a splitter that also feeds this belt (its own
+        // straight supply) rules the curve out: it is a side-load, not a bend.
+        let into = d.opposite();
+        match &machines[fi] {
+            Machine::Belt(fb) if fb.dir == into => {
+                belt_feeders += 1;
+                feeder_dir = Some(fb.dir);
+            }
+            Machine::Source(s) if s.dir == into => return false,
+            Machine::Inserter(ins) if ins.dir == into => return false,
+            Machine::Splitter(sp) if sp.dir == into => return false,
+            Machine::LaneSplitter(sp) if sp.dir == into => return false,
+            _ => {}
+        }
+    }
+    // Exactly one belt feeds it, and it comes in perpendicular (a bend, not a straight
+    // feed), with nothing else supplying the belt.
+    belt_feeders == 1 && feeder_dir != Some(b.dir)
+}
+
+/// Assemble the belt [`runs`](World::runs): maximal chains of belts that end-feed
+/// one another, each ordered downstream-first.
 ///
-/// A belt continues a run only into the belt one tile ahead **in its own facing**
-/// (`E → E`). A perpendicular neighbour (a curve or a side-load target) is a
-/// different run — those connect by forcing, not by rigid-block flow — and so is
-/// a belt facing a splitter, sink, inserter, or empty space.
+/// A belt continues a run into the belt one tile ahead **in its own facing** when
+/// that belt either shares the facing (`E → E`, a straight run) **or is a pure
+/// [curve](belt_is_pure_curve)** (`E → S`, the flow bending 90° with lanes
+/// preserved). A perpendicular *side-load* target (one that also has its own
+/// straight feed, or a second feeder) is a different run — it connects by forcing,
+/// not rigid-block flow — and so is a belt facing a splitter, sink, inserter, or
+/// empty space.
 fn build_runs(machines: &[Machine], tiles: &HashMap<(i32, i32), usize>) -> Vec<Vec<usize>> {
     let belt = |idx: usize| match &machines[idx] {
         Machine::Belt(b) => Some(b),
         _ => None,
     };
     let at = |x: i32, y: i32| tiles.get(&(x, y)).copied();
-    // The belt one tile ahead in `idx`'s facing, iff it shares that facing.
-    let collinear_down = |idx: usize| -> Option<usize> {
+    // The belt one tile ahead in `idx`'s facing, iff it continues the run — either
+    // collinear (same facing) or a pure curve (a 90° bend fed solely by `idx`).
+    let run_down = |idx: usize| -> Option<usize> {
         let b = belt(idx)?;
         let (nx, ny) = b.dir.step(b.x, b.y);
         let n = at(nx, ny)?;
-        (belt(n)?.dir == b.dir).then_some(n)
+        let nb = belt(n)?;
+        (nb.dir == b.dir || belt_is_pure_curve(machines, tiles, n)).then_some(n)
     };
-    // A run head is a belt with no collinear belt feeding its input edge.
+    // A run head is a belt with nothing feeding it into the run: no collinear belt
+    // behind it, and it is not itself a pure curve (which would make it a mid-run
+    // continuation of the perpendicular belt that bends into it).
     let is_head = |idx: usize| -> bool {
         let Some(b) = belt(idx) else { return false };
         let (dx, dy) = b.dir.delta();
-        match at(b.x - dx, b.y - dy) {
-            Some(back) => belt(back).map(|bk| bk.dir) != Some(b.dir),
-            None => true,
+        if let Some(back) = at(b.x - dx, b.y - dy)
+            && belt(back).map(|bk| bk.dir) == Some(b.dir)
+        {
+            return false; // fed by a collinear belt
         }
+        !belt_is_pure_curve(machines, tiles, idx)
     };
 
     let mut runs: Vec<Vec<usize>> = Vec::new();
@@ -370,7 +482,7 @@ fn build_runs(machines: &[Machine], tiles: &HashMap<(i32, i32), usize>) -> Vec<V
             }
             visited[c] = true;
             chain.push(c);
-            cur = collinear_down(c);
+            cur = run_down(c);
         }
         chain.reverse();
         runs.push(chain);
@@ -409,6 +521,7 @@ impl Machine {
                 out_pref: splitter.out_pref,
                 in_first: splitter.in_first,
             }),
+            Machine::LaneSplitter(_) => EntityState::LaneSplitter {},
             Machine::Inserter(inserter) => EntityState::Inserter(InserterState {
                 // Loaded → swinging out; empty but still mid-motion → swinging back;
                 // empty and at rest → idle, ready to grab.
@@ -428,6 +541,11 @@ impl Machine {
                 inputs: count_map_u16(&assembler.inputs),
                 output: count_map_u16(&assembler.output),
                 craft_left: assembler.craft_left,
+            }),
+            Machine::Furnace(furnace) => EntityState::Furnace(FurnaceState {
+                inputs: count_map_u16(&furnace.inputs),
+                output: count_map_u16(&furnace.output),
+                craft_left: furnace.craft_left,
             }),
             Machine::Source(source) => EntityState::Source {
                 emit_phase: (tick % source.period as u64) as u32,

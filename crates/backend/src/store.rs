@@ -26,14 +26,17 @@
 //! it is kept inside the keyed directory (not seeded) so a definition and its
 //! derived artifacts move and expire as a unit.
 
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::review::FailureCap;
 use test_cabinet_core::test_case::{
-    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
+    AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
-use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
-use uuid::Uuid;
+use test_cabinet_core::{
+    AssetDimension, AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec,
+};
 
 use crate::error::{BackendError, Result};
 
@@ -41,10 +44,72 @@ use crate::error::{BackendError, Result};
 /// definition directory.
 const SIDECAR: &str = ".tcab";
 
+/// The version of the record shapes this build writes into the store, stamped on
+/// the store by every ingest scan and checked against on startup.
+///
+/// A stored record ([`StoredManifest`] and everything it holds) is this build's own
+/// serialization, so a store written by a build that shaped them differently cannot
+/// be read by this one. Bump this whenever a stored shape changes in a way an
+/// already-written record does not satisfy — a field added without a default, a
+/// removed alternative, a retyped key. The bump is what tells a backend meeting such
+/// a store to re-ingest the catalog instead of serving the subset that still
+/// happens to parse (see [`DefinitionStore::needs_reingest`]).
+///
+/// `2` adds [`StoredManifest::audio_packs`]. That field *is* defaulted, so every
+/// record written at `1` still parses — which is the case the bump exists for: the
+/// type-level signal is absent, ingest returns early for a version it already holds,
+/// and without a bump every stored version would keep an empty pack list, staging no
+/// audio into any run and silencing the frozen full-stack cases outright.
+pub const STORE_FORMAT: u32 = 2;
+
+/// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
+/// session record. One constant, because the same string is the store slot
+/// (`runs/<id>/replay.json`), the route segment (`/runs/{id}/replay`) and the run
+/// tree's file stem (`replay.json.gz`) — the convention only holds if they cannot
+/// drift apart.
+pub const REPLAY_ARTIFACT: &str = "replay";
+
+/// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a run's **code
+/// analysis** document, re-exported from the contract that owns it.
+///
+/// Unlike [`REPLAY_ARTIFACT`] the string cannot live here: the analyzer writes
+/// `code-analysis.json.gz` into the run tree from another crate entirely, and the driver
+/// mirrors it in from a third, so the name has to sit somewhere all three already depend
+/// on. Aliased here so the store's two artifact slots read alike at their use sites.
+pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
+
 /// Owns the on-disk definition store rooted at a single directory.
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
     root: PathBuf,
+}
+
+/// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
+pub type CaseNames = BTreeMap<String, String>;
+
+/// Test cases renamed on disk from their original inspired-by slug to their Test
+/// Cabinet name (`pong` → Carom). A run recorded under the OLD slug — historical,
+/// or already published — can no longer be found in the catalog by that slug, so
+/// its display name resolves through this table instead of degrading to the slug.
+///
+/// The console keeps the same table (`useTestCaseName.ts`, `RENAMED_SLUG_NAMES`)
+/// for the names it resolves on its own; a rename lands in both.
+pub const RENAMED_SLUG_NAMES: &[(&str, &str)] = &[
+    ("adversarial-pacman", "Foray"),
+    ("desktop-td", "Meltdown"),
+    ("galaga", "Spectra"),
+    ("klondike", "Cascade"),
+    ("pacman", "Fathom"),
+    ("performance-factorio", "Lattice"),
+    ("pong", "Carom"),
+    ("snake", "Coil"),
+];
+
+/// The display name a listing shows for a run of `slug`: the name
+/// [`DefinitionStore::case_names`] resolved, else the slug itself — a slug the
+/// store does not know degrades to the slug rather than to nothing.
+pub fn case_display_name(names: &CaseNames, slug: &str) -> String {
+    names.get(slug).cloned().unwrap_or_else(|| slug.to_string())
 }
 
 /// The resolved, store-relative manifest persisted alongside a copied test-case
@@ -93,12 +158,26 @@ pub struct StoredManifest {
     /// exist (see [`DefinitionStore::list_visible_cases`]).
     #[serde(default)]
     pub experimental: bool,
+    /// Whether the version is on the **engine manifest format** (the per-engine
+    /// spelling: `[workspaces]` / `engines` / `[[engine]]`), mirroring
+    /// [`test_cabinet_core::test_case::TestCaseVersion::engine_format`]. Together
+    /// with the test type this decides whether the version is
+    /// [validator-rated](Self::validator_rated). Defaulted to `false` for manifests
+    /// stored before the field existed — every one of which is on the legacy
+    /// spelling, so the default is exact rather than a guess.
+    #[serde(default)]
+    pub engine_format: bool,
     /// Build commands. `Some` for an end-to-end case, `None` for any other type
     /// (an asset-generation case has no build). Defaulted for manifests stored
     /// before it became optional; skipped when absent so an asset-generation
     /// manifest carries no null build.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<StoredBuild>,
+    /// The TypeScript toolchain commands the case declares. `Some` only for a case
+    /// that ships a `[toolchain]` table; absent for every version stored before it
+    /// existed, which is what keeps those versions ungated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolchain: Option<StoredToolchain>,
     /// The canvas an asset-generation case draws on. `Some` only for
     /// asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -140,6 +219,12 @@ pub struct StoredManifest {
     /// [`AssetKind::Sprite`] for manifests stored before the discriminator existed.
     #[serde(default)]
     pub asset_kind: AssetKind,
+    /// Which of the two full-stack run images a full-stack case's runs execute in.
+    /// Defaulted to [`AssetDimension::TwoD`] for manifests stored before the
+    /// discriminator existed. Stored — rather than re-derived — because the driver
+    /// resolves a backend-driven run's image off the version this store serves.
+    #[serde(default)]
+    pub asset_dimension: AssetDimension,
     /// The sprite-sheet frame grid and named sequences. `Some` only for a
     /// sprite-sheet case. Reuses the core [`SheetSpec`] verbatim — its serialized
     /// shape is the wire shape the runner deserializes — so the layout survives a
@@ -175,23 +260,46 @@ pub struct StoredManifest {
     /// verbatim, as with [`Self::voxel`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order.
+    /// Carried verbatim from
+    /// [`TestCaseVersion::audio_packs`](test_cabinet_core::TestCaseVersion::audio_packs),
+    /// because the driver stages a run out of the **stored** record rather than the
+    /// manifest — a version served without it would stage no audio at all. Empty for
+    /// a version that declares none.
+    ///
+    /// Defaulted, so every record written before packs were declared per case still
+    /// parses — and reads as declaring none. That is exactly why adding it bumps
+    /// [`STORE_FORMAT`]: only the bump makes [`DefinitionStore::needs_reingest`] fire
+    /// and re-resolve the catalog, which is what fills this in (and applies
+    /// [`DEFAULT_AUDIO_PACKS`](test_cabinet_core::test_case::DEFAULT_AUDIO_PACKS) to
+    /// the frozen full-stack versions that declare no `[audio]` table).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_packs: Vec<String>,
     /// The prompt template source, inlined (the runner renders it locally).
     pub prompt_template: String,
     /// Common specs (`source` is a store-relative artifact key, `dest` the
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
+    /// The [engines](test_cabinet_core::engine) a run of this version may select,
+    /// each with the version range it accepts. This is the gate the driver holds a
+    /// run's engine selection against, so it has to survive the trip through the
+    /// store: a version served without it would resolve as supporting the
+    /// engineless run alone, and every engine-backed run of it would be refused.
+    /// Ingest always writes it, so a stored record always carries it.
+    pub engines: Vec<EngineSupport>,
     /// Common starter workspace files (directory already expanded to individual
-    /// files), seeded into the run root for every variant that does not override
-    /// the workspace. Defaulted for manifests stored before the field existed.
+    /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
+    /// every variant that does not override the workspace. Defaulted for manifests
+    /// stored before the field existed.
     #[serde(default)]
-    pub workspace: Vec<StoredWorkspaceFile>,
+    pub workspace: StoredWorkspace,
     /// The init command run in the run container after seeding, or `None`.
     /// Defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub init: Option<String>,
     /// Asset files, directories already expanded to individual files.
     pub assets: Vec<StoredAsset>,
-    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this case's
+    /// The Test Cabinet runtime libraries (`@clockwyrks/*` npm names) this case's
     /// build consumes (the manifest's `packages`). Injected into the seeded
     /// workspace `package.json` as `file:` dependencies. Defaulted for manifests
     /// stored before the field existed.
@@ -232,6 +340,18 @@ pub struct StoredManifest {
     /// manifests stored before the field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errata: Vec<StoredErratum>,
+}
+
+impl StoredManifest {
+    /// Whether a run of this version is **validator-rated**: its functional rating
+    /// is decided by the validators (each failing point capping its domains at its
+    /// declared `failure_cap`), its score stands the moment it completes, and its
+    /// reviewers rate only the aesthetic channel. True iff the version is on the
+    /// [engine format](Self::engine_format) and is not a game jam — the stored
+    /// mirror of [`test_cabinet_core::test_case::TestCaseVersion::validator_rated`].
+    pub fn validator_rated(&self) -> bool {
+        self.engine_format && self.test_type != TestType::GameJam
+    }
 }
 
 /// A known-issue erratum persisted in a [`StoredManifest`] (see
@@ -296,6 +416,23 @@ pub struct StoredBuild {
     /// build carries no null module.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub module: Option<String>,
+}
+
+/// The TypeScript toolchain commands persisted in a [`StoredManifest`], from the
+/// case's `[toolchain]` table. `typecheck` gates a run; the rest are recorded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredToolchain {
+    /// The gating typecheck command.
+    pub typecheck: String,
+    /// The optional lint command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lint: Option<String>,
+    /// The optional format check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// The optional test command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
 }
 
 /// The submission contract of an adversarial or performance case persisted in a
@@ -469,6 +606,30 @@ pub struct StoredWorkspaceFile {
     pub dest: String,
 }
 
+/// The starter project a [`StoredManifest`] carries, keyed by
+/// [engine](test_cabinet_core::engine) slug.
+///
+/// A case ships one project per engine, because a project is written against a
+/// runtime: its `package.json` declares the engine's dependency and its case-owned
+/// modules are written against that engine's API. Ingest always writes the map, so
+/// that is what a stored manifest serializes as.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct StoredWorkspace(pub BTreeMap<String, Vec<StoredWorkspaceFile>>);
+
+impl StoredWorkspace {
+    /// Whether the case seeds no starter file for any engine.
+    pub fn is_empty(&self) -> bool {
+        self.0.values().all(Vec::is_empty)
+    }
+
+    /// Every file of every engine — what an artifact sweep walks, where the engine
+    /// a file belongs to does not matter.
+    pub fn files(&self) -> impl Iterator<Item = &StoredWorkspaceFile> {
+        self.0.values().flatten()
+    }
+}
+
 /// A variant persisted in a [`StoredManifest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredVariant {
@@ -480,11 +641,12 @@ pub struct StoredVariant {
     pub description: Option<String>,
     /// Additive specs.
     pub specs: Vec<StoredSpec>,
-    /// The variant's workspace override (directory expanded to files), when it
-    /// replaces the common workspace for this variant. `None` inherits the common
-    /// workspace. Defaulted for manifests stored before the field existed.
+    /// The variant's workspace override (directory expanded to files, per
+    /// [engine](test_cabinet_core::engine)), when it replaces the common workspace
+    /// for this variant. `None` inherits the common workspace. Defaulted for
+    /// manifests stored before the field existed.
     #[serde(default)]
-    pub workspace: Option<Vec<StoredWorkspaceFile>>,
+    pub workspace: Option<StoredWorkspace>,
     /// Additive references.
     pub references: Vec<StoredReference>,
     /// Additive proof-of-implementation artifacts. Defaulted for manifests stored
@@ -507,6 +669,38 @@ pub struct StoredVariant {
     /// before the field existed.
     #[serde(default)]
     pub voxel: Option<VoxelSpec>,
+    /// The variant's authored showcase, when it declares one. Defaulted for
+    /// manifests stored before the field existed.
+    #[serde(default)]
+    pub showcase: Option<StoredShowcase>,
+}
+
+/// A variant's authored [showcase](test_cabinet_core::test_case::CaseShowcase)
+/// persisted in a [`StoredManifest`]: the description (inlined — it is bounded
+/// text, like a variant's own description) plus the ordered media carousel. The
+/// media bytes themselves ride the copied version tree; each entry names its
+/// store-relative artifact key.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredShowcase {
+    /// The showcase description — `showcase.md`'s contents, verbatim.
+    pub description: String,
+    /// The media carousel, in declared order. Always 1–10 entries (validated at
+    /// resolution, before ingest ever sees the case).
+    pub media: Vec<StoredShowcaseMedia>,
+}
+
+/// One entry of a [`StoredShowcase`]'s media carousel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredShowcaseMedia {
+    /// The media file's name in the showcase directory itself (a plain file name —
+    /// no subdirectories). What the serving route addresses the entry by.
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// The kind of media the file holds, inferred from its name at resolution.
+    pub kind: test_cabinet_core::MediaKind,
+    /// Store-relative artifact key of the media bytes.
+    pub key: String,
 }
 
 /// A reference persisted in a [`StoredManifest`]. The served media lives under the
@@ -596,6 +790,17 @@ pub struct StoredReviewItem {
     /// point. Empty for an item graded as a whole.
     #[serde(default)]
     pub sub_items: Vec<StoredSubReviewItem>,
+    /// The item's **failure cap** when it is graded as a whole point on a
+    /// validator-rated version: the highest functional rating its
+    /// [`domains`](Self::domains) may reach while its validator fails. `None` on a
+    /// legacy version (which never declares one) and on a sub-divided item, whose
+    /// caps live on its sub-items. Omitted from the serialized manifest when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domains (by id) a failure of this whole-item point lowers, on a
+    /// validator-rated version. Empty on a legacy version and on a sub-divided item.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
     /// The item's automated-validation driver (debug script + declared media
     /// outputs), when it opts into auto-validation. Reporter-side (never seeded); the
     /// backend serves it so the driver's validator can drive the build's debug API,
@@ -612,8 +817,22 @@ pub struct StoredReviewItem {
 /// writes it beside the version, and runs it against the build's debug API.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReviewValidation {
-    /// The version-folder-relative debug-driver script key (forward-slashed).
+    /// The debug-driver script key (forward-slashed): version-folder-relative for a
+    /// case with one script, or relative to each engine's validator project when
+    /// [`Self::per_engine`] is set.
     pub script: String,
+    /// Whether the case declares this validator **per engine**, so `script` names a
+    /// suite inside a validator project — one per engine, and it ships in the project
+    /// of every engine [`Self::engines`] covers — rather than one file under the
+    /// version folder. Defaulted for manifests stored before the field existed, all
+    /// of which name one file.
+    #[serde(default)]
+    pub per_engine: bool,
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Empty leaves it active on every engine the case supports, which is what a
+    /// manifest stored before the field existed means.
+    #[serde(default)]
+    pub engines: Vec<String>,
     /// The media outputs the script produces, in declared order.
     #[serde(default)]
     pub outputs: Vec<StoredReviewOutput>,
@@ -662,6 +881,16 @@ pub struct StoredSubReviewItem {
     /// defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub validation: Option<StoredReviewValidation>,
+    /// This point's **failure cap** on a validator-rated version: the highest
+    /// functional rating its [`domains`](Self::domains) may reach while its
+    /// validator fails (see [`test_cabinet_core::review::FailureCap`]). `None` on
+    /// a legacy version, which never declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domains (by id) a failure of this point lowers, on a
+    /// validator-rated version. Empty on a legacy version.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 /// serde default for a stored sub-item's `weight`: one point.
@@ -734,7 +963,7 @@ impl DefinitionStore {
     pub fn new_staging_dir(&self, slug: &str, version: &str) -> Result<PathBuf> {
         let dir = self
             .staging_root()
-            .join(format!("{slug}-{version}-{}", Uuid::new_v4()));
+            .join(format!("{slug}-{version}-{}", cuid2::create_id()));
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -763,7 +992,7 @@ impl DefinitionStore {
         // left it manifest-less.
         let retired = self
             .staging_root()
-            .join(format!("retired-{slug}-{version}-{}", Uuid::new_v4()));
+            .join(format!("retired-{slug}-{version}-{}", cuid2::create_id()));
         if let Some(parent) = retired.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -795,7 +1024,7 @@ impl DefinitionStore {
         }
         let retired = self
             .staging_root()
-            .join(format!("pruned-{slug}-{version}-{}", Uuid::new_v4()));
+            .join(format!("pruned-{slug}-{version}-{}", cuid2::create_id()));
         if let Some(parent) = retired.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -807,6 +1036,59 @@ impl DefinitionStore {
         let slug_dir = self.root.join("test-cases").join(slug);
         let _ = std::fs::remove_dir(&slug_dir);
         Ok(())
+    }
+
+    // --- Test-case groups ----------------------------------------------------
+
+    /// Path of the store's single global test-case-group slot: one JSON file
+    /// holding the whole ingested set, under a `test-case-groups/` sibling of the
+    /// keyed `test-cases/` tree (the same relationship the folders have in the
+    /// checkout).
+    fn test_case_groups_path(&self) -> PathBuf {
+        self.root
+            .join("test-case-groups")
+            .join("test-case-groups.json")
+    }
+
+    /// Persist the ingested [test-case group](TestCaseGroup) set, replacing the
+    /// previous set whole. The set is written in the order the caller resolved
+    /// (display order — the ingest writes the catalogue's own listing), and
+    /// [`Self::read_test_case_groups`] serves it back unreordered, so the order
+    /// authored at ingest is the order the API emits.
+    ///
+    /// Serialized through [`TestCaseGroup`]'s own `Serialize`, so the slot and
+    /// the checkout loader cannot drift apart. The slot is additive — an absent
+    /// slot reads as the empty set — so it does **not** participate in
+    /// [`STORE_FORMAT`].
+    pub fn write_test_case_groups(&self, groups: &[TestCaseGroup]) -> Result<()> {
+        let path = self.test_case_groups_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, serde_json::to_vec_pretty(groups)?)?;
+        Ok(())
+    }
+
+    /// Read the ingested test-case-group set, in the display order it was written.
+    /// An absent slot is the empty set — a store from before groups existed, or
+    /// one whose checkout declares none — not an error.
+    ///
+    /// A slot that is present but does not parse was written in another record
+    /// format, reported like an unreadable manifest (see [`Self::read_manifest`]):
+    /// the repair is a re-ingest, which rewrites the slot whole.
+    pub fn read_test_case_groups(&self) -> Result<Vec<TestCaseGroup>> {
+        let path = self.test_case_groups_path();
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        serde_json::from_slice(&bytes).map_err(|error| {
+            BackendError::Internal(format!(
+                "the stored test-case-group set was written in another record \
+                 format ({error}); re-ingest the catalog"
+            ))
+        })
     }
 
     /// Path to the store-root marker recording the catalog version of the most
@@ -851,17 +1133,106 @@ impl DefinitionStore {
         Ok(out)
     }
 
+    /// The display name of every ingested case, keyed by slug — what a listing
+    /// shows for a run's case, and what a name-ordered listing sorts by (see
+    /// [`case_display_name`]).
+    ///
+    /// Each case's name is read from its **latest** ingested version, experimental
+    /// or not: a run exists for whatever version it ran, and its row shows that
+    /// case's current name either way. The renamed-slug fallbacks are folded in
+    /// under their old slugs so one lookup answers for a historical run too. A case
+    /// whose latest manifest cannot be read is left out (its runs then show and
+    /// sort by the slug) rather than failing the whole map, matching the catalog
+    /// listing.
+    ///
+    /// Walks the catalog and reads one manifest per case; call it once per request
+    /// that needs it, not per row.
+    pub fn case_names(&self) -> Result<CaseNames> {
+        let mut names: CaseNames = RENAMED_SLUG_NAMES
+            .iter()
+            .map(|(slug, name)| (slug.to_string(), name.to_string()))
+            .collect();
+        for (slug, versions) in self.list_cases()? {
+            let Some(latest) = versions.last() else {
+                continue;
+            };
+            match self.read_manifest(&slug, latest) {
+                Ok(manifest) => {
+                    names.insert(slug, manifest.name);
+                }
+                Err(error) => {
+                    tracing::error!(
+                        %slug,
+                        version = %latest,
+                        %error,
+                        "skipping case in the name map: its latest manifest could not be read"
+                    );
+                }
+            }
+        }
+        Ok(names)
+    }
+
     /// Whether the store holds at least one ingested test-case version.
     ///
-    /// The startup half of the readiness signal (see [`crate::readiness`]): an empty
-    /// store cannot resolve anything, so the backend must stay out of its Service
-    /// until an ingest fills it. A store root that cannot be read is reported as
-    /// unpopulated — "cannot tell" and "nothing there" both mean "do not serve yet".
+    /// A store root that cannot be read is reported as holding nothing — "cannot
+    /// tell" and "nothing there" lead to the same decision everywhere this is asked.
+    ///
+    /// Walks the catalog, so call it on startup and after an ingest rather than per
+    /// request.
+    pub fn holds_versions(&self) -> bool {
+        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    }
+
+    /// Whether the store can be served: it holds versions, and they are in the
+    /// record format this build reads.
+    ///
+    /// The startup half of the readiness signal (see [`crate::readiness`]). Neither
+    /// an empty store nor one written in another format can resolve a version, so
+    /// the backend stays out of its Service until an ingest leaves it servable.
     ///
     /// Walks the catalog, so call it on startup and after an ingest rather than per
     /// request; the probe reads the latch this seeds, not the filesystem.
-    pub fn is_populated(&self) -> bool {
-        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    pub fn is_servable(&self) -> bool {
+        self.format_is_current() && self.holds_versions()
+    }
+
+    /// Whether the store's records must be rewritten before it can be served: it
+    /// holds versions written in a record format other than [`STORE_FORMAT`].
+    ///
+    /// An ingest meeting this scans the whole catalog with `force`, whatever it was
+    /// asked for, because no stored version is readable and a partial scan would
+    /// leave the rest that way (see [`crate::ingest`]).
+    pub fn needs_reingest(&self) -> bool {
+        !self.format_is_current() && self.holds_versions()
+    }
+
+    /// Path to the store-root marker recording the record format its contents were
+    /// written in. Lives beside the catalog-version marker in the root-level
+    /// `.tcab/` sidecar, so it is wiped together with the store it describes.
+    fn store_format_path(&self) -> PathBuf {
+        self.root.join(SIDECAR).join("store-format")
+    }
+
+    /// Whether the store is stamped with the record format this build reads. An
+    /// unstamped store is not: nothing has claimed its contents are readable.
+    fn format_is_current(&self) -> bool {
+        std::fs::read_to_string(self.store_format_path())
+            .ok()
+            .and_then(|stamp| stamp.trim().parse::<u32>().ok())
+            .is_some_and(|stamp| stamp == STORE_FORMAT)
+    }
+
+    /// Stamp the store with the record format this build writes, which every
+    /// version it now holds is in. Called by an ingest scan that leaves the whole
+    /// store in that format.
+    pub fn set_store_format(&self) -> Result<()> {
+        let path = self.store_format_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, STORE_FORMAT.to_string())?;
+        Ok(())
     }
 
     /// List the ingested versions for a slug, ordered oldest-first by semantic
@@ -954,6 +1325,10 @@ impl DefinitionStore {
     }
 
     /// Read a version's stored manifest.
+    ///
+    /// A manifest that is present but does not parse was written in another record
+    /// format, which is a store this build cannot serve rather than a missing
+    /// version, so it says so and names the repair (see [`Self::needs_reingest`]).
     pub fn read_manifest(&self, slug: &str, version: &str) -> Result<StoredManifest> {
         let path = self.manifest_path(slug, version);
         let bytes = std::fs::read(&path).map_err(|_| {
@@ -961,7 +1336,12 @@ impl DefinitionStore {
                 "test-case version `{slug}@{version}` is not ingested"
             ))
         })?;
-        Ok(serde_json::from_slice(&bytes)?)
+        serde_json::from_slice(&bytes).map_err(|error| {
+            BackendError::Internal(format!(
+                "stored manifest for `{slug}@{version}` was written in another \
+                 record format ({error}); re-ingest the catalog"
+            ))
+        })
     }
 
     /// Persist a version's resolved manifest sidecar into its canonical directory.
@@ -993,7 +1373,10 @@ impl DefinitionStore {
     /// live console (per request) and the public snapshot (per variant at publish)
     /// show rendered specs, the spec analogue of the already-rendered variant
     /// prompt. `voxel` is the variant's effective bounding volume (its own override
-    /// else the case's), or `None` for a non-voxel case.
+    /// else the case's), or `None` for a non-voxel case. `engine` is the engine the
+    /// rendering is for, which a caller displaying a *run*'s inputs sets to the
+    /// engine that run selected; `None` renders the engineless form, which is what a
+    /// caller showing a case rather than a run wants.
     #[allow(clippy::too_many_arguments)]
     pub fn read_rendered_spec(
         &self,
@@ -1004,6 +1387,7 @@ impl DefinitionStore {
         variant_name: &str,
         variant_description: Option<&str>,
         voxel: Option<&VoxelSpec>,
+        engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
     ) -> Result<String> {
         let bytes = self.read_artifact(slug, version, &spec.source)?;
         let text = String::from_utf8(bytes).map_err(|err| {
@@ -1024,6 +1408,7 @@ impl DefinitionStore {
             variant_name,
             variant_description,
             voxel,
+            engine,
         )?)
     }
 
@@ -1053,61 +1438,106 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{file}` not stored")))
     }
 
-    /// Read a stored **baseline** validation media file for a version:
-    /// `validation-baseline/<variant>/<file>`, where `<file>` is the flat
-    /// `<item>__<output>.<ext>`.
+    /// Read one media file of a variant's authored
+    /// [showcase](StoredShowcase) — the case-side counterpart of
+    /// [`read_run_showcase`](Self::read_run_showcase), addressed by variant and
+    /// the plain file name the carousel declares.
     ///
-    /// Baseline media is a fixed property of the case version — synthesized once at
-    /// `tcab publish-reference` time from the reference implementation, committed
-    /// under the version folder, and copied into the store at ingest (like any other
-    /// committed definition file). It is served case-scoped, the invariant
-    /// counterpart to a run's *actual* validation media (served run-scoped by the
-    /// artifact service). Mirrors [`read_reference`](Self::read_reference).
-    pub fn read_validation_baseline(
+    /// The manifest is the gate: only a file the variant's stored showcase
+    /// actually lists resolves, and its bytes are read by the entry's own
+    /// store-relative key, so a crafted name can never address an arbitrary
+    /// artifact. `showcase.toml` is refused outright (the manifest is authoring
+    /// input, mirroring the run-side rule), as is any name that is not a single,
+    /// traversal-free path segment.
+    pub fn read_case_showcase(
         &self,
         slug: &str,
         version: &str,
         variant: &str,
         file: &str,
     ) -> Result<Vec<u8>> {
-        // `variant` and `file` are validated to be single, traversal-free path
-        // segments so a crafted request cannot read outside the baseline dir.
-        if !is_safe_segment(variant) || !is_safe_segment(file) {
+        if !is_safe_segment(variant) || !is_safe_segment(file) || file == "showcase.toml" {
             return Err(BackendError::BadRequest(
-                "invalid validation-baseline variant or file".to_string(),
+                "invalid showcase variant or file".to_string(),
+            ));
+        }
+        let manifest = self.read_manifest(slug, version)?;
+        let entry = manifest
+            .variants
+            .iter()
+            .find(|v| v.slug == variant)
+            .and_then(|v| v.showcase.as_ref())
+            .and_then(|showcase| showcase.media.iter().find(|media| media.file == file))
+            .ok_or_else(|| {
+                BackendError::NotFound(format!("showcase `{variant}/{file}` not stored"))
+            })?;
+        self.read_artifact(slug, version, &entry.key)
+    }
+
+    /// Read a stored **baseline** validation media file for a version:
+    /// `validation-baseline/<engine>/<variant>/<file>`, where `<file>` is the flat
+    /// `<item>__<output>.<ext>`.
+    ///
+    /// Baseline media is a fixed property of the case version — synthesized once at
+    /// `tcab capture-baselines` time from the reference implementation, committed to
+    /// the cold-storage submodule, and copied from there into the stored version at
+    /// ingest. It is served case-scoped, the invariant
+    /// counterpart to a run's *actual* validation media (served run-scoped by the
+    /// artifact service). Mirrors [`read_reference`](Self::read_reference).
+    ///
+    /// Keyed by engine as well as variant: a variant has one reference implementation
+    /// per engine, and the run being reviewed selected one of them.
+    pub fn read_validation_baseline(
+        &self,
+        slug: &str,
+        version: &str,
+        engine: &str,
+        variant: &str,
+        file: &str,
+    ) -> Result<Vec<u8>> {
+        // `engine`, `variant` and `file` are validated to be single, traversal-free
+        // path segments so a crafted request cannot read outside the baseline dir.
+        if !is_safe_segment(engine) || !is_safe_segment(variant) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid validation-baseline engine, variant or file".to_string(),
             ));
         }
         let path = self
             .version_dir(slug, version)
             .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(engine)
             .join(variant)
             .join(file);
         std::fs::read(&path).map_err(|_| {
-            BackendError::NotFound(format!("validation baseline `{variant}/{file}` not stored"))
+            BackendError::NotFound(format!(
+                "validation baseline `{engine}/{variant}/{file}` not stored"
+            ))
         })
     }
 
-    /// List a variant's committed **baseline** validation media file names (the flat
-    /// `<item>__<output>.<ext>`), sorted. Reads the directory
-    /// `validation-baseline/<variant>/` copied into the store at ingest; a variant with
-    /// no committed baseline media (the case declares no scripted items, or no
-    /// reference implementation was captured) yields an empty list. Used by the
+    /// List one reference build's committed **baseline** validation media file names
+    /// (the flat `<item>__<output>.<ext>`), sorted. Reads the directory
+    /// `validation-baseline/<engine>/<variant>/` copied into the store at ingest; a
+    /// build with no committed baseline media (the case declares no scripted items, or
+    /// no reference implementation was captured) yields an empty list. Used by the
     /// snapshot builder to publish the case-scoped baseline media, mirroring how
     /// `read_reference` baselines are exported.
     pub fn list_validation_baseline(
         &self,
         slug: &str,
         version: &str,
+        engine: &str,
         variant: &str,
     ) -> Result<Vec<String>> {
-        if !is_safe_segment(variant) {
+        if !is_safe_segment(engine) || !is_safe_segment(variant) {
             return Err(BackendError::BadRequest(
-                "invalid validation-baseline variant".to_string(),
+                "invalid validation-baseline engine or variant".to_string(),
             ));
         }
         let dir = self
             .version_dir(slug, version)
             .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(engine)
             .join(variant);
         let read = match std::fs::read_dir(&dir) {
             Ok(read) => read,
@@ -1150,13 +1580,14 @@ impl DefinitionStore {
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under
-    /// (`runs/<run_id>/`): its proof and asset media and its controller wasm.
+    /// (`runs/<run_id>/`): its proof, asset, and showcase media and its controller
+    /// wasm.
     pub fn run_dir(&self, run_id: &str) -> PathBuf {
         self.root.join("runs").join(run_id)
     }
 
     /// Remove a run's entire stored-media tree (`runs/<run_id>/` — proof, asset,
-    /// and controller). Idempotent: a run that uploaded no media (so the directory
+    /// showcase, and controller). Idempotent: a run that uploaded no media (so the directory
     /// never existed) is treated as already gone. Called when a run is deleted so
     /// no orphaned bytes are left behind.
     pub fn delete_run_media(&self, run_id: &str) -> Result<()> {
@@ -1236,7 +1667,9 @@ impl DefinitionStore {
     }
 
     /// Persist one synthesized validation media file for a run under
-    /// `runs/<run_id>/validation/<file>` (`file` is the flat `<item>__<output>.<ext>`).
+    /// `runs/<run_id>/validation/<file>` (`file` is the flat `<item>__<output>.<ext>`,
+    /// or an `img.<id>.<ext>` file of the recordings' shared image store, which shares
+    /// this flat namespace and cannot collide with a declared output's name).
     /// Keyed by the run id a publish carries, so a re-publish overwrites identical bytes.
     pub fn write_run_validation(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
         if !is_safe_segment(run_id) || !is_safe_segment(file) {
@@ -1250,8 +1683,39 @@ impl DefinitionStore {
         Ok(())
     }
 
+    /// List a run's stored synthesized validation media file names, sorted. A run
+    /// with none stored yields an empty list.
+    ///
+    /// The declared outputs are on the run record, so the snapshot builder does not
+    /// need this to find them. What it needs it for is the recordings' **shared
+    /// image store** (`img.<id>.png` / `img.<id>.bin` — see
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)),
+    /// whose files back no verdict and are named by their own bytes, so they appear
+    /// on no declaration and can only be found by asking the directory. Sorted, so
+    /// the set a refresh publishes is stable.
+    pub fn list_run_validation(&self, run_id: &str) -> Result<Vec<String>> {
+        let dir = self.run_validation_dir(run_id);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
     /// Read one synthesized validation media file for a run
-    /// (`<item>__<output>.<ext>`).
+    /// (`<item>__<output>.<ext>`, or an `img.<id>.<ext>` file of its shared image
+    /// store).
     pub fn read_run_validation(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
         if !is_safe_segment(run_id) || !is_safe_segment(file) {
             return Err(BackendError::BadRequest(
@@ -1261,6 +1725,100 @@ impl DefinitionStore {
         let path = self.run_validation_dir(run_id).join(file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("validation `{run_id}/{file}` not stored")))
+    }
+
+    // --- Per-run run-tree artifacts -----------------------------------------
+
+    /// Where one of a run's **run-tree artifacts** is stored: `runs/<run_id>/<name>.json`.
+    ///
+    /// A run-tree artifact is a whole-run analysis document produced *about* a run rather
+    /// than *by* it — today the gg [session record](test_cabinet_core::gg_session_record)
+    /// ([`REPLAY_ARTIFACT`]), with code analysis to follow. Each is written to the produced
+    /// run tree's root as `<name>.json.gz` and mirrored here by the driver, keyed by run id,
+    /// so it survives the collected tree and can be served per run.
+    ///
+    /// These bytes are **opaque to the store**: it never parses, validates or re-encodes
+    /// them. In practice they arrive gzipped (the extension deliberately does not say so —
+    /// the slot predates compression and already holds plain-JSON records captured before
+    /// it), and the serving route content-negotiates instead of assuming either way.
+    pub fn run_artifact_path(&self, run_id: &str, name: &str) -> PathBuf {
+        self.run_dir(run_id).join(format!("{name}.json"))
+    }
+
+    /// Persist one of a run's [run-tree artifacts](Self::run_artifact_path) under
+    /// `runs/<run_id>/<name>.json`. Keyed by the run id the upload carries, so a re-upload
+    /// overwrites the identical bytes.
+    pub fn write_run_artifact(&self, run_id: &str, name: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(name) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or artifact name".to_string(),
+            ));
+        }
+        let path = self.run_artifact_path(run_id, name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, bytes)?;
+        Ok(())
+    }
+
+    /// Read one of a run's stored [run-tree artifacts](Self::run_artifact_path). A run that
+    /// never produced one reads as not-found: every artifact is optional by construction (a
+    /// non-gg run has no session record, a run collected before the analyzer shipped has no code
+    /// analysis), so absence is an ordinary 404, never an error.
+    pub fn read_run_artifact(&self, run_id: &str, name: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(name) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or artifact name".to_string(),
+            ));
+        }
+        let path = self.run_artifact_path(run_id, name);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("{name} for run `{run_id}` not stored")))
+    }
+
+    /// Where a gg run's [session record](test_cabinet_core::gg_session_record) is stored:
+    /// `runs/<run_id>/replay.json` — an address the record keeps, not a name. A capture of
+    /// each agent's model I/O and every tool result, mirrored here by the driver from the run
+    /// tree so a reader can fetch a run's session without its tree.
+    pub fn run_replay_path(&self, run_id: &str) -> PathBuf {
+        self.run_artifact_path(run_id, REPLAY_ARTIFACT)
+    }
+
+    /// Persist a gg run's session record. The named wrapper over
+    /// [`write_run_artifact`](Self::write_run_artifact) — see it for the convention.
+    pub fn write_run_replay(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
+        self.write_run_artifact(run_id, REPLAY_ARTIFACT, bytes)
+    }
+
+    /// Read a gg run's stored session record. The named wrapper over
+    /// [`read_run_artifact`](Self::read_run_artifact).
+    pub fn read_run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.read_run_artifact(run_id, REPLAY_ARTIFACT)
+    }
+
+    /// Where a run's [code-analysis](test_cabinet_core::code_analysis) document is stored:
+    /// `runs/<run_id>/code-analysis.json`. The unbounded tier — every file, symbol, import
+    /// edge, cycle and clone group — mirrored here by the driver from the run tree so the
+    /// per-run Code tab can fetch it without the run archive. Its bounded sibling rides on
+    /// the run record itself.
+    ///
+    /// Offered for every harness's runs, not just gg's: analysing a directory involves no
+    /// harness-specific work, and restricting the slot would cost coverage for nothing.
+    pub fn run_code_analysis_path(&self, run_id: &str) -> PathBuf {
+        self.run_artifact_path(run_id, CODE_ANALYSIS_ARTIFACT)
+    }
+
+    /// Persist a run's code-analysis document. The named wrapper over
+    /// [`write_run_artifact`](Self::write_run_artifact) — see it for the convention.
+    pub fn write_run_code_analysis(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
+        self.write_run_artifact(run_id, CODE_ANALYSIS_ARTIFACT, bytes)
+    }
+
+    /// Read a run's stored code-analysis document. The named wrapper over
+    /// [`read_run_artifact`](Self::read_run_artifact).
+    pub fn read_run_code_analysis(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.read_run_artifact(run_id, CODE_ANALYSIS_ARTIFACT)
     }
 
     // --- Per-run asset-generation media -------------------------------------
@@ -1296,6 +1854,71 @@ impl DefinitionStore {
         let path = self.run_asset_dir(run_id).join(file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("asset `{run_id}/{file}` not stored")))
+    }
+
+    // --- Per-run showcase files ----------------------------------------------
+
+    /// The directory a published run's [showcase](test_cabinet_core::RunShowcase)
+    /// files are stored under (`runs/<run_id>/showcase/`) — the carousel media plus
+    /// any image the description references, mirrored here by the driver so the
+    /// public snapshot can read them. The description text itself rides the run
+    /// record; `showcase.toml` is never stored (the manifest is capture-side input,
+    /// already folded into the record).
+    pub fn run_showcase_dir(&self, run_id: &str) -> PathBuf {
+        self.run_dir(run_id).join("showcase")
+    }
+
+    /// Persist one showcase file for a run under `runs/<run_id>/showcase/<file>`
+    /// (`file` is the plain file name in the produced tree's `showcase/` — a flat
+    /// namespace by construction). Keyed by the run id the upload carries, so a
+    /// re-upload overwrites the identical bytes. `showcase.toml` is refused —
+    /// the manifest is capture-side input, already folded into the record — which
+    /// is what keeps the "never stored" invariant true whatever a client sends.
+    pub fn write_run_showcase(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) || file == "showcase.toml" {
+            return Err(BackendError::BadRequest(
+                "invalid run id or showcase file".to_string(),
+            ));
+        }
+        let dir = self.run_showcase_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
+    }
+
+    /// List a run's stored showcase file names, sorted. A run with no stored
+    /// showcase files yields an empty list — every run recorded before the showcase
+    /// existed, and every run that never produced one.
+    pub fn list_run_showcase(&self, run_id: &str) -> Result<Vec<String>> {
+        let dir = self.run_showcase_dir(run_id);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    /// Read one showcase file for a run.
+    pub fn read_run_showcase(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or showcase file".to_string(),
+            ));
+        }
+        let path = self.run_showcase_dir(run_id).join(file);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("showcase `{run_id}/{file}` not stored")))
     }
 
     /// Where a run's pushed controller wasm lives: `runs/<run_id>/controller.wasm`.

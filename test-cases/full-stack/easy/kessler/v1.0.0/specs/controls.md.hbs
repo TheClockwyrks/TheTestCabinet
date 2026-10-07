@@ -1,0 +1,119 @@
+# Kessler — Controls
+
+This file fixes the actions a player drives the game with, the keys bound to
+each, and which actions each screen answers. The screens themselves are in
+`specs/screens.md`, and the deflector rotation and ball launch the play
+actions drive are in `specs/deflector-and-ball.md`. The field is driven from
+the keyboard; the menus answer the pointer and touch as well.
+
+## How input reaches the game
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the keyboard belongs to the runtime layer
+you write. It binds keys by `KeyboardEvent.code`, so a binding is a physical
+key whatever the keyboard layout, and it reports each action two ways: as a
+held value, true while any of its keys is down, and as a press edge, true once
+for the frame in which the held value became true. A key event whose `repeat`
+flag is set arms no edge.
+
+The same layer delivers the pointer. It reports the primary pointer's position
+in the stage's logical units, whether it is in contact, and the press and
+release edges of its primary button. A mouse, a pen, and a touch contact all
+reach the game as pointers on those same reads, so the menus below answer any
+of them.
+{{else if (eq engine.slug "simple-2d")}}
+The keyboard belongs to the engine, which documents it in the `engine/`
+directory at the root of this repository. The game registers the actions below
+with the engine and reads each one every frame: the two rotation actions as
+held values, and every other action as one press edge per press.
+
+The pointer belongs to the engine as well, which maps every mouse, pen, and
+touch contact into the stage's logical units on one set of reads, so the menus
+below answer any of them.
+{{else}}
+The keyboard belongs to the engine, which documents it in the `engine/`
+directory at the root of this repository. The game registers the actions below
+with the engine, and the player controller the game mode adds is the one place
+they are read: the two rotation actions as held values, and every other action
+as one press edge per press.
+
+The pointer belongs to the engine as well, which maps every mouse, pen, and
+touch contact into the stage's logical units on one set of reads, so the menus
+below answer any of them.
+{{/if}}
+
+## The actions
+
+{{#if (eq engine.slug "none")}}
+The game registers the actions below and binds each to the keys that fire it.
+A key is named by its `KeyboardEvent.code`, so the bindings hold whatever
+keyboard layout the player types on.
+{{else}}
+`ACTIONS` holds the actions the game registers, and `BINDINGS` maps each to
+the keys that fire it. A key is named by its `KeyboardEvent.code`, so the
+bindings hold whatever keyboard layout the player types on.
+{{/if}}
+
+| Action | Keys | Read as |
+| --- | --- | --- |
+| `left` | `ArrowLeft`, `KeyA` | held |
+| `right` | `ArrowRight`, `KeyD` | held |
+| `up` | `ArrowUp`, `KeyW` | edge |
+| `down` | `ArrowDown`, `KeyS` | edge |
+| `confirm` | `Space`, `Enter` | edge |
+| `launch` | `Space` | edge |
+| `back` | `Escape` | edge |
+| `pause` | `KeyP` | edge |
+
+The two keys bound to each rotation action are interchangeable: `KeyA` does
+exactly what `ArrowLeft` does wherever `left` is read. `Space` carries both
+`launch` and `confirm`, and the two never answer on the same screen. All
+of a frame's edges are read against the screen the frame began on, so a
+press that changes screens never also acts on the screen it lands in. The
+debug overlay's backtick toggle is in `specs/instrumentation.md` and sits
+outside the table.
+
+## What each screen reads
+
+| Screen | Live |
+| --- | --- |
+| `title` | `up` and `down` move the highlight; `confirm` accepts it. |
+| `howto` | `confirm` and `back` return to `title`. |
+| `playing` | `left`, `right`, `launch`, `back`, and `pause`. |
+| `waveclear` | Nothing; the interstitial runs on its own timer. |
+| `paused` | `up` and `down` move the highlight; `confirm` accepts it; `back` and `pause` resume. |
+| `gameover` | `confirm` returns to `title`. |
+
+An action a row omits does nothing on that screen.
+
+On `playing`, `left` and `right` rotate the deflector along its track while
+held, one per direction, at the rate `specs/deflector-and-ball.md` fixes;
+`launch` launches the parked ball as the same file states; and `back` and
+`pause` both pause, so a player reaches the pause menu with either `Escape` or
+`KeyP`.
+
+## Pointer and touch on the menus
+
+`title` and `paused` carry a menu, and each entry occupies its own rectangular
+hit region on the stage, measured in logical units. No two regions of one menu
+overlap, and the build reports each through the `menuItemRect` reading of
+`specs/instrumentation.md`.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moved onto an entry's region | The highlight moves to that entry. |
+| A pointer pressed and released inside one entry's region | That entry is accepted, exactly as `confirm` accepts it. |
+| A touch contact that lands inside an entry's region and lifts inside the same region | That entry is highlighted, then accepted. |
+
+A press whose release falls outside the region it began in accepts nothing,
+and a pointer resting outside every region leaves the highlight where it is. A
+highlight moved this way plays the `menu-move` cue and an entry accepted this
+way plays the `menu-select` cue, exactly as the keyboard's do.
+
+The pointer reaches the menus alone. On every other screen it does nothing.
+
+## Out of scope
+
+- Gamepad input.
+- Pointer and touch during play. The field is driven from the keyboard alone.
+- Rebinding. The bindings are fixed and the game offers no way to change them.

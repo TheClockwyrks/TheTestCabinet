@@ -1,0 +1,56 @@
+# The one and only Refract variant: the whole optical bench, both modes. Listed
+# as the single entry in the case manifest's `variants`, so it is the default and
+# every run is a run of it. Every path here would resolve against the version
+# folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The optical bench with both modes: the fixed twenty-four-board Campaign and the endless Cascade."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# Campaign and Cascade are not variants. They are modes the player picks from the
+# title menu, the way Carom's Solo and Versus are modes inside every variant, so
+# both `specs/modes/campaign.md` and `specs/modes/cascade.md` are COMMON specs
+# declared in `test-case.toml` and seeded for every run. A build ships both.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no mode
+# spec, and no spec of any other kind, to put here. If you came to this file to
+# add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# What the game looks like played correctly, shown before anyone runs it: a
+# short video of a three-channel board drawn from empty to solved, plus stills
+# of the title screen, a fresh board, a live mid-draw trace, and the solved
+# bench — all captured from `references/none` driven through its own
+# `window.__refract` pointer path. `showcase/base/showcase.toml` lists the
+# media; `showcase/base/showcase.md` carries the description.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the
+# build a reference demonstrates differs under each. This table must name
+# EXACTLY the engines the case supports (the resolver checks both directions),
+# and the case supports three: `references/none` carries its own runtime layer
+# (frame loop, canvas fit, keyboard and pointer input, audio, overlay, and the
+# `window.__refract` surface), `references/simple-2d` hands all of that to the
+# engine package resolved from the repository's `packages/simple-2d` and ships
+# the game as `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d` writes the game inside the gameplay framework
+# resolved from `packages/structured-2d`, as the game definition, instance,
+# mode, state, and actors `src/game.ts` exports. The game any of them
+# implements is identical, which is what makes a run on one engine comparable
+# with a run on another. No reference directory is ever seeded into a run: each
+# is the authored answer, built with the case's own `[build]` commands and held
+# to the same four toolchain gates a run is, and each is what
+# `tcab capture-baselines` drives to synthesize the baseline half of the
+# validation media for its engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override either. The case's common per-engine table covers
+# every run and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

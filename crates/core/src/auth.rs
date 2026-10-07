@@ -121,10 +121,10 @@ impl SubscriptionSpec {
 /// [`CredFile`] being read.
 ///
 /// This is the seam that lets a subscription be authenticated from somewhere
-/// other than the host filesystem. The CLI/desktop path reads the credential
-/// files the user signed in with on a trusted host ([`HostCreds`]); the driver,
-/// which runs in an ephemeral pod with no such files, reads bytes from an
-/// operator-provided Secret mounted into the pod ([`MapCreds`]).
+/// other than the host filesystem. The CLI path reads the credential files the
+/// user signed in with on a trusted host ([`HostCreds`]); the driver, which runs
+/// in an ephemeral pod with no such files, reads bytes from an operator-provided
+/// Secret mounted into the pod ([`MapCreds`]).
 ///
 /// A required file the source cannot supply fails the run with the same
 /// [`Error::HarnessUnavailable`] the host path returns; an optional file the
@@ -144,7 +144,7 @@ pub trait CredBytesSource {
     }
 }
 
-/// A [`CredBytesSource`] backed by the host filesystem — the CLI/desktop path.
+/// A [`CredBytesSource`] backed by the host filesystem — the CLI path.
 ///
 /// It resolves each [`CredFile`]'s [`CredSource`] against the current host
 /// environment and reads it with `std::fs`, mapping `NotFound` to `Ok(None)` so
@@ -260,25 +260,6 @@ fn select(mode: RequestedAuthMode, api_available: bool, subscription_available: 
     }
 }
 
-/// The mode a harness would authenticate with given the requested mode and which
-/// credentials are available, or `None` when none of the requested mode's
-/// credentials are present. This exposes the selection policy of `select` for a
-/// host that already knows availability out of band — the desktop authentication
-/// settings layer persisted overrides over the environment, so they cannot use the
-/// environment-reading [`auth_readiness`] but still want the verdict the run path
-/// would reach.
-pub fn select_mode(
-    mode: RequestedAuthMode,
-    api_available: bool,
-    subscription_available: bool,
-) -> Option<AuthMode> {
-    match select(mode, api_available, subscription_available) {
-        Selection::ApiKey => Some(AuthMode::ApiKey),
-        Selection::Subscription => Some(AuthMode::Subscription),
-        Selection::None => None,
-    }
-}
-
 /// Resolve the authentication plan for a harness from the host environment.
 ///
 /// Honors the requested mode (`TCAB_AUTH_MODE[_<SLUG>]`); in `auto` it prefers a
@@ -286,7 +267,7 @@ pub fn select_mode(
 /// [`Error::HarnessUnavailable`] naming what to set or sign in to when the
 /// requested mode's credentials are not available.
 ///
-/// This is the CLI/desktop path: the subscription credentials are read from the
+/// This is the CLI path: the subscription credentials are read from the
 /// host filesystem ([`HostCreds`]). The driver, which has no such files, uses
 /// [`resolve_auth_with`] with a [`MapCreds`] built from a mounted Secret.
 pub fn resolve_auth(harness: &dyn AgentHarness) -> Result<AuthPlan> {
@@ -300,7 +281,7 @@ pub fn resolve_auth(harness: &dyn AgentHarness) -> Result<AuthPlan> {
 /// (`TCAB_AUTH_MODE[_<SLUG>]`) is still honored from the environment and `auto`
 /// still prefers a subscription when present — only *where the credential bytes
 /// come from* differs. The driver passes a [`MapCreds`] over its mounted Secret;
-/// the CLI/desktop pass [`HostCreds`] (the [`resolve_auth`] default).
+/// the CLI passes [`HostCreds`] (the [`resolve_auth`] default).
 //
 // The per-account credential vault (the deferred multi-tenant follow-up) would
 // slot in here as another `CredBytesSource` — one keyed to the enqueuing account
@@ -381,56 +362,9 @@ fn nonempty_env(var: &str) -> Option<String> {
 /// precedence over the shared provider variable
 /// ([`api_key_env`](AgentHarness::api_key_env)) so harnesses that share a provider
 /// can be given independent keys. This is the single source of truth for the name:
-/// the desktop app builds the driver Secret with it, and the run engine reads it
-/// here in both the host (CLI/desktop) and driver-pod paths.
+/// the run engine reads it here in both the host (CLI) and driver-pod paths.
 pub fn api_key_override_var(slug: HarnessSlug) -> String {
     format!("TCAB_API_KEY_{}", slug.as_str().to_ascii_uppercase())
-}
-
-/// The host-side status of one of a harness's subscription credential files, for
-/// a UI that inspects which files a user is signed in with. See
-/// [`subscription_files`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SubscriptionFileStatus {
-    /// The path the file is expected at on the host, resolved from the current
-    /// environment (honoring relocators like `CODEX_HOME`).
-    pub host_path: String,
-    /// The data key this file occupies in the cluster subscription Secret: the
-    /// basename of its [`container_path`](CredFile::container_path) (for example
-    /// `auth.json`). A host that builds that Secret keys this file by this value,
-    /// which the driver maps back to the full container path (see the driver's
-    /// `mounted_creds`).
-    pub secret_key: String,
-    /// Whether the file exists on the host right now.
-    pub present: bool,
-    /// Whether the subscription requires this file (versus an optional one).
-    pub required: bool,
-}
-
-/// The host status of each subscription credential file a harness declares, or an
-/// empty vec for a harness with no subscription mode. Resolves each file's host
-/// path from the current environment and checks its presence with [`HostCreds`]'s
-/// cost-free existence check (never reading contents). For inspecting what a user
-/// is signed in to — the desktop authentication settings — leaving the run path on
-/// [`resolve_auth`].
-pub fn subscription_files(harness: &dyn AgentHarness) -> Vec<SubscriptionFileStatus> {
-    let Some(spec) = harness.subscription_spec() else {
-        return Vec::new();
-    };
-    spec.files
-        .iter()
-        .map(|file| SubscriptionFileStatus {
-            host_path: file.source.host_path().display().to_string(),
-            secret_key: file
-                .container_path
-                .rsplit('/')
-                .next()
-                .unwrap_or(file.container_path)
-                .to_string(),
-            present: HostCreds.present(file),
-            required: file.required,
-        })
-        .collect()
 }
 
 /// Whether a subscription is present: there is at least one required file and the
@@ -591,9 +525,9 @@ fn auto_detail(harness: &dyn AgentHarness) -> String {
 }
 
 /// A comma-separated list of a subscription's required host credential paths,
-/// for a readiness/error detail. These name where the CLI/desktop expects the
-/// files signed in on the host; the driver/cluster path supplies the same files
-/// from a mounted Secret instead.
+/// for a readiness/error detail. These name where the CLI expects the files
+/// signed in on the host; the driver/cluster path supplies the same files from a
+/// mounted Secret instead.
 fn required_host_paths(spec: SubscriptionSpec) -> String {
     spec.files
         .iter()

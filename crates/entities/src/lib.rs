@@ -10,24 +10,34 @@
 //! and links in sibling tables keyed by the run id, and a single-row
 //! `snapshot_state` holding the snapshot coalescing flags.
 //!
-//! The reviewer-tooling models (`coverage_group`, `coverage_plan`,
-//! `coverage_settings`, and the four `ladder*` tables) are console-only and never
+//! The planning models (`coverage_group`, `coverage_plan`, `coverage_settings`,
+//! `coverage_plan_cell_retry`, and the `ladder*` tables) are console-only and never
 //! feed the public snapshot.
 
+pub mod backfill_state;
 pub mod case_reference_build;
 pub mod case_reference_sheet;
+pub mod comparison;
 pub mod coverage_group;
 pub mod coverage_plan;
+pub mod coverage_plan_cell_retry;
 pub mod coverage_settings;
+pub mod gg_agent;
+pub mod gg_config;
+pub mod gg_dashboard;
+pub mod gg_saved_query;
 pub mod harness_config;
 pub mod job;
 pub mod ladder;
-pub mod ladder_climber;
-pub mod ladder_outcome;
+pub mod ladder_dispatch;
+pub mod ladder_dispatch_climber;
+pub mod ladder_dispatch_outcome;
 pub mod ladder_rung;
 pub mod model;
 pub mod model_alias;
 pub mod model_price;
+pub mod model_probe;
+pub mod model_probe_item;
 pub mod publish_job;
 pub mod review;
 pub mod review_plan;

@@ -11,13 +11,18 @@ import { JamMetricsPage } from "../gamejams/[slug]/JamMetricsPage";
 // Routes owned by the "Other" section: the tabbed list page (Game Jams +
 // Tournaments), the game-jam detail with its reduced tab set, and the tournament
 // detail (the standalone Tournaments list moved under Other, but each tournament
-// keeps its own detail route). Every surface here reads through console-only data
-// (the catalog on a console, plus the arena capability for tournaments), so the
-// whole fragment is mounted only where the host can execute; the static site never
-// routes here. Returned as a fragment so the app's single <Routes> stitches every
-// section's routes together.
+// keeps its own detail route).
+//
+// The game-jam surfaces read through the catalog and the published run summaries,
+// which every host has — the static site included, where a jam's runs are
+// published like any other — so they mount unconditionally. Tournaments read
+// through the arena capability, which only a console carries, so that tab and the
+// tournament detail stay behind `canExecute`; the section's tab bar hides the tab
+// on a host that never routes there.
+//
+// Returned as a fragment so the app's single <Routes> stitches every section's
+// routes together.
 export function otherRoutes(canExecute: boolean) {
-  if (!canExecute) return null;
   return (
     <>
       {/* The bare section path lands on the first tab (Game Jams). */}
@@ -28,10 +33,6 @@ export function otherRoutes(canExecute: boolean) {
       <Route
         path={routePatterns.otherGameJams}
         element={<OtherPage tab="game-jams" />}
-      />
-      <Route
-        path={routePatterns.otherTournaments}
-        element={<OtherPage tab="tournaments" />}
       />
 
       {/* Game-jam detail: Overview / Inputs / Runs / Leaderboard / Metrics, each
@@ -47,12 +48,20 @@ export function otherRoutes(canExecute: boolean) {
       />
       <Route path={routePatterns.gameJamMetrics} element={<JamMetricsPage />} />
 
-      {/* The tournament detail keeps its existing `/tournaments/:id` route; its
-          list now lives under Other → Tournaments. */}
-      <Route
-        path={routePatterns.tournamentDetail}
-        element={<TournamentDetailPage />}
-      />
+      {canExecute && (
+        <>
+          <Route
+            path={routePatterns.otherTournaments}
+            element={<OtherPage tab="tournaments" />}
+          />
+          {/* The tournament detail keeps its existing `/tournaments/:id` route;
+              its list now lives under Other → Tournaments. */}
+          <Route
+            path={routePatterns.tournamentDetail}
+            element={<TournamentDetailPage />}
+          />
+        </>
+      )}
     </>
   );
 }

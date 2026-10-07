@@ -11,18 +11,10 @@
     {
       "name": "puff",
       "shape": "disc",
-      "position": [
-        64.0,
-        58.0,
-        0.0
-      ],
+      "position": [64.0, 58.0, 0.0],
       "extent": {
         "radius": 8.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 120.0,
       "speed": 52.0,
       "speedSpread": 24.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 150.0,
       "seed": 6,
       "forces": {
@@ -74,18 +62,10 @@
     {
       "name": "grit",
       "shape": "point",
-      "position": [
-        64.0,
-        60.0,
-        0.0
-      ],
+      "position": [64.0, 60.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -96,11 +76,7 @@
       "lifetimeSpread": 80.0,
       "speed": 96.0,
       "speedSpread": 38.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 16,
       "forces": {

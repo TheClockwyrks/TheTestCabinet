@@ -5,7 +5,7 @@
       "properties": {
         "earlyStop": {
           "default": false,
-          "description": "Whether the gate may decide on partial results and let the caller cancel the\nrung's still-queued runs. **Off** by default — the runs are evidence in\ntheir own right, so a rung finishes what it started even when the verdict is\nalready certain.",
+          "description": "Whether the gate may decide on partial results, the caller then cancelling the\nslot's jobs that have not started yet. **Off** by default — the runs are evidence in\ntheir own right, so a rung finishes what it started even when the verdict is\nalready certain.",
           "type": "boolean"
         },
         "floor": {
@@ -18,7 +18,7 @@
         },
         "unloadedCountsAsBroken": {
           "default": true,
-          "description": "Whether a run whose build never loaded counts as [`Rating::Broken`] without\nwaiting for a review. On by default: there is nothing for a reviewer to\njudge, so counting it immediately keeps it from blocking the climb *and*\nfrom occupying a review-buffer slot.",
+          "description": "Whether a run whose build never loaded counts as [`Rating::Broken`] outright,\nwhatever its validator rating says. On by default: there was nothing to play.",
           "type": "boolean"
         }
       },
@@ -26,7 +26,7 @@
       "type": "object"
     },
     "GateThreshold": {
-      "description": "How many of a rung's runs must clear the [floor](Gate::floor) for the climber to\nadvance.",
+      "description": "How many of a rung's runs must clear the [floor](Gate::floor) for the climber to\npass the rung.",
       "oneOf": [
         {
           "description": "An absolute number of runs, independent of how many the rung ran. `1` is\n\"any run clearing the floor is enough\", which is how \"stop only when\neverything is broken\" is expressed.",
@@ -46,10 +46,10 @@
           "type": "object"
         },
         {
-          "description": "A share of the rung's completed runs, compared as\n`count >= fraction * completed`. Values outside `0.0..=1.0` are clamped into\nit, and a non-finite value (which cannot come from valid JSON but can from a\ncorrupt row) reads as `0.0`.\n\nClamping is not the same as neutralising: below the range it degrades to\n\"always advance\", but above it degrades to `1.0`, the strictest bar the rule\ncan express — every completed run must clear the floor. That is deliberate.\nA fraction over one is a typo, not an instruction, and the nearest expressible\nreading of \"more than all of them\" is \"all of them\"; inventing a permissive\nanswer instead would let a mistyped gate wave every climber through.",
+          "description": "A share of the runs the rung finishes with, compared as\n`count >= fraction * runs`. Values outside `0.0..=1.0` are clamped into\nit, and a non-finite value (which cannot come from valid JSON but can from a\ncorrupt row) reads as `0.0`.\n\nClamping is not the same as neutralising: below the range it degrades to\n\"always pass\", but above it degrades to `1.0`, the strictest bar the rule\ncan express — every run must clear the floor. That is deliberate.\nA fraction over one is a typo, not an instruction, and the nearest expressible\nreading of \"more than all of them\" is \"all of them\"; inventing a permissive\nanswer instead would let a mistyped gate wave every climber through.",
           "properties": {
             "fraction": {
-              "description": "The share of completed runs that must clear the floor.",
+              "description": "The share of the rung's runs that must clear the floor.",
               "format": "double",
               "type": "number"
             },
@@ -59,6 +59,39 @@
             }
           },
           "required": ["kind", "fraction"],
+          "type": "object"
+        }
+      ]
+    },
+    "InFlightLimit": {
+      "description": "How many of a plan's or a ladder dispatch's own jobs may be in flight at once before a\nlaunch pass stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the owner\ntypes can be mistaken for it.",
+      "oneOf": [
+        {
+          "description": "Keep at most `runs` jobs in flight. `0` is a legitimate bound — \"launch nothing\"\n— and is not the same instruction as no bound.",
+          "properties": {
+            "kind": {
+              "const": "bounded",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The most jobs that may be in flight before a launch pass stops.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "No bound: a launch pass emits every missing cell it can. The per-cell target and\nthe harness parallelism cap still apply.",
+          "properties": {
+            "kind": {
+              "const": "unbounded",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
           "type": "object"
         }
       ]
@@ -79,8 +112,12 @@
       ]
     },
     "LadderRung": {
-      "description": "One rung: exactly one test case, pinned to an exact version and variant.",
+      "description": "One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a\nvariant, and the engine its runs are built on.",
       "properties": {
+        "engine": {
+          "description": "The engine to climb on, or null for the `none` engine.\n\nPart of the rung's identity within the climb, because clearing a case with a\nruntime underneath is a different achievement from clearing it with nothing: one\nladder holds the same case at the same version and variant twice when the two\npins name different engines.",
+          "type": ["string", "null"]
+        },
         "id": {
           "description": "The rung's **stable opaque id**, minted when the rung is added and never\nreused.\n\nEmphatically not its position. Rungs get reordered and re-pinned, and every\nrecorded verdict references this id — a positional identifier would silently\nreattribute a climber's verdicts to a different case the moment the ladder was\nrearranged.",
           "type": "string"
@@ -108,14 +145,30 @@
       "type": "object"
     },
     "ReviewPlanCombo": {
-      "description": "One harness+model combination in a plan or a combo group. The optional provider\nmirrors the new-run form's per-combination provider for provider-routed\nharnesses.",
+      "description": "One **combination** in a plan, a ladder, or a combo group: what a cell's runs are\nexecuted by.\n\nOne type carrying two shapes, exactly as\n[`ComparisonArm`](test_cabinet_core::comparison::ComparisonArm) already does. A\nmember naming a [`gg_config_id`](Self::gg_config_id) is a **gg combination** — a\nsaved [gg configuration](https://docs.testcabinet.ai/gg/configurations/) plus a model\nfor each launch slot it declares — and one without it is a **harness combination**:\na harness, the model it runs, and a provider for a provider-routed harness. They are\nunioned into one list rather than split across two, so a plan crossing both against\nits cases needs no second axis.",
       "properties": {
+        "ggConfigId": {
+          "description": "The launcher's key for the gg configuration this member runs (`saved:<id>`), or\nnull on a harness member. This is what makes a member a gg member.",
+          "type": ["string", "null"]
+        },
+        "ggConfigName": {
+          "description": "The configuration's current display name, filled on read and **never stored**.\n\nA configuration is renamed in one place, and a member that had stored the name it\nbore at the time would go on showing the old one forever.",
+          "type": ["string", "null"]
+        },
+        "ggSlotModels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A model per [launch slot](https://docs.testcabinet.ai/gg/configurations/) the\nconfiguration declares, keyed by slot name. Empty on a harness member.\n\nOrdered (a `BTreeMap`) because it is compared and keyed, not merely read: two\nmembers binding the same slots must produce the same\n[`combination_key`] whatever order they arrived in.",
+          "type": "object"
+        },
         "harness": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
-          "description": "The agent harness to drive."
+          "description": "The agent harness to drive — `gg` on a gg member."
         },
         "model": {
-          "description": "The opaque model id passed to the harness.",
+          "default": "",
+          "description": "The opaque model id passed to the harness. Empty in storage on a gg member,\nwhich binds a model per agent instead; a read fills it with the model the bound\nset's root agent runs on, so a client with no configuration in hand still has\nsomething to show.",
           "type": "string"
         },
         "provider": {
@@ -123,25 +176,14 @@
           "type": ["string", "null"]
         }
       },
-      "required": ["harness", "model"],
+      "required": ["harness"],
       "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/coverage/ladder.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "One ladder as a reader sees it: declaration and schedule flattened into a single\nobject, exactly as [`super::coverage::CoveragePlanOut`] does for a plan.",
+  "description": "A ladder's **configuration**: the climb, the climbers, the rule every rung is judged\nby, and how a dispatch of it is fed. What a dispatch did is [`LadderProgress`].",
   "properties": {
-    "autoTopUp": {
-      "default": false,
-      "description": "Whether submitting a review re-runs this ladder's top-up automatically.\n\n**On** by default, because it is the only thing that moves an enabled ladder\nalong: a review is the verdict that decides a rung, and the moment it frees a\nbuffer slot is exactly the moment the next rung's runs should be asked for.\nEnqueueing is already gated on the ladder being enabled at all, so this cannot\nmake an untouched ladder start spending.",
-      "type": "boolean"
-    },
-    "bufferTarget": {
-      "description": "This ladder's override of the account's review-buffer target, or null to\ninherit it. Null and `0` are different instructions — \"no opinion\" versus\n\"never top up\".",
-      "format": "uint32",
-      "minimum": 0,
-      "type": ["integer", "null"]
-    },
     "comboGroupIds": {
       "description": "The referenced combination groups' ids — the same `kind = \"combo\"` coverage\ngroups a plan uses, so one saved set of models drives both and editing it\nreshapes both.",
       "items": {
@@ -164,19 +206,25 @@
       "description": "The ladder's opaque id (minted on create).",
       "type": "string"
     },
+    "inFlightLimit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InFlightLimit"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "This ladder's override of the account's runs-in-flight limit, or null to inherit\nit. A dispatch resolves it when it starts and keeps it."
+    },
     "name": {
       "description": "The reviewer-chosen display name.",
       "type": "string"
     },
     "outerAxis": {
       "$ref": "#/$defs/LadderAxis",
-      "default": "rung",
-      "description": "Which axis the emission loop nests on."
-    },
-    "paused": {
-      "default": false,
-      "description": "Whether topping up is suspended — the console calls this ladder **disabled**.\n\nA ladder is created suspended and enqueues nothing at all until the reviewer\nenables it: a climb is declared long before it is meant to start spending, and a\nladder that launched runs the moment it was saved would have spent a buffer's\nworth of tokens before its author had finished reading it back.",
-      "type": "boolean"
+      "description": "Which axis a dispatch's launch order nests on."
     },
     "rungs": {
       "description": "The rungs, low to high. The order **is** the climb.",
@@ -186,7 +234,7 @@
       "type": "array"
     },
     "runsPerCell": {
-      "description": "The default target number of runs for each `rung × combination` cell; a rung\nmay raise it for itself via [`LadderRung::runs`].",
+      "description": "The default target number of runs for each rung slot; a rung may raise it for\nitself via [`LadderRung::runs`].",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -204,8 +252,9 @@
     "comboGroupIds",
     "combos",
     "rungs",
+    "outerAxis",
     "updatedAt"
   ],
-  "title": "LadderOut",
+  "title": "Ladder",
   "type": "object"
 }

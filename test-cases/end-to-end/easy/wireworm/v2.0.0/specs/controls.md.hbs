@@ -1,0 +1,94 @@
+# Wireworm — Controls
+
+Wireworm is played from the keyboard, and its menus answer to a pointer and to
+touch as well. This file defines every action the game answers to and the keys
+bound to it; `specs/ui.md` states how a pointer and touch drive the menus. What
+the cursor does when it moves and fires is in `specs/cursor.md`, and the screens
+the menu actions move between are in `specs/ui.md`.
+
+{{#if (eq engine.slug "none")}}
+## How input reaches the game
+
+This game stands on no engine, so the keyboard belongs to the runtime layer you
+write. It listens to the page and reports which keys are down, by their
+`KeyboardEvent.code` values, along with the press edge of each. Every key below
+is named by its `code`, so a binding is a physical key rather than a
+layout-dependent character.
+{{else}}
+## How input reaches the game
+
+Input reaches the game as named actions from the {{engine.name}} engine, which
+documents them in the `engine/` directory at the root of this repository. The
+game registers the layout `LAYOUT` (`dpad-4-two-buttons`), which carries four-way
+movement and two buttons, and registers every action in `ACTIONS` against the
+keys `BINDINGS` gives it. `BINDINGS` names each key by its `KeyboardEvent.code`,
+so a binding is a physical key rather than a layout-dependent character.
+
+The whole of `ACTIONS` is registered, so both buttons of the layout fire.
+{{/if}}
+
+## The actions
+
+| Action | Effect |
+| --- | --- |
+| `up` | Moves the cursor up inside the band during play, and moves a menu highlight up. |
+| `down` | Moves the cursor down inside the band during play, and moves a menu highlight down. |
+| `left` | Moves the cursor left during play. |
+| `right` | Moves the cursor right during play. |
+| `a` | Fires a bolt. |
+| `b` | Fires a bolt. |
+| `confirm` | Accepts the highlighted menu item. |
+| `back` | Leaves the current screen. |
+| `pause` | Pauses live play, opening the pause screen, and resumes play from that screen. |
+| `mute` | Toggles sound, from any screen. |
+
+The four movement actions and the two fire actions are read as holds: the cursor
+travels while a movement is held, and a held fire action produces a bolt every
+`FIRE_INTERVAL` while the cooldown and the cap allow one, as `specs/cursor.md`
+states. `confirm`, `back`, `pause`, and `mute` are read as press edges, once per
+press.
+
+## The bindings
+
+| Action | Keys |
+| --- | --- |
+| `up` | `ArrowUp`, `KeyW` |
+| `down` | `ArrowDown`, `KeyS` |
+| `left` | `ArrowLeft`, `KeyA` |
+| `right` | `ArrowRight`, `KeyD` |
+| `a` | `Space` |
+| `b` | `Space` |
+| `confirm` | `Enter`, `Space` |
+| `back` | `Escape` |
+| `pause` | `KeyP`, `Escape` |
+| `mute` | `KeyM` |
+
+`Space` drives `a`, `b`, and `confirm`, and `Escape` drives `back` and `pause`.
+The screen decides which one applies. `Space` fires while the game is being
+played and confirms on a screen showing a menu. `Escape` raises `back` and
+`pause` together on one frame: `pause` is read on `playing` and on `paused`, and
+`back` is read on `title`, `howto`, `paused`, `victory`, and `gameover` but not
+on `playing`. So a single `Escape` press during play opens the pause screen and
+leaves it open, and a single `Escape` press on `paused` resumes once.
+
+## Menus
+
+Every menu is vertical, and from the keyboard it is driven by `up`, `down`, and
+`confirm`. `up` and `down` move the highlight by one item and wrap at both ends,
+so moving down from the last item highlights the first and moving up from the
+first highlights the last. `confirm` takes the highlighted item. `specs/ui.md`
+states each screen's items, where each one leads, and how a pointer and touch
+drive those same items.
+
+## The debug overlay
+
+{{#if (eq engine.slug "none")}}
+The read-only debug overlay `specs/instrumentation.md` describes is shown and
+hidden by the backtick key, `KeyboardEvent.code` `Backquote`. It is off when the
+game starts. The overlay and its toggle are part of the runtime layer you write,
+and they are not registered as an action.
+{{else}}
+The read-only debug overlay is the engine's, shown and hidden by the backtick
+key, `KeyboardEvent.code` `Backquote`, and off when the game starts. It is not
+one of Wireworm's actions. What it shows is in `specs/instrumentation.md`.
+{{/if}}

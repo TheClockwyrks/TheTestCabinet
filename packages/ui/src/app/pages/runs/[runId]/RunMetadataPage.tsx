@@ -1,4 +1,4 @@
-import { MetricTile } from "@test-cabinet/ui";
+import { MetricTile } from "@clockwyrks/ui";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { BUILT_IN_ORCHESTRATORS } from "../../../data/orchestrators";
 import { formatTimestamp } from "../../../format";
@@ -10,6 +10,12 @@ import styles from "./RunDetailPages.module.scss";
 // source repo, followed by the validation widget. A run only appears here once it
 // has completed, so no status is shown. Validation used to be its own tab; it now
 // lives beneath the run info under a "Validation" heading.
+//
+// A gg run is configured by a capability set rather than a `(model, orchestrator)`
+// tuple — gg is its own executor and conducts no orchestrator — so its record's
+// `orchestratorSlug` is only the contract's `one-shot` default and would read as a
+// claim about how the run was conducted. Such a run shows its capability set in
+// that tile's place instead.
 export function RunMetadataPage() {
   return (
     <RunDetailLayout tab="metadata">
@@ -51,10 +57,32 @@ export function RunMetadataPage() {
                       : "Unknown"
                   }
                 />
+                {subject.ggCapabilitySet ? (
+                  <MetricTile
+                    label="Capability set"
+                    value={subject.ggCapabilitySet.preset ?? "Custom"}
+                  />
+                ) : (
+                  <MetricTile
+                    label="Orchestrator"
+                    value={formatOrchestrator(subject.orchestratorSlug)}
+                    title={subject.orchestratorSlug}
+                  />
+                )}
+                {/* The engine the build was written against, and the runtime it
+                    vendored. The header already names the engine beside the
+                    variant; this tile is where the exact runtime version lives,
+                    which is what tells two runs of the same engine apart when
+                    they disagree. `none` vendors no package, so it has no
+                    version to state. */}
                 <MetricTile
-                  label="Orchestrator"
-                  value={formatOrchestrator(subject.orchestratorSlug)}
-                  title={subject.orchestratorSlug}
+                  label="Engine"
+                  value={
+                    subject.engineVersion
+                      ? `${subject.engineSlug} v${subject.engineVersion}`
+                      : subject.engineSlug
+                  }
+                  title={subject.engineSlug}
                 />
                 <MetricTile
                   label="Test Cabinet commit"

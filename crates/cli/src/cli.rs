@@ -5,6 +5,7 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_core::{CodeTreeBasis, NONE_SLUG};
 
 /// The Test Cabinet command line interface.
 ///
@@ -29,7 +30,8 @@ pub enum Command {
     /// Launch a run: select a test case version, harness, and model.
     Run(RunArgs),
 
-    /// Run validation over a produced implementation.
+    /// Run validation over a produced implementation. Exits `0` only when the tree
+    /// satisfied everything the case declares.
     Validate(ValidateArgs),
 
     /// Create an account on the auth service and log in (open self-registration).
@@ -45,7 +47,8 @@ pub enum Command {
     Review(ReviewArgs),
 
     /// Publish finished run(s): self-review + publish in one step (the solo path).
-    /// A run cannot be published without at least one review.
+    /// A legacy run cannot be published without at least one review; a
+    /// validator-rated run with no writeup is published without a self-review.
     Publish(PublishArgs),
 
     /// List supported harnesses and their availability.
@@ -53,6 +56,14 @@ pub enum Command {
 
     /// List the built-in orchestrators and what each one does.
     Orchestrators(OrchestratorsArgs),
+
+    /// List the built-in engines — the runtimes a produced game can be built on.
+    Engines(EnginesArgs),
+
+    /// List the test-case groups — the repo-defined sets of related cases the
+    /// home page presents — and each one's member cases.
+    #[command(name = "test-case-groups")]
+    TestCaseGroups(TestCaseGroupsArgs),
 
     /// Seed a test case version into a folder to inspect what a run's harness
     /// receives as input, without launching a container.
@@ -68,12 +79,19 @@ pub enum Command {
     #[command(name = "publish-reference")]
     PublishReference(PublishReferenceArgs),
 
-    /// (Re)generate a case version's committed **baseline** validation media by
-    /// driving its debug scripts against its reference implementation(s). Needs no
-    /// deployment environment or credentials — just the case's toolchain and a
-    /// browser.
+    /// (Re)generate a case version's **baseline** validation media in the
+    /// cold-storage submodule (or `TCAB_COLD_STORAGE_DIR`) by driving its debug
+    /// scripts against its reference implementation(s). Needs no deployment
+    /// environment or credentials — just the case's toolchain and a browser.
     #[command(name = "capture-baselines")]
     CaptureBaselines(CaptureBaselinesArgs),
+
+    /// Run the static code analyzer over a directory and print what it found.
+    ///
+    /// The same analysis a run records about its produced tree, pointed at any tree on
+    /// disk — no run, no container, no backend, no credentials. It executes nothing in the
+    /// tree it reads.
+    Analyze(AnalyzeArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -150,12 +168,20 @@ pub struct RunArgs {
     #[arg(long, value_name = "HOURS")]
     pub max_runtime: Option<f64>,
 
-    /// Built-in orchestrator that conducts the harness sessions (for example
-    /// `one-shot` or `ralph`). Defaults to `one-shot`, a single session. Selection
-    /// is limited to end-to-end test cases; other test types always run `one-shot`.
-    /// See `tcab orchestrators`.
+    /// Built-in orchestrator that conducts the harness sessions (today only
+    /// `one-shot`, a single session — the default). Selection is limited to
+    /// end-to-end test cases; other test types always run `one-shot`. See
+    /// `tcab orchestrators`.
     #[arg(long, value_name = "SLUG", default_value = "one-shot")]
     pub orchestrator: String,
+
+    /// The runtime the produced game is built on — its frame loop and delta time,
+    /// input actions, audio, assets, and diagnostics. Defaults to `none`: no
+    /// runtime, with the build supplying all of that itself. The test case version
+    /// must declare the engine among the ones it supports, or the run is refused
+    /// before any container starts. See `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 
     /// Harness authentication mode for this run: `auto`, `subscription`, or
     /// `api-key`. Omit to keep the default (API-key, preferring a subscription only
@@ -202,6 +228,14 @@ pub struct ValidateArgs {
     /// variant may declare its own variant-specific references.
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+
+    /// The engine the implementation was built on, defaulting to `none`. A build
+    /// written against an engine is driven through that engine's host interface,
+    /// so naming the wrong one validates against expectations the build was never
+    /// given; the slug is checked against the engines the case supports before
+    /// anything is built. See `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 }
 
 /// Arguments for `tcab register`.
@@ -251,7 +285,9 @@ pub struct ReviewArgs {
 #[derive(Debug, Args)]
 pub struct PublishArgs {
     /// One or more backend run ids to publish. Multiple values enable batch
-    /// publishing of a sweep's runs in a single invocation.
+    /// publishing of a sweep's runs in a single invocation. Each run's self-review
+    /// is read from `<run-id>.md` in the working directory; a validator-rated run
+    /// may omit it.
     #[arg(value_name = "RUN_ID", required = true, num_args = 1..)]
     pub run_ids: Vec<String>,
 
@@ -277,6 +313,22 @@ pub struct OrchestratorsArgs {
     pub json: bool,
 }
 
+/// Arguments for `tcab engines`.
+#[derive(Debug, Args)]
+pub struct EnginesArgs {
+    /// Emit the listing as JSON instead of a human-readable table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Arguments for `tcab test-case-groups`.
+#[derive(Debug, Args)]
+pub struct TestCaseGroupsArgs {
+    /// Emit the listing as JSON instead of a human-readable table.
+    #[arg(long)]
+    pub json: bool,
+}
+
 /// Arguments for `tcab seed`.
 ///
 /// `disable_version_flag` frees `--version` to mean the *test case* version
@@ -296,6 +348,15 @@ pub struct SeedArgs {
     /// specs are seeded.
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+
+    /// Engine to seed the run against, defaulting to `none` (nothing is
+    /// vendored, and the seeded tree is exactly what the case ships). Naming an
+    /// engine with a runtime vendors that runtime out of the
+    /// host package store into the seeded repository and writes its dependency
+    /// into the workspace `package.json`, so this is how to inspect what a build
+    /// on that engine is handed. See `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 
     /// Directory the seeded repository is created under. Defaults to a `tmp/`
     /// subfolder of the working directory.
@@ -321,6 +382,13 @@ pub struct PromptArgs {
     /// Variant of the test case to render the prompt for (for example, `base`).
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+
+    /// Engine to render the prompt for, defaulting to `none`. A prompt template
+    /// branches on the selected engine — naming one is the only way to see the
+    /// engine section a run on that engine would actually hand the harness. See
+    /// `tcab engines`.
+    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
+    pub engine: String,
 }
 
 /// Arguments for `tcab publish-reference`.
@@ -397,14 +465,22 @@ pub struct PublishReferenceArgs {
     #[arg(long)]
     pub all_variants: bool,
 
-    /// Print the plan — the targeted variants, their resolved reference-impl
-    /// directories, and the deploy branch each would use — without building,
-    /// deploying, scrubbing, or recording anything.
+    /// Publish the reference for exactly this engine (for example, `none`). Omit to
+    /// publish every engine the targeted variant(s) declare a reference for; a
+    /// variant supporting two engines has one reference build per engine, each
+    /// deployed and recorded on its own.
+    #[arg(long, value_name = "ENGINE")]
+    pub engine: Option<String>,
+
+    /// Print the plan — the targeted variant/engine pairs, their resolved
+    /// reference-impl directories, and the deploy branch each would use — without
+    /// building, deploying, scrubbing, or recording anything.
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Deploy without re-capturing the committed **baseline** validation media
-    /// (`validation-baseline/<variant>/`), leaving whatever is committed in place.
+    /// Deploy without re-capturing the **baseline** validation media in cold
+    /// storage (`validation-baseline/<engine>/<variant>/`), leaving whatever is
+    /// committed there in place.
     /// Use it when the baselines are known to be current for this build — the
     /// capture drives every debug script in a browser and dominates the command's
     /// runtime. To regenerate that media *without* deploying, use
@@ -448,11 +524,77 @@ pub struct CaptureBaselinesArgs {
     #[arg(long)]
     pub all_variants: bool,
 
-    /// Print the plan — the targeted variants, their resolved reference-impl
-    /// directories, and the baseline directory each would rewrite — without
-    /// building or writing anything.
+    /// Capture baselines for exactly this engine (for example, `none`). Omit to
+    /// cover every engine the targeted variant(s) declare a reference for.
+    #[arg(long, value_name = "ENGINE")]
+    pub engine: Option<String>,
+
+    /// Print the plan — the targeted variant/engine pairs, their resolved
+    /// reference-impl directories, and the baseline directory each would rewrite —
+    /// without building or writing anything.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Arguments for `tcab analyze`.
+///
+/// `disable_version_flag` frees `--version`/`-V`, which would otherwise be clap's
+/// binary-version flag and is confusing next to the *analyzer* version this command prints.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct AnalyzeArgs {
+    /// Root of the source tree to analyse (for example, `crates/gg`).
+    #[arg(value_name = "DIR")]
+    pub path: String,
+
+    /// The commit that laid the workspace down, if this tree is a seeded run workspace.
+    ///
+    /// This is the exact top rung of the authored-set ladder: with it, the analysis measures
+    /// only what was written *after* that commit. Omit it for an ordinary source tree, where
+    /// every file is authored by definition.
+    #[arg(long, value_name = "SHA")]
+    pub seed_commit: Option<String>,
+
+    /// Which state of the tree this is, recorded on the result so a mixed corpus stays
+    /// sliceable.
+    ///
+    /// Defaults to `post-validation`, which is the only honest answer for a directory this
+    /// command was simply pointed at: `pre-validation` is a claim that nothing has built in
+    /// the tree yet, and only the run path can make it truthfully.
+    #[arg(long, value_name = "BASIS", default_value = "post-validation")]
+    pub tree_basis: TreeBasisArg,
+
+    /// How many rows to show in each of the specific sections — the complex functions, the
+    /// largest files, the cycles, the duplicate blocks.
+    #[arg(long, value_name = "N", default_value_t = 10)]
+    pub top: usize,
+
+    /// Print the full analysis document as JSON instead of the report: every file, symbol,
+    /// import edge, cycle and clone group, with the summary embedded.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Which state of a tree `tcab analyze` is being pointed at.
+///
+/// Mirrors [`CodeTreeBasis`] so the CLI's accepted values stay in lockstep with the value
+/// recorded in the analysis document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum TreeBasisArg {
+    /// The tree as a run left it, with validation not yet run.
+    PreValidation,
+    /// The tree after something built in it — the safe assumption for any directory.
+    PostValidation,
+}
+
+impl From<TreeBasisArg> for CodeTreeBasis {
+    fn from(value: TreeBasisArg) -> Self {
+        match value {
+            TreeBasisArg::PreValidation => Self::PreValidation,
+            TreeBasisArg::PostValidation => Self::PostValidation,
+        }
+    }
 }
 
 #[cfg(test)]

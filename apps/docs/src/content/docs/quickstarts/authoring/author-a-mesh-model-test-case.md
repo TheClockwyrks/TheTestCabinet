@@ -2,90 +2,101 @@
 title: Author a Mesh Model Test Case
 ---
 
-Scaffold a new static **mesh-model** [asset-generation](/testing/asset-generation/overview/)
-test case — a 3D model the model sculpts by compositing a continuous signed-distance
-field and meshing it with a binary (`mc` → `mc-model`, `sn` → `sn-model`, or `dc` →
-`dc-model`), one recorded operation at a time. This is the short version;
-[Authoring a Mesh Model Test Case](/guides/authoring/authoring-a-mesh-model-test-case/)
-covers it in full, and
-[Manifests](/testing/asset-generation/manifests/#voxel-cases) is the authoritative
-schema.
+## Scope
 
-A **rigged, animated** mesh instead? See
+Scaffold an [asset-generation](/testing/asset-generation/overview/) test case for
+a static meshed model: a model composites a continuous signed-distance field of
+CSG primitives and meshes it with the `mc`, `sn`, or `dc` binary, one recorded
+operation at a time. Read
+[Authoring a Mesh Model Test Case](/guides/authoring/authoring-a-mesh-model-test-case/)
+for the full procedure;
+[Voxel cases](/testing/asset-generation/manifests/voxel-cases/) is the
+authoritative schema.
+
+For a rigged, animated mesh see
 [Author a Mesh Animation Test Case](/quickstarts/authoring/author-a-mesh-animation-test-case/).
-Discrete cube voxels rather than a meshed field? See
+For discrete cube voxels see
 [Author a Voxel Model Test Case](/quickstarts/authoring/author-a-voxel-model-test-case/).
 
 ## Layout
 
-A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
-reference it — revise by adding a new version.
+A version lives at
+`test-cases/asset-generation/<difficulty>/<slug>/<version>/`. A version with runs
+recorded against it is frozen; revise a case by adding a new version.
 
 ```text
-test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml   # manifest: type, asset_kind, [voxel], [tool], [output], the overall domain
-  variants/        # one standalone TOML file per variant (listed in `variants`)
-  prompt.hbs       # rendered into the harness instruction (NOT seeded)
-  description.md   # site blurb (NOT seeded)
-  README.md        # human overview (NOT seeded)
-  specs/brief.md   # what to sculpt + how the tool behaves — SEEDED
+test-cases/asset-generation/<difficulty>/<slug>/<version>/
+  test-case.toml   # manifest: type, asset_kind, voxel, tool, output
+  variants/        # one standalone TOML file per variant
+  prompt.hbs       # rendered into the harness instruction; not seeded
+  changelog.md     # required per-version entry; not seeded
+  description.md   # site blurb; not seeded
+  specs/brief.md   # what to sculpt and how the tool behaves; seeded
 ```
 
-A run seeds only the brief, the binary on `PATH`, a pre-seeded `<binary>.config.json`,
-and a blank preview. There is **no target model** and **no operations schema** — the
-binary's `--help` is the contract.
+A run seeds the brief, `<binary>.config.json`, an empty action log, and a blank
+preview, with the meshing binary on `PATH`. Its `--help` is the operation
+contract. The case declares no `[[reference]]` and carries no target model.
 
 ## Steps
 
-1. Pick a catalog **slug** (e.g. `aegis-dc`) and the **subject** to sculpt. It should
-   read clearly at the volume size from silhouette and palette alone and be achievable
-   by compositing CSG primitives (`add-*`/`subtract-*`, `--blend`, `mirror`).
-2. Pick the **algorithm** for the surface you want — it fixes the `asset_kind` and
-   `[tool].binary`: `mc` (low-poly faceted), `sn` (smooth watertight), `dc` (crisp sharp
-   edges; only `dc` exposes a per-primitive `--sharp`/`--smooth` tag). The kind is a
-   property of the whole version, not a variant axis.
-3. Write `specs/brief.md`: subject, silhouette, orientation, **exact opaque `#rrggbb`
-   palette**, the `[voxel]` volume, and — factually — which extractor meshes the field.
-   Keep it
-   [self-contained](/testing/end-to-end/overview/#self-contained-specifications); state
-   the extractor's behaviour, don't prescribe the look.
-4. Write `prompt.hbs` using only the documented template variables (`{{variant.*}}`,
-   `{{#each specs}}`) — it renders in strict mode — pointing at the binary's `--help`
-   and restating that it must `render` before finishing so the mesh is emitted.
-5. Write `test-case.toml` per the
-   [Voxel cases](/testing/asset-generation/manifests/#voxel-cases) schema: metadata
-   (`name`, `difficulty`, `tags` — include `3d`/`mesh` and the algorithm),
-   `type = "asset-generation"`, `asset_kind` (`"mc-model"`/`"sn-model"`/`"dc-model"`),
-   a `variants` list (a root key, so it precedes the first table; first = default), the
-   `[voxel]` volume, and the `[tool]`/`[output]` tables. `[tool].binary` is the meshing
-   binary; `[tool].preview` (e.g. `model.png`) and `[output].actions` (the op log) are
-   each a **single file — no `{part}` token**. Add the single `overall` `[[domain]]` a
-   human rates under; there is **no `[[review_item]]` checklist**. The extracted
-   `mesh.glb` is emitted by core on `render`, **not** declared in the manifest.
-6. Reject the wrong tables: a meshed case declares **no `[canvas]`**, **no `[model]`**
-   (a static model has no rig), **no `[[reference]]`** (no target), **no `[build]`**,
-   and **no `[[check]]`**. Write `description.md` and `README.md` (both non-seeded).
+1. Pick a catalog slug and the subject to sculpt. It should read clearly at the
+   volume size from silhouette and palette alone and be achievable by
+   compositing CSG primitives with `add-*`, `subtract-*`, `--blend`, and
+   `mirror`.
+2. Pick the algorithm for the surface you want. It fixes both `asset_kind` and
+   `[tool].binary`: `mc` for a low-poly faceted surface, `sn` for a smooth
+   watertight one, `dc` for crisp sharp edges. Only `dc` exposes the
+   per-primitive `--sharp` tag that preserves a primitive's edges and corners.
+   The algorithm is a property of the whole version rather than a variant axis.
+3. Write `specs/brief.md`: the subject, silhouette, orientation, the exact opaque
+   `#rrggbb` palette, the volume, and which extractor meshes the field. State the
+   extractor's behavior factually and leave the look to the model. Keep the
+   brief self-contained.
+4. Write `prompt.hbs`. It renders in strict mode against `{{variant.*}}`,
+   `{{#each specs}}`, `{{workspace}}`, `{{time_limit_hours}}`, and `{{voxel.*}}`.
+   Point the model at the binary's `--help` and require a `render` before
+   finishing so the mesh is emitted.
+5. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags` including `3d`,
+   `mesh`, and the algorithm), the required `changelog`,
+   `type = "asset-generation"`, `asset_kind` (`"mc-model"`, `"sn-model"`, or
+   `"dc-model"`), and the `variants` list. It is a root key, so it precedes the
+   first table header, and the first entry is the default variant.
+6. Declare `[voxel]` for the field bounds. It replaces `[canvas]`, which
+   resolution rejects on a meshed case.
+7. Declare `[tool]` with the meshing binary and a `preview` such as `model.png`,
+   and `[output]` with an `actions` log. Both name single files; the `{part}`
+   token is rejected on a static case. Core emits the extracted `mesh.glb` on
+   `render`, so the manifest never names it.
+8. Declare the single `overall` `[[domain]]` a human rates the model under. The
+   model is judged as a whole against its brief on that one rating, so the case
+   declares no `[[review_item]]` checklist, no `[model]` rig, no `[[reference]]`,
+   no `[build]`, and no `[[check]]`.
 
-Worked examples: the **Aegis Bastion** walking fortress, authored once per algorithm
-(`test-cases/asset-generation/medium/aegis-mc/v1.0.0`, `aegis-sn/v1.0.0`, `aegis-dc/v1.0.0`). Read the one
-matching your surface alongside the full guide before you start.
+The Aegis Bastion walking fortress is the worked example, authored once per
+algorithm as `aegis-mc`, `aegis-sn`, and `aegis-dc`. Read the one matching your
+surface.
 
 ## Validate
 
+Run these for every variant.
+
 ```sh
-npm run lint:specs   # markdownlint-cli2 + cspell over test-cases/**
+npm run lint:specs
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-Render the prompt and inspect the seeded repository for **every** variant to confirm
-the manifest resolves and the seeded set is self-contained. After editing, force-re-ingest
-so a backend-driven run picks up the change — see
-[Running the services locally](/development/running/).
+`prompt` catches strict-mode template and manifest errors. `seed` writes the
+seeded repository under `tmp/`, where you confirm the seeded set is
+self-contained. After editing, force a re-ingest so a backend-driven run picks up
+the change; see
+[Running the Local Service Stack](/guides/development/running-the-local-service-stack/).
 
 ## Next steps
 
-- [Create a Mesh Model Variant](/quickstarts/authoring/create-a-mesh-model-variant/) to
-  add a brief variation.
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end to end.
+- [Create a Mesh Model Variant](/quickstarts/authoring/create-a-mesh-model-variant/)
+  to add a brief variation.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end
+  to end.
 - [Review a Run](/quickstarts/development/review-a-run/) to assess the result.

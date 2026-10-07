@@ -1,12 +1,12 @@
 /**
  * The contract types the voxel runtime operates on, re-exported from the
- * generated `@test-cabinet/run-record` package so there is a single source of
+ * generated `@clockwyrks/run-record` package so there is a single source of
  * truth for the wire shapes. Nothing here is voxel-runtime-specific except the
  * {@link Vec3} tuple alias used by the posing math.
  */
 /**
  * The rig contract types the voxel runtime operates on. In the source package
- * these are re-exported (type-only) from the generated `@test-cabinet/run-record`
+ * these are re-exported (type-only) from the generated `@clockwyrks/run-record`
  * package; in this vendored, prebuilt copy the type-only import is inlined so the
  * reference implementation builds with a plain `npm ci` outside the monorepo. They
  * are byte-for-byte the `run-record` shapes.

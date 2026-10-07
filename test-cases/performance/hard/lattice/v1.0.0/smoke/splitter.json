@@ -5,11 +5,7 @@
     "height": 8
   },
   "ticks": 120,
-  "snapshots": [
-    40,
-    80,
-    120
-  ],
+  "snapshots": [40, 80, 120],
   "entities": [
     {
       "type": "splitter",

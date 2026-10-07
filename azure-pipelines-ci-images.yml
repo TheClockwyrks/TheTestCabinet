@@ -1,0 +1,170 @@
+# Builds the images the gate tracks run inside, and pushes them to
+# testcabinet.azurecr.io.
+#
+# This is a pipeline of its own, and that is the whole point of it. A gates run
+# must never build an image: building one was most of what a gates run spent
+# its time on before this, and an image a run builds for itself is an image
+# nobody can name afterwards. azure-pipelines.yml instead names each job's
+# image at the commit ci/images/tags.yml pins and lets the agent pull it, so
+# what a gate ran inside is a fact written in the diff. This file is what makes
+# that reference resolve.
+#
+# It runs on a change to a file an image is built from and on nothing else, so
+# most commits queue no run here at all. A run tags every image it builds with
+# the commit it runs on, `$(Build.SourceVersion)`, and pushes it: nothing is
+# computed, and a run on a commit that changed nothing an image installs is a
+# layer cache hit of a few minutes. See scripts/ci/ci-image.sh, which is the
+# whole of the logic, and ci/images/README.md for what each image holds.
+#
+# What to do after a run. The gates pipeline pulls the images of the commit
+# ci/images/tags.yml pins as `ciImageTag`, and nothing moves that pin but a
+# commit. So once a run on a commit has pushed every image, write that commit
+# into ci/images/tags.yml and push it; the gates of that second commit run in
+# the new images, and until it lands they run in the images the pin names. A
+# change to an image's files is complete when the pin follows it. This is the
+# cost of a pin a developer writes, and it is accepted rather than worked
+# around: a pipeline committing the pin itself needs write rights on every
+# branch and lands an unreviewed commit on one, and a reference resolved at run
+# time would be a reference nobody reviewed.
+#
+# A fresh render has pushed no image at all, so this is the pipeline to create
+# and queue first. It is a second `az pipelines create`, naming this file; the
+# Building page of the documentation site has the command.
+#
+# ## What stops an untrusted commit pushing an image
+#
+# Three things, and the first of them alone is sufficient.
+#
+# 1. This pipeline has no pull request trigger. Azure Repos ignores a `pr:`
+#    block entirely and runs a pipeline against a pull request only through a
+#    build validation policy on the target branch. No policy should name this
+#    pipeline: an image build is not a check a pull request needs to pass. The
+#    `pr: none` below is therefore a statement of intent rather than a setting
+#    Azure reads, and it is written out so that a copy of this file pointed at
+#    a host where a YAML pull request trigger *is* honoured, and where anyone
+#    at all may raise one from a fork, is refused by default rather than by an
+#    oversight.
+#
+# 2. The `branches` filter below is every branch of this repository, which is
+#    to say every ref a project member has pushed. A fork's branch is not one
+#    of them: it lives in the fork's own repository.
+#
+# 3. Even were a pull request build of a fork somehow to run here, Azure
+#    withholds a service connection's credentials from it unless the project is
+#    configured to make secrets available to builds of forks, which it is not
+#    by default. The Docker@2 login would fail and the push with it, so the
+#    failure mode is a red run rather than an image nobody vouched for sitting
+#    in the registry under a tag the gates pipeline will pull.
+#
+# There is one more property worth naming, because it is what makes the above
+# matter less than it might: an image is tagged with the commit its run is on,
+# so a commit can push an image only under its own id. The worst an unreviewed
+# commit could do is push an image nothing pulls until someone writes that
+# commit into ci/images/tags.yml, which is a reviewed change of its own.
+
+trigger:
+  branches:
+    include:
+      - "*"
+  paths:
+    include:
+      # The one list of the files an image is built from: every `COPY` source
+      # of a Dockerfile under ci/images/, the Dockerfiles and their
+      # `.dockerignore` files, ci/images/build-args.sh and this pipeline's
+      # script, which decide the build's arguments and command line, and
+      # .devcontainer/docker-compose.yml, whose anchor holds the pins an
+      # image's `ARG` lines read. A file added to an image's `COPY` or `ARG`
+      # lines is added here, or a change to it builds no image and the pin
+      # has no commit to follow. Sorted, one path a line.
+      - .devcontainer/docker-compose.yml
+      - .devcontainer/languages/node
+      - .devcontainer/languages/rust
+      - .devcontainer/system/browser-deps.sh
+      - .devcontainer/tools/browsers.sh
+      - .devcontainer/tools/kubectl.sh
+      - .devcontainer/tools/uv.sh
+      - ci/images/build-args.sh
+      - ci/images/rust.Dockerfile
+      - ci/images/rust.Dockerfile.dockerignore
+      - ci/images/web.Dockerfile
+      - ci/images/web.Dockerfile.dockerignore
+      - scripts/ci/ci-image.sh
+
+# Stated, though Azure Repos does not read it. See the first paragraph of the
+# section above.
+pr: none
+
+pool:
+  vmImage: ubuntu-24.04
+
+jobs:
+  # One job per image, with no `dependsOn` between them: none reads what
+  # another writes and they push to different repositories, so running them at
+  # once makes the pipeline cost the slowest of them rather than their sum.
+  #
+  # None declares a `container:`. These jobs build images; they do not run
+  # inside one. They need the hosted agent's own docker and buildx, which is
+  # the other reason the work is here and not in the gates pipeline, whose jobs
+  # run in images that deliberately carry no docker CLI at all.
+  - job: rustImage
+    displayName: Rust CI image
+    # The most a Microsoft-hosted agent gives a private project. A cold build
+    # of an image is a few minutes; the ceiling is for the first build after a
+    # base image moves, when nothing is taken from the layer cache.
+    timeoutInMinutes: 60
+    steps:
+      # One commit is enough. The tag is the commit Azure names in
+      # BUILD_SOURCEVERSION, and nothing here reads the history.
+      - checkout: self
+        fetchDepth: 1
+
+      # The hosted image arrives about 80% full of SDKs nothing here uses, and
+      # a buildx build of a couple of gigabytes writes its layers twice: once
+      # into the builder's cache and once on the way to the registry.
+      - script: scripts/ci/free-disk.sh
+        displayName: Free disk space on the agent
+
+      # `the-test-cabinet-acr` is a Docker Registry service connection to
+      # testcabinet.azurecr.io with push rights on it. This task writes the
+      # credential into the agent's docker configuration for the rest of the
+      # job, which is what the `--push` inside ci-image.sh reads it back from.
+      - task: Docker@2
+        displayName: Sign in to the registry
+        inputs:
+          command: login
+          containerRegistry: the-test-cabinet-acr
+
+      # Builds the image and pushes it under this run's commit, which is the
+      # commit ci/images/tags.yml is then written to.
+      - script: scripts/ci/ci-image.sh build rust
+        displayName: Build and push the Rust CI image
+
+      # The project's own steps once the image is pushed, which
+      # .azure/project/ci-image-steps.yml holds for every image job alike.
+      - template: .azure/project/ci-image-steps.yml
+        parameters:
+          image: rust
+
+  - job: webImage
+    displayName: Web CI image
+    timeoutInMinutes: 60
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - script: scripts/ci/free-disk.sh
+        displayName: Free disk space on the agent
+
+      - task: Docker@2
+        displayName: Sign in to the registry
+        inputs:
+          command: login
+          containerRegistry: the-test-cabinet-acr
+
+      - script: scripts/ci/ci-image.sh build web
+        displayName: Build and push the web CI image
+
+      # As on the Rust image job.
+      - template: .azure/project/ci-image-steps.yml
+        parameters:
+          image: web

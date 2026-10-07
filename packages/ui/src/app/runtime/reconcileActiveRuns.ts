@@ -8,11 +8,17 @@ export type ActiveRunsResult =
   | { ok: true; runs: InProgressRun[] }
   | { ok: false };
 
-// One tracked run whose live phase has advanced since we last saw it — patch its
-// state in place (without reordering the list, which re-tracking would do).
-export interface StateUpdate {
+// One tracked run the authoritative active set has moved on from — patch it in
+// place (without reordering the list, which re-tracking would do).
+//
+// `state` is always carried, even when only the start changed, so applying an entry
+// is one patch either way. `startedAt` is carried only when the active set names a
+// start the tracked copy does not already show: a report that simply omits one must
+// never erase a start the row already learned from the event stream.
+export interface TrackedRunUpdate {
   runId: string;
   state: InProgressRun["state"];
+  startedAt?: string;
 }
 
 // The reconciliation plan: which active runs are newly seen (track them), which
@@ -21,8 +27,8 @@ export interface StateUpdate {
 export interface Reconciliation {
   /** Active runs not already in the in-progress list — add these. */
   toTrack: InProgressRun[];
-  /** Tracked runs whose reported phase differs from what we show — patch these. */
-  toUpdate: StateUpdate[];
+  /** Tracked runs whose reported phase or start differs from what we show. */
+  toUpdate: TrackedRunUpdate[];
   /** Tracked run ids that no worker still reports as active — remove these. */
   toRemove: string[];
 }
@@ -49,20 +55,23 @@ export interface Reconciliation {
 // Updating a run's phase, unlike pruning, does not need a complete picture: it only
 // touches runs a reachable worker still reports, so a launched run tracked
 // optimistically as "running" is corrected to its true phase ("queued", "pending",
-// "starting") on the next poll instead of showing "running" the whole time.
+// "starting") on the next poll instead of showing "running" the whole time. The
+// run's start is repaired the same way and for the same reason — a row optimistically
+// tracked at launch, or seeded from an event that predates the run starting, has no
+// start of its own to tick a duration from until the active set hands it one.
 export function reconcileActiveRuns(
   inProgress: InProgressRun[],
   results: ActiveRunsResult[],
 ): Reconciliation {
   const complete = results.every((result) => result.ok);
 
-  // The authoritative phase per active run id. First worker to report a run wins,
+  // The authoritative row per active run id. First worker to report a run wins,
   // matching the track-order dedup below (a run lives on one worker anyway).
-  const reported = new Map<string, InProgressRun["state"]>();
+  const reported = new Map<string, InProgressRun>();
   for (const result of results) {
     if (!result.ok) continue;
     for (const run of result.runs) {
-      if (!reported.has(run.runId)) reported.set(run.runId, run.state);
+      if (!reported.has(run.runId)) reported.set(run.runId, run);
     }
   }
 
@@ -80,16 +89,29 @@ export function reconcileActiveRuns(
     }
   }
 
-  // Refresh the phase of runs already tracked whose reported state has advanced.
-  // A run the console locally marked "failed" (a terminal phase the wire never
-  // reports) is left alone — it is on its way out of the list, not to be resurrected.
-  const toUpdate: StateUpdate[] = [];
+  // Refresh the phase — and the start — of runs already tracked that the active set
+  // has moved on from. A run the console locally marked "failed" (a terminal phase
+  // the wire never reports) is left alone: it is on its way out of the list, not to
+  // be resurrected.
+  const toUpdate: TrackedRunUpdate[] = [];
   for (const run of inProgress) {
     if (run.state === "failed") continue;
-    const state = reported.get(run.runId);
-    if (state !== undefined && state !== run.state) {
-      toUpdate.push({ runId: run.runId, state });
-    }
+    const active = reported.get(run.runId);
+    if (!active) continue;
+    // Only a start the active set actually names, and only when it says something
+    // the row does not already show. Falling back the other way — treating an absent
+    // start as `null` and patching that in — would blank a started row every time a
+    // report omitted the field, which is exactly what an older backend does.
+    const startedAt =
+      active.startedAt && active.startedAt !== run.startedAt
+        ? active.startedAt
+        : undefined;
+    if (active.state === run.state && startedAt === undefined) continue;
+    toUpdate.push({
+      runId: run.runId,
+      state: active.state,
+      ...(startedAt !== undefined ? { startedAt } : {}),
+    });
   }
 
   // `reported`'s keys are exactly the run ids some reachable worker still reports.

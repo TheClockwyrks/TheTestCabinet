@@ -10,8 +10,10 @@
 #
 # It is built `FROM` the full-stack-2d image, so it inherits everything a jam needs:
 #   - the six 2D asset-generation binaries on `PATH` (`draw`, `draw-sheet`,
-#     `particle-2d`, `sfx-synth`, `sfx-sample`, `music`) and the two baked audio
-#     packs, so a jam produces its own art, effects, and sound during the run;
+#     `particle-2d`, `sfx-synth`, `sfx-sample`, `music`), so a jam produces its own
+#     art, effects, and sound during the run — the audio packs the last two read are
+#     not in any image, they are staged into `/opt/audio` from the packs the jam's
+#     `game-jam.toml` names in `[audio] packs`;
 #   - the base-wasm Rust + `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack`
 #     toolchain, so a model MAY author its game's core in Rust and ship it as a
 #     committed wasm build input (exactly as an end-to-end/full-stack build may) —

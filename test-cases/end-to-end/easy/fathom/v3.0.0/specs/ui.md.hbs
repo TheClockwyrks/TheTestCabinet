@@ -1,0 +1,171 @@
+# Fathom — Screens, menus, and the HUD
+
+This file defines the screens the game shows, how a player moves between them,
+the menus each one carries, and the HUD shown while a maze is on screen. The
+controls every screen reads are in `specs/movement.md`, and the score, the lives
+and the depth the HUD reports are defined in `specs/progression.md`.
+
+## Presentation
+
+Every screen is drawn in the monospace type `specs/overview.md` fixes. Every
+piece of text a screen shows is legible against whatever sits behind it at the
+logical stage size `1280 x 720`. Where an element sits inside the region this
+file gives it, and how it is styled, are yours.
+
+## The screens
+
+`screen` names the screen the game is showing. Every build carries all seven,
+and the game opens on `"title"`.
+
+| `screen` | What it shows |
+| --- | --- |
+| `"title"` | The title `FATHOM`, the tagline `HUNT IN THE DARK`, and the title menu. A dim, dark slice of maze may show behind them. |
+| `"howto"` | How to play. |
+| `"countdown"` | The maze view and the HUD, with a short `DIVE` countdown drawn over them. |
+| `"playing"` | Live play: the dark maze, the forager and its light, the plankton, the bonus drifters, the predators where they are revealed, the sonar wavefronts and ink clouds in flight, and the HUD. |
+| `"paused"` | The pause menu, over a maze that stays visible and frozen behind it. |
+| `"cleared"` | The interstitial after a maze is cleared, over the maze view, naming the depth just cleared as `DEPTH 1 CLEARED`, `DEPTH 2 CLEARED` and so on. |
+| `"gameover"` | The score the run finished on, the depth it reached, and the game-over menu. |
+
+The `"howto"` screen is written in a player's words rather than as rules of a
+system, and it covers the controls, naming the key bound to each, the three
+predators and the sense each one hunts by, and how a dark maze is read, through
+the forager's own light and through the sonar pulse.
+
+## Moving between the screens
+
+| From | On | To |
+| --- | --- | --- |
+| `"title"` | `DIVE` confirmed | `"countdown"`, at the start of a fresh dive |
+| `"title"` | `HOW TO PLAY` confirmed | `"howto"` |
+| `"title"` | `back` | `"title"`. Nothing changes. |
+| `"howto"` | `confirm` or `back` | `"title"` |
+| `"countdown"` | The countdown running out | `"playing"` |
+| `"playing"` | The pause control | `"paused"` |
+| `"playing"` | The forager eating the maze's last plankton | `"cleared"` |
+| `"playing"` | Contact with a predator while `lives` is above `0` | `"countdown"`, for another attempt at the same maze and the same depth |
+| `"playing"` | Contact with a predator while `lives` is `0` | `"gameover"` |
+| `"paused"` | The pause control | `"playing"` |
+| `"paused"` | `RESUME` confirmed, or `back` | `"playing"` |
+| `"paused"` | `RESTART` confirmed | `"countdown"`, at the start of a fresh dive |
+| `"paused"` | `QUIT TO MENU` confirmed | `"title"` |
+| `"cleared"` | The interstitial running out | `"countdown"`, at the next depth |
+| `"gameover"` | `PLAY AGAIN` confirmed | `"countdown"`, at the start of a fresh dive |
+| `"gameover"` | `MENU` confirmed, or `back` | `"title"` |
+
+The dive countdown holds for one fixed length, at least `1 s` and at most `3 s`,
+before play begins, and every countdown holds for that same length. The cleared
+interstitial holds for at least `1 s` and at most `3 s` before the descent. Both
+are timed on the simulation's own accumulated time rather than on the wall
+clock, so each gives way after that much game time however the frames that
+carried it were drawn.
+
+`Escape` raises `back` and `pause` together on one frame, so `"paused"` reads
+`pause` and `back` before the menu's own edges, and a frame carrying either
+resumes once and does nothing else. A single `Escape` press on `"playing"`
+therefore opens the pause menu and leaves it open, and a single `Escape` press
+on `"paused"` resumes play.
+
+## The menus
+
+Each menu is a vertical list of its items, in the order given, stacked one above
+the next. One item is selected at a time and the selected item is drawn
+distinctly from the others, so a player always sees which item `confirm`
+would take. `menuIndex` is that item's index, as `specs/state.md` reports it.
+Arriving at the pause menu or at the game-over menu selects that menu's first
+item, and arriving at `"title"` selects the entry `titleIndex` holds, which
+Returning to the title below fixes. The `up` and `down` controls move the
+selection by one item and wrap at both ends, and `confirm` takes the selected
+item.
+
+| Menu | Items, in order |
+| --- | --- |
+| The title menu | `DIVE`, `HOW TO PLAY` |
+| The pause menu | `RESUME`, `RESTART`, `QUIT TO MENU` |
+| The game-over menu | `PLAY AGAIN`, `MENU` |
+
+What each item does is in the transition table above. The menus take the
+controls `specs/movement.md` defines, and the `mute` control is read on every
+screen.
+
+### Pointer and touch
+
+Each menu item occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading through which the build reports an
+item's region in logical units, so the menus keep the layout the build chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | That item becomes the selected one. |
+| A pointer is pressed and released inside one item's region | That item becomes the selected one, and it is confirmed. |
+| A touch contact lands inside an item's region | That item becomes the selected one. |
+| A touch contact lands and lifts inside one item's region | That item becomes the selected one, and it is confirmed. |
+
+A confirm requires both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+that fall in different regions, and an edge that falls outside every region,
+confirm no item. The item a confirm acts on is the selected one, whichever input
+raised it, and what confirming it does is what the transition table above gives
+that item.
+
+The how-to-play screen shows no menu, so it carries no item regions. A pointer
+pressed and released anywhere on `"howto"`, or a touch contact landing and
+lifting anywhere on it, returns to `"title"`, exactly as `confirm` and `back` do,
+so the screen is left by hand as well as by key.
+
+## Beginning a dive
+
+`DIVE`, `RESTART` and `PLAY AGAIN` all begin a dive the same way. The score
+returns to `0`, the lives to `START_LIVES` (`3`), and the depth to `1`. The maze
+is laid out afresh with a plankton on every corridor tile outside the den and
+its fog fully unrevealed, every predator is in the den and unreleased, both
+cooldowns are ready, and the screen becomes `"countdown"`.
+
+## Returning to the title
+
+Leaving the how-to-play screen, `QUIT TO MENU` on the pause menu, and `MENU` or
+`back` on the game-over screen all return to `"title"`.
+
+Confirming an item on the title menu records that item's index as `titleIndex`,
+from the keyboard, from a pointer and from a touch contact alike. `titleIndex`
+is `0` until an item has been confirmed there, so the game opens with `DIVE`
+selected. Every arrival at `"title"` selects the recorded entry: `menuIndex`
+becomes `titleIndex`, so each of the three returns above lands on the entry the
+player left the title from rather than on the first item.
+
+Returning to `"title"` restores the score, the lives, the depth and the maze to
+the values a dive begins from. `titleIndex` is the exception and keeps its value
+across the return.
+
+## What advances on each screen
+
+| Screen | What advances |
+| --- | --- |
+| `"title"`, `"howto"`, `"gameover"` | Nothing. |
+| `"countdown"` | The countdown's own remaining time, and the light the forager casts on the maze around it. The forager, the predators, the drifters, the cooldowns, the sonar wavefronts and the ink clouds all hold still. |
+| `"playing"` | Everything. |
+| `"paused"` | Nothing. The maze behind the menu is frozen. |
+| `"cleared"` | The interstitial's own remaining time. |
+
+`simTime` accumulates on every screen, and the controls are read on every
+screen.
+
+## The HUD
+
+The HUD is drawn whenever a maze is on screen, which is `"countdown"`, `"playing"`,
+`"paused"` and `"cleared"`. It occupies the strips above and below the maze region,
+`y` in `[0, 80]` and `y` in `[656, 720]`, so it leaves the maze itself clear. It
+is always fully lit, standing outside the fog of war entirely.
+
+Six things are present and readable on it.
+
+| Element | What it reports | Where |
+| --- | --- | --- |
+| Score | The running score for the whole run, in large digits about `48` logical units tall. | The top strip. |
+| Dive label | A small, dim label reading `{{#if (eq variant.slug "kindle")}}KINDLE{{else}}STANDARD{{/if}}`. | The top strip. |
+| Lives | The lives remaining, as that many small forager icons. | The bottom strip. |
+| Depth | The current depth, as `DEPTH 1`, `DEPTH 2` and so on. | The bottom strip. |
+| Sonar gauge | Whether the sonar pulse is ready, as a gauge that is full while it is ready and fills back up as its cooldown runs down. | The bottom strip. |
+| Ink gauge | Whether ink is ready, as a gauge that is full while it is ready and fills back up as its cooldown runs down. | The bottom strip. |
+
+Where each of the six sits inside its strip is yours.

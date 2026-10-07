@@ -101,14 +101,14 @@ C; see below) — and let `N = 200`. At each spawn, roll the unit's tier
 from these probabilities, which vary with `E`:
 
 | Escalation count `E` | P(Tier I) | P(Tier II) | P(Tier III) |
-| --- | --- | --- | --- |
-| `0` | `100%` | `0%` | `0%` |
-| `≈ 40` | `67%` | `33%` | `0%` |
-| `≈ 80` | `33%` | `67%` | `0%` |
-| `≈ 100` | `17%` | `66%` | `17%` |
-| `≈ 120` | `0%` | `67%` | `33%` |
-| `≈ 160` | `0%` | `33%` | `67%` |
-| `≥ 200` (`N`) | `0%` | `0%` | `100%` |
+| -------------------- | --------- | ---------- | ----------- |
+| `0`                  | `100%`    | `0%`       | `0%`        |
+| `≈ 40`               | `67%`     | `33%`      | `0%`        |
+| `≈ 80`               | `33%`     | `67%`      | `0%`        |
+| `≈ 100`              | `17%`     | `66%`      | `17%`       |
+| `≈ 120`              | `0%`      | `67%`      | `33%`       |
+| `≈ 160`              | `0%`      | `33%`      | `67%`       |
+| `≥ 200` (`N`)        | `0%`      | `0%`       | `100%`      |
 
 The curve **must** have these properties: it starts
 at **100% Tier I** at `E = 0`; **Tier II ramps in** as `E` rises; there is a
@@ -141,15 +141,15 @@ flooding the field with bodies:
 ### Escalation between phases — new units
 
 Falling back to a new redoubt is not just the same fight one notch up — each phase
-**introduces a new attacker archetype** the earlier phases never fielded, so *what*
+**introduces a new attacker archetype** the earlier phases never fielded, so _what_
 you must answer changes, on top of the new redoubt having more health
 (`specs/world.md`):
 
-| Phase | Attackers in play | New this phase |
-| --- | --- | --- |
-| **A** | Rushers, Gunners, Breakers | — (the core assault) |
-| **B** | + **Artillery** | Arcing bombardment begins (`specs/combat.md`). |
-| **C** | + **Ravagers** | Heavy elite bruisers that wade into the Wardens. |
+| Phase | Attackers in play          | New this phase                                   |
+| ----- | -------------------------- | ------------------------------------------------ |
+| **A** | Rushers, Gunners, Breakers | — (the core assault)                             |
+| **B** | + **Artillery**            | Arcing bombardment begins (`specs/combat.md`).   |
+| **C** | + **Ravagers**             | Heavy elite bruisers that wade into the Wardens. |
 
 Carried-over archetypes keep appearing (and keep climbing tiers as your kill count
 rises); the newly introduced archetype is the headline threat of the phase. Full

@@ -54,14 +54,14 @@ creatures and the flat ice floes.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Chassis — steel | `#4a5560` |
+| Role                                | Hex       |
+| ----------------------------------- | --------- |
+| Chassis — steel                     | `#4a5560` |
 | Chassis — dark (shade, panel lines) | `#232b33` |
-| Tread / wheels | `#171c21` |
-| Plow blade / hazard stripes | `#ffd23f` |
-| Beacon (warning red) | `#e0492f` |
-| Cab glass | `#7fb0c4` |
+| Tread / wheels                      | `#171c21` |
+| Plow blade / hazard stripes         | `#ffd23f` |
+| Beacon (warning red)                | `#e0492f` |
+| Cab glass                           | `#7fb0c4` |
 
 ## Working the tool
 

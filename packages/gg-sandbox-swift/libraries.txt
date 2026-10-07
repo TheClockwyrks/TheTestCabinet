@@ -1,0 +1,60 @@
+# The modules a Swift program may `import`, as this arm records them.
+#
+# WHAT DECIDES THE SET. Two things, and they are in different places.
+#
+# The **Swift standard library** is in scope with no import at all — `String`, `Array`,
+# `Dictionary`, `Set`, `Result`, `Regex` and the whole of `Sequence`'s algebra — because that is
+# what "the standard library" means in Swift. It is listed below anyway, under its own heading,
+# because a model reading a library list and not finding the standard library would reasonably
+# wonder whether it had one.
+#
+# Everything else is a module that must be named on an `import` line, and it is present for one of
+# two reasons: the **Swift SDK for WebAssembly** ships it beside the standard library (Foundation
+# and its companions, `RegexBuilder`, `Synchronization`, `Observation`, `WASILibc`), or this arm
+# VENDORED it — `packages/gg-sandbox-swift/build.sh` fetches the pinned tarball, compiles it for
+# `wasm32-unknown-wasip1` and puts it in the committed library archive.
+#
+# WHAT A NAME HERE COSTS AND WHAT IT DOES NOT. The vendored set is one static archive on every
+# link, and a static archive is pulled in by MEMBER: a program that imports nothing from it links
+# nothing from it. Measured — an artifact for a program that imports none of these is byte for byte
+# the size of one built without the archive on the command line at all, and a program using `Deque`
+# and `adjacentPairs` paid 194 KB. So the set is free until it is used, which is why it can be this
+# wide.
+#
+# This file is a claim about the artifact, and it is held to it: `swift_reaches_every_library` in
+# `crates/gg/src/sandbox/language/swift.surface.test.rs` compiles a program that imports every
+# module below through the real production prepare step and requires it to build. A module listed
+# here that the archive does not carry fails that test rather than reaching a model.
+#
+# The `# --- heading ---` lines are the groups of the catalogue's `libraries` section, which is the
+# record of this arm's set. A program that `import`s a module this arm does not carry is refused by
+# `swiftc`, in its own words.
+# `packages/gg-sandbox-swift/tools/signatures.py` reads this file and refuses a module under no
+# heading.
+
+# --- Collections and algorithms, vendored ---
+Collections
+DequeModule
+OrderedCollections
+HeapModule
+BitCollections
+HashTreeCollections
+RopeModule
+Algorithms
+RealModule
+ComplexModule
+
+# --- Foundation, as the Swift SDK for WebAssembly ships it ---
+Foundation
+FoundationEssentials
+FoundationInternationalization
+FoundationXML
+
+# --- The rest of what the SDK ships ---
+RegexBuilder
+Synchronization
+Observation
+WASILibc
+
+# --- The standard library, always in scope with no import ---
+Swift

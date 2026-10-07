@@ -45,12 +45,17 @@
 //   APPLY        set to "1" to actually POST + refresh; unset = dry run (read-only)
 //   RUN_ID       restrict to a single run id (optional; for targeted re-runs/testing)
 
-const BACKEND = (process.env.BACKEND ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
-const SOURCE_BASE = (process.env.SOURCE_BASE ?? "https://snapshot.testcabinet.ai").replace(
+const BACKEND = (process.env.BACKEND ?? "http://127.0.0.1:8787").replace(
   /\/+$/,
   "",
 );
-const SOURCE_PREFIX = (process.env.SOURCE_PREFIX ?? "").replace(/^\/+|\/+$/g, "");
+const SOURCE_BASE = (
+  process.env.SOURCE_BASE ?? "https://snapshot.testcabinet.ai"
+).replace(/\/+$/, "");
+const SOURCE_PREFIX = (process.env.SOURCE_PREFIX ?? "").replace(
+  /^\/+|\/+$/g,
+  "",
+);
 const APPLY = process.env.APPLY === "1";
 const RUN_ID = process.env.RUN_ID || null;
 
@@ -96,7 +101,9 @@ async function mediaForRun(runId) {
   const url = `${SOURCE_BASE}/${SOURCE_PREFIX}/runs/${encodeURIComponent(runId)}.json`;
   const res = await fetch(url);
   if (res.status === 404) {
-    console.warn(`  MISSING run document ${runId} in source prefix (skipping run)`);
+    console.warn(
+      `  MISSING run document ${runId} in source prefix (skipping run)`,
+    );
     return [];
   }
   if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
@@ -113,7 +120,14 @@ async function mediaForRun(runId) {
   return items;
 }
 
-const stats = { runs: 0, withMedia: 0, copied: 0, present: 0, missing: 0, errors: 0 };
+const stats = {
+  runs: 0,
+  withMedia: 0,
+  copied: 0,
+  present: 0,
+  missing: 0,
+  errors: 0,
+};
 
 async function recover() {
   console.log(
@@ -141,23 +155,31 @@ async function recover() {
         res = await fetch(sourceUrl(key));
       } catch (err) {
         stats.errors++;
-        console.error(`  ERROR ${runId} ${kind}/${file}: source fetch failed: ${err}`);
+        console.error(
+          `  ERROR ${runId} ${kind}/${file}: source fetch failed: ${err}`,
+        );
         continue;
       }
       if (res.status === 404) {
         stats.missing++;
-        console.warn(`  MISSING ${runId} ${kind}/${file} (source prefix has no such object)`);
+        console.warn(
+          `  MISSING ${runId} ${kind}/${file} (source prefix has no such object)`,
+        );
         continue;
       }
       if (!res.ok) {
         stats.errors++;
-        console.error(`  ERROR ${runId} ${kind}/${file}: source GET -> ${res.status}`);
+        console.error(
+          `  ERROR ${runId} ${kind}/${file}: source GET -> ${res.status}`,
+        );
         continue;
       }
       const bytes = Buffer.from(await res.arrayBuffer());
       if (!APPLY) {
         stats.present++;
-        console.log(`  WOULD COPY ${runId} ${kind}/${file} (${bytes.length} bytes)`);
+        console.log(
+          `  WOULD COPY ${runId} ${kind}/${file} (${bytes.length} bytes)`,
+        );
         continue;
       }
       const dst = `${BACKEND}/runs/${encodeURIComponent(runId)}/${kind}/${encodeURIComponent(file)}`;
@@ -168,7 +190,9 @@ async function recover() {
       });
       if (!put.ok) {
         stats.errors++;
-        console.error(`  ERROR ${runId} ${kind}/${file}: backend POST -> ${put.status}`);
+        console.error(
+          `  ERROR ${runId} ${kind}/${file}: backend POST -> ${put.status}`,
+        );
         continue;
       }
       stats.copied++;
@@ -196,7 +220,9 @@ async function recover() {
       ` missing=${stats.missing} errors=${stats.errors} refreshed=${refreshed}`,
   );
   if (!APPLY) {
-    console.log("Dry run only — set APPLY=1 to copy media and trigger a snapshot refresh.");
+    console.log(
+      "Dry run only — set APPLY=1 to copy media and trigger a snapshot refresh.",
+    );
   }
   process.exit(stats.errors > 0 ? 1 : 0);
 }

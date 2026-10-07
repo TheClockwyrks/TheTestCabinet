@@ -1,5 +1,5 @@
 {
-  "name": "@test-cabinet/run-record",
+  "name": "@clockwyrks/run-record",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -27,6 +27,38 @@
       "types": "./dist/jobs-api.d.ts",
       "default": "./dist/jobs-api.js"
     },
+    "./gg": {
+      "types": "./dist/gg.d.ts",
+      "default": "./dist/gg.js"
+    },
+    "./gg-reference": {
+      "types": "./dist/gg-reference.d.ts",
+      "default": "./dist/gg-reference.js"
+    },
+    "./gg-session-record": {
+      "types": "./dist/gg-session-record.d.ts",
+      "default": "./dist/gg-session-record.js"
+    },
+    "./gg-system-prompt": {
+      "types": "./dist/gg-system-prompt.d.ts",
+      "default": "./dist/gg-system-prompt.js"
+    },
+    "./code-analysis": {
+      "types": "./dist/code-analysis.d.ts",
+      "default": "./dist/code-analysis.js"
+    },
+    "./code-metrics": {
+      "types": "./dist/code-metrics.d.ts",
+      "default": "./dist/code-metrics.js"
+    },
+    "./gg-query": {
+      "types": "./dist/gg-query.d.ts",
+      "default": "./dist/gg-query.js"
+    },
+    "./comparison": {
+      "types": "./dist/comparison.d.ts",
+      "default": "./dist/comparison.js"
+    },
     "./coverage": {
       "types": "./dist/coverage.d.ts",
       "default": "./dist/coverage.js"
@@ -52,6 +84,9 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "typescript": "^6"
+  },
+  "dependencies": {
+    "@clockwyrks/asset-contract": "*"
   }
 }

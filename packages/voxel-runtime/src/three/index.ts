@@ -1,5 +1,5 @@
 /**
- * `@test-cabinet/voxel-runtime/three` — the optional three.js binding.
+ * `@clockwyrks/voxel-runtime/three` — the optional three.js binding.
  *
  * Requires `three` (a peer dependency of this package).
  */

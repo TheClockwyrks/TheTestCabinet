@@ -62,7 +62,11 @@ export class SkinnedVoxelRig {
    *   {@link import("../glb").parseSkinnedGlb}) — geometry plus `JOINTS_0`/`WEIGHTS_0`
    *   and the bone skeleton.
    */
-  constructor(rig: ModelSpec, mesh: SkinnedMesh, opts: SkinnedVoxelRigOptions = {}) {
+  constructor(
+    rig: ModelSpec,
+    mesh: SkinnedMesh,
+    opts: SkinnedVoxelRigOptions = {},
+  ) {
     this.rig = rig;
     this.timeMs = opts.timeMs ?? 0;
     this.activeAnimation = rig.animations?.find((a) => a.autoPlay) ?? null;
@@ -72,18 +76,38 @@ export class SkinnedVoxelRig {
       material = opts.material;
       this.ownedMaterial = null;
     } else {
-      material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        side: THREE.DoubleSide,
+      });
       this.ownedMaterial = material;
     }
 
     // Geometry: the four base attributes plus the skin's per-vertex binding.
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.positions), 3));
-    geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(mesh.normals), 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(mesh.colors), 3));
-    geometry.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(Array.from(mesh.joints), 4));
-    geometry.setAttribute("skinWeight", new THREE.BufferAttribute(new Float32Array(mesh.weights), 4));
-    geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
+    geometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(mesh.positions), 3),
+    );
+    geometry.setAttribute(
+      "normal",
+      new THREE.BufferAttribute(new Float32Array(mesh.normals), 3),
+    );
+    geometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(new Float32Array(mesh.colors), 3),
+    );
+    geometry.setAttribute(
+      "skinIndex",
+      new THREE.Uint16BufferAttribute(Array.from(mesh.joints), 4),
+    );
+    geometry.setAttribute(
+      "skinWeight",
+      new THREE.BufferAttribute(new Float32Array(mesh.weights), 4),
+    );
+    geometry.setIndex(
+      new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1),
+    );
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();
     this.geometry = geometry;
@@ -99,7 +123,9 @@ export class SkinnedVoxelRig {
       this.skeletonRoot.add(bone);
       return bone;
     });
-    const boneInverses = mesh.bones.map((b) => new THREE.Matrix4().fromArray(Array.from(b.inverseBind)));
+    const boneInverses = mesh.bones.map((b) =>
+      new THREE.Matrix4().fromArray(Array.from(b.inverseBind)),
+    );
     this.skeleton = new THREE.Skeleton(this.bones, boneInverses);
 
     this.mesh = new THREE.SkinnedMesh(geometry, material);
@@ -130,9 +156,11 @@ export class SkinnedVoxelRig {
    */
   playAnimation(animation: AnimationSpec | string | null): void {
     if (animation === null) {
-      this.activeAnimation = this.rig.animations?.find((a) => a.autoPlay) ?? null;
+      this.activeAnimation =
+        this.rig.animations?.find((a) => a.autoPlay) ?? null;
     } else if (typeof animation === "string") {
-      this.activeAnimation = this.rig.animations?.find((a) => a.name === animation) ?? null;
+      this.activeAnimation =
+        this.rig.animations?.find((a) => a.name === animation) ?? null;
     } else {
       this.activeAnimation = animation;
     }
@@ -153,7 +181,9 @@ export class SkinnedVoxelRig {
 
   /** The joint names, optionally filtered to a single drive kind. */
   jointNames(drive?: "caller" | "auto"): string[] {
-    const joints = drive ? this.rig.joints.filter((j) => j.drive === drive) : this.rig.joints;
+    const joints = drive
+      ? this.rig.joints.filter((j) => j.drive === drive)
+      : this.rig.joints;
     return joints.map((j) => j.name);
   }
 
@@ -176,7 +206,10 @@ export class SkinnedVoxelRig {
 
   private applyPose(): void {
     const caller = this.activeAnimation
-      ? { ...this.caller, ...sampleAnimation(this.activeAnimation, this.timeMs) }
+      ? {
+          ...this.caller,
+          ...sampleAnimation(this.activeAnimation, this.timeMs),
+        }
       : this.caller;
     const posed = poseRig(this.rig, { caller, timeMs: this.timeMs });
     for (const part of posed) {

@@ -15,7 +15,7 @@ points) — a regular **atom** is a single unit type carrying **1–6 electrons*
 rendered on two shells, each electron one hit point — and any of three damage types
 (**energy**, **kinetic**, **nuclear**) strips them, gated only by a unit's **traits**:
 
-- **Bonded** clusters wrap their atoms in an outer **bond pool** — extra health *any* tower
+- **Bonded** clusters wrap their atoms in an outer **bond pool** — extra health _any_ tower
   chips through (kinetic fastest), shedding a spray of free atoms.
 - **Heavy** matter is a **radioactive isotope**, **immune to energy**; only **kinetic or
   nuclear** cracks it — several towers can — and as it is worn down it **decays**, shedding
@@ -30,7 +30,7 @@ a fragmenting **Macromass** boss; survive every round and you win, run out of in
 you lose.
 
 This directory is the authored **reference implementation** of the case's `base`
-variant (the *Containment* campaign) — the *correct*, ground-truth build the case is
+variant (the _Containment_ campaign) — the _correct_, ground-truth build the case is
 judged against. It is a self-contained static web app: plain **TypeScript** rendering to
 an **HTML5 canvas**, bundled with **Vite**. No backend, accounts, network calls, or API
 keys; everything needed to play is in the built bundle.
@@ -41,8 +41,8 @@ Valence is a **full-stack** case: every sprite, animation, particle effect, and 
 game plays was **produced during the build** with the six asset-generation tools on the
 run image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`,
 `music`) and committed under [`assets/`](assets/) — see the case's `specs/assets.md`. At
-runtime the game only *loads* those committed files; the tools are not invoked by the
-build. The particle bursts are played live through **`@test-cabinet/particle-runtime`**
+runtime the game only _loads_ those committed files; the tools are not invoked by the
+build. The particle bursts are played live through **`@clockwyrks/particle-runtime`**
 (vendored under [`vendor/`](vendor/) so a plain `npm ci` resolves it outside the
 monorepo), and the sounds through the Web Audio API.
 
@@ -93,6 +93,6 @@ correctly when served from any base path, including a per-run sub-path.
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems,
   and audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime`.
+  `@clockwyrks/particle-runtime`.
 - [`scripts/`](scripts/) — `gen-assets.sh`, which reproduces the committed `assets/` with
   the on-`PATH` asset tools.

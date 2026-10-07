@@ -129,7 +129,12 @@ export function breathableAt(tile: Tile): boolean {
 
 // A running diffuser adds oxygen to its own tile and its open 4-neighbors, split evenly
 // (specs/power.md). Called by src/power.ts with `amount = DIFFUSER_O2_OUT * dt`.
-export function emitOxygen(world: World, tx: number, ty: number, amount: number): void {
+export function emitOxygen(
+  world: World,
+  tx: number,
+  ty: number,
+  amount: number,
+): void {
   const targets: Tile[] = [];
   const self = tileAtOpen(world, tx, ty);
   if (self) targets.push(self);
@@ -145,7 +150,12 @@ export function emitOxygen(world: World, tx: number, ty: number, amount: number)
 // A running pump actively moves waste gas: it draws CO2 from the highest-CO2 open neighbor
 // and expels it into the lowest-CO2 open neighbor, up to `rate` per tick — an active
 // de-stratifier that relieves the CO2 pooling buoyancy creates (specs/power.md, specs/gas.md).
-export function pumpGas(world: World, tx: number, ty: number, rate: number): void {
+export function pumpGas(
+  world: World,
+  tx: number,
+  ty: number,
+  rate: number,
+): void {
   let from: Tile | null = null;
   let to: Tile | null = null;
   for (const n of neighbors4(world, tx, ty)) {

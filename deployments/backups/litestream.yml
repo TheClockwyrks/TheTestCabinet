@@ -25,5 +25,5 @@ dbs:
         endpoint: https://<r2-account-id>.r2.cloudflarestorage.com
         region: auto
         # Retain enough history for your target recovery window.
-        retention: 720h          # 30 days
+        retention: 720h # 30 days
         snapshot-interval: 24h

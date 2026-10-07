@@ -42,7 +42,13 @@ async function main() {
   const mem = () => x.memory;
 
   // Sanity: the expected exports exist.
-  for (const fn of ["alloc", "replay_load", "replay_board", "replay_step", "replay_reset"]) {
+  for (const fn of [
+    "alloc",
+    "replay_load",
+    "replay_board",
+    "replay_step",
+    "replay_reset",
+  ]) {
     check(typeof x[fn] === "function", `export ${fn} present`);
   }
 
@@ -61,7 +67,10 @@ async function main() {
 
   // The static board.
   const board = readJson(x.replay_board());
-  check(board && board.width > 0 && board.height > 0, "board has positive dimensions");
+  check(
+    board && board.width > 0 && board.height > 0,
+    "board has positive dimensions",
+  );
   check(
     board.border_x > 0 && board.border_x < board.width,
     "border_x is between the side walls",
@@ -83,10 +92,16 @@ async function main() {
     frames++;
     lastSnap = snap;
 
-    check(snap.tick > prevTick, `tick is monotonic at frame ${frames} (${snap.tick} > ${prevTick})`);
+    check(
+      snap.tick > prevTick,
+      `tick is monotonic at frame ${frames} (${snap.tick} > ${prevTick})`,
+    );
     prevTick = snap.tick;
 
-    check(snap.agents.length === 6, `frame ${snap.tick}: six agents (3 per side)`);
+    check(
+      snap.agents.length === 6,
+      `frame ${snap.tick}: six agents (3 per side)`,
+    );
     const redCount = snap.agents.filter((a) => a.team === "red").length;
     check(redCount === 3, `frame ${snap.tick}: three red agents`);
 
@@ -95,50 +110,88 @@ async function main() {
         a.x >= 0 && a.x < board.width && a.y >= 0 && a.y < board.height,
         `frame ${snap.tick}: agent ${a.team}:${a.id} in bounds`,
       );
-      check(!wallSet.has(`${a.x},${a.y}`), `frame ${snap.tick}: agent ${a.team}:${a.id} not in a wall`);
-      check(validRoles.has(a.role), `frame ${snap.tick}: agent role is valid (${a.role})`);
+      check(
+        !wallSet.has(`${a.x},${a.y}`),
+        `frame ${snap.tick}: agent ${a.team}:${a.id} not in a wall`,
+      );
+      check(
+        validRoles.has(a.role),
+        `frame ${snap.tick}: agent role is valid (${a.role})`,
+      );
       // Role must match the half the agent stands on (renderer relies on this).
-      const expected = a.x < board.border_x ? a.team === "red" : a.team === "blue";
+      const expected =
+        a.x < board.border_x ? a.team === "red" : a.team === "blue";
       check(
         (a.role === "soldier") === expected,
         `frame ${snap.tick}: agent ${a.team}:${a.id} role matches its half`,
       );
     }
 
-    check(snap.score.red >= prevRed, `frame ${snap.tick}: red score non-decreasing`);
-    check(snap.score.blue >= prevBlue, `frame ${snap.tick}: blue score non-decreasing`);
+    check(
+      snap.score.red >= prevRed,
+      `frame ${snap.tick}: red score non-decreasing`,
+    );
+    check(
+      snap.score.blue >= prevBlue,
+      `frame ${snap.tick}: blue score non-decreasing`,
+    );
     prevRed = snap.score.red;
     prevBlue = snap.score.blue;
 
     for (const [sx, sy] of snap.seeds) {
-      check(!wallSet.has(`${sx},${sy}`), `frame ${snap.tick}: seed not in a wall`);
+      check(
+        !wallSet.has(`${sx},${sy}`),
+        `frame ${snap.tick}: seed not in a wall`,
+      );
     }
 
     if (frames > 100000) {
-      check(false, "stepped past a sane frame ceiling — possible non-termination");
+      check(
+        false,
+        "stepped past a sane frame ceiling — possible non-termination",
+      );
       break;
     }
   }
 
   check(frames > 0, "stepped at least one frame");
-  check(lastSnap && lastSnap.result, "the final frame carries a decided result");
+  check(
+    lastSnap && lastSnap.result,
+    "the final frame carries a decided result",
+  );
 
   // The reconstruction must reach the COMMITTED result.
   const committed = replay.result;
   const got = lastSnap.result;
-  check(got.winner === committed.winner, `winner matches committed (${got.winner} === ${committed.winner})`);
-  check(got.ended === committed.ended, `ended matches committed (${got.ended} === ${committed.ended})`);
-  check(got.ticks === committed.ticks, `ticks match committed (${got.ticks} === ${committed.ticks})`);
   check(
-    got.score.red === committed.score.red && got.score.blue === committed.score.blue,
+    got.winner === committed.winner,
+    `winner matches committed (${got.winner} === ${committed.winner})`,
+  );
+  check(
+    got.ended === committed.ended,
+    `ended matches committed (${got.ended} === ${committed.ended})`,
+  );
+  check(
+    got.ticks === committed.ticks,
+    `ticks match committed (${got.ticks} === ${committed.ticks})`,
+  );
+  check(
+    got.score.red === committed.score.red &&
+      got.score.blue === committed.score.blue,
     `final score matches committed (${JSON.stringify(got.score)} === ${JSON.stringify(committed.score)})`,
   );
-  check(frames === committed.ticks, `frame count equals committed ticks (${frames} === ${committed.ticks})`);
+  check(
+    frames === committed.ticks,
+    `frame count equals committed ticks (${frames} === ${committed.ticks})`,
+  );
 
   // replay_reset rewinds: the first stepped frame must match the very first frame.
   x.replay_reset();
   const firstAgain = readJson(x.replay_step());
-  check(firstAgain && firstAgain.tick === 1, `replay_reset rewinds to the first frame (tick ${firstAgain && firstAgain.tick})`);
+  check(
+    firstAgain && firstAgain.tick === 1,
+    `replay_reset rewinds to the first frame (tick ${firstAgain && firstAgain.tick})`,
+  );
 
   console.log(
     `\n${failures === 0 ? "PASS" : "FAIL"}: stepped ${frames} frames; ` +

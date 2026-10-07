@@ -16,17 +16,36 @@
     border-bottom: 0;
   }
 
-  // A phone has no room for two columns, so the control drops under the text it
-  // belongs to and keeps the left edge.
-  @include bp.below(t.$bp-sm) {
+  // A phone or a portrait tablet has no room for two columns, so the control
+  // drops under the text it belongs to, keeps the left edge, and takes the row's
+  // full width.
+  @include bp.below(t.$bp-md) {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: t.$space-sm;
+
+    // Stacked, the name column's flex basis would size its height, so both
+    // columns size to their content and take the row's width.
+    .text {
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+
+    .control {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .control > * {
+      max-width: 100%;
+    }
   }
 }
 
+// The name column never shrinks below the width a label of a few words needs,
+// so the control column is what gives way when the row is cramped.
 .text {
-  flex: 1 1 auto;
+  flex: 1 0 14rem;
   min-width: 0;
 }
 
@@ -50,35 +69,15 @@
   font-size: t.$font-sm;
 }
 
-// The reset affordance, shown only while the setting differs from its starting
-// value.
-.reset {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.1rem;
-  height: 1.1rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: t.$color-text-muted;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  line-height: 1;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    color: t.$color-accent;
-    outline: none;
-  }
-}
-
+// The control column shrinks before the name column does. A control that names
+// its own width (a page's narrow or wide column) caps it with `max-width: 100%`
+// and so shrinks with this column rather than pushing the name out of the row.
 .control {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: t.$space-sm;
-  max-width: 100%;
 }

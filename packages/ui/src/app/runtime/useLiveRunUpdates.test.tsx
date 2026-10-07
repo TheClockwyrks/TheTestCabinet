@@ -19,7 +19,6 @@ function worker(id: string) {
     id,
     label: id,
     url: `https://${id}.example`,
-    local: false,
     client: { setRunLifecycleEnabled } as unknown as WorkerClient,
     identity: null,
     backendMatch: "match",

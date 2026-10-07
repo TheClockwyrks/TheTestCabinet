@@ -1,0 +1,1177 @@
+{
+  "$defs": {
+    "CodeAnalysisNotes": {
+      "description": "What the walk skipped, and whether any content-derived cap fired.",
+      "properties": {
+        "bytesSkipped": {
+          "description": "Bytes those paths held.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesRefused": {
+          "description": "Authored **source** files the parse guard turned away before a front end saw them:\nlarger than the per-file byte cap, nested deeper than the prescan admits, or unable\nto get a parse thread.\n\nCounted separately from [`truncated`](Self::truncated) on purpose. The per-file caps\nare *routine* — a model that writes one 300 KB god-file trips them on an otherwise\ncomplete analysis — so marking the whole result truncated would exclude most real\ntrees from aggregation and make the flag meaningless. But a refused file still\ncontributes nothing to any parsed-only figure while contributing every size figure,\nso an analysis that says nothing about it reports partial complexity, discipline and\nAPI numbers that look complete. This is the field that makes that visible, and\n`code.notes.filesRefused = 0` is the composable filter for \"every source file was\nactually read\".\n\nNot to be confused with [`size.sizeOnlyFiles`](CodeSizeSummary::size_only_files),\nwhich also counts the files no front end exists for — Markdown, JSON, CSS — and so\ncannot answer this question.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesSkipped": {
+          "description": "Paths the hardcoded floor removed: dependency and vendored trees, build output,\nminified and generated files, binaries. Counted, never silently dropped.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesUnparsable": {
+          "description": "Authored files a front end was offered but could not parse — a syntax error, or a\npanic contained on the parse thread.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gitignoreApplied": {
+          "description": "Whether any ignore file was in play — a `.gitignore`, `.git/info/exclude` or a\nnested ignore file.\n\nAn over-broad `.gitignore` shrinks the measured tree, and the model owns that file.\nRecording that ignore rules applied is what makes an implausibly small measurement\nexplicable instead of mysterious.",
+          "type": "boolean"
+        },
+        "truncated": {
+          "description": "Whether a **tree-wide** cap stopped the analysis short of the whole tree.\n\n**A truncated analysis is excluded from aggregation by default**: a partial figure\nthat looks complete is worse than a missing one. Under the query language that is\nthe composable filter `not code.notes.truncated`, not a hidden flag on a query.\n\nThe three caps that set it are the ones in [`CodeTruncationCap`], all of which are\npathological: a tree of twenty thousand files, sixty-four megabytes of source, two\nhundred thousand functions. The **per-file** caps do not, because they fire on\nordinary trees and a flag that is usually true excludes nothing —\n[`files_refused`](Self::files_refused) is what reports those.",
+          "type": "boolean"
+        },
+        "truncatedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeTruncationCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which cap fired first. Absent when [`truncated`](Self::truncated) is false."
+        }
+      },
+      "required": [
+        "truncated",
+        "gitignoreApplied",
+        "filesSkipped",
+        "bytesSkipped",
+        "filesUnparsable",
+        "filesRefused"
+      ],
+      "type": "object"
+    },
+    "CodeAnalysisSummary": {
+      "description": "The bounded, typed summary that rides on the run record.\n\nEvery leaf is a number, a boolean or a small enum, so the whole block flattens into\nthe query language's `code.*` namespace with no per-metric code. The catalog in\n[`CODE_METRICS`] carries the display metadata for each leaf.",
+      "properties": {
+        "analyzerVersion": {
+          "description": "The [analyzer generation](CODE_ANALYZER_VERSION) that produced these figures.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "api": {
+          "$ref": "#/$defs/CodeApiSummary",
+          "description": "The exported surface, and how much of it nothing references."
+        },
+        "authoredBasis": {
+          "$ref": "#/$defs/CodeAuthoredBasis",
+          "description": "How the authored set was resolved. See [`CodeAuthoredBasis`]."
+        },
+        "complexity": {
+          "$ref": "#/$defs/CodeComplexitySummary",
+          "description": "Per-function complexity, folded. Both languages score from one normative\ndefinition, enforced by paired fixture tests in the analyzer."
+        },
+        "duplication": {
+          "$ref": "#/$defs/CodeDuplicationSummary",
+          "description": "Copy-paste, from a normalised sliding-window clone detector."
+        },
+        "graph": {
+          "$ref": "#/$defs/CodeGraphSummary",
+          "description": "The module graph: cycles, coupling, orphans."
+        },
+        "languages": {
+          "description": "The languages actually parsed, sorted and deduplicated.\n\nAn array, so it flattens to a useless `code.languages.count`; the query\nlanguage's document builder therefore emits a derived **scalar** `code.language`\n(`\"typescript\"`, `\"rust\"`, `\"mixed\"` or `\"none\"`) alongside it. Stated here so the\nrule is visible from the field that motivates it.",
+          "items": {
+            "$ref": "#/$defs/CodeLanguage"
+          },
+          "type": "array"
+        },
+        "notes": {
+          "$ref": "#/$defs/CodeAnalysisNotes",
+          "description": "What the walk skipped and whether any cap fired."
+        },
+        "rust": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeRustSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rust-only discipline. Absent when the tree contains no Rust the analyzer parsed."
+        },
+        "size": {
+          "$ref": "#/$defs/CodeSizeSummary",
+          "description": "Totals, and the three shape metrics that distinguish \"modularised\" from \"one\ngod-file and forty stubs\"."
+        },
+        "tests": {
+          "$ref": "#/$defs/CodeTestSummary",
+          "description": "Static counts of the test code the model chose to write. **Never coverage** — see\n[`CodeTestSummary`]."
+        },
+        "treeBasis": {
+          "$ref": "#/$defs/CodeTreeBasis",
+          "description": "Which state of the tree was measured. See [`CodeTreeBasis`]."
+        },
+        "typescript": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeTypeScriptSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "TypeScript-only type discipline. Absent when the tree contains no TypeScript or\nJavaScript the analyzer parsed."
+        }
+      },
+      "required": [
+        "analyzerVersion",
+        "authoredBasis",
+        "treeBasis",
+        "languages",
+        "size",
+        "complexity",
+        "graph",
+        "api",
+        "tests",
+        "duplication",
+        "notes"
+      ],
+      "type": "object"
+    },
+    "CodeApiSummary": {
+      "description": "The exported surface, and how much of it nothing references.\n\nBoth reference figures are **approximate** in both languages and worst exactly where\nthis corpus lives — barrels, namespace imports, bundler entry points. The label is\ncarried in [`CODE_METRICS`], not in prose, so the sidebar, the axis and the table\nheader cannot disagree about it.",
+      "properties": {
+        "exports": {
+          "description": "Exported symbols across all parsed files.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "meanExportsPerModule": {
+          "description": "Exports divided by parsed files.",
+          "format": "double",
+          "type": "number"
+        },
+        "unreferencedExportRatio": {
+          "description": "[`unreferenced_exports`](Self::unreferenced_exports) over\n[`exports`](Self::exports).",
+          "format": "double",
+          "type": "number"
+        },
+        "unreferencedExports": {
+          "description": "Exports no other authored file appears to reference.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "exports",
+        "meanExportsPerModule",
+        "unreferencedExports",
+        "unreferencedExportRatio"
+      ],
+      "type": "object"
+    },
+    "CodeAuthoredBasis": {
+      "description": "How the analyzer decided which files the **model** wrote, as opposed to which were\nseeded into the workspace before it started.\n\nThis is the most important correctness question the analysis answers, and getting it\nwrong pollutes every figure *differently per test case* — silently breaking exactly\nthe cross-case comparison the analysis exists for. So the basis is recorded rather\nthan assumed, and a tree that fails every check degrades **loudly** rather than\nreporting a confidently-wrong empty authored set.",
+      "oneOf": [
+        {
+          "const": "seedCommit",
+          "description": "The run record carried a [seed commit](crate::run_record::RunRecord::seed_commit)\nand that commit is present in the collected tree. **Exact**: the boundary between\nthe scaffolding and the model's work is the one the seeder actually created.",
+          "type": "string"
+        },
+        {
+          "const": "rootCommit",
+          "description": "No recorded seed commit, but the tree has exactly one root commit and its message\nis the seeding message. **Inferred**, and kept only for trees that predate the\nrecorded field.\n\nThe message check is not cosmetic: it is the only thing distinguishing a seed root\nfrom a model-created one. Taking the root commit *unconditionally* fails in the\nworst possible direction — if the model amends, squashes, rebases or runs a fresh\n`git init`, the root commit's tree contains the model's own work, the seeded set\nswallows the authored files, and the run reports near-zero authored code stamped\nas an exact measurement.",
+          "type": "string"
+        },
+        {
+          "const": "allFiles",
+          "description": "Neither check passed. **Degraded**: seeded scaffolding is included in every\nfigure, and a consumer should say so rather than compare the run to one measured\nexactly.",
+          "type": "string"
+        }
+      ]
+    },
+    "CodeCloneGroup": {
+      "description": "One group of identical normalised windows: the same shape, written more than once.",
+      "properties": {
+        "instances": {
+          "description": "Where the group occurs, at least twice.",
+          "items": {
+            "$ref": "#/$defs/CodeCloneInstance"
+          },
+          "type": "array"
+        },
+        "lines": {
+          "description": "Lines in each instance.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["lines", "instances"],
+      "type": "object"
+    },
+    "CodeCloneInstance": {
+      "description": "One occurrence of a clone group.",
+      "properties": {
+        "file": {
+          "description": "Index into [`CodeAnalysisDocument::files`].",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "line": {
+          "description": "The 1-based line the clone starts on.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["file", "line"],
+      "type": "object"
+    },
+    "CodeComplexitySummary": {
+      "description": "Per-function complexity, folded over every function both front ends found.\n\nThe two complexity measures are kept side by side deliberately. Cyclomatic is famously\nblind to nesting, and nesting is precisely what makes generated code unreadable.",
+      "properties": {
+        "functions": {
+          "description": "Functions scored, across both languages.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "functionsOver10Cyclomatic": {
+          "description": "Functions whose cyclomatic complexity exceeds 10 — the conventional review\nthreshold.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "functionsOver20Cyclomatic": {
+          "description": "Functions whose cyclomatic complexity exceeds 20.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxCognitive": {
+          "description": "The worst single function's cognitive complexity.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxCyclomatic": {
+          "description": "The worst single function's cyclomatic complexity.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxExits": {
+          "description": "The most exit points (`return`/`throw`, plus Rust's `?`) in one function.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxFunctionLines": {
+          "description": "Lines spanned by the longest function.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxNesting": {
+          "description": "The deepest nesting inside any one function.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxParameters": {
+          "description": "The largest parameter list.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "meanCognitive": {
+          "description": "Mean cognitive complexity per function.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanCyclomatic": {
+          "description": "Mean cyclomatic complexity per function.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanExits": {
+          "description": "Mean exit count.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanFunctionLines": {
+          "description": "Mean lines per function.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanMaxNesting": {
+          "description": "Mean per-function maximum nesting.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanParameters": {
+          "description": "Mean parameter count.",
+          "format": "double",
+          "type": "number"
+        },
+        "totalCognitive": {
+          "description": "Summed Sonar cognitive complexity.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "totalCyclomatic": {
+          "description": "Summed McCabe cyclomatic complexity.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "functions",
+        "totalCyclomatic",
+        "maxCyclomatic",
+        "meanCyclomatic",
+        "totalCognitive",
+        "maxCognitive",
+        "meanCognitive",
+        "maxNesting",
+        "meanMaxNesting",
+        "maxParameters",
+        "meanParameters",
+        "maxExits",
+        "meanExits",
+        "functionsOver10Cyclomatic",
+        "functionsOver20Cyclomatic",
+        "maxFunctionLines",
+        "meanFunctionLines"
+      ],
+      "type": "object"
+    },
+    "CodeDuplicationSummary": {
+      "description": "Copy-paste, from a normalised sliding-window clone detector — one hash pass.\n\nThis answers \"did the model abstract, or copy-paste the enemy AI five times?\", and\n**no other metric here catches it**.",
+      "properties": {
+        "cloneGroups": {
+          "description": "Distinct groups of identical normalised windows.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clonedLineRatio": {
+          "description": "[`cloned_lines`](Self::cloned_lines) over all code lines in parsed files.",
+          "format": "double",
+          "type": "number"
+        },
+        "clonedLines": {
+          "description": "Code lines covered by at least one clone instance.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "largestCloneLines": {
+          "description": "Lines in the largest single clone.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "clonedLines",
+        "clonedLineRatio",
+        "cloneGroups",
+        "largestCloneLines"
+      ],
+      "type": "object"
+    },
+    "CodeFileEntry": {
+      "description": "One authored file.",
+      "properties": {
+        "blankLines": {
+          "description": "Lines that are empty or whitespace.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes": {
+          "description": "Bytes on disk.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "codeLines": {
+          "description": "Lines that are neither blank nor wholly a comment.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cognitive": {
+          "description": "Summed cognitive complexity of those functions.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "commentLines": {
+          "description": "Lines that are wholly a comment.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cyclomatic": {
+          "description": "Summed cyclomatic complexity of those functions.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fanIn": {
+          "description": "Resolved intra-tree imports into this file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fanOut": {
+          "description": "Resolved intra-tree imports out of this file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "functions": {
+          "description": "Functions scored in this file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "isTest": {
+          "description": "Whether the file is test code.",
+          "type": "boolean"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeLanguage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The language a front end parsed it as, absent when it was counted for size only."
+        },
+        "path": {
+          "description": "The path relative to the produced tree's root, with `/` separators on every\nplatform.",
+          "type": "string"
+        },
+        "sizeOnlyReason": {
+          "description": "Why the file was not parsed, when it was not — one of `\"over-parse-cap\"`,\n`\"over-nesting-cap\"`, `\"parse-failed\"`, `\"thread-unavailable\"` or\n`\"budget-exhausted\"`.\n\nAbsent both for a file that parsed and for one no front end was ever offered (JSON,\nMarkdown, an image): \"the analyzer declined\" and \"there is nothing here to parse\"\nare different facts, and only the first is a reason.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "codeLines",
+        "commentLines",
+        "blankLines",
+        "functions",
+        "cyclomatic",
+        "cognitive",
+        "fanOut",
+        "fanIn",
+        "isTest"
+      ],
+      "type": "object"
+    },
+    "CodeGraphSummary": {
+      "description": "The module graph: one node per authored source file, edges from resolved intra-tree\nimports. This is where the \"did the model think about layering?\" signal lives.",
+      "properties": {
+        "cycles": {
+          "description": "Strongly connected components of more than one file — **import cycles**. The\nclearest \"did not think about layering\" signal there is, and invisible to every\nother metric here.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "edges": {
+          "description": "Resolved intra-tree import edges, deduplicated per (from, to) pair.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entryPoints": {
+          "description": "Entry points the graph was rooted at — HTML `<script src>` targets, and each\ndiscovered crate root.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "externalPackages": {
+          "description": "Distinct external packages imported (bare specifiers for TypeScript, non-local\ncrate roots for Rust).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesInCycles": {
+          "description": "Files participating in any cycle.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "largestCycle": {
+          "description": "Files in the largest cycle.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxDepth": {
+          "description": "The longest shortest-path from any entry point, in edges.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxFanIn": {
+          "description": "The most-imported file's incoming edge count.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxFanOut": {
+          "description": "The most intra-tree imports in one file. A file importing thirty others is a\ngod-module by another name.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "meanFanIn": {
+          "description": "Mean incoming edges per file.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanFanOut": {
+          "description": "Mean outgoing edges per file.",
+          "format": "double",
+          "type": "number"
+        },
+        "meanInstability": {
+          "description": "Mean instability — outgoing over total coupling, per file. Distinguishes a\ncodebase of leaves from a codebase of tangles.",
+          "format": "double",
+          "type": "number"
+        },
+        "nodes": {
+          "description": "Files in the graph.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "orphans": {
+          "description": "Files reachable from no entry point: dead modules the model wrote and abandoned.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges",
+        "cycles",
+        "largestCycle",
+        "filesInCycles",
+        "meanInstability",
+        "meanFanOut",
+        "maxFanOut",
+        "meanFanIn",
+        "maxFanIn",
+        "orphans",
+        "maxDepth",
+        "externalPackages",
+        "entryPoints"
+      ],
+      "type": "object"
+    },
+    "CodeImportEdge": {
+      "description": "One resolved intra-tree import edge.",
+      "properties": {
+        "from": {
+          "description": "Index into [`CodeAnalysisDocument::files`] of the importing file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to": {
+          "description": "Index into [`CodeAnalysisDocument::files`] of the imported file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["from", "to"],
+      "type": "object"
+    },
+    "CodeLanguage": {
+      "description": "A language the analysis parsed, as opposed to merely counted for size.\n\nEverything else in a tree — JSON, Markdown, CSS, shaders, HTML — is counted for size\nonly and contributes to no complexity, graph or type-discipline figure.",
+      "oneOf": [
+        {
+          "const": "typeScript",
+          "description": "TypeScript, TSX, JavaScript and JSX, through one front end.",
+          "type": "string"
+        },
+        {
+          "const": "rust",
+          "description": "Rust, through the other.",
+          "type": "string"
+        }
+      ]
+    },
+    "CodeRustSummary": {
+      "description": "Rust-only discipline, chosen to mirror the TypeScript questions rather than to\nenumerate Rust features: `unwrap`/`expect` is the analogue of `any` (papering over the\ntype system), and clone density is a proxy for fighting the borrow checker instead of\ndesigning ownership.",
+      "properties": {
+        "cloneCalls": {
+          "description": "`.clone()` calls.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cloneDensity": {
+          "description": "`.clone()` calls per thousand code lines.",
+          "format": "double",
+          "type": "number"
+        },
+        "codeLines": {
+          "description": "Code lines in those files.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectCalls": {
+          "description": "`.expect(…)` calls.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "files": {
+          "description": "Files this front end parsed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "genericItems": {
+          "description": "Items carrying generic parameters.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "panicSites": {
+          "description": "`panic!` and `unreachable!` sites — where the program chooses to abort.\n\nAssertion macros are excluded: they live overwhelmingly in test code, where an\nassertion firing is the test working, and counting them would make this a proxy for\n[`CodeTestSummary::test_functions`] wearing a different name.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "publicItems": {
+          "description": "Items declared `pub` (including `pub(crate)` and friends).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "publicRatio": {
+          "description": "Public items over all items — whether visibility was narrowed at all, or\neverything is public.",
+          "format": "double",
+          "type": "number"
+        },
+        "suppressedLints": {
+          "description": "`#[allow(…)]` attributes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "todoMacros": {
+          "description": "`todo!` and `unimplemented!` macros: holes in shipped code.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "traits": {
+          "description": "Traits declared: abstraction actually used, rather than available.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unsafeItems": {
+          "description": "`unsafe` blocks, functions and impls.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unwrapCalls": {
+          "description": "`.unwrap()` calls.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unwrapDensity": {
+          "description": "`unwrap` plus `expect` per thousand code lines.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "files",
+        "codeLines",
+        "unsafeItems",
+        "unwrapCalls",
+        "expectCalls",
+        "unwrapDensity",
+        "panicSites",
+        "todoMacros",
+        "suppressedLints",
+        "cloneCalls",
+        "cloneDensity",
+        "publicItems",
+        "publicRatio",
+        "traits",
+        "genericItems"
+      ],
+      "type": "object"
+    },
+    "CodeSizeSummary": {
+      "description": "Totals and shape. Three of these carry most of the signal, because they are what\ndistinguish a modularised tree from a single god-file surrounded by stubs.",
+      "properties": {
+        "blankLines": {
+          "description": "Lines that are empty or whitespace.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "bytes": {
+          "description": "Total bytes of the authored files.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "codeLines": {
+          "description": "Lines that are neither blank nor wholly a comment.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "commentLines": {
+          "description": "Lines that are wholly a comment.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "directories": {
+          "description": "Distinct directories the authored files live in, counting the source root.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "files": {
+          "description": "Authored files that contributed to any figure, parsed or size-only.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesOver1000Lines": {
+          "description": "Files over 1000 code lines.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesOver500Lines": {
+          "description": "Files over 500 code lines.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "giniCodeLines": {
+          "description": "**The Gini coefficient of code lines across files.** Zero means every file is the\nsame size; approaching one means a single file holds everything. One number that\nanswers \"did the model split the work?\", and it costs a sort.",
+          "format": "double",
+          "type": "number"
+        },
+        "maxDirectoryDepth": {
+          "description": "The deepest directory nesting, with a file at the source root scoring zero.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxFileCodeLines": {
+          "description": "Code lines in the largest file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "meanFilesPerDirectory": {
+          "description": "Authored files divided by directories.",
+          "format": "double",
+          "type": "number"
+        },
+        "medianFileCodeLines": {
+          "description": "The median file's code lines.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "p90FileCodeLines": {
+          "description": "The 90th-percentile file's code lines — the tail the mean hides.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "parsedFiles": {
+          "description": "Of those, how many a front end actually parsed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rootShare": {
+          "description": "The fraction of code lines living directly in the source root. A model that never\ncreated a subdirectory scores one.",
+          "format": "double",
+          "type": "number"
+        },
+        "sizeOnlyFiles": {
+          "description": "Of those, how many were counted for size only — another language, over the\nper-file parse cap, or refused by the nesting prescan.\n\nA file too large to *parse* is still counted for **size**. A 300 KB god-file is\nprecisely the interesting case; dropping it entirely would bias every size metric\nagainst the worst outcomes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files",
+        "parsedFiles",
+        "sizeOnlyFiles",
+        "bytes",
+        "codeLines",
+        "commentLines",
+        "blankLines",
+        "directories",
+        "maxDirectoryDepth",
+        "meanFilesPerDirectory",
+        "giniCodeLines",
+        "rootShare",
+        "maxFileCodeLines",
+        "medianFileCodeLines",
+        "p90FileCodeLines",
+        "filesOver500Lines",
+        "filesOver1000Lines"
+      ],
+      "type": "object"
+    },
+    "CodeSymbolEntry": {
+      "description": "One function, with the figures that make it sortable in the Code tab's symbol table.",
+      "properties": {
+        "cognitive": {
+          "description": "Sonar cognitive complexity.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cyclomatic": {
+          "description": "McCabe cyclomatic complexity.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exits": {
+          "description": "Exit points.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exported": {
+          "description": "Whether the function is exported (TypeScript) or `pub` (Rust).",
+          "type": "boolean"
+        },
+        "file": {
+          "description": "Index into [`CodeAnalysisDocument::files`].",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "line": {
+          "description": "The 1-based line the function starts on.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lines": {
+          "description": "Lines the function spans.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxNesting": {
+          "description": "Deepest nesting inside the function.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "The function's name, or a synthesized one for an anonymous function\n(`\"<anonymous>\"`, or `\"<default>\"` for a default-exported one).",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "Parameter count.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "references": {
+          "description": "How many other authored files appear to reference it. **Approximate** — see\n[`CodeMetricDef::approximate`]. Absent for a non-exported function, whose\nreferences are not attributed across files at all.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": [
+        "file",
+        "name",
+        "line",
+        "lines",
+        "cyclomatic",
+        "cognitive",
+        "maxNesting",
+        "parameters",
+        "exits",
+        "exported"
+      ],
+      "type": "object"
+    },
+    "CodeTestSummary": {
+      "description": "Static counts of the test code the model chose to write, computed by parsing and\nexecuting nothing.\n\n**These are an authorship signal and must never be presented as coverage.** Neither\ncoverage nor mutation testing is in scope; a count of `#[test]` functions says what the\nmodel wrote, not what it exercised.",
+      "properties": {
+        "testCodeLines": {
+          "description": "Code lines in test files.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "testFiles": {
+          "description": "Files whose path or contents mark them as test files.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "testFunctions": {
+          "description": "`#[test]` functions, and `it`/`test` calls in TypeScript.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "testLineRatio": {
+          "description": "Test code lines over the code lines of every **parsed** file.\n\nParsed-only on both sides, because only a parsed file can be recognised as test\ncode: a denominator over the whole kept tree would put Markdown, JSON and any\nsource file the parse guard [refused](CodeAnalysisNotes::files_refused) below the\nline but never above it, and understate the share by however much non-source the\ntree happened to carry.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "testFiles",
+        "testFunctions",
+        "testCodeLines",
+        "testLineRatio"
+      ],
+      "type": "object"
+    },
+    "CodeTreeBasis": {
+      "description": "Which state of the produced tree was measured.\n\nThe analysis runs on the host after collection and **before validation**, because\nvalidation runs the case's install and build commands *in the produced tree itself*:\nafter it the tree carries build output, a rewritten lockfile and toolchain caches — and\ncarries different amounts of them depending on whether validation ran at all and how\nfar it got. [`PreValidation`](Self::PreValidation) is therefore the only basis under\nwhich \"the code the model wrote\" is literally true.\n\n[`PostValidation`](Self::PostValidation) exists because a result computed off an\narchived tree can only ever be that, and because a live run's basis can still degrade.\nRecording it keeps a mixed corpus sliceable instead of silently incomparable.",
+      "oneOf": [
+        {
+          "const": "preValidation",
+          "description": "The tree as the run left it: collected, with validation not yet run.",
+          "type": "string"
+        },
+        {
+          "const": "postValidation",
+          "description": "The tree after validation installed dependencies and built. Comparable to another\n`PostValidation` result, not to a `PreValidation` one.",
+          "type": "string"
+        }
+      ]
+    },
+    "CodeTruncationCap": {
+      "description": "Which content-derived cap a truncated analysis hit.\n\nEvery bound in the analyzer is derived from the tree's own bytes rather than from a\nclock, so *which* cap fires — and which files it drops — is a pure function of the\ninput. A wall-clock budget would make the output a function of machine speed and load,\nand an \"analyse it twice, assert equal\" test would pass while proving nothing.",
+      "oneOf": [
+        {
+          "const": "fileCount",
+          "description": "More files than the analyzer will visit. Files are visited in sorted order, so the\ndropped set is deterministic.",
+          "type": "string"
+        },
+        {
+          "const": "parseBytes",
+          "description": "The total bytes handed to a parser across the whole tree was exhausted; later\nfiles in sorted order were counted for size only.",
+          "type": "string"
+        },
+        {
+          "const": "symbolBudget",
+          "description": "More functions than the symbol budget admits; later files contributed size and\nimports but no per-function complexity.",
+          "type": "string"
+        }
+      ]
+    },
+    "CodeTypeScriptSummary": {
+      "description": "TypeScript-only type discipline. Everything here is **syntactic**: the front end\nperforms no type inference, so there is no implicit-`any` detection and no \"is this\ncast actually unsound\". For the question being asked — *did the model annotate its own\nAPI?* — that is arguably the better definition, and it keeps the two languages\nsymmetric, which is what makes the cross-language comparison honest.",
+      "properties": {
+        "annotatedParameterRatio": {
+          "description": "The fraction of function parameters carrying a type annotation.",
+          "format": "double",
+          "type": "number"
+        },
+        "annotatedReturnRatio": {
+          "description": "The fraction of functions carrying a return-type annotation.",
+          "format": "double",
+          "type": "number"
+        },
+        "anyDensity": {
+          "description": "`any` annotations per thousand code lines.",
+          "format": "double",
+          "type": "number"
+        },
+        "anyOccurrences": {
+          "description": "Explicit `any` annotations.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "assertionCasts": {
+          "description": "`as T` and `<T>x` assertion casts, excluding `as const`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "codeLines": {
+          "description": "Code lines in those files.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exportedAnnotatedRatio": {
+          "description": "The same ratio restricted to **exported** functions — the API-boundary version,\nand the one that actually matters.",
+          "format": "double",
+          "type": "number"
+        },
+        "files": {
+          "description": "Files this front end parsed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nonNullAssertions": {
+          "description": "Non-null assertions (`x!`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "suppressionComments": {
+          "description": "`@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` and `eslint-disable` comments.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "typeDeclarations": {
+          "description": "Interfaces, type aliases and enums declared.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "typeDeclarationsPerKloc": {
+          "description": "Type declarations per thousand code lines: did the model model its domain, or pass\nobject literals around?",
+          "format": "double",
+          "type": "number"
+        },
+        "unknownOccurrences": {
+          "description": "Explicit `unknown` annotations — the honest alternative to `any`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files",
+        "codeLines",
+        "anyOccurrences",
+        "anyDensity",
+        "unknownOccurrences",
+        "suppressionComments",
+        "nonNullAssertions",
+        "assertionCasts",
+        "annotatedParameterRatio",
+        "annotatedReturnRatio",
+        "exportedAnnotatedRatio",
+        "typeDeclarations",
+        "typeDeclarationsPerKloc"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The full exploration document, served per run as its own artifact.\n\nThe unbounded tier: every file, every symbol with its complexity, every import edge,\nevery cycle, every clone group. Its bounded sibling\n([`summary`](Self::summary)) is embedded so a consumer that has the document never\nneeds the record too.",
+  "properties": {
+    "analyzerVersion": {
+      "description": "The [analyzer generation](CODE_ANALYZER_VERSION) that produced this document.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "clones": {
+      "description": "Every clone group.",
+      "items": {
+        "$ref": "#/$defs/CodeCloneGroup"
+      },
+      "type": "array"
+    },
+    "cycles": {
+      "description": "Every import cycle, as sorted indices into [`files`](Self::files).",
+      "items": {
+        "items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "files": {
+      "description": "Every authored file, in sorted path order.",
+      "items": {
+        "$ref": "#/$defs/CodeFileEntry"
+      },
+      "type": "array"
+    },
+    "imports": {
+      "description": "Every resolved intra-tree import edge, as indices into [`files`](Self::files).",
+      "items": {
+        "$ref": "#/$defs/CodeImportEdge"
+      },
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/CodeAnalysisSummary",
+      "description": "The same figures that ride on the run record."
+    },
+    "symbols": {
+      "description": "Every function both front ends scored, in file-then-line order.",
+      "items": {
+        "$ref": "#/$defs/CodeSymbolEntry"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "analyzerVersion",
+    "summary",
+    "files",
+    "symbols",
+    "imports",
+    "cycles",
+    "clones"
+  ],
+  "title": "CodeAnalysisDocument",
+  "type": "object"
+}

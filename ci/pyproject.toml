@@ -1,0 +1,84 @@
+# The project's gates, the runner that executes them and the metrics read off
+# their results. See README.md.
+[project]
+name = "the-test-cabinet-ci"
+version = "0.1.0"
+description = "The gates of the-test-cabinet, the runner that executes them and the metrics read off their results."
+readme = "README.md"
+requires-python = ">=3.12"
+# Deliberately empty. A gate has to run on a machine that has uv and nothing
+# else, and the library under it is small enough for the standard library.
+dependencies = []
+
+[project.scripts]
+gate = "the_test_cabinet_ci.gate_cli:main"
+metrics = "the_test_cabinet_ci.metrics_cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.4", "ruff>=0.16.8"]
+
+# uv's own backend, which the pinned uv (.devcontainer/tools/uv.sh) carries, so
+# building the project fetches nothing. It reads the package out of `src/` by
+# the project's name, which is why the module directory is the slug written as
+# an identifier.
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+# The settings a Python gate holds this project to, and every other uv project
+# the workspace keeps beside it: each extends this file rather than repeating
+# it, so the rules stay settled in one place.
+#
+# The width is the one this library is written to: a subprocess call with its
+# keyword arguments, or a dictionary comprehension with its condition, reads as
+# one statement here and as three lines at Python's narrower conventions. It is
+# deliberately not `.prettierrc.yaml`'s 80, which is what the prose and the
+# TypeScript are held to; those are read left to right and this is not.
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "A",    # shadowing a builtin
+  "B",    # bugbear
+  "BLE",  # a bare `except Exception`
+  "C4",   # comprehensions
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "I",    # import order
+  "ISC",  # implicit string concatenation
+  "N",    # naming
+  "PERF", # loops that a comprehension states better
+  "PIE",  # odds and ends
+  "PT",   # pytest style
+  "PTH",  # pathlib over os.path, which this project uses throughout
+  "RET",  # returns
+  "RUF",  # ruff's own, including an unused `noqa`
+  "SIM",  # simplifications
+  "TID",  # no relative imports
+  "UP",   # syntax this interpreter floor allows
+  "W",    # pycodestyle warnings
+]
+ignore = [
+  # An exception here is named for what happened, and reads that way where it
+  # is caught: `except NotInRepository`, `except Malformed`. The suffix would
+  # add nothing to any of them.
+  "N818",
+  # A test asserts one fact per line. Where that fact is "both of these",
+  # `assert a and b` states it; split in two it reads as two facts.
+  "PT018",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The JUnit fixtures in this file are reports as nextest, vitest and pytest
+# actually write them, and a nextest report names this project's own crates in
+# every `classname`. So how long those lines are is decided by the project's
+# name rather than by anything written here, and a long name pushes them past
+# the limit above. Rewrapping the XML would stop it being a copy of what a
+# runner writes, which is the whole value of the fixture.
+"tests/test_junit.py" = ["E501"]

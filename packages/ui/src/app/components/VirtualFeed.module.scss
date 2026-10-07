@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 
 // The react-virtuoso scroller inside a feed container. The container (the
 // caller's class) owns the border, background, and height; this is just the
@@ -14,4 +15,5 @@
   font-size: t.$font-sm;
   margin: 0;
   padding: t.$space-sm t.$space-md;
+  @include h.halo;
 }

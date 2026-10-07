@@ -22,14 +22,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so all UI/HUD chrome is drawn **in code**
 (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | terrain tiles, resource nodes, structures, item and HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | the settlers' and raiders' animations |
-| `particle-2d` | a particle system → a `system.json` | muzzle flash, blood/impact, fire, explosion, construction dust |
-| `sfx-synth` | a procedural sound → a `.wav` | gunshot / hit / build / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer gunshot / hit / build / alarm cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the ambient / tension music bed |
+| Tool          | Produces                                                      | Used for                                                       |
+| ------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `draw`        | one sprite → a PNG                                            | terrain tiles, resource nodes, structures, item and HUD icons  |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                         | the settlers' and raiders' animations                          |
+| `particle-2d` | a particle system → a `system.json`                           | muzzle flash, blood/impact, fire, explosion, construction dust |
+| `sfx-synth`   | a procedural sound → a `.wav`                                 | gunshot / hit / build / alarm cues from raw synthesis          |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`               | richer gunshot / hit / build / alarm cues                      |
+| `music`       | sequenced music over an instrument bank → a `.wav` (+ `.mid`) | the ambient / tension music bed                                |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is the
@@ -48,9 +48,9 @@ initialize / operate / render commands and how to name the output path.
   asset. You do **not** place individual particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or sequenced
   notes and render a PCM `.wav`; `music` also emits a portable `.mid` score alongside its
-  `.wav`. `sfx-sample` and `music` draw on a **baked sample pack / instrument bank**
-  already in the image (browse it via the tool's help); a synth from `sfx-synth` needs no
-  pack.
+  `.wav`. `sfx-sample` draws on the `combat-core` sample pack and `music` on the
+  `cinematic` and `gm-lite` instrument banks, all present in the container (browse them
+  with `list-samples` and `list-instruments`); a synth from `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -65,8 +65,8 @@ origin** — when it is played back it is mounted under a **per-run sub-path** (
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory glob
   (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true, query:
-  '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+'?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 
@@ -131,7 +131,7 @@ the hostile color with a distinct silhouette (`specs/overview.md`), at a size th
 comfortably in a tile. It is fine to reuse a body across cycles; the point is that the
 settlers and raiders visibly walk, work, fight, and fall.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The combat flashes, the impacts, the fire, and the work puffs are **particle systems**
 you author with `particle-2d` and **play live** — not flat flashes or hand-coded bursts.
@@ -150,7 +150,7 @@ whose `render`/emit step writes a **`system.json`**; land them under, for exampl
 - **Construction / impact dust** — a short one-shot puff thrown when a node is worked or
   a build completes (`specs/world.md`, `specs/economy.md`).
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a
@@ -175,8 +175,8 @@ Web Audio API. Land them under, for example, `assets/audio/`.
 - **Sound effects** — produce at least a **gunshot** cue, a **hit/impact** cue, a
   **build/place** cue, and a **raid-alarm** cue with `sfx-synth` and/or `sfx-sample`, and
   a soft **turret hum** or **ambient wind** loop. `sfx-synth` builds a sound
-  from synth voices alone; `sfx-sample` layers over the baked sample pack (browse it via
-  its `--help`) for a richer result — use whichever suits each cue.
+  from synth voices alone; `sfx-sample` layers over the `combat-core` sample pack (browse
+  it with `list-samples`) for a richer result — use whichever suits each cue.
 - **Music** — produce an **ambient / tension music bed** with `music`: a low, sparse
   frontier atmosphere under the colony that **lifts into tension when a raid lands**
   (`specs/flow.md`) — you may produce one bed and filter/duck it, or produce a calm bed
@@ -206,7 +206,7 @@ drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - **Selection and tool feedback** — chop/mine designations, build ghosts, the
   hovered-tile cursor, cover indicators, priority marks (`specs/controls.md`).
 - The **day/night lighting** — the cooling, dimming overlay that reads the hour
-  (`specs/time.md`) — and the driving of the produced effects (the *systems* are
+  (`specs/time.md`) — and the driving of the produced effects (the _systems_ are
   produced; deciding where and when to play them is code).
 
 ## Genuinely produce the assets — this is the point here

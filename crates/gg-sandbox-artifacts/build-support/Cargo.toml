@@ -1,0 +1,12 @@
+[package]
+name = "gg-artifact-build"
+description = "The shared build-script body behind every crates/gg-sandbox-artifacts/<arm> crate: run one gg program-language arm's build.sh into this build's OUT_DIR, publish the directory to crates/gg, and declare the arm's rerun set."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]

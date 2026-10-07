@@ -63,8 +63,8 @@ fn midi_to_hz_reference() {
 fn render_is_byte_stable() {
     let project = MusicProject::from_ops(&stinger());
     let p = params();
-    let a = render_music(&project, &p, None);
-    let b = render_music(&project, &p, None);
+    let a = render_music(&project, &p, None).expect("renders");
+    let b = render_music(&project, &p, None).expect("renders");
     assert_eq!(a, b);
     assert!(a.iter().any(|&s| s.abs() > 0.001));
 }
@@ -107,7 +107,7 @@ fn render_is_bounded_to_unity() {
         },
     ];
     let project = MusicProject::from_ops(&ops);
-    let mix = render_music(&project, &params(), None);
+    let mix = render_music(&project, &params(), None).expect("renders");
     assert!(mix.iter().all(|&s| (-1.0001..=1.0001).contains(&s)));
 }
 
@@ -189,7 +189,7 @@ fn one_note(instrument: &str, pitch: u8) -> Vec<MusicOp> {
 fn bank_instrument_renders_from_its_sample() {
     let lib = bank("render");
     let project = MusicProject::from_ops(&one_note("tone", 60));
-    let mix = render_music(&project, &params(), Some(&lib));
+    let mix = render_music(&project, &params(), Some(&lib)).expect("renders");
     assert!(
         mix.iter().any(|&s| s.abs() > 1e-3),
         "sampled instrument was silent"
@@ -204,12 +204,14 @@ fn pitched_instrument_transposes_per_note() {
         &MusicProject::from_ops(&one_note("tone", 60)),
         &params(),
         Some(&lib),
-    );
+    )
+    .expect("renders");
     let high = render_music(
         &MusicProject::from_ops(&one_note("tone", 72)),
         &params(),
         Some(&lib),
-    );
+    )
+    .expect("renders");
     assert!(
         sounding_len(&high) < sounding_len(&low),
         "octave-up note should be shorter: high={} low={}",
@@ -226,24 +228,44 @@ fn unpitched_instrument_ignores_note_pitch() {
         &MusicProject::from_ops(&one_note("perc", 36)),
         &params(),
         Some(&lib),
-    );
+    )
+    .expect("renders");
     let b = render_music(
         &MusicProject::from_ops(&one_note("perc", 72)),
         &params(),
         Some(&lib),
-    );
+    )
+    .expect("renders");
     assert_eq!(a, b, "an unpitched instrument must not transpose");
     assert!(a.iter().any(|&s| s.abs() > 1e-3), "percussion was silent");
 }
 
 #[test]
-fn unknown_bank_instrument_without_pack_still_renders() {
-    // No baked pack: a bank instrument name falls back to the mellow triangle so the
-    // run does not render silence.
+fn unknown_instrument_without_a_bank_is_an_error() {
     let project = MusicProject::from_ops(&one_note("grand_piano", 60));
-    let mix = render_music(&project, &params(), None);
+    let err = render_music(&project, &params(), None)
+        .expect_err("a bank instrument with no bank is a failure");
     assert!(
-        mix.iter().any(|&s| s.abs() > 1e-3),
-        "fallback synth was silent"
+        err.contains("grand_piano") && err.contains("track `t`"),
+        "the error must name the instrument and its track: {err}"
     );
+}
+
+#[test]
+fn instrument_absent_from_the_bank_is_an_error() {
+    let lib = bank("unknown");
+    let project = MusicProject::from_ops(&one_note("grand_piano", 60));
+    let err = render_music(&project, &params(), Some(&lib))
+        .expect_err("an instrument the bank does not carry is a failure");
+    assert!(err.contains("grand_piano"), "{err}");
+}
+
+#[test]
+fn synth_waveform_instruments_still_render_without_a_bank() {
+    for wave in ["sine", "square", "saw", "sawtooth", "triangle", "noise"] {
+        let project = MusicProject::from_ops(&one_note(wave, 60));
+        let mix = render_music(&project, &params(), None)
+            .unwrap_or_else(|err| panic!("`{wave}` must be a synth waveform: {err}"));
+        assert!(mix.iter().any(|&s| s.abs() > 1e-3), "`{wave}` was silent");
+    }
 }

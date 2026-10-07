@@ -57,7 +57,8 @@ let pointerX = -1;
 let pointerY = -1;
 // The active dig-drag rectangle preview (tile coords), tracked by the input layer while the
 // pointer is dragging with the dig tool; null when not dragging.
-let dragRect: { tx0: number; ty0: number; tx1: number; ty1: number } | null = null;
+let dragRect: { tx0: number; ty0: number; tx1: number; ty1: number } | null =
+  null;
 
 export function setRenderTime(t: number): void {
   time = t;
@@ -72,7 +73,9 @@ export function setPointer(x: number, y: number): void {
   pointerX = x;
   pointerY = y;
 }
-export function setDragRect(r: { tx0: number; ty0: number; tx1: number; ty1: number } | null): void {
+export function setDragRect(
+  r: { tx0: number; ty0: number; tx1: number; ty1: number } | null,
+): void {
   dragRect = r;
 }
 
@@ -80,7 +83,14 @@ export function setDragRect(r: { tx0: number; ty0: number; tx1: number; ty1: num
 const ANIM_FPS: Record<Anim, number> = { walk: 10, dig: 12, carry: 9, idle: 5 };
 
 // ---- drawing primitives ---------------------------------------------------------
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
@@ -109,7 +119,8 @@ function text(
     const chars = [...s];
     const adv = size * 0.6 + letter;
     const total = chars.length * adv;
-    let cx = align === "center" ? x - total / 2 : align === "right" ? x - total : x;
+    let cx =
+      align === "center" ? x - total / 2 : align === "right" ? x - total : x;
     ctx.textAlign = "left";
     for (const c of chars) {
       ctx.fillText(c, cx, y);
@@ -122,13 +133,28 @@ function text(
 }
 
 // Blit a produced pixel-art sprite crisply (nearest-neighbor) into an integer box.
-function blitRect(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number): void {
+function blitRect(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, x, y, w, h);
 }
 
 // Blit a produced sprite centered at (cx, cy), optionally mirrored horizontally (facing).
-function blitCentered(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, w: number, h: number, flip = false): void {
+function blitCentered(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  flip = false,
+): void {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx, cy);
@@ -142,11 +168,27 @@ function hexA(hex: string, a: number): string {
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
 }
 
-function inRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+function inRect(
+  px: number,
+  py: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 
-function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string, lineHeight = 20): void {
+function wrap(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  maxW: number,
+  size: number,
+  color: string,
+  lineHeight = 20,
+): void {
   ctx.font = `400 ${size}px ${FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -164,7 +206,12 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, ma
   ctx.fillText(line, x, yy);
 }
 
-function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): number {
+function lineCount(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  maxW: number,
+  size: number,
+): number {
   ctx.font = `400 ${size}px ${FONT}`;
   let line = "";
   let n = 1;
@@ -180,19 +227,35 @@ function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number, size:
 
 // ---- camera / tile helpers ------------------------------------------------------
 // The integer screen box a tile occupies (floored so flush tiles never show seams).
-function tileScreen(game: Game, tx: number, ty: number): { x: number; y: number } {
+function tileScreen(
+  game: Game,
+  tx: number,
+  ty: number,
+): { x: number; y: number } {
   const s = worldToScreen(game.world.camera, tx * TILE, ty * TILE);
   return { x: Math.floor(s.x), y: Math.floor(s.y) };
 }
 
 // The produced sprite key a build ghost / placed structure uses as its glyph.
 function structureSprite(kind: BuildKind): string {
-  if (kind === "wall" || kind === "floor" || kind === "ladder" || kind === "wire") return `tiles/${kind}`;
+  if (
+    kind === "wall" ||
+    kind === "floor" ||
+    kind === "ladder" ||
+    kind === "wire"
+  )
+    return `tiles/${kind}`;
   return `machines/${kind}`;
 }
 
 // ---- entry ----------------------------------------------------------------------
-export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, gas: GasOverlay, bursts: Bursts): Clickable[] {
+export function render(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  gas: GasOverlay,
+  bursts: Bursts,
+): Clickable[] {
   const clicks: Clickable[] = [];
 
   ctx.imageSmoothingEnabled = false;
@@ -239,8 +302,14 @@ function drawWorld(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
 
   const txMin = Math.max(0, Math.floor(cam.x / TILE) - 1);
   const tyMin = Math.max(0, Math.floor(cam.y / TILE) - 1);
-  const txMax = Math.min(world.w - 1, Math.ceil((cam.x + VIEW_W / zoom) / TILE) + 1);
-  const tyMax = Math.min(world.h - 1, Math.ceil((cam.y + VIEW_H / zoom) / TILE) + 1);
+  const txMax = Math.min(
+    world.w - 1,
+    Math.ceil((cam.x + VIEW_W / zoom) / TILE) + 1,
+  );
+  const tyMax = Math.min(
+    world.h - 1,
+    Math.ceil((cam.y + VIEW_H / zoom) / TILE) + 1,
+  );
 
   ctx.save();
   ctx.beginPath();
@@ -258,26 +327,65 @@ function drawWorld(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
         blitRect(ctx, A.sprite(`tiles/${t.kind}`), s.x, s.y, draw, draw);
       } else {
         blitRect(ctx, backing, s.x, s.y, draw, draw);
-        if (t.kind === "wall" || t.kind === "floor" || t.kind === "ladder" || t.kind === "wire") {
+        if (
+          t.kind === "wall" ||
+          t.kind === "floor" ||
+          t.kind === "ladder" ||
+          t.kind === "wire"
+        ) {
           blitRect(ctx, A.sprite(`tiles/${t.kind}`), s.x, s.y, draw, draw);
         } else if (isMachine(t.kind)) {
           if (t.kind === "farm") {
             const f = farmAt(world, tx, ty);
-            blitRect(ctx, A.sprite(f && f.ripe ? "machines/farm_ripe" : "machines/farm"), s.x, s.y, draw, draw);
-            if (f && f.ripe) machineGlow(ctx, s.x + size / 2, s.y + size / 2, size * 0.7, COL.food);
+            blitRect(
+              ctx,
+              A.sprite(f && f.ripe ? "machines/farm_ripe" : "machines/farm"),
+              s.x,
+              s.y,
+              draw,
+              draw,
+            );
+            if (f && f.ripe)
+              machineGlow(
+                ctx,
+                s.x + size / 2,
+                s.y + size / 2,
+                size * 0.7,
+                COL.food,
+              );
           } else {
             blitRect(ctx, A.sprite(`machines/${t.kind}`), s.x, s.y, draw, draw);
             const m = machineAt(world, tx, ty);
             if (m && m.running) {
-              const glow = t.kind === "diffuser" ? COL.oxygen : t.kind === "generator" ? COL.power : COL.ladderWire;
-              machineGlow(ctx, s.x + size / 2, s.y + size / 2, size * 0.8, glow);
+              const glow =
+                t.kind === "diffuser"
+                  ? COL.oxygen
+                  : t.kind === "generator"
+                    ? COL.power
+                    : COL.ladderWire;
+              machineGlow(
+                ctx,
+                s.x + size / 2,
+                s.y + size / 2,
+                size * 0.8,
+                glow,
+              );
             }
           }
         }
       }
 
       if (t.designated) drawDesignation(ctx, s.x, s.y, size);
-      if (t.ghost !== null) drawGhost(ctx, A, t.ghost, s.x, s.y, size, game.stocks.material >= BUILD_COST[t.ghost]);
+      if (t.ghost !== null)
+        drawGhost(
+          ctx,
+          A,
+          t.ghost,
+          s.x,
+          s.y,
+          size,
+          game.stocks.material >= BUILD_COST[t.ghost],
+        );
     }
   }
 
@@ -291,7 +399,13 @@ function drawWorld(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   ctx.restore();
 }
 
-function machineGlow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string): void {
+function machineGlow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+): void {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -304,7 +418,12 @@ function machineGlow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: n
   ctx.restore();
 }
 
-function drawDesignation(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+function drawDesignation(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+): void {
   ctx.save();
   ctx.fillStyle = hexA(COL.ladderWire, 0.14);
   ctx.fillRect(x, y, size, size);
@@ -315,7 +434,15 @@ function drawDesignation(ctx: CanvasRenderingContext2D, x: number, y: number, si
   ctx.restore();
 }
 
-function drawGhost(ctx: CanvasRenderingContext2D, A: Assets, kind: BuildKind, x: number, y: number, size: number, affordable: boolean): void {
+function drawGhost(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  kind: BuildKind,
+  x: number,
+  y: number,
+  size: number,
+  affordable: boolean,
+): void {
   const draw = Math.ceil(size) + 1;
   ctx.save();
   ctx.globalAlpha = 0.42;
@@ -329,7 +456,12 @@ function drawGhost(ctx: CanvasRenderingContext2D, A: Assets, kind: BuildKind, x:
   ctx.restore();
 }
 
-function drawChevron(ctx: CanvasRenderingContext2D, cx: number, topY: number, s: number): void {
+function drawChevron(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  topY: number,
+  s: number,
+): void {
   ctx.save();
   ctx.strokeStyle = COL.power;
   ctx.lineWidth = 2;
@@ -348,7 +480,11 @@ function drawChevron(ctx: CanvasRenderingContext2D, cx: number, topY: number, s:
 // ---- delvers --------------------------------------------------------------------
 // Each living delver draws from the produced sheet matching its Anim, advancing frames on a
 // timer and mirroring by `facing`. A delver fleeing bad air flags a pulsing alert.
-function drawDelvers(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawDelvers(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   const cam = game.world.camera;
   const zoom = cam.zoom;
   const dsz = TILE * zoom * 1.45;
@@ -362,12 +498,16 @@ function drawDelvers(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void
     if (d.dead) continue;
     const frames = A.delver[d.anim];
     if (!frames || frames.length === 0) continue;
-    const frame = frames[Math.floor(d.animT * ANIM_FPS[d.anim]) % frames.length]!;
+    const frame =
+      frames[Math.floor(d.animT * ANIM_FPS[d.anim]) % frames.length]!;
     const s = worldToScreen(cam, d.px, d.py);
 
     // Danger tint: a suffocating / low-health delver reads red beneath the sprite.
     const tile = tileAt(game.world, d.tx, d.ty);
-    const inDanger = d.act === "flee" || (tile ? !breathableAt(tile) : true) || d.health < HEALTH_MAX * 0.3;
+    const inDanger =
+      d.act === "flee" ||
+      (tile ? !breathableAt(tile) : true) ||
+      d.health < HEALTH_MAX * 0.3;
     if (inDanger) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
@@ -384,7 +524,16 @@ function drawDelvers(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void
     blitCentered(ctx, frame, s.x, s.y - dsz * 0.12, dsz, dsz, d.facing === -1);
 
     if (d.act === "flee") {
-      text(ctx, "!", s.x, s.y - dsz * 0.72 + Math.sin(time * 12) * 2, 18, COL.alert, "center", "800");
+      text(
+        ctx,
+        "!",
+        s.x,
+        s.y - dsz * 0.72 + Math.sin(time * 12) * 2,
+        18,
+        COL.alert,
+        "center",
+        "800",
+      );
     }
   }
 
@@ -395,7 +544,11 @@ function drawDelvers(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void
 // The hovered-tile cursor (or the dig-drag rectangle) cues the active tool: dig previews
 // legal targets, build previews the held ghost with a legal(green)/illegal(red) ring, cancel
 // marks a clearable tile. Only shown while actually playing.
-function drawToolCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawToolCursor(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   if (game.state !== "playing") return;
   const world = game.world;
   const size = TILE * world.camera.zoom;
@@ -435,7 +588,14 @@ function drawToolCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): v
       const legal = canPlace(world, tx, ty, game.buildKind);
       ctx.save();
       ctx.globalAlpha = legal ? 0.6 : 0.3;
-      blitRect(ctx, A.sprite(structureSprite(game.buildKind)), s.x, s.y, draw, draw);
+      blitRect(
+        ctx,
+        A.sprite(structureSprite(game.buildKind)),
+        s.x,
+        s.y,
+        draw,
+        draw,
+      );
       ctx.restore();
       ctx.strokeStyle = legal ? COL.oxygen : COL.alert;
       ctx.lineWidth = 2;
@@ -466,7 +626,12 @@ function drawToolCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): v
 }
 
 // ---- top vitals strip -----------------------------------------------------------
-function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawTopHud(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, 0, STAGE_W, TOP_HUD_H);
   ctx.strokeStyle = "rgba(255,255,255,0.06)";
@@ -481,20 +646,49 @@ function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks
     const t = tileAt(game.world, d.tx, d.ty);
     return !t || !breathableAt(t);
   });
-  const starving = game.stocks.food <= 0 && game.living.some((d) => d.hunger >= HUNGER_MAX * 0.999);
+  const starving =
+    game.stocks.food <= 0 &&
+    game.living.some((d) => d.hunger >= HUNGER_MAX * 0.999);
 
   // OXYGEN — average % + lowest %, tinted, red when a delver can't breathe.
   const o2 = Math.round(game.oxygenAvg());
   const lowO2 = Math.round(game.oxygenLow());
   blitRect(ctx, A.sprite("icons/oxygen"), 16, 16, 18, 18);
   text(ctx, "OXYGEN", 40, 15, 9, COL.text3, "left", "700", 1);
-  text(ctx, `${o2}%`, 40, 35, 20, suffocating ? COL.alert : COL.oxygen, "left", "700");
-  text(ctx, `LOW ${lowO2}%`, 40, 52, 9, lowO2 <= O2_BREATHE_MIN ? COL.alert : COL.text2, "left", "500");
+  text(
+    ctx,
+    `${o2}%`,
+    40,
+    35,
+    20,
+    suffocating ? COL.alert : COL.oxygen,
+    "left",
+    "700",
+  );
+  text(
+    ctx,
+    `LOW ${lowO2}%`,
+    40,
+    52,
+    9,
+    lowO2 <= O2_BREATHE_MIN ? COL.alert : COL.text2,
+    "left",
+    "500",
+  );
 
   // CO2 — average.
   blitRect(ctx, A.sprite("icons/co2"), 132, 16, 18, 18);
   text(ctx, "CO2", 156, 15, 9, COL.text3, "left", "700", 1);
-  text(ctx, `${Math.round(game.co2Avg())}`, 156, 35, 20, COL.co2, "left", "700");
+  text(
+    ctx,
+    `${Math.round(game.co2Avg())}`,
+    156,
+    35,
+    20,
+    COL.co2,
+    "left",
+    "700",
+  );
 
   // POWER — total supply vs demand across networks + a BROWNOUT flag.
   let supply = 0;
@@ -516,8 +710,28 @@ function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks
   ctx.fillStyle = game.brownout ? COL.alert : COL.power;
   roundRect(ctx, barX, barY, Math.max(0, barW * frac), barH, 3);
   ctx.fill();
-  text(ctx, `${Math.round(demand)} / ${Math.round(supply)} W`, barX, 52, 9, COL.text2, "left", "500");
-  if (game.brownout) text(ctx, "BROWNOUT", barX + barW + 10, 35, 12, COL.alert, "left", "800", 1);
+  text(
+    ctx,
+    `${Math.round(demand)} / ${Math.round(supply)} W`,
+    barX,
+    52,
+    9,
+    COL.text2,
+    "left",
+    "500",
+  );
+  if (game.brownout)
+    text(
+      ctx,
+      "BROWNOUT",
+      barX + barW + 10,
+      35,
+      12,
+      COL.alert,
+      "left",
+      "800",
+      1,
+    );
 
   // STOCKS — ore / material / food icons + counts.
   text(ctx, "STOCKS", 452, 15, 9, COL.text3, "left", "700", 1);
@@ -542,22 +756,61 @@ function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks
     ctx.lineWidth = 1.5;
     ctx.stroke();
     blitRect(ctx, A.sprite("icons/alert"), ax + 12, 23, 18, 18);
-    text(ctx, suffocating ? "LOW OXYGEN" : "STARVING", ax + 38, 33, 12, COL.alert, "left", "800", 0.5);
+    text(
+      ctx,
+      suffocating ? "LOW OXYGEN" : "STARVING",
+      ax + 38,
+      33,
+      12,
+      COL.alert,
+      "left",
+      "800",
+      0.5,
+    );
   }
 
   // Right-side controls: speed (cycles), in-place pause, mute.
   ctrl(ctx, clicks, 1100, `${game.speed}x`, "speed", COL.text, 52);
-  ctrl(ctx, clicks, 1160, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.alert : COL.text, 44);
-  ctrl(ctx, clicks, 1212, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 44);
+  ctrl(
+    ctx,
+    clicks,
+    1160,
+    game.paused ? "▶" : "❚❚",
+    "pause",
+    game.paused ? COL.alert : COL.text,
+    44,
+  );
+  ctrl(
+    ctx,
+    clicks,
+    1212,
+    muted ? "♪̸" : "♪",
+    "mute",
+    muted ? COL.text3 : COL.text,
+    44,
+  );
 }
 
-function stock(ctx: CanvasRenderingContext2D, A: Assets, sprite: string, count: number, x: number, color: string): void {
+function stock(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  sprite: string,
+  count: number,
+  x: number,
+  color: string,
+): void {
   blitRect(ctx, A.sprite(sprite), x, 32, 18, 18);
   text(ctx, `${count}`, x + 24, 42, 18, color, "left", "700");
 }
 
 // A small clock face whose filled arc shows progress through the current cycle.
-function clock(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, frac: number): void {
+function clock(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  frac: number,
+): void {
   ctx.save();
   ctx.strokeStyle = hexA(COL.text3, 0.8);
   ctx.lineWidth = 2;
@@ -567,13 +820,27 @@ function clock(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number,
   ctx.fillStyle = hexA(COL.power, 0.85);
   ctx.beginPath();
   ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, r - 2, -Math.PI / 2, -Math.PI / 2 + Math.min(1, Math.max(0, frac)) * Math.PI * 2);
+  ctx.arc(
+    cx,
+    cy,
+    r - 2,
+    -Math.PI / 2,
+    -Math.PI / 2 + Math.min(1, Math.max(0, frac)) * Math.PI * 2,
+  );
   ctx.closePath();
   ctx.fill();
   ctx.restore();
 }
 
-function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, color: string, w: number): void {
+function ctrl(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  label: string,
+  action: string,
+  color: string,
+  w: number,
+): void {
   const y = 14;
   const h = 36;
   roundRect(ctx, x, y, w, h, 6);
@@ -587,7 +854,12 @@ function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, lab
 }
 
 // ---- bottom strip: delver roster + build palette --------------------------------
-function drawBottomHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawBottomHud(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, BOTTOM_HUD_Y, STAGE_W, STAGE_H - BOTTOM_HUD_Y);
   ctx.strokeStyle = "rgba(255,255,255,0.06)";
@@ -624,15 +896,52 @@ function drawRoster(ctx: CanvasRenderingContext2D, game: Game): void {
     ctx.stroke();
 
     text(ctx, d.name, x + 8, y + 11, 11, COL.text, "left", "700", 0.5);
-    text(ctx, actLabel(d), x + cardW - 8, y + 11, 9, COL.text3, "right", "600", 0.5);
+    text(
+      ctx,
+      actLabel(d),
+      x + cardW - 8,
+      y + 11,
+      9,
+      COL.text3,
+      "right",
+      "600",
+      0.5,
+    );
 
     const bx = x + 34;
     const bw = cardW - 42;
-    miniBar(ctx, "HLT", x + 8, bx, y + 22, bw, d.health / HEALTH_MAX, d.health < HEALTH_MAX * 0.3 ? COL.alert : COL.oxygen);
-    miniBar(ctx, "STM", x + 8, bx, y + 31, bw, d.stamina / STAMINA_MAX, COL.power);
+    miniBar(
+      ctx,
+      "HLT",
+      x + 8,
+      bx,
+      y + 22,
+      bw,
+      d.health / HEALTH_MAX,
+      d.health < HEALTH_MAX * 0.3 ? COL.alert : COL.oxygen,
+    );
+    miniBar(
+      ctx,
+      "STM",
+      x + 8,
+      bx,
+      y + 31,
+      bw,
+      d.stamina / STAMINA_MAX,
+      COL.power,
+    );
     // Hunger fills as the delver gets hungrier (full = starving), so it reads worse when full.
     const hf = d.hunger / HUNGER_MAX;
-    miniBar(ctx, "FED", x + 8, bx, y + 40, bw, hf, hf > 0.8 ? COL.alert : COL.food);
+    miniBar(
+      ctx,
+      "FED",
+      x + 8,
+      bx,
+      y + 40,
+      bw,
+      hf,
+      hf > 0.8 ? COL.alert : COL.food,
+    );
   }
 }
 
@@ -640,7 +949,16 @@ function actLabel(d: Delver): string {
   return d.act.toUpperCase();
 }
 
-function miniBar(ctx: CanvasRenderingContext2D, label: string, labelX: number, x: number, y: number, w: number, frac: number, color: string): void {
+function miniBar(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  labelX: number,
+  x: number,
+  y: number,
+  w: number,
+  frac: number,
+  color: string,
+): void {
   text(ctx, label, labelX, y + 3, 7, COL.text3, "left", "600", 0.5);
   const h = 6;
   ctx.fillStyle = "rgba(255,255,255,0.08)";
@@ -668,13 +986,23 @@ const PALETTE: PaletteEntry[] = [
   { t: "build", kind: "generator", sprite: "machines/generator", label: "GEN" },
   { t: "build", kind: "diffuser", sprite: "machines/diffuser", label: "O2" },
   { t: "build", kind: "pump", sprite: "machines/pump", label: "PUMP" },
-  { t: "build", kind: "refinery", sprite: "machines/refinery", label: "REFINE" },
+  {
+    t: "build",
+    kind: "refinery",
+    sprite: "machines/refinery",
+    label: "REFINE",
+  },
   { t: "build", kind: "farm", sprite: "machines/farm", label: "FARM" },
   { t: "tool", tool: "cancel", sprite: "icons/cancel", label: "CANCEL" },
   { t: "toggle", sprite: "icons/priority", label: "PRIO" },
 ];
 
-function drawPalette(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawPalette(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   const x0 = 512;
   const x1 = STAGE_W - 8;
   const y = BOTTOM_HUD_Y + 5;
@@ -701,7 +1029,11 @@ function drawPalette(ctx: CanvasRenderingContext2D, game: Game, A: Assets, click
     const hover = inRect(pointerX, pointerY, x, y, bw, h);
 
     roundRect(ctx, x, y, bw, h, 6);
-    ctx.fillStyle = active ? hexA(COL.oxygen, 0.16) : hover ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.03)";
+    ctx.fillStyle = active
+      ? hexA(COL.oxygen, 0.16)
+      : hover
+        ? "rgba(255,255,255,0.06)"
+        : "rgba(255,255,255,0.03)";
     ctx.fill();
     ctx.strokeStyle = active ? COL.oxygen : "rgba(255,255,255,0.10)";
     ctx.lineWidth = active ? 2 : 1;
@@ -713,12 +1045,48 @@ function drawPalette(ctx: CanvasRenderingContext2D, game: Game, A: Assets, click
     if (e.t === "build") {
       const cost = BUILD_COST[e.kind];
       const afford = game.stocks.material >= cost;
-      text(ctx, e.label, x + bw / 2, y + 40, 8, active ? COL.oxygen : COL.text2, "center", "700", 0.3);
-      text(ctx, `${cost}`, x + bw / 2, y + 50, 9, afford ? COL.built : COL.alert, "center", "700");
+      text(
+        ctx,
+        e.label,
+        x + bw / 2,
+        y + 40,
+        8,
+        active ? COL.oxygen : COL.text2,
+        "center",
+        "700",
+        0.3,
+      );
+      text(
+        ctx,
+        `${cost}`,
+        x + bw / 2,
+        y + 50,
+        9,
+        afford ? COL.built : COL.alert,
+        "center",
+        "700",
+      );
     } else {
-      const color = e.t === "toggle" ? (active ? COL.power : COL.text2) : active ? COL.oxygen : COL.text2;
+      const color =
+        e.t === "toggle"
+          ? active
+            ? COL.power
+            : COL.text2
+          : active
+            ? COL.oxygen
+            : COL.text2;
       text(ctx, e.label, x + bw / 2, y + 42, 8, color, "center", "700", 0.3);
-      if (e.t === "toggle") text(ctx, active ? "ON" : "OFF", x + bw / 2, y + 50, 8, active ? COL.power : COL.text3, "center", "700");
+      if (e.t === "toggle")
+        text(
+          ctx,
+          active ? "ON" : "OFF",
+          x + bw / 2,
+          y + 50,
+          8,
+          active ? COL.power : COL.text3,
+          "center",
+          "700",
+        );
     }
 
     clicks.push({ x, y, w: bw, h, action });
@@ -748,7 +1116,12 @@ function drawMilestones(ctx: CanvasRenderingContext2D, game: Game): void {
 }
 
 // ---- title / how-to / overlays --------------------------------------------------
-function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawTitle(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   // Atmospheric strata band along the bottom from the produced tile sprites.
   ctx.save();
   ctx.globalAlpha = 0.5;
@@ -758,7 +1131,14 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   for (let r = 0; r < 4; r++) {
     for (let c = 0; c < cols; c++) {
       const k = kinds[(r * 3 + c) % kinds.length]!;
-      blitRect(ctx, A.sprite(`tiles/${k}`), c * 40, STAGE_H - (4 - r) * 40, 41, 41);
+      blitRect(
+        ctx,
+        A.sprite(`tiles/${k}`),
+        c * 40,
+        STAGE_H - (4 - r) * 40,
+        41,
+        41,
+      );
     }
   }
   ctx.restore();
@@ -778,23 +1158,66 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.fillStyle = grad;
   drawSpaced(ctx, "HOLLOWDEEP", STAGE_W / 2, 236, 88, 10);
   ctx.restore();
-  text(ctx, game.mode.tagline, STAGE_W / 2, 306, 15, COL.text2, "center", "500", 5);
+  text(
+    ctx,
+    game.mode.tagline,
+    STAGE_W / 2,
+    306,
+    15,
+    COL.text2,
+    "center",
+    "500",
+    5,
+  );
 
   const items = menuItems("title", game);
   items.forEach((it, i) => {
     const y = 412 + i * 60;
     const on = highlighted(i, STAGE_W / 2 - 200, y - 26, 400, 52);
-    text(ctx, it.label, STAGE_W / 2, y, 28, on ? COL.oxygen : COL.text, "center", "700", 5);
+    text(
+      ctx,
+      it.label,
+      STAGE_W / 2,
+      y,
+      28,
+      on ? COL.oxygen : COL.text,
+      "center",
+      "700",
+      5,
+    );
     if (on) {
       text(ctx, "▶", STAGE_W / 2 - 190, y, 18, COL.oxygen, "center", "700");
       text(ctx, "◀", STAGE_W / 2 + 190, y, 18, COL.oxygen, "center", "700");
     }
-    clicks.push({ x: STAGE_W / 2 - 200, y: y - 26, w: 400, h: 52, action: it.action });
+    clicks.push({
+      x: STAGE_W / 2 - 200,
+      y: y - 26,
+      w: 400,
+      h: 52,
+      action: it.action,
+    });
   });
-  text(ctx, "↑↓ SELECT    ENTER CONFIRM    MOUSE OK", STAGE_W / 2, 648, 13, COL.text3, "center", "500", 3);
+  text(
+    ctx,
+    "↑↓ SELECT    ENTER CONFIRM    MOUSE OK",
+    STAGE_W / 2,
+    648,
+    13,
+    COL.text3,
+    "center",
+    "500",
+    3,
+  );
 }
 
-function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: number, size: number, letter: number): void {
+function drawSpaced(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  cx: number,
+  y: number,
+  size: number,
+  letter: number,
+): void {
   const chars = [...s];
   const adv = size * 0.62 + letter;
   const total = chars.length * adv;
@@ -811,12 +1234,30 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
   text(ctx, "HOW TO PLAY", STAGE_W / 2, 58, 32, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
-    ["GOAL", "Keep a sealed underground crew alive. There is no win screen — survival is open-ended and measured in CYCLES. The colony is LOST when the last delver dies."],
-    ["AIR", "The opening cavern holds a finite pocket of breathable OXYGEN. Every delver breathes it and exhales CO2; both diffuse through open space (CO2 sinks, oxygen rises). Left alone the pocket sours and the crew suffocates."],
-    ["DIG & REFINE", "Mark DIRT / ORE / ROCK to DIG open (bedrock is indestructible). Mined ore banks to stock; build a REFINERY and a delver operates it to turn ore into MATERIAL — the build currency."],
-    ["POWER & OXYGEN", "Build a GENERATOR (burns ore), run WIRE to a DIFFUSER, and the diffuser emits oxygen while powered. Overdraw a network and it BROWNS OUT — every machine on it stops. A PUMP moves gas to clear a soured pocket."],
-    ["FOOD", "Delvers get hungry and starve. Build a FUNGUS FARM; it ripens and a delver harvests it for food."],
-    ["CONTROLS", "Pick DIG or a building from the bottom palette and click / drag in the colony to place orders — delvers do the labor. CANCEL clears an order; PRIORITY runs builds before digs. Scroll to zoom, drag to pan. 1/2/3 set speed, SPACE pauses in place, ESC opens the menu, M mutes."],
+    [
+      "GOAL",
+      "Keep a sealed underground crew alive. There is no win screen — survival is open-ended and measured in CYCLES. The colony is LOST when the last delver dies.",
+    ],
+    [
+      "AIR",
+      "The opening cavern holds a finite pocket of breathable OXYGEN. Every delver breathes it and exhales CO2; both diffuse through open space (CO2 sinks, oxygen rises). Left alone the pocket sours and the crew suffocates.",
+    ],
+    [
+      "DIG & REFINE",
+      "Mark DIRT / ORE / ROCK to DIG open (bedrock is indestructible). Mined ore banks to stock; build a REFINERY and a delver operates it to turn ore into MATERIAL — the build currency.",
+    ],
+    [
+      "POWER & OXYGEN",
+      "Build a GENERATOR (burns ore), run WIRE to a DIFFUSER, and the diffuser emits oxygen while powered. Overdraw a network and it BROWNS OUT — every machine on it stops. A PUMP moves gas to clear a soured pocket.",
+    ],
+    [
+      "FOOD",
+      "Delvers get hungry and starve. Build a FUNGUS FARM; it ripens and a delver harvests it for food.",
+    ],
+    [
+      "CONTROLS",
+      "Pick DIG or a building from the bottom palette and click / drag in the colony to place orders — delvers do the labor. CANCEL clears an order; PRIORITY runs builds before digs. Scroll to zoom, drag to pan. 1/2/3 set speed, SPACE pauses in place, ESC opens the menu, M mutes.",
+    ],
   ];
   let y = 108;
   for (const [k, v] of lines) {
@@ -830,22 +1271,70 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   menuButton(ctx, bx, byy, 180, 42, "BACK", "menu:back", on, clicks);
 }
 
-function drawPause(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawPause(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   dim(ctx);
   panelBox(ctx, 440, 200, 400, 320);
   text(ctx, "PAUSED", STAGE_W / 2, 252, 30, COL.text, "center", "700", 4);
-  text(ctx, `CYCLE ${game.cycle}`, STAGE_W / 2, 296, 14, COL.text2, "center", "500", 2);
+  text(
+    ctx,
+    `CYCLE ${game.cycle}`,
+    STAGE_W / 2,
+    296,
+    14,
+    COL.text2,
+    "center",
+    "500",
+    2,
+  );
   menuButtons(ctx, menuItems("paused", game), 330, 56, 260, clicks);
 }
 
-function drawGameOver(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawGameOver(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   dim(ctx);
   panelBox(ctx, 400, 176, 480, 372);
-  text(ctx, "THE DEEP RECLAIMS THE COLONY", STAGE_W / 2, 224, 14, COL.alert, "center", "700", 2);
+  text(
+    ctx,
+    "THE DEEP RECLAIMS THE COLONY",
+    STAGE_W / 2,
+    224,
+    14,
+    COL.alert,
+    "center",
+    "700",
+    2,
+  );
   text(ctx, "COLONY LOST", STAGE_W / 2, 272, 42, COL.alert, "center", "800", 2);
-  text(ctx, "CYCLES SURVIVED", STAGE_W / 2, 330, 12, COL.text3, "center", "600", 2);
+  text(
+    ctx,
+    "CYCLES SURVIVED",
+    STAGE_W / 2,
+    330,
+    12,
+    COL.text3,
+    "center",
+    "600",
+    2,
+  );
   text(ctx, `${game.score}`, STAGE_W / 2, 366, 48, COL.oxygen, "center", "800");
-  text(ctx, `TILES DUG ${game.tilesDug}   ·   MATERIAL BANKED ${game.stocks.material}`, STAGE_W / 2, 416, 13, COL.text2, "center", "500", 1);
+  text(
+    ctx,
+    `TILES DUG ${game.tilesDug}   ·   MATERIAL BANKED ${game.stocks.material}`,
+    STAGE_W / 2,
+    416,
+    13,
+    COL.text2,
+    "center",
+    "500",
+    1,
+  );
 
   const items = menuItems("gameover", game);
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];
@@ -855,7 +1344,14 @@ function drawGameOver(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickab
   });
 }
 
-function menuButtons(ctx: CanvasRenderingContext2D, items: MenuItem[], y0: number, gap: number, w: number, clicks: Clickable[]): void {
+function menuButtons(
+  ctx: CanvasRenderingContext2D,
+  items: MenuItem[],
+  y0: number,
+  gap: number,
+  w: number,
+  clicks: Clickable[],
+): void {
   const x = STAGE_W / 2 - w / 2;
   items.forEach((it, i) => {
     const y = y0 + i * gap;
@@ -864,7 +1360,17 @@ function menuButtons(ctx: CanvasRenderingContext2D, items: MenuItem[], y0: numbe
   });
 }
 
-function menuButton(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, label: string, action: string, on: boolean, clicks: Clickable[]): void {
+function menuButton(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  action: string,
+  on: boolean,
+  clicks: Clickable[],
+): void {
   const color = on ? COL.oxygen : COL.text;
   roundRect(ctx, x, y, w, h, 6);
   ctx.fillStyle = on ? hexA(color, 0.14) : "rgba(255,255,255,0.03)";
@@ -876,7 +1382,13 @@ function menuButton(ctx: CanvasRenderingContext2D, x: number, y: number, w: numb
   clicks.push({ x, y, w, h, action });
 }
 
-function highlighted(i: number, x: number, y: number, w: number, h: number): boolean {
+function highlighted(
+  i: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return menuIndex === i || inRect(pointerX, pointerY, x, y, w, h);
 }
 
@@ -885,7 +1397,13 @@ function dim(ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
 
-function panelBox(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+function panelBox(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.5)";
   ctx.shadowBlur = 30;

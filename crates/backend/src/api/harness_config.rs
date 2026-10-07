@@ -8,6 +8,12 @@
 //! Cabinet drives at once — which the backend's [claim](crate::db::Db::claim_next_job)
 //! enforces by holding surplus runs in the `pending` state.
 //!
+//! What is enumerated is [`HarnessSlug::RUNNABLE`] rather than the CLI catalog, because
+//! what this knob bounds is runs in flight rather than installed CLIs.
+//! [gg](https://docs.testcabinet.ai/gg/overview/) ships no manifest and installs no CLI, but
+//! its runs occupy the queue exactly as a third-party harness's do — today they are most of
+//! it — so leaving it off this surface would leave the majority of the queue untunable.
+//!
 //! Reads are open (the private-network model, like the model catalog); the mutation
 //! requires a bearer token (see [`AuthUser`]).
 
@@ -30,7 +36,7 @@ use super::AppState;
 const MAX_PARALLELISM_LIMIT: i32 = 1024;
 
 /// One harness's configuration, as `GET /harness-config` reports it: its identity
-/// (slug + display name, from the static catalog) plus the tunable knobs.
+/// (slug + display name) plus the tunable knobs.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessConfigOut {
@@ -51,9 +57,9 @@ pub struct HarnessConfigInput {
     pub max_parallelism: Option<i32>,
 }
 
-/// `GET /harness-config` — every harness the Test Cabinet knows, each with its
-/// current configuration. Enumerates the static harness catalog so a harness with no
-/// stored overrides still appears (at its defaults); open read.
+/// `GET /harness-config` — every harness a run can be queued for, each with its current
+/// configuration. Enumerates [`HarnessSlug::RUNNABLE`] so a harness with no stored overrides
+/// still appears (at its defaults); open read.
 pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<HarnessConfigOut>>, ApiError> {
     let stored = state
         .db
@@ -61,9 +67,11 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<HarnessConfi
         .await
         .map_err(ApiError::from)?;
     let registry = DefaultHarnessRegistry::new();
-    let out = HarnessSlug::ALL
+    let out = HarnessSlug::RUNNABLE
         .into_iter()
         .map(|slug| {
+            // The registry is the CLI catalog, so it answers for the eight harnesses that
+            // ship a manifest and not for gg, whose slug is its own name.
             let name = registry
                 .get(slug)
                 .map(|harness| harness.name().to_string())
@@ -92,9 +100,9 @@ pub async fn set(
     Path(slug): Path<String>,
     Json(input): Json<HarnessConfigInput>,
 ) -> Result<Json<Vec<HarnessConfigOut>>, ApiError> {
-    // Only a harness the core layer actually knows may be configured — an unknown
+    // Only a harness a run can actually be queued for may be configured — an unknown
     // slug would create dead config the dispatcher never consults.
-    let known = HarnessSlug::ALL.iter().any(|s| s.as_str() == slug);
+    let known = HarnessSlug::RUNNABLE.iter().any(|s| s.as_str() == slug);
     if !known {
         return Err(ApiError::not_found(format!("unknown harness `{slug}`")));
     }

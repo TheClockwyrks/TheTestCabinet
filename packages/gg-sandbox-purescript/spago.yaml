@@ -1,0 +1,84 @@
+# The libraries a PureScript program is written against, and the ONLY thing this file decides.
+#
+# gg's rule for every language arm is that commonly used libraries are available by default — a
+# PureScript author reaches for `Data.Map`, `StateT` and a lens without asking, and an arm that made
+# them ask would be measuring how well a model can live without its standard idioms rather than how
+# well it works. So this set is deliberately generous and deliberately FIXED: it is compiled into the
+# library tree `packages/gg-sandbox-purescript/build.sh` cuts into a cargo `OUT_DIR` and gg embeds,
+# every program is compiled against exactly it, and nothing is installed at run time.
+#
+# What is NOT here is as deliberate. There is no JSON library, because neither an argument nor a
+# result the SDK takes is a JSON document a program assembles or parses — that is one of the seam's
+# rules, and shipping `argonaut` would invite a program to break it. There is no HTTP or Node
+# binding, because the guest is a wasm component and the way out of it is the SDK. And there is no
+# `aff`: every call in this sandbox is synchronous, so an asynchronous effect monad would be a
+# library whose whole point the sandbox refuses.
+#
+# # The headings are machine-readable
+#
+# Every dependency sits under a `# --- Heading ---` line, and `tools/signatures.mjs` reads them: the
+# catalogue's `libraries` section is the modules of the packages declared here, grouped by these
+# headings, so the record of what a program may import is reflected out of the file that decides
+# the set rather than written somewhere it would drift from it. A program that imports a module
+# this arm does not carry is refused by `purs`, in `purs`'s own words.
+#
+# Versions are resolved against the pinned registry package set at the bottom of this file, and
+# recorded package by package in the committed `spago.lock`.
+#
+# # `workspace.packageSet.registry` is the ONLY place that package set is written down
+#
+# Spago reads it from here and from nowhere else, so this is where it lives. The shell and the
+# images need it too — `purescript-version.sh` reports it beside `purs`, `esbuild` and Spago — and
+# that file therefore SEDS IT OUT OF THIS ONE rather than restating it. It used to restate it, with
+# nothing comparing the two copies, and neither half of that disagreement is a build failure: bump
+# only the shell copy and every script names a package set no library was resolved from; bump only
+# this one and the scripts are silently a set behind. Change the number here, and the projection
+# follows.
+package:
+  name: gg-sandbox-purescript
+  dependencies:
+    # --- The everyday ---
+    - prelude
+    - maybe
+    - either
+    - tuples
+    - newtype
+    - bifunctors
+    - functions
+    - partial
+    - strings
+    - integers
+    - numbers
+    - enums
+    - record
+    - datetime
+    # --- Collections ---
+    - arrays
+    - lists
+    - ordered-collections
+    - foreign-object
+    - foldable-traversable
+    - unfoldable
+    # --- Effects, including the two the sandbox's ambient WASI makes real ---
+    - effect
+    - exceptions
+    - refs
+    - st
+    - now
+    - random
+    - console
+    # --- Monad transformers and control ---
+    - transformers
+    - free
+    - identity
+    - control
+    - tailrec
+    # --- Optics ---
+    - profunctor-lenses
+    # --- JavaScript interop, which is what this arm's own SDK is built on ---
+    - nullable
+    - unsafe-coerce
+workspace:
+  packageSet:
+    registry: 80.3.0
+  extraPackages: {}

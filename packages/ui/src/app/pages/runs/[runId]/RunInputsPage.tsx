@@ -1,5 +1,6 @@
-import { Panel } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
+import { LoadFailureState } from "../../../components/LoadFailureState";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   VariantInputsView,
@@ -10,11 +11,11 @@ import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Inputs tab (`/runs/:runId/inputs`): the prompt, seeded files, and reference
-// media the run was given — resolved from the catalog by the run's subject and
-// rendered with the same `VariantInputsView` the test-case Inputs tab uses. It
-// saves a reviewer from leaving the run to the test-case section to see what was
-// asked for and what it was judged against. Available on every host (the public
-// site included).
+// media the run was given — resolved from the run's own recorded case version and
+// engine (see `useRunVariant`) and rendered with the same `VariantInputsView` the
+// test-case Inputs tab uses. It saves a reviewer from leaving the run to the
+// test-case section to see what was asked for and what it was judged against.
+// Available on every host (the public site included).
 //
 // A game-jam run carries one set of inputs that is *not* shared with every other
 // run of the case: the earlier entries' READMEs it was seeded with and asked to
@@ -30,23 +31,35 @@ export function RunInputsPage() {
 
 function RunInputsBody({ run }: { run: RunRecord }) {
   const { variant, status } = useRunVariant(run.subject);
-  // The inputs are resolved from the catalog, which is fetched independently of
-  // the run record — so this body commonly renders while that fetch is still in
-  // flight. Show the branded loading state for that wait; "not available" is
-  // reserved for a catalog that has finished loading without the case, which is
-  // the only state a visitor can do nothing about.
+  // Render order: the resolved inputs first, then the read's state. The inputs
+  // are fetched independently of the run record, so this body commonly renders
+  // while that fetch is still in flight (a wait), and a fetch that FAILED says
+  // so — whether the case version, variant, and engine this run names still
+  // exist is exactly what a failed read could not establish. "Not available" is
+  // reserved for a fetch that settled without them.
+  if (variant) {
+    // Keyed by run so moving between two runs of the same variant collapses the
+    // panels again rather than leaving one open over a different run's entry.
+    return (
+      <VariantInputsView
+        key={run.id}
+        variant={variant}
+        runSeededInputs={priorEntryInputs(run)}
+      />
+    );
+  }
   if (status === "loading") {
     return <LoadingState size="section" label="Loading inputs…" />;
   }
-  return variant ? (
-    // Keyed by run so moving between two runs of the same variant collapses the
-    // panels again rather than leaving one open over a different run's entry.
-    <VariantInputsView
-      key={run.id}
-      variant={variant}
-      runSeededInputs={priorEntryInputs(run)}
-    />
-  ) : (
+  if (status === "error") {
+    return (
+      <LoadFailureState
+        size="section"
+        subject="the inputs for this run’s test case"
+      />
+    );
+  }
+  return (
     <Panel>
       <p className={styles.empty}>
         The inputs for this run&rsquo;s test case are not available.
@@ -64,7 +77,6 @@ function RunInputsBody({ run }: { run: RunRecord }) {
 function priorEntryInputs(run: RunRecord): RunSeededInput[] {
   return (run.gameJamPriorEntries ?? []).map((entry, index) => ({
     path: `previous-entries/entry-${String(index + 1).padStart(2, "0")}.md`,
-    kind: "entry",
     text: entry.readme,
   }));
 }

@@ -1,10 +1,10 @@
 # Spectra Flux — drawing brief
 
-You are drawing the **Flux**, a single **enemy drone** for *Spectra*, a
+You are drawing the **Flux**, a single **enemy drone** for _Spectra_, a
 two-band formation shooter. The Flux **alternates its spectral band** on a
 steady rhythm — holding cyan, then shimmering, then holding magenta, and back.
 Draw it **caught mid-shimmer**, showing **both** bands at once: that dual-band
-look is its whole identity. Everything below describes the *enemy* — never the
+look is its whole identity. Everything below describes the _enemy_ — never the
 player's ship.
 
 ## The canvas
@@ -21,10 +21,10 @@ player's ship.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Cyan band | `#34e2ff` |
-| Magenta band | `#ff4ec7` |
+| Role                      | Hex       |
+| ------------------------- | --------- |
+| Cyan band                 | `#34e2ff` |
+| Magenta band              | `#ff4ec7` |
 | Rim / highlight / shimmer | `#ffffff` |
 
 ## The form

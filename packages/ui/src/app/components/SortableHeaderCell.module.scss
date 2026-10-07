@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 
 // The header cell: positioning context for the column's resize handle, which
 // pins to its right edge. A numeric column right-aligns its label and insets it
@@ -45,7 +46,7 @@
   &:hover,
   &[data-active] {
     color: t.$color-accent;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 

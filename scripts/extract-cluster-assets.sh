@@ -33,7 +33,7 @@
 # PREFER THE CONSOLE. That chunked transfer is tens of minutes for a full-stack run's
 # tree (~150 chunks), which is why the artifact service now serves the whole run as one
 # archive: `GET /runs/{id}/archive.tar.gz`, surfaced as the **Download** link on a run's
-# detail page in the web console and the Tauri app. It returns the same `<run-id>/` tree
+# detail page in the web console. It returns the same `<run-id>/` tree
 # this script produces, in a single request. Use this script only when the console
 # cannot reach the artifact service and `az` is the only channel you have.
 #

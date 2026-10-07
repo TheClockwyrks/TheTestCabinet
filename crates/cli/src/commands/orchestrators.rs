@@ -7,7 +7,8 @@ use crate::cli::OrchestratorsArgs;
 /// List every built-in orchestrator alongside its name and description.
 ///
 /// An orchestrator decides how a test case's harness sessions are conducted (a
-/// single session for `one-shot`, a multi-session loop for `ralph`). The built-ins
+/// single session for `one-shot`; a multi-session strategy is possible, but the
+/// only one shipped in-tree today is the single-session default). The built-ins
 /// are embedded at build time, so this resolves each from the catalog without any
 /// filesystem access. External orchestrators (`--orchestrator-dir`) are resolved
 /// purely at run time and are deliberately never enumerated here.

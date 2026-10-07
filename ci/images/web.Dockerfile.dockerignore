@@ -1,0 +1,26 @@
+# What the web CI image's build may see of the checkout.
+#
+# It is an allowlist, and a narrow one: the context sent to the builder is the
+# handful of scripts this image installs rather than the whole checkout, so
+# nothing else a commit touches is uploaded or busts a layer.
+#
+# There is a second reason this file exists, and it is the one that would
+# otherwise break the build outright. BuildKit reads the ignore file named
+# after the Dockerfile in preference to the root .dockerignore, and this
+# workspace has a root .dockerignore: an allowlist written for the images under
+# deployments/, which ignores everything and re-includes the Rust and web
+# workspaces those builds read. A CI image reads none of that and copies the
+# devcontainer's install scripts instead, so under that allowlist every COPY
+# below would fail with the source not found.
+#
+# The paths are the COPY sources of web.Dockerfile. The image pipeline's path
+# filter lists more than these: it names every file the image is built from,
+# which includes the files that decide the build command and never reach the
+# image.
+
+*
+!/.devcontainer/languages/node
+!/.devcontainer/system/browser-deps.sh
+!/.devcontainer/tools/browsers.sh
+!/.devcontainer/tools/kubectl.sh
+!/.devcontainer/tools/uv.sh

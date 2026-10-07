@@ -1,7 +1,7 @@
 # Spectra Burst — particle-effect brief
 
 You are authoring the **drone-burst**, the screen-space explosion VFX for
-*Spectra*, a two-band formation shooter. It is the flash a swarm drone throws
+_Spectra_, a two-band formation shooter. It is the flash a swarm drone throws
 when the player's fire pops it — a sharp neon detonation that punches for a
 fraction of a second and is gone. You are authoring a **single 2D particle
 effect**: a **planar, screen-space** system that plays flat against the game's
@@ -27,11 +27,11 @@ Author the effect in only these colors — the Spectra neon two-band palette. A
 viewer judges the effect against this list, so keep every emitter, gradient,
 and flash inside it:
 
-| Role | Hex |
-| --- | --- |
+| Role                   | Hex       |
+| ---------------------- | --------- |
 | Flash / spark hot core | `#ffffff` |
-| Cyan band | `#34e2ff` |
-| Magenta band | `#ff4ec7` |
+| Cyan band              | `#34e2ff` |
+| Magenta band           | `#ff4ec7` |
 
 The two spectral bands read by **color** here — cyan and magenta — exactly as
 they do on the ships: this is the same two-band identity, thrown as light.
@@ -88,7 +88,7 @@ Graph) is authored. Shape it, conceptually, as:
 with forces that read as an explosion: a **radial push** outward from the center
 and **drag** to decelerate the sparks over their life. This is a screen-space
 detonation, so there is **no gravity** pulling it one way — keep it radially
-symmetric. Author these as *intent*: read `particle-2d --help` for the exact
+symmetric. Author these as _intent_: read `particle-2d --help` for the exact
 emitter, force, and curve flags.
 
 ## Color, opacity, and size curves
@@ -109,10 +109,11 @@ Over each particle's normalized life:
 
 The `particle-2d` binary already on your `PATH` is the **only** channel for
 shaping this effect — you build the system by calling it **one operation at a
-time**, and the ordered list of operations you issue, recorded to `actions.json`,
-is the **authoritative output**. You are authoring a **system** (emitters, forces,
-per-particle curves), **not** placing individual particles: the review UI and a
-game **simulate it live** from the system you author.
+time**, and the ordered list of operations you issue, recorded to
+`actions.json`, is the **authoritative output**. You are authoring a **system**
+(emitters, forces, per-particle curves), **not** placing individual particles: a
+game, or any viewer that plays it, **simulates it live** from the system you
+author.
 
 Run `particle-2d --help` to list every operation and `particle-2d <operation>
 --help` for one operation's exact flags — that help text is the authoritative
@@ -125,6 +126,6 @@ already seeded alongside the workspace — no operation needs those flags.
 
 Because the effect is **simulated live**, it **varies slightly from one play to the
 next** — the sparks scatter differently each time. That is correct for an
-explosion: author it so the *character* — flash, ring, radial burst, in the neon
+explosion: author it so the _character_ — flash, ring, radial burst, in the neon
 two-band palette — **reads the same across every replay**, rather than depending on
 any one frozen arrangement of particles.

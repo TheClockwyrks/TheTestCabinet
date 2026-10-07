@@ -105,7 +105,8 @@ function unload(a: Attraction, ctx: RideCtx): void {
     const g = ctx.guestById(id);
     if (!g) continue;
     const waitOver = Math.max(0, g.waitTimer - t.patience);
-    const gain = t.rideHappyBase + a.thrill * t.rideHappyPerThrill - waitOver * 0.5;
+    const gain =
+      t.rideHappyBase + a.thrill * t.rideHappyPerThrill - waitOver * 0.5;
     applyHappiness(g, gain);
     g.desires.thrill = Math.max(0, g.desires.thrill - (a.thrill * 1.2 + 20));
     g.thirstBoostTimer = t.thirstAfterRide.seconds;
@@ -137,7 +138,10 @@ export function breakDown(a: Attraction, ctx: RideCtx): void {
 // breakdown, so a maintained ride breaks less (specs/staff.md).
 export function inspectRide(a: Attraction): void {
   a.inspectTimer = 0;
-  a.breakdownAccum = Math.max(0, a.breakdownAccum * (1 - TUNE.rides.inspectShave));
+  a.breakdownAccum = Math.max(
+    0,
+    a.breakdownAccum * (1 - TUNE.rides.inspectShave),
+  );
 }
 
 // A mechanic finished a repair: the ride runs again with a clean maintenance slate.
@@ -183,7 +187,8 @@ export function sellAt(a: Attraction, ctx: RideCtx): void {
     applyHappiness(g, t.buyHappy * 0.5); // a want, not a need — pure mood
   } else {
     g.desires[a.serves] = Math.max(0, g.desires[a.serves] - t.saleReduce);
-    if (a.serves === "thirst") g.bladderBoostTimer = t.bladderAfterDrink.seconds;
+    if (a.serves === "thirst")
+      g.bladderBoostTimer = t.bladderAfterDrink.seconds;
   }
   ctx.snd("coin");
   emitLitter(a, ctx);

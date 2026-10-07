@@ -1,0 +1,32 @@
+{
+  "name": "orrery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Orrery — a machine-building puzzle of arms, sigils, and celestial motes on a hex field, built on the Structured 2D engine, running entirely in the browser, whose art, effects, and audio the build produces itself.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime",
+    "@clockwyrks/structured-2d": "file:./.vendor/engine/@clockwyrks/structured-2d"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10",
+    "@napi-rs/canvas": "^1",
+    "@vitest/coverage-istanbul": "^5",
+    "eslint": "^10",
+    "playwright": "^1.63.0",
+    "prettier": "^3",
+    "typescript": "^6",
+    "typescript-eslint": "^8",
+    "vite": "^8",
+    "vitest": "^5"
+  }
+}

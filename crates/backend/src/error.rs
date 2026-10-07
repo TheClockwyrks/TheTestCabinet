@@ -71,6 +71,13 @@ impl ApiError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", message)
     }
+
+    /// `503 Service Unavailable` with code `unavailable` — the backend is serving
+    /// but the state this request needs is not yet in place, such as a definition
+    /// store awaiting the ingest that makes it readable.
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, "unavailable", message)
+    }
 }
 
 /// The JSON body of an error response: `{ "error": { "code", "message" } }`.

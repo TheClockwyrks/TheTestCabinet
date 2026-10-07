@@ -21,7 +21,9 @@
 //! dispatcher passed in (see [`client`]).
 
 pub mod artifacts;
+pub mod cancel;
 pub mod client;
+pub mod collect;
 pub mod config;
 pub mod creds;
 pub mod kubernetes;

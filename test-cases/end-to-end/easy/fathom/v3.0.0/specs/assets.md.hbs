@@ -1,0 +1,227 @@
+# Fathom — Art assets
+
+Fathom's art is supplied with the project, under `assets/`. Seven sprite sheets cover
+the forager, the three predators, the bonus drifter, the flare bloom, and the maze
+tiles, and the build renders each of those elements from its sheet. Everything else
+the game shows is drawn in code, and the last section of this file lists it.
+
+## How the sheets are organized
+
+Each sheet is a folder under `assets/` holding one PNG per frame, named by its frame
+index (`0.png`, `1.png`, and so on). Every PNG has a transparent background in
+straight alpha, so only its drawn pixels are opaque and each frame composites cleanly
+over the dark maze.
+
+| Sheet | Folder | Frames | Frame size | What it covers |
+| --- | --- | --- | --- | --- |
+| Forager | `assets/glimmerfin/` | 8 (`0`–`7`) | 32 x 32 | The player character |
+| Lanternjaw | `assets/lanternjaw/` | 16 (`0`–`15`) | 32 x 32 | The light-seeking predator, both of its forms |
+| Gloamfin | `assets/gloamfin/` | 8 (`0`–`7`) | 32 x 32 | The sound-seeking predator |
+| Flarefish | `assets/flarefish/` | 8 (`0`–`7`) | 32 x 32 | The flare-making predator |
+| Bonus drifter | `assets/drifter/` | 8 (`0`–`7`) | 32 x 32 | The harmless amber jellyfish |
+| Flare bloom | `assets/flare-bloom/` | 8 (`0`–`7`) | 128 x 128 | The Flarefish's radial flare |
+| Maze tiles | `assets/trench-walls/` | 19 (`0`–`18`) | 32 x 32 | Wall autotile, floor, fog, den gate |
+
+Frame sizes are in pixels of source art. A tile is `TILE` (`32`) logical units square,
+so a 32 x 32 frame maps onto one tile at a scale of one.
+
+## How they are drawn
+
+- A 32 x 32 frame is drawn over one tile at its subject's position. A creature frame
+  carries a margin inside its box, so the creature reads as centered on its tile; a
+  maze tile fills its cell edge to edge and butts seamlessly against its neighbors.
+- The sprites and tiles are pixel art, and they stay crisp at every scale the stage is
+  fitted to.
+- The flare bloom is an area effect far larger than a tile. It is drawn centered on the
+  Flarefish and scaled so its lit radius matches the flare radius
+  `specs/predators/flarefish.md` fixes, and it reads as light over the maze rather than
+  as an opaque disc.
+
+## How they are loaded
+
+{{#if (eq engine.slug "none")}}
+The build loads the frames itself. Every URL it requests resolves against the page
+rather than against the origin root, so the produced site runs unchanged whether it is
+served from the root of a static host or mounted under a sub-path. The produced site
+is self-contained and carries every frame it draws.
+{{else}}
+The {{engine.name}} engine provides the asset loader, documented in the `engine/`
+directory at the root of this repository. It resolves every path under one root,
+`assets/`, relative to the page the build is served from, and it fetches and decodes
+the file. The build loads each frame through that loader rather than requesting a URL
+of its own, writing the path relative to that root: `glimmerfin/0.png`,
+`trench-walls/16.png`.
+
+The produced site serves every seeded frame under that root, so a path the loader
+resolves reaches the seeded file at whatever base path the site is served from.
+{{/if}}
+
+## The forager: `assets/glimmerfin/`
+
+Eight frames, a two-frame chomp pair for each of the four facings.
+
+| Frames | Facing | First frame | Second frame |
+| --- | --- | --- | --- |
+| 0, 1 | down | mouth closed | mouth open |
+| 2, 3 | up | mouth closed | mouth open |
+| 4, 5 | left | mouth closed | mouth open |
+| 6, 7 | right | mouth closed | mouth open |
+
+Alternate the pair for the forager's current facing while it travels, at about 8 to 10
+frames per second, and hold the mouth-closed frame while it is at rest.
+
+The sheet carries no glow. The forager's brightness and its lit pocket are runtime
+light drawn around the sprite, listed at the end of this file. A lives icon in the HUD
+may reuse a forager frame.
+
+## The Lanternjaw: `assets/lanternjaw/`
+
+Sixteen frames in two forms. Frames 0 to 7 are its true anglerfish body, a two-frame
+pair per facing: an amber bell above dark, gaping jaws. Frames 8 to 15 are the
+jellyfish disguise, an eight-frame tendril-sway loop that is the same art as
+`assets/drifter/` frames 0 to 7, pixel for pixel.
+
+| Frames | Contents |
+| --- | --- |
+| 0, 1 | True body, facing down |
+| 2, 3 | True body, facing up |
+| 4, 5 | True body, facing left |
+| 6, 7 | True body, facing right |
+| 8–15 | The jellyfish disguise, one eight-frame sway loop |
+
+The amber bell sits in the same place and is drawn the same in both forms, so the two
+differ only in what hangs beneath it: the drifter's tendrils, or the hunter's jaws.
+
+- In `"chase"`, draw the pair for its facing from frames 0 to 7 and alternate them at
+  about 6 to 8 frames per second, so its jaws show beneath the bell.
+- In `"wander"`, play frames 8 to 15 as a loop at about 8 frames per second, animated
+  exactly as the bonus drifter is, so a wandering Lanternjaw reads as a drifter up
+  close.
+- Its body is drawn only where it is lit. The amber bulb-light that shows it in the
+  dark at any distance is drawn in code and listed at the end of this file.
+
+## The Gloamfin: `assets/gloamfin/`
+
+Eight frames, a two-frame pair per facing, with no eyes and a faint sonar cue at the
+head.
+
+| Frames | Facing |
+| --- | --- |
+| 0, 1 | down |
+| 2, 3 | up |
+| 4, 5 | left |
+| 6, 7 | right |
+
+Alternate the pair for its facing while it moves. Its ping is a separate effect drawn
+in code.
+
+## The Flarefish: `assets/flarefish/`
+
+Eight frames, a two-frame pair per facing. The body carries a small dim flare organ;
+the flare itself is the separate effect below.
+
+| Frames | Facing |
+| --- | --- |
+| 0, 1 | down |
+| 2, 3 | up |
+| 4, 5 | left |
+| 6, 7 | right |
+
+Alternate the pair for its facing while it moves.
+
+## The bonus drifter: `assets/drifter/`
+
+Eight frames: an amber bell with a frilled skirt and a few tendrils below it, over one
+sway loop. A jellyfish reads the same whichever way it drifts, so the sheet is one loop
+rather than per-facing pairs. Advance the loop at about 8 frames per second while it
+moves.
+
+These are the frames a wandering Lanternjaw wears as its disguise, and the bell here is
+the bell baked into the Lanternjaw's true-body frames. Like a predator body, the
+jellyfish is drawn only where the drifter is lit, so in the dark a drifter shows as its
+amber bulb-light alone and its tendrils appear only up close. `specs/sensing.md` fixes
+what a sonar pulse reveals.
+
+## The flare bloom: `assets/flare-bloom/`
+
+Eight frames at 128 x 128, a warm radial burst in three beats. The frames are already
+warm-colored and are composited with no tint.
+
+| Frames | Beat | Played over |
+| --- | --- | --- |
+| 0, 1, 2 | Charge-up: a small warm glow swelling toward a white core | The pre-bloom charge-up |
+| 3, 4, 5 | Bloom: a white-hot core ringed by warm light, widest and brightest at frame 5 | The bloom |
+| 6, 7 | Fade: the bloom collapses and dims | Drawn after the bloom ends, while the flare is already over |
+
+`specs/predators/flarefish.md` fixes how long each beat lasts and how large the lit
+disc is. Frame 5 is scaled so its lit radius is that flare radius.
+
+## The maze tiles: `assets/trench-walls/`
+
+Nineteen frames: a sixteen-frame wall autotile (`0`–`15`), the corridor floor (`16`),
+the unrevealed fog tile (`17`), and the den gate (`18`). Each fills its 32 x 32 cell
+edge to edge with no margin.
+
+### The wall autotile
+
+A wall tile's frame index is the sum of one bit for each of its four orthogonal
+neighbors that is also a wall tile.
+
+| Side | Bit |
+| --- | --- |
+| N (up) | 1 |
+| E (right) | 2 |
+| S (down) | 4 |
+| W (left) | 8 |
+
+A connected side runs flush to that edge and merges with its neighbor. A side with no
+wall neighbor faces a corridor and carries a rounded raised rock face with a rim light
+along it.
+
+| Frame | Connected sides | Piece |
+| --- | --- | --- |
+| 0 | none | Isolated pillar |
+| 1 | N | Bottom end of a vertical wall |
+| 2 | E | Left end of a horizontal wall |
+| 3 | N, E | Elbow |
+| 4 | S | Top end of a vertical wall |
+| 5 | N, S | Vertical straight |
+| 6 | E, S | Elbow |
+| 7 | N, E, S | T-junction, open left |
+| 8 | W | Right end of a horizontal wall |
+| 9 | N, W | Elbow |
+| 10 | E, W | Horizontal straight |
+| 11 | N, E, W | T-junction, open down |
+| 12 | S, W | Elbow |
+| 13 | N, S, W | T-junction, open right |
+| 14 | E, S, W | T-junction, open up |
+| 15 | all four | Fully enclosed interior |
+
+### The floor, the fog, and the gate
+
+| Frame | Tile | Drawn |
+| --- | --- | --- |
+| 16 | Corridor floor, seamless when repeated | Under everything else, on every open tile |
+| 17 | Unrevealed ground: flat, featureless, and darker than the floor | On every tile still unrevealed |
+| 18 | Den gate: a floor tile crossed by a barred threshold | On the single gate tile of the den chamber |
+
+Visibility is shading over these same tiles rather than separate frames. A lit tile is
+the tile at full brightness, a remembered tile is the same wall or floor tile drawn
+dim, and an unrevealed tile reads as the value of frame 17. `specs/sensing.md` fixes
+when a tile is in each state. Predators, the drifter, the plankton, and the effects are
+layered over the tiles.
+
+## What is drawn in code
+
+No sheet covers the following. Each is rendered by the build, and the spec named
+beside it fixes its behavior and its appearance.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The plankton motes | `specs/gameplay.md` |
+| The sonar wavefront, for the forager's pulse and the Gloamfin's pings alike | `specs/sensing.md`, `specs/predators/gloamfin.md` |
+| The amber bulb-light, drawn identically for the bonus drifter and the Lanternjaw so the two read alike at a distance | `specs/sensing.md`, `specs/gameplay.md`, `specs/predators.md` |
+| The detection alert flash a predator fires the instant it takes a fix | `specs/predators.md` |
+| The ink cloud | `specs/sensing.md` |
+| The forager's brightness glow and its lit pocket, and the shading that draws a lit, remembered, or unrevealed tile | `specs/sensing.md` |
+| The HUD, every screen, menu, panel, and overlay, and all text | `specs/ui.md` |

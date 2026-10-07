@@ -46,16 +46,15 @@ A naive "balanced" strategy: it **statically** assigns one agent to patrol the
 border and chase the nearest visible intruder, and sends the other two in as
 `greedy-raider`-style foragers. It is the **strongest** baseline, but its role
 split **never adapts** — it does not reinforce a collapsing defense, recall a
-raider to bank before it is caught, ever eat jelly (to survive a run home *or* to
+raider to bank before it is caught, ever eat jelly (to survive a run home _or_ to
 kill a defender), contest or recall a large seed, or weigh load against the distance
 home. It rewards a controller that reads the match state and reallocates its three
 agents dynamically.
 
-**`border-soldier` is the canonical benchmark opponent.** The benchmark runs
-**one** match: your controller as Red against
-`border-soldier` as Blue, on the shipped `mirror-32x16` map. Beating
-`border-soldier` decisively is the bar to clear; the interesting margin is *how*
-you beat it.
+**`border-soldier` is the canonical baseline opponent.** The reference matchup
+is **one** match: your controller as Red against `border-soldier` as Blue, on
+the shipped `mirror-32x16` map. Beating `border-soldier` decisively is the bar
+to clear; the interesting margin is _how_ you beat it.
 
 ## Why none of them is good
 
@@ -93,4 +92,4 @@ and why** (out of fuel, over the memory cap, a trap, or a contract-invalid actio
 it broke. Swap `--blue` for `$FORAY_HOME/references/random.wasm` or
 `$FORAY_HOME/references/greedy-raider.wasm` to test against the other baselines,
 and try a few `--seed` values to make sure you are not overfitting one maze. The
-canonical benchmark match uses `--seed 0xC0FFEE` against `border-soldier`.
+canonical reference match uses `--seed 0xC0FFEE` against `border-soldier`.

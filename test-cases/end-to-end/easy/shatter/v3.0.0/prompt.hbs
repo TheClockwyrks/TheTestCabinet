@@ -1,0 +1,41 @@
+Build **Shatter**, a gravity-well rock shooter that runs entirely in the browser.
+
+Your project root is `{{workspace}}`. Build the game there. Its dependencies
+are already installed, so you can build and test right away.
+
+## What to read first
+
+The full specification is in `{{workspace}}/specs/`, already present in your
+project. Produce an implementation that matches it exactly. Start with
+`specs/overview.md`: it states what you implement, which files stay as they are,
+the code quality the build is held to, and the commands that run over the
+finished repository.
+
+This build is **{{variant.name}}**. {{variant.description}} The specification
+is written for that ruleset alone.
+
+## The build interface
+
+`npm ci` then `npm run build` produces the static site into `dist/` at the
+project root, with no other manual step.
+
+## Driving the game in a browser
+
+Playwright and a headless Chromium are installed in this project. There is no
+global Playwright on `PATH`; it lives in `node_modules` like any other
+dependency, so it is imported from the project (for example
+`import { chromium } from "playwright"`) or run with `npx playwright`. This
+container has no Chromium sandbox, so Chromium launches with the `--no-sandbox`
+argument.
+
+## The showcase
+
+`specs/showcase.md` defines a showcase the finished game ships.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+from this repository's commits, so leave a clean working tree: everything
+committed, nothing untracked. A `.gitignore` already excludes `node_modules/`,
+the build output, and coverage reports.

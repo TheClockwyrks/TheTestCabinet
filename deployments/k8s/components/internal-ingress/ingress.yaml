@@ -9,7 +9,7 @@
 # secret + backend explicit and lets an overlay patch a single host in isolation.
 # cert-manager watches the `cert-manager.io/cluster-issuer` annotation and issues a
 # certificate for each `tls[].hosts` into the named secret (the ClusterIssuer in
-# clusterissuer.yaml solves the ACME challenge over Cloudflare DNS-01).
+# ../../cluster/internal-ingress/clusterissuer.yaml solves the ACME challenge over Cloudflare DNS-01).
 #
 # Hostnames default to the prod `*.testcabinet.ai` names; an overlay for another
 # environment patches the host strings (and the cert hosts) — see task-3.
@@ -174,13 +174,13 @@ spec:
 # gives operators a VPN-reachable Grafana URL instead of a `kubectl port-forward`,
 # alongside the console + services. It depends on the observability component being
 # in the overlay too (it supplies the tcab-lgtm Service); the only overlay that
-# includes this internal-ingress component (azure-prod) also includes observability,
+# includes this internal-ingress component (prod) also includes observability,
 # so the Service is always present. Without observability this route resolves to a
 # missing backend and nginx returns 503 — harmless, never a hard apply error.
 #
 # SECURITY: the grafana/otel-lgtm image ships Grafana with ANONYMOUS ADMIN and the
 # login form hidden — safe behind a kubectl-gated port-forward, but NOT behind a URL
-# any VPN client can reach. The azure-prod overlay's patch-grafana-auth.yaml disables
+# any VPN client can reach. The prod overlay's patch-grafana-auth.yaml disables
 # anonymous access and sets real admin credentials (from the tcab-grafana-admin
 # Secret) so this route does not mean open admin. Do NOT add this route to an overlay
 # without that lockdown patch.

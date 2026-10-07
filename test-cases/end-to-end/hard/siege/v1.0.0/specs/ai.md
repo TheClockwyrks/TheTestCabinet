@@ -75,12 +75,12 @@ without winning the siege for the player. Two of them are **support** roles that
 not exist to out-shoot the Scourge: the medic is the only source of **healing**,
 and the engineer the only source of **reserve-ammo resupply**.
 
-| Squad member | Count | HP | Weapon | Behavior |
-| --- | --- | --- | --- | --- |
-| **Rifleman** | 1 | `90` | Hitscan `12` dmg, `0.4 s` cadence, range `75` | Balanced damage dealer. Holds near the active redoubt, acquires and fires on the nearest attacker in range, repositions to keep firing lanes, and falls back with the defense. |
-| **Machine Gunner** | 1 | `100` | Hitscan `8` dmg, `0.15 s` cadence, range `70` | Suppressive volume of fire — a high rate at lower per-shot damage. Heavier and slower to reposition than the rifleman; anchors a firing lane near the redoubt and holds sustained fire on the densest group of attackers. |
-| **Medic** | 1 | `80` | Hitscan `20` dmg, `1.2 s` cadence, **range `120`** (long) | Support / the **only** healer. Its long weapon keeps it **hanging back** — it positions behind the line, plinks at range, and prioritizes **healing** (below). |
-| **Engineer** | 1 | `85` | Hitscan `14` dmg, `0.5 s` cadence, range `70` | Support / the **only** ammo resupply. Hangs back like the medic, fires when safe, and prioritizes **resupplying reserve ammo** to nearby Wardens (below). Marked in the ammo/accent color (`specs/overview.md`). |
+| Squad member       | Count | HP    | Weapon                                                    | Behavior                                                                                                                                                                                                                  |
+| ------------------ | ----- | ----- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Rifleman**       | 1     | `90`  | Hitscan `12` dmg, `0.4 s` cadence, range `75`             | Balanced damage dealer. Holds near the active redoubt, acquires and fires on the nearest attacker in range, repositions to keep firing lanes, and falls back with the defense.                                            |
+| **Machine Gunner** | 1     | `100` | Hitscan `8` dmg, `0.15 s` cadence, range `70`             | Suppressive volume of fire — a high rate at lower per-shot damage. Heavier and slower to reposition than the rifleman; anchors a firing lane near the redoubt and holds sustained fire on the densest group of attackers. |
+| **Medic**          | 1     | `80`  | Hitscan `20` dmg, `1.2 s` cadence, **range `120`** (long) | Support / the **only** healer. Its long weapon keeps it **hanging back** — it positions behind the line, plinks at range, and prioritizes **healing** (below).                                                            |
+| **Engineer**       | 1     | `85`  | Hitscan `14` dmg, `0.5 s` cadence, range `70`             | Support / the **only** ammo resupply. Hangs back like the medic, fires when safe, and prioritizes **resupplying reserve ammo** to nearby Wardens (below). Marked in the ammo/accent color (`specs/overview.md`).          |
 
 ### Medic healing — the only way to heal
 

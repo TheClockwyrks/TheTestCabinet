@@ -1,7 +1,7 @@
 //! Backend client: resolve test-case versions and container definitions from the
 //! v0.2.0 backend, and publish finished runs to it.
 //!
-//! See `design/v0.2.0-contracts.md` §4. Runners (CLI, worker, Tauri) resolve
+//! See `design/v0.2.0-contracts.md` §4. Runners (the CLI and the driver) resolve
 //! definitions through this trait instead of assuming a local `test-cases/`
 //! checkout. The existing [`crate::TestCaseCatalog`] (filesystem) stays for local
 //! dev; this trait is the remote source of record.
@@ -27,15 +27,15 @@ use crate::match_play::{ARENA_OPPONENT_IDS, ControllerRef, TournamentRecord};
 use crate::preview::AssetPreview;
 use crate::publish_job_api::{PublishProgress, PublishResult};
 use crate::reference::RenderedReference;
-use crate::review::Writeup;
+use crate::review::{FailureCap, Writeup};
 use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
-    AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec,
-    ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind,
-    SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec,
-    WorkspaceFile,
+    AssetDimension, AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction,
+    ContractSpec, Domain, EngineSupport, EngineWorkspaces, Erratum, Instrumentation, MatchSpec,
+    MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase, ProofFile,
+    ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
+    SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase,
+    TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -212,7 +212,9 @@ pub trait BackendClient: Send + Sync {
     /// Submit a review for a pushed run. (`POST /runs/{id}/reviews`) The review is
     /// attributed to the account behind the client's bearer token; a run may carry
     /// many reviews, one per account, and re-submitting from the same account
-    /// updates it. Requires a bearer token.
+    /// updates it. On a validator-rated run the writeup carries the run-wide
+    /// `aesthetic` tier and its checklist is the reviewer's overrides of the
+    /// validators' verdicts. Requires a bearer token.
     async fn submit_review(&self, run_id: &str, review: &Writeup) -> Result<()>;
 
     /// Enqueue a publish for a run. (`POST /runs/{id}/publish`) Publishing is
@@ -287,6 +289,23 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
+    /// Upload one [showcase](crate::RunShowcase) file for a published run — a
+    /// carousel media file, or an image the description references — served back
+    /// for the Play tab's showcase view. `file` is the plain file name in the
+    /// produced tree's `showcase/` directory. (`POST /runs/{id}/showcase/{file}`)
+    /// Idempotent: identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without showcase support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_run_showcase(
+        &self,
+        _run_id: &str,
+        _file: &str,
+        _bytes: Vec<u8>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Upload an adversarial run's controller wasm module for a pushed run, served
     /// back so the arena can resolve and pit a pushed implementation from any host.
     /// (`POST /runs/{id}/controller.wasm`) Idempotent: identical bytes overwrite.
@@ -295,6 +314,47 @@ pub trait BackendClient: Send + Sync {
     /// stays valid; the HTTP client overrides it.
     async fn publish_run_controller(&self, _run_id: &str, _bytes: Vec<u8>) -> Result<()> {
         Ok(())
+    }
+
+    /// Upload a gg run's [session record](crate::gg_session_record) for a published run, served
+    /// back so a replay driver can re-run the session. (`POST /runs/{id}/replay`) Idempotent:
+    /// identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without replay support (or a test stub) stays valid; the
+    /// HTTP client overrides it.
+    async fn publish_run_replay(&self, _run_id: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Upload a run's [code-analysis](crate::code_analysis) document — the unbounded tier of the
+    /// static read of the code its model wrote — served back to the per-run Code tab.
+    /// (`POST /runs/{id}/code-analysis`) Idempotent: identical bytes overwrite.
+    ///
+    /// Store-only, by the run-tree artifact convention: the driver uploads before the terminal
+    /// status post that creates the run row, so nothing is patched and the lifted analyzer-version
+    /// column is set from the record on the ordinary insert.
+    ///
+    /// Defaults to a no-op so a backend without code-analysis support (or a test stub) stays valid;
+    /// the HTTP client overrides it.
+    async fn publish_run_code_analysis(&self, _run_id: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Fetch a gg run's stored session record (`GET /runs/{id}/replay`), without first hunting
+    /// down its run tree.
+    ///
+    /// The bytes are whatever the route served. It content-negotiates on `Accept-Encoding`, and
+    /// this client is built without `reqwest`'s `gzip` feature so it neither advertises nor decodes
+    /// the encoding — meaning it receives plain JSON. The reader sniffs the gzip magic anyway,
+    /// because a record obtained any other way (out of a run tree, through a proxy that ignored
+    /// `Vary`) may well be compressed, and guessing from the transport is how that breaks.
+    ///
+    /// Defaults to an error so a backend without replay support (or a test stub) is explicit about
+    /// not serving one; the HTTP client overrides it.
+    async fn run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        Err(Error::Publish(format!(
+            "this backend client cannot serve the session record for run `{run_id}`"
+        )))
     }
 
     /// Fetch a pushed adversarial run's controller wasm module.
@@ -504,12 +564,12 @@ pub async fn materialize_version(
     // Starter workspace files (common + each variant's override) are fetched by
     // their store-relative key the same way, then rewritten to host paths below.
     let mut workspace: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
-    for file in resolved.common_workspace.iter().chain(
+    for file in resolved.common_workspace.files().chain(
         resolved
             .variants
             .iter()
             .filter_map(|variant| variant.workspace.as_ref())
-            .flatten(),
+            .flat_map(EngineWorkspaces::files),
     ) {
         workspace.insert(file.source_path.clone());
     }
@@ -594,6 +654,7 @@ pub async fn materialize_version(
     // it with the named scripts so the drivers are always present even if a client
     // serves no directory listing. Dedup by key so a shared file is fetched once.
     let mut scripts: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    let mut scripted = false;
     for item in resolved.common_review_items.iter().chain(
         resolved
             .variants
@@ -608,13 +669,21 @@ pub async fn materialize_version(
                 .iter()
                 .filter_map(|sub| sub.validation.as_ref()),
         ) {
-            scripts.insert(PathBuf::from(&validation.script_rel));
+            scripted = true;
+            // A per-engine validator's declared path is relative to a validator
+            // project, not to the version folder, so it is not an artifact key. Its
+            // project comes down whole in the directory listing below, which is the
+            // only way to fetch it and the reason the listing is asked for whenever
+            // the case has a scripted point at all.
+            if validation.script.is_some() {
+                scripts.insert(PathBuf::from(&validation.script_rel));
+            }
         }
     }
     // Only ask the backend for the directory listing when the case actually has scripted
     // items — a case with none has no `validation/` directory, and this avoids a
     // needless request (and a spurious empty-list round-trip) on every other run.
-    if !scripts.is_empty() {
+    if scripted {
         for key in client.validation_files(slug, version).await? {
             scripts.insert(key);
         }
@@ -635,7 +704,7 @@ pub async fn materialize_version(
         case.input = root.join(&case.input);
         case.expected = root.join(&case.expected);
     }
-    for file in &mut resolved.common_workspace {
+    for file in resolved.common_workspace.files_mut() {
         file.source_path = root.join(&file.source_path);
     }
     // Point each auto-validated unit's debug script at its materialized copy (its
@@ -647,7 +716,10 @@ pub async fn materialize_version(
                 .iter_mut()
                 .filter_map(|sub| sub.validation.as_mut()),
         ) {
-            validation.script = root.join(&validation.script_rel);
+            validation.script = validation
+                .script
+                .as_ref()
+                .map(|_| root.join(&validation.script_rel));
         }
     };
     for item in &mut resolved.common_review_items {
@@ -657,8 +729,8 @@ pub async fn materialize_version(
         for spec in &mut variant.specs {
             spec.source_path = root.join(&spec.source_path);
         }
-        if let Some(files) = &mut variant.workspace {
-            for file in files {
+        if let Some(workspaces) = &mut variant.workspace {
+            for file in workspaces.files_mut() {
                 file.source_path = root.join(&file.source_path);
             }
         }
@@ -931,6 +1003,7 @@ impl BackendClient for HttpBackendClient {
         let url = self.url(&format!("/runs/{}/reviews", encode(run_id)));
         let body = ReviewBody {
             ratings: &review.ratings,
+            aesthetic: review.aesthetic,
             writeup: &review.body,
             checklist: &review.checklist,
         };
@@ -1086,6 +1159,32 @@ impl BackendClient for HttpBackendClient {
 
     #[instrument(
         skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id, showcase.file = %file),
+        err,
+    )]
+    async fn publish_run_showcase(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!(
+            "/runs/{}/showcase/{}",
+            encode(run_id),
+            encode(file)
+        ));
+        let content_type = content_type_for_file(file);
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
         fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
         err,
     )]
@@ -1103,6 +1202,53 @@ impl BackendClient for HttpBackendClient {
             .map_err(|err| backend_err(&url, err))?;
         error_for_status(&url, response).await?;
         Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn publish_run_replay(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/replay", encode(run_id)));
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn publish_run_code_analysis(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/code-analysis", encode(run_id)));
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    async fn run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.get_bytes(&format!("/runs/{}/replay", encode(run_id)))
+            .await
     }
 
     async fn controller_artifact(&self, run_id: &str) -> Result<Vec<u8>> {
@@ -1513,8 +1659,20 @@ struct VersionBody {
     max_runtime_seconds: u64,
     #[serde(default)]
     test_type: TestType,
+    /// The [engines](crate::engine) a run of this version may select, each with the
+    /// version range the case accepts it at. Required, and deliberately not
+    /// defaulted: a defaulted set says every case supports the engineless run alone,
+    /// which would refuse every engine-backed run of a case that supports one. A
+    /// backend that does not serve the field is a backend this driver cannot run
+    /// against.
+    engines: Vec<EngineSupport>,
     #[serde(default)]
     build: Option<BuildBody>,
+    /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
+    /// table. Absent for a version served by a backend that predates the field, and
+    /// for a case that declares none — either way the run is unchecked and ungated.
+    #[serde(default)]
+    toolchain: Option<ToolchainBody>,
     #[serde(default)]
     canvas: Option<CanvasBody>,
     #[serde(default)]
@@ -1535,6 +1693,17 @@ struct VersionBody {
     /// [`AssetKind::Sprite`], matching a store that predates the field.
     #[serde(default)]
     asset_kind: AssetKind,
+    /// Which full-stack run image the case's runs execute in. Defaults to
+    /// [`AssetDimension::TwoD`], matching a store that predates the field.
+    ///
+    /// It has to cross the wire because a dispatcher-scheduled run is *always*
+    /// backend-driven: the driver materializes its version through
+    /// [`BackendClient::resolve_version`] and core resolves the run image off the
+    /// [`TestCaseVersion`] that comes back. A field missing here would silently
+    /// resolve the 2D image for a 3D case — a failure that only shows up inside the
+    /// container as `voxel: not found`, and never at all in a local `tcab run`.
+    #[serde(default)]
+    asset_dimension: AssetDimension,
     /// The sprite-sheet grid and sequences. Deserialized straight into
     /// [`SheetSpec`] — the wire shape matches it field for field — so a
     /// backend-driven sprite-sheet run carries the same layout a local one does.
@@ -1562,10 +1731,20 @@ struct VersionBody {
     /// The clip format of an audio case (the wire shape matches [`AudioSpec`]).
     #[serde(default)]
     audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order
+    /// (see [`TestCaseVersion::audio_packs`]). Defaulted, so a definition stored
+    /// before packs were declared per case reads as declaring none — which is why
+    /// adding the field bumps the store format, forcing a re-ingest that resolves it.
+    #[serde(default)]
+    audio_packs: Vec<String>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
+    /// The starter workspace files, keyed by [engine](crate::engine) slug. A
+    /// definition stored before workspaces were keyed by engine carries a bare list
+    /// instead; that is a case supporting no engine, so the list is read as the
+    /// engineless project (see [`WorkspaceBody`]).
     #[serde(default)]
-    workspace: Vec<WorkspaceFileBody>,
+    workspace: WorkspaceBody,
     #[serde(default)]
     init: Option<String>,
     assets: Vec<AssetBody>,
@@ -1587,6 +1766,12 @@ struct VersionBody {
     /// wire shape (`id`, `name`, `description`) matches it field for field.
     #[serde(default)]
     domains: Vec<Domain>,
+    /// Whether the version is on the engine format (see
+    /// [`TestCaseVersion::engine_format`]), which with the test type decides
+    /// whether its runs are validator-rated. Absent from a definition stored
+    /// before the flag existed — every one of which is a legacy version.
+    #[serde(default)]
+    engine_format: bool,
     /// A performance case's held-out scored set. Empty for every other type.
     #[serde(default)]
     cases: Vec<CaseBody>,
@@ -1609,6 +1794,8 @@ impl VersionBody {
         // never reads it (it is site-facing only).
         let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
+            engine_format: self.engine_format,
+            engines: self.engines,
             slug: self.slug,
             version: self.version,
             name: self.name,
@@ -1633,6 +1820,14 @@ impl VersionBody {
                 build: build.build,
                 module: build.module.map(PathBuf::from),
             }),
+            toolchain: self
+                .toolchain
+                .map(|toolchain| crate::toolchain::ToolchainCommands {
+                    typecheck: toolchain.typecheck,
+                    lint: toolchain.lint,
+                    format: toolchain.format,
+                    test: toolchain.test,
+                }),
             // The debug-API handle a case's builds install their automation surface
             // on. Reporter-side and never seeded, but the validator needs it to drive
             // the build's debug API, so the backend serves it in the resolved
@@ -1679,6 +1874,7 @@ impl VersionBody {
                 renderer: PathBuf::from(&replay.renderer),
             }),
             asset_kind: self.asset_kind,
+            asset_dimension: self.asset_dimension,
             sheet: self.sheet,
             voxel: self.voxel,
             model: self.model,
@@ -1686,8 +1882,9 @@ impl VersionBody {
             material: self.material,
             particle: self.particle,
             audio: self.audio,
+            audio_packs: self.audio_packs,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
-            common_workspace: self.workspace.iter().map(workspace_from).collect(),
+            common_workspace: self.workspace.resolve(),
             init: self.init,
             asset_paths: self
                 .assets
@@ -1703,9 +1900,7 @@ impl VersionBody {
                     name: variant.name,
                     description: variant.description,
                     specs: variant.specs.iter().map(spec_from).collect(),
-                    workspace: variant
-                        .workspace
-                        .map(|files| files.iter().map(workspace_from).collect()),
+                    workspace: variant.workspace.as_ref().map(WorkspaceBody::resolve),
                     references: variant.references.iter().map(reference_from).collect(),
                     proofs: variant.proofs.iter().map(proof_from).collect(),
                     review_items: variant
@@ -1719,9 +1914,13 @@ impl VersionBody {
                     // it is a host source directory that is deployed out-of-band, is
                     // never seeded, and takes no part in executing a run, so the
                     // wire `VariantBody` omits it entirely. The resolved `Variant`
-                    // records `None` — the publisher, not the driver, resolves it
-                    // from the on-disk case definition.
-                    reference_impl: None,
+                    // records none for any engine — the publisher, not the driver,
+                    // resolves them from the on-disk case definition.
+                    reference_impls: Default::default(),
+                    // The showcase is site-facing presentation material of the same
+                    // stripe — never seeded, no part in executing a run — so the
+                    // wire `VariantBody` omits it too.
+                    showcase: None,
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
@@ -1790,6 +1989,8 @@ fn workspace_from(file: &WorkspaceFileBody) -> WorkspaceFile {
 /// the script file. `None` for a human-judged item.
 fn review_item_from(item: ReviewItemBody) -> ReviewItem {
     ReviewItem {
+        failure_cap: item.failure_cap,
+        domains: item.domains,
         id: item.id,
         title: item.title,
         text: item.text,
@@ -1804,6 +2005,8 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
             .sub_items
             .into_iter()
             .map(|sub| SubReviewItem {
+                failure_cap: sub.failure_cap,
+                domains: sub.domains,
                 id: sub.id,
                 title: sub.title,
                 description: sub.description,
@@ -1827,9 +2030,12 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
 /// path and fetches the script file. Shared by the item-level and per-sub-item drivers.
 fn review_validation_from(validation: ReviewValidationBody) -> ReviewValidation {
     ReviewValidation {
-        // Store-relative key until `materialize_version` roots it on disk.
-        script: PathBuf::from(&validation.script),
+        // Store-relative key until `materialize_version` roots it on disk. A
+        // per-engine validator has no single host path — the run's engine decides
+        // which project's copy runs — so it carries none.
+        script: (!validation.per_engine).then(|| PathBuf::from(&validation.script)),
         script_rel: validation.script,
+        engines: validation.engines,
         outputs: validation
             .outputs
             .into_iter()
@@ -1864,8 +2070,7 @@ fn proof_from(proof: &ProofBody) -> ProofFile {
     }
 }
 
-/// A best-effort content type for an uploaded proof media file, from its
-/// extension. Proof media is only ever an image or an `.mp4`.
+/// A best-effort content type for an uploaded media file, from its extension.
 fn content_type_for_file(file: &str) -> &'static str {
     let ext = Path::new(file)
         .extension()
@@ -1880,8 +2085,25 @@ fn content_type_for_file(file: &str) -> &'static str {
         "mp4" => "video/mp4",
         // The asset-generation action log uploads through this same path.
         "json" => "application/json",
+        // A validation recording (`<name>.json.gz`) uploads as the gzip file it is:
+        // the backend stores the bytes verbatim and labels them when it serves them,
+        // so the upload declares the document being handed over rather than a framing
+        // the receiver is expected to undo.
+        "gz" => "application/gzip",
         _ => "application/octet-stream",
     }
+}
+
+/// The `[toolchain]` half of a served version definition.
+#[derive(Debug, Clone, Deserialize)]
+struct ToolchainBody {
+    typecheck: String,
+    #[serde(default)]
+    lint: Option<String>,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    test: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -2020,10 +2242,10 @@ struct VariantBody {
     description: Option<String>,
     specs: Vec<SpecBody>,
     /// The variant's workspace override, when it declares one (it replaces the
-    /// common workspace for this variant). Absent when the variant inherits the
-    /// common workspace.
+    /// common workspace for this variant, per engine). Absent when the variant
+    /// inherits the common workspace.
     #[serde(default)]
-    workspace: Option<Vec<WorkspaceFileBody>>,
+    workspace: Option<WorkspaceBody>,
     references: Vec<ReferenceBody>,
     #[serde(default)]
     proofs: Vec<ProofBody>,
@@ -2052,6 +2274,27 @@ struct WorkspaceFileBody {
     dest: String,
 }
 
+/// A starter project on the wire: a case ships one project per
+/// [engine](crate::engine), so it is a map keyed by engine slug.
+#[derive(Deserialize, Default)]
+#[serde(transparent)]
+struct WorkspaceBody(std::collections::BTreeMap<String, Vec<WorkspaceFileBody>>);
+
+impl WorkspaceBody {
+    /// The resolved per-engine projects this body describes.
+    fn resolve(&self) -> EngineWorkspaces {
+        self.0
+            .iter()
+            .map(|(engine, files)| {
+                (
+                    engine.clone(),
+                    files.iter().map(workspace_from).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<EngineWorkspaces>()
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReviewItemBody {
@@ -2078,6 +2321,14 @@ struct ReviewItemBody {
     /// validator runs it, so the backend serves it. `None` for a human-judged item.
     #[serde(default)]
     validation: Option<ReviewValidationBody>,
+    /// The failure cap of a whole-item point on a validator-rated version (see
+    /// [`ReviewItem::failure_cap`]); absent on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The domains a failure of a whole-item point lowers on a validator-rated
+    /// version (see [`ReviewItem::domains`]); empty on a legacy version.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// The `[instrumentation]` table in the wire shape: the `window` handle a case's
@@ -2100,7 +2351,17 @@ struct InstrumentationBody {
 #[serde(rename_all = "camelCase")]
 struct ReviewValidationBody {
     script: String,
+    /// Whether `script` names a suite inside a validator project — one per engine,
+    /// and it ships in the project of every engine [`Self::engines`] covers — rather
+    /// than one file under the version folder. Absent for a definition stored before
+    /// validators were declared per engine, all of which name one file.
     #[serde(default)]
+    per_engine: bool,
+    /// The engines this validator decides its point on, by slug. Absent or empty
+    /// leaves it active on every engine the case supports; a non-empty list is the
+    /// subset the point belongs to, and a run on any other engine does not carry it.
+    #[serde(default)]
+    engines: Vec<String>,
     outputs: Vec<ReviewOutputBody>,
 }
 
@@ -2139,6 +2400,14 @@ struct SubReviewItemBody {
     proof: Option<String>,
     #[serde(default)]
     validation: Option<ReviewValidationBody>,
+    /// The point's failure cap on a validator-rated version (see
+    /// [`SubReviewItem::failure_cap`]); absent on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The domains a failure of this point lowers on a validator-rated version
+    /// (see [`SubReviewItem::domains`]); empty on a legacy version.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// serde default for a wire sub-item's `weight`: one point.
@@ -2176,10 +2445,18 @@ struct CheckBody {
 
 #[derive(serde::Serialize)]
 struct ReviewBody<'a> {
-    /// The reviewer's rating for each scoring domain.
+    /// The reviewer's functional rating for each scoring domain (a legacy run).
     ratings: &'a [crate::review::DomainRating],
+    /// The reviewer's run-wide aesthetic tier (a validator-rated run). Omitted
+    /// when absent so a legacy writeup posts exactly what it did before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    aesthetic: Option<crate::review::AestheticRating>,
     writeup: &'a str,
-    /// The reviewer's verdicts on the case's declared checklist items.
+    /// The reviewer's verdicts on the case's declared checklist items: the full
+    /// checklist on a legacy run or a game jam, and the reviewer's **overrides**
+    /// of the validators' verdicts on a validator-rated run — sent as-is either
+    /// way; the caller (the writeup file's `review.<id>` lines) decides its
+    /// content.
     checklist: &'a [crate::review::ReviewVerdict],
 }
 

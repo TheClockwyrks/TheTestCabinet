@@ -1,0 +1,2003 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "refract"
+
+# Human-readable display name for this test case.
+name = "Refract"
+
+# Relative difficulty of this case, surfaced on the site. Refract is a great deal
+# of *work* — a rules engine, a board generator, twenty-four hand-built boards and
+# two modes — but none of it is hard to reason about: the rules are stated as nine
+# numbered conditions over a grid of at most 7x6 cells, there is no physics, no
+# opponent, and no real-time contest to tune. Difficulty here rates how demanding
+# the *thinking* is, not how long the build takes, and `max_runtime_hours` below
+# is where the size of the job is accounted for. So easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["puzzle", "logic", "2d", "light"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A puzzle of light on a dark optical bench, where a beam is drawn from node to \
+node with the pointer and the rules silently refuse any move that breaks them."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Refract asks for substantially more construction than a
+# single real-time loop does: a rule engine that decides every move against nine
+# conditions, a pointer tracing model with grab, shorten and retract behavior, a
+# board generator that must never emit an unsolvable board, twenty-four fixed
+# boards transcribed exactly, two modes with six screens between them, and — under
+# the engineless run — the whole runtime layer beneath all of that. Three hours is
+# comfortably more than a healthy build of that size needs while still catching a
+# session that never terminates.
+max_runtime_hours = 3
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Refract declares exactly ONE, so every run of this case is the same game.
+#
+# Campaign and Cascade are NOT variants. They are the two ways to play, chosen by
+# the player from the title menu and reported by the state as `mode`, exactly as
+# Carom's Solo and Versus are modes inside every variant rather than variants of
+# their own. A variant is a difference in the *game a run is asked to build*; a
+# mode is a difference in what the finished game offers its player. Both modes
+# ship in every build, so nothing in the seeded spec set branches on the variant
+# at all — the only axis the specs branch on is `engine.slug`, which changes what
+# the build is handed rather than what it is asked to make.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics; one of them also owns rendering and the gameplay
+# framework the game is written inside. It is a *run dimension*, chosen per run
+# alongside the model, the harness, and the variant, and recorded on the run; it
+# is not a property of the game.
+#
+# Refract supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the canvas fit, the keyboard and
+#                     pointer input, the audio, the overlay and the
+#                     `window.__refract` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module — the game definition, its mode, its state and
+#                     its actors — and the debug surface its instance's
+#                     `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# which surfaces the build still supplies, Refract's action list, and Refract's
+# cue names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     keyboard and pointer input, audio, diagnostics overlay and
+#                     `window.__refract` surface, and every figure the
+#                     specification fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the `RefractState`, the debug surface its
+#                     `initialize` returns beside that state, and the game's
+#                     update and render.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules. The build writes
+#                     `src/game.ts`: the game definition the engine drives — its
+#                     mode, its live `RefractState`, and its actors — and the
+#                     debug surface its instance's `initialize` returns.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`,
+# `build/`, or `out/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required; there are no defaults, so every case states
+# exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint . --max-warnings 0"
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its
+# scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__refract` once the game has initialized, so
+# the handle is what a person opening the console of such a build finds. An engine
+# run has NO global at all: the build writes the surface, its `initialize` returns
+# it — beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view,
+# its surface is written in the shape of `update` — a pose takes the current state
+# and returns the next, applied through `engine.apply`, and a reading takes the
+# state and returns what it read, called with `engine.state`. `structured-2d`
+# holds the world live, so its poses take only their own arguments and act on it
+# at the call, and its readings return plain data. One handle, three ways to reach
+# the same operations.
+#
+# There is deliberately no `tick_hz`. Refract mandates no fixed timestep: every
+# rate it has is per second and integrated against the delta time the frame hands
+# it, and its pointer operations take effect the moment they are called rather than
+# being sampled once per tick, so there is no case-wide step size to state. The key
+# is optional precisely so a case clocked this way omits it.
+[instrumentation]
+handle = "__refract"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. The single variant declares
+# none of its own: there is one game here, so there is one spec set.
+#
+# The specification is decomposed by concern, and each file is self-contained
+# enough to be read on its own while naming its siblings where a fact lives
+# elsewhere: `overview.md` the game and the project it is built in, `board.md` the
+# grid geometry and the notation boards are written in, `beams.md` the nine
+# numbered rules, `controls.md` the pointer tracing model and the key actions,
+# `state.md` what the game's state carries, `instrumentation.md` the debug and
+# automation surface, `ui.md` the shared screens and the audio cues,
+# `campaign-boards.md` the twenty-four fixed board layouts, and `modes/campaign.md`
+# and `modes/cascade.md` the two ways to play.
+#
+# The two mode files are common specs like any other. Both modes ship in every
+# build and both are reachable from the title menu, so both files are seeded into
+# every run and each names the other where the game genuinely crosses between them
+# (the title menu offers both, and the six screens are one union). What a mode file
+# does not do is restate the other mode's rules; it points at the other file.
+#
+# Every `.hbs` source is rendered before it lands, and ONE axis is branched on:
+# `engine.slug`, which selects what the build is handed and what it must write.
+# `overview.md.hbs` (the runtime, what is implemented, where the figures come
+# from), `controls.md.hbs` (where the pointer layer sits), `state.md.hbs` (the
+# build's own shape versus the exact `RefractState` declaration each engine run
+# writes), `instrumentation.md.hbs` (the global versus `engine.debug`, and the
+# clock operations only an engineless build needs), `ui.md.hbs` (where cues are
+# played), `showcase.md.hbs` (how motion is captured for the carousel) and the
+# two mode files (how the state is referred to) all branch on it.
+# Nothing branches on the variant. A spec's `dest` defaults to its `source` with a trailing
+# `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path and a plain
+# `.md` source is seeded verbatim.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The board: cells, the cell center formula every position in the game derives
+# from, the three node kinds and their silhouettes, the three channels, and the
+# notation `campaign-boards.md` and the debug surface's `loadBoard` both speak.
+# Seeded verbatim: nothing in it differs by engine.
+[[spec]]
+source = "specs/board.md"
+
+# The ruleset: R1 through R5, the limits checked on every move, and R6 through R9,
+# the completion conditions that decide when a beam is finished and when a board
+# is solved. It is the heart of the case and is seeded verbatim.
+[[spec]]
+source = "specs/beams.md"
+
+# How a player operates the game: the pointer targeting, the grab table, the drawn
+# order a beam is held in, extending, retracting, releasing, clearing, and the
+# registered key actions. It branches on the engine only to say which layer
+# delivers the pointer: the engine on an engine run, the runtime layer the build
+# writes on an engineless one.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The shape of the game's state. Under `simple-2d` this is the `RefractState`
+# declaration the build writes into `src/game.ts` verbatim, stated by the case
+# rather than by the seeded stub, and under `structured-2d` it is the equivalent
+# declaration in that engine's idiom, a live `RefractState` class the world holds
+# as its game state, written into `src/game.ts` verbatim as well. Under `none` the
+# build owns the shape and the file lists only what the state must carry, because
+# the rest of the specification is written against those facts.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a render-free
+# core; an API to drive and inspect the game from code through its own
+# real input path; and a read-only debug overlay. Framed as an ordinary developer
+# affordance of the game. It branches on the engine for how the surface is reached
+# and for the clock operations only an engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The screens both modes share (`title`, `howto`, `playing`), how a mode is chosen,
+# menu navigation, and the five audio cues.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The twenty-four fixed campaign boards, in the notation `board.md` defines. It is
+# authoritative for every layout, so it is seeded verbatim and the build transcribes
+# it exactly.
+[[spec]]
+source = "specs/campaign-boards.md"
+
+# Campaign: the fixed course, its unlock rule, and the `select`, `solved` and
+# `complete` screens it adds.
+[[spec]]
+source = "specs/modes/campaign.md.hbs"
+
+# Cascade: the endless generated sequence, the generator's solvability contract,
+# the tier ladder, and its `solved` screen.
+[[spec]]
+source = "specs/modes/cascade.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, screenshots and a short clip under `none`); it seeds
+# to `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
+#
+# Refract deliberately fixes no palette, no font, no node artwork, no beam
+# rendering and no background: the look of the optical bench is the build's own
+# design, and `specs/board.md` and `specs/ui.md` say so in as many words. A
+# reference view is a picture a build is compared AGAINST, so there is no honest
+# one to seed here — every build is expected to look different, and a screenshot
+# diff would score the build that copied the mockup best rather than the build that
+# designed the best bench. What the specification does fix about appearance is
+# stated as legibility a player depends on (a channel readable by silhouette as
+# well as hue, a crystal's charges readable without counting, a beam visibly
+# joining cell centers), and the Board and rendering validators below decide
+# exactly that, from the pixels the build renders and against thresholds each
+# item states — while how GOOD the bench looks is rated through the run-wide
+# aesthetic rating, not scored here.
+#
+# `[[proof]]` is likewise empty: no proof media is asked of the build. Every piece
+# of media a reviewer sees beside a verdict is produced by this case's own
+# validation suites — captured from scenarios the case controls, save for the one
+# still the Showcase point copies out of the build's own `showcase/` so the
+# picture the build presents its game with stands beside that verdict. The
+# showcase spec above does ask the build for media, but as the game's store-page
+# presentation rather than as evidence any point is judged on: the Showcase point
+# reads not one pixel of what it hands back. The automated load check still runs.
+
+# Scoring domains. This case is on the engine format, so it is validator-rated:
+# each domain's FUNCTIONAL rating is decided by the validators behind the point
+# checklist below (every point names the domains its failure lowers and how far —
+# see `domains` / `failure_cap` there), and the run's overall functional rating is
+# the WORST across the domains — an immaculate Campaign cannot mask a Cascade that
+# hands the player boards it cannot solve. The reviewer's judgement lives in the
+# separate AESTHETIC rating: the look, the polish, and the feel — the designed
+# bench, the legible copy, the boards worth solving — everything this case fixes
+# no picture of.
+#
+# One domain per mode, because a build can plausibly get one right and the other
+# wrong, plus the two things that cut across both: the tracing the whole game is
+# operated by, and the presentation this case hands entirely to the build.
+[[domain]]
+id = "campaign"
+name = "Campaign"
+description = "The fixed course: the twenty-four boards, the select grid, and the sense of progress through the four sets."
+
+[[domain]]
+id = "cascade"
+name = "Cascade"
+description = "The endless sequence: whether the generated boards are worth solving and whether the difficulty climbs in steps a player can feel."
+
+[[domain]]
+id = "tracing"
+name = "Tracing"
+description = "How drawing a beam feels: targeting a node, sweeping a route, backing one out, and how a refused move reads in the hand."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "The look and sound of the optical bench, which this case leaves entirely to the build: the bench, the node forms, the beams, the screens, and the cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
+# each item entry under it is one graded review item, worth one point (the
+# default weight), so a category is worth the number of items it holds. One item
+# declares a `weight` of its own — Showcase's, at the end of this checklist,
+# which grades a deliverable rather than a behavior and says there why it is
+# worth three.
+# A category carries no prose of its own; each item states in `description` the
+# claim its validator checks. The checklist is common to every run: there is one
+# variant and the three engines produce the same game, so nothing here is
+# conditional. It is reporter-side material — never seeded into a run, so the
+# model never sees it. Every item restates a requirement the seeded specification
+# already states, in the spec's own vocabulary and naming the spec's own
+# constants, and every threshold a validator asserts is derived from a figure or
+# rule in the specs plus a numeric tolerance stated in the item.
+#
+# EVERY point on this checklist carries a validation script, and every point is
+# one observable behavior, so a build fails exactly the rule it breaks (a lens at
+# capacity and a crystal at capacity are two points, not one). Each script is a
+# vitest suite under `validation/<engine>/<category>/<item id>.test.ts`. The
+# `<engine>` level is the ENGINE the suite is written against — a validator speaks
+# one engine's vocabulary, so this case, which supports three, ships one directory
+# per engine. `validation/none/` drives the build in Chromium through
+# `window.__refract`, with a page-injected 2D-context recorder for the text and
+# shape draws and an injected audio shim for the cues; `validation/simple-2d/` and
+# `validation/structured-2d/` each run in process against their vendored engine,
+# posing scenarios through the surface `engine.debug` returns, reading state back
+# from the snapshot, audio from the engine's `cue:played` event, and drawing from
+# the canvas pixels or the engine's own draw-command recorder. The three are the
+# same scenarios; only how they reach the build differs. The directory for the
+# run's engine is what gets staged into the built workspace at `validation/`.
+#
+# The suites pose boards through `loadBoard` in the notation `specs/board.md`
+# defines and draw through the pointer operations, all of which take
+# effect the moment they are called, so even a whole campaign course walk costs
+# milliseconds. Campaign progress has NO pose: a suite that needs a later course
+# state really solves the boards, tracing routes precomputed from
+# `specs/campaign-boards.md` under the `specs/beams.md` rules — derived from the
+# specs, never copied from the reference. Cascade suites carry a solver derived
+# from the specs alone, so a generated board is proven solvable by solving it.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. A `replay` output is a draw-command recording: the suite arms the
+# recorder around the section the point is about — the segment appearing, the
+# sweep, the solve — and never around the arrangement that got there. An `image`
+# output is a single captured frame. Both are evidence beside the verdict rather
+# than any part of it: a point passes or fails on its assertions alone. The one
+# exception to "captured" is the Showcase point at the end, which drives nothing
+# and so has no frame to capture: its still is copied out of the build's own
+# `showcase/`, and it is evidence on exactly the same terms.
+#
+# Nothing on this checklist asks a reviewer to judge how a screen looks.
+# Appearance is rated through the run-wide aesthetic rating; the rendering points
+# here assert only what the specification fixes about what is drawn — the cell
+# geometry, the fill against the outline, a legibility floor stated as a pixel
+# threshold — and capture the frame as evidence.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a Campaign point
+# lowers only `campaign`, a tracing point only `tracing`, and an instrumentation
+# point, which every suite in every domain drives through, lowers all four.
+# `failure_cap` is the highest functional rating those domains may reach while the
+# point fails; each domain gets the LOWEST cap among its failing points, and a
+# domain with no failing point is flawless. The caps are graded by how much of the
+# game a failure takes away: `broken` where the game cannot be played at all (no
+# debug surface, a trace that cannot begin or extend, completion never detected, a
+# mode that cannot be entered, a generator that deals a dead end); `scuffed` where
+# a rule the game is built on is noticeably wrong (a limit not enforced, a grab
+# row, boards not as written, a tier mis-shaped, a board that cannot be read);
+# `passable` where the fault is a tolerance, an edge case or a secondary path (a
+# wrap, a resting value, a replay path, a cue); and `great` where it is a cosmetic
+# detail (a label, a menu nicety, the mute toggle). No point caps at `flawless`: a
+# failure always costs.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and every other suite on this checklist
+# poses its scenario through it. These points check that it is really there,
+# really wired to the running game, and really the game's own — a surface that
+# reports a plausible-looking object unconnected to what is on screen is the
+# failure mode worth naming, and it also shows up as every other suite failing to
+# run.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__refract in an engineless build and off engine.debug in an engine build — and the surface is live: loadBoard poses a board, a pointerDown and a pointerMove draw a segment on it, and both the snapshot and the rendered canvas change."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: reflect that every required operation is installed as a
+# function (setAutoStep and advance under `none` alone), then prove liveness by
+# posing a board, drawing a segment with the pointer operations, and reading
+# both the snapshot and the canvas back. See validation/<engine>/instrumentation/surface-present.test.ts.
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "state", name = "The driven in-game state", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed board carrying all three channels and a crystal, with a partial beam drawn, the snapshot reports version REFRACT_DEBUG_VERSION (2) and every field specs/instrumentation.md lists with its documented type — screen, mode, menuIndex, selectIndex, the four progress fields, the board, one beams entry per channel present, solved, tracing, pointer, muted, and simTime — with each node's x and y on the cell center formula in specs/board.md and spent, complete, and solved derived exactly as specs/beams.md states."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a board exercising every branch of the shape (three
+# channels, a crystal, a partial beam) and hold each reported field against the
+# documented shape and the derivations. See
+# validation/<engine>/instrumentation/snapshot-shape.test.ts.
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "posed", name = "The posed board the snapshot reports", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-resting-values"
+title = "Fields of a mode not yet entered report their resting values"
+description = "The shape is fixed whatever the mode: in Cascade, with the campaign not yet entered, boardIndex is 0, solvedBoards is empty, unlockedCount is 1, and selectIndex is 0; in Campaign, with Cascade not yet entered, solvedCount is 0 and tier is 1. No field goes missing."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "passable"
+# Automated validation: reset into each mode in turn and read the other mode's
+# fields against the resting-values table in specs/instrumentation.md. See
+# validation/<engine>/instrumentation/snapshot-resting-values.test.ts.
+validation = { script = "instrumentation/snapshot-resting-values.test.ts", outputs = [
+  { id = "resting", name = "The mode at rest whose snapshot is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-operations-drive-play"
+title = "The pointer operations drive the real input path"
+description = "pointerDown on an emitter's center begins a trace in the same call — tracing is non-null before anything advances — pointerMove within NODE_HIT_R (44) of an adjacent node adds the segment, a move farther than NODE_HIT_R from every center changes nothing, and pointerUp ends the trace, so the operations feed the same immediate input path a player's pointer feeds."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: draw a beam purely from code with no frame advanced
+# between the calls, asserting each call's effect in its own aftermath — the
+# immediacy is the spec. See
+# validation/<engine>/instrumentation/pointer-operations-drive-play.test.ts.
+validation = { script = "instrumentation/pointer-operations-drive-play.test.ts", outputs = [
+  { id = "drawn", name = "A beam drawn purely from code", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trace-prefix"
+title = "A refused trace keeps its permitted prefix"
+description = "A route drawn with pointerDown and pointerMove whose third hop the limits refuse leaves the beam ending at the last segment they permitted — exactly the first two cells — and the game plays on rather than throwing, as specs/beams.md R2 and specs/instrumentation.md state of a move the limits refuse."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "passable"
+# Automated validation: press an emitter, move to an adjacent node, then move
+# onto another channel's lens — a hop R2 refuses — and read the beam back,
+# then draw a further legal segment to show the game plays on. See
+# validation/<engine>/instrumentation/trace-prefix.test.ts.
+validation = { script = "instrumentation/trace-prefix.test.ts", outputs = [
+  { id = "prefix", name = "The beam holding the permitted prefix", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset"
+title = "reset returns the game to its title-screen values"
+description = "After progress in both modes, reset() restores the title screen with menuIndex 0, mode campaign, no board in play, every beam empty, no trace live, simTime 0, campaign progress cleared and cascade progress back to solvedCount 0 and tier 1, and leaves muted untouched."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: dirty everything first — solve campaign board 1, pose a
+# cascade run in progress with a trace live on a posed board — then reset and
+# hold the state against the full title-state list in specs/instrumentation.md.
+# See validation/<engine>/instrumentation/reset.test.ts.
+validation = { script = "instrumentation/reset.test.ts", outputs = [
+  { id = "title", name = "The title after reset", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-solved-count"
+title = "setSolvedCount poses the run's boards-solved count alone"
+description = "On a posed cascade board, setSolvedCount(7) leaves the snapshot reporting solvedCount 7 with tier, mode, screen, the board, and the beams exactly as they were, as specs/instrumentation.md states of the operation."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a cascade board, set the count, and read the whole
+# snapshot back against the one it replaced with only solvedCount changed. See
+# validation/<engine>/instrumentation/set-solved-count.test.ts.
+validation = { script = "instrumentation/set-solved-count.test.ts", outputs = [
+  { id = "posed", name = "The run with its count posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-tier"
+title = "setTier poses the run's tier alone"
+description = "On a posed cascade board, setTier(4) leaves the snapshot reporting tier 4 with solvedCount, mode, screen, the board, and the beams exactly as they were, as specs/instrumentation.md states of the operation."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a cascade board, set the tier, and read the whole
+# snapshot back against the one it replaced with only tier changed. See
+# validation/<engine>/instrumentation/set-tier.test.ts.
+validation = { script = "instrumentation/set-tier.test.ts", outputs = [
+  { id = "posed", name = "The run with its tier posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "generate-board"
+title = "generateBoard poses a board the generator emits at the tier named"
+description = "From the title with a cascade run posed at solvedCount 2 and tier 1, generateBoard(4) moves to playing with a board present that carries the channel count tier 4's row of the ladder states, every beam empty, no trace live, and solvedCount, tier, and mode exactly as they were, as specs/instrumentation.md states of the operation."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a run in progress on the title, ask for a tier-4
+# board, and read the screen, the board's channels, the beams, the trace, and
+# the untouched progression back. The tier named differs from the run's own so
+# a build generating at state.tier fails on the channel count. See
+# validation/<engine>/instrumentation/generate-board.test.ts.
+validation = { script = "instrumentation/generate-board.test.ts", outputs = [
+  { id = "generated", name = "The generated board the operation posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay"
+title = "The game names its diagnostics, and reading them changes nothing"
+description = "The game names the diagnostics specs/instrumentation.md asks for — the current screen and mode, the board's cols and rows, and each channel's beam length — and each reports the posed board. Reading them leaves the game exactly as it was."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "passable"
+# Automated validation: pose a board, then read the diagnostics the game named and
+# hold each against what the pose implies. Under `none` the overlay is the runtime
+# layer the model wrote, so the check toggles it and reads the lines it draws.
+# Under an engine the panel is the engine's, so the check reads the sources back
+# off the engine instead: what the game is graded on is naming them, not the
+# drawing. See validation/<engine>/instrumentation/overlay.test.ts.
+validation = { script = "instrumentation/overlay.test.ts", outputs = [
+  { id = "overlay", name = "The posed board the diagnostics report", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-on-elapsed-time"
+title = "The simulation advances on the elapsed time it is handed"
+description = "Covering one second of game time as a single frame and as sixty frames adds 1.0 to simTime either way."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "passable"
+# Automated validation: cover the same second under two step sizes (advance under
+# `none`; two scripted clocks over the same frames under an engine) and compare
+# simTime.
+# Little rides on delta time in a pointer-driven puzzle, so the cap is passable.
+# See validation/<engine>/instrumentation/advances-on-elapsed-time.test.ts.
+validation = { script = "instrumentation/advances-on-elapsed-time.test.ts", outputs = [
+  { id = "advanced", name = "The game after the second was covered", kind = "image" },
+] }
+[[review.categories.items]]
+id = "rules-read-nothing-from-the-renderer"
+title = "Whether a segment may be added is decided from the board and the beams alone"
+description = "A refused and an accepted segment resolve identically on a board that has never been rendered and on the same board after five frames have drawn it."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "passable"
+# Automated validation: take the same rules decision twice — once on a board the
+# build has never drawn, once on the same board after five frames have drawn it,
+# with no frame between the pointer calls in either run, because specs/state.md
+# refreshes `pointer` in every update and a mid-gesture frame would grade the
+# pointer mirror rather than the renderer.
+# See validation/<engine>/instrumentation/rules-read-nothing-from-the-renderer.test.ts.
+validation = { script = "instrumentation/rules-read-nothing-from-the-renderer.test.ts", outputs = [
+  { id = "drive", name = "The board the rules decision was read from", kind = "image" },
+] }
+
+# --- Board and rendering ------------------------------------------------------
+# Where everything sits and how it reads. The geometry is the one part of
+# Refract's appearance the specification does fix, because every pointer position
+# in the game is measured against it: a board drawn off the cell centers makes the
+# hit radius wrong and the game unplayable. Every point here decides one thing off
+# the rendered pixels — that the build drew something at the coordinates
+# specs/board.md computes, or that what it drew changed when the state behind it
+# changed. How a node, a beam or an empty cell LOOKS — the palette, the three
+# silhouettes, outline against fill, a crystal's charge readout, how quiet a
+# background is — is the reviewer's presentation rating and is decided nowhere
+# here.
+[[review.categories]]
+id = "board"
+title = "Board and rendering"
+[[review.categories.items]]
+id = "cell-geometry"
+title = "Nodes sit on the cell centers the formula gives"
+description = "On a posed 3x3 and a posed 7x6 board, every node's computed center carries something drawn: some pixel within NODE_R (30) of it differs from the board's own ground, with adjacent centers CELL_PITCH (96) apart on both axes and the grid centered on BOARD_CX, BOARD_CY (640, 392) whatever its dimensions, so the board does not drift as boards change size."
+domains = ["tracing", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the disc about every formula center on two board
+# sizes and decide that the build drew there. Nothing is sampled off the board:
+# specs/board.md leaves what sits behind and around it to the build, and how a
+# node looks inside the disc is the reviewer's. See
+# validation/<engine>/board/cell-geometry.test.ts.
+validation = { script = "board/cell-geometry.test.ts", outputs = [
+  { id = "board", name = "The posed boards whose centers are sampled", kind = "image" },
+] }
+[[review.categories.items]]
+id = "crystal-charges-read"
+title = "A crystal's charge count reads from its form"
+description = "A 1-charge and a 3-charge crystal render differently within NODE_R (30) of one cell center: posed in turn at the same cell, the two regions differ at some paired sample, so the count is drawn rather than implied."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose a 1-charge crystal at one cell, read the disc about
+# that center, pose a 3-charge crystal at the same cell, and compare the two
+# readings sample against sample — the cell, its neighbours and the background
+# are identical between them, so the only thing that moved is the charge count.
+# The captured still is a third pose carrying both counts side by side, which is
+# what a reviewer wants to look at. The spent half of specs/board.md's readout
+# requirement carries no point of its own: every arrangement that moves a
+# crystal's spent count also draws a beam over the region a script would read, so
+# no pixel reading isolates the readout, and it is left to the reviewer's
+# presentation rating.
+# See validation/<engine>/board/crystal-charges-read.test.ts.
+validation = { script = "board/crystal-charges-read.test.ts", outputs = [
+  { id = "charges", name = "A 1-charge and a 3-charge crystal side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "beam-route"
+title = "A drawn beam visibly connects the cells it links"
+description = "The midpoint of an orthogonal and of a diagonal drawn segment, on two different channels, renders differently once the segment is drawn than it did on the same board with the beam empty, so a beam is drawn along the line joining the two cell centers and its route is unambiguous."
+domains = ["presentation", "tracing"]
+failure_cap = "scuffed"
+# Automated validation: read each segment's midpoint on the posed board before
+# anything is traced, trace one orthogonal and one diagonal segment, and read the
+# same two points again. What the beam looks like — its hue, its width, its
+# styling — is the reviewer's. See validation/<engine>/board/beam-route.test.ts.
+validation = { script = "board/beam-route.test.ts", outputs = [
+  { id = "beams", name = "An orthogonal and a diagonal segment drawn", kind = "image" },
+] }
+
+# --- Tracing ------------------------------------------------------------------
+# The whole game is operated by one gesture, so it gets its own category and its
+# own domain. Each point below is one row of the grab table or one of the things a
+# held trace can do, checked separately, because a build that begins a trace
+# correctly and cannot retract is broken in a different way from one that grabs
+# the wrong beam. Every scenario is driven through the pointer operations, which
+# take effect the moment they are called.
+[[review.categories]]
+id = "tracing"
+title = "Tracing"
+[[review.categories.items]]
+id = "hit-radius"
+title = "The pointer targets one node at a time"
+description = "A press at a node's center offset by NODE_HIT_R (44) minus 2 begins a trace, and a press farther than NODE_HIT_R from every cell center begins none. NODE_HIT_R is below half CELL_PITCH (96), so no two targeting regions overlap."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "tracing/hit-radius.test.ts", outputs = [
+  { id = "targeted", name = "The trace begun inside the hit radius", kind = "image" },
+] }
+[[review.categories.items]]
+id = "begin-at-emitter"
+title = "A press on an emitter starts that channel's beam"
+description = "A press on an emitter of a channel whose beam carries no segments starts that beam at that emitter: the trace carries that channel and the beam holds that one cell."
+domains = ["tracing"]
+failure_cap = "broken"
+validation = { script = "tracing/begin-at-emitter.test.ts", outputs = [
+  { id = "begun", name = "The trace begun at the emitter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-from-end"
+title = "A press on a beam's end resumes it"
+description = "After a beam is drawn and released, a press on its live end resumes the trace from there, and an extension to an adjacent node succeeds."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "tracing/resume-from-end.test.ts", outputs = [
+  { id = "resumed", name = "The beam resumed and extended", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-reverses"
+title = "Resuming from the other end reverses the drawn order"
+description = "A press on the far end of a released beam reorients it so the pressed node is its last cell — the snapshot's cells read in reversed order — and the trace extends from that end, per the drawn-order rule in specs/controls.md."
+domains = ["tracing"]
+failure_cap = "passable"
+validation = { script = "tracing/resume-reverses.test.ts", outputs = [
+  { id = "reversed", name = "The beam resumed from its far end", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shorten-from-middle"
+title = "A press inside a beam shortens it to that node"
+description = "A press on a node exactly one beam passes through drops every cell after it in the drawn order, leaves the rest of the beam drawn, and resumes the trace from that node."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "tracing/shorten-from-middle.test.ts", outputs = [
+  { id = "shorten", name = "The beam shortened to the pressed node", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shorten-keeps-last-occurrence"
+title = "Shortening keeps a repeated node's last occurrence"
+description = "A beam that crosses a crystal twice carries that cell twice, and a press on it drops the cells after its LAST occurrence in the drawn order, so the beam loses as few segments as it can."
+domains = ["tracing"]
+failure_cap = "passable"
+validation = { script = "tracing/shorten-keeps-last-occurrence.test.ts", outputs = [
+  { id = "shortened", name = "The twice-crossed beam shortened at the crystal", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shared-node-refused"
+title = "A press on a node two beams share begins no trace"
+description = "A press on a node more than one beam passes through begins no trace and leaves the board unchanged."
+domains = ["tracing"]
+failure_cap = "passable"
+validation = { script = "tracing/shared-node-refused.test.ts", outputs = [
+  { id = "unchanged", name = "The board unchanged by the shared-node press", kind = "image" },
+] }
+[[review.categories.items]]
+id = "grab-end-wins-over-mid"
+title = "A beam's end wins over another beam's middle"
+description = "The grab rows in specs/controls.md are evaluated in order, so a press on a node that is one beam's end and a mid cell of another resumes the beam whose end it is."
+domains = ["tracing"]
+failure_cap = "passable"
+validation = { script = "tracing/grab-end-wins-over-mid.test.ts", outputs = [
+  { id = "grabbed", name = "The end grabbed ahead of the mid cell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "extend"
+title = "Dragging to an adjacent node adds a segment"
+description = "While the trace is held, the pointer moving within NODE_HIT_R (44) of a node adjacent to the live end adds the segment joining them when the limits permit it, and that node becomes the live end."
+domains = ["tracing"]
+failure_cap = "broken"
+validation = { script = "tracing/extend.test.ts", outputs = [
+  { id = "extend", name = "A segment added to the held trace", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "retract"
+title = "Backing up removes the last segment"
+description = "The pointer moving within NODE_HIT_R (44) of the node immediately behind the live end removes the last segment and makes that node the live end, repeated until the beam is unwound, all without releasing."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "tracing/retract.test.ts", outputs = [
+  { id = "retract", name = "The beam unwound segment by segment", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "release-leaves-partial"
+title = "Releasing leaves the beam as drawn"
+description = "The release ends the trace and leaves the beam exactly as drawn, complete or not: the partial beam persists in the snapshot, and a later press on either of its ends resumes it."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "tracing/release-leaves-partial.test.ts", outputs = [
+  { id = "partial", name = "The partial beam persisting after release", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trace-empty-release"
+title = "A trace that added nothing leaves the beam empty"
+description = "A press on an emitter released without extending leaves that channel's beam carrying no cells, and a later press on EITHER of that channel's emitters starts the beam afresh."
+domains = ["tracing"]
+failure_cap = "great"
+validation = { script = "tracing/trace-empty-release.test.ts", outputs = [
+  { id = "restarted", name = "The beam started afresh from the other emitter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear"
+title = "The clear action empties every beam"
+description = "With beams drawn on two channels, the clear action (KeyR) empties every beam on the current board at once, leaves the board's nodes untouched, and leaves the player on the playing screen."
+domains = ["tracing"]
+failure_cap = "passable"
+validation = { script = "tracing/clear.test.ts", outputs = [
+  { id = "cleared", name = "The board cleared of its beams", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-only-on-playing"
+title = "Clear is read on the playing screen alone"
+description = "The clear action fired on the title and on the select screen changes nothing, because it is read on the playing screen and does nothing on any other."
+domains = ["tracing"]
+failure_cap = "great"
+validation = { script = "tracing/clear-only-on-playing.test.ts", outputs = [
+  { id = "unchanged", name = "The screens unchanged by the clear action", kind = "image" },
+] }
+
+# --- The ruleset --------------------------------------------------------------
+# One point per limit and per completion condition, with R6 Endpoints and R7
+# Coverage sharing a point because a beam that satisfies one and not the other is
+# not a finished beam, and R5's three capacities split into three points because
+# an emitter, a lens, and a crystal are each mis-capped in a different way. Each
+# limit is checked by attempting a violating move and asserting refusal — the beam
+# unchanged, the trace still live — on a board posed via loadBoard in the notation
+# specs/board.md defines; each completion condition is read back from the derived
+# fields. R5's crystal clause, where the charge is spent on entry, is the subtlest
+# thing in the game, so the refused move into a spent crystal gets a point of its
+# own.
+[[review.categories]]
+id = "ruleset"
+title = "The ruleset"
+[[review.categories.items]]
+id = "r1-adjacency"
+title = "R1 Adjacency"
+description = "A segment joins two different nodes whose cells differ by at most 1 in column and at most 1 in row: a move to a node two columns from the live end is refused, and a sweep across an empty cell adds nothing."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r1-adjacency.test.ts", outputs = [
+  { id = "refused", name = "The beam unchanged by the non-adjacent move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r2-foreign-lens"
+title = "R2 Exclusion: another channel's lens"
+description = "A beam never meets a lens of another channel: a move onto another channel's lens is refused, leaving the beam unchanged and the trace live."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r2-foreign-lens.test.ts", outputs = [
+  { id = "refused", name = "The beam unchanged at the other channel's lens", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r2-foreign-emitter"
+title = "R2 Exclusion: another channel's emitter"
+description = "A beam never meets an emitter of another channel: a move onto another channel's emitter is refused, leaving the beam unchanged and the trace live."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r2-foreign-emitter.test.ts", outputs = [
+  { id = "refused", name = "The beam unchanged at the other channel's emitter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r3-same-beam-redraw"
+title = "R3 Segment exclusivity: the same beam"
+description = "A segment is used at most once: a beam whose live end returns beside a segment it already holds is refused the move that would redraw it."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r3-same-beam-redraw.test.ts", outputs = [
+  { id = "refused", name = "The beam refused its own segment a second time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r3-second-channel"
+title = "R3 Segment exclusivity: a second channel"
+description = "Each segment carries at most one beam: a second channel reaching a segment another channel's beam already holds is refused the move."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r3-second-channel.test.ts", outputs = [
+  { id = "refused", name = "The segment refused a second beam", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r4-diagonal-exclusivity"
+title = "R4 Diagonal exclusivity"
+description = "The two diagonals of any 2x2 block of cells are mutually exclusive: once one is drawn, the move that would draw the other is refused, whichever order the two are attempted in."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r4-diagonal-exclusivity.test.ts", outputs = [
+  { id = "refused", name = "The crossing diagonal refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r5-emitter-capacity"
+title = "R5 Capacity: an emitter carries one segment"
+description = "An emitter carries at most one segment: a second segment onto an emitter already carrying its one is refused, so an emitter is never passed through or re-entered."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r5-emitter-capacity.test.ts", outputs = [
+  { id = "refused", name = "The emitter refusing a second segment", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r5-lens-capacity"
+title = "R5 Capacity: a lens carries two segments"
+description = "A lens carries at most two segments of its own channel: a third segment of that channel onto it is refused."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r5-lens-capacity.test.ts", outputs = [
+  { id = "refused", name = "The lens refusing a third segment", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r5-crystal-capacity"
+title = "R5 Capacity: a crystal is crossed once per charge"
+description = "A crystal carrying n charges is crossed at most n times: the crossing after the n-th is refused."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r5-crystal-capacity.test.ts", outputs = [
+  { id = "refused", name = "The crystal refusing a crossing past its charges", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spent-crystal-refused"
+title = "A move into a fully spent crystal is refused"
+description = "The charge is spent on entry and the crossing is completed by leaving, so a 1-charge crystal a beam has entered and not yet left already refuses a second entry by another beam."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/spent-crystal-refused.test.ts", outputs = [
+  { id = "refused", name = "The spent crystal refusing a second entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refusal-is-silent"
+title = "A refused move changes nothing and keeps the trace live"
+description = "A sweep across three illegal targets leaves the beam identical in every snapshot and the trace live throughout, so a player can sweep the pointer across the board and draw only permitted segments."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/refusal-is-silent.test.ts", outputs = [
+  { id = "sweep", name = "The sweep drawing nothing it should not", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r6-r7-complete"
+title = "R6 Endpoints and R7 Coverage decide a complete beam"
+description = "A beam running between its channel's two emitters with exactly one segment meeting each, threading every lens of that channel with exactly two of its segments, reports complete true."
+domains = ["campaign", "cascade"]
+failure_cap = "broken"
+# Automated validation: completion never detected means nothing ever solves, so
+# the cap is broken. The emitter-as-pass-through variant cannot even be drawn
+# (R5), so completeness is asserted on the drawn set. See
+# validation/<engine>/ruleset/r6-r7-complete.test.ts.
+validation = { script = "ruleset/r6-r7-complete.test.ts", outputs = [
+  { id = "complete", name = "The beam reporting complete", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r7-lens-unvisited"
+title = "R7 Coverage: a lens left unvisited holds the beam incomplete"
+description = "A route running between both of a channel's emitters but leaving one lens of that channel unvisited reports complete false."
+domains = ["campaign", "cascade"]
+failure_cap = "broken"
+# Automated validation: a build that reports complete with a lens unvisited
+# solves boards the player has not solved, so the cap is broken. See
+# validation/<engine>/ruleset/r7-lens-unvisited.test.ts.
+validation = { script = "ruleset/r7-lens-unvisited.test.ts", outputs = [
+  { id = "incomplete", name = "The route short one lens, reporting incomplete", kind = "image" },
+] }
+[[review.categories.items]]
+id = "completion-refuses-nothing"
+title = "The completion conditions are never used to refuse a move"
+description = "A route that leaves a lens of its channel unvisited is drawn whole, its closing move onto the second emitter included: R6 and R7 describe finished work, not legal moves."
+domains = ["campaign", "cascade"]
+failure_cap = "broken"
+# Automated validation: a build that refuses a move because the beam would not
+# be complete can never let a beam be finished, so the cap is broken. See
+# validation/<engine>/ruleset/completion-refuses-nothing.test.ts.
+validation = { script = "ruleset/completion-refuses-nothing.test.ts", outputs = [
+  { id = "drawn", name = "The lens-short route drawn whole", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r8-crystals"
+title = "R8 Crystals"
+description = "A crystal is satisfied only when all of its charges are spent and every crossing begun across it has been completed: a board whose every beam is complete stays unsolved while a charge is unspent, a beam left ending on a crystal leaves solved false with every charge spent, and completing that crossing flips solved true."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r8-crystals.test.ts", outputs = [
+  { id = "unsatisfied", name = "The crystal holding the board unsolved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r9-solved"
+title = "R9 Solved"
+description = "On the final permitted move of a known solution, solved flips true and the game leaves playing on that same call: the board reads as solved exactly when every channel present has a complete beam and every crystal on the board is satisfied."
+domains = ["campaign", "cascade"]
+failure_cap = "broken"
+validation = { script = "ruleset/r9-solved.test.ts", outputs = [
+  { id = "solved", name = "The board on its solving move", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solving-ends-the-trace"
+title = "Solving ends the live trace on the spot"
+description = "On the frame a move solves the board the trace is null, the beams stay exactly as drawn after the release that follows, and a further press changes nothing, so a solved board cannot be taken apart by retracting."
+domains = ["campaign", "cascade"]
+failure_cap = "passable"
+validation = { script = "ruleset/solving-ends-the-trace.test.ts", outputs = [
+  { id = "held", name = "The solved board holding its beams", kind = "image" },
+] }
+
+# --- Campaign -----------------------------------------------------------------
+# The fixed course. The boards themselves are transcribed from
+# specs/campaign-boards.md, which is authoritative for every layout, so the first
+# course point is simply whether the build shipped the boards it was given rather
+# than boards of its own invention — the single most likely shortcut in this mode.
+# Campaign progress has no pose, so these suites reach later course states by
+# REALLY solving boards: a shared harness helper traces routes precomputed from
+# specs/campaign-boards.md under the specs/beams.md rules, derived from the specs
+# and never copied from the reference. Traces are immediate, so a full course walk
+# costs milliseconds.
+[[review.categories]]
+id = "campaign"
+title = "Campaign"
+[[review.categories.items]]
+id = "campaign-starts"
+title = "CAMPAIGN starts the campaign"
+description = "Choosing CAMPAIGN from the title sets mode to campaign and goes to select with a fresh course: unlockedCount 1 and no board recorded solved."
+domains = ["campaign"]
+failure_cap = "broken"
+validation = { script = "campaign/campaign-starts.test.ts", outputs = [
+  { id = "select", name = "The select grid on entering the campaign", kind = "image" },
+] }
+[[review.categories.items]]
+id = "boards-as-written"
+title = "The twenty-four boards are the ones specified"
+description = "On entering each of the CAMPAIGN_LENGTH (24) boards in order, the snapshot's board equals the layout specs/campaign-boards.md gives it exactly — dimensions, node kinds, channels, and charges — with nothing substituted, reordered, resized, or reworked."
+domains = ["campaign"]
+failure_cap = "scuffed"
+# Automated validation: walk the whole course, solving each board to reach the
+# next, and hold every entered board against the authoritative notation. A course
+# of invented boards is still playable, so the cap is scuffed rather than broken.
+# See validation/<engine>/campaign/boards-as-written.test.ts.
+validation = { script = "campaign/boards-as-written.test.ts", outputs = [
+  { id = "course", name = "A mid-course board as specified", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sets"
+title = "The boards are grouped into Sets A to D"
+description = "The select frame draws all four SET_LABELS texts (SET A, SET B, SET C, SET D), and the four read down the frame in that order. Where a label sits beside its row is the build's. A set is a grouping only and gates nothing, which the unlock rule itself carries: see Solving a board unlocks the next."
+domains = ["campaign"]
+failure_cap = "great"
+validation = { script = "campaign/sets.test.ts", outputs = [
+  { id = "select", name = "The select grid with its four set labels", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-grid"
+title = "The select grid shows every board"
+description = "The select frame draws the numbers 1 through 24, one per board, laid out six per row across four rows in number order, one row per set."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "campaign/select-grid.test.ts", outputs = [
+  { id = "grid", name = "The six-by-four select grid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-states"
+title = "Locked, unlocked, and solved render apart"
+description = "Board 2's own tile region on the select grid renders differently once solving board 1 unlocks it, and differently again once board 2 is itself solved, read on three frames driven the same number of frames after the grid is reached with the highlight in the same place, so the build draws the three board states apart rather than one tile for all three."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-states.test.ts", outputs = [
+  { id = "states", name = "The grid with board 2 solved, board 3 unlocked, board 4 locked", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-move-right"
+title = "Right moves the highlight along its row"
+description = "right moves the select highlight one board along its row, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-move-right.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one board right along its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-move-left"
+title = "Left moves the highlight back along its row"
+description = "left moves the select highlight one board back along its row, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-move-left.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one board left along its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-left-wraps"
+title = "Left at a row's start wraps to its end"
+description = "left on the first board of a row wraps the select highlight to the last board of that row, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-left-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the end of its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-right-wraps"
+title = "Right at a row's end wraps to its start"
+description = "right on the last board of a row wraps the select highlight to the first board of that row, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-right-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the start of its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-move-down"
+title = "Down moves the highlight a row down its column"
+description = "down moves the select highlight one row down, staying in the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-move-down.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one row down its column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-move-up"
+title = "Up moves the highlight a row up its column"
+description = "up moves the select highlight one row up, staying in the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-move-up.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one row up its column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-up-wraps"
+title = "Up on the top row wraps to the bottom row"
+description = "up on the top row wraps the select highlight to the bottom row of the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-up-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the bottom row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-down-wraps"
+title = "Down on the bottom row wraps to the top row"
+description = "down on the bottom row wraps the select highlight to the top row of the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-down-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the top row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-enter"
+title = "Confirm enters an unlocked board"
+description = "confirm on board 1 enters it: screen playing, boardIndex 0, every beam empty."
+domains = ["campaign"]
+failure_cap = "broken"
+validation = { script = "campaign/select-enter.test.ts", outputs = [
+  { id = "entered", name = "Board 1 entered from the grid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-locked-refused"
+title = "Confirm on a locked board does nothing"
+description = "confirm on a locked board changes nothing: the screen and selectIndex are unchanged and the highlight stays where it is."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-locked-refused.test.ts", outputs = [
+  { id = "locked", name = "The grid unchanged by the refused confirm", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-back"
+title = "Back leaves the select screen"
+description = "back on the select screen returns to title with CAMPAIGN, the entry that led away, highlighted at menuIndex 0."
+domains = ["campaign"]
+failure_cap = "great"
+validation = { script = "campaign/select-back.test.ts", outputs = [
+  { id = "title", name = "The title after leaving select", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-highlight-lands"
+title = "The highlight lands where the player left off"
+description = "On arriving at the select screen the highlight sits on the board most recently entered or solved: selectIndex 0 before any board has been entered, selectIndex 0 after solving board 1 and returning, and selectIndex 1 after entering board 2 and backing out."
+domains = ["campaign"]
+failure_cap = "great"
+validation = { script = "campaign/select-highlight-lands.test.ts", outputs = [
+  { id = "landing", name = "The highlight landed on the last board touched", kind = "image" },
+] }
+[[review.categories.items]]
+id = "unlocking"
+title = "Solving a board unlocks the next"
+description = "Solving board 1 sets unlockedCount to 2 and solvedBoards to board 1 alone."
+domains = ["campaign"]
+failure_cap = "broken"
+validation = { script = "campaign/unlocking.test.ts", outputs = [
+  { id = "unlocked", name = "The grid after the first solve", kind = "image" },
+] }
+[[review.categories.items]]
+id = "replay-changes-no-unlock-state"
+title = "A replay changes no unlock state"
+description = "Solving board 1 a second time, as a replay, leaves unlockedCount at 2 and solvedBoards at board 1 alone."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/replay-changes-no-unlock-state.test.ts", outputs = [
+  { id = "unchanged", name = "The grid unchanged after a replay solve", kind = "image" },
+] }
+[[review.categories.items]]
+id = "campaign-progress-persists"
+title = "Campaign progress lasts the session"
+description = "After solving board 1, entering Cascade — the other mode entirely, on its own generated board — and entering the campaign again, unlockedCount and solvedBoards are unchanged: the same grid, with the same boards unlocked and solved."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/campaign-progress-persists.test.ts", outputs = [
+  { id = "persisted", name = "The grid unchanged after a Cascade detour", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solved-next"
+title = "The solved screen offers the next board first"
+description = "Solving board n before the last goes to solved with menuIndex 0 on the first choice, and confirm enters board n plus 1 on playing with every beam empty."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "campaign/solved-next.test.ts", outputs = [
+  { id = "solved", name = "The solved screen offering the next board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solved-replay"
+title = "The replay choice enters the same board again"
+description = "Taking the replay choice on the solved screen enters the same board again: the same boardIndex, screen playing, every beam empty."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/solved-replay.test.ts", outputs = [
+  { id = "replayed", name = "The board re-entered for a replay", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solved-back-choice"
+title = "The solved screen's third choice returns to the grid"
+description = "The back-to-select choice, the third on the solved screen, goes to select."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/solved-back-choice.test.ts", outputs = [
+  { id = "select", name = "The grid reached by the back-to-select choice", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solved-back-action"
+title = "back on the solved screen returns to the grid"
+description = "back on the solved screen goes to select."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/solved-back-action.test.ts", outputs = [
+  { id = "select", name = "The grid reached by the back action", kind = "image" },
+] }
+[[review.categories.items]]
+id = "complete-reached"
+title = "Solving the last board completes the campaign"
+description = "The solve that leaves no board unsolved goes to complete rather than solved, with menuIndex 0 on the first choice."
+domains = ["campaign"]
+failure_cap = "passable"
+# Automated validation: walk the whole course; the twenty-fourth solve must land
+# on complete, never on solved. See
+# validation/<engine>/campaign/complete-reached.test.ts.
+validation = { script = "campaign/complete-reached.test.ts", outputs = [
+  { id = "complete", name = "The campaign completed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "complete-copy"
+title = "The complete screen says the campaign is finished"
+description = "The complete frame states that all CAMPAIGN_LENGTH (24) boards are solved."
+domains = ["campaign"]
+failure_cap = "great"
+validation = { script = "campaign/complete-copy.test.ts", outputs = [
+  { id = "copy", name = "The completion the screen states", kind = "image" },
+] }
+[[review.categories.items]]
+id = "complete-to-select"
+title = "The complete screen's first choice returns to the grid"
+description = "The first choice on the complete screen goes to select, and no next board is offered: the screen carries exactly two choices, so down twice from the arrival highlight comes back to the first."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/complete-to-select.test.ts", outputs = [
+  { id = "select", name = "The grid reached from the complete screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "complete-to-title"
+title = "The complete screen's second choice returns to the title"
+description = "The second choice on the complete screen goes to title with CAMPAIGN highlighted (menuIndex 0)."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/complete-to-title.test.ts", outputs = [
+  { id = "title", name = "The title reached from the complete screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "complete-back"
+title = "back on the complete screen returns to the grid"
+description = "back on the complete screen goes to select."
+domains = ["campaign"]
+failure_cap = "great"
+validation = { script = "campaign/complete-back.test.ts", outputs = [
+  { id = "select", name = "The grid reached by the back action", kind = "image" },
+] }
+[[review.categories.items]]
+id = "complete-keeps-progress"
+title = "Completing the campaign keeps every board unlocked and solved"
+description = "After the campaign completes, unlockedCount is CAMPAIGN_LENGTH (24) and solvedBoards holds all 24 boards, so the player can return to the grid and replay any of them."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/complete-keeps-progress.test.ts", outputs = [
+  { id = "grid", name = "Every board still unlocked and solved", kind = "image" },
+] }
+[[review.categories.items]]
+id = "replay-fresh"
+title = "Entering a board starts it empty"
+description = "Re-entering a board already solved starts it with every beam empty, exactly as a first attempt does: progress is per board and is never partially banked."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/replay-fresh.test.ts", outputs = [
+  { id = "fresh", name = "The solved board re-entered empty", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-discards"
+title = "Back during playing discards the drawn beams"
+description = "back during playing returns to select, the beams drawn on the board are discarded, and the board is unchanged the next time it is entered, starting with every beam empty."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/back-discards.test.ts", outputs = [
+  { id = "discarded", name = "The board re-entered after backing out", kind = "image" },
+] }
+
+# --- Cascade ------------------------------------------------------------------
+# The endless sequence. The generator is where this mode's real work is: a board
+# the player cannot finish is the one failure the sequence cannot absorb, because
+# there is no way to skip it, so solvability is checked hardest and over many
+# boards rather than one. The suites share a solver derived from the specs alone —
+# constraint propagation over the limits in specs/beams.md — so a generated board
+# is proven solvable by solving it, posed at every tier through generateBoard,
+# and the ladder is read back over posed counts.
+[[review.categories]]
+id = "cascade"
+title = "Cascade"
+[[review.categories.items]]
+id = "cascade-starts"
+title = "CASCADE starts the sequence"
+description = "Choosing CASCADE from the title sets mode to cascade and goes to playing with solvedCount 0, tier 1, a board present, and every beam empty, leaving the campaign's fields as they stood, which in a fresh session is their resting values."
+domains = ["cascade"]
+failure_cap = "broken"
+validation = { script = "cascade/cascade-starts.test.ts", outputs = [
+  { id = "board", name = "The first generated board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cascade-back-to-title"
+title = "Back abandons the board and returns to the title"
+description = "back during playing abandons the board and returns to title with CASCADE, the entry that led away, highlighted at menuIndex 1."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/cascade-back-to-title.test.ts", outputs = [
+  { id = "abandoned", name = "The title after the board was abandoned", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cascade-restarts-fresh"
+title = "Starting Cascade again begins a fresh sequence"
+description = "After a run posed at solvedCount 5 and tier 2 is abandoned with back, starting Cascade again begins a fresh sequence from solvedCount 0 and tier 1."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/cascade-restarts-fresh.test.ts", outputs = [
+  { id = "fresh", name = "The fresh sequence after backing out", kind = "image" },
+] }
+[[review.categories.items]]
+id = "boards-are-solvable"
+title = "Every generated board is solvable"
+description = "Board after board, a set of beams satisfying every rule exists and the player can reach it: five boards generated at each of the five tiers through generateBoard are each solved by a solver derived from the specs alone, and the build accepts each traced solution. No board the generator hands the player is a dead end."
+domains = ["cascade"]
+failure_cap = "broken"
+# Automated validation: pose five boards at each tier through generateBoard —
+# read each off the snapshot, run the spec-derived solver, trace the found beams,
+# assert solved — twenty-five boards across the whole ladder. The solver's
+# expansion cap is a generous runaway stop; the residual risk of a conformant
+# board it cannot crack inside the cap is documented in the suite header. See
+# validation/<engine>/cascade/boards-are-solvable.test.ts.
+validation = { script = "cascade/boards-are-solvable.test.ts", outputs = [
+  { id = "solve", name = "A generated top-tier board solved", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "generated-boards-fit-the-grid"
+title = "Every generated board fits the grid"
+description = "Every board generated through generateBoard, five at each tier, fits within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6)."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/generated-boards-fit-the-grid.test.ts", outputs = [
+  { id = "board", name = "A generated board inside the grid bounds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "generated-boards-have-two-emitters-per-channel"
+title = "Every generated board carries exactly two emitters per channel"
+description = "Every board generated through generateBoard, five at each tier, carries the first n of CHANNELS, with exactly two emitters for each channel present."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/generated-boards-have-two-emitters-per-channel.test.ts", outputs = [
+  { id = "emitters", name = "A generated board's channels and their emitters", kind = "image" },
+] }
+[[review.categories.items]]
+id = "generated-crystal-charges-in-range"
+title = "Every generated crystal carries a legal charge count"
+description = "Every crystal on every board generated through generateBoard, five at each tier, carries 1 to MAX_CHARGES (3) charges."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/generated-crystal-charges-in-range.test.ts", outputs = [
+  { id = "charges", name = "A generated board's crystals and their charges", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tier-ladder"
+title = "The tier climbs on the ladder specified"
+description = "With the run posed at each count from 0 to 24 and a posed board solved, the tier after the solve is min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER) exactly, climbing one step every TIER_ADVANCE (5) boards solved and holding at MAX_TIER (5) from the twentieth solve onward."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/tier-ladder.test.ts", outputs = [
+  { id = "tier", name = "The tier read after each solve", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tier-grid-range"
+title = "Each tier emits grids inside its stated range"
+description = "Each board generated through generateBoard at a tier, five per tier, has cols and rows within the grid range the row specs/modes/cascade.md gives that tier."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/tier-grid-range.test.ts", outputs = [
+  { id = "board", name = "A board sized by its tier", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tier-channel-count"
+title = "Each tier emits the channel count its rung states"
+description = "Each board generated through generateBoard at a tier, five per tier, carries exactly the number of channels the row specs/modes/cascade.md gives that tier, and they are the first n of CHANNELS."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/tier-channel-count.test.ts", outputs = [
+  { id = "board", name = "A board carrying its tier's channels", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tier-crystal-count-and-charges"
+title = "Each tier crowds its crystals as its rung states"
+description = "Each board generated through generateBoard at a tier, five per tier, has a crystal count, and charges on each crystal, within the ranges the row specs/modes/cascade.md gives that tier."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/tier-crystal-count-and-charges.test.ts", outputs = [
+  { id = "board", name = "A board carrying its tier's crystals", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tier-empty-cells"
+title = "Each tier leaves at most the empty cells its rung allows"
+description = "Each board generated through generateBoard at a tier, five per tier, leaves at most the empty cells the row specs/modes/cascade.md gives that tier."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/tier-empty-cells.test.ts", outputs = [
+  { id = "board", name = "A board with its tier's empty cells", kind = "image" },
+] }
+# THE DIFFICULTY FLOOR, ONE MEASURE PER POINT. specs/modes/cascade.md defines
+# five measures and bounds each of them per tier, and they are five different
+# pieces of generator work — shared crystals is a placement property, the
+# determined share needs the whole solution set enumerated — so each is its own
+# point and a failed grade names the measure the generator missed. Each of the
+# five poses five boards at every tier through generateBoard, recomputes the
+# measures with the oracle's own enumeration (metrics.ts, derived from
+# specs/modes/cascade.md and specs/beams.md alone), and holds each board against
+# ITS OWN bound in the row of the tier it was generated at. The enumeration stops one past the tier's
+# solutions bound, which is a measurement reporting a board over its bound; a
+# separate expansion budget is a runaway stop, and a board the budget abandons is
+# not measured and not judged. Each point is decided on the boards that measured,
+# and fails if fewer than twenty of the twenty-five did.
+[[review.categories.items]]
+id = "floor-routes-per-channel"
+title = "Every generated board meets its tier's routes-per-channel floor"
+description = "On five boards generated at each tier, every channel present on each board admits at least the number of distinct complete beams its tier's row of the difficulty floor states, as specs/modes/cascade.md defines routes per channel."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-routes-per-channel.test.ts", outputs = [
+  { id = "board", name = "A generated board meeting its routes floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "floor-solution-count"
+title = "Every generated board admits the solution count its tier allows"
+description = "On five boards generated at each tier, each board's number of distinct solutions falls within the range its tier's row of the difficulty floor states, as specs/modes/cascade.md defines a solution."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-solution-count.test.ts", outputs = [
+  { id = "board", name = "A generated board meeting its solutions bound", kind = "image" },
+] }
+[[review.categories.items]]
+id = "floor-determined-share"
+title = "Every generated board stays under its tier's determined share"
+description = "On five boards generated at each tier, each board's determined share — the channel-and-segment pairs appearing in every solution, as a share of L — is at most the figure its tier's row of the difficulty floor states, where the row states one."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-determined-share.test.ts", outputs = [
+  { id = "board", name = "A generated board under its determined-share ceiling", kind = "image" },
+] }
+[[review.categories.items]]
+id = "floor-branching-factor"
+title = "Every generated board meets its tier's branching factor"
+description = "On five boards generated at each tier, each board's branching factor — the mean count of moves rules R1 to R5 allow before each segment, replayed over every solution — is at least the figure its tier's row of the difficulty floor states."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-branching-factor.test.ts", outputs = [
+  { id = "board", name = "A generated board meeting its branching floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "floor-shared-crystals"
+title = "Every generated board meets its tier's shared-crystal floor"
+description = "On five boards generated at each tier, each board's shared crystals — the largest count, across its solutions, of crystals crossed by beams of two or more channels within a single solution — is at least the figure its tier's row of the difficulty floor states, where the row states one."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/floor-shared-crystals.test.ts", outputs = [
+  { id = "board", name = "A generated board meeting its shared-crystal floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sequence-is-endless"
+title = "The sequence has no last board"
+description = "Play continues at MAX_TIER (5) indefinitely: with the run posed past the twentieth solve, each further solve raises solvedCount by one and holds the tier at MAX_TIER, and NEXT BOARD keeps producing well-formed boards carrying MAX_TIER's channel count."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/sequence-is-endless.test.ts", outputs = [
+  { id = "board", name = "A fresh board deep into the sequence", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cascade-solved-reached"
+title = "Solving a cascade board goes to the solved screen"
+description = "Solving a board goes to solved with menuIndex 0, the finished board's beams left as the player drew them."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/cascade-solved-reached.test.ts", outputs = [
+  { id = "solved", name = "The solved screen the solve reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cascade-solved-copy"
+title = "The cascade solved screen draws its copy over the finished board"
+description = "The solved frame draws SOLVED_TITLE_TEXT (BOARD SOLVED), the boards-solved count, and SOLVED_ITEMS (NEXT BOARD, RESTART) in that order, over the finished board, which stays drawn behind it."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/cascade-solved-copy.test.ts", outputs = [
+  { id = "solved", name = "The solved screen over the finished board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solved-next-board"
+title = "NEXT BOARD hands the player a fresh board at the tier the run has reached"
+description = "With the run posed at four solves and a fifth board solved (solvedCount 5, tier 2), confirm on NEXT BOARD moves to playing with a board present carrying tier 2's channel count and every beam empty, and leaves solvedCount at 5 and tier at 2, which is what separates it from RESTART."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/solved-next-board.test.ts", outputs = [
+  { id = "board", name = "The fresh board NEXT BOARD handed the player", kind = "image" },
+] }
+[[review.categories.items]]
+id = "restart"
+title = "RESTART drops to tier 1"
+description = "With the run posed at one solve and a second board solved, RESTART returns solvedCount to 0 and tier to 1, generates a board carrying tier 1's channel count, and moves to playing with every beam empty."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/restart.test.ts", outputs = [
+  { id = "restarted", name = "The sequence restarted at tier 1", kind = "image" },
+] }
+[[review.categories.items]]
+id = "solved-back"
+title = "back on the cascade solved screen returns to the title"
+description = "back on the solved screen goes to title with CASCADE, the entry that led away, highlighted at menuIndex 1."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/solved-back.test.ts", outputs = [
+  { id = "title", name = "The title reached from the solved screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-solved-count"
+title = "The boards-solved count is on screen while playing"
+description = "During playing with the run posed at two solves, a frame draws HUD_SOLVED_LABEL (SOLVED) with the digit 2 within HUD_VALUE_GAP (96) of it, both clear of the board in play, whose extent specs/board.md gives for that board's own cols and rows, widened by NODE_R (30). The count is the run's one measure, so a missing count is scuffed rather than cosmetic."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/hud-solved-count.test.ts", outputs = [
+  { id = "hud", name = "The count drawn beside its label", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-tier"
+title = "The tier is on screen while playing"
+description = "During playing, a frame draws HUD_TIER_LABEL (TIER) with the current tier's digit within HUD_VALUE_GAP (96) of it, both clear of the board in play, whose extent specs/board.md gives for that board's own cols and rows, widened by NODE_R (30)."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/hud-tier.test.ts", outputs = [
+  { id = "hud", name = "The tier drawn beside its label", kind = "image" },
+] }
+
+# --- Presentation -------------------------------------------------------------
+# This case fixes no palette, no font, no node artwork, no beam rendering and no
+# background on purpose, so there is nothing to compare a build against, and the
+# two points here are the two presentation facts the specification does fix: the
+# stage fitted whatever the window is, and the board left to itself — every
+# readout drawn clear of its extent and both control targets outside it. The
+# fit is graded under `none` alone, because under an engine the engine derives
+# it and every build on that engine gets the same answer; the placement is the
+# build's under every engine. How GOOD the bench looks — the design,
+# the type, the originality — is the run-wide aesthetic rating's, not scored
+# here.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The stage is fitted and centered"
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the backing store is the window at its device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio with one axis filled exactly, centered with even letterboxing, and a board posed at the corners of the largest grid renders under its own logical coordinates mapped through that fit."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation, `none` ONLY: under an engine the fit is the engine's —
+# the uniform scale, the letterboxed centering and the device pixel ratio all
+# come out of the engine's viewport, so the check returns one verdict for every
+# build on that engine. Under `none` the build derives the fit itself, which is
+# where the requirement is the build's own work.
+# See validation/none/presentation/stage-fit.test.ts.
+validation = { script = "presentation/stage-fit.test.ts", engines = ["none"], outputs = [
+  { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "readouts-clear-of-the-board"
+title = "The readouts and the controls sit clear of the board"
+description = "On a posed 7x6 board carrying no crystal, in each mode, every text draw's bounds and the clear and back target rectangles sit outside the board's extent — cell centers spanning x 352 to 928 and y 152 to 632 per specs/board.md, widened by NODE_R (30) — so nothing but the board, its nodes' own readouts and its beams is drawn inside that extent and no target covers a node, as specs/ui.md and specs/controls.md state for the playing screen."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/readouts-clear-of-the-board.test.ts", outputs = [
+  { id = "playing", name = "The largest board with its readouts clear", kind = "image" },
+] }
+
+# --- Screens ------------------------------------------------------------------
+# The screens both modes share and the menu the two modes are chosen from. The
+# mode-specific screens are checked in the Campaign and Cascade categories above;
+# what is here is the part of the shell that is the same whichever mode is being
+# played. Menus are keyboard only, so the menu points read menuIndex back through
+# the registered actions, and one point checks the pointer stays out of them.
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "title-screen"
+title = "The title screen"
+description = "The game opens on the title with menuIndex 0, and the frame draws TITLE_TEXT (REFRACT), TAGLINE_TEXT (DRAW THE LIGHT), and all three TITLE_ITEMS (CAMPAIGN, CASCADE, HOW TO PLAY)."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/title-screen.test.ts", outputs = [
+  { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-down"
+title = "Down moves the title selection"
+description = "On the title with menuIndex 0, one down press sets menuIndex to 1."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-down.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the second item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-up-wraps"
+title = "Up wraps from the first title item to the last"
+description = "On the title with menuIndex 0, one up press sets menuIndex to 2, the last item."
+domains = ["campaign", "cascade"]
+failure_cap = "passable"
+validation = { script = "screens/title-up-wraps.test.ts", outputs = [
+  { id = "menu", name = "The title menu wrapped to the last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-down-wraps"
+title = "Down wraps from the last title item to the first"
+description = "On the title with menuIndex 2, one down press sets menuIndex to 0."
+domains = ["campaign", "cascade"]
+failure_cap = "passable"
+validation = { script = "screens/title-down-wraps.test.ts", outputs = [
+  { id = "menu", name = "The title menu wrapped to the first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-howto"
+title = "HOW TO PLAY opens the how-to screen"
+description = "Confirming HOW TO PLAY on the title sets screen to howto with menuIndex 0."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/title-howto.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-copy"
+title = "The how-to screen names the clear key"
+description = "The howto frame draws text, and among the draws a standalone R — matched at word boundaries — names the key bound to the clear action."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/howto-copy.test.ts", outputs = [
+  { id = "howto", name = "The how-to copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back"
+title = "Back leaves the how-to screen"
+description = "On the how-to screen, back returns to title with HOW TO PLAY, the entry that led away, highlighted at menuIndex 2."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-back.test.ts", outputs = [
+  { id = "title", name = "The title after leaving how-to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-from-title"
+title = "Mute works from the title"
+description = "One press of the mute action on the title flips the snapshot's muted flag."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/mute-from-title.test.ts", outputs = [
+  { id = "title-muted", name = "The title after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-from-playing"
+title = "Mute works from the playing screen"
+description = "One press of the mute action on the playing screen flips the snapshot's muted flag."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/mute-from-playing.test.ts", outputs = [
+  { id = "playing-muted", name = "The playing screen after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "playable-while-muted"
+title = "The game stays playable with the sound off"
+description = "With state.muted true, a trace drawn on the board leaves that channel's beam carrying the traced cells exactly as it does with sound on."
+domains = ["presentation", "tracing"]
+failure_cap = "passable"
+validation = { script = "screens/playable-while-muted.test.ts", outputs = [
+  { id = "muted", name = "The game playing on while muted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "playing-clear-hint"
+title = "The clear key is named on the playing screen"
+description = "A text draw on the playing frame names the key bound to the clear action as a standalone R, matched at word boundaries."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/playing-clear-hint.test.ts", outputs = [
+  { id = "playing", name = "The playing screen naming the clear key", kind = "image" },
+] }
+
+# --- Pointer and touch --------------------------------------------------------
+# Every screen is worked from the pointer as well as from the keyboard, and the
+# pointer is a mouse, a pen, or a finger. The targets a screen carries are
+# reported by the debug surface, so the geometry a player aims at is checked
+# directly rather than inferred from what happened to be drawn: a build whose
+# targets are the right size, do not overlap, and sit where its own hit test
+# looks is a build a finger can work. The behavioral points then drive those
+# targets through the real input path, once from a mouse and once from a touch.
+[[review.categories]]
+id = "pointer"
+title = "Pointer and touch"
+[[review.categories.items]]
+id = "targets-listed-per-screen"
+title = "Every screen reports the pointer targets it carries"
+description = "On each of the six screens, the snapshot's targets list carries exactly the ids specs/controls.md fixes for it, in that order: menu-0 through menu-2 on title, back on howto, board-1 through board-24 then back on select, clear then back on playing, menu-0 through menu-2 on the campaign's solved screen for a board that is not the last and menu-0 and menu-1 on Cascade's, and menu-0 and menu-1 on complete."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/targets-listed-per-screen.test.ts", outputs = [
+  { id = "title", name = "The title screen and its targets", kind = "image" },
+] }
+[[review.categories.items]]
+id = "targets-are-finger-sized"
+title = "Every target is at least TARGET_MIN_W by TARGET_MIN_H"
+description = "On every screen that carries targets, each reported target is at least 96 wide and 72 tall and lies wholly within the 1280 by 720 stage, so a fingertip lands on it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/targets-are-finger-sized.test.ts", outputs = [
+  { id = "select", name = "The select grid and its targets", kind = "image" },
+] }
+[[review.categories.items]]
+id = "targets-do-not-overlap"
+title = "No two targets on a screen overlap"
+description = "On every screen that carries targets, no two reported target rectangles intersect, so a pointer position lies in at most one target."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/targets-do-not-overlap.test.ts", outputs = [
+  { id = "select", name = "The select grid's separated targets", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hover-highlights-a-title-item"
+title = "Moving the pointer over a title item highlights it"
+description = "With the pointer holding nothing, a move to the center of the title's menu-2 target sets menuIndex to 2, and a move to menu-0's center sets it back to 0."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "pointer/hover-highlights-a-title-item.test.ts", outputs = [
+  { id = "menu", name = "The title item under the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-takes-a-title-item"
+title = "A press and release on a title item takes it"
+description = "A press at the center of the title's menu-2 target followed by a release at that same point sets screen to howto, which is what confirm on HOW TO PLAY does."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-takes-a-title-item.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen reached with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-highlights-before-release"
+title = "A press moves the highlight to the target it lands in"
+description = "A press at the center of the title's menu-1 target sets menuIndex to 1 before any release, which is what gives a touch, that has no hover, the same feedback a mouse gets."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "pointer/press-highlights-before-release.test.ts", outputs = [
+  { id = "menu", name = "The title item under a held press", kind = "image" },
+] }
+[[review.categories.items]]
+id = "release-outside-takes-nothing"
+title = "A release outside the pressed target takes nothing"
+description = "A press at the center of the title's menu-2 target followed by a release outside every target leaves screen at title, and the highlight stays where the press put it."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "pointer/release-outside-takes-nothing.test.ts", outputs = [
+  { id = "title", name = "The title after a release off the target", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-takes-a-title-item"
+title = "A touch works the title menu exactly as a mouse does"
+description = "A press and release at the center of the title's menu-2 target, driven from a touch, sets screen to howto, and the snapshot reports the pointer's device as touch."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/touch-takes-a-title-item.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen reached by touch", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-draws-a-beam"
+title = "A touch draws a beam exactly as a mouse does"
+description = "A press on an emitter, a move to an adjacent node, and a release, all driven from a touch, leave that channel's beam carrying the same one segment the same route drawn from a mouse leaves."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "pointer/touch-draws-a-beam.test.ts", outputs = [
+  { id = "drawn", name = "A beam drawn by touch", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-enters-a-board"
+title = "A press and release on a select grid cell enters that board"
+description = "On select, a press and release at the center of the board-1 target sets screen to playing with boardIndex 0, which is what confirm on the first board does."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-enters-a-board.test.ts", outputs = [
+  { id = "playing", name = "The first board entered with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-leaves-howto"
+title = "Taking the back target leaves the how-to screen"
+description = "On howto, a press and release at the center of the back target returns to title with HOW TO PLAY highlighted at menuIndex 2, which is what the back action does."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-leaves-howto.test.ts", outputs = [
+  { id = "title", name = "The title reached from how-to with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-clears-the-board"
+title = "Taking the clear target empties every beam"
+description = "On playing with segments drawn, a press and release at the center of the clear target leaves every beam carrying no cells, which is what the clear action does."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-clears-the-board.test.ts", outputs = [
+  { id = "cleared", name = "The board cleared with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-leaves-the-board"
+title = "Taking the back target leaves the board"
+description = "On playing in campaign, a press and release at the center of the back target returns to select, which is what the back action does."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-leaves-the-board.test.ts", outputs = [
+  { id = "select", name = "The grid reached from the board with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "a-target-press-begins-no-trace"
+title = "A press inside a playing target begins no trace"
+description = "On playing, a press at the center of the clear target leaves tracing null, so the two controls are resolved before the board and never grab a node behind them."
+domains = ["tracing"]
+failure_cap = "great"
+validation = { script = "pointer/a-target-press-begins-no-trace.test.ts", outputs = [
+  { id = "playing", name = "The board untraced by a press on a control", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-takes-a-solved-choice"
+title = "A press and release takes a choice on the solved screen"
+description = "On the solved screen, a press and release at the center of the menu-0 target takes the first choice, which is what confirm with menuIndex 0 does."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-takes-a-solved-choice.test.ts", outputs = [
+  { id = "next", name = "The next board reached with the pointer", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# The five cues. Under an engine the cues are the engine's: the game defines them
+# and asks for them by name, the engine broadcasts a `cue:played` event on the
+# frame each one is asked for, and a validator subscribes before the game
+# initializes — so a cue is confirmed to fire on its event without an audio
+# device, an unlock gesture, or anything to wait for. Under `none` the cue's name
+# is not observable from outside the build, so an injected audio shim checks that
+# a sound is emitted on the event's frame and on no frame before it. The sounds
+# themselves are the build's, and are rated through the aesthetic rating.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cue-connect"
+title = "Connect cue"
+description = "The connect cue plays on the frame a segment is added, exactly once on that frame, and on no frame before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-connect.test.ts", outputs = [
+  { id = "hit", name = "The segment add whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-retract"
+title = "Retract cue"
+description = "The retract cue plays on the frame a segment is removed, exactly once on that frame, and on no frame before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-retract.test.ts", outputs = [
+  { id = "retraction", name = "The retraction whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-channel-complete"
+title = "Channel-complete cue"
+description = "The channel-complete cue plays exactly once on the frame a channel's beam becomes complete, alongside that same move's connect cue, each played once."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-channel-complete.test.ts", outputs = [
+  { id = "complete", name = "The completing move whose cues are checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-solved"
+title = "Solved cue"
+description = "The solved cue plays exactly once on the frame the board becomes solved, and on no frame before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-solved.test.ts", outputs = [
+  { id = "solve", name = "The solving move whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-clear"
+title = "Clear cue"
+description = "The clear cue plays exactly once on the frame the beams are cleared, when there was a segment to remove."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-clear.test.ts", outputs = [
+  { id = "clear", name = "The clear whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-clear-silent"
+title = "Clear on an empty board is silent"
+description = "Clearing a board whose beams carry no segments emits nothing: the clear cue plays only when there was a segment to remove."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-clear-silent.test.ts", outputs = [
+  { id = "silent", name = "The empty board the clear was fired on", kind = "image" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own — a whole file of the specification, and the one
+# piece of a run a person meets before they meet the bench — where every other
+# point on this checklist is one behavior of the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of gameplay untouched. The weight and the cap say different things
+# on purpose — how much of the score the point carries, and how far a failure may
+# drag the ratings down.
+#
+# It names ALL FOUR domains, which nothing outside the instrumentation points
+# does. The showcase is not a behavior of Campaign, of Cascade, of tracing or of
+# the bench: it is the whole game presented at once, and a build that shipped none
+# has left the same thing undone whichever domain a reader is looking at. Naming
+# `presentation` alone would let a build with no showcase whatsoever still come
+# out flawless in three domains of four.
+#
+# ONE ITEM, and it grades EXISTENCE alone. Whether the description makes the bench
+# sound worth solving, whether the carousel leads on the strongest view of live
+# play, and whether the media is worth looking at is a reviewer's judgement, and
+# belongs to the run-wide aesthetic rating rather than to an assertion — the same
+# place the look of the bench itself is rated. The validator's whole verdict is
+# that the two files are there and that the carousel points at a file that is
+# there with them: not a dimension, not a byte of a picture, not a word of the
+# prose. No other point on this checklist asserts anything about the showcase.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }

@@ -1,0 +1,92 @@
+// press/type-uniform — the press rolls a type uniformly over the eight base
+// types, and refinement never touches that axis.
+//
+// TWO AXES, AND ONLY ONE OF THEM IS BUYABLE. `specs/scrap-press.md` rolls type
+// and quality independently: quality is what the refinement track biases, and
+// type stays flat at `0.125` each for the whole run. That is what makes a
+// recipe's ingredient list a matter of patience rather than of purchase, and a
+// build whose type roll drifts toward a favourite makes half the recipe book
+// unreachable while the recipe overlay goes on offering it.
+//
+// A BOUNDED SAMPLE OF THE ONE DRAW. `specs/instrumentation.md` carries
+// `rollPress`, which performs one press roll exactly as a dropped rock rolls and
+// lands nothing, so the sample is the draw alone rather than four hundred trips
+// through the placement path. The rate is the spec's, `0.125` a type, and the
+// band each type's count is held to is derived from that figure alone: its
+// expected count over the sample, six standard deviations either side. A press
+// rolling at the stated rate never falls outside a band that wide by chance.
+//
+// WHAT A BAND THAT WIDE SEPARATES, AND WHAT IT DOES NOT. Four hundred draws put a
+// type's expected count at fifty and its standard deviation under seven, so a type
+// never rolled and a type rolled at twice its share both land outside the band and
+// fail. A type rolled at HALF its share lands at twenty-five, which is inside it:
+// telling that lean from the stated figure at six standard deviations takes over a
+// thousand draws, which is past what a bounded sample is. So a lean that small is
+// left to the reviewer, off the yard of rolled types this point writes, rather
+// than being chased with a sample sized to catch it.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  COMPONENT_TYPES,
+  REFINEMENT_MAX,
+  SAMPLE_BAND_SIGMAS,
+  TYPE_ROLL_ODDS,
+} from "../constants";
+import { assertBetween, assertContains } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+
+/** How many rolls are drawn. */
+const ROLLS = 400;
+
+/** The count a type's share of the sample comes to: `50` of `400`. */
+const EXPECTED = ROLLS * TYPE_ROLL_ODDS;
+
+/** The standard deviation of that count over a binomial sample: `6.6`. */
+const SIGMA = Math.sqrt(ROLLS * TYPE_ROLL_ODDS * (1 - TYPE_ROLL_ODDS));
+
+/** The band a type's count is held to, six standard deviations either side. */
+const FLOOR = Math.ceil(EXPECTED - SAMPLE_BAND_SIGMAS * SIGMA);
+const CEILING = Math.floor(EXPECTED + SAMPLE_BAND_SIGMAS * SIGMA);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws each base type at its uniform share, inside a six-sigma band", async () => {
+  // At the top of the refinement track, so a build that leaked the quality bias
+  // into the type roll has every chance to show it.
+  openYard(h, { refinement: REFINEMENT_MAX });
+
+  const drawn = new Map<string, number>();
+  for (let roll = 0; roll < ROLLS; roll += 1) {
+    const { type } = h.debug.rollPress();
+    assertContains(COMPONENT_TYPES, type, `the type roll ${roll + 1} drew`);
+    drawn.set(type, (drawn.get(type) ?? 0) + 1);
+  }
+
+  await h.advance(1);
+  captureStill(h, "spread");
+
+  for (const type of COMPONENT_TYPES) {
+    assertBetween(
+      drawn.get(type) ?? 0,
+      FLOOR,
+      CEILING,
+      `draws of \`${type}\` in ${ROLLS} rolls, over a type axis uniform at ` +
+        `${TYPE_ROLL_ODDS} for each of the ${COMPONENT_TYPES.length} base types ` +
+        `(specs/scrap-press.md), inside ${SAMPLE_BAND_SIGMAS} standard ` +
+        `deviations of ${EXPECTED}`,
+    );
+  }
+});

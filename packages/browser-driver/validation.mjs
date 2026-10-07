@@ -23,6 +23,21 @@
 // attached to a whole browser context and only flushes when that context closes,
 // so there is no way to start filming partway through one pass.
 //
+// SCOPE. This runtime drives the NO-ENGINE instrumentation contract, where the
+// build itself supplies the whole debug surface. Concretely it requires two
+// operations of the case handle beyond whatever an item calls: `step(amount)`, to
+// advance the simulation exactly, and `setAutoStep(auto)`, to take the clock and
+// hand it back. Both are the RUNTIME's, never an item's, which is what keeps an
+// item from leaving the wrong clock running under a check or a recording — and
+// both are mandated by every case that declares validation scripts.
+//
+// A run under an engine is decided by an in-process vitest suite instead (it
+// imports the engine and the module the build exports its game from), so no engine
+// host is ever reached from here and nothing below is conditional on one. The
+// driver refuses a build missing either clock operation before a pass starts, so a
+// build that is on this contract in name only fails as a non-conformant build
+// rather than partway through an item (see `runScript` in `driver.mjs`).
+//
 // Why the item is a factory rather than a plain object: each pass gets its own
 // instance, so state that `act` computes for `assert` to read (in a closure the
 // item owns) cannot leak from one pass into the other.
@@ -147,9 +162,13 @@ function makeSilentCheck(id) {
 /**
  * Build the `api` an item's phases are called with.
  *
- * `base` is the raw driver surface (`reset`/`snapshot`/`call`/`pixel`/`screenshot`
- * plus the real-time `wait`), and this wraps it so the SAME item code means the
- * right thing in each pass. `tickHz` is the case's fixed simulation rate: with it,
+ * `base` is the raw driver surface (`reset`/`step`/`snapshot`/`call`/`pixel`/
+ * `screenshot` plus the real-time `wait`), every operation of it bound to the case
+ * handle, and this wraps it so the SAME item code means the right thing in each
+ * pass. `base.step` and `base.call("setAutoStep", …)` are how the two clocks are
+ * expressed, so the build must carry both (see the scope note at the top).
+ *
+ * `tickHz` is the case's fixed simulation rate: with it,
  * the unit of `advance`/`until` is TICKS and the runtime converts to wall-clock for
  * the record pass; without it the case is real-time-clocked and the unit is
  * seconds. Either way the amount is handed to the build's own `step` verbatim, so
@@ -388,6 +407,12 @@ export function instantiate(mod) {
  * The build's clock is set between the two phases — manual for validate, its own
  * for record — so an item never touches `setAutoStep` itself and cannot leave the
  * wrong clock running under a check or a recording.
+ *
+ * That handover is unconditional, and so is the `setAutoStep` it calls: an item
+ * that arranged purely with setters must still be put on the right clock, and the
+ * no-engine contract this runtime serves requires the operation of every build (the
+ * driver has already refused a build that lacks it, so reaching here means it is
+ * there).
  */
 export async function runPass(item, base, { mode, tickHz, check }) {
   const phase = { current: "arrange" };

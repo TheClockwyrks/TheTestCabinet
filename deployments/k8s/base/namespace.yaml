@@ -1,15 +1,13 @@
-# One namespace per environment. Apply with the name for the environment you are
-# building — `tcab-staging` or `tcab-prod` — and pass `-n <name>` (or edit each
-# manifest's metadata.namespace) when applying the rest.
+# The project's namespace stem, which no deployment applies.
 #
-#   kubectl apply -f deployments/k8s/base/namespace.yaml
-#
-# Tearing an environment down is `kubectl delete namespace tcab-<env>`.
+# It is deliberately NOT a resource of kustomization.yaml. The k8s-manifests gate
+# reads this file for the stem every overlay's namespace is named from: an overlay
+# places its objects in `tcab-<overlay>` (`tcab-local`, `tcab-prod`), and the
+# overlay the pipeline deploys, `staging`, places them in `tcab-staging`. Each
+# environment's real Namespace is cluster-scoped, so a cluster administrator
+# applies it by hand from ../cluster/ (the deploy identity may write inside one
+# namespace and cannot create one); see "Cluster prerequisites" in ../README.md.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: tcab-prod
-  labels:
-    app.kubernetes.io/part-of: test-cabinet
-    # Tag the environment; mirror this into TCAB_ENV on each workload.
-    tcab.dev/env: prod
+  name: tcab

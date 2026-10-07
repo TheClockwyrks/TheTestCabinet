@@ -35,14 +35,15 @@ and too late can leave you unable to afford the defense the late waves demand.
 - The Core has upgrade **levels `0…3`** (starts at `0`). Each level raises the base
   income:
 
-  | Upgrade | Cost | Income after |
-  | --- | --- | --- |
-  | Level 0 → 1 | `$400` | `$16/s` |
-  | Level 1 → 2 | `$900` | `$24/s` |
-  | Level 2 → 3 | `$1600` | `$34/s` |
+  | Upgrade     | Cost    | Income after |
+  | ----------- | ------- | ------------ |
+  | Level 0 → 1 | `$400`  | `$16/s`      |
+  | Level 1 → 2 | `$900`  | `$24/s`      |
+  | Level 2 → 3 | `$1600` | `$34/s`      |
 
   (The shape — rising cost, rising income, a real
   opportunity cost against buying defense now — is the requirement.)
+
 - Upgrading is instant on purchase and shown on the Core and the HUD. Upgrading does
   **not** heal the Core or change its health pool (`specs/world.md`).
 
@@ -54,17 +55,17 @@ checked against the terrain rules below; an illegal placement is refused with a
 reason (`specs/flow.md`). Building is allowed **at any time** — during a wave as
 well as between waves (`specs/waves.md`). The structures:
 
-| Structure | Cost | Placed on | Role |
-| --- | --- | --- | --- |
-| **Water pipe** | `$10` / cell | any land or river cell | Carries **water** between structures (`specs/fluids.md`). |
-| **Steam pipe** | `$12` / cell | any land or river cell | Carries **steam** between structures (`specs/fluids.md`). |
-| **River Tap** | `$80` | a **river** (shallow-water) cell | Draws **water** at **low flow** (`specs/fluids.md`). |
-| **Pump** | `$150` | a land cell **adjacent to deep water** | Draws **water** at **high flow**, and provides lift (`specs/fluids.md`). |
-| **Boiler** | `$200` | a **geothermal vent** cell | Consumes water, produces **steam** (`specs/fluids.md`). |
-| **Repeater** | `$90` | buildable land | Tower — fast anti-swarm (`specs/towers.md`). |
-| **Mortar** | `$140` | buildable land | Tower — arcing splash (`specs/towers.md`). |
-| **Lance** | `$220` | buildable land | Tower — anti-armor line (`specs/towers.md`). |
-| **Scald** | `$180` | buildable land | Tower — steam-jet slow/burn field (`specs/towers.md`). |
+| Structure      | Cost         | Placed on                              | Role                                                                     |
+| -------------- | ------------ | -------------------------------------- | ------------------------------------------------------------------------ |
+| **Water pipe** | `$10` / cell | any land or river cell                 | Carries **water** between structures (`specs/fluids.md`).                |
+| **Steam pipe** | `$12` / cell | any land or river cell                 | Carries **steam** between structures (`specs/fluids.md`).                |
+| **River Tap**  | `$80`        | a **river** (shallow-water) cell       | Draws **water** at **low flow** (`specs/fluids.md`).                     |
+| **Pump**       | `$150`       | a land cell **adjacent to deep water** | Draws **water** at **high flow**, and provides lift (`specs/fluids.md`). |
+| **Boiler**     | `$200`       | a **geothermal vent** cell             | Consumes water, produces **steam** (`specs/fluids.md`).                  |
+| **Repeater**   | `$90`        | buildable land                         | Tower — fast anti-swarm (`specs/towers.md`).                             |
+| **Mortar**     | `$140`       | buildable land                         | Tower — arcing splash (`specs/towers.md`).                               |
+| **Lance**      | `$220`       | buildable land                         | Tower — anti-armor line (`specs/towers.md`).                             |
+| **Scald**      | `$180`       | buildable land                         | Tower — steam-jet slow/burn field (`specs/towers.md`).                   |
 
 ### Placement rules — the terrain decides
 
@@ -124,13 +125,13 @@ play:
 Every built structure and pipe has a **health pool** and shows a health bar when
 damaged (`specs/overview.md`). Health pools:
 
-| Structure | HP |
-| --- | --- |
-| Water pipe / Steam pipe (per cell) | `40` |
-| River Tap | `120` |
-| Pump | `180` |
-| Boiler | `220` |
-| Repeater / Mortar / Lance / Scald | `160` / `180` / `200` / `180` |
+| Structure                          | HP                            |
+| ---------------------------------- | ----------------------------- |
+| Water pipe / Steam pipe (per cell) | `40`                          |
+| River Tap                          | `120`                         |
+| Pump                               | `180`                         |
+| Boiler                             | `220`                         |
+| Repeater / Mortar / Lance / Scald  | `160` / `180` / `200` / `180` |
 
 At `0` HP a structure is **destroyed**: it is removed, stops producing or carrying
 whatever it did (a destroyed pipe **breaks the line** — `specs/fluids.md`), and must

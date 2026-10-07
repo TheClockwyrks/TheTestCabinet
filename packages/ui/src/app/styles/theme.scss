@@ -22,6 +22,14 @@
   --ttc-rating-passable: #a3e635;
   --ttc-rating-scuffed: #fbbf24;
   --ttc-rating-broken: #f87171;
+  // Per-tier aesthetic rating colors, best to worst (the reviewer-rated channel
+  // of a validator-rated run). Legendary blends its two colors as a shimmer.
+  --ttc-aesthetic-legendary: #f0abfc;
+  --ttc-aesthetic-legendary-2: #fde68a;
+  --ttc-aesthetic-amazing: #c084fc;
+  --ttc-aesthetic-good: #60a5fa;
+  --ttc-aesthetic-okay: #94a3b8;
+  --ttc-aesthetic-slop: #a16207;
 
   // Per-event-type colors for the live harness feed. These mirror the CLI's
   // terminal palette (crates/cli/src/commands/event_printer.rs) so a given event
@@ -52,7 +60,7 @@
   --ttc-grid: rgba(255, 94, 58, 0.5);
   --ttc-scanline: rgba(0, 0, 0, 0.4);
 
-  // Map the shared `@test-cabinet/ui` token contract (`--tcab-*`) onto this
+  // Map the shared `@clockwyrks/ui` token contract (`--tcab-*`) onto this
   // site's synthwave palette, so the primitives moved into that library render
   // exactly as they did when they lived here. The library ships its own defaults
   // (ui/src/styles/tokens.css); the site overrides them rather than importing
@@ -73,6 +81,12 @@
   --tcab-rating-passable: var(--ttc-rating-passable);
   --tcab-rating-scuffed: var(--ttc-rating-scuffed);
   --tcab-rating-broken: var(--ttc-rating-broken);
+  --tcab-aesthetic-legendary: var(--ttc-aesthetic-legendary);
+  --tcab-aesthetic-legendary-2: var(--ttc-aesthetic-legendary-2);
+  --tcab-aesthetic-amazing: var(--ttc-aesthetic-amazing);
+  --tcab-aesthetic-good: var(--ttc-aesthetic-good);
+  --tcab-aesthetic-okay: var(--ttc-aesthetic-okay);
+  --tcab-aesthetic-slop: var(--ttc-aesthetic-slop);
   --tcab-font: var(--ttc-font);
   --tcab-display: var(--ttc-display);
   --tcab-glow: var(--ttc-glow);

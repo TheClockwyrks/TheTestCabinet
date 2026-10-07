@@ -1,0 +1,177 @@
+# Refract — Campaign
+
+Campaign is one of the two ways to play Refract, reached from the `CAMPAIGN` item
+on the title menu. It is a course of `CAMPAIGN_LENGTH` (`24`) hand-built boards
+worked through in order. The player opens one board at a time, draws the beams the
+rules in `specs/beams.md` allow, and moves on once the board is solved. The other
+way to play is the endless sequence in `specs/modes/cascade.md`, which the title
+menu offers alongside this one.
+
+Every board, its position in the course, and the order the player meets them
+in are fixed.
+
+This file defines the course, its progression, and the three screens the course
+adds. The rules a board is solved under are in `specs/beams.md`, the grid and the
+notation in `specs/board.md`, the tracing controls in `specs/controls.md`, the
+`title`, `howto`, and `playing` screens in `specs/ui.md`, and what the game's
+state carries in `specs/state.md`. Every figure and every piece of screen copy
+below carries the name this specification gives it.
+
+## Entering the campaign
+
+- Choosing `CAMPAIGN` on the title menu sets `state.mode` to `"campaign"` and
+  goes to `select`.
+- Campaign progress lasts the session. Returning to `title` and entering the
+  campaign again shows the same grid, with the same boards unlocked and solved.
+
+## The twenty-four boards
+
+- The course holds exactly `CAMPAIGN_LENGTH` (`24`) boards, numbered `1` through
+  `24` in the order `specs/campaign-boards.md` lists them.
+- `specs/campaign-boards.md` is **authoritative for every board's layout**. It
+  gives each board's dimensions and its cells in the notation `specs/board.md`
+  defines. Build each board exactly as written there. Do not substitute, reorder,
+  resize, or rework a board.
+- The `24` boards fall into four sets of six, labelled as
+  `specs/campaign-boards.md` labels them:
+
+  | Set | Boards |
+  | --- | --- |
+  | A | `1`–`6` |
+  | B | `7`–`12` |
+  | C | `13`–`18` |
+  | D | `19`–`24` |
+
+  A set is a grouping the select screen shows and labels. It has no gate of its
+  own: the unlock rule below is the only thing that governs what a player can
+  enter.
+
+## Progression
+
+- Board `1` is unlocked from the start. Every other board begins locked.
+- Solving a board unlocks the next board by number: solving board `n` unlocks
+  board `n + 1`.
+- A board stays unlocked, and stays marked solved, for the rest of the session, so
+  the player can return to any board already reached.
+- Solving a board that is already solved changes no unlock state. It is a replay.
+- Entering a board always starts it with every beam empty, whether it is a first
+  attempt or a replay. Progress is per board and is never partially banked.
+- Progress is not carried between sessions. A fresh start begins with board `1`
+  unlocked and nothing solved.
+
+{{#if (eq engine.slug "none")}}
+The game's state carries the board being played, which boards are solved, and how
+many boards are unlocked. The progression above runs off those three facts, and
+`specs/instrumentation.md` reports all three.
+{{else if (eq engine.slug "simple-2d")}}
+`RefractState` carries the board being played, which boards are solved, and how
+many boards are unlocked. The progression above runs off those three facts, and
+`specs/instrumentation.md` reports all three.
+{{else}}
+`RefractState`, the world's game state, carries the board being played, which
+boards are solved, and how many boards are unlocked. The progression above runs
+off those three facts, and `specs/instrumentation.md` reports all three.
+{{/if}}
+
+## The screens the campaign adds
+
+`specs/ui.md` defines `title`, `howto`, and `playing`. Three more screens carry
+the course, and `state.screen` names the one the game is in. `select` and
+`complete` are reached in the campaign alone. `solved` is reached whichever way
+the game is being played, and the choices it offers below are the campaign's.
+
+| Screen | What it shows | How it is reached | How it is left |
+| --- | --- | --- | --- |
+| `select` | The grid of all `24` boards, each showing its number and whether it is locked, unlocked, or solved. | Choosing `CAMPAIGN` on the title menu, and from `playing`, `solved`, and `complete`. | Entering an unlocked board goes to `playing`. `back` returns to `title` with `CAMPAIGN` highlighted. |
+| `solved` | The finished board, with the choices below drawn over it. | A board becomes solved, and boards remain unsolved. | A choice is taken: `playing` for the next board or a replay, `select` for the grid. |
+| `complete` | Confirmation that all `24` boards are solved. | The solve that leaves no board unsolved. | A choice is taken: `select` for the grid, `title` for the main menu. |
+
+Every menu on these screens is driven by the registered actions `up`, `down`,
+`left`, `right`, `confirm`, and `back`, and by the pointer targets these screens
+carry, both of which `specs/controls.md` defines.
+
+## The select screen
+
+- The grid presents all `24` boards in number order, six columns wide and four
+  rows tall, one row per set, Set A at the top. Each row is labelled with its
+  set's entry in `SET_LABELS` (`SET A`, `SET B`, `SET C`, `SET D`), in that
+  order from the top row down.
+- Each board in the grid shows its number and reads, at a glance, as one of three
+  states:
+
+  | State | Meaning |
+  | --- | --- |
+  | locked | Not yet reached. Cannot be entered. |
+  | unlocked | Reached and not solved. Can be entered. |
+  | solved | Solved at least once. Can be entered again. |
+
+- One board in the grid is highlighted, drawn distinctly from the rest. On
+  arriving at the screen the highlight sits on the board the player most recently
+  entered or solved, so a solve is seen landing on the grid. Before any board has
+  been entered it sits on board `1`.
+- `left` and `right` move the highlight within its row, wrapping from either end
+  of the row to the other. `up` and `down` move it between rows in the same
+  column, wrapping between the top row and the bottom row.
+- `confirm` on an unlocked or solved board enters it and goes to `playing`.
+  `confirm` on a locked board does nothing and leaves the highlight where it is.
+- Each board in the grid carries its own `board-<n>` pointer target, and the
+  screen draws a `BACK_LABEL` (`BACK`) control carrying the `back` target.
+- `back`, and taking the `back` target, return to `title` with `CAMPAIGN`
+  highlighted (`menuIndex = 0`).
+
+The three board states read without relying on hue alone, since none of them
+carries a channel's hue. Presentation is otherwise the build's to design, within
+the legibility requirements in `specs/board.md` and `specs/ui.md`.
+
+## The solved screen
+
+- On the frame a board satisfies rule R9 in `specs/beams.md`, play on that board
+  ends and the game moves to `solved`.
+- A trace live on that frame ends with it, and the beams stay exactly as drawn, so
+  the screen is entered with no trace live. The release edge that follows begins
+  nothing and changes nothing, and the solved board cannot be taken apart again
+  from this screen.
+- The finished board stays visible behind the screen, with every beam as the
+  player drew it. The screen is drawn over it and does not hide it.
+- The screen names the board that was solved and offers a short vertical menu of
+  onward choices, in this order:
+
+  | Choice | Offered when | Does |
+  | --- | --- | --- |
+  | next board | The solved board is not board `24` | Enters board `n + 1` and goes to `playing`. |
+  | replay | Always | Enters the same board again, with every beam empty, and goes to `playing`. |
+  | back to select | Always | Goes to `select`. |
+
+- The first choice is highlighted on arriving at the screen. `up` and `down` move
+  the highlight, wrapping at both ends, `confirm` takes the highlighted choice,
+  and `back` goes to `select`.
+- Each choice carries its own `menu-<i>` pointer target, counted from `0` in the
+  order the screen offers them, so the screen carries three targets when a next
+  board is offered and two when it is not.
+- The wording of the three choices is the build's own. Their order and their
+  effects are not.
+
+## The complete screen
+
+- When a solve leaves no board unsolved, the game goes to `complete` instead of
+  `solved`. It is the campaign's ending, and it is entered the same way `solved`
+  is: the trace ends with the solve and the board is left exactly as drawn.
+- The screen states that all `CAMPAIGN_LENGTH` (`24`) boards are solved.
+- It offers two choices, in this order: back to `select`, and back to `title`. The
+  first is highlighted on arriving at the screen, `up` and `down` move the
+  highlight, wrapping at both ends, `confirm` takes it, and `back` goes to
+  `select`. Taking the second returns to `title` with `CAMPAIGN` highlighted
+  (`menuIndex = 0`). Each choice carries its own `menu-<i>` pointer target.
+- Every board stays unlocked and solved afterward, so the player can return to the
+  grid and replay any of them.
+
+## Leaving a board
+
+- `back` during `playing`, and taking that screen's `back` target, return to
+  `select`. The beams drawn on the board are discarded, and the board is
+  unchanged the next time it is entered.
+- The `clear` action, and that screen's `clear` target, empty every beam on the
+  current board and leave the player on it. `specs/controls.md` defines both,
+  along with the pointer input a trace runs on.
+- No board is in play on `select`, `solved`, or `complete`, so `clear` changes
+  nothing on those three screens.

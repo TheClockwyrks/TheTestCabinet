@@ -6,6 +6,10 @@ import { useTestCases } from "./useTestCases";
 // the OLD slug — a historical or already-published run — can no longer be found
 // in the catalog by that slug, so `resolveTestCaseName` falls back to this map to
 // still show the current Test Cabinet name instead of a title-cased old slug.
+//
+// The backend keeps the same table (`crates/backend/src/store.rs`,
+// `RENAMED_SLUG_NAMES`) so its name-ordered `testCase` listing sort and the
+// snapshot's `caseName` agree with what this resolves; a rename lands in both.
 const RENAMED_SLUG_NAMES: Readonly<Record<string, string>> = {
   "adversarial-pacman": "Foray",
   "desktop-td": "Meltdown",

@@ -17,7 +17,7 @@ colony must build defenses and a food chain faster than the raids grow and the l
 empties.
 
 This directory is the authored **reference implementation** of the case's `base`
-variant (the standard *New Colony* frontier start) — the *correct*, ground-truth build
+variant (the standard _New Colony_ frontier start) — the _correct_, ground-truth build
 the case is judged against. It is a self-contained static web app: plain **TypeScript**
 rendering to an **HTML5 canvas**, bundled with **Vite** (`base: "./"`). No backend,
 accounts, network calls, or API keys; everything needed to play is in the built bundle.
@@ -28,9 +28,9 @@ Holdfast is a **full-stack** case: every sprite, animation, particle effect, and
 the game plays was **produced during the build** with the six asset-generation tools on
 the run image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`,
 `music`) and committed under [`assets/`](assets/) — see the case's `specs/assets.md`.
-At runtime the game only *loads* those committed files; the tools are not invoked by the
+At runtime the game only _loads_ those committed files; the tools are not invoked by the
 build. The particle bursts (muzzle flash, blood, impact, dust, fire, explosion) play
-live through **`@test-cabinet/particle-runtime`** (vendored under [`vendor/`](vendor/)
+live through **`@clockwyrks/particle-runtime`** (vendored under [`vendor/`](vendor/)
 so a plain `npm ci` resolves it outside the monorepo), and the sounds through the Web
 Audio API.
 
@@ -97,7 +97,7 @@ never a root-absolute URL.
   `items/`, `icons/`), the `settler/` and `raider/` sprite-sheet frames, the `fx/`
   particle systems, and the `audio/` `.wav`s (see [`ASSETS.md`](ASSETS.md)).
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime` so a plain `npm ci` resolves it outside the monorepo.
+  `@clockwyrks/particle-runtime` so a plain `npm ci` resolves it outside the monorepo.
 - [`scripts/`](scripts/) — the re-runnable asset producers, one per family
   (`gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, `gen-audio.sh`), each
   invoking the on-`PATH` tools.

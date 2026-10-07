@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kessler</title>
+    <!--
+      An inline, empty icon: without one the browser requests /favicon.ico on
+      its own and the dev server answers 404, logging a console error the game
+      did not cause.
+    -->
+    <link rel="icon" href="data:," />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      /*
+        The canvas simply fills the window. Fitting the fixed 1000x1000 logical
+        stage inside it — the uniform scale, the centered letterbox, and the
+        device pixel ratio — is the build's own work, so there is no sizing here.
+      */
+      #stage {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

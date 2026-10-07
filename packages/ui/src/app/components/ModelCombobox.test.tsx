@@ -17,9 +17,21 @@ function model(name: string, aliases: ModelAlias[], curated = true): Model {
     coveredModelIds: [],
     aliases,
     price: null,
+    listPrice: null,
+    listPriceAsOf: null,
+    listPriceSource: null,
     priceHistory: [],
     contextLength: null,
+    providerPin: null,
+    providerPinSetByHand: false,
+    nativeQuantization: null,
+    maxInputPrice: null,
+    maxOutputPrice: null,
+    bannedProviders: [],
+    quantizationFilter: true,
+    unknownQuantizationProviders: [],
     releasedAt: null,
+    inputModalities: [],
   };
 }
 

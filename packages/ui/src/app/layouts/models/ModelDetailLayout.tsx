@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import { AddModelFromRunControl } from "../../components/AddModelFromRunControl";
 import { BackChevron } from "../../components/BackChevron";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
@@ -13,7 +14,7 @@ import styles from "./ModelDetailLayout.module.scss";
 
 // The model detail page's tabs. Each is a distinct route; this drives which tab
 // link reads as active.
-export type ModelDetailTab = "overview" | "stats" | "runs";
+export type ModelDetailTab = "overview" | "stats" | "runs" | "probes";
 
 interface ModelDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -39,10 +40,9 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   );
 
   if (!model) {
-    // While the catalog is still loading the model isn't resolvable yet, so show
-    // the branded full-body loading state (the topbar stays) rather than the
-    // unknown-model text, which is reserved for a model genuinely absent from a
-    // catalog that has finished loading.
+    // A read has three outcomes and this page must not collapse them into two.
+    // While the catalog is still loading the model isn't resolvable YET, so show
+    // the branded full-body loading state (the topbar stays).
     if (modelsStatus === "loading") {
       return (
         <PageLayout>
@@ -50,6 +50,20 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
         </PageLayout>
       );
     }
+    // The catalog read FAILED. Whether this backend holds the model is exactly
+    // what could not be established, so saying it is unknown would be the app
+    // inventing an answer it does not have.
+    if (modelsStatus === "error") {
+      return (
+        <PageLayout>
+          <LoadFailureState subject="the model catalog" />
+          <p className={styles.line}>
+            <Link to={routes.models()}>&larr; All models</Link>
+          </p>
+        </PageLayout>
+      );
+    }
+    // The catalog read SETTLED and does not hold it: genuinely unknown.
     return (
       <PageLayout>
         <p className={styles.empty}>Unknown model: {modelId}</p>
@@ -64,6 +78,7 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
     { key: "overview", label: "Overview", to: routes.modelDetail(model.slug) },
     { key: "stats", label: "Stats", to: routes.modelStats(model.slug) },
     { key: "runs", label: "Runs", to: routes.modelRuns(model.slug) },
+    { key: "probes", label: "Probes", to: routes.modelProbes(model.slug) },
   ];
 
   return (

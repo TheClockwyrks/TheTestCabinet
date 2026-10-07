@@ -2,7 +2,6 @@
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/halo" as h;
 @use "../../../styles/breakpoints" as bp;
-@use "../../../styles/forms" as f;
 
 .section {
   margin-bottom: t.$space-xl;
@@ -39,23 +38,6 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: t.$color-text-muted;
-}
-
-.select {
-  font: inherit;
-  font-size: t.$font-sm;
-  padding: t.$space-sm;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  // After `padding`, so the mixin's chevron room (padding-right) wins.
-  @include f.select-control;
-
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    border-color: t.$color-accent;
-  }
 }
 
 // One vertical band of the report (the cohort's figures, its rings, the
@@ -102,7 +84,7 @@
   font-size: t.$font-lg;
   font-variant-numeric: tabular-nums;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 // Cancels the value's glow on missing figures, matching the Stats tab.
@@ -116,6 +98,7 @@
   margin: t.$space-md 0 0;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // The two rings share a row on a wide viewport and stack below it.

@@ -24,17 +24,17 @@ a seam when it is laid next to a copy of itself.
 Draw each terrain in its assigned cell. Positions are `(row, column)`, 0-based,
 each a 32×32 square:
 
-| Cell | Terrain | Reads as |
-| --- | --- | --- |
-| (0, 0) | **Grass** | A field of bright green grass with a few short blade specks. |
-| (0, 1) | **Water** | Open blue water with gentle ripple lines. |
-| (0, 2) | **Sandy beach** | Warm pale sand with a light scatter of grain speckles. |
-| (1, 0) | **Dirt path** | Packed brown earth, a walkable path, lightly pitted. |
+| Cell   | Terrain                 | Reads as                                                                   |
+| ------ | ----------------------- | -------------------------------------------------------------------------- |
+| (0, 0) | **Grass**               | A field of bright green grass with a few short blade specks.               |
+| (0, 1) | **Water**               | Open blue water with gentle ripple lines.                                  |
+| (0, 2) | **Sandy beach**         | Warm pale sand with a light scatter of grain speckles.                     |
+| (1, 0) | **Dirt path**           | Packed brown earth, a walkable path, lightly pitted.                       |
 | (1, 1) | **Dense forest canopy** | Treetops from above — clumps of dark green leaves with lighter highlights. |
-| (1, 2) | **Rocky mountain** | Grey rock and stone, faceted, with darker cracks and lighter tops. |
-| (2, 0) | **Tilled crop field** | Brown soil worked into even parallel furrows (planting rows). |
-| (2, 1) | **Shallow-water edge** | Pale shallow water meeting sand — the wet fringe where sea meets beach. |
-| (2, 2) | **Stone bridge** | Fitted grey stone blocks — a paved bridge/road deck with mortar lines. |
+| (1, 2) | **Rocky mountain**      | Grey rock and stone, faceted, with darker cracks and lighter tops.         |
+| (2, 0) | **Tilled crop field**   | Brown soil worked into even parallel furrows (planting rows).              |
+| (2, 1) | **Shallow-water edge**  | Pale shallow water meeting sand — the wet fringe where sea meets beach.    |
+| (2, 2) | **Stone bridge**        | Fitted grey stone blocks — a paved bridge/road deck with mortar lines.     |
 
 ## Seamless tiling
 
@@ -67,23 +67,23 @@ Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you). Each terrain uses
 its base color plus, where it helps, the matching light/dark variant for texture:
 
-| Role | Hex |
-| --- | --- |
-| Grass (light) | `#7ec850` |
-| Grass (dark) | `#4e9a34` |
-| Water (light) | `#4aa3e0` |
-| Water (dark) | `#2f7fc4` |
-| Shallow water | `#8fd6ee` |
-| Sand (light) | `#f3dca4` |
-| Sand (dark) | `#dcbb78` |
-| Dirt (light) | `#c1904f` |
-| Dirt (dark) | `#96662f` |
-| Forest canopy (dark) | `#2f7d3f` |
+| Role                     | Hex       |
+| ------------------------ | --------- |
+| Grass (light)            | `#7ec850` |
+| Grass (dark)             | `#4e9a34` |
+| Water (light)            | `#4aa3e0` |
+| Water (dark)             | `#2f7fc4` |
+| Shallow water            | `#8fd6ee` |
+| Sand (light)             | `#f3dca4` |
+| Sand (dark)              | `#dcbb78` |
+| Dirt (light)             | `#c1904f` |
+| Dirt (dark)              | `#96662f` |
+| Forest canopy (dark)     | `#2f7d3f` |
 | Forest highlight (light) | `#57ad5a` |
-| Rock (light) | `#9aa1a9` |
-| Rock (dark) | `#676e77` |
-| Stone (light) | `#bcb6aa` |
-| Stone (dark) | `#8a8478` |
+| Rock (light)             | `#9aa1a9` |
+| Rock (dark)              | `#676e77` |
+| Stone (light)            | `#bcb6aa` |
+| Stone (dark)             | `#8a8478` |
 
 ## Working the tool
 

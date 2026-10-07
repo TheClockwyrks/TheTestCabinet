@@ -1,0 +1,45 @@
+# Carom — Single player (Solo)
+
+Solo is one of the two ways to play Carom, reached from `SOLO` on the main menu.
+Player one controls the left paddle and the AI controls the right.
+
+Every figure below carries the name this specification gives it.
+
+## Controls
+
+`specs/ui.md` states the eight actions the game reads, the keys each one is bound
+to, and which screens read them. Solo has one human player, and all four movement
+actions drive that player's left paddle: `up` is `1` while `p1-up` or `p2-up` is
+held and `0` otherwise, and `down` is `1` while `p1-down` or `p2-down` is held
+and `0` otherwise. Those two values drive the human's paddle through the
+movement, integration, and clamp `specs/playfield.md` states.
+
+## AI opponent
+
+The AI controls the right paddle and holds no state of its own. Each frame it
+computes its velocity from the values below.
+
+| Name | Value | Role |
+| --- | --- | --- |
+| `AI_SPEED` | `560` | Top speed, in units per second. |
+| `AI_REACT` | `0.12` | Reaction lag, in seconds. |
+| `AI_DEADZONE` | `10` | Stop distance while defending, in units. |
+| `AI_HOME_Y` | `360` | Rest position, the vertical center. |
+| `AI_HOME_DEADZONE` | `18` | Stop distance while returning home, in units. |
+
+{{#if (eq variant.slug "multi")}}
+Each frame the AI defends at most one ball: among the balls in flight with
+`vx > 0` and `x < P2_X0`, the one with the smallest `(P2_X0 - x) / vx`. There is
+no defended ball when no ball qualifies.
+
+1. `target = AI_HOME_Y` and `deadzone = AI_HOME_DEADZONE`. If `screen` is
+   `playing` and there is a defended ball, then
+   `target = ball.y - ball.vy * AI_REACT` and `deadzone = AI_DEADZONE`.
+{{else}}
+1. `target = AI_HOME_Y` and `deadzone = AI_HOME_DEADZONE`. If `screen` is
+   `playing` and the ball has `vx > 0`, then
+   `target = ball.y - ball.vy * AI_REACT` and `deadzone = AI_DEADZONE`.
+{{/if}}
+2. `diff = target - cy`. If `|diff| <= deadzone` then `vy = 0`; otherwise
+   `vy = sign(diff) * min(AI_SPEED, |diff| / dt)`.
+3. Integrate and clamp the paddle as `specs/playfield.md` states.

@@ -1,4 +1,4 @@
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import type {
   ReferenceSheet,
   TestCaseDetail,
@@ -59,19 +59,22 @@ const FALLBACK_FRAME_SIZE = 64;
  */
 export function ReferenceSheetView({
   testCase,
+  version,
   variant,
   referenceSheet,
 }: {
   testCase: TestCaseDetail;
+  /** The page's anchored version. A reference is published per case VERSION, so
+   * its objects live under the version being viewed — resolving the latest
+   * version's keys while anchored to an older one would show frames the anchored
+   * deliverable never declared. */
+  version: string;
   variant: VariantSummary;
   /** The variant's published frame indices. */
   referenceSheet: ReferenceSheet;
 }) {
   const { referenceMediaUrl } = useGalleryData();
 
-  // The reference belongs to a case VERSION, and the catalog surfaces the newest
-  // version's variants, so that is the version its objects were published under.
-  const version = testCase.latestVersion;
   const resolve = (file: string): string | null =>
     referenceMediaUrl?.(testCase.slug, version, variant.slug, file) ?? null;
 
@@ -114,8 +117,8 @@ export function ReferenceSheetView({
         <Panel>
           <h2 className={styles.heading}>Animated sequences</h2>
           <p className={styles.note}>
-            Each named animation, played from the reference frames — the motion
-            a run of this variant is judged against.
+            Each named animation, played from the reference frames: the motion a
+            run of this variant is judged against.
           </p>
           <div className={styles.sequenceGrid}>
             {sequences.map((sequence) => (
@@ -148,9 +151,9 @@ export function ReferenceSheetView({
       <Panel>
         <h2 className={styles.heading}>Reference frames</h2>
         <p className={styles.note}>
-          Every published frame, and the recorded action log it was drawn from —
-          the authoritative output, since a run is scored on the operations it
-          issued, not just the pixels they produced.
+          Every published frame, and the recorded action log it was drawn from.
+          The log is the authoritative output, since a run is scored on the
+          operations it issued, not just the pixels they produced.
         </p>
         <div className={styles.frameGrid}>
           {frames.map((frame) => (

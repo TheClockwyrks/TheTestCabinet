@@ -1,7 +1,7 @@
 //! Building a subscription credential source from an operator-provided Secret.
 //!
 //! The driver runs in an ephemeral pod with no signed-in host home, so it cannot
-//! read the subscription credential files the CLI/desktop path reads from `~`.
+//! read the subscription credential files the CLI path reads from `~`.
 //! Instead, the dispatcher mounts an operator-provided Secret (one shared
 //! subscription per deployment) into the driver pod as a read-only volume, and the
 //! driver turns that mount into a [`MapCreds`] keyed by each credential's full

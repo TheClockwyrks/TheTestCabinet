@@ -1,7 +1,7 @@
 # Siege Warden Rifleman — modeling and rigging brief
 
 You are modeling and rigging the **Warden Rifleman**, the standard-issue infantry
-soldier of the Warden squad in *Siege* — an upright humanoid you build, skin, and
+soldier of the Warden squad in _Siege_ — an upright humanoid you build, skin, and
 animate in **Blender**, exported as a rigged, animated character a game poses at
 runtime. There is no target model to copy: it must read unmistakably as a Warden
 Rifleman and satisfy the animation contract below.
@@ -24,8 +24,8 @@ two arms, two legs — that deforms across its joints as the armature poses it: 
 elbow bends, a knee drives, a shoulder rolls, with no seam tearing open.
 
 **The gear is part of the body.** The Rifleman's permanently-worn kit — a combat
-**helmet**, light **body armor / vest**, and **ammo pouches** — is *baked into the
-same mesh* and skinned to the same skeleton, so it rides and deforms with the
+**helmet**, light **body armor / vest**, and **ammo pouches** — is _baked into the
+same mesh_ and skinned to the same skeleton, so it rides and deforms with the
 soldier rather than floating. It is not a separate object; it is the soldier's
 silhouette.
 
@@ -33,7 +33,7 @@ silhouette.
 but you do **not** model it. Instead you build an **empty `weapon_socket` bone**
 parented to the right hand, with **no vertex influence** — an attach point where
 the game hangs a separate rifle asset. Your `fire` and `reload` animations move
-the hands *and this socket*; the game supplies the gun. Do not sculpt, box out, or
+the hands _and this socket_; the game supplies the gun. Do not sculpt, box out, or
 imply a rifle in the mesh. (This is the repo's standard skinned-character socket
 convention.)
 
@@ -85,14 +85,14 @@ is unmistakably a Warden Rifleman and deforms believably.
 
 Use only these opaque colors, carried on the mesh as vertex colors or materials:
 
-| Role | Hex |
-| --- | --- |
-| Uniform / armor — primary (Warden Cobalt) | `#3d7bd6` |
-| Trim, edges, insignia (Cobalt light) | `#7fb0f0` |
+| Role                                                        | Hex       |
+| ----------------------------------------------------------- | --------- |
+| Uniform / armor — primary (Warden Cobalt)                   | `#3d7bd6` |
+| Trim, edges, insignia (Cobalt light)                        | `#7fb0f0` |
 | Helmet rim, vest fittings, buckles, pouch clasps (gunmetal) | `#565c64` |
-| Straps, recesses, deep shadow, boot soles (dark iron) | `#2b2f36` |
-| Boots and gloves (charcoal slate) | `#3a4048` |
-| Visor / eye glow (pale cobalt) | `#bfe0ff` |
+| Straps, recesses, deep shadow, boot soles (dark iron)       | `#2b2f36` |
+| Boots and gloves (charcoal slate)                           | `#3a4048` |
+| Visor / eye glow (pale cobalt)                              | `#bfe0ff` |
 
 Cobalt is the body of the read; keep the gunmetal, iron, and charcoal for
 fittings and recesses, and let the pale-cobalt visor glow so the head reads from

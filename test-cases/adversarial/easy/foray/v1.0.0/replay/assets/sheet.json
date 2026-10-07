@@ -442,21 +442,11 @@
   },
   "anims": {
     "soldier_walk_s": {
-      "frames": [
-        "soldier_s_0",
-        "soldier_s_1",
-        "soldier_s_2",
-        "soldier_s_3"
-      ],
+      "frames": ["soldier_s_0", "soldier_s_1", "soldier_s_2", "soldier_s_3"],
       "fps": 8
     },
     "raider_walk_s": {
-      "frames": [
-        "raider_s_0",
-        "raider_s_1",
-        "raider_s_2",
-        "raider_s_3"
-      ],
+      "frames": ["raider_s_0", "raider_s_1", "raider_s_2", "raider_s_3"],
       "fps": 8
     },
     "raider_laden_walk_s": {
@@ -469,21 +459,11 @@
       "fps": 8
     },
     "soldier_walk_n": {
-      "frames": [
-        "soldier_n_0",
-        "soldier_n_1",
-        "soldier_n_2",
-        "soldier_n_3"
-      ],
+      "frames": ["soldier_n_0", "soldier_n_1", "soldier_n_2", "soldier_n_3"],
       "fps": 8
     },
     "raider_walk_n": {
-      "frames": [
-        "raider_n_0",
-        "raider_n_1",
-        "raider_n_2",
-        "raider_n_3"
-      ],
+      "frames": ["raider_n_0", "raider_n_1", "raider_n_2", "raider_n_3"],
       "fps": 8
     },
     "raider_laden_walk_n": {
@@ -496,21 +476,11 @@
       "fps": 8
     },
     "soldier_walk_w": {
-      "frames": [
-        "soldier_w_0",
-        "soldier_w_1",
-        "soldier_w_2",
-        "soldier_w_3"
-      ],
+      "frames": ["soldier_w_0", "soldier_w_1", "soldier_w_2", "soldier_w_3"],
       "fps": 8
     },
     "raider_walk_w": {
-      "frames": [
-        "raider_w_0",
-        "raider_w_1",
-        "raider_w_2",
-        "raider_w_3"
-      ],
+      "frames": ["raider_w_0", "raider_w_1", "raider_w_2", "raider_w_3"],
       "fps": 8
     },
     "raider_laden_walk_w": {
@@ -523,21 +493,11 @@
       "fps": 8
     },
     "soldier_walk_e": {
-      "frames": [
-        "soldier_e_0",
-        "soldier_e_1",
-        "soldier_e_2",
-        "soldier_e_3"
-      ],
+      "frames": ["soldier_e_0", "soldier_e_1", "soldier_e_2", "soldier_e_3"],
       "fps": 8
     },
     "raider_walk_e": {
-      "frames": [
-        "raider_e_0",
-        "raider_e_1",
-        "raider_e_2",
-        "raider_e_3"
-      ],
+      "frames": ["raider_e_0", "raider_e_1", "raider_e_2", "raider_e_3"],
       "fps": 8
     },
     "raider_laden_walk_e": {

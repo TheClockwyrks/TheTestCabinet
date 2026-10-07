@@ -1,7 +1,15 @@
 [package]
 name = "test-cabinet-core"
 edition.workspace = true
-version.workspace = true
+# A REAL version, deliberately not `version.workspace = true` (which is `0.0.0`).
+# This crate resolves the default `gg` release to download in a cluster run
+# (`gg_exec::DEFAULT_RELEASE_VERSION` is this package's version), so `0.0.0` here
+# means the driver asks GitHub for a release tag that will never exist. It is kept
+# in lockstep with `crates/gg`, whose version is what `gg --version` reports and
+# what is recorded as a run's `subject.harnessVersion`; `crates/gg`'s
+# `the_default_release_version_matches_this_binary` test fails the build if the two
+# ever drift apart. Bump both when cutting a release.
+version = "0.7.0"
 license.workspace = true
 publish.workspace = true
 
@@ -15,11 +23,19 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
-uuid = { workspace = true }
+cuid2 = { workspace = true }
 time = { workspace = true }
 toml = { workspace = true }
+# Semantic-version ordering for the engine version ranges a test case declares
+# (`[[engine]]`) and the run gate enforces (`resolve_engine`).
+semver = { workspace = true }
 handlebars = { workspace = true }
 tempfile = { workspace = true }
+# Gzip framing for the run-tree analysis artifacts core assembles on the host
+# (`gg_session_assembly` writes `replay.json.gz`); the same workspace codec the
+# backend store's reader and the archive service use, so one encoder decides the
+# framing for the whole path.
+flate2 = { workspace = true }
 reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
@@ -31,6 +47,12 @@ sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 md-5 = { workspace = true }
+# The audio staging contract: the staged-audio root, its `packs.json` shape, and the
+# rule that selects one pack out of a run's palette. Core writes that tree and the
+# in-container audio binaries read it, so both link the one definition and cannot
+# disagree about what a run was staged with. Linked without the `cli` feature (no
+# clap/serde_json/toml of its own) — core needs the contract, not the loader.
+test-cabinet-audio-core = { path = "../audio-core", default-features = false }
 # The drawing tool for asset-generation cases. Core links only the library (not
 # the `cli` feature's clap/serde_json) to regenerate the scored image from a run's
 # recorded action log through the exact same logic the in-container binary used.
@@ -91,6 +113,12 @@ contract = ["dep:ts-rs", "dep:schemars"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# The same audio contract crate the library links, with its `cli` feature: the audio
+# staging test reads the tree core wrote back through the exact reader the
+# in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the
+# writer emits and what the reader accepts are held together by a test rather than by
+# two matching sets of constants.
+test-cabinet-audio-core = { path = "../audio-core" }
 # `test-util` enables paused/auto-advancing time so the runtime cap can be tested
 # without waiting out a real wall-clock timeout.
 tokio = { workspace = true, features = ["test-util"] }

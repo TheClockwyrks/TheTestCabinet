@@ -65,7 +65,6 @@ start; they cross-reference each other **by name** and form a single spec.
   out of scope.
 - `specs/assets.md` — the **provided unit models** and how the build must load and
   use them.
-- `specs/proof.md` — the proof-of-implementation artifacts the build must capture.
 - `specs/mode.md` — the **Open Battle** the game plays and its deploy-screen setup.
 
 ## Goal of this build
@@ -155,8 +154,8 @@ rates in degrees per second, times in seconds, and angles in degrees.
     submersibles dive and hide;
   - the **terrain** — the solid landform beneath, whose peaks and floating islands
     rise through the cloud line into the open sky.
-  Which units use which band, and how they move between them, is in
-  `specs/units.md` and `specs/command.md`.
+    Which units use which band, and how they move between them, is in
+    `specs/units.md` and `specs/command.md`.
 - The simulation must be **frame-rate independent**, as a modern game is: movement,
   turn rates, weapon cadence, damage, flow of the economy, and reinforcement
   advance in real time (scaled by the elapsed time between frames), never per
@@ -178,49 +177,49 @@ color (allied blue, hostile red) that is independent of which power it belongs t
 so a mirror match still reads clearly. The canonical palette and type are below;
 match them.
 
-| Element | Color |
-| --- | --- |
-| Sky (background) | `#93aec4` |
-| Sky haze (horizon) | `#c6d2dc` |
-| Cloud sea — surface | `#e6ebf0` |
-| Cloud sea — foam / highlight | `#f5f8fb` |
-| Murk — cloud (near) | `#8b95a1` |
-| Murk — cloud (deep) | `#565e69` |
-| Terrain — grass top | `#5e7d46` |
-| Terrain — grass shadow | `#47612f` |
-| Terrain — dirt / soil | `#6b4e34` |
-| Terrain — rock / stone | `#6f6b64` |
-| Terrain — rock dark / scarp | `#49463f` |
-| Terrain — scree / cliff face | `#575049` |
-| Terrain — snow (high peaks) | `#e8edf0` |
+| Element                          | Color     |
+| -------------------------------- | --------- |
+| Sky (background)                 | `#93aec4` |
+| Sky haze (horizon)               | `#c6d2dc` |
+| Cloud sea — surface              | `#e6ebf0` |
+| Cloud sea — foam / highlight     | `#f5f8fb` |
+| Murk — cloud (near)              | `#8b95a1` |
+| Murk — cloud (deep)              | `#565e69` |
+| Terrain — grass top              | `#5e7d46` |
+| Terrain — grass shadow           | `#47612f` |
+| Terrain — dirt / soil            | `#6b4e34` |
+| Terrain — rock / stone           | `#6f6b64` |
+| Terrain — rock dark / scarp      | `#49463f` |
+| Terrain — scree / cliff face     | `#575049` |
+| Terrain — snow (high peaks)      | `#e8edf0` |
 | Floating island — underside rock | `#3d372f` |
-| Ironbound — iron | `#6b7178` |
-| Ironbound — iron dark | `#464b52` |
-| Ironbound — brass / rust accent | `#c07a2c` |
-| Ironbound — coal smoke | `#2c2e33` |
-| Meridian — pearl white | `#dbe3ea` |
-| Meridian — silver | `#a7b2bd` |
-| Meridian — cyan energy / shield | `#4fd4e0` |
-| Meridian — deep cyan accent | `#1f6f7a` |
-| Geode — amethyst | `#8a5cff` |
-| Geode — crystal light | `#b79bff` |
-| Geode — resonant magenta | `#ff5ce0` |
-| Geode — crystal dark | `#3a2a5a` |
-| Allied — marker / outline | `#4f9dff` |
-| Hostile — marker / outline | `#ff5347` |
-| Objective / neutral | `#ffce54` |
-| Health — healthy | `#5ec96b` |
-| Health — critical | `#ff5c5a` |
-| Shield / energy | `#5fd0dc` |
-| Selection / valid | `#7fe0a0` |
-| Invalid / blocked | `#ff5c5a` |
-| Alert / warning | `#ff7a3d` |
-| Danger / imminent | `#ff3a2f` |
-| Order / waypoint | `#7fb0f0` |
-| Requisition / gold | `#ffce54` |
-| Primary text | `#eef3f7` |
-| Secondary text | `#9fb0c0` |
-| Faint text / hints | `#6f8090` |
+| Ironbound — iron                 | `#6b7178` |
+| Ironbound — iron dark            | `#464b52` |
+| Ironbound — brass / rust accent  | `#c07a2c` |
+| Ironbound — coal smoke           | `#2c2e33` |
+| Meridian — pearl white           | `#dbe3ea` |
+| Meridian — silver                | `#a7b2bd` |
+| Meridian — cyan energy / shield  | `#4fd4e0` |
+| Meridian — deep cyan accent      | `#1f6f7a` |
+| Geode — amethyst                 | `#8a5cff` |
+| Geode — crystal light            | `#b79bff` |
+| Geode — resonant magenta         | `#ff5ce0` |
+| Geode — crystal dark             | `#3a2a5a` |
+| Allied — marker / outline        | `#4f9dff` |
+| Hostile — marker / outline       | `#ff5347` |
+| Objective / neutral              | `#ffce54` |
+| Health — healthy                 | `#5ec96b` |
+| Health — critical                | `#ff5c5a` |
+| Shield / energy                  | `#5fd0dc` |
+| Selection / valid                | `#7fe0a0` |
+| Invalid / blocked                | `#ff5c5a` |
+| Alert / warning                  | `#ff7a3d` |
+| Danger / imminent                | `#ff3a2f` |
+| Order / waypoint                 | `#7fb0f0` |
+| Requisition / gold               | `#ffce54` |
+| Primary text                     | `#eef3f7` |
+| Secondary text                   | `#9fb0c0` |
+| Faint text / hints               | `#6f8090` |
 
 - Use a **monospace** type family for all HUD and menu text (readouts, timers,
   labels, counts). Do not depend on a downloaded web font; a system monospace stack
@@ -271,26 +270,3 @@ possess), a **paused** overlay, and two end screens — **victory** (the enemy
 flagship destroyed) and **defeat** (your flagship lost). Every state must be
 reachable and behave as `specs/flow.md` describes. The title screen is what the
 game shows on load.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look. The
-in-battle references are **HUD-only** — a flat mockup cannot fake the 3D world
-convincingly, so they show only the HUD overlay (its layout, palette, and type)
-over a neutral viewport; you render the 3D world itself from this specification.
-
-- `reference/title.png` — the **title** screen shown on load: the `THUNDERHEAD`
-  title and the **PLAY** and **HOW TO PLAY** options.
-- `reference/tactical.png` — the in-battle **tactical HUD** over a neutral
-  viewport: the fleet roster, the flagship health, the requisition and reinforcement
-  readout, the selection and order panel, and the minimap/contacts.
-- `reference/control.png` — the **direct-control HUD** over a neutral viewport: the
-  possessed unit and station readout, its weapon and station status, and the
-  station-switch indicator.
-- `reference/game-over.png` — an end screen with the battle's result and stats.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.

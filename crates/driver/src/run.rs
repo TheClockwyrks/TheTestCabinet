@@ -12,15 +12,22 @@
 //! it so `crate::main` can stream the terminal status — carrying the produced or
 //! failed record — back to the backend.
 
+#[cfg(test)]
+#[path = "run.test.rs"]
+mod tests;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use test_cabinet_code_analysis::StaticCodeAnalyzer;
+use test_cabinet_core::ToolchainStage;
+use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
-    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
-    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
-    RenderedReference, RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog,
-    TestCaseVersion, TestType, materialize_version,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, Error, FsRepoSeeder,
+    HttpBackendClient, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
+    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState,
+    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -39,9 +46,11 @@ use crate::sink::{BackendEventSink, BackendPreviewSink, Outbound};
 pub struct RunFailure {
     /// The classified terminal state. Every pre-implementation failure the driver
     /// reaches is [`RunState::Infrastructure`] except a model that ran past the
-    /// runtime cap, which is [`RunState::TimedOut`] (see
-    /// [`RunState::classify_failure`]). Carried through so the persisted record's
-    /// state — and therefore its publishability — is correct.
+    /// runtime cap, which is [`RunState::TimedOut`], and a harness that stopped the
+    /// run on one of its own configured execution ceilings, which is
+    /// [`RunState::LimitExceeded`] (see [`RunState::classify_failure`]). Carried
+    /// through so the persisted record's state — and therefore its publishability
+    /// and its retryability — is correct.
     pub state: RunState,
     /// A specific, human-readable reason for the failure — the diagnostic detail
     /// the backend records, distinguishing "couldn't pull the image" from
@@ -49,6 +58,15 @@ pub struct RunFailure {
     pub detail: String,
     /// The resolved version, present once the definition materialized.
     pub test_case: Option<TestCaseVersion>,
+    /// Whether the run ended because an operator killed it before its harness
+    /// session was launched ([`Error::CanceledBeforeSession`]).
+    ///
+    /// Such a run is destroyed rather than recorded: nothing ran that a record
+    /// could preserve, so the driver posts no status for it and the job stays
+    /// `canceled` with its record slot empty, exactly as for a killed run of a
+    /// third-party harness. Read by the driver's `main` ahead of every other
+    /// failure disposition.
+    pub canceled_before_session: bool,
 }
 
 impl RunFailure {
@@ -60,6 +78,19 @@ impl RunFailure {
             state: RunState::Infrastructure,
             detail,
             test_case: None,
+            canceled_before_session: false,
+        }
+    }
+
+    /// The failure for an error the engine returned once the definition had
+    /// resolved: classified into its terminal state, and flagged when it is the
+    /// engine refusing to launch a session for a run already killed.
+    pub fn from_engine(err: &Error, test_case: Option<TestCaseVersion>) -> Self {
+        Self {
+            state: RunState::classify_failure(err),
+            detail: format!("run failed: {err}"),
+            test_case,
+            canceled_before_session: matches!(err, Error::CanceledBeforeSession),
         }
     }
 }
@@ -73,11 +104,25 @@ impl RunFailure {
 /// ephemeral scratch dirs, materializes the served definition, selects the
 /// container runtime, and runs the engine. Unlike the worker it records nothing on
 /// failure — the caller streams the outcome to the backend instead.
+///
+/// `resolved` is filled in the moment the definition materializes. It exists for the
+/// one path that never gets a return value: a canceled gg session that will not wind
+/// down inside the driver's grace, where the caller stops waiting on this future and
+/// still needs the run's real case identity and test type to build the killed run's
+/// record itself.
+///
+/// `run_id` is minted by the caller and handed to the engine, so the run tree the
+/// engine writes — including a hung run's salvaged session record — is keyed by the same
+/// id the caller's own failure/cancellation record will carry. See
+/// [`RunEngine::run_resolved`](test_cabinet_core::RunEngine::run_resolved).
 pub async fn drive(
     config: &Config,
+    run_id: &str,
     request: &RunRequest,
     outbound: &UnboundedSender<Outbound>,
     job_client: &JobClient,
+    resolved: &std::sync::Mutex<Option<TestCaseVersion>>,
+    cancel: &RunCancellation,
 ) -> Result<RunRecord, RunFailure> {
     // When the run requests an explicit auth mode, lock it for the engine by
     // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
@@ -141,6 +186,13 @@ pub async fn drive(
         ))
     })?;
 
+    // Publish the resolved version for the cancellation path: from here on, a killed gg
+    // run whose session never winds down can still be recorded against its real case
+    // identity, version, and test type rather than the requested slug alone.
+    if let Ok(mut slot) = resolved.lock() {
+        *slot = Some(test_case.clone());
+    }
+
     // For a game jam, fetch the gameplay READMEs of earlier runs of this jam by this
     // model — under any harness, since a model retells its own ideas whichever tool
     // drives it — so the engine can seed them (git-ignored) and ask this run to build
@@ -180,14 +232,20 @@ pub async fn drive(
         state: RunState::Infrastructure,
         detail,
         test_case: Some(test_case.clone()),
+        canceled_before_session: false,
     };
     match config.runtime {
         DriverRuntime::Cli => {
+            // Labelled with this job's id so the driver can remove the sandbox from the
+            // job id alone — the teardown a canceled run needs, which runs after the
+            // run future (and with it the container handle) has been dropped.
             let runtime = CliContainerRuntime::detect()
-                .map_err(|err| with_test_case(format!("locating a container runtime: {err}")))?;
+                .map_err(|err| with_test_case(format!("locating a container runtime: {err}")))?
+                .for_job(&config.job_id);
             let collector = CliArtifactCollector::new(runtime.clone(), artifact_dir);
             drive_engine(
                 &out_dir,
+                run_id,
                 request,
                 &test_case,
                 references,
@@ -199,6 +257,7 @@ pub async fn drive(
                 creds,
                 outbound,
                 job_client,
+                cancel,
             )
             .await
         }
@@ -211,6 +270,7 @@ pub async fn drive(
             let collector = KubernetesArtifactCollector::new(runtime.clone(), artifact_dir);
             drive_engine(
                 &out_dir,
+                run_id,
                 request,
                 &test_case,
                 references,
@@ -222,18 +282,16 @@ pub async fn drive(
                 creds,
                 outbound,
                 job_client,
+                cancel,
             )
             .await
         }
     }
-    // The engine returned a typed error: classify it (a runtime-cap timeout is a
-    // model outcome, everything else is infrastructure) before it is flattened to
-    // a diagnostic string for the record.
-    .map_err(|err| RunFailure {
-        state: RunState::classify_failure(&err),
-        detail: format!("run failed: {err}"),
-        test_case: Some(test_case.clone()),
-    })
+    // The engine returned a typed error: classify it (a runtime-cap timeout and a
+    // harness that stopped itself on one of its own configured ceilings are model
+    // outcomes, everything else is infrastructure) before it is flattened to a
+    // diagnostic string for the record.
+    .map_err(|err| RunFailure::from_engine(&err, Some(test_case.clone())))
 }
 
 /// Assemble the [`RunEngine`] around the selected container `runtime` and
@@ -244,6 +302,7 @@ pub async fn drive(
 #[allow(clippy::too_many_arguments)]
 async fn drive_engine<R, C>(
     out_dir: &Path,
+    run_id: &str,
     request: &RunRequest,
     test_case: &TestCaseVersion,
     references: Vec<RenderedReference>,
@@ -255,6 +314,7 @@ async fn drive_engine<R, C>(
     creds: Option<Box<dyn CredBytesSource + Send + Sync>>,
     outbound: &UnboundedSender<Outbound>,
     client: &JobClient,
+    cancel: &RunCancellation,
 ) -> Result<RunRecord, test_cabinet_core::Error>
 where
     R: ContainerRuntime,
@@ -273,9 +333,32 @@ where
         runtime,
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         orchestrators: OrchestratorCatalog::new(),
+        // Both catalogues are embedded at build time, which is what lets the driver
+        // resolve a run's engine at all: the pod has no checkout to read an
+        // `engines/` directory out of, and the engine gate runs before the sandbox
+        // is created.
+        engines: EngineCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
+        // gg's capture journal is folded into the run tree's `replay.json.gz` here,
+        // on the host, after the tree is collected and before validation — so a
+        // record that can run to hundreds of megabytes of journal costs the test
+        // case none of its runtime budget and the driver pod none of its memory
+        // (the assembly streams through segment files). A no-op for a
+        // third-party-harness run, which has no journal.
+        session_assembler: Some(Box::new(GgSessionAssembler)),
+        // …and the static code analysis lands in the same seam, immediately after,
+        // which is the order that matters: the session assembly lifts gg's journal
+        // *out* of the collected tree first, so a full conversation transcript can
+        // never be counted as code the model wrote. It runs for every harness (the
+        // pass is harness-agnostic), it writes the run tree's
+        // `code-analysis.json.gz`, and the summary it hands back rides on the record.
+        analyzer: Some(Box::new(StaticCodeAnalyzer)),
+        // …and the case's TypeScript toolchain runs last in the seam, because unlike
+        // the two above it *writes* to the collected tree: it installs the
+        // dependencies its commands need and runs the build its smoke check serves.
+        // A `typecheck` that ran and failed is what gates the run.
+        toolchain: Some(Box::new(ToolchainStage::default())),
         validator: DispatchValidator::new(screenshot_dir),
-        prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),
         // The cluster path has no host credential files; a subscription run reads
         // its credentials from the mounted Secret instead (`None` when no
@@ -285,6 +368,7 @@ where
         // for a non-game-jam run or a jam's first run. The engine seeds them and adds
         // the prompt's distinctness section.
         prior_game_jam_entries,
+        clock: std::sync::Arc::new(test_cabinet_core::SystemClock),
     };
 
     let mut events = BackendEventSink::new(outbound.clone());
@@ -292,6 +376,16 @@ where
     // relay, so the console's run monitor can watch the sprite take shape; other
     // run types produce none and the listener simply never fires.
     let preview = Arc::new(BackendPreviewSink::new(outbound.clone()));
+
+    // A kill that landed during the setup above finds no session to wind down. The
+    // `running` transition is the seam that separates setup from the session, so
+    // refuse to cross it: the run ends here, recorded nowhere, and the driver's
+    // `main` destroys it as it would a killed third-party run. The engine holds the
+    // same line at the container start and the session launch for a kill that
+    // lands later in setup.
+    if cancel.is_canceled() {
+        return Err(Error::CanceledBeforeSession);
+    }
 
     // The pre-run setup is done (the definition is materialized and the container
     // runtime is connected); the engine is about to create the sandbox and drive the
@@ -305,7 +399,14 @@ where
     }
 
     engine
-        .run_resolved(request, test_case, &mut events, Some(preview))
+        .run_resolved(
+            run_id,
+            request,
+            test_case,
+            &mut events,
+            Some(preview),
+            cancel,
+        )
         .await
 }
 

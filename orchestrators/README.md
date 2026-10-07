@@ -32,13 +32,13 @@ The authoritative design lives at
 
 Each `orchestrator.toml` declares:
 
-| Field | Meaning |
-| --- | --- |
-| `slug` | Stable slug. For a built-in it must match the directory name; for an external directory the manifest's own slug is authoritative. |
-| `name` | Human-readable name, shown in the catalogue. |
-| `description` | What the strategy does, for display. |
-| `runner` | The runner entrypoint filename, relative to this directory. |
-| `[params]` | Optional table of parameters the runner reads. Each entry is exposed to the runner as `TCAB_PARAM_<KEY>` (the key upper-cased). Default empty. |
+| Field         | Meaning                                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slug`        | Stable slug. For a built-in it must match the directory name; for an external directory the manifest's own slug is authoritative.              |
+| `name`        | Human-readable name, shown in the catalogue.                                                                                                   |
+| `description` | What the strategy does, for display.                                                                                                           |
+| `runner`      | The runner entrypoint filename, relative to this directory.                                                                                    |
+| `[params]`    | Optional table of parameters the runner reads. Each entry is exposed to the runner as `TCAB_PARAM_<KEY>` (the key upper-cased). Default empty. |
 
 ## The runner
 
@@ -62,12 +62,12 @@ run's totals; a single-session (`one-shot`) run has exactly one segment.
 
 The runner is handed everything it needs through its environment:
 
-| Variable | Meaning |
-| --- | --- |
-| `TCAB_PROMPT` | The rendered test-case prompt (the goal). An orchestrator wraps this with its own protocol before passing it to `tcab-session`. |
-| `TCAB_WORKSPACE` | The seeded workspace directory (`/work`). |
-| `TCAB_DEADLINE` | Epoch seconds after which the run's maximum runtime is exhausted. A multi-session runner checks this to stop gracefully before the hard cap. |
-| `TCAB_PARAM_<KEY>` | Each `[params]` entry from the manifest, upper-cased (for example `marker_file` becomes `TCAB_PARAM_MARKER_FILE`). |
+| Variable           | Meaning                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_PROMPT`      | The rendered test-case prompt (the goal). An orchestrator wraps this with its own protocol before passing it to `tcab-session`.              |
+| `TCAB_WORKSPACE`   | The seeded workspace directory (`/work`).                                                                                                    |
+| `TCAB_DEADLINE`    | Epoch seconds after which the run's maximum runtime is exhausted. A multi-session runner checks this to stop gracefully before the hard cap. |
+| `TCAB_PARAM_<KEY>` | Each `[params]` entry from the manifest, upper-cased (for example `marker_file` becomes `TCAB_PARAM_MARKER_FILE`).                           |
 
 So `one-shot`'s runner is a single `tcab-session "$TCAB_PROMPT"`.
 

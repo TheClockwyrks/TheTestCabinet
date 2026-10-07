@@ -1,0 +1,93 @@
+// director/swarm-4-00 — the 4:00 scripted event fires on tick 14400 and on no
+// tick before it.
+//
+// WHAT THE SPECIFICATION FIXES, AND WHERE.
+//   - `specs/enemies.md` ("Scripted events"): "`EVENTS` lists the night's
+//     scripted spawns in time order. Each fires once per run, on exactly the
+//     tick the run clock equals its time (`tick == time * TICK_HZ`, read after
+//     the tick's clock has risen), and only while `events` is on", and the
+//     table's row reads "| 4:00 | 240 | Gnat swarm |".
+//   - `specs/enemies.md` ("Scripted events"): "A gnat swarm spawns
+//     `SWARM_SIZE` (`24`) gnats on the same tick along a line perpendicular to
+//     a direction `d`".
+//   - `specs/enemies.md` ("Scripted events"): "`firedEvents` lists the times
+//     that have fired, in ascending order whatever order they fired in."
+//   - `specs/world.md` ("One tick"), phase 10: the director runs on the tick,
+//     "then the scripted events while `events` is on".
+//
+// WHAT IS READ. The clock is posed two ticks short of 14400 and two ticks are
+// run. The first reaches tick 14399: the field must still be empty and
+// `firedEvents` must still be empty, because an event fires on its exact tick
+// and on no other. The second reaches tick 14400: exactly 24 gnats must be on
+// the field, and nothing else, and `firedEvents` must hold 240 alone. A build
+// that fires an event on any tick at or past its time fires on the first of
+// the two.
+//
+// WHY THE NIGHT IS POSED AS IT IS. `events` alone is on: the window timer adds
+// nothing, so everything on the field on the second tick came from the event;
+// nothing moves, so what is read sits where the event put it; and nothing is
+// removed by distance, so a spawn on the ring is not taken away before it is
+// read.
+//
+// TOLERANCE. None: counts of enemies, a tick the specification states exactly,
+// and the times `firedEvents` lists.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import { EVENTS, SWARM_SIZE, TICK_HZ } from "../constants";
+import {
+  captureReplay,
+  createHarness,
+  enable,
+  isolate,
+  type Harness,
+} from "../harness";
+import { crossEvent, enemiesOfType } from "./stage";
+
+/** The event this check reads: row 2 of `EVENTS`, at 4:00. */
+const EVENT = EVENTS[2];
+
+/** The tick it fires on: `time * TICK_HZ`, 14400. */
+const EVENT_TICK = EVENT.time * TICK_HZ;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("fires the 4:00 event on tick 14400 and not before", async () => {
+  isolate(h);
+  enable(h, "events");
+
+  const pair = await captureReplay(h, "event", () => crossEvent(h, EVENT.time));
+
+  assertEqual(
+    pair.before.run.tick,
+    EVENT_TICK - 1,
+    "the tick before the event",
+  );
+  assertLength(pair.before.run.enemies, 0, "enemies on the tick before");
+  assertDeepEqual(
+    pair.before.run.firedEvents,
+    [],
+    "firedEvents on the tick before",
+  );
+
+  assertEqual(pair.on.run.tick, EVENT_TICK, "the tick the event fires on");
+  assertLength(pair.on.run.enemies, SWARM_SIZE, "enemies on the event's tick");
+  assertLength(
+    enemiesOfType(pair.on, "gnat"),
+    SWARM_SIZE,
+    "the swarm's gnats on the event's tick",
+  );
+  assertDeepEqual(
+    pair.on.run.firedEvents,
+    [EVENT.time],
+    "firedEvents after the event fired",
+  );
+});

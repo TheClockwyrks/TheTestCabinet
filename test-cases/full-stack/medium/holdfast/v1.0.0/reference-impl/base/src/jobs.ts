@@ -81,13 +81,23 @@ function workRate(settler: Settler, kind: JobKind): number {
 
 let nextJobId = 0; // only used to keep unclaimed rebuilds cheap; identity is by key otherwise
 
-function makeJob(kind: JobKind, tx: number, ty: number, extra: Partial<Job> = {}): Job {
+function makeJob(
+  kind: JobKind,
+  tx: number,
+  ty: number,
+  extra: Partial<Job> = {},
+): Job {
   nextJobId++;
   return { kind, tx, ty, claimedBy: null, work: 0, workNeeded: 0, ...extra };
 }
 
 // A stable key for a work source, so a claimed job already covering it is not duplicated.
-function sourceKey(kind: JobKind, tx: number, ty: number, targetId?: number): string {
+function sourceKey(
+  kind: JobKind,
+  tx: number,
+  ty: number,
+  targetId?: number,
+): string {
   if (kind === "haul" || kind === "tend") return `${kind}:${targetId}`;
   return `${kind}:${tx}:${ty}`;
 }
@@ -117,12 +127,24 @@ export function regenJobs(game: Game): void {
   // Structures: ghosts to build, farm plots to sow/harvest, stoves with a cook opportunity.
   for (const s of game.structures) {
     if (!s.built) {
-      add(makeJob("build", s.tx, s.ty, { structure: s, workNeeded: STRUCTURES[s.kind].buildTime }));
+      add(
+        makeJob("build", s.tx, s.ty, {
+          structure: s,
+          workNeeded: STRUCTURES[s.kind].buildTime,
+        }),
+      );
       continue;
     }
     if (s.kind === "farm") {
-      if (s.cropStage === 0) add(makeJob("sow", s.tx, s.ty, { structure: s, workNeeded: SOW_TIME }));
-      else if (s.cropStage === 2) add(makeJob("harvest", s.tx, s.ty, { structure: s, workNeeded: HARVEST_TIME }));
+      if (s.cropStage === 0)
+        add(makeJob("sow", s.tx, s.ty, { structure: s, workNeeded: SOW_TIME }));
+      else if (s.cropStage === 2)
+        add(
+          makeJob("harvest", s.tx, s.ty, {
+            structure: s,
+            workNeeded: HARVEST_TIME,
+          }),
+        );
     } else if (s.kind === "stove" && game.stock.crops >= COOK_IN) {
       add(makeJob("cook", s.tx, s.ty, { structure: s, workNeeded: COOK_TIME }));
     }
@@ -130,12 +152,20 @@ export function regenJobs(game: Game): void {
 
   // Dropped piles → haul to the stockpile.
   for (const d of game.drops) {
-    add(makeJob("haul", d.tx, d.ty, { targetId: d.id, workNeeded: HAUL_PICKUP }));
+    add(
+      makeJob("haul", d.tx, d.ty, { targetId: d.id, workNeeded: HAUL_PICKUP }),
+    );
   }
 
   // Downed allies → tend (rescue).
   for (const s of game.settlers) {
-    if (s.downed && !s.dead) add(makeJob("tend", tileOfPixelX(s.x), tileOfPixelY(s.y), { targetId: s.id, workNeeded: TEND_TIME }));
+    if (s.downed && !s.dead)
+      add(
+        makeJob("tend", tileOfPixelX(s.x), tileOfPixelY(s.y), {
+          targetId: s.id,
+          workNeeded: TEND_TIME,
+        }),
+      );
   }
 
   game.jobs = next;
@@ -145,7 +175,12 @@ export function regenJobs(game: Game): void {
 export function assignJob(game: Game, settler: Settler): Job | null {
   const from = game.tileOf(settler);
   const moodLow = settler.needs.mood < MOOD_SLOW;
-  let best: { job: Job; prio: number; dist: number; path: { tx: number; ty: number }[] } | null = null;
+  let best: {
+    job: Job;
+    prio: number;
+    dist: number;
+    path: { tx: number; ty: number }[];
+  } | null = null;
 
   for (const job of game.jobs) {
     if (job.claimedBy !== null) continue;
@@ -158,7 +193,10 @@ export function assignJob(game: Game, settler: Settler): Job | null {
       if (moodLow && p === 1) continue; // a moody settler refuses the lowest-priority work
       prio = p;
     }
-    const path = reachableAdjacent(game.world, from, { tx: job.tx, ty: job.ty });
+    const path = reachableAdjacent(game.world, from, {
+      tx: job.tx,
+      ty: job.ty,
+    });
     if (path === null) continue; // cannot reach it right now
     const dist = path.length;
     if (!best || prio > best.prio || (prio === best.prio && dist < best.dist)) {
@@ -188,17 +226,24 @@ export function advanceJob(game: Game, settler: Settler, dt: number): boolean {
     case "build":
       return advanceBuild(game, settler, job, dt * rate);
     case "cook":
-      return advanceTimed(game, settler, job, dt * rate, () => {
-        if (game.stock.crops >= COOK_IN) {
-          game.stock.crops -= COOK_IN;
-          game.stock.meals += COOK_OUT;
-        }
-        if (job.structure) job.structure.active = false;
-        game.growSkill(settler, "cook");
-        game.pushCue("build");
-      }, () => {
-        if (job.structure) job.structure.active = true;
-      });
+      return advanceTimed(
+        game,
+        settler,
+        job,
+        dt * rate,
+        () => {
+          if (game.stock.crops >= COOK_IN) {
+            game.stock.crops -= COOK_IN;
+            game.stock.meals += COOK_OUT;
+          }
+          if (job.structure) job.structure.active = false;
+          game.growSkill(settler, "cook");
+          game.pushCue("build");
+        },
+        () => {
+          if (job.structure) job.structure.active = true;
+        },
+      );
     case "sow":
       return advanceTimed(game, settler, job, dt * rate, () => {
         if (job.structure) {
@@ -210,7 +255,12 @@ export function advanceJob(game: Game, settler: Settler, dt: number): boolean {
     case "harvest":
       return advanceTimed(game, settler, job, dt * rate, () => {
         if (job.structure) {
-          game.addDrop(job.structure.tx, job.structure.ty, "crops", HARVEST_YIELD);
+          game.addDrop(
+            job.structure.tx,
+            job.structure.ty,
+            "crops",
+            HARVEST_YIELD,
+          );
           job.structure.cropStage = 1; // resown — the plot grows again (DESIGN §3.5)
           job.structure.growth = 0;
         }
@@ -233,7 +283,12 @@ export function advanceJob(game: Game, settler: Settler, dt: number): boolean {
 
 // Chop / mine: drain the node's remaining work (its hp), puff dust as it is worked, and on
 // clearing turn the tile back to walkable ground and drop the yield at the node.
-function advanceGather(game: Game, settler: Settler, job: Job, work: number): boolean {
+function advanceGather(
+  game: Game,
+  settler: Settler,
+  job: Job,
+  work: number,
+): boolean {
   const tile = game.world.tileAt(job.tx, job.ty);
   if (!tile || !tile.node || !tile.designated) return true; // source gone → drop the job
   const before = tile.node.workAnim;
@@ -258,7 +313,12 @@ function advanceGather(game: Game, settler: Settler, job: Job, work: number): bo
 
 // Build: advance the structure's own persistent progress so a builder who wanders off does
 // not reset the wall; on completion the ghost becomes the finished structure.
-function advanceBuild(game: Game, settler: Settler, job: Job, work: number): boolean {
+function advanceBuild(
+  game: Game,
+  settler: Settler,
+  job: Job,
+  work: number,
+): boolean {
   const s = job.structure;
   if (!s || s.built) return true;
   s.progress += work / Math.max(0.01, STRUCTURES[s.kind].buildTime);
@@ -271,7 +331,14 @@ function advanceBuild(game: Game, settler: Settler, job: Job, work: number): boo
 
 // Cook / sow / harvest / eat: accumulate seconds of work; `onStart` fires the first tick (to
 // light the stove), `onDone` applies the yield.
-function advanceTimed(_game: Game, _settler: Settler, job: Job, work: number, onDone: () => void, onStart?: () => void): boolean {
+function advanceTimed(
+  _game: Game,
+  _settler: Settler,
+  job: Job,
+  work: number,
+  onDone: () => void,
+  onStart?: () => void,
+): boolean {
   if (job.work === 0 && onStart) onStart();
   job.work += work;
   if (job.work < job.workNeeded) return false;
@@ -281,7 +348,12 @@ function advanceTimed(_game: Game, _settler: Settler, job: Job, work: number, on
 
 // Tend: stabilize a downed ally — stop the bleed and bring it back to its feet at a reduced
 // health (specs/combat.md). Drops the job if the ally died or was already tended.
-function advanceTend(_game: Game, _settler: Settler, job: Job, dt: number): boolean {
+function advanceTend(
+  _game: Game,
+  _settler: Settler,
+  job: Job,
+  dt: number,
+): boolean {
   const ally = _game.settlerById(job.targetId ?? -1);
   if (!ally || ally.dead || !ally.downed) return true;
   job.work += dt;
@@ -297,7 +369,12 @@ function advanceTend(_game: Game, _settler: Settler, job: Job, dt: number): bool
 // Haul: two phases. Walk to the pile and pick it up (removing it from the ground), then
 // carry it to the stockpile and deposit it into the stock. The claimed job survives the
 // pile's removal because regenJobs never rebuilds claimed jobs.
-function advanceHaul(game: Game, settler: Settler, job: Job, dt: number): boolean {
+function advanceHaul(
+  game: Game,
+  settler: Settler,
+  job: Job,
+  dt: number,
+): boolean {
   if (!settler.carrying) {
     const drop = game.dropById(job.targetId ?? -1);
     if (!drop) return true; // someone already took it

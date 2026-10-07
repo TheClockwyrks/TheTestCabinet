@@ -19,8 +19,8 @@ period, at which point the **park-closed** screen shows the tally with **TRY AGA
 **MENU**.
 
 This directory is the authored **reference implementation** of the case's `base`
-variant (the *New Park* start — a fresh green plot, the gate and a small plaza already
-down, a starting loan, no rides or stalls or staff yet). It is the *correct*,
+variant (the _New Park_ start — a fresh green plot, the gate and a small plaza already
+down, a starting loan, no rides or stalls or staff yet). It is the _correct_,
 ground-truth build the case is judged against: a self-contained static web app — plain
 **TypeScript** rendering to an **HTML5 canvas**, bundled with **Vite**. No backend,
 accounts, network calls, or API keys; everything needed to play is in the built bundle.
@@ -31,9 +31,9 @@ Midway is a **full-stack** case: every sprite, animation, particle effect, and s
 game plays was **produced during the build** with the six asset-generation tools on the
 run image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`,
 `music`) and committed under [`assets/`](assets/) — see the case's `specs/assets.md` and
-this directory's `ASSETS.md`. At runtime the game only *loads* those committed files; the
+this directory's `ASSETS.md`. At runtime the game only _loads_ those committed files; the
 tools are not invoked by the build. The particle effects (fireworks, steam, sparkle,
-cleanup puffs) are played live through **`@test-cabinet/particle-runtime`** (vendored
+cleanup puffs) are played live through **`@clockwyrks/particle-runtime`** (vendored
 under [`vendor/`](vendor/) so a plain `npm ci` resolves it outside the monorepo), and the
 sounds through the Web Audio API.
 
@@ -95,6 +95,6 @@ correctly when served from any base path, including a per-run sub-path.
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems, and
   audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime`.
+  `@clockwyrks/particle-runtime`.
 - [`scripts/`](scripts/) — `gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, and
   `gen-audio.sh` (reproduce the produced assets with the on-`PATH` tools).

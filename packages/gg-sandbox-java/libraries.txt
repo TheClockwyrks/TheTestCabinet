@@ -1,0 +1,59 @@
+# The libraries a Java program may reach, as this arm records them.
+#
+# WHAT DECIDES THE SET. TeaVM's classlib — a large subset of `java.base`, not the whole of it —
+# plus the ThreeTen backport it bundles for `java.time`. There is nothing to install and nothing
+# to bake: what a program can reach is what TeaVM can translate, and what it cannot is a LOCATED
+# COMPILE ERROR on the turn that wrote it (`program.java:1: Class java.security.MessageDigest was
+# not found`) rather than a run-time surprise. That is this arm's most valuable property.
+#
+# So this file is a claim about the artifact, and it is held to it: `java_reaches_every_library`
+# in `crates/gg/src/sandbox/language/java.substrate.test.rs` drives every package below through
+# the real javac and the real TeaVM and requires a real class in each to compile AND run. A
+# package listed here that the classlib does not carry fails that test rather than reaching a
+# model, and the two absences worth knowing about are recorded there as absences.
+#
+# The `# --- heading ---` lines are the groups of the catalogue's `libraries` section, which is the
+# record of this arm's set. A program written against a package this arm does not carry is refused
+# by the compiler, in its own words.
+# `packages/gg-sandbox-java/tools/GgSignatures.java` reads this file and refuses a package under no
+# heading.
+#
+# gg's own wrapper already imports `gg.*`, `java.util.*`, `java.util.function.*`,
+# `java.util.stream.*`, `java.math.*`, `java.time.*`, `java.time.format.*`, `java.text.*` and
+# `java.util.regex.*` into every program, so those need no import line; the rest do, and a model's
+# own `import` is hoisted into the header for it.
+
+# --- The everyday ---
+java.lang
+java.lang.annotation
+java.lang.ref
+java.lang.reflect
+java.util
+java.util.function
+java.util.regex
+
+# --- Streams and concurrency types ---
+java.util.stream
+java.util.concurrent
+java.util.concurrent.atomic
+
+# --- Numbers and text ---
+java.math
+java.text
+java.nio.charset
+
+# --- Dates and times ---
+java.time
+java.time.chrono
+java.time.format
+java.time.temporal
+java.time.zone
+
+# --- Bytes, buffers and archives ---
+java.io
+java.nio
+java.util.zip
+
+# --- Addresses and logging ---
+java.net
+java.util.logging

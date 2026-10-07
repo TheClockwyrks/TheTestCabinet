@@ -68,7 +68,10 @@ export function translation(t: Vec3): Float32Array {
  * applied X→Y→Z, as the matrix `Rz · Ry · Rx`.
  */
 export function eulerRotation(euler: Vec3): Float32Array {
-  return multiply(rotation("z", euler[2]), multiply(rotation("y", euler[1]), rotation("x", euler[0])));
+  return multiply(
+    rotation("z", euler[2]),
+    multiply(rotation("y", euler[1]), rotation("x", euler[0])),
+  );
 }
 
 /**
@@ -151,7 +154,10 @@ function jointMatrix(joint: JointSpec, value: number): Float32Array {
     driven = translation(t);
   } else {
     // Rotation about the joint's own pivot: T(pivot) * R(axis, value) * T(-pivot).
-    driven = multiply(translation(p), multiply(rotation(joint.axis, value), translation(negP)));
+    driven = multiply(
+      translation(p),
+      multiply(rotation(joint.axis, value), translation(negP)),
+    );
   }
 
   const offset = joint.offset as Vec3 | undefined;
@@ -162,7 +168,10 @@ function jointMatrix(joint: JointSpec, value: number): Float32Array {
   // outside the driven motion so the component is posed and then mounted.
   let mount = identity();
   if (nonZero(orient)) {
-    mount = multiply(translation(p), multiply(eulerRotation(orient), translation(negP)));
+    mount = multiply(
+      translation(p),
+      multiply(eulerRotation(orient), translation(negP)),
+    );
   }
   if (nonZero(offset)) {
     mount = multiply(translation(offset), mount);

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Dialog } from "@test-cabinet/ui";
+import { Dialog } from "@clockwyrks/ui";
 
 /** What to ask before a consequential action, and how to label the answer. */
 export interface ConfirmOptions {

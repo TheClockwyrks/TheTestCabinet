@@ -3,7 +3,7 @@
 You are composing a **warm pastoral acoustic-folk theme** for a peaceful village or
 town. This short cue plays as gentle ambient music while the listener wanders a
 sunlit square, so it should feel cozy, wholesome, and welcoming — a piece of music
-that says *home*. Sequence it note by note as instrument tracks over the `gm-lite`
+that says _home_. Sequence it note by note as instrument tracks over the `gm-lite`
 instrument bank, one operation at a time.
 
 ## The scene to capture

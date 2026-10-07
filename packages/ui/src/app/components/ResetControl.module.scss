@@ -1,0 +1,26 @@
+@use "../styles/tokens" as t;
+
+// The reset affordance, shown only while the setting differs from its starting
+// value. Quiet enough to sit inside a label without competing with it, and it
+// takes the accent on hover like every other control that changes something.
+.reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    outline: none;
+  }
+}

@@ -1,0 +1,64 @@
+# The one and only Floe variant: the whole strait, the whole eight-level run.
+# Listed as the single entry in the case manifest's `variants`, so it is the
+# default and every run is a run of it. Every path here resolves against the
+# version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The crossing on the one strait: eight lanes of sliding ice, eight lanes of drifting floes, five far-shore bays, and the bear that hunts you across all of it."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The eight levels are not variants and neither are the six screens. A level is
+# the run's own progression, reached by playing, exactly as Carom's Solo and
+# Versus are modes inside every variant rather than variants of their own, so
+# `specs/progression.md` is a COMMON spec declared in `test-case.toml` and seeded
+# for every run. A build ships all eight levels.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no spec
+# of any kind to put here. If you came to this file to add one, it almost
+# certainly belongs in `test-case.toml` as a common spec.
+
+# What the game looks like played correctly, shown before anyone runs it: half a
+# minute of real play recorded off `references/structured-2d` — the critter
+# timing the gaps up through the ice band, a bear emerging behind it, the water
+# crossed floe to floe with that bear swimming after it, and four bays filled —
+# plus a still from the same take on the last water row and a still of the title
+# screen. The critter is driven with real held-key input on the four movement
+# actions, and its hops are planned against the lane pattern the debug surface's
+# own snapshot reports; every outcome on screen is then the game's own rules
+# under that input, with the four world gates left on and nothing posed
+# mid-play. `showcase/base/showcase.toml` lists the media,
+# `showcase/base/showcase.md` carries the description, and
+# `showcase/capture/README.md` records how each file was produced.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the
+# build a reference demonstrates differs under each. This table must name EXACTLY
+# the engines the case supports (the resolver checks both directions), and the
+# case supports three: `references/none` carries its own runtime layer (the frame
+# loop and the fixed-tick accumulator, the canvas fit, keyboard input, audio, the
+# overlay, and the `window.__floe` surface), `references/simple-2d` hands all of
+# that to the engine package resolved from the repository's `packages/simple-2d`
+# and ships the game as `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d` writes the game inside the gameplay framework
+# resolved from `packages/structured-2d`, as the game definition, instance, mode,
+# state, and actors `src/game.ts` exports. The game any of them implements is
+# identical, which is what makes a run on one engine comparable with a run on
+# another. With a single variant there is no per-variant level to the path, so
+# each reference's `src/` sits directly inside its engine directory, as Refract's
+# do. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands and held to the same four
+# toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override. The case's common per-engine table covers every run
+# and there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# item and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

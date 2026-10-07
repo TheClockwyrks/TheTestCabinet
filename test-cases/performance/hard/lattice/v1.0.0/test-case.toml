@@ -1,5 +1,4 @@
 slug = "lattice"
-experimental = true
 # The Test Cabinet test case manifest — Lattice.
 #
 # This is a PERFORMANCE case: the model writes a wasm ENGINE that simulates a
@@ -23,7 +22,7 @@ name = "Lattice"
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
-tags = ["factorio", "simulation", "wasm"]
+tags = ["simulation", "wasm"]
 
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
@@ -116,7 +115,7 @@ output = "schemas/state.json"
 # transport-line engine finishes every scored scenario well inside this budget; a
 # move-every-item engine does not.
 [sandbox]
-fuel_limit = 5_000_000_000
+fuel_limit = 40_000_000_000
 max_memory_bytes = 268_435_456   # 256 MiB
 
 # --- Smoke tests: the correctness pre-flight ------------------------------------
@@ -156,9 +155,9 @@ expected = "smoke/inserter-belt-belt.out"
 kind = "smoke"                 # an inserter carries items from one belt to another
 
 [[case]]
-input = "smoke/assembler-single.json"
-expected = "smoke/assembler-single.out"
-kind = "smoke"                 # an assembler crafts; inserters feed and unload it
+input = "smoke/furnace-single.json"
+expected = "smoke/furnace-single.out"
+kind = "smoke"                 # a furnace smelts ore + coal into a plate; inserters feed and unload it
 
 [[case]]
 input = "smoke/assembler-two-input.json"
@@ -181,85 +180,110 @@ kind = "smoke"                 # one assembler's output feeds the next (2-stage 
 # into the container image — they are the train/test split's test half, unseen by
 # the model. They are deliberately larger and longer than the baked training
 # scenarios so the efficiency gap between a naive and a transport-line engine
-# dominates the fuel total (`large` is 72x40 over 150,000 ticks).
+# dominates the fuel total (`large` is 72x40 over 360,000 ticks).
 #
-# The set is a progression of two layouts (`lattice gen --layout`):
+# The set is a progression of two layouts:
 #   - `small` is a `lines` layout — independent east-flowing belt/craft/circuit
 #     lines stacked in bands. It is the fast, simple CORRECTNESS confirmation: a
 #     small grid an engine reproduces (or fails) in ~1s, exercising every entity and
 #     the circuit chain without the cost of a big factory.
-#   - `medium` and `large` are `bus` layouts — dense, interconnected factories where
-#     every source emits ONLY raw ore (`iron-ore`/`copper-ore`) and every intermediate
-#     is crafted on the grid. They build the whole tree: a circuit unit runs the full
-#     copper chain (copper-ore→copper-plate→copper-cable) curving into a two-input
-#     `circuit` assembler fed also by an iron-plate line; a gear unit runs
-#     iron-ore→iron-plate→iron-gear; a smelt unit taps an ore bus into a wide row of
-#     plate assemblers (belt→belt inserter taps, a curve, a side-load merge); a belt
-#     unit carries the balancing splitter; and assembler-dense farm units pack the
-#     rest. They stress every interconnection behavior the specs describe — taps,
-#     curves, side-load merges, splitter balancing, and multi-stage crafting (one
-#     assembler's output feeding the next) — and stay densely occupied (empty-belt
-#     tiles ~7-11%), not the sparse parallel straight lines an earlier scored set
-#     graded. Each drives every crafting stage through to a sink (copper-cable,
-#     iron-gear, and `circuit` all arrive), so a jammed-but-periodic engine cannot
-#     masquerade as correct.
+#   - `medium` and `large` are hand-drawn **main-bus** factories. Sources emit raw ore
+#     and the coal the smelters burn; the ore is rerouted (splitters fan it up/down)
+#     into plate smelters and fully consumed there. Plate lanes then run east across
+#     the grid, LINED with product stations that tap them: gear and cable stations
+#     along the lanes, and a machine works building `circuit`, `transport-belt`,
+#     `inserter`, and `assembler` (the last from a belt fed forward into it — a
+#     machine building a machine). Machinery covers the full width edge to edge — not
+#     clustered at one end — and belts of all three tiers move at their own speeds.
+#     They stress every interconnection behavior the specs describe: belt→belt taps,
+#     curves, splitter rerouting/balancing, the two-input `circuit` chain, and
+#     multi-stage crafting through the machine tree. On `large` every stage (cable,
+#     gear, circuit, and all three machines) drains to its own single-item sink, so a
+#     jammed-but-periodic engine cannot masquerade as correct.
 #
-# Every scored scenario still exercises EVERY entity and the multi-input recipe:
-# belts, a splitter, inserters, assemblers, and the two-input `circuit` chain. That
-# is a property of the generator rather than of these seeds — both layouts place the
-# circuit chain and a splitter outright. An earlier scored set was generated before
-# the generator could emit inserters or assemblers at all, so it graded only belts
-# and splitters while the specs described far more; an engine that skipped crafting
-# entirely would have scored correct.
+# Every scored scenario exercises EVERY entity and the multi-input recipe: belts, a
+# splitter, inserters, assemblers, and the two-input `circuit` chain. An earlier
+# scored set was generated before the generator could emit inserters or assemblers at
+# all, so it graded only belts and splitters while the specs described far more; an
+# engine that skipped crafting entirely would have scored correct.
 #
-# Regenerate with (the seeds are recorded so the set is reproducible):
-#   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
-#   lattice gen --layout bus   --seed 0x2A01 --grid 48x32 --ticks 120000 --out cases/medium.json
-#   lattice gen --layout bus   --seed 0x7E44 --grid 72x40 --ticks 150000 --out cases/large.json
+# Each scored scenario is graded at FIVE ticks: its quarter/half/end
+# checkpoints, plus two inside the browser-playback window (`1250` and `2500`, from
+# `lattice-core`'s `PLAYBACK_WINDOW_TICKS`). The window ones exist because playback
+# shows a scenario's first 2,500 ticks and nothing else, while the quarter/half/end
+# checkpoints of a long scenario all land far past that — `small` was once graded no
+# earlier than tick 12,500. That left the entire stretch a reviewer can WATCH
+# ungraded, so an engine whose warm-up diverged but whose steady state did not passed
+# while its playback visibly disagreed with the case's Reference tab. Grading inside
+# the window closes that, and gives the console's player recorded checksums it can
+# compare its frames against (its drift gate). The two extra snapshots cost almost
+# nothing: an engine has to simulate those ticks regardless.
+#
+# `small` is generated; `medium` and `large` are drawn by hand in the designer
+# (`apps/lattice-designer`, which opens these files and saves back to them):
+#   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000 --out cases/small.json
 # then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
-# Any change to the engine's rules or the generator's layout requires redoing both
-# halves, since the expected answers are the comparison key.
+# A scored `snapshots` array is load-bearing — the case grades at exactly those ticks
+# — so it is edited deliberately, never regenerated. Any change to the engine's rules
+# or to a layout requires redoing the oracle, since the expected answers are the
+# comparison key.
 #
-# A seed is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
-# wide AND leave the transport reference comfortably under the 5B fuel ceiling. The
-# bus layout fixes every source at one small harmonic period (`BUS_PERIOD`), which is
-# what keeps the factory's steady-state CYCLE short — the transport reference detects
-# that cycle and fast-forwards across it, so a short period is what keeps its fuel
-# low; coprime periods would enlarge the cycle and inflate transport fuel. Deep craft
-# chains (the copper chain is three stages) lengthen the warm-up before the cycle is
-# detected, so keep them shallow and prefer assembler-dense farm units over long dead
-# belt for density. Current transport fuel is small 0.32B, medium 1.58B, large 2.76B
-# (all well under 5B), while the naive engine exhausts the 5B ceiling on every case
-# (small 15.3B, medium 81B, large 178B) — a ~50-65x gap. When re-seeding or resizing,
-# check both engines and
-# keep the transport reference well under ceiling AND confirm crafted items reach the
-# sinks (a wide gap on a jammed factory proves nothing):
+# A layout is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
+# wide AND leave the transport reference under the fuel ceiling. The main-bus factory
+# has a substantial one-time WARM-UP: its sub-bus lanes and splitter balancers take a
+# while to reach equilibrium, and the transport reference fingerprints the world until
+# it detects the steady cycle — so most of its fuel is that fixed warm-up, and its
+# total barely grows with more ticks. The naive engine, by contrast, pays per tick, so
+# the gap WIDENS the longer a scenario runs. That is why the scored bus scenarios run
+# long (medium 300k, large 360k ticks): the warm-up is amortised and the naive/
+# transport gap opens to ~8-10x. Current transport fuel is small ~0.63B, medium ~20B,
+# large ~28B (all under the 40B ceiling; the small figure roughly doubled when the
+# two playback-window checkpoints were added, since the reference now materializes
+# state during warm-up as well as at steady state), while the naive engine burns
+# small ~15.6B, medium ~142B, and `large` does not finish inside 400B.
+#
+# The transport figure is entity count times how long the factory takes to SETTLE, so
+# a bigger layout stays affordable only if every station keeps to its own craft
+# period. One that spends its time output-blocked, or whose output rate exactly
+# matches the single inserter draining it (a `copper-cable` station makes 2 items per
+# 32 ticks and one arm moves 1 per 16), never lets the world repeat and costs billions
+# on its own; give such a station a second outlet.
+#
+# The EFFICIENCY discrimination is on the two bus scenarios: naive medium/large blow
+# past the 40B ceiling and fail, transport
+# passes. `small` is the CORRECTNESS confirmation, not an efficiency gate — its factory
+# is tiny enough that even the naive engine finishes under 40B, so both engines pass it;
+# the naive engine is failed by the case as a whole on medium and large. (When the
+# ceiling was 5B a naive `small` was over it too, but the ceiling is 40B now.) When
+# re-seeding or resizing, check BOTH engines and keep the transport reference under
+# ceiling on every scenario AND naive over it on the two bus scenarios, AND confirm
+# crafted items reach the sinks (a wide gap on a jammed factory proves nothing); a
+# longer tick count strengthens the gap if it is thin:
 #   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
-#     --fuel-limit 900000000000
+#     --fuel-limit 300000000000
 # `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`
 # pass line (up to `fuel_limit * fuel_runway`) so the grader can record HOW FAR
 # over the ceiling it ran and still offer playback, instead of trapping with no
 # reading. The pass/fail line is unchanged — it stays `fuel_limit`. The multiplier
-# is scaled DOWN as scenarios grow: the first `fuel_limit` of fuel is the costly
-# fill/warm-up phase whose wall-clock scales steeply with scenario size (small
-# ~1s, large ~9s to burn 5B here), while fuel *beyond* it is cheap steady-state
-# (~0.05s/B on any size), so a wide runway is affordable on small but a big
-# scenario should keep it tight — the reading it buys is not worth the extra
-# verification wall-clock.
+# is scaled DOWN as scenarios grow: burning through the ceiling on a big scenario is
+# the costly warm-up/fill phase whose wall-clock scales steeply with scenario size,
+# while fuel *beyond* it is cheap steady-state, so a wide runway is affordable on the
+# tiny `small` case but a big scenario should keep it tight — the overshoot reading it
+# buys is not worth the extra verification wall-clock.
 [[case]]
 input = "cases/small.json"     # lines, 24x12 over 50,000 ticks — confirms correctness
 expected = "cases/small.out"
-fuel_runway = 10.0             # up to 50B: small verifies fast, so measure far over
+fuel_runway = 10.0             # up to 400B: small verifies fast, so measure far over
 
 [[case]]
-input = "cases/medium.json"    # bus, 48x32 over 120,000 ticks — an interconnected factory
+input = "cases/medium.json"    # bus, 48x32 over 300,000 ticks — a main-bus factory
 expected = "cases/medium.out"
-fuel_runway = 5.0              # up to 25B
+fuel_runway = 5.0              # up to 200B
 
 [[case]]
-input = "cases/large.json"     # bus, 72x40 over 150,000 ticks — efficiency dominates here
+input = "cases/large.json"     # bus, 72x40 over 360,000 ticks — efficiency dominates here
 expected = "cases/large.out"
-fuel_runway = 2.0              # up to 10B: large is costly to verify, so keep it tight
+fuel_runway = 2.0              # up to 80B: large is costly to verify, so keep it tight
 
 # No `[[domain]]` or `[[review_item]]` tables: a performance run is graded
 # ENTIRELY by the harness — correctness against the reference oracle first, then

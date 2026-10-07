@@ -1,0 +1,22 @@
+# Everything that is not authored source: installed packages, build output,
+# the reports the project's commands write, and the vendored packages.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+test-results/
+playwright-report/
+.vendor/
+package-lock.json
+
+# Seeded reading material rather than this project's source: the
+# specification the run is graded against.
+specs/
+
+# The produced assets under `public/`, which the six asset tools wrote: they
+# are tool output, not authored source, and no formatter owns them.
+public/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md

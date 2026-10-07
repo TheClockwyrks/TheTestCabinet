@@ -30,12 +30,12 @@ Three attack mechanics appear; a tower uses one:
 
 ## The four towers (base stats — before upgrades)
 
-| Tower | Attack | Damage | Cadence | Range | Steam | Anti-armor |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Repeater** | hitscan, single-target | `12` | `0.2 s` | `60` | `2 f/s` | no |
-| **Mortar** | arcing splash | `60`, blast radius `8` | `1.4 s` | `90` | `3 f/s` | no |
-| **Lance** | hitscan, single-target | `130` | `1.6 s` | `130` | `5 f/s` | **yes** (ignores armor) |
-| **Scald** | field: slow + burn | `15` dmg/s + `40%` slow, radius `12` | continuous | `70` | `5 f/s` | no |
+| Tower        | Attack                 | Damage                               | Cadence    | Range | Steam   | Anti-armor              |
+| ------------ | ---------------------- | ------------------------------------ | ---------- | ----- | ------- | ----------------------- |
+| **Repeater** | hitscan, single-target | `12`                                 | `0.2 s`    | `60`  | `2 f/s` | no                      |
+| **Mortar**   | arcing splash          | `60`, blast radius `8`               | `1.4 s`    | `90`  | `3 f/s` | no                      |
+| **Lance**    | hitscan, single-target | `130`                                | `1.6 s`    | `130` | `5 f/s` | **yes** (ignores armor) |
+| **Scald**    | field: slow + burn     | `15` dmg/s + `40%` slow, radius `12` | continuous | `70`  | `5 f/s` | no                      |
 
 - **Repeater** — the cheap workhorse. High rate, low per-shot damage; it mows down
   **Runners** and other chaff and chips groups. Weak against armor. Its long, flat

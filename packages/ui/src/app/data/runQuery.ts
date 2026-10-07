@@ -6,10 +6,11 @@
 // pure, filter/sort/window logic in this module, matched to the backend's
 // semantics so a page behaves identically on either host.
 
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { RunSort, SortDir } from "../../client/clients";
-import { RATINGS } from "../../ratings";
+import { RATINGS, type AestheticRating } from "../../ratings";
 import { totalTokens } from "../format";
+import { isGgRun } from "./runLinks";
 import { currentMajorMinor, majorMinorKey } from "./versions";
 
 export type { RunSort, SortDir };
@@ -20,12 +21,15 @@ export type { RunSort, SortDir };
 // is optional; the defaults (published, unfiltered, date-descending, offset 0)
 // match the backend's.
 export interface RunQuery {
-  /** The lifecycle slice to draw from (default `published`). `any` is the union of
-   * published and unpublished runs — the consoles' listings, where an unpublished
-   * (and so unreviewed) run must sort and page alongside the published ones;
-   * `publishable` is the narrower publish worklist (unpublished *and* clearing the
-   * backend's publish gate). The static site only holds published runs, so `any` is
-   * `published` there and every other non-`published` state matches nothing. */
+  /** The lifecycle slice to draw from (default `published`). `any` applies no
+   * lifecycle predicate at all — every recorded run, published or not, whatever
+   * its terminal state; that union is what the consoles' listings want (an
+   * unpublished, and so unreviewed, run must sort and page alongside the
+   * published ones) and what a listing scoped to something other than the publish
+   * lifecycle wants (the gg analysis section's Sessions tab). `publishable` is the
+   * narrower publish worklist: unpublished and clearing the backend's publish
+   * gate. The static site only holds published runs, so `any` is `published` there
+   * and every narrower non-`published` state matches nothing. */
   state?:
     | "published"
     | "any"
@@ -36,6 +40,13 @@ export interface RunQuery {
     | "unreviewed";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;
+  /** Filter to a list of test-case slugs (empty/omitted is ignored) — the home
+   * page's group-leaderboard slice: one query covers a test-case group's member
+   * cases. ANDs with every other filter, {@link testCase} included, so naming
+   * both narrows to their intersection (the semantic `api.md` documents for the
+   * backend's `testCases` param), and {@link latestVersions} composes with it as
+   * with any case slice. */
+  testCases?: string[];
   /** Filter to one model id (an empty string is ignored). */
   model?: string;
   /** Filter to one harness slug (an empty string is ignored). */
@@ -48,17 +59,41 @@ export interface RunQuery {
    * {@link testCase}; on its own it is a plain equality filter and selects that
    * version of every case. */
   version?: string;
+  /** Filter to a list of exact test-case versions (empty/omitted is ignored) —
+   * the case-detail Runs tab's anchored version scope, which the catalog resolves
+   * into the concrete versions of the anchored `major.minor` or major line. Like
+   * {@link version}, an explicit list is the more specific instruction, so it
+   * silences {@link latestVersions}. */
+  versions?: string[];
+  /** Filter to one engine slug (an empty string is ignored). Matches the engine
+   * the run was launched under; the engineless run records the slug `none`, and a
+   * card from before the engine dimension existed reads as `none` too. */
+  engine?: string;
+  /** Filter to the runs launched from one gg configuration, by the configuration's
+   * **id** (an empty string is ignored). A coverage cell counts by the same id, so
+   * a listing narrowed by this holds exactly the runs behind that cell's figure —
+   * which the configuration's name cannot do, being display text an operator
+   * rewrites freely and two configurations may share. A run launched from no
+   * configuration matches no id. */
+  ggConfigId?: string;
   /** Restrict every run to its case's **current** version — the greatest
    * `major.minor` that case has a run for within this query's {@link state} slice.
    * A case version is frozen once it has runs, so an older minor is a different
    * spec whose runs are not comparable with the current one's; the console
    * listings default this on.
    *
-   * Ignored when {@link version} names an exact version: an explicit version is
-   * the more specific instruction, and AND'ing the two would silently empty the
-   * listing whenever the picked version is not the current one. */
+   * Ignored when {@link version} (or a non-empty {@link versions}) names exact
+   * versions: an explicit version is the more specific instruction, and AND'ing
+   * the two would silently empty the listing whenever the picked version is not
+   * the current one. */
   latestVersions?: boolean;
-  /** Case-insensitive substring across testCase/model/harness/variant. */
+  /** Filter to runs whose aggregate **aesthetic** rating is exactly this tier —
+   * the equality on the backend's lifted `aesthetic` column. A run no review has
+   * rated on the aesthetic channel never matches any tier.
+   * `aesthetic: "legendary"` newest-first is the home page's showcase query. */
+  aesthetic?: AestheticRating;
+  /** Case-insensitive substring across testCase/model/harness/variant, plus a gg
+   * run's configuration name (what its row shows in place of a model). */
   q?: string;
   /** The sort column (default `date`). */
   sort?: RunSort;
@@ -119,10 +154,36 @@ function sliceIsPublished(query: RunQuery): boolean {
 function matches(summary: RunSummary, query: RunQuery): boolean {
   const { subject } = summary;
   if (query.testCase && subject.testCaseSlug !== query.testCase) return false;
+  // AND'd with `testCase` like every other filter (the backend applies both
+  // predicates independently too), so naming both narrows to their intersection.
+  // An empty list applies no filter, mirroring the empty `versions` list.
+  if (
+    query.testCases?.length &&
+    !query.testCases.includes(subject.testCaseSlug)
+  )
+    return false;
   if (query.model && subject.modelId !== query.model) return false;
   if (query.harness && subject.harnessSlug !== query.harness) return false;
   if (query.variant && subject.variant !== query.variant) return false;
   if (query.version && subject.testCaseVersion !== query.version) return false;
+  if (
+    query.versions?.length &&
+    !query.versions.includes(subject.testCaseVersion)
+  )
+    return false;
+  // A card recorded before the engine dimension existed carries no engineSlug;
+  // it is an engineless-era run, so it reads as `none` — the same defaulting the
+  // backend's deserializer and backfill apply.
+  if (query.engine && (subject.engineSlug ?? "none") !== query.engine)
+    return false;
+  // A null/absent aggregate never equals a tier — the backend's NULL `aesthetic`
+  // column contract: a run no review has rated on the channel matches no filter.
+  if (query.aesthetic && (summary.aesthetic ?? null) !== query.aesthetic)
+    return false;
+  // The configuration a run was launched from, matched on the recorded id and
+  // harness-gated exactly as the backend's `gg_config_id` column is.
+  if (query.ggConfigId && ggConfigId(summary) !== query.ggConfigId)
+    return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
     const haystack = [
@@ -130,6 +191,9 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
       subject.modelId,
       subject.harnessSlug,
       subject.variant,
+      // A gg row is displayed by its configuration, so it is findable by it. Absent
+      // (every non-gg run) contributes nothing, matching the backend's NULL column.
+      ggPreset(summary) ?? "",
     ].map((s) => s.toLowerCase());
     if (!haystack.some((s) => s.includes(q))) return false;
   }
@@ -139,13 +203,15 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
 // The `latestVersions` scope: each case's current `major.minor`, resolved from the
 // runs in the state slice (never from the narrowed set, so which cohort is
 // "current" does not shift as other filters are applied). Null when the query did
-// not ask for it, or when an exact `version` overrides it — see
-// {@link RunQuery.latestVersions}. Mirrors the backend's `current_case_versions`.
+// not ask for it, or when an exact `version` (or `versions` list) overrides it —
+// see {@link RunQuery.latestVersions}. Mirrors the backend's
+// `current_case_versions`.
 function currentVersionScope(
   inSlice: readonly RunSummary[],
   query: RunQuery,
 ): ReadonlyMap<string, string> | null {
-  if (!query.latestVersions || query.version) return null;
+  if (!query.latestVersions || query.version || query.versions?.length)
+    return null;
   const versions = new Map<string, string[]>();
   for (const { subject } of inSlice) {
     const seen = versions.get(subject.testCaseSlug);
@@ -207,11 +273,15 @@ function primaryCompare(
     case "testType":
       return cmpStr(a.subject.testType, b.subject.testType) * order;
     case "testCase":
-      return cmpStr(a.subject.testCaseSlug, b.subject.testCaseSlug) * order;
+      // The TEST column shows the case's display name, so the order is by it: a
+      // `pong` run (shown as Carom) files under "c", as the backend's name-keyed
+      // sort places it. The snapshot resolves `caseName` from the catalog, with a
+      // renamed slug's current name and, failing both, the slug itself.
+      return cmpStr(a.caseName, b.caseName) * order;
     case "harness":
       return cmpStr(a.subject.harnessSlug, b.subject.harnessSlug) * order;
     case "model":
-      return cmpStr(a.subject.modelId, b.subject.modelId) * order;
+      return cmpStr(modelIdentity(a), modelIdentity(b)) * order;
     case "variant":
       return cmpStr(a.subject.variant, b.subject.variant) * order;
     case "cost": {
@@ -233,6 +303,32 @@ function primaryCompare(
       return (ratingRank(a.rating) - ratingRank(b.rating)) * order;
     }
   }
+}
+
+// The lifted `run.gg_preset` column's value for a summary: the gg configuration
+// name the run was launched from, or null. Harness-gated exactly as the backend's
+// `lifted_gg_preset` is, so a non-gg run can never be searched or positioned by
+// anything but its model.
+function ggPreset(summary: RunSummary): string | null {
+  const { subject } = summary;
+  return isGgRun(subject.harnessSlug) ? (subject.ggPreset ?? null) : null;
+}
+
+// The lifted `run.gg_config_id` column's value for a summary: the id of the gg
+// configuration the run was launched from, or null. Harness-gated exactly as
+// {@link ggPreset} is, so a set that somehow rode in on another harness's card can
+// never file that run under a configuration.
+function ggConfigId(summary: RunSummary): string | null {
+  const { subject } = summary;
+  return isGgRun(subject.harnessSlug) ? (subject.ggConfigId ?? null) : null;
+}
+
+// What the MODEL / CONFIG column sorts by, mirroring the backend's
+// `COALESCE(gg_preset, model_id)`: a gg run's configuration name, else the model
+// id. The RAW id, not a resolved display name — the DB column holds no catalog
+// lookup, and this has to order a page the same way.
+function modelIdentity(summary: RunSummary): string {
+  return ggPreset(summary) ?? summary.subject.modelId;
 }
 
 // The null-group ordering key: non-null rows (group 0) always precede null rows

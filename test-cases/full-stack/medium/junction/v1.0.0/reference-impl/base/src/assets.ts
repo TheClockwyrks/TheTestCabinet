@@ -7,13 +7,24 @@
 // a root-absolute "/assets/…" URL. The tools are never invoked by `npm run build`; the game
 // only loads their output.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Cue, FxKind, Tool, ZoneKind } from "./types";
 import { TOOL_BY_KIND } from "./constants";
 
-const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
-const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
-const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", { eager: true, query: "?url", import: "default" });
+const pngUrls = import.meta.glob<string>("../assets/**/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", {
+  eager: true,
+  import: "default",
+});
+const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
 
 function keyOf(globPath: string, ext: string): string {
   return globPath.replace("../assets/", "").replace(ext, "");
@@ -77,17 +88,22 @@ export async function loadAssets(): Promise<Assets> {
     return out;
   };
   const anim = {} as Record<AnimName, HTMLImageElement[]>;
-  for (const name of Object.keys(ANIMS) as AnimName[]) anim[name] = framesFor(name, ANIMS[name]);
+  for (const name of Object.keys(ANIMS) as AnimName[])
+    anim[name] = framesFor(name, ANIMS[name]);
 
   const rawFx: Record<string, ParticleSystem> = {};
-  for (const [globPath, sys] of Object.entries(fxJson)) rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
+  for (const [globPath, sys] of Object.entries(fxJson))
+    rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
   const fx = {} as Record<FxKind, ParticleSystem | undefined>;
-  for (const k of Object.keys(FX_SOURCE) as FxKind[]) fx[k] = rawFx[FX_SOURCE[k]];
+  for (const k of Object.keys(FX_SOURCE) as FxKind[])
+    fx[k] = rawFx[FX_SOURCE[k]];
 
   const rawWav: Record<string, string> = {};
-  for (const [globPath, url] of Object.entries(wavUrls)) rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
+  for (const [globPath, url] of Object.entries(wavUrls))
+    rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
   const audioUrl = {} as Record<Cue | "hum" | "music", string>;
-  for (const k of Object.keys(CUE_SOURCE) as Cue[]) audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? "";
+  for (const k of Object.keys(CUE_SOURCE) as Cue[])
+    audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? "";
   audioUrl.hum = rawWav.hum ?? "";
   audioUrl.music = rawWav.music ?? "";
 
@@ -121,7 +137,8 @@ export function roadSprite(mask: number): { sprite: string; rot: number } {
   const S = 4;
   const W = 8;
   const m = mask & 0b1111;
-  const count = (m & N ? 1 : 0) + (m & E ? 1 : 0) + (m & S ? 1 : 0) + (m & W ? 1 : 0);
+  const count =
+    (m & N ? 1 : 0) + (m & E ? 1 : 0) + (m & S ? 1 : 0) + (m & W ? 1 : 0);
   const Q = Math.PI / 2;
 
   if (count >= 3) return { sprite: "transit/road_junction", rot: 0 };

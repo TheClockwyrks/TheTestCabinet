@@ -1,0 +1,78 @@
+// Deepcore — the two modes and what a death costs (specs/modes.md).
+//
+// In both modes a death ends the expedition at the Game Over screen, destroys a
+// Core Sample held or ticking on the ground, and leaves every installed rocket
+// component installed. The mode decides only what becomes of the save: Standard
+// keeps it, so it can be restored; Hardcore deletes it.
+
+import { CUES } from "./constants";
+import type { DeathCause } from "./constants";
+import { cue } from "./audio";
+import { fx } from "./feedback";
+import { minerCenterX, minerCenterY } from "./physics";
+import { clearSave, hasSave } from "./save";
+import { DEATH_ANIM } from "./tuning";
+import type { DeepcoreState } from "./game";
+
+export { DEATH_ANIM };
+
+/** The summary the end screens show, taken from the expedition as it stands. */
+export function makeSummary(
+  d: DeepcoreState,
+  deathCause: DeathCause | null,
+): void {
+  d.summary = {
+    deepestDepthMeters: d.deepestDepthMeters,
+    creditsEarned: d.creditsEarned,
+    elapsedSeconds: d.elapsedSeconds,
+    mode: d.mode,
+    componentsInstalled: d.installed.length,
+    deathCause,
+  };
+}
+
+/** Begin a death. A no-op while one is already playing out. */
+export function triggerDeath(d: DeepcoreState, cause: DeathCause): void {
+  if (d.dying || d.launchAnim !== null) return;
+  const x = minerCenterX(d.miner);
+  const y = minerCenterY(d.miner);
+  if (cause === "core-detonation") fx(d, "core-detonation", x, y);
+  fx(d, "death-burst", x, y);
+  cue(d, CUES.death);
+
+  d.satchel.coreSample = false;
+  d.groundItems = d.groundItems.filter((item) => item.kind !== "core-sample");
+  d.coreTimer = null;
+
+  d.miner.drilling = null;
+  d.deathCause = cause;
+  d.dying = { cause, t: 0 };
+  d.panel = null;
+
+  // specs/modes.md: a death takes effect the moment its cause holds, and the
+  // mode's consequence is applied then rather than when the Game Over screen
+  // arrives — so nothing done after the death changes what it costs.
+  applyModeCost(d);
+}
+
+/**
+ * Apply what the mode charges for a death (specs/modes.md).
+ *
+ * Standard keeps the save; Hardcore deletes it. Idempotent, because it runs at
+ * the death itself rather than at the screen the death leads to.
+ */
+function applyModeCost(d: DeepcoreState): void {
+  if (d.mode !== "hardcore") return;
+  clearSave();
+  d.hasSave = hasSave();
+}
+
+/** Apply the mode's outcome once the death has played out. */
+export function finalizeDeath(d: DeepcoreState): void {
+  const cause = d.dying?.cause ?? "hull-destroyed";
+  d.dying = null;
+  // The mode's cost was charged at the death itself; the screen only reports it.
+  makeSummary(d, cause);
+  d.menuIndex = 0;
+  d.screen = "game-over";
+}

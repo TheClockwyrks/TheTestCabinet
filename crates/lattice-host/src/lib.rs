@@ -167,7 +167,23 @@ pub fn score_submission(
 /// Compare a submission's run against the oracle's expected snapshots, producing a
 /// [`Score`]. Split out so the CLI's `run` (which has the expected snapshots from
 /// `lattice solve`) and the validator (which re-solves) share the exact comparison
-/// rule. Correctness is purely a per-snapshot checksum equality plus a count check.
+/// rule. Correctness is a per-snapshot checksum equality plus a count check — but
+/// against the checksum the submission's **state** hashes to, not the one it
+/// claimed (see below).
+///
+/// ## The compared checksum is derived, never taken on trust
+///
+/// A submission returns JSON, and [`Snapshot::checksum`] is a plain field in it:
+/// nothing in the wire format ties that string to the `entities` beside it. Taking
+/// it at face value would grade a *claim* rather than a simulation — an engine
+/// could report the oracle's checksums alongside entities it never computed (an
+/// empty factory, even) and be scored correct, and browser playback, which draws
+/// those very entities, would then show a factory the grade says is right and the
+/// eye says is wrong. So each returned snapshot is re-serialized to
+/// [canonical bytes](lattice_core::canonical_bytes_checked) here, host-side and
+/// unmetered, and it must clear both bars: its own state must hash to the checksum
+/// it reported, and that checksum must be the oracle's. The state is the graded
+/// key, so what playback draws is what was graded.
 pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
     if run.snapshots.len() != expected.len() {
         return Score {
@@ -183,6 +199,50 @@ pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
     }
 
     for (want, got) in expected.iter().zip(&run.snapshots) {
+        // The snapshot must be for the tick the schedule asked for. Implied by the
+        // checksum bars below (the tick is the canonical bytes' first field), but
+        // checked first so a mis-scheduled answer reads as one instead of as an
+        // inscrutable hash mismatch.
+        if got.tick != want.tick {
+            return Score {
+                correct: false,
+                fuel: run.fuel_consumed,
+                first_mismatch_tick: Some(want.tick),
+                detail: Some(format!(
+                    "expected a snapshot for tick {}, submission returned tick {}",
+                    want.tick, got.tick
+                )),
+            };
+        }
+
+        // Bar one: the state hashes to the checksum reported for it. A submission is
+        // arbitrary code, so an item id outside the prototype table is possible here
+        // — that is an unserializable state, i.e. a wrong answer, not a host fault.
+        let derived = match got.derived_checksum() {
+            Ok(derived) => derived,
+            Err(err) => {
+                return Score {
+                    correct: false,
+                    fuel: run.fuel_consumed,
+                    first_mismatch_tick: Some(want.tick),
+                    detail: Some(format!("snapshot tick {}: {err}", want.tick)),
+                };
+            }
+        };
+        if derived != got.checksum {
+            return Score {
+                correct: false,
+                fuel: run.fuel_consumed,
+                first_mismatch_tick: Some(want.tick),
+                detail: Some(format!(
+                    "snapshot tick {}: the reported checksum {} is not the checksum of the \
+                     state returned with it ({})",
+                    want.tick, got.checksum, derived
+                )),
+            };
+        }
+
+        // Bar two: that checksum is the oracle's.
         if want.checksum != got.checksum {
             return Score {
                 correct: false,
@@ -207,9 +267,19 @@ pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
 /// Build a fuel-metered wasmtime engine. Fuel metering must be enabled for the
 /// per-scenario budget and the consumed-fuel reading to work; if this build of
 /// wasmtime cannot enable it, that is a host error, not a submission failure.
+///
+/// GC support is turned back **off**, and that line is here because of a change
+/// this crate did not ask for. The workspace's `wasmtime` is built with the `gc`
+/// feature so that gg's C++ program language can enable the wasm exception
+/// proposal (see the dependency's own note in the root `Cargo.toml`), and cargo
+/// features are additive — so without this, `WasmFeatures::default()` would
+/// silently gain `GC_TYPES` here and this host would begin accepting submissions
+/// carrying GC types it has never accepted. What a submitted module may contain
+/// is this sandbox's own decision, so it is stated rather than inherited.
 fn build_engine() -> Result<wasmtime::Engine, RunError> {
     let mut config = Config::new();
     config.consume_fuel(true);
+    config.gc_support(false);
     wasmtime::Engine::new(&config).map_err(|e| RunError::Engine(e.to_string()))
 }
 
@@ -227,12 +297,15 @@ pub enum RunError {
     #[error("failed to encode the scenario JSON: {0}")]
     Encode(String),
     /// The submission module failed to load (compile/instantiate/missing export).
-    #[error("submission failed to load: {0}")]
-    Load(#[source] LoadError),
+    /// [`LoadError`] names the submission itself, so this layer adds no second
+    /// subject or verb.
+    #[error(transparent)]
+    Load(LoadError),
     /// The submission failed during its single `simulate` call (trap, fuel/memory
-    /// exhaustion, bad region, or malformed `state` JSON).
-    #[error("submission failed during the run: {0}")]
-    Invoke(#[source] InvokeError),
+    /// exhaustion, bad region, or malformed `state` JSON). [`InvokeError`] names the
+    /// submission itself, so this layer adds no second subject or verb.
+    #[error(transparent)]
+    Invoke(InvokeError),
 }
 
 #[cfg(test)]

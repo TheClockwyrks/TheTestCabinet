@@ -1,0 +1,207 @@
+# Wireworm — Screens, the HUD, and audio
+
+This file defines the six screens the game moves between, what each shows, the
+three HUD readouts, and the ten audio cues. The keys the screens are driven by
+are in `specs/controls.md`, and the run the `playing` screen carries is in
+`specs/progression.md`. Every piece of screen copy below carries the name this
+specification gives it.
+
+Every piece of text a screen shows is legible against whatever sits behind it at
+the logical stage size, `1280 x 720`. The palette, the type, and the layout of
+each screen are yours.
+
+## The screens
+
+The game is on exactly one of six screens at a time.
+
+| Screen | What it is |
+| --- | --- |
+| `title` | The main menu, and where the game opens. |
+| `howto` | How to play. |
+| `playing` | Live play, in the three phases `specs/progression.md` states. |
+| `paused` | The pause menu, over the frozen board. |
+| `victory` | The run was won. |
+| `gameover` | The run was lost. |
+
+### `title`
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `WIREWORM` |
+| Tagline | `TAGLINE_TEXT` | `CUT THE CURRENT` |
+| Menu | `TITLE_ITEMS` | `DESCEND`, `HOW TO PLAY`, in that order |
+
+The menu's items are stacked one above the next under the title and tagline. The
+highlighted item is drawn distinctly from the others, so a player always sees
+which item `confirm` would take, and the highlight rests on the first item when
+the game opens. `confirm` takes the highlighted item:
+
+| Item | Does |
+| --- | --- |
+| `DESCEND` | Opens a new run, as `specs/progression.md` states, and moves to `playing`. |
+| `HOW TO PLAY` | Moves to `howto`. |
+
+`back` does nothing on this screen. The board may show behind the menu, dimmed or
+otherwise quieted, if that suits the look you design.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It
+covers:
+
+- the goal, which is to cut every worm segment before one reaches the band;
+- that a node the worm is turned by gains charge, and that a fully charged node
+  detonates when it is shot and arcs through the charged cluster around it;
+- that a critical node the worm reaches sends the worm diving straight down;
+- that every segment cut by a bolt leaves a node behind, so the field thickens;
+- the three foes and what each does to the field;
+- the controls.
+
+The controls it names include the fire key, written as the standalone word
+`SPACE`, and the movement keys, written as the standalone words `ARROWS` and
+`WASD`.
+
+`back` returns to `title`, with the title's highlight on `HOW TO PLAY`.
+
+### `playing`
+
+The live board. It shows every node at its own charge, every worm, every foe,
+every bolt in flight, the arcs of a live discharge, and the cursor inside its
+band, together with the HUD bar above. During the `banner` phase it also shows
+the level's banner, naming the level about to be played, over the board.
+
+### `paused`
+
+Reached by `pause` during live play. The board stays visible behind the menu and
+is frozen: no worm steps, no foe moves, no bolt travels, and no phase timer runs,
+so nothing on the board raises a cue and a paused game is exactly where it was
+when it was paused.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `PAUSE_ITEMS` | `RESUME`, `RESTART`, `QUIT TO MENU`, in that order |
+
+| Item | Does |
+| --- | --- |
+| `RESUME` | Returns to `playing` with the board and the run exactly as they were. |
+| `RESTART` | Opens a new run, at level `1` with `START_LIVES` lives and a score of `0`, and moves to `playing`. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight on `DESCEND`. |
+
+`back` and `pause` on this screen each do what `RESUME` does. They are read
+before the menu edges, and a frame carrying either resumes and does nothing
+else.
+
+### `victory` and `gameover`
+
+Both end screens carry the same menu, `ENDING_ITEMS`: `PLAY AGAIN`, then `MENU`.
+
+| Screen | Shows |
+| --- | --- |
+| `victory` | The final score, that all `TOTAL_LEVELS` (`12`) levels were cleared, and the lives remaining. |
+| `gameover` | The final score and the level the run reached. |
+
+| Item | Does |
+| --- | --- |
+| `PLAY AGAIN` | Opens a new run, at level `1` with `START_LIVES` lives and a score of `0`, and moves to `playing`. |
+| `MENU` | Returns to `title`, with the title's highlight on `DESCEND`. |
+
+## Pointer and touch on the menus
+
+Every screen showing a menu answers to a pointer and to touch as well as to the
+keyboard: `title`, `paused`, and the two end screens over their shared
+`ENDING_ITEMS`. The `howto` screen shows no menu and answers to `back` alone.
+
+Each menu item occupies a rectangular hit region you lay out.
+`specs/instrumentation.md` states the reading the build reports an item's region
+through, in logical stage units, so the menus keep the layout you designed.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | `menuIndex` becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | `menuIndex` becomes that item's index. |
+| A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+| A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+
+A confirm requires both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+falling in different regions confirm no item, and so does an edge falling
+outside every region. The item a confirm acts on is the item at `menuIndex`
+whichever input raised it, and its effect is the one this file's table for that
+screen gives `confirm`.
+
+The pointer and the touch contacts are read once per frame, in the same input
+read as the keyboard actions, and are applied after that frame's keyboard edges.
+A press and the release that follows it may arrive on one frame, and that frame
+confirms. A frame carrying a keyboard `up` or `down` edge together with a
+pointer or a touch selection leaves `menuIndex` at the item the pointer or the
+contact named. A frame carrying a keyboard `confirm` edge together with a
+pointer or a touch confirm confirms the keyboard's item alone. A pointer and a
+touch contact drive the menus directly rather than through an action.
+
+## The HUD
+
+The HUD bar carries three readouts, all of them inside the bar's own region as
+`specs/board.md` states.
+
+| Readout | Shows |
+| --- | --- |
+| Score | The running score, as digits. It is the most prominent of the three. |
+| Lives | The lives remaining, as a row of icons or as a count. |
+| Level | `HUD_LEVEL_LABEL` (`LEVEL`), the current level's digits beside it, and `TOTAL_LEVELS` (`12`) on the bar as well. |
+
+How the level readout is composed around those three parts is yours. Nothing else
+is required on the bar, and a further readout of your own is welcome there.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, synthesizing its sounds with
+the Web Audio API rather than loading audio files. Define and play exactly the
+ten cues below, under exactly these names, one per event.
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus. Define and play exactly the ten cues in
+`CUES`, under exactly these names, one per event.
+{{else}}
+Audio plays through the engine's cue bus: define exactly the ten cues in `CUES`
+from the game instance's `initialize` and play them from the world's audio inside
+a tick, under exactly these names, one per event.
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `fire` | `CUES.fire` | A bolt is fired. |
+| `cut` | `CUES.cut` | A bolt destroys a worm segment. |
+| `discharge` | `CUES.discharge` | A detonation's chain runs. |
+| `critical` | `CUES.critical` | A node reaches charge `3`. |
+| `foe` | `CUES.foe` | A foe is destroyed. |
+| `life` | `CUES.life` | A life is lost. |
+| `level-clear` | `CUES.levelClear` | A level clears. |
+| `victory` | `CUES.victory` | The `victory` screen opens. |
+| `game-over` | `CUES.gameOver` | The `gameover` screen opens. |
+| `menu` | `CUES.menu` | A menu highlight moves. |
+
+Each is a distinct short sound, so the ten events are told apart by ear. Each is
+played on the frame its event happens and at most once on that frame; a frame
+that raises more than one of them plays each of those once.
+
+{{#if (eq engine.slug "none")}}
+Muting is yours as well, and the `mute` action toggles it from any screen. While
+sound is muted every cue is silent and the game stays fully playable. Audio does
+not start until the player has interacted with the page, and a build whose audio
+cannot start still runs and still plays.
+{{else}}
+Muting and the first-interaction unlock belong to the engine. The game binds the
+`mute` action to the engine's mute bit and toggles it from any screen. While
+sound is muted every cue is silent and the game stays fully playable.
+{{/if}}
+
+## Out of scope
+
+- Network or online play.
+- Gamepad input.
+- Pointer and touch control of play. The cursor is driven from the keyboard, and
+  the menus are what answer to a pointer and to touch.
+- Persistence of progress, scores, or settings between sessions. Each session
+  starts fresh.
+- Power-ups, weapon upgrades, or a shop. The cursor's one weapon is the upward
+  bolt.

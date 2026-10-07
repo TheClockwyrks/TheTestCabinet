@@ -43,7 +43,7 @@
   font-size: t.$font-lg;
   font-variant-numeric: tabular-nums;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 // Cancels the value's glow on missing figures. Tile text stays panel-bound, so
@@ -51,4 +51,78 @@
 .muted {
   color: t.$color-text-muted;
   text-shadow: none;
+}
+
+// The billed-vs-list difference under a price figure: smaller than the figure
+// itself, in the same accent when the two genuinely differ.
+.statDelta {
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-accent;
+  @include h.halo-glow;
+}
+
+// The line under an accuracy ring qualifying its figures (run counts, and how
+// many predate the exact counters). Muted — it qualifies a figure rather than
+// being one.
+.accuracyNote {
+  margin: t.$space-sm 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The provider candidate list: one row per provider, in the order a run tries
+// them.
+.tableWrap {
+  overflow-x: auto;
+}
+
+.candidates {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+
+  th,
+  td {
+    padding: t.$space-xs t.$space-sm;
+    text-align: left;
+    border-bottom: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 55%, transparent);
+  }
+
+  th {
+    color: t.$color-text-muted;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// Marks the developer's own endpoint beside its provider name.
+.developer {
+  margin-left: t.$space-sm;
+  padding: 0 t.$space-xs;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+}
+
+// Why a gg run of the model would be refused: the filter that emptied the list.
+.refusal {
+  margin: 0 0 t.$space-sm;
+  padding: t.$space-sm t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-negative;
+  background: s.$panel-bg;
+  color: t.$color-text;
 }

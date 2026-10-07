@@ -1,0 +1,128 @@
+// Meltdown — screens/mode-descriptions-before-choosing: each mode reads
+// differently before it is chosen.
+//
+// THE RULE. specs/screens.md, `modeselect`: "Each mode's description is readable
+// before it is chosen: moving the highlight across the five rows draws a
+// different body of text for each, describing what that mode is and what it
+// changes, and moving the highlight starts nothing."
+//
+// WHAT A SCRIPT CAN DECIDE HERE. Whether a description is a good description is a
+// reviewer's judgement and no check's. What the specification states in figures a
+// script can read is that there is a body of text BESIDE the list, and that it is
+// a DIFFERENT body for each of the five rows — so a build that draws one blurb
+// for every mode, or draws none at all, is caught, and a build that describes all
+// five differently passes whatever words it chose.
+//
+// THE ROW NAMES ARE TAKEN OUT OF THE READING FIRST. The list itself is drawn on
+// every one of the five frames, and a build free to decorate its highlighted row
+// (`> BOTTLENECK`) or to repeat the chosen name as a heading would make the five
+// frames differ by that alone — which is the highlight, not a description. So
+// every run carrying one of the `MODE_ITEMS` names is dropped, and what is
+// compared is the text that is left. A run is the LOGICAL one the screen spells
+// (`readScreen`), and the merge behind it is verbatim: a row's name and a
+// description drawn on its baseline a space along come back as ONE run naming
+// the mode, which would drop the description with the name. So a run that names
+// a mode is read as the spans it was spelled from, and the spans that name no
+// mode are the body — exactly what the reading was call by call.
+//
+// AND IT MUST BE THERE AT ALL. Each of the five frames must leave a non-empty
+// body behind, so a build that draws a blurb for one mode and nothing for the
+// rest fails naming the row it drew nothing for.
+//
+// MOVING THE HIGHLIGHT STARTS NOTHING, which is read on every one of the five
+// rows: the screen must still be `modeselect` after each. This is the half of the
+// rule that keeps a build from opening a run as the highlight passes over a mode.
+//
+// THE ROW IS POSED, NOT WALKED. `setMenuIndex` sets the highlighted row outright
+// (specs/instrumentation.md), so a build whose arrow keys are broken still gets a
+// fair reading of its descriptions; those keys are `controls.menu-down` and
+// `controls.menu-up`.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+} from "../assert";
+import { MODE_ITEMS } from "../constants";
+import { captureStill, createHarness, resetTo, type Harness } from "../harness";
+import { readScreen } from "./menu";
+
+/**
+ * The least the body beside the list may hold: one run of text.
+ *
+ * specs/screens.md asks for "a different body of text" per row and fixes not one
+ * thing about how long it is or how it is broken into lines, so the floor is
+ * simply that something was drawn.
+ */
+const MIN_BODY_RUNS = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+/** Whether a run of text is one of the list's own rows rather than the body. */
+function namesAMode(text: string): boolean {
+  const upper = text.trim().toUpperCase();
+  return MODE_ITEMS.some((item) => upper.includes(item));
+}
+
+/**
+ * The rows a description is read on: the five that name a mode.
+ *
+ * `BACK` is the sixth row of `MODE_ITEMS` and is excluded, because
+ * specs/screens.md says of it that it "names no mode and draws no description".
+ */
+const MODE_ROWS: readonly { index: number; item: string }[] =
+  MODE_ITEMS.flatMap((item, index) =>
+    item === "BACK" ? [] : [{ index, item }],
+  );
+
+it("draws a different body of text for each of the five modes, and starts none of them", async () => {
+  resetTo(h);
+  h.debug.setScreen("modeselect");
+
+  const bodies: string[][] = [];
+  for (const [leg, { index, item }] of MODE_ROWS.entries()) {
+    h.debug.setMenuIndex(index);
+    const runs = await readScreen(h);
+    if (leg === 0) captureStill(h, "description");
+
+    assertEqual(
+      h.snapshot().screen,
+      "modeselect",
+      `the screen after the highlight moved onto ${item}: moving it starts nothing`,
+    );
+
+    const body = runs
+      .flatMap((run) =>
+        namesAMode(run.text) ? run.parts.map((part) => part.text) : [run.text],
+      )
+      .map((text) => text.trim())
+      .filter((text) => text.length > 0 && !namesAMode(text));
+    assertGreaterThanOrEqual(
+      body.length,
+      MIN_BODY_RUNS,
+      `runs of text drawn beside the list describing ${item}`,
+    );
+    bodies.push(body);
+  }
+
+  const rendered = bodies.map((body) => [...body].sort().join("\n"));
+  for (const [leg, { item }] of MODE_ROWS.entries()) {
+    for (const [other, { item: otherItem }] of MODE_ROWS.entries()) {
+      if (other <= leg) continue;
+      assertNotEqual(
+        rendered[leg],
+        rendered[other],
+        `the body of text drawn for ${item} differs from the one drawn for ${otherItem}`,
+      );
+    }
+  }
+});

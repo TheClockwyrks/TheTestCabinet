@@ -1,9 +1,9 @@
 # Foray Soldier — drawing brief
 
-You are drawing the **Foray soldier**, an animated **sprite sheet** for *Foray*,
+You are drawing the **Foray soldier**, an animated **sprite sheet** for _Foray_,
 a top-down ant-colony raiding game. Two colonies raid each other's territory for
 seeds and royal jelly; the **soldier is the defender** — the heavy, armored
-caste that guards the nest and tags intruders. You are drawing the *defender*,
+caste that guards the nest and tags intruders. You are drawing the _defender_,
 the same sprite for either colony (see **Palette** for why it is drawn in
 neutral grey). It must read as **walking**: the renderer plays a short walk
 cycle as the soldier moves, so you are drawing animation frames, not four still
@@ -19,12 +19,12 @@ poses.
   sheet has **16 frames, numbered 0–15**: a **four-step walk cycle** in each of
   **four facings**, laid out facing-major.
 
-  | Frames | Facing | Role |
-  | --- | --- | --- |
-  | 0, 1, 2, 3 | **down** (toward the bottom of the screen) | walk steps 1–4 |
-  | 4, 5, 6, 7 | **up** | walk steps 1–4 |
-  | 8, 9, 10, 11 | **left** | walk steps 1–4 |
-  | 12, 13, 14, 15 | **right** | walk steps 1–4 |
+  | Frames         | Facing                                     | Role           |
+  | -------------- | ------------------------------------------ | -------------- |
+  | 0, 1, 2, 3     | **down** (toward the bottom of the screen) | walk steps 1–4 |
+  | 4, 5, 6, 7     | **up**                                     | walk steps 1–4 |
+  | 8, 9, 10, 11   | **left**                                   | walk steps 1–4 |
+  | 12, 13, 14, 15 | **right**                                  | walk steps 1–4 |
 
 - Within a facing the four frames are **one walk cycle**, played in order and
   looping (after the 4th comes the 1st again). The four facings are the same
@@ -77,13 +77,13 @@ This sprite is **recolored per colony at runtime by a palette swap**, so you
 draw it **once in a neutral grey ramp** — never in red or blue. Use only these
 colors:
 
-| Role | Hex | Notes |
-| --- | --- | --- |
-| Body, darkest | `#3a3a3a` | recolorable — becomes the colony's dark tone |
-| Body, mid | `#6a6a6a` | recolorable — the main body fill |
-| Body, light | `#9a9a9a` | recolorable — the leading-edge highlight |
-| Head / mandibles accent | `#cccccc` | recolorable — the brightest body color |
-| Outline | `#0a0806` | fixed dark outline; not recolored |
+| Role                    | Hex       | Notes                                        |
+| ----------------------- | --------- | -------------------------------------------- |
+| Body, darkest           | `#3a3a3a` | recolorable — becomes the colony's dark tone |
+| Body, mid               | `#6a6a6a` | recolorable — the main body fill             |
+| Body, light             | `#9a9a9a` | recolorable — the leading-edge highlight     |
+| Head / mandibles accent | `#cccccc` | recolorable — the brightest body color       |
+| Outline                 | `#0a0806` | fixed dark outline; not recolored            |
 
 The four `#3a3a3a`/`#6a6a6a`/`#9a9a9a`/`#cccccc` greys are the **recolorable
 ramp** — at draw time they are remapped to the colony's red or blue ramp, so the

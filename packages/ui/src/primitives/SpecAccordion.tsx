@@ -13,6 +13,15 @@ export interface AccordionEntry {
   kind?: string;
   /** The content revealed when the entry is expanded. */
   body: ReactNode;
+  /**
+   * Whether the entry starts expanded. Defaults to false — a stack of seeded
+   * files is scannable precisely because it starts closed — but a caller with
+   * one entry the visitor demonstrably came for (the changelog entry of the
+   * page's anchored version) opens that one so the reader is not made to hunt
+   * for it. Read on mount only; a caller whose "came for" entry can change must
+   * remount the accordion (key it) for the new choice to take.
+   */
+  initiallyOpen?: boolean;
 }
 
 interface SpecAccordionProps {
@@ -22,9 +31,10 @@ interface SpecAccordionProps {
 }
 
 // A stack of collapsible, full-width panels — one per seeded file or reference
-// image. Every entry starts collapsed and expands in place, so the whole set is
-// scannable by path and each one opens to the full content width. Shared by the
-// Specifications and References surfaces so both read identically.
+// image. Every entry starts collapsed (unless it opts in via `initiallyOpen`)
+// and expands in place, so the whole set is scannable by path and each one opens
+// to the full content width. Shared by the Specifications and References
+// surfaces so both read identically.
 export function SpecAccordion({ entries, emptyLabel }: SpecAccordionProps) {
   if (entries.length === 0) {
     return <p className={styles.empty}>{emptyLabel}</p>;
@@ -43,7 +53,7 @@ export function SpecAccordion({ entries, emptyLabel }: SpecAccordionProps) {
 // path on the left and the kind on the right; the body is whatever the caller
 // rendered (prose, a code block, or an image).
 function AccordionItem({ entry }: { entry: AccordionEntry }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(entry.initiallyOpen ?? false);
 
   return (
     <li className={open ? `${styles.item} ${styles.itemOpen}` : styles.item}>

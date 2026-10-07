@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { Rating } from "../../ratings";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { AestheticRating, Rating } from "../../ratings";
 import { runSummaryPage } from "./runQuery";
 
 // A summary card carrying the fields the query reads. Every non-supplied field
@@ -18,6 +18,9 @@ function summary(
     tokens?: number | null;
     cost?: number | null;
     rating?: Rating | null;
+    aesthetic?: AestheticRating | null;
+    ggPreset?: string | null;
+    ggConfigId?: string | null;
   } = {},
 ): RunSummary {
   const tokens = fields.tokens === undefined ? 100 : fields.tokens;
@@ -34,6 +37,8 @@ function summary(
       harnessSlug: fields.harness ?? "claude",
       harnessVersion: "1",
       modelId: fields.model ?? "anthropic/claude",
+      ggPreset: fields.ggPreset ?? null,
+      ggConfigId: fields.ggConfigId ?? null,
     },
     caseName: fields.testCase ?? "carom",
     metrics: {
@@ -52,6 +57,7 @@ function summary(
     validationLoaded: true,
     state: "completed",
     rating: fields.rating === undefined ? "great" : fields.rating,
+    aesthetic: fields.aesthetic ?? null,
     reviewCount: 0,
     links: { sourceRepo: null, playableBuild: null },
   } as unknown as RunSummary;
@@ -115,6 +121,67 @@ describe("runSummaryPage", () => {
     expect(runSummaryPage(runs, { version: "" }).total).toBe(3);
   });
 
+  // Mirrors the backend's `list_summaries_filters_by_a_test_cases_list`.
+  it("filters by a testCases list, ANDing it with the single testCase", () => {
+    // The home page's group-leaderboard slice: one query covers a test-case
+    // group's member cases; any of them matches.
+    const runs = [
+      summary("a", { testCase: "pong" }),
+      summary("b", { testCase: "meltdown" }),
+      summary("c", { testCase: "valence" }),
+    ];
+    expect(
+      ids(runSummaryPage(runs, { testCases: ["pong", "valence"] })).sort(),
+    ).toEqual(["a", "c"]);
+    // It ANDs with `testCase` — naming both narrows to their intersection, the
+    // written-down semantic the backend implements too…
+    expect(
+      ids(
+        runSummaryPage(runs, {
+          testCase: "pong",
+          testCases: ["pong", "valence"],
+        }),
+      ),
+    ).toEqual(["a"]);
+    // …which can be empty when the single case is not in the list.
+    expect(
+      runSummaryPage(runs, { testCase: "meltdown", testCases: ["pong"] }).total,
+    ).toBe(0);
+    // An empty list is no filter at all, like the empty `versions` list.
+    expect(runSummaryPage(runs, { testCases: [] }).total).toBe(3);
+  });
+
+  // Mirrors the backend's `list_summaries_test_cases_list_composes_with_latest_versions`.
+  it("the testCases list composes with latestVersions", () => {
+    // Unlike the explicit `versions` list, the case list carries no version
+    // instruction, so `latestVersions` still narrows each member to its current
+    // `major.minor`.
+    const runs = [
+      summary("a", { testCase: "pong", version: "v1.0.0" }),
+      summary("b", { testCase: "pong", version: "v2.0.0" }),
+      summary("c", { testCase: "meltdown", version: "v1.0.0" }),
+    ];
+    expect(
+      ids(runSummaryPage(runs, { testCases: ["pong"], latestVersions: true })),
+    ).toEqual(["b"]);
+  });
+
+  // Mirrors the backend's
+  // `list_summaries_filters_by_aesthetic_and_unrated_runs_never_match`.
+  it("filters by aesthetic, and unrated runs never match", () => {
+    const runs = [
+      summary("a", { aesthetic: "legendary" }),
+      summary("b", { aesthetic: "slop" }),
+      // `c` carries no aesthetic rating at all: null matches no tier.
+      summary("c", { aesthetic: null }),
+    ];
+    expect(ids(runSummaryPage(runs, { aesthetic: "legendary" }))).toEqual([
+      "a",
+    ]);
+    expect(ids(runSummaryPage(runs, { aesthetic: "slop" }))).toEqual(["b"]);
+    expect(runSummaryPage(runs, {}).total).toBe(3);
+  });
+
   it("latestVersions keeps each case's current major.minor", () => {
     const runs = [
       summary("a", { testCase: "carom", version: "v1.0.0" }),
@@ -172,7 +239,11 @@ describe("runSummaryPage", () => {
         harness: "amp",
         variant: "hard",
       }),
-      summary("c", { testCase: "meltdown", model: "openai/o1", harness: "codex" }),
+      summary("c", {
+        testCase: "meltdown",
+        model: "openai/o1",
+        harness: "codex",
+      }),
     ];
     expect(ids(runSummaryPage(runs, { q: "CLAUDE" }))).toEqual(["a"]);
     expect(ids(runSummaryPage(runs, { q: "hard" }))).toEqual(["b"]);
@@ -180,10 +251,100 @@ describe("runSummaryPage", () => {
     expect(runSummaryPage(runs, { q: "  " }).total).toBe(3);
   });
 
+  it("free-text q matches a gg run's configuration name", () => {
+    const runs = [
+      summary("a", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-A",
+      }),
+      summary("b", { harness: "gg", model: "mock/echo", ggPreset: null }),
+      // The guard is on the HARNESS: a non-gg run carrying a preset somehow is
+      // still only findable by its model, mirroring the backend's lift.
+      summary("c", { harness: "claude", model: "m", ggPreset: "planning-A" }),
+    ];
+    expect(ids(runSummaryPage(runs, { q: "PLANNING" }))).toEqual(["a"]);
+    expect(ids(runSummaryPage(runs, { q: "mock/echo" })).sort()).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("ggConfigId selects one configuration's runs by its id", () => {
+    const runs = [
+      // Two configurations carrying one name, and one of `cfg-a`'s runs recorded
+      // before it was renamed. Only the id tells the three apart.
+      summary("mine", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-A",
+        ggConfigId: "cfg-a",
+      }),
+      summary("renamed", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-old",
+        ggConfigId: "cfg-a",
+      }),
+      summary("theirs", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-A",
+        ggConfigId: "cfg-b",
+      }),
+      // Assembled by hand: no configuration, so no configuration's listing.
+      summary("hand", { harness: "gg", model: "mock/echo" }),
+      // The guard is on the HARNESS, mirroring the backend's lift: a non-gg card
+      // carrying an id somehow is still filed under no configuration.
+      summary("impostor", { harness: "claude", ggConfigId: "cfg-a" }),
+    ];
+    expect(ids(runSummaryPage(runs, { ggConfigId: "cfg-a" })).sort()).toEqual([
+      "mine",
+      "renamed",
+    ]);
+    expect(ids(runSummaryPage(runs, { ggConfigId: "cfg-b" }))).toEqual([
+      "theirs",
+    ]);
+    // What the name answers instead, which is why a cell links by the id: it
+    // crosses the two configurations and misses the run recorded under the old
+    // name.
+    expect(ids(runSummaryPage(runs, { q: "planning-A" })).sort()).toEqual([
+      "mine",
+      "theirs",
+    ]);
+    // An empty id is ignored, like the other equality filters.
+    expect(runSummaryPage(runs, { ggConfigId: "" }).total).toBe(5);
+  });
+
+  it("sorts model by the gg configuration where there is one", () => {
+    // By model id the gg rows would lead in the order a/b; by the identity the
+    // cell shows they are `zeta`, `alpha`, and the preset-less run falls back.
+    const runs = [
+      summary("a", { harness: "gg", model: "mock/echo", ggPreset: "zeta" }),
+      summary("b", { harness: "gg", model: "mock/echo", ggPreset: "alpha" }),
+      summary("hand", { harness: "gg", model: "mock/echo", ggPreset: null }),
+      summary("c", { harness: "claude", model: "sonnet" }),
+    ];
+    expect(ids(runSummaryPage(runs, { sort: "model", dir: "asc" }))).toEqual([
+      "b",
+      "hand",
+      "c",
+      "a",
+    ]);
+    expect(ids(runSummaryPage(runs, { sort: "model", dir: "desc" }))).toEqual([
+      "a",
+      "c",
+      "hand",
+      "b",
+    ]);
+  });
+
   it("non-published state matches nothing (site holds only published)", () => {
     const runs = [summary("a"), summary("b")];
     expect(runSummaryPage(runs, { state: "review" }).total).toBe(0);
-    expect(runSummaryPage(runs, { state: "unpublished" }).summaries).toEqual([]);
+    expect(runSummaryPage(runs, { state: "unpublished" }).summaries).toEqual(
+      [],
+    );
     expect(runSummaryPage(runs, { state: "published" }).total).toBe(2);
     // `any` is the published + unpublished union, and the static index is entirely
     // published — so it collapses to the published slice rather than matching none.
@@ -241,11 +402,25 @@ describe("runSummaryPage", () => {
       summary("b", { testCase: "carom" }),
       summary("c", { testCase: "meltdown" }),
     ];
-    expect(ids(runSummaryPage(runs, { sort: "testCase", dir: "asc" }))).toEqual([
-      "b",
-      "c",
-      "a",
-    ]);
+    expect(ids(runSummaryPage(runs, { sort: "testCase", dir: "asc" }))).toEqual(
+      ["b", "c", "a"],
+    );
+  });
+
+  it("sorts testCase by the display name the column shows, not the slug", () => {
+    // A `pong` run is shown as Carom; by slug it would trail `meltdown` and
+    // `siege`, by name it leads both.
+    const runs = [
+      summary("a", { testCase: "siege" }),
+      { ...summary("b", { testCase: "pong" }), caseName: "Carom" },
+      summary("c", { testCase: "meltdown" }),
+    ];
+    expect(ids(runSummaryPage(runs, { sort: "testCase", dir: "asc" }))).toEqual(
+      ["b", "c", "a"],
+    );
+    expect(
+      ids(runSummaryPage(runs, { sort: "testCase", dir: "desc" })),
+    ).toEqual(["a", "c", "b"]);
   });
 
   it("sorts cost with NULLs last in either direction", () => {

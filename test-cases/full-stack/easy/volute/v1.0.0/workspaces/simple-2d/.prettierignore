@@ -1,0 +1,13 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, the vendored engine and its documentation, the vendored
+# runtime libraries, the produced asset files, and the supplied specification.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+.vendor/
+package-lock.json
+engine/
+public/
+specs/

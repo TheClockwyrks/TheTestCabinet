@@ -1,0 +1,35 @@
+{
+  "name": "The Test Cabinet (NVIDIA GPU)",
+  // The same container as ../devcontainer.json, with the host's NVIDIA GPUs.
+  // An editor lists every devcontainer.json under .devcontainer/ and asks
+  // which to reopen in, and `devcontainer up --config` names one, so a host
+  // with a GPU behind its runtime picks this one and every other host the
+  // default. Everything but the name and the compose files is the default's,
+  // which scripts/check-devcontainer.py holds it to; a change to the default
+  // is made here as well.
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "../docker-compose.nvidia.yml"
+  ],
+  "service": "dev",
+  "workspaceFolder": "/workspaces/the-test-cabinet",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "DavidAnson.vscode-markdownlint",
+        "EditorConfig.EditorConfig",
+        "timonwong.shellcheck",
+        "yzhang.markdown-all-in-one",
+        "aaron-bond.better-comments",
+        "astro-build.astro-vscode"
+      ]
+    }
+  },
+  "forwardPorts": [4321],
+  "portsAttributes": { "4321": { "label": "Documentation site" } },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "bash .devcontainer/post-start.sh",
+  "updateRemoteUserUID": false
+}

@@ -2,7 +2,7 @@
 # Hollowdeep — produce the particle systems with the on-PATH `particle-2d` tool
 # (specs/assets.md, ASSETS.md "Particle systems"). Each op is recorded into a per-effect
 # action log; `render` simulates the system and emits the committed `system.json` (played
-# live at runtime by `@test-cabinet/particle-runtime`). We never bake frames.
+# live at runtime by `@clockwyrks/particle-runtime`). We never bake frames.
 #
 # Four systems on a 128×128 field:
 #   fx/oxygen_haze.system.json   loop  — fine RISING haze, breathable-air overlay

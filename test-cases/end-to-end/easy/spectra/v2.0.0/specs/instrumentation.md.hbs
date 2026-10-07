@@ -1,0 +1,537 @@
+# Spectra — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Spectra carries a debugging and automation surface, `window.__spectra`, so the game
+can be driven and inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__spectra` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a read of the game's state, a pose of one field of it, or a move
+of the clock. A pose arranges the field, and the game's own stepping, contact, band,
+scoring, and stage rules run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Spectra carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as the
+pair `[state, debug]`. The engine returns that same value from `engine.debug`, and it
+is reached that way alone: nothing is installed on the page. Every scenario driven
+from code reaches the game through it, so it is present and exactly as specified
+here.
+
+Each operation is a reading or a pose of `SpectraState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a writable
+one. A pose takes the current state, as `DeepReadonly<SpectraState>`, and returns
+the next `SpectraState`; a reading takes the state the same way and returns what it
+read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setShipBand(s, "magenta"))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+field, and the game's own stepping, contact, band, scoring, and stage rules run from
+there exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand. `src/game.ts` declares and exports its type, `SpectraDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Spectra carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the game
+instance's `initialize` returns the finished surface. The engine holds it and returns
+it from `engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is present
+and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes only
+the parameters its row names, arranges the running game through the same systems play
+uses, and returns nothing; a reading returns plain data built at the call and changes
+nothing. A pose arranges the field, and the game's own stepping, contact, band,
+scoring, and stage rules run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand. `src/game.ts` declares and
+exports its type, `SpectraDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A render-free core
+
+The surface rests on a render-free core. Game state advances from the elapsed time
+the game is handed, independent of a canvas, of the frame loop that measured it, and
+of wall-clock time. Every rate is integrated against the delta time the game is
+given, and every frame is divided into whole sub-steps of at most `SUBSTEP_MAX` as
+`specs/simulation.md` states, so an interval of game time reaches the same state
+however it was divided into frames.
+
+The dependency runs one way: the simulation reads nothing from the renderer. What a
+shot destroys, what a discharge takes, and where a dive goes are all decided from
+the field alone.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and the
+surface carries no operation for either. That layer reports which keys are down and
+draws and toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The surface
+is what takes the game off real time and advances it, through `setAutoStep` and
+`advance` below.
+
+Muting is the other. There is no operation that sets it: `mute` is reached the way a
+player reaches it, through its binding in `specs/controls.md`, and the snapshot
+reports the result.
+{{else}}
+The clock, the keyboard, the audio bus, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the root
+of this repository, and the surface carries no operation for any of them. The engine
+advances the game frame by frame and can take it off real time, it drives the actions
+the game registers, it owns muting, and it draws and toggles the debug overlay.
+
+There is therefore no operation that sets muting: `mute` is reached the way a player
+reaches it, through its binding in `specs/controls.md`, and the snapshot reports the
+result.
+{{/if}}
+
+What the overlay shows is Spectra's, under Diagnostics below.
+
+## Identity
+
+Every drone, every bullet, and every drone-burst carries an `id`: a number, distinct
+among the entities live at any moment, reported by `snapshot` and taken by every
+per-entity operation. Two rules make an id findable without an assignment scheme:
+
+- An entity added through this surface is appended to its roster, so it is the last
+  entry and its id is read from there.
+- An id is never reused while the entity holding it is alive, and an entity keeps its
+  id for its whole life, across every frame and every phase change. A Prism that
+  loses its shell keeps its id.
+
+## The operations
+
+The surface carries `version` (`SPECTRA_DEBUG_VERSION`, `1`), a plain number, and the
+operations below. Values are plain numbers, strings, and booleans, and every `x` and
+`y` the surface takes or reports for an entity is that entity's center in the stage's
+logical units.
+
+An operation applies its effect every time it is called. A pose reaches the value it
+names whatever the game's own rules would have allowed, so it is not clamped to a
+legal alternative and it is never declined; where a row fixes a range, that range is
+the argument's domain rather than an edge to snap to. A call the game has no defined
+state for fails loudly instead, throwing where the caller sees it: an argument that
+is not a finite number, a name outside the set its row lists, a figure outside the
+domain its row fixes, an id no live entity carries, or a field the entity named does
+not have. What no operation here does is refuse quietly, so none of them returns
+having left the state as it was.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation takes the current state, `DeepReadonly<SpectraState>`, as its first
+parameter. A pose returns the next `SpectraState`, built from the one it was handed,
+which it leaves as it was; a reading returns what it read. The signatures below name
+the parameters that follow the state, so `setShipBand(band)` below is
+`setShipBand(state, band)` on the surface and `snapshot()` is `snapshot(state)`.
+{{else if (eq engine.slug "structured-2d")}}
+
+Each operation takes only the parameters its signature names and acts on the live
+game the moment it is called. A pose returns nothing; a reading returns what it read
+and changes nothing.
+{{/if}}
+
+### The core
+
+| Operation | Effect |
+| --- | --- |
+| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
+| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the snapshot reports into agreement with the game as it stands, without advancing anything. |
+| `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows. It changes nothing. |
+
+`reset` restores `screen` to `"title"`, `phase` to `"live"`, `phaseTimer` to `0`,
+`menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `stage` to `1`,
+`resonance` to `0`, and `inversion` to `0`; it empties the drone, bullet, and burst
+rosters and the live discharge; it places the ship at the center of its lane (`640`)
+on the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
+it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`, and
+`ship.contact` back on; it returns the wave's entry, sway, and dive clocks, and the
+gap the next dive waits for, to their fresh-wave values, `diveClock` at `0` and
+`diveGap` at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and
+`challengeHits` to `0`; and it sets `simTime` to `0` and the counter the next
+entity's id is taken from back to the first id, so the same scenario posed after two
+resets reports the same ids both times.
+
+`muted` is left exactly as it stands, because muting is a player preference the
+runtime owns.
+
+`reconcile` brings every value the snapshot reports into agreement with the game as
+it now stands, without advancing anything. `isChallenge`, `droneSpeedScale`,
+`bulletSpeedScale`, `diveGapScale`, and `fluxHold` follow the stage; `dischargeReady`
+follows the resonance; `inversionActive` follows the inversion; `ship.alive` follows
+the phase; and every `effectiveBand`, a Flux's `shimmer`, and a burst's `particles`
+follow the bands, the clocks, and the effects they are read from. After a pose, each
+of them answers for the game as it is now rather than as it was before the pose.
+
+A build that works those out at the call has nothing to do here, and the call changes
+nothing at all. A build that keeps any of them as a stored copy rewrites that copy
+from what it is a copy of.
+
+It moves no clock and runs no system. `simTime` holds, no frame and no sub-step runs,
+no drone flies its entrance, rides the sway, dives, or returns, no bullet travels, no
+contact is tested, no stage clears, no burst ages, and `phaseTimer`, `diveClock`, the
+ship's lockout and cooldown, the inversion, and every drone's band clock all hold. No
+held action is consumed and the generator is not drawn from. It launches no dive,
+releases no drone, destroys nothing, scores nothing, discharges nothing, plays no
+cue, and changes no screen or phase. It moves nothing to make a reading agree either:
+a drone posed away from its slot stays where it was put and reads as it is, and a
+Flux posed past the end of its band window keeps the clock it was given rather than
+flipping its band. Calling it twice leaves the same state as calling it once.
+
+It is never an error, and it may be called on any screen, whether or not the clock is
+held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `SpectraState`, built from the one it was handed,
+which it leaves as it was. A build that works every one of those readings out at the
+call returns a state equal to the one it was given.
+{{/if}}
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer or a touch
+contact selects that item from, as `specs/ui.md` states. It returns `null` on the four
+screens that show no menu, `howto`, `stageIntro`, `inWave`, and `stageCleared`, and
+when `index` names no item of the menu the current screen shows.
+
+{{#if (eq engine.slug "none")}}
+### The clock
+
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. |
+| `advance(seconds, frames)` | Runs whole frames of game time immediately. |
+
+`setAutoStep(false)` stops the frame loop advancing the simulation from the wall
+clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns
+it to running itself, which is how a build starts and how it is played. Drawing is
+unaffected either way: the loop keeps rendering, so the canvas shows the state the
+most recent frame left. It changes no game state.
+
+`advance(seconds, frames)` runs `frames` whole frames covering `seconds` of game
+time, each worth `seconds / frames`, immediately and in order. `frames` defaults to
+`1`. Each is a real frame, the same update the loop runs followed by a render, so the
+game's own rules produce the result and the canvas reflects it.
+
+Every rate in this game is per second and integrated against the frame's delta time,
+and a frame divides into whole sub-steps of at most `SUBSTEP_MAX`, so `advance(1, 1)`
+and `advance(1, 60)` cover the same second of game time and reach the same state.
+
+{{/if}}
+### The screen and the run
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen: `"title"`, `"howto"`, `"stageIntro"`, `"inWave"`, `"paused"`, `"stageCleared"`, or `"gameOver"`. |
+| `setPhase(phase)` | Sets the sub-phase of the `inWave` screen: `"live"` or `"ready"`. |
+| `setPhaseTimer(seconds)` | Sets the seconds left in whichever hold the current screen or phase is running. |
+| `setMenuIndex(n)` | Sets the highlighted item of whatever menu the current screen shows, counted from `0`. |
+| `setScore(n)` | Sets the score. |
+| `setLives(n)` | Sets the lives remaining. |
+| `setStage(n)` | Sets the current stage, a whole number from `1`. |
+| `setExtraLifeAwarded(awarded)` | Sets whether the run's single extra life has already been awarded. Reported as `extraLifeAwarded`. |
+| `setChallengeHits(n)` | Sets how many of the current challenge stage's drones the run has destroyed, a whole number from `0`. It destroys nothing and pays nothing: it is the latch alone, and the bonus belongs to the scoring path. Reported as `challengeHits`. |
+
+`setScore` grants no extra life, whatever boundary it carries the score across: the
+award belongs to the scoring path, and this is a precondition. It also leaves
+`extraLifeAwarded` exactly as it stands, so posing the score down and back up does
+not re-arm the award.
+
+`setStage` spawns nothing and clears nothing. The stage's four derived figures,
+`droneSpeedScale`, `bulletSpeedScale`, `diveGapScale`, and `fluxHold`, and
+`isChallenge` all follow it, since each is derived from the stage.
+
+### The world gates and the dive clock
+
+Four faculties belong to the wave and the stage themselves rather than to any one
+entity. Each has its own gate, each gates one faculty and nothing else, each is on by
+default and restored to on by `reset`, and each is reported by `snapshot`.
+
+| Operation | Gates |
+| --- | --- |
+| `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule, its first group included. Off, the wave's entry clock does not advance and no group is released, so no drone crosses `FIELD_TOP` into the play field unless one is added. That holds for a wave built while the gate is off, whose whole roster waits at its starting points above the field however long the stage runs. A drone already traveling its entrance flies it as usual. |
+| `setDiveLaunching(enabled)` | The assault's own choice of which formation drone dives next, and when. Off, no dive is launched. A drone already diving flies its dive as usual. |
+| `setStageClearing(enabled)` | The live stage's own end-of-stage test, which is the rule `specs/stages.md` states for a standard stage clearing and for a challenge stage ending. Off, no stage clears or ends however the field empties, and nothing else changes: drones are still destroyed, still scored, and still burst as usual. It is reported as `stageClearing`. |
+| `setShipContact(enabled)` | The ship's contact test, which is whether an enemy bullet or a drone body reaching the ship costs a life. Off, the ship still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `ship.contact`. |
+
+The wave carries one clock of its own beside those gates, and the figure that clock
+is racing.
+
+| Operation | Effect |
+| --- | --- |
+| `setDiveClock(seconds)` | Sets the seconds the wave's dive timer has accumulated since its last launch, `0` for none. It launches nothing itself. `specs/swarm.md` states the rule it feeds. The clock advances only while `diveLaunching` is on. It is reported as `diveClock`. |
+| `setDiveGap(seconds)` | Sets the figure the wave's dive clock must reach for the next dive to launch, in seconds. It launches nothing itself, it redraws nothing, and it leaves `diveClock` exactly where it stands; the next launch draws a fresh figure over it, as `specs/swarm.md` states. It is reported as `diveGap`. |
+
+`diveGap` is the wave's own state rather than a figure derived at the read: a fresh
+wave holds `DIVE_FIRST_DELAY`, and each launch returns `diveClock` to `0` and draws
+the next one over it by the rule `specs/swarm.md` states. `snapshot` reports what the
+launcher is actually waiting for, so a caller reads the gap the wave drew rather than
+inferring it from when a dive went.
+
+### The ship and its cannon
+
+| Operation | Effect |
+| --- | --- |
+| `setShipX(x)` | Places the ship's center at `x` along its lane. `x` is within `[SHIP_X_MIN, SHIP_X_MAX]`, the lane's own fixed bounds; the value is placed as given rather than snapped to the nearer end, and a call outside those bounds fails loudly. |
+| `setShipBand(band)` | Sets the ship's band to `"cyan"` or `"magenta"`. It starts no fire lockout: it is the band the ship holds, and `setFireLockout` is what poses the lockout. |
+| `setFireLockout(seconds)` | Sets the seconds of post-flip fire lockout remaining, `0` for none. |
+| `setFireCooldown(seconds)` | Sets the seconds until the ship may fire again, `0` for none. |
+| `setShipContact(enabled)` | The ship's contact gate, stated under The world gates above and repeated here because it is a ship operation. |
+
+There is no operation that flips and no operation that fires. A caller checking the
+flip drives the flip action and reads the band and the lockout back; a caller
+checking firing drives the fire action and reads the bullets that appear; a caller
+that simply wants a bullet in flight places one with `addPlayerBullet`.
+
+### Resonance and the inversion
+
+| Operation | Effect |
+| --- | --- |
+| `setResonance(value)` | Sets the resonance meter, a number from `0` to `RESONANCE_MAX` (`100`). `dischargeReady` follows it. |
+| `setInversion(seconds)` | Sets the seconds of spectral inversion remaining, `0` for none. `inversionActive` follows it. |
+
+There is no operation that discharges. A caller checking the discharge poses the
+meter and drives the discharge action; the wave that follows is the outcome, so
+`discharge.active` and `discharge.radius` are reported and never set.
+
+### The drones
+
+A drone is built one field at a time, so no operation takes a layout.
+
+| Operation | Effect |
+| --- | --- |
+| `addDrone(kind, x, y)` | Adds one drone of `kind` (`"shard"`, `"flux"`, or `"prism"`) with its center at a logical stage position. It is appended to the drone roster and takes a fresh id. Its band is `"cyan"`, its phase `"formation"`, its slot the position it was placed at, its band clock `0`, its shell intact,{{#if (eq variant.slug "overload")}} its charge `0`,{{/if}} and all three of its faculties on. |
+| `setDronePosition(id, x, y)` | Places the drone's center at a logical stage position. |
+| `setDroneBand(id, band)` | Sets the drone's stored band, on every kind. For a Prism it is the shell's band, and the core's is always the opposite. For a Flux it is the band the drone is holding, or, mid-shimmer, the one it is leaving. It moves the band and nothing else: `bandClock` stays exactly where it stands. |
+| `setDronePhase(id, phase)` | Sets the phase: `"entering"`, `"formation"`, `"diving"`, or `"returning"`. |
+| `setDroneSlot(id, x, y)` | Sets the center of the drone's resting formation slot. |
+| `setDroneBandClock(id, seconds)` | Sets how far a Flux is into its current band window, in seconds from `0`. The figure is taken as given, whatever `fluxWindow(stage)` is at the time, so a clock posed past the end of the window stays where it was put until the oscillation reaches it. It moves the clock and nothing else: `shimmer` follows it, and `band` does not change. A Shard and a Prism have no band window to be in, so calling this on either of those fails loudly rather than passing quietly. |
+| `setDroneShell(id, intact)` | Sets whether a Prism's outer shell stands. A Shard and a Flux have no shell, so calling this on either of those fails loudly rather than passing quietly. |
+{{#if (eq variant.slug "overload")}}
+| `setDroneCharge(id, charge)` | Sets the drone's charge, a whole number from `0` to `OVERLOAD_AT` (`3`). |
+{{/if}}
+| `setDroneTravel(id, enabled)` | Gates the drone's locomotion alone: its advance along an entrance path, its ride on the formation sway, its dive, and its return. Off, it holds its exact center and keeps its phase; nothing is cancelled, completed, or resolved early. Its band clock and its firing run on. |
+| `setDroneOscillation(id, enabled)` | Gates a Flux's band clock alone. Off, the Flux holds whichever band or shimmer it is in indefinitely. Its travel and its firing run on. Every drone reports and accepts this gate; on a Shard or a Prism it gates nothing. |
+| `setDroneFire(id, enabled)` | Gates the drone's firing alone: the shots it takes during a dive. Off, it flies its whole dive silent. Its travel and its band clock run on. |
+| `removeDrone(id)` | Removes the drone with that id. |
+| `clearDrones()` | Removes every drone, leaving the bullets and bursts standing. |
+
+A drone's `band` and its `bandClock` are two independent fields, and each has exactly
+one setter. `setDroneBand` is the only thing that writes the stored band, and
+`setDroneBandClock` is the only thing that writes the position inside the current
+band window, and it writes the seconds it is handed rather than a figure trimmed to
+the window. The oscillation runs the clock forward, and when it reaches
+`fluxWindow(stage)` the Flux flips `band` and returns the clock to `0`, as
+`specs/drones.md` states.
+
+### The bullets
+
+One roster holds both kinds, told apart by `friendly`. Ids are unique across the
+whole roster.
+
+| Operation | Effect |
+| --- | --- |
+| `addPlayerBullet(x, y, band)` | Adds one of the player's bullets in flight, its center at a logical stage position, traveling straight up at `PLAYER_BULLET_SPEED`, carrying `band`. It is appended to the roster with a fresh id and `friendly` true. |
+| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, carrying `band` and traveling straight down at `ENEMY_BULLET_SPEED` multiplied by `bulletSpeedScale(stage)`, the same figure `snapshot().bulletSpeedScale` reports. It is appended with a fresh id and `friendly` false. |
+| `setBulletVelocity(id, vx, vy)` | Sets the bullet's velocity, in logical units per second. |
+| `removeBullet(id)` | Removes the bullet with that id. |
+| `clearPlayerBullets()` | Removes every one of the player's bullets, leaving the enemy bullets, the drones, and the bursts standing. |
+| `clearEnemyBullets()` | Removes every enemy bullet, leaving the player's bullets, the drones, and the bursts standing. |
+
+A bullet's band is fixed for its life. Nothing sets it after the fact; a caller that
+wants the other band places another bullet.
+
+A bullet `addEnemyBullet` places takes that figure on a challenge stage too, whatever
+speed the flyover is running its own fire at.
+
+### The bursts
+
+| Operation | Effect |
+| --- | --- |
+| `removeBurst(id)` | Removes the live drone-burst with that id. |
+| `clearBursts()` | Removes every live drone-burst, leaving the drones and bullets standing. |
+
+There is no operation that adds one. A burst is an outcome of a drone being
+destroyed, and the two removals exist so a scenario that has already popped something
+can start its count from an empty roster.
+
+## Snapshot shape
+
+`snapshot` returns exactly this object. Every field an operation can set is present,
+so every operation is verifiable by setting a value and reading it back.
+
+```js
+{
+  version: 1,
+  screen:
+    "title" | "howto" | "stageIntro" | "inWave" | "paused" | "stageCleared" | "gameOver",
+  phase: "live" | "ready",           // the sub-phase of "inWave"
+  phaseTimer: <number>,              // seconds left in the current hold
+  menuIndex: <number>,               // highlighted item, from 0
+  mode: {{#if (eq variant.slug "overload")}}"overload"{{else}}"sortie"{{/if}},
+  stage: <number>,                   // 1 and up
+  isChallenge: <boolean>,            // derived: stage % CHALLENGE_EVERY === 0
+  score: <number>,
+  lives: <number>,
+  extraLifeAwarded: <boolean>,       // the run's one extra life has been paid
+  challengeHits: <number>,           // challenge drones this stage has destroyed
+  resonance: <number>,               // 0..RESONANCE_MAX
+  dischargeReady: <boolean>,         // derived: resonance >= RESONANCE_MAX
+  inversion: <number>,               // seconds of spectral inversion left, 0 for none
+  inversionActive: <boolean>,        // derived: inversion > 0
+  muted: <boolean>,
+  waveEntry: <boolean>,              // the wave's own release of drones runs
+  diveLaunching: <boolean>,          // the assault's own dive choice runs
+  stageClearing: <boolean>,          // the stage's own end-of-stage test runs
+  diveClock: <number>,               // seconds since the wave's last dive launch
+  diveGap: <number>,                 // seconds that clock must reach for the next launch
+  droneSpeedScale: <number>,         // derived from stage
+  bulletSpeedScale: <number>,        // derived from stage
+  diveGapScale: <number>,            // derived from stage
+  fluxHold: <number>,                // derived from stage, in seconds
+  ship: {
+    x: <number>,                     // the ship's CENTER
+    band: "cyan" | "magenta",
+    alive: <boolean>,                // derived: false exactly while phase is "ready"
+    lockout: <number>,               // seconds of post-flip fire lockout left
+    cooldown: <number>,              // seconds until the next shot is allowed
+    contact: <boolean>,              // the ship's contact test runs
+  },
+  discharge: {
+    active: <boolean>,
+    radius: <number>,                // the live wave's radius, in logical units
+  },
+  // Every drone on the field, in roster order.
+  drones: [
+    {
+      id: <number>,
+      kind: "shard" | "flux" | "prism",
+      x: <number>, y: <number>,      // the drone's CENTER
+      band: "cyan" | "magenta",      // its stored band; a Prism's is its SHELL's
+      effectiveBand: "cyan" | "magenta",
+      phase: "entering" | "formation" | "diving" | "returning",
+      slotX: <number>, slotY: <number>,
+      bandClock: <number>,           // seconds into the CURRENT window; 0 on other kinds
+      shimmer: <boolean>,            // a Flux settled on neither band; false otherwise
+      shellAlive: <boolean>,         // a Prism's outer shell stands; true on other kinds
+      travel: <boolean>,
+      oscillation: <boolean>,
+      fire: <boolean>,
+{{#if (eq variant.slug "overload")}}
+      charge: <number>,              // 0..OVERLOAD_AT
+{{/if}}
+    },
+  ],
+  // Every bullet in flight, in roster order.
+  bullets: [
+    {
+      id: <number>,
+      x: <number>, y: <number>,      // the bullet's CENTER
+      vx: <number>, vy: <number>,    // logical units per second
+      band: "cyan" | "magenta",
+      effectiveBand: "cyan" | "magenta",
+      friendly: <boolean>,           // true = the player's, traveling up
+    },
+  ],
+  // Every drone-burst playing, in roster order.
+  bursts: [
+    {
+      id: <number>,
+      x: <number>, y: <number>,      // the burst's CENTER
+      size: <number>,                // the footprint the effect is played at
+      elapsed: <number>,             // seconds into the effect
+      particles: <number>,           // live particles the simulation holds
+    },
+  ],
+  simTime: <number>,                 // accumulated simulation time, in seconds
+}
+```
+
+Every field is read straight off the game's state, so what the snapshot reports is
+what the game holds. The entries built at the call rather than read off a field of
+their own, and the notes that go with them:
+
+- `effectiveBand` is the band an entity currently reads and counts as, by the
+  definition in `specs/bands.md`: the entity's stored `band`, taken as the opposite
+  once for each of the shell being broken, a Flux shimmering, and an inversion being
+  active. A player bullet's `effectiveBand` therefore always equals its `band`, and a
+  stored-cyan Prism with its shell broken, under an inversion, reads cyan.
+- `shimmer` is derived: true exactly while `bandClock >= fluxHold(stage)`, and false
+  on a Shard or a Prism. A Flux mid-shimmer is settled on neither band, and its
+  `effectiveBand` reports the band it is moving toward, so a reader takes the pair
+  rather than the band alone.
+- `isChallenge`, `dischargeReady`, `inversionActive`, `ship.alive`,
+  `droneSpeedScale`, `bulletSpeedScale`, `diveGapScale`, and `fluxHold` are derived
+  at the call from `stage`, `resonance`, `inversion`, and `phase` by the formulas in
+  `specs/stages.md`, `specs/resonance.md`, and `specs/bands.md`. Each follows the
+  operation that sets what it is derived from.
+- A build is free to work any of the entries above out at the read or to keep it as
+  a stored copy of what it follows, and `reconcile` is what brings a stored copy back
+  into agreement after a pose.
+- The four stage-scaled figures are the formulas read at the stage the snapshot was
+  taken at, and nothing else. A challenge stage runs at the stage-1 figures whatever
+  stage it falls on, as `specs/stages.md` states, so on a challenge stage what these
+  four report is the stage's formula rather than the figure the flyover is running
+  at.
+- `mode` names the mode this build ships, which `specs/mode.md` defines.
+- `muted` is the game's copy of the runtime's mute bit, refreshed in every update. No
+  operation sets it; the `mute` action does.
+- `diveClock` is the wave's own dive timer, `diveGap` is the figure that timer must
+  reach for the next dive to launch, `extraLifeAwarded` is the run's one-extra-life
+  latch, and `challengeHits` is the current challenge stage's tally of drones
+  destroyed. All four are plain settable state rather than derived figures, and all
+  four are restored by `reset`. `diveGap` is the wave's alone, so it is a figure the
+  launcher waits on rather than one derived from `stage`: it already carries
+  `diveGapScale(stage)` at the moment it was drawn.
+- `bursts[].particles` is the count the burst's own particle simulation holds at the
+  call.
+- `simTime` accumulates the time the game's sub-steps cover, as
+  `specs/simulation.md` states.
+
+## Diagnostics
+
+The debug overlay is read-only and shows the values the game registers with it as
+diagnostic sources. Register at least:
+
+- the current `screen`, `phase`, and `stage`, and whether the stage is a challenge
+  stage;
+- the score, the lives, the resonance, and whether a discharge is ready;
+- whether a spectral inversion is active and how long is left;
+- the ship's `x`, its band, and its remaining fire lockout;
+- for each drone, its id, its kind, its stored and effective bands, its position, its
+  phase, a Flux's shimmer state, and a Prism's shell state;
+{{#if (eq variant.slug "overload")}}
+- each drone's charge;
+{{/if}}
+- how many bullets are in flight, and how many bursts are playing.
+
+Keep each one short enough to read on a line, and keep every source a pure read, so
+watching the overlay leaves the game exactly as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered sources,
+it is shown and hidden by the backtick key as `specs/controls.md` states, it is off
+when the game starts, and it reads the game without changing it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Spectra's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read, as
+`DeepReadonly<SpectraState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Spectra's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of no
+arguments, called at each read; read the live state at the call, through the world
+the mode holds, so the panel reports the frame being drawn. Drawing the panel and
+toggling it are the engine's.
+{{/if}}

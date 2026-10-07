@@ -2,7 +2,7 @@
 # that populates the deployment's Kubernetes Secrets from Azure Key Vault via the
 # Secrets Store CSI driver + Azure Workload Identity, instead of committing real
 # Secret manifests. Layered onto an environment overlay via its `components:` list
-# (today overlays/azure-prod), so the including overlay's `namespace:` directive
+# (today overlays/prod), so the including overlay's `namespace:` directive
 # retargets these resources to that environment's namespace, exactly as it does the
 # base and the postgres/observability components.
 #

@@ -1,4 +1,4 @@
-import type { DebugScriptResult } from "@test-cabinet/run-record";
+import type { DebugScriptResult } from "@clockwyrks/run-record";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 

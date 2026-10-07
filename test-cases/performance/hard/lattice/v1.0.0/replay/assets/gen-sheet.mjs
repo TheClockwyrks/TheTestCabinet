@@ -3,11 +3,18 @@
 // PNG (`sheet.png`) plus its atlas (`sheet.json`).
 //
 // Unlike Foray's packer, this one does NOT lay frames on a uniform cell grid:
-// Lattice's entities are drawn at different sizes (a 16x16 item icon, a 32x32
-// belt, a 32x64 splitter, a 64x64 inserter, a 96x96 assembler), so the sheet is
+// Lattice's entities are drawn at different sizes (a 32x32 item icon, a 32x32
+// belt, a 32x64 splitter, a 64x64 inserter, a 64x64 furnace, a 96x96 assembler), so the sheet is
 // packed as one ROW PER ENTITY. Each row is as tall as that entity's frame and as
 // wide as its frames laid end to end. That keeps the layout deterministic and the
 // sheet legible when opened by hand — every row is one entity's animation in order.
+//
+// The belt, inserter, and assembler are each drawn across THREE upgrade tiers, so
+// their rows hold every tier's frames end to end (belt 48 = 3x[8 straight + 8
+// curve], inserter 36 = 3x12 swing, assembler 24 = 3x8 craft). The atlas records a
+// `tiers` list per such entity — each tier its own loop frame-indices and rate —
+// so the renderer plays the tier a scenario asks for at that tier's speed. The
+// untiered entities (splitter/source/sink) keep a single flat loop.
 //
 // Every frame comes from `source/<entity>_<index>.png`, the regenerated output of
 // the matching `lattice-*` asset-generation case (see source/README.md). There are
@@ -41,15 +48,132 @@ const CELL = 32;
 // cells in its canonical east orientation (2x1 when rotated to north/south), and
 // an inserter occupies exactly ONE tile despite its 64x64 canvas — its swing arm
 // overhangs, so it is drawn centred on its anchor cell with a negative offset.
+//
+// `frames` is the row's total frame COUNT. A tiered entity also carries `tiers`:
+// one entry per upgrade tier, each with its own playback `fps` and the frame
+// indices of its animated `loop` (and, for the belt, the parallel `curve` loop).
+// The three tiers map to the belt's scenario `tier` (slow/fast/express). The
+// per-tier `fps` come straight from each case's declared sequences.
+
+/** `[start, start+1, …, start+len-1]` — a tier's consecutive frame indices. */
+const seq = (start, len) => Array.from({ length: len }, (_, i) => start + i);
+
 const ENTITIES = [
-  { name: "belt", frames: 8, size: [32, 32], fps: 12, cells: [1, 1], offset: [0, 0], rotatable: true },
-  { name: "splitter", frames: 8, size: [32, 64], fps: 12, cells: [1, 2], offset: [0, 0], rotatable: true },
-  { name: "inserter", frames: 12, size: [64, 64], fps: 12, cells: [1, 1], offset: [-16, -16], rotatable: true },
+  // Three tiers of a straight loop then a curve loop (8 + 8 each). The renderer
+  // picks the tier from the belt's scenario `tier` and the straight/curve set from
+  // the tile shape.
+  {
+    name: "belt",
+    frames: 48,
+    size: [32, 32],
+    cells: [1, 1],
+    offset: [0, 0],
+    rotatable: true,
+    tiers: [
+      { fps: 12, loop: seq(0, 8), curve: seq(8, 8) },
+      { fps: 16, loop: seq(16, 8), curve: seq(24, 8) },
+      { fps: 20, loop: seq(32, 8), curve: seq(40, 8) },
+    ],
+  },
+  {
+    name: "splitter",
+    frames: 8,
+    size: [32, 64],
+    fps: 12,
+    cells: [1, 2],
+    offset: [0, 0],
+    rotatable: true,
+  },
+  // The lane splitter (an "unzipper"): same two-cell footprint and scrolling loop as
+  // the splitter, but it routes each input out to its output's OUTER lane rather than
+  // balancing — a central splitting ridge and two spreader heads that ride outward.
+  //
+  // PROVISIONAL, like the furnace below: `lattice-core` has no lane-splitter entity
+  // yet, so nothing places one and the renderer never resolves this row. Its
+  // `cells`/`offset`/`rotatable` mirror the splitter's (a 1x2 device in its canonical
+  // east orientation), to be verified against `World::footprints()` when the engine
+  // gains the entity — as the non-provisional rows above were.
+  {
+    name: "lane-splitter",
+    frames: 8,
+    size: [32, 64],
+    fps: 12,
+    cells: [1, 2],
+    offset: [0, 0],
+    rotatable: true,
+  },
+  // Three tiers of a 12-frame swing cycle. No engine tier field exists for
+  // inserters yet, so the renderer draws tier 1 until one does; tiers 2-3 are
+  // seeded and ready for it.
+  {
+    name: "inserter",
+    frames: 36,
+    size: [64, 64],
+    cells: [1, 1],
+    offset: [-16, -16],
+    rotatable: true,
+    tiers: [
+      { fps: 12, loop: seq(0, 12) },
+      { fps: 16, loop: seq(12, 12) },
+      { fps: 20, loop: seq(24, 12) },
+    ],
+  },
   // Non-directional: a symmetric square machine with no facing, so the renderer
-  // draws its one sheet as-is and never rotates it.
-  { name: "assembler", frames: 8, size: [96, 96], fps: 8, cells: [3, 3], offset: [0, 0], rotatable: false },
-  { name: "source", frames: 6, size: [32, 32], fps: 8, cells: [1, 1], offset: [0, 0], rotatable: true },
-  { name: "sink", frames: 6, size: [32, 32], fps: 8, cells: [1, 1], offset: [0, 0], rotatable: true },
+  // draws its one sheet as-is and never rotates it. Three tiers of an 8-frame craft
+  // loop; like the inserter, tier 1 is drawn until the engine carries a tier.
+  {
+    name: "assembler",
+    frames: 24,
+    size: [96, 96],
+    cells: [3, 3],
+    offset: [0, 0],
+    rotatable: false,
+    tiers: [
+      { fps: 8, loop: seq(0, 8) },
+      { fps: 11, loop: seq(8, 8) },
+      { fps: 13, loop: seq(16, 8) },
+    ],
+  },
+  {
+    name: "source",
+    frames: 6,
+    size: [32, 32],
+    fps: 8,
+    cells: [1, 1],
+    offset: [0, 0],
+    rotatable: true,
+  },
+  {
+    name: "sink",
+    frames: 6,
+    size: [32, 32],
+    fps: 8,
+    cells: [1, 1],
+    offset: [0, 0],
+    rotatable: true,
+  },
+  // A non-directional 2x2 coal-fired smelter with TWO working STATES rather than
+  // tiers: `off` (frames 0-3) while idle and `smelting` (frames 4-11) while working.
+  // `states` is the untiered analogue of `tiers` — a named loop with its own rate —
+  // and the renderer picks the loop from the furnace's runtime state.
+  //
+  // PROVISIONAL, like the item machine icons below: `lattice-core` has no furnace
+  // entity yet, so nothing ever places one and the renderer never resolves this row.
+  // Its `cells`/`offset`/`rotatable` are the DESIGN INTENT (a 2x2 block anchored at
+  // its top-left, non-directional), to be verified against `World::footprints()`
+  // when the engine gains the furnace — the others above were verified that way.
+  {
+    name: "furnace",
+    frames: 12,
+    size: [64, 64],
+    cells: [2, 2],
+    offset: [0, 0],
+    rotatable: false,
+    states: {
+      off: { fps: 6, loop: seq(0, 4) },
+      smelting: { fps: 12, loop: seq(4, 8) },
+    },
+  },
 ];
 
 // The belt-item icons. NOT an animation and NOT a placed entity: each frame is one
@@ -59,9 +183,17 @@ const ENTITIES = [
 // so a frame index IS the item index carried in a belt's canonical state and the
 // renderer needs no lookup table. `ids` is emitted so the renderer can assert that
 // correspondence instead of trusting it.
+//
+// Frames 0-6 are the seven items the engine carries today. Frames 7-15 are the
+// craftable machines (belt / assembler / inserter, each in three tiers) the items
+// case draws, seeded with PROVISIONAL ids: the engine's recipe phase must append
+// these nine to `prototypes::ITEMS` in this exact order, since the item index is
+// the canonical-bytes contract. The renderer only ever indexes an id the engine
+// actually emits, so the extra icons sit unused until then. Tier 1/2/3 == the belt
+// tier slow/fast/express.
 const ITEMS = {
   name: "items",
-  size: [16, 16],
+  size: [32, 32],
   ids: [
     "iron-ore",
     "iron-plate",
@@ -70,6 +202,20 @@ const ITEMS = {
     "copper-plate",
     "copper-cable",
     "circuit",
+    "transport-belt",
+    "fast-transport-belt",
+    "express-transport-belt",
+    "assembler",
+    "fast-assembler",
+    "express-assembler",
+    "inserter",
+    "fast-inserter",
+    "express-inserter",
+    // Frame 16 — coal, an eighth base material appended AFTER the machines so every
+    // earlier index (the canonical-bytes contract) is unchanged. PROVISIONAL: the
+    // engine's item table stops at 15 today, so it never emits index 16 and the
+    // renderer never indexes this icon until coal is added to `prototypes::ITEMS`.
+    "coal",
   ],
 };
 
@@ -133,22 +279,48 @@ function packRow(row) {
   return rects;
 }
 
-const atlas = { cellSize: CELL, sheet: { width: 0, height: 0 }, entities: {}, items: {} };
+const atlas = {
+  cellSize: CELL,
+  sheet: { width: 0, height: 0 },
+  entities: {},
+  items: {},
+};
 
 for (const row of ROWS) {
   const frames = packRow(row);
   if (row.name === ITEMS.name) {
     atlas.items = { frames, ids: ITEMS.ids };
   } else {
-    atlas.entities[row.name] = {
+    // A tiered/stateful entity's top-level `fps` is its first sub-loop's rate, kept
+    // so a consumer that ignores tiers/states still animates sensibly; `tiers` or
+    // `states` carries the finer loops.
+    const fps =
+      row.fps ?? row.tiers?.[0].fps ?? Object.values(row.states)[0].fps;
+    const entity = {
       frames,
-      fps: row.fps,
+      fps,
       // Every placed entity loops; only the item icons are static.
       loop: true,
       cells: row.cells,
       offset: row.offset,
       rotatable: row.rotatable,
     };
+    if (row.tiers) {
+      entity.tiers = row.tiers.map((t) => ({
+        fps: t.fps,
+        loop: t.loop,
+        ...(t.curve ? { curve: t.curve } : {}),
+      }));
+    }
+    if (row.states) {
+      entity.states = Object.fromEntries(
+        Object.entries(row.states).map(([name, s]) => [
+          name,
+          { fps: s.fps, loop: s.loop },
+        ]),
+      );
+    }
+    atlas.entities[row.name] = entity;
   }
 }
 atlas.sheet = { width: W, height: H };
@@ -214,7 +386,8 @@ function decodePng(buf) {
       else if (filter === 2) v = (v + b) & 0xff;
       else if (filter === 3) v = (v + ((a + b) >> 1)) & 0xff;
       else if (filter === 4) v = (v + paeth(a, b, c)) & 0xff;
-      else if (filter !== 0) throw new Error(`unsupported PNG filter ${filter}`);
+      else if (filter !== 0)
+        throw new Error(`unsupported PNG filter ${filter}`);
       cur[x] = v;
     }
     out.set(cur, y * stride);

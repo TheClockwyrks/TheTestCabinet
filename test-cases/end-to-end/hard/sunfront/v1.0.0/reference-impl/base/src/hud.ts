@@ -19,7 +19,13 @@
  * pointer events so the rest of the screen still drives placement and selection.
  */
 
-import { PALETTE, MONO_FONT_STACK, BUILD_PALETTE_ORDER, UNIT_STATS, BASE_HP } from "./constants";
+import {
+  PALETTE,
+  MONO_FONT_STACK,
+  BUILD_PALETTE_ORDER,
+  UNIT_STATS,
+  BASE_HP,
+} from "./constants";
 import type { BuildStructureType } from "./types";
 
 /** A build-grid structure's live panel, or a read-only base/Reliquary panel. */
@@ -64,7 +70,10 @@ function slotInfo(type: BuildStructureType): { name: string; cost: number } {
 }
 
 /** The eleven palette slots in shortcut order (ten spawners, then the Extractor). */
-const PALETTE_SLOTS: readonly BuildStructureType[] = [...BUILD_PALETTE_ORDER, "solar-extractor"];
+const PALETTE_SLOTS: readonly BuildStructureType[] = [
+  ...BUILD_PALETTE_ORDER,
+  "solar-extractor",
+];
 
 interface PaletteCell {
   readonly type: BuildStructureType;
@@ -99,7 +108,10 @@ export class Hud {
   private readonly upgradeBtn: HTMLButtonElement;
   private readonly sellBtn: HTMLButtonElement;
 
-  constructor(parent: HTMLElement, private readonly cb: HudCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    private readonly cb: HudCallbacks,
+  ) {
     this.root = el("div", {
       position: "absolute",
       inset: "0",
@@ -111,22 +123,50 @@ export class Hud {
     });
 
     // --- Top-left: sol + income -------------------------------------------
-    const topLeft = el("div", { position: "absolute", left: "16px", top: "12px", lineHeight: "1.05" });
-    this.solEl = el("div", { fontSize: "30px", fontWeight: "700", color: PALETTE.ember, letterSpacing: "0.5px" });
-    this.incomeEl = el("div", { fontSize: "13px", color: PALETTE.emberLight, marginTop: "2px" });
+    const topLeft = el("div", {
+      position: "absolute",
+      left: "16px",
+      top: "12px",
+      lineHeight: "1.05",
+    });
+    this.solEl = el("div", {
+      fontSize: "30px",
+      fontWeight: "700",
+      color: PALETTE.ember,
+      letterSpacing: "0.5px",
+    });
+    this.incomeEl = el("div", {
+      fontSize: "13px",
+      color: PALETTE.emberLight,
+      marginTop: "2px",
+    });
     topLeft.append(this.solEl, this.incomeEl);
 
     // --- Top-centre: wave + countdown, flanked by the two base bars -------
     const topCenter = el("div", {
-      position: "absolute", left: "0", right: "0", top: "10px",
-      display: "flex", alignItems: "center", justifyContent: "center", gap: "18px",
+      position: "absolute",
+      left: "0",
+      right: "0",
+      top: "10px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "18px",
       pointerEvents: "none",
     });
     const playerSide = this.buildBaseBar("YOUR BASE", "flex-end");
     this.playerBar = playerSide.fill;
     const center = el("div", { textAlign: "center", minWidth: "150px" });
-    this.waveEl = el("div", { fontSize: "17px", fontWeight: "700", color: PALETTE.textPrimary });
-    this.countdownEl = el("div", { fontSize: "12px", color: PALETTE.textSecondary, marginTop: "1px" });
+    this.waveEl = el("div", {
+      fontSize: "17px",
+      fontWeight: "700",
+      color: PALETTE.textPrimary,
+    });
+    this.countdownEl = el("div", {
+      fontSize: "12px",
+      color: PALETTE.textSecondary,
+      marginTop: "1px",
+    });
     center.append(this.waveEl, this.countdownEl);
     const enemySide = this.buildBaseBar("ENEMY BASE", "flex-start");
     this.enemyBar = enemySide.fill;
@@ -134,39 +174,81 @@ export class Hud {
 
     // --- Build palette (bottom row) ---------------------------------------
     const palette = el("div", {
-      position: "absolute", left: "0", right: "0", bottom: "12px",
-      display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "6px",
-      padding: "0 12px", pointerEvents: "none",
+      position: "absolute",
+      left: "0",
+      right: "0",
+      bottom: "12px",
+      display: "flex",
+      justifyContent: "center",
+      flexWrap: "wrap",
+      gap: "6px",
+      padding: "0 12px",
+      pointerEvents: "none",
     });
     PALETTE_SLOTS.forEach((type, i) => {
       const info = slotInfo(type);
-      const cell = this.buildPaletteCell(type, info.name, info.cost, shortcutFor(i));
+      const cell = this.buildPaletteCell(
+        type,
+        info.name,
+        info.cost,
+        shortcutFor(i),
+      );
       palette.appendChild(cell.root);
       this.cells.push(cell);
     });
 
     // --- Selected-structure panel (bottom-right) --------------------------
     this.panelRoot = el("div", {
-      position: "absolute", right: "16px", bottom: "104px", width: "230px",
-      background: "rgba(21,15,8,0.82)", border: `1px solid ${PALETTE.textFaint}`,
-      borderRadius: "4px", padding: "10px 12px", pointerEvents: "auto", display: "none",
+      position: "absolute",
+      right: "16px",
+      bottom: "104px",
+      width: "230px",
+      background: "rgba(21,15,8,0.82)",
+      border: `1px solid ${PALETTE.textFaint}`,
+      borderRadius: "4px",
+      padding: "10px 12px",
+      pointerEvents: "auto",
+      display: "none",
     });
-    this.panelName = el("div", { fontSize: "15px", fontWeight: "700", color: PALETTE.textPrimary, marginBottom: "6px" });
-    this.panelHealth = el("div", { fontSize: "13px", color: PALETTE.textSecondary, lineHeight: "1.5" });
+    this.panelName = el("div", {
+      fontSize: "15px",
+      fontWeight: "700",
+      color: PALETTE.textPrimary,
+      marginBottom: "6px",
+    });
+    this.panelHealth = el("div", {
+      fontSize: "13px",
+      color: PALETTE.textSecondary,
+      lineHeight: "1.5",
+    });
     this.panelBuild = el("div", { display: "none" });
 
-    const pipRow = el("div", { display: "flex", gap: "5px", margin: "2px 0 8px" });
+    const pipRow = el("div", {
+      display: "flex",
+      gap: "5px",
+      margin: "2px 0 8px",
+    });
     for (let i = 0; i < 3; i++) {
       const pip = el("span", {
-        width: "20px", height: "8px", borderRadius: "2px",
-        border: `1px solid ${PALETTE.textFaint}`, background: "transparent",
+        width: "20px",
+        height: "8px",
+        borderRadius: "2px",
+        border: `1px solid ${PALETTE.textFaint}`,
+        background: "transparent",
       });
       this.pips.push(pip);
       pipRow.appendChild(pip);
     }
-    this.effectEl = el("div", { fontSize: "12px", color: PALETTE.textSecondary, lineHeight: "1.5", marginBottom: "9px" });
+    this.effectEl = el("div", {
+      fontSize: "12px",
+      color: PALETTE.textSecondary,
+      lineHeight: "1.5",
+      marginBottom: "9px",
+    });
     const actions = el("div", { display: "flex", gap: "8px" });
-    this.upgradeBtn = this.buildButton(PALETTE.valid, () => this.cb.onUpgrade());
+    this.upgradeBtn = this.buildButton(PALETTE.valid, () =>
+      this.cb.onUpgrade(),
+    );
     this.sellBtn = this.buildButton(PALETTE.invalid, () => this.cb.onSell());
     actions.append(this.upgradeBtn, this.sellBtn);
     this.panelBuild.append(pipRow, this.effectEl, actions);
@@ -176,8 +258,12 @@ export class Hud {
     parent.appendChild(this.root);
   }
 
-  show(): void { this.root.style.display = "block"; }
-  hide(): void { this.root.style.display = "none"; }
+  show(): void {
+    this.root.style.display = "block";
+  }
+  hide(): void {
+    this.root.style.display = "none";
+  }
 
   /** Push one frame's snapshot into the DOM. */
   update(m: HudModel): void {
@@ -185,7 +271,9 @@ export class Hud {
     this.incomeEl.textContent = `+${m.income.toFixed(0)}/s`;
     this.waveEl.textContent = m.wave > 0 ? `WAVE ${m.wave}` : "MUSTERING";
     this.countdownEl.textContent =
-      m.countdown == null ? "" : `next wave in ${Math.max(0, Math.ceil(m.countdown))}s`;
+      m.countdown == null
+        ? ""
+        : `next wave in ${Math.max(0, Math.ceil(m.countdown))}s`;
 
     setBar(this.playerBar, m.playerBaseHp / BASE_HP);
     setBar(this.enemyBar, m.enemyBaseHp / BASE_HP);
@@ -194,15 +282,22 @@ export class Hud {
       const affordable = m.sol >= cell.cost;
       const armed = m.armed === cell.type;
       cell.root.style.opacity = affordable ? "1" : "0.42";
-      cell.root.style.borderColor = armed ? PALETTE.valid : "rgba(138,122,88,0.45)";
-      cell.root.style.background = armed ? "rgba(255,192,97,0.16)" : "rgba(21,15,8,0.72)";
+      cell.root.style.borderColor = armed
+        ? PALETTE.valid
+        : "rgba(138,122,88,0.45)";
+      cell.root.style.background = armed
+        ? "rgba(255,192,97,0.16)"
+        : "rgba(21,15,8,0.72)";
     }
 
     this.updatePanel(m.panel);
   }
 
   private updatePanel(p: PanelModel | null): void {
-    if (!p) { this.panelRoot.style.display = "none"; return; }
+    if (!p) {
+      this.panelRoot.style.display = "none";
+      return;
+    }
     this.panelRoot.style.display = "block";
     this.panelName.textContent = p.name;
 
@@ -218,7 +313,8 @@ export class Hud {
     this.panelHealth.style.display = "none";
     this.panelBuild.style.display = "block";
     for (let i = 0; i < 3; i++) {
-      this.pips[i].style.background = i < p.level ? PALETTE.emberLight : "transparent";
+      this.pips[i].style.background =
+        i < p.level ? PALETTE.emberLight : "transparent";
     }
     this.effectEl.textContent = p.effect;
 
@@ -236,51 +332,115 @@ export class Hud {
 
   // --- Builders ----------------------------------------------------------
 
-  private buildBaseBar(label: string, align: string): { root: HTMLDivElement; fill: HTMLDivElement } {
-    const root = el("div", { display: "flex", flexDirection: "column", alignItems: align as string, width: "210px" });
-    const cap = el("div", { fontSize: "10px", letterSpacing: "1px", color: PALETTE.textFaint, marginBottom: "3px" });
+  private buildBaseBar(
+    label: string,
+    align: string,
+  ): { root: HTMLDivElement; fill: HTMLDivElement } {
+    const root = el("div", {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: align as string,
+      width: "210px",
+    });
+    const cap = el("div", {
+      fontSize: "10px",
+      letterSpacing: "1px",
+      color: PALETTE.textFaint,
+      marginBottom: "3px",
+    });
     cap.textContent = label;
     const track = el("div", {
-      width: "100%", height: "12px", background: "rgba(21,15,8,0.7)",
-      border: `1px solid ${PALETTE.textFaint}`, borderRadius: "3px", overflow: "hidden",
+      width: "100%",
+      height: "12px",
+      background: "rgba(21,15,8,0.7)",
+      border: `1px solid ${PALETTE.textFaint}`,
+      borderRadius: "3px",
+      overflow: "hidden",
     });
-    const fill = el("div", { height: "100%", width: "100%", background: PALETTE.healthHealthy });
+    const fill = el("div", {
+      height: "100%",
+      width: "100%",
+      background: PALETTE.healthHealthy,
+    });
     track.appendChild(fill);
     root.append(cap, track);
     return { root, fill };
   }
 
-  private buildPaletteCell(type: BuildStructureType, name: string, cost: number, key: string): PaletteCell {
+  private buildPaletteCell(
+    type: BuildStructureType,
+    name: string,
+    cost: number,
+    key: string,
+  ): PaletteCell {
     const root = el("div", {
-      pointerEvents: "auto", cursor: "pointer", width: "88px",
-      background: "rgba(21,15,8,0.72)", border: "1px solid rgba(138,122,88,0.45)",
-      borderRadius: "4px", padding: "5px 6px", display: "flex", flexDirection: "column", gap: "2px",
+      pointerEvents: "auto",
+      cursor: "pointer",
+      width: "88px",
+      background: "rgba(21,15,8,0.72)",
+      border: "1px solid rgba(138,122,88,0.45)",
+      borderRadius: "4px",
+      padding: "5px 6px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "2px",
     });
-    const top = el("div", { display: "flex", alignItems: "center", gap: "5px" });
-    const icon = el("span", { width: "12px", height: "12px", borderRadius: "2px", background: PALETTE.ember, flex: "0 0 auto" });
+    const top = el("div", {
+      display: "flex",
+      alignItems: "center",
+      gap: "5px",
+    });
+    const icon = el("span", {
+      width: "12px",
+      height: "12px",
+      borderRadius: "2px",
+      background: PALETTE.ember,
+      flex: "0 0 auto",
+    });
     const keyBadge = el("span", {
-      marginLeft: "auto", fontSize: "10px", color: PALETTE.textPrimary,
-      background: "rgba(138,122,88,0.35)", borderRadius: "2px", padding: "0 4px",
+      marginLeft: "auto",
+      fontSize: "10px",
+      color: PALETTE.textPrimary,
+      background: "rgba(138,122,88,0.35)",
+      borderRadius: "2px",
+      padding: "0 4px",
     });
     keyBadge.textContent = key;
-    const nameEl = el("span", { fontSize: "11px", color: PALETTE.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
+    const nameEl = el("span", {
+      fontSize: "11px",
+      color: PALETTE.textPrimary,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    });
     nameEl.textContent = name;
     top.append(icon, nameEl, keyBadge);
     const costEl = el("div", { fontSize: "11px", color: PALETTE.emberLight });
     costEl.textContent = `${cost} sol`;
     root.append(top, costEl);
-    root.addEventListener("pointerdown", (e) => { e.preventDefault(); this.cb.onArm(type); });
+    root.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      this.cb.onArm(type);
+    });
     return { type, root, cost };
   }
 
   private buildButton(color: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement("button");
     Object.assign(b.style, {
-      flex: "1", font: `12px ${MONO_FONT_STACK}`, color: PALETTE.textPrimary,
-      background: "rgba(21,15,8,0.6)", border: `1px solid ${color}`, borderRadius: "3px",
-      padding: "5px 4px", cursor: "pointer",
+      flex: "1",
+      font: `12px ${MONO_FONT_STACK}`,
+      color: PALETTE.textPrimary,
+      background: "rgba(21,15,8,0.6)",
+      border: `1px solid ${color}`,
+      borderRadius: "3px",
+      padding: "5px 4px",
+      cursor: "pointer",
     });
-    b.addEventListener("pointerdown", (e) => { e.preventDefault(); onClick(); });
+    b.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      onClick();
+    });
     return b;
   }
 }

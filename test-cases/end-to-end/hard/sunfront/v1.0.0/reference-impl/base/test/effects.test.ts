@@ -30,40 +30,83 @@ const readJson = (p: string): unknown => JSON.parse(fs.readFileSync(p, "utf8"));
 let passed = 0;
 let failed = 0;
 function check(cond: boolean, msg: string): void {
-  if (cond) { passed++; console.log(`  ✓ ${msg}`); return; }
+  if (cond) {
+    passed++;
+    console.log(`  ✓ ${msg}`);
+    return;
+  }
   failed++;
   console.error(`  ✗ ${msg}`);
 }
 
 // --- Muzzle flash: one fresh one-shot per shot, then recycled -----------------
 
-const system = readJson(path.join(assetsDir, "effects", "muzzle-small-arms.json")) as ParticleSystem;
+const system = readJson(
+  path.join(assetsDir, "effects", "muzzle-small-arms.json"),
+) as ParticleSystem;
 const effects = new Map<MuzzleKind, ParticleSystem>([["small-arms", system]]);
 const scene = new THREE.Scene();
 const mgr = new EffectsManager(scene, effects);
 
 const rig = readJson(path.join(assetsDir, "sentinel", "rig.json")) as ModelSpec;
 const clip = (rig.animations ?? []).find((a) => a.name === "fire");
-const mount: MuzzleMount = { kind: "small-arms", part: "rifle", local: [0, 0, 0], scale: 6 };
-const bounds: RigBounds = { minY: 0, centerX: 0, centerZ: 0, sizeX: 0, sizeY: 0, sizeZ: 0 };
+const mount: MuzzleMount = {
+  kind: "small-arms",
+  part: "rifle",
+  local: [0, 0, 0],
+  scale: 6,
+};
+const bounds: RigBounds = {
+  minY: 0,
+  centerX: 0,
+  centerZ: 0,
+  sizeX: 0,
+  sizeY: 0,
+  sizeZ: 0,
+};
 
 const before = scene.children.length;
-mgr.flash(mount, rig, clip, undefined, 0, { x: 300, z: 300, altitude: 0, yaw: 0.7 }, bounds);
-check(scene.children.length === before + 1, "a shot adds exactly one flash to the scene");
+mgr.flash(
+  mount,
+  rig,
+  clip,
+  undefined,
+  0,
+  { x: 300, z: 300, altitude: 0, yaw: 0.7 },
+  bounds,
+);
+check(
+  scene.children.length === before + 1,
+  "a shot adds exactly one flash to the scene",
+);
 
 const points = scene.children[scene.children.length - 1] as THREE.Points;
 mgr.update(1 / 60);
-const live = (points.geometry.drawRange.count ?? 0);
+const live = points.geometry.drawRange.count ?? 0;
 check(live > 0, `the flash spawns live particles in sync (${live} at t=16ms)`);
 
 // Run out the one-shot (duration 300ms + particle lifetimes): it must fully decay + recycle.
 for (let i = 0; i < 90; i++) mgr.update(1 / 60);
-check(scene.children.length === before, "the one-shot flash is disposed/recycled after it decays");
+check(
+  scene.children.length === before,
+  "the one-shot flash is disposed/recycled after it decays",
+);
 
 // A second shot must reuse the pool (no unbounded growth) and play again.
-mgr.flash(mount, rig, clip, undefined, 0, { x: 300, z: 300, altitude: 0, yaw: 0.7 }, bounds);
+mgr.flash(
+  mount,
+  rig,
+  clip,
+  undefined,
+  0,
+  { x: 300, z: 300, altitude: 0, yaw: 0.7 },
+  bounds,
+);
 mgr.update(1 / 60);
-check(scene.children.length === before + 1, "a subsequent shot plays a fresh flash (pooled)");
+check(
+  scene.children.length === before + 1,
+  "a subsequent shot plays a fresh flash (pooled)",
+);
 mgr.clear();
 check(scene.children.length === before, "clear() detaches every player");
 
@@ -73,12 +116,21 @@ const w = new World();
 const u = w.spawnUnit("player", "scarab", 1, { x: 200, z: 200 }, 0);
 u.hp = 0;
 w.step(1 / 60);
-check(u.dead === true, "a unit at 0 HP is flagged dead (begins the white flash)");
-check(w.units.includes(u), "the dying unit stays on the field through its flash window");
+check(
+  u.dead === true,
+  "a unit at 0 HP is flagged dead (begins the white flash)",
+);
+check(
+  w.units.includes(u),
+  "the dying unit stays on the field through its flash window",
+);
 let culled = false;
 for (let i = 0; i < 60; i++) {
   w.step(1 / 60);
-  if (!w.units.includes(u)) { culled = true; break; }
+  if (!w.units.includes(u)) {
+    culled = true;
+    break;
+  }
 }
 check(culled, "the unit is removed once its death flash elapses");
 

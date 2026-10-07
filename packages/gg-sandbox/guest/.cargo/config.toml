@@ -1,0 +1,16 @@
+# The guest's SHADOW STACK, which is what quickjs measures a JavaScript recursion against.
+#
+# `js_get_stack_pointer` (quickjs's `cutils.h`) takes the address of a local, and an address-taken
+# local on wasm lives on the shadow stack in linear memory — the region `-zstack-size` sizes. So the
+# engine's own "Maximum call stack size exceeded" is a comparison against a pointer into THIS, and
+# the ceiling `Runtime::set_max_stack_size` sets in `src/lib.rs` has to fit inside it with room for
+# everything else on the shadow stack.
+#
+# 4 MiB against a 512 KiB JavaScript ceiling: eight times the headroom, because the shadow stack also
+# carries the SDK's own frames, the canonical-ABI lifting of whatever a call returns, and quickjs's
+# parser — which recurses on nesting depth and is measured against the same limit.
+#
+# wasm-ld's default is 64 KiB, which is below the ceiling and would make a deep recursion corrupt
+# linear memory instead of raising a `RangeError`.
+[target.wasm32-wasip1]
+rustflags = ["-C", "link-arg=-zstack-size=4194304"]

@@ -9,8 +9,14 @@ export const __wbg_get_snapshotjs_population: (a: number) => number;
 export const __wbg_get_snapshotjs_treasury: (a: number) => number;
 export const __wbg_set_snapshotjs_balance: (a: number, b: number) => void;
 export const __wbg_set_snapshotjs_bankrupt: (a: number, b: number) => void;
-export const __wbg_set_snapshotjs_months_survived: (a: number, b: number) => void;
-export const __wbg_set_snapshotjs_peak_population: (a: number, b: number) => void;
+export const __wbg_set_snapshotjs_months_survived: (
+  a: number,
+  b: number,
+) => void;
+export const __wbg_set_snapshotjs_peak_population: (
+  a: number,
+  b: number,
+) => void;
 export const __wbg_set_snapshotjs_population: (a: number, b: number) => void;
 export const __wbg_set_snapshotjs_treasury: (a: number, b: number) => void;
 export const __wbg_sim_free: (a: number, b: number) => void;
@@ -19,8 +25,20 @@ export const __wbg_toolpreview_free: (a: number, b: number) => void;
 export const sim_access_ptr: (a: number) => number;
 export const sim_active_tool: (a: number) => number;
 export const sim_advance: (a: number, b: number) => void;
-export const sim_apply_drag: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
-export const sim_apply_stamp: (a: number, b: number, c: number, d: number) => number;
+export const sim_apply_drag: (
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+  e: number,
+  f: number,
+) => number;
+export const sim_apply_stamp: (
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+) => number;
 export const sim_back_to_title: (a: number) => void;
 export const sim_balance: (a: number) => number;
 export const sim_build_ptr: (a: number) => number;
@@ -114,6 +132,11 @@ export const __wbg_set_toolpreview_cost: (a: number, b: number) => void;
 export const sim_restart: (a: number) => void;
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_malloc: (a: number, b: number) => number;
-export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_realloc: (
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+) => number;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_start: () => void;

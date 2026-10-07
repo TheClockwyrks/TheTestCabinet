@@ -3,23 +3,22 @@ import { routePatterns, routes } from "../../routes";
 import { AppearancePage } from "./AppearancePage";
 import { ConnectionsPage } from "./ConnectionsPage";
 import { HarnessesPage } from "./HarnessesPage";
-import { ReviewingPage } from "./ReviewingPage";
+import { RunsPage } from "./RunsPage";
 
 // Routes owned by the settings section: the Appearance, Connections, Harnesses, and
-// Reviewing tabs, each its own URL so a tab is linkable, plus a bare `/settings` that
+// Runs tabs, each its own URL so a tab is linkable, plus a bare `/settings` that
 // redirects to Appearance (the first tab). Appearance is purely visual (sun +
 // event-feed style) and works everywhere, so it — and the `/settings` redirect —
 // mount on every host, including the static site. Connections drives the
 // backend/worker contexts the static site does not provide, so it mounts only when
-// the host can execute runs. Harnesses tunes per-harness settings — max parallelism
-// (backend-backed, on any executing console) and, on the desktop app, the local
-// cluster's harness credentials — so it mounts wherever either is possible.
-// Reviewing edits the signed-in account's reviewing preferences (the review buffer
-// every coverage plan and ladder inherits), which the backend holds, so it too
-// mounts only on an executing console.
+// the host can execute runs. Harnesses tunes per-harness settings (max parallelism,
+// which the backend holds), so it too mounts only when the host can execute runs.
+// Runs edits the signed-in account's runs-in-flight limit (which every coverage plan
+// and ladder inherits), which the backend holds, so it too mounts only on the
+// executing console; its old `/settings/reviewing` address redirects to it.
 // Returned as a fragment so the app's single <Routes> stitches every section's
 // routes together.
-export function settingsRoutes(canExecute: boolean, hasHarnessAuth: boolean) {
+export function settingsRoutes(canExecute: boolean) {
   return (
     <>
       <Route
@@ -31,22 +30,21 @@ export function settingsRoutes(canExecute: boolean, hasHarnessAuth: boolean) {
         element={<AppearancePage />}
       />
       {canExecute && (
-        <Route
-          path={routePatterns.settingsConnections}
-          element={<ConnectionsPage />}
-        />
-      )}
-      {(canExecute || hasHarnessAuth) && (
-        <Route
-          path={routePatterns.settingsHarnesses}
-          element={<HarnessesPage />}
-        />
-      )}
-      {canExecute && (
-        <Route
-          path={routePatterns.settingsReviewing}
-          element={<ReviewingPage />}
-        />
+        <>
+          <Route
+            path={routePatterns.settingsConnections}
+            element={<ConnectionsPage />}
+          />
+          <Route
+            path={routePatterns.settingsHarnesses}
+            element={<HarnessesPage />}
+          />
+          <Route path={routePatterns.settingsRuns} element={<RunsPage />} />
+          <Route
+            path={routePatterns.settingsReviewing}
+            element={<Navigate to={routes.settingsRuns()} replace />}
+          />
+        </>
       )}
     </>
   );

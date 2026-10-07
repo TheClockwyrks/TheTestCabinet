@@ -1,6 +1,6 @@
-import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
-import type { PartMesh, SkinnedMesh } from "@test-cabinet/voxel-runtime";
-import { SkinnedVoxelRig } from "@test-cabinet/voxel-runtime/three";
+import type { AnimationSpec, ModelSpec } from "@clockwyrks/run-record";
+import type { PartMesh, SkinnedMesh } from "@clockwyrks/voxel-runtime";
+import { SkinnedVoxelRig } from "@clockwyrks/voxel-runtime/three";
 import { encodeRigGif } from "./voxelGif";
 import { framing } from "./voxelScene";
 

@@ -289,7 +289,10 @@ async fn notify_publish_failed(state: &AppState, publish_job_id: &str, run_id: &
 }
 
 /// Build a run's display identity from its stored row — the publish path's analogue
-/// of [`super::jobs::job_summary`], which lifts the same five fields off a job row.
+/// of `super::jobs::job_summary`, which lifts the same fields off a job row. That one
+/// is private to its module, so this names it rather than linking it. A run
+/// row already carries its gg preset as a column, lifted from the record at ingest,
+/// so this one reads it directly rather than reparsing a capability set.
 fn run_summary(run: &run::Model) -> JobSummary {
     JobSummary {
         test_case_slug: run.test_case_slug.clone(),
@@ -297,6 +300,12 @@ fn run_summary(run: &run::Model) -> JobSummary {
         variant: run.variant.clone(),
         harness_slug: run.harness_slug.clone(),
         model_id: run.model_id.clone(),
+        engine: run.engine_slug.clone(),
+        // The run row's own `started_at`, which is the record's `startedAt` — the same
+        // instant a live job's anchor approximates, so a publish notification and the
+        // in-flight row it succeeds name the same moment.
+        started_at: Some(run.started_at.clone()),
+        gg_preset: run.gg_preset.clone(),
     }
 }
 

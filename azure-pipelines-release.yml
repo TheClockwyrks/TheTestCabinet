@@ -1,0 +1,97 @@
+# The release pipeline: what a `v*` tag publishes, once the commit it names has
+# passed the gates. It belongs to this project and the workspace template
+# never renders it; azure-pipelines.yml, which the template does render,
+# triggers on branches alone.
+#
+# A tag releases three things, as it did before the template:
+#
+#   tcab-linux, tcab-windows  the smoke-tested `tcab` binary of each platform,
+#                             kept as this run's artifacts
+#   gg                        the static binaries and reference documents,
+#                             uploaded to the `gg-releases` blob container
+#                             once `gg --version` matches the tag
+#   the tag                   pushed to the GitHub mirror
+#
+# THE GATE. The first job, `gated`, waits until a run of the main pipeline at
+# the tagged commit has passed its check jobs, and fails when one of them
+# failed (scripts/ci/require-gated-commit.sh). Any branch's run counts. When
+# the main pipeline's batched trigger never ran that commit, it queues a run
+# on the tag ref, where every branch-conditional job and later stage skips, so
+# that run is the gates stage alone. Nothing below runs until it passes. The
+# main run's image jobs, deploys and docs never gate a release.
+#
+# The job bodies are the main pipeline's own, from .azure/tcab/, given the tag
+# behaviour: the binaries are published and gg's version is gated.
+#
+# Credentials, beyond the main pipeline's: the run's build identity may view
+# and queue runs of the main pipeline, and this pipeline is authorized for
+# `the-test-cabinet-acr`, `tcab-gg-publish` and the `github-mirror-key` secure
+# file. `resources.pipelines` names the main pipeline by its name in Azure
+# DevOps, which is how its definition id reaches the gate.
+
+trigger:
+  branches:
+    exclude:
+      - "*"
+  tags:
+    include:
+      - v*
+
+pr: none
+
+resources:
+  pipelines:
+    - pipeline: main
+      source: the-test-cabinet
+      trigger: none
+
+pool:
+  vmImage: ubuntu-24.04
+
+# `ciImageTag`, the commit the CI image the Rust jobs below run in was built
+# from, read at compile time as the main pipeline reads it.
+variables:
+  - template: ci/images/tags.yml
+
+jobs:
+  - job: gated
+    displayName: The gates passed at this commit
+    # The check jobs' longest timeout, 150 minutes, plus queueing; the script
+    # gives up at 200 minutes and says so.
+    timeoutInMinutes: 220
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - script: scripts/ci/require-gated-commit.sh "$(Build.SourceVersion)" "$(Build.SourceBranch)"
+        displayName: Wait for the main pipeline's check jobs at this commit
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          TCAB_MAIN_PIPELINE_ID: $(resources.pipeline.main.pipelineID)
+
+  - template: .azure/tcab/binary-jobs.yml
+    parameters:
+      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+      dependsOn:
+        - gated
+      publish: true
+
+  - template: .azure/tcab/gg-jobs.yml
+    parameters:
+      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+      arm64Pool: pool-dev-linux-arm64-wus3-4c-eph-01
+      dependsOn:
+        - gated
+      versionGate: true
+
+  - template: .azure/tcab/gg-publish-job.yml
+    parameters:
+      dependsOn:
+        - gg_amd64
+        - gg_arm64
+
+  - template: .azure/tcab/mirror-job.yml
+    parameters:
+      dependsOn:
+        - binary_linux
+        - binary_windows
+        - gg_publish

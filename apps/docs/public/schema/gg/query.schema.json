@@ -1,0 +1,459 @@
+{
+  "$defs": {
+    "GgAgg": {
+      "description": "One requested aggregation — `avg(score) as mean_score`.",
+      "properties": {
+        "alias": {
+          "description": "The `as` alias this column is reported under, or `None` to use the derived\n[`name`](Self::name).",
+          "type": ["string", "null"]
+        },
+        "field": {
+          "description": "The field to apply it to. Absent for [`Count`](GgAggFunc::Count), which\naggregates the documents themselves; ignored if supplied anyway.",
+          "type": ["string", "null"]
+        },
+        "func": {
+          "$ref": "#/$defs/GgAggFunc",
+          "description": "The function to apply."
+        }
+      },
+      "required": ["func"],
+      "type": "object"
+    },
+    "GgAggFunc": {
+      "description": "The aggregation functions a [`stats`](GgStatsStage) stage may request.\n\nThere is no `rate()`: averaging a boolean **is** a rate\n([rule 5](crate::gg_query#the-seven-semantic-rules)) and\n[`contributing`](GgAggValue::contributing) is its denominator.",
+      "oneOf": [
+        {
+          "const": "count",
+          "description": "`count()` — how many documents fell in the bucket. Takes no field.",
+          "type": "string"
+        },
+        {
+          "const": "distinct",
+          "description": "`distinct(f)` — how many distinct values of `f` the bucket's documents carry,\ncounted under the same [total order](GgValue::total_cmp) bucket keys use.",
+          "type": "string"
+        },
+        {
+          "const": "avg",
+          "description": "`avg(f)` — the arithmetic mean of the contributing values.",
+          "type": "string"
+        },
+        {
+          "const": "sum",
+          "description": "`sum(f)`.",
+          "type": "string"
+        },
+        {
+          "const": "min",
+          "description": "`min(f)`.",
+          "type": "string"
+        },
+        {
+          "const": "max",
+          "description": "`max(f)`.",
+          "type": "string"
+        },
+        {
+          "const": "median",
+          "description": "`median(f)` — the 0.5 quantile, on the repository's one interpolated\ndefinition.",
+          "type": "string"
+        },
+        {
+          "const": "p90",
+          "description": "`p90(f)`.",
+          "type": "string"
+        },
+        {
+          "const": "p95",
+          "description": "`p95(f)`.",
+          "type": "string"
+        },
+        {
+          "const": "dist",
+          "description": "`dist(f)` — the whole [distribution](GgDistribution) rather than one figure,\nfor a box plot. Reports its figures in\n[`distribution`](GgAggValue::distribution), leaving\n[`value`](GgAggValue::value) absent, because there is no single number a\ndistribution reduces to without choosing one.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgCompareOp": {
+      "description": "The comparison operators of a [`Compare`](GgFilter::Compare) predicate.\n\n[`Eq`](Self::Eq) is what the language spells `:`, and it is **equality, not an\nanalyzed match**: case-insensitive with `*` globs, which is strictly more\npredictable than a match while still covering prefix search\n(`model:\"anthropic/*\"`). There is exactly one equality operator, so there is no\nambiguity about which to reach for.",
+      "oneOf": [
+        {
+          "const": "eq",
+          "description": "`:` — equal. Case-insensitive over strings, with `*` matching any run of\ncharacters.",
+          "type": "string"
+        },
+        {
+          "const": "ne",
+          "description": "`!=` — not equal. An **absent** field fails this like every other comparison\n([rule 1](crate::gg_query#the-seven-semantic-rules)); `not field:value` is how \"absent or\ndifferent\" is asked.",
+          "type": "string"
+        },
+        {
+          "const": "gt",
+          "description": "`>` — strictly greater.",
+          "type": "string"
+        },
+        {
+          "const": "gte",
+          "description": "`>=` — greater or equal.",
+          "type": "string"
+        },
+        {
+          "const": "lt",
+          "description": "`<` — strictly less.",
+          "type": "string"
+        },
+        {
+          "const": "lte",
+          "description": "`<=` — less or equal.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgFilter": {
+      "description": "The compiled filter tree — the `<filter>` half of a query.\n\nBoolean composition is the point of the redesign: the all-AND engine this replaced\ncould not express \"hung or timed out\", which is half of \"terminated abnormally\".\nA predicate tree costs about forty lines of evaluator and makes the whole\nvocabulary composable.",
+      "oneOf": [
+        {
+          "description": "Every clause must pass. Juxtaposition in the source text compiles to this, as\ndoes an explicit `and`. An empty clause list passes everything.",
+          "properties": {
+            "clauses": {
+              "description": "The conjuncts, in source order.",
+              "items": {
+                "$ref": "#/$defs/GgFilter"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "and",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "clauses"],
+          "type": "object"
+        },
+        {
+          "description": "Any clause may pass. An empty clause list passes nothing.",
+          "properties": {
+            "clauses": {
+              "description": "The disjuncts, in source order.",
+              "items": {
+                "$ref": "#/$defs/GgFilter"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "or",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "clauses"],
+          "type": "object"
+        },
+        {
+          "description": "The clause must not pass. An absent field passes `not` — that is the *only*\nway to ask for absence, and it is why [rule 1](crate::gg_query#the-seven-semantic-rules)\ncan be so blunt about comparisons.",
+          "properties": {
+            "clause": {
+              "$ref": "#/$defs/GgFilter",
+              "description": "The negated clause."
+            },
+            "kind": {
+              "const": "not",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "clause"],
+          "type": "object"
+        },
+        {
+          "description": "`field:*` — the field is present, whatever its value.",
+          "properties": {
+            "field": {
+              "description": "The field to test.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "exists",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "field"],
+          "type": "object"
+        },
+        {
+          "description": "`field <op> literal`.",
+          "properties": {
+            "field": {
+              "description": "The field to test.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "compare",
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/$defs/GgCompareOp",
+              "description": "The comparison to apply."
+            },
+            "value": {
+              "$ref": "#/$defs/GgValue",
+              "description": "The literal to compare against."
+            }
+          },
+          "required": ["kind", "field", "op", "value"],
+          "type": "object"
+        },
+        {
+          "description": "`field:(a or b or c)` — the field equals any listed literal, on\n[`Eq`](GgCompareOp::Eq)'s terms (so globs work inside a one-of).",
+          "properties": {
+            "field": {
+              "description": "The field to test.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "oneOf",
+              "type": "string"
+            },
+            "values": {
+              "description": "The accepted literals, in source order. An empty list passes nothing.",
+              "items": {
+                "$ref": "#/$defs/GgValue"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["kind", "field", "values"],
+          "type": "object"
+        },
+        {
+          "description": "`field:[from to to]` — an **inclusive** range on both ends, with either bound\nopen (`*`). A bare date as the upper bound means end of day, but that is\nresolved by the client compiler: by the time a range reaches here both bounds\nare absolute.",
+          "properties": {
+            "field": {
+              "description": "The field to test.",
+              "type": "string"
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GgValue"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The inclusive lower bound, or `None` for an open start."
+            },
+            "kind": {
+              "const": "range",
+              "type": "string"
+            },
+            "to": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GgValue"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The inclusive upper bound, or `None` for an open end."
+            }
+          },
+          "required": ["kind", "field"],
+          "type": "object"
+        },
+        {
+          "description": "A bare literal in the source text: matches when **any** string-valued field of\nthe document contains the term, case-insensitively. The escape hatch for \"I\nknow a word from it but not which field it is in\"; every other predicate names\nits field.",
+          "properties": {
+            "kind": {
+              "const": "text",
+              "type": "string"
+            },
+            "text": {
+              "description": "The term to look for.",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "text"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgGroupKey": {
+      "description": "One group-by key of a [`stats`](GgStatsStage) stage.",
+      "oneOf": [
+        {
+          "description": "Group on a field's exact value. Documents lacking the field share one bucket\nkeyed by absence, so they are visible rather than silently dropped.",
+          "properties": {
+            "field": {
+              "description": "The field to group on.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "field",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "field"],
+          "type": "object"
+        },
+        {
+          "description": "`bucket(started, 1d)` — group on a numeric field floored onto a fixed-width\ngrid. When this is the **first** key the whole result is ordered by key\nascending instead of by count, so a line chart draws a time series.",
+          "properties": {
+            "field": {
+              "description": "The field to bucket (epoch milliseconds for a date histogram).",
+              "type": "string"
+            },
+            "interval": {
+              "$ref": "#/$defs/GgInterval",
+              "description": "The bucket width."
+            },
+            "kind": {
+              "const": "bucket",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "field", "interval"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgInterval": {
+      "description": "A date-histogram interval — `1d`, `15m`, `2w`.",
+      "properties": {
+        "count": {
+          "description": "How many units wide each bucket is. Zero is treated as one.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unit": {
+          "$ref": "#/$defs/GgIntervalUnit",
+          "description": "The unit."
+        }
+      },
+      "required": ["count", "unit"],
+      "type": "object"
+    },
+    "GgIntervalUnit": {
+      "description": "The calendar unit of a [date histogram](GgGroupKey::Bucket) interval.\n\nDeliberately stops at the week. A month is not a fixed number of milliseconds, so\nbucketing by one needs a civil calendar in **both** implementations — by some\ndistance the most drift-prone construct that could enter a mirrored evaluator, for\na bucket width a `4w` interval approximates. The grammar is\n[frozen for v1](crate::gg_query#what-lives-where); if a month bucket is ever added it must\narrive with its own conformance cases across a leap year.",
+      "oneOf": [
+        {
+          "const": "minute",
+          "description": "`m` — 60 000 ms.",
+          "type": "string"
+        },
+        {
+          "const": "hour",
+          "description": "`h` — 3 600 000 ms.",
+          "type": "string"
+        },
+        {
+          "const": "day",
+          "description": "`d` — 86 400 000 ms.",
+          "type": "string"
+        },
+        {
+          "const": "week",
+          "description": "`w` — 604 800 000 ms, floored against [`WEEK_ORIGIN_MS`] rather than the epoch.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgSortKey": {
+      "description": "One key of an explicit `sort` stage.",
+      "properties": {
+        "desc": {
+          "default": false,
+          "description": "Descending when set, ascending otherwise.",
+          "type": "boolean"
+        },
+        "field": {
+          "description": "What to sort on: a document field when the query has no\n[`stats`](GgQuery::stats) stage, and otherwise either a group key's field or an\naggregation's [column name](GgAgg::name).",
+          "type": "string"
+        }
+      },
+      "required": ["field"],
+      "type": "object"
+    },
+    "GgStatsStage": {
+      "description": "The `stats` stage: what to aggregate, and what to group by.",
+      "properties": {
+        "aggs": {
+          "default": [],
+          "description": "The aggregations, in source order — the result's columns.",
+          "items": {
+            "$ref": "#/$defs/GgAgg"
+          },
+          "type": "array"
+        },
+        "groupBy": {
+          "description": "The group-by keys, in source order. Empty produces the single grand-total\nbucket. Clamped to [`GG_MAX_GROUP_KEYS`].",
+          "items": {
+            "$ref": "#/$defs/GgGroupKey"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GgValue": {
+      "anyOf": [
+        {
+          "description": "A boolean, projecting to `1.0`/`0.0` in numeric context.",
+          "type": "boolean"
+        },
+        {
+          "description": "A finite number. A **date is a number** — epoch milliseconds, UTC.",
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "description": "A string. Compared case-insensitively by [`Eq`](GgCompareOp::Eq) (with `*`\nglobs) and by Unicode code point when ordered.",
+          "type": "string"
+        }
+      ],
+      "description": "One scalar in a [run document](GgRunDoc), and the literal side of every\n[predicate](GgFilter).\n\nDeliberately only three kinds: a document is *flat and typed*, so a number\ncompares numerically (`cap.compaction.summaryHeadroom > 0.5` works, which the\nstringify-everything implementation this replaced could not express) and a boolean\nprojects to `1`/`0` so averaging it is a rate. There is no null variant — an\nabsent field is a **missing key**, never a stored null, which is what makes\n[rule 1](crate::gg_query#the-seven-semantic-rules) enforceable by construction.\n\nSerialized untagged, so the wire form is a bare JSON scalar and the TypeScript\nbinding is `string | number | boolean`."
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/query.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A **compiled TCQ query** — the single wire form.\n\nThe client parses the source text and sends this; the URL and the saved object\ncarry the text, so a relative date (`now-30d`) re-resolves on every run while the\nserver sees only absolute milliseconds and needs no clock of its own.",
+  "properties": {
+    "filter": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GgFilter"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The filter tree, or `None` for a bare pipeline that matches every document."
+    },
+    "limit": {
+      "description": "A `limit` stage: at most this many rows (documents or buckets). `None` returns\neverything, so a caller serving an unbounded corpus imposes its own ceiling.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": ["integer", "null"]
+    },
+    "sort": {
+      "description": "An explicit `sort` stage, overriding the default\n[document](crate::gg_query#the-seven-determinism-rules) or bucket order. Empty keeps the\ndefault.",
+      "items": {
+        "$ref": "#/$defs/GgSortKey"
+      },
+      "type": "array"
+    },
+    "stats": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GgStatsStage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The `stats` stage, or `None` to return the matching documents themselves (the\ndocument view, which is what the old Sessions tab becomes)."
+    }
+  },
+  "title": "GgQuery",
+  "type": "object"
+}

@@ -1,0 +1,120 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 96,
+    "height": 96
+  },
+  "durationMs": 1600,
+  "fps": 30,
+  "loop": true,
+  "emitters": [
+    {
+      "name": "motes",
+      "shape": "disc",
+      "position": [48.0, 48.0, 0.0],
+      "extent": {
+        "radius": 13.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 9.0
+      },
+      "lifetimeMs": 900.0,
+      "lifetimeSpread": 260.0,
+      "speed": 16.0,
+      "speedSpread": 9.0,
+      "direction": [0.0, 1.0, 0.0],
+      "coneAngle": 62.0,
+      "seed": 9701,
+      "forces": {
+        "gravity": 26.0,
+        "drag": 1.6,
+        "turbulence": {
+          "amplitude": 12.0,
+          "scale": 0.6
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 2.6,
+          "to": 0.5
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.75,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#cfe4ff",
+            "at": 0.5
+          },
+          {
+            "color": "#8fb6ff",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "glint",
+      "shape": "disc",
+      "position": [48.0, 48.0, 0.0],
+      "extent": {
+        "radius": 6.0,
+        "size": [1.0, 1.0, 0.0]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 3.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 140.0,
+      "speed": 34.0,
+      "speedSpread": 10.0,
+      "direction": [0.0, 1.0, 0.0],
+      "coneAngle": 180.0,
+      "seed": 4813,
+      "forces": {
+        "drag": 2.4,
+        "vortex": 26.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 4.6,
+          "to": 0.4
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffe9b0",
+            "at": 0.45
+          },
+          {
+            "color": "#ffb44f",
+            "at": 1.0
+          }
+        ],
+        "rotation": 120.0,
+        "stretch": 0.25
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

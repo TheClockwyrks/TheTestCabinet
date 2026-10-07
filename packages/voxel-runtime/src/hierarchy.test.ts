@@ -65,21 +65,30 @@ describe("poseRig", () => {
         part("turret", { parent: "chassis" }),
         part("chassis", { pivot: [10, 0, 0] }),
       ],
-      joints: [yaw({ part: "chassis", pivot: [2, 0, 0], min: -Math.PI, max: Math.PI })],
+      joints: [
+        yaw({ part: "chassis", pivot: [2, 0, 0], min: -Math.PI, max: Math.PI }),
+      ],
     };
     const posed = poseRig(rig, { caller: { turret_yaw: Math.PI } });
     const chassis = world(posed, "chassis");
     const turret = world(posed, "turret");
     // 180° about Y through x=2 maps the origin to x=4, and the child inherits it.
     expect(chassis[12]).toBeCloseTo(4, 6);
-    expect([turret[12], turret[13], turret[14]]).toEqual([chassis[12], chassis[13], chassis[14]]);
+    expect([turret[12], turret[13], turret[14]]).toEqual([
+      chassis[12],
+      chassis[13],
+      chassis[14],
+    ]);
   });
 
   it("clamps caller values to [min,max] and falls back to rest", () => {
     const rig: ModelSpec = { parts: [part("turret")], joints: [yaw()] };
 
     // Beyond max → clamped to 1 rad about Y.
-    const clamped = world(poseRig(rig, { caller: { turret_yaw: 5 } }), "turret");
+    const clamped = world(
+      poseRig(rig, { caller: { turret_yaw: 5 } }),
+      "turret",
+    );
     expect(clamped[0]).toBeCloseTo(Math.cos(1), 6);
     expect(clamped[8]).toBeCloseTo(Math.sin(1), 6);
 
@@ -117,7 +126,10 @@ describe("poseRig", () => {
       joints: [yaw({ pivot: [2, 0, 0], min: -Math.PI, max: Math.PI })],
     };
     // 180° about Y through x=2: a point at the origin maps to x=4.
-    const m = world(poseRig(rig, { caller: { turret_yaw: Math.PI } }), "turret");
+    const m = world(
+      poseRig(rig, { caller: { turret_yaw: Math.PI } }),
+      "turret",
+    );
     expect(m[12]).toBeCloseTo(4, 6);
     expect(m[14]).toBeCloseTo(0, 6);
   });
@@ -164,7 +176,10 @@ describe("poseRig", () => {
         }),
       ],
     };
-    const m = world(poseRig(rig, { caller: { turret_yaw: Math.PI / 2 } }), "turret");
+    const m = world(
+      poseRig(rig, { caller: { turret_yaw: Math.PI / 2 } }),
+      "turret",
+    );
     // R_y(180°): m[0] = cos(π) = -1, m[10] = -1; plus the mount offset on x.
     expect(m[0]).toBeCloseTo(-1, 6);
     expect(m[10]).toBeCloseTo(-1, 6);

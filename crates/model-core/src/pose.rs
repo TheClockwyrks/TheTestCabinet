@@ -6,7 +6,7 @@
 //! `clips.ts` (F-curve sampling) and `hierarchy.ts` (joint transforms + parent
 //! composition). The two implementations MUST stay in semantic lockstep — and with
 //! the glTF exporter's `rotation` — so an in-container `--time` preview poses a rig
-//! the same way the web/desktop client and the exported clips do. In particular the
+//! the same way the web client and the exported clips do. In particular the
 //! **pitch** convention (a positive rotation about `x` lifts a forward `+z` part up
 //! toward `+y`) is the deliberate mirror of a plain right-handed x-rotation, matched
 //! here by negating the angle for the `x` axis (see `rotation`).

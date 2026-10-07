@@ -40,6 +40,7 @@ fn version_json(slug: &str, version: &str) -> serde_json::Value {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 600,
+        "engines": [{ "slug": "none" }],
         "testType": "adversarial",
         "contract": { "entry": "controller", "world": "world.wit", "action": "action.wit" },
         "sandbox": { "fuelPerTick": 1_000_000, "maxMemoryBytes": 16_777_216u64 },

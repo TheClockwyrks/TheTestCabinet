@@ -2,101 +2,57 @@
   "parts": [
     {
       "name": "hull",
-      "pivot": [
-        20,
-        20,
-        30
-      ]
+      "pivot": [20, 20, 30]
     },
     {
       "name": "turret",
       "parent": "hull",
-      "pivot": [
-        20,
-        25,
-        31
-      ]
+      "pivot": [20, 25, 31]
     },
     {
       "name": "barrel",
       "parent": "turret",
-      "pivot": [
-        20,
-        28,
-        38
-      ]
+      "pivot": [20, 28, 38]
     },
     {
       "name": "leg_fl_thigh",
       "parent": "hull",
-      "pivot": [
-        10,
-        22,
-        42
-      ]
+      "pivot": [10, 22, 42]
     },
     {
       "name": "leg_fl_shin",
       "parent": "leg_fl_thigh",
-      "pivot": [
-        10,
-        13,
-        45
-      ]
+      "pivot": [10, 13, 45]
     },
     {
       "name": "leg_fr_thigh",
       "parent": "hull",
-      "pivot": [
-        29,
-        22,
-        42
-      ]
+      "pivot": [29, 22, 42]
     },
     {
       "name": "leg_fr_shin",
       "parent": "leg_fr_thigh",
-      "pivot": [
-        29,
-        13,
-        45
-      ]
+      "pivot": [29, 13, 45]
     },
     {
       "name": "leg_bl_thigh",
       "parent": "hull",
-      "pivot": [
-        10,
-        22,
-        16
-      ]
+      "pivot": [10, 22, 16]
     },
     {
       "name": "leg_bl_shin",
       "parent": "leg_bl_thigh",
-      "pivot": [
-        10,
-        13,
-        13
-      ]
+      "pivot": [10, 13, 13]
     },
     {
       "name": "leg_br_thigh",
       "parent": "hull",
-      "pivot": [
-        29,
-        22,
-        16
-      ]
+      "pivot": [29, 22, 16]
     },
     {
       "name": "leg_br_shin",
       "parent": "leg_br_thigh",
-      "pivot": [
-        29,
-        13,
-        13
-      ]
+      "pivot": [29, 13, 13]
     }
   ],
   "joints": [
@@ -105,11 +61,7 @@
       "part": "turret",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        20,
-        25,
-        31
-      ],
+      "pivot": [20, 25, 31],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -120,11 +72,7 @@
       "part": "barrel",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        20,
-        28,
-        38
-      ],
+      "pivot": [20, 28, 38],
       "min": -0.2,
       "max": 1.35,
       "rest": 0.35,
@@ -135,11 +83,7 @@
       "part": "leg_fl_thigh",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        10,
-        22,
-        42
-      ],
+      "pivot": [10, 22, 42],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -150,11 +94,7 @@
       "part": "leg_fr_thigh",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        29,
-        22,
-        42
-      ],
+      "pivot": [29, 22, 42],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -165,11 +105,7 @@
       "part": "leg_bl_thigh",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        10,
-        22,
-        16
-      ],
+      "pivot": [10, 22, 16],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -180,11 +116,7 @@
       "part": "leg_br_thigh",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        29,
-        22,
-        16
-      ],
+      "pivot": [29, 22, 16],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -195,11 +127,7 @@
       "part": "leg_fl_shin",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        10,
-        13,
-        45
-      ],
+      "pivot": [10, 13, 45],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -210,11 +138,7 @@
       "part": "leg_fr_shin",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        29,
-        13,
-        45
-      ],
+      "pivot": [29, 13, 45],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -225,11 +149,7 @@
       "part": "leg_bl_shin",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        10,
-        13,
-        13
-      ],
+      "pivot": [10, 13, 13],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,
@@ -240,11 +160,7 @@
       "part": "leg_br_shin",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        29,
-        13,
-        13
-      ],
+      "pivot": [29, 13, 13],
       "min": -1.4,
       "max": 1.4,
       "rest": 0.0,

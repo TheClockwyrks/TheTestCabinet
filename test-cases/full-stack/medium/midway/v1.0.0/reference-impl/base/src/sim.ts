@@ -18,7 +18,13 @@ import {
   TILE,
   TUNE,
 } from "./constants";
-import type { RideKind, SceneryKind, StaffKind, StallKind, ToolKind } from "./constants";
+import type {
+  RideKind,
+  SceneryKind,
+  StaffKind,
+  StallKind,
+  ToolKind,
+} from "./constants";
 import { MODE, type Mode } from "./mode";
 import { Rng } from "./rng";
 import {
@@ -41,10 +47,23 @@ import {
   tileAt,
   tileCenter,
 } from "./park";
-import { applyHappiness, chooseAction, judgeAdmission, stepDesires, type GuestEnv, type RestTile } from "./guests";
+import {
+  applyHappiness,
+  chooseAction,
+  judgeAdmission,
+  stepDesires,
+  type GuestEnv,
+  type RestTile,
+} from "./guests";
 import { breakDown, stepAttraction, type RideCtx } from "./rides";
 import { assignZone, stepStaff, wageBill, type StaffCtx } from "./staff";
-import { bankruptcyStep, chargeDaily, earn, makeLedger, spend } from "./economy";
+import {
+  bankruptcyStep,
+  chargeDaily,
+  earn,
+  makeLedger,
+  spend,
+} from "./economy";
 import {
   arrivalRateFor,
   cleanlinessFrom,
@@ -99,7 +118,13 @@ export class Game {
   peakGuests = 0;
   admissionPrice = TUNE.economy.admission;
 
-  tool: Tool = { kind: "path", buildRide: null, buildStall: null, buildScenery: null, staffKind: null };
+  tool: Tool = {
+    kind: "path",
+    buildRide: null,
+    buildStall: null,
+    buildScenery: null,
+    staffKind: null,
+  };
   selection: Selection = "none";
   selectedId = -1;
 
@@ -150,7 +175,13 @@ export class Game {
     this.dayT = 0;
     this.peakGuests = 0;
     this.admissionPrice = TUNE.economy.admission;
-    this.tool = { kind: "path", buildRide: null, buildStall: null, buildScenery: null, staffKind: null };
+    this.tool = {
+      kind: "path",
+      buildRide: null,
+      buildStall: null,
+      buildScenery: null,
+      staffKind: null,
+    };
     this.selection = "none";
     this.selectedId = -1;
     this.paused = false;
@@ -215,7 +246,10 @@ export class Game {
 
   private arrivals(dt: number): void {
     if (this.arrivalsMode === "off") return;
-    const rate = this.arrivalsMode === "on" ? TUNE.rating.arrivalMax : arrivalRateFor(this.rating);
+    const rate =
+      this.arrivalsMode === "on"
+        ? TUNE.rating.arrivalMax
+        : arrivalRateFor(this.rating);
     this.arrivalAccum += (rate / TUNE.daySeconds) * dt;
     while (this.arrivalAccum >= 1) {
       this.arrivalAccum -= 1;
@@ -226,7 +260,8 @@ export class Game {
 
   private trySpawnGuest(force: boolean): void {
     const wallet = this.rng.range(TUNE.guests.walletMin, TUNE.guests.walletMax);
-    if (!force && !judgeAdmission(this.admissionPrice, wallet, this.rating)) return; // balks at the gate
+    if (!force && !judgeAdmission(this.admissionPrice, wallet, this.rating))
+      return; // balks at the gate
     earn(this.ledger, this.admissionPrice);
     const c = tileCenter(this.world.gate);
     const g: Guest = {
@@ -335,7 +370,12 @@ export class Game {
     }
   }
 
-  private setRoute(g: Guest, path: Cell[], kind: Guest["targetKind"], id: number): void {
+  private setRoute(
+    g: Guest,
+    path: Cell[],
+    kind: Guest["targetKind"],
+    id: number,
+  ): void {
     g.path = path;
     g.pathIdx = 1; // index 0 is the tile it stands on
     g.state = "walking";
@@ -347,7 +387,10 @@ export class Game {
   private stepWalking(g: Guest, dt: number, leaving: boolean): boolean {
     const { arrived, tilesCrossed } = advancePath(g, dt);
     if (tilesCrossed > 0) {
-      g.desires.energy = Math.max(0, g.desires.energy - TUNE.guests.energyPerTile * tilesCrossed);
+      g.desires.energy = Math.max(
+        0,
+        g.desires.energy - TUNE.guests.energyPerTile * tilesCrossed,
+      );
       this.walkEnvironment(g, tilesCrossed);
     }
     this.tileHappiness(g, dt);
@@ -415,7 +458,10 @@ export class Game {
 
   private stepResting(g: Guest, dt: number): void {
     g.actTimer -= dt;
-    g.desires.energy = Math.min(TUNE.guests.benchRestore, g.desires.energy + 40 * dt);
+    g.desires.energy = Math.min(
+      TUNE.guests.benchRestore,
+      g.desires.energy + 40 * dt,
+    );
     applyHappiness(g, TUNE.guests.restHappy * dt);
     if (g.actTimer <= 0) g.state = "wandering";
   }
@@ -424,7 +470,11 @@ export class Game {
   private tileHappiness(g: Guest, dt: number): void {
     const t = tileAt(this.world, g.tile.col, g.tile.row);
     if (!t) return;
-    applyHappiness(g, TUNE.guests.appealBonus * t.appeal * dt - TUNE.guests.litterPenalty * t.litter * dt);
+    applyHappiness(
+      g,
+      TUNE.guests.appealBonus * t.appeal * dt -
+        TUNE.guests.litterPenalty * t.litter * dt,
+    );
   }
 
   // Guests drop a little litter as they walk — the light background source; stalls are the
@@ -439,8 +489,13 @@ export class Game {
   // A pressing desire with nowhere to satisfy it grinds a guest's mood down.
   private applyPressingPenalty(g: Guest, dt: number): void {
     if (g.state === "riding" || g.state === "resting") return;
-    const worst = Math.max(g.desires.bladder, g.desires.hunger, g.desires.thirst);
-    if (worst > 75) applyHappiness(g, -UNMET_PENALTY * ((worst - 75) / 25) * dt);
+    const worst = Math.max(
+      g.desires.bladder,
+      g.desires.hunger,
+      g.desires.thirst,
+    );
+    if (worst > 75)
+      applyHappiness(g, -UNMET_PENALTY * ((worst - 75) / 25) * dt);
   }
 
   private setMood(g: Guest): void {
@@ -474,7 +529,8 @@ export class Game {
 
   private routeWander(g: Guest): boolean {
     if (this.connectedTiles.length === 0) return false;
-    const to = this.connectedTiles[this.rng.int(0, this.connectedTiles.length - 1)]!;
+    const to =
+      this.connectedTiles[this.rng.int(0, this.connectedTiles.length - 1)]!;
     const path = this.pathTo(g.tile, to);
     if (!path || path.length <= 1) return false;
     this.setRoute(g, path, "none", -1);
@@ -535,10 +591,19 @@ export class Game {
     this.cleanliness = cleanlinessFrom(this.avgLitter);
     const distinct = this.distinctConnectedRideKinds;
     this.variety = varietyScore(distinct);
-    const totalRides = this.attractions.filter((a) => a.category === "ride").length;
-    const broken = this.attractions.filter((a) => a.category === "ride" && a.state === "broken").length;
+    const totalRides = this.attractions.filter(
+      (a) => a.category === "ride",
+    ).length;
+    const broken = this.attractions.filter(
+      (a) => a.category === "ride" && a.state === "broken",
+    ).length;
     this.reliability = reliabilityFrom(totalRides, broken);
-    this.ratingTarget = computeRatingTarget(avgHappiness, this.cleanliness, this.variety, this.reliability);
+    this.ratingTarget = computeRatingTarget(
+      avgHappiness,
+      this.cleanliness,
+      this.variety,
+      this.reliability,
+    );
     this.rating = easeRating(this.rating, this.ratingTarget, dtDays);
   }
 
@@ -560,17 +625,27 @@ export class Game {
   private tallies(dt: number): void {
     this.peakGuests = Math.max(this.peakGuests, this.guests.length);
     for (const n of this.notifications) n.ttl -= dt;
-    if (this.notifications.some((n) => n.ttl <= 0)) this.notifications = this.notifications.filter((n) => n.ttl > 0);
+    if (this.notifications.some((n) => n.ttl <= 0))
+      this.notifications = this.notifications.filter((n) => n.ttl > 0);
 
-    if (!this.milestones.has("first-ride") && this.attractions.some((a) => a.category === "ride" && a.connected)) {
+    if (
+      !this.milestones.has("first-ride") &&
+      this.attractions.some((a) => a.category === "ride" && a.connected)
+    ) {
       this.milestones.add("first-ride");
       this.notify("FIRST RIDE OPEN!", true);
     }
-    if (!this.milestones.has("first-stall") && this.attractions.some((a) => a.category === "stall" && a.connected)) {
+    if (
+      !this.milestones.has("first-stall") &&
+      this.attractions.some((a) => a.category === "stall" && a.connected)
+    ) {
       this.milestones.add("first-stall");
       this.notify("FIRST STALL OPEN!", true);
     }
-    if (!this.milestones.has("guest-count") && this.guests.length >= TUNE.milestones.guestCount) {
+    if (
+      !this.milestones.has("guest-count") &&
+      this.guests.length >= TUNE.milestones.guestCount
+    ) {
       this.milestones.add("guest-count");
       this.notify(`${TUNE.milestones.guestCount} GUESTS AT ONCE!`, true);
       this.fireworks();
@@ -585,7 +660,11 @@ export class Game {
     const cam = this.world.camera;
     const viewW = this.viewW;
     const viewH = this.viewH;
-    this.fxQueue.push({ kind: "fireworks", x: cam.x + viewW / 2, y: cam.y + viewH / 2 });
+    this.fxQueue.push({
+      kind: "fireworks",
+      x: cam.x + viewW / 2,
+      y: cam.y + viewH / 2,
+    });
   }
 
   // ---- Tool commands ----------------------------------------------------------
@@ -607,7 +686,11 @@ export class Game {
   }
 
   // Place a ride or stall at a footprint top-left (its entrance snaps to an adjacent path).
-  placeAttraction(kind: RideKind | StallKind, col: number, row: number): boolean {
+  placeAttraction(
+    kind: RideKind | StallKind,
+    col: number,
+    row: number,
+  ): boolean {
     const isRide = kind in RIDES;
     const def = isRide ? RIDES[kind as RideKind] : STALLS[kind as StallKind];
     if (!canPlaceFootprint(this.world, col, row, def.w, def.h)) return false;
@@ -668,7 +751,10 @@ export class Game {
   // Hire a staff member and drop it onto the nearest path tile (staff walk the network).
   hireStaff(kind: StaffKind, col: number, row: number): boolean {
     const def = STAFF[kind];
-    const spot = nearestPathTile(this.world, col, row) ?? { col: this.world.gate.col, row: this.world.gate.row };
+    const spot = nearestPathTile(this.world, col, row) ?? {
+      col: this.world.gate.col,
+      row: this.world.gate.row,
+    };
     const c = tileCenter(spot);
     const s: Staff = {
       id: this.nextId++,
@@ -720,14 +806,20 @@ export class Game {
     if (t.occupantId >= 0) {
       const a = this.attractionById(t.occupantId);
       if (a) {
-        earn(this.ledger, Math.floor(this.buildCostOf(a) * TUNE.economy.demolishRefund));
+        earn(
+          this.ledger,
+          Math.floor(this.buildCostOf(a) * TUNE.economy.demolishRefund),
+        );
         this.releaseGuestsOf(a);
         this.clearFootprint(a.col, a.row, a.w, a.h);
         this.attractions = this.attractions.filter((x) => x.id !== a.id);
       } else {
         const s = this.scenery.find((x) => x.id === t.occupantId);
         if (s) {
-          earn(this.ledger, Math.floor(SCENERY[s.kind].cost * TUNE.economy.demolishRefund));
+          earn(
+            this.ledger,
+            Math.floor(SCENERY[s.kind].cost * TUNE.economy.demolishRefund),
+          );
           this.clearFootprint(s.col, s.row, s.w, s.h);
           this.scenery = this.scenery.filter((x) => x.id !== s.id);
         }
@@ -736,7 +828,10 @@ export class Game {
       return true;
     }
     if (t.kind === "path") {
-      earn(this.ledger, Math.floor(TUNE.economy.pathCost * TUNE.economy.demolishRefund));
+      earn(
+        this.ledger,
+        Math.floor(TUNE.economy.pathCost * TUNE.economy.demolishRefund),
+      );
       t.kind = "grass";
       t.litter = 0;
       this.recomputeAll();
@@ -747,7 +842,11 @@ export class Game {
 
   private releaseGuestsOf(a: Attraction): void {
     for (const g of this.guests) {
-      if (g.targetId === a.id || a.queue.includes(g.id) || a.riders.includes(g.id)) {
+      if (
+        g.targetId === a.id ||
+        a.queue.includes(g.id) ||
+        a.riders.includes(g.id)
+      ) {
         g.state = "wandering";
         g.targetKind = "none";
         g.targetId = -1;
@@ -820,7 +919,12 @@ export class Game {
     }
   }
   breakRide(id?: number): void {
-    const a = id !== undefined ? this.attractionById(id) : this.attractions.find((x) => x.category === "ride" && x.state !== "broken");
+    const a =
+      id !== undefined
+        ? this.attractionById(id)
+        : this.attractions.find(
+            (x) => x.category === "ride" && x.state !== "broken",
+          );
     if (a && a.category === "ride") breakDown(a, this.rideCtx());
   }
   litter(col: number, row: number, amt: number): void {
@@ -861,7 +965,8 @@ export class Game {
         const col = s.col + dc;
         const row = s.row + dr;
         const t = tileAt(this.world, col, row);
-        if (t && t.kind === "path") out.push({ cell: { col, row }, region: t.region });
+        if (t && t.kind === "path")
+          out.push({ cell: { col, row }, region: t.region });
       }
     }
     this.restTiles = out;
@@ -882,7 +987,10 @@ export class Game {
   private nudgeStranded(): void {
     for (const g of this.guests) {
       if (isWalkable(this.world, g.tile.col, g.tile.row)) {
-        if ((g.targetKind === "ride" || g.targetKind === "stall") && !this.attractionById(g.targetId)) {
+        if (
+          (g.targetKind === "ride" || g.targetKind === "stall") &&
+          !this.attractionById(g.targetId)
+        ) {
           g.state = "wandering";
           g.targetKind = "none";
           g.targetId = -1;
@@ -924,18 +1032,27 @@ export class Game {
       restTiles: this.restTiles,
       world: this.world,
       reachableAttr: (a, guestRegion) =>
-        a.connected && regionAt(this.world, a.entrance.col, a.entrance.row) === guestRegion,
+        a.connected &&
+        regionAt(this.world, a.entrance.col, a.entrance.row) === guestRegion,
     };
   }
 
-  private markFootprint(col: number, row: number, w: number, h: number, id: number): void {
+  private markFootprint(
+    col: number,
+    row: number,
+    w: number,
+    h: number,
+    id: number,
+  ): void {
     for (let r = row; r < row + h; r++) {
-      for (let c = col; c < col + w; c++) this.world.tiles[idx(c, r)]!.occupantId = id;
+      for (let c = col; c < col + w; c++)
+        this.world.tiles[idx(c, r)]!.occupantId = id;
     }
   }
   private clearFootprint(col: number, row: number, w: number, h: number): void {
     for (let r = row; r < row + h; r++) {
-      for (let c = col; c < col + w; c++) this.world.tiles[idx(c, r)]!.occupantId = -1;
+      for (let c = col; c < col + w; c++)
+        this.world.tiles[idx(c, r)]!.occupantId = -1;
     }
   }
 
@@ -960,7 +1077,9 @@ export class Game {
   }
 
   private buildCostOf(a: Attraction): number {
-    return a.category === "ride" ? RIDES[a.kind as RideKind].cost : STALLS[a.kind as StallKind].cost;
+    return a.category === "ride"
+      ? RIDES[a.kind as RideKind].cost
+      : STALLS[a.kind as StallKind].cost;
   }
 
   // ---- Camera -----------------------------------------------------------------
@@ -974,7 +1093,11 @@ export class Game {
     clampCamera(this.world.camera);
   }
   centerOnGate(): void {
-    centerCameraOn(this.world, this.world.gate.col * TILE + TILE / 2, (ROWS - 4) * TILE);
+    centerCameraOn(
+      this.world,
+      this.world.gate.col * TILE + TILE / 2,
+      (ROWS - 4) * TILE,
+    );
   }
   get camera(): Camera {
     return this.world.camera;
@@ -1009,7 +1132,8 @@ export class Game {
   }
   get distinctConnectedRideKinds(): number {
     const kinds = new Set<string>();
-    for (const a of this.attractions) if (a.category === "ride" && a.connected) kinds.add(a.kind);
+    for (const a of this.attractions)
+      if (a.category === "ride" && a.connected) kinds.add(a.kind);
     return kinds.size;
   }
   get ratingStars(): number {
@@ -1022,7 +1146,9 @@ export class Game {
     return wageBill(this.staff);
   }
   get brokenCount(): number {
-    return this.attractions.filter((a) => a.category === "ride" && a.state === "broken").length;
+    return this.attractions.filter(
+      (a) => a.category === "ride" && a.state === "broken",
+    ).length;
   }
   attractionById(id: number): Attraction | undefined {
     return this.attractions.find((a) => a.id === id);
@@ -1034,13 +1160,19 @@ export class Game {
     return this.staff.find((s) => s.id === id);
   }
   get selectedAttraction(): Attraction | null {
-    return this.selection === "attraction" ? (this.attractionById(this.selectedId) ?? null) : null;
+    return this.selection === "attraction"
+      ? (this.attractionById(this.selectedId) ?? null)
+      : null;
   }
   get selectedGuest(): Guest | null {
-    return this.selection === "guest" ? (this.guestById(this.selectedId) ?? null) : null;
+    return this.selection === "guest"
+      ? (this.guestById(this.selectedId) ?? null)
+      : null;
   }
   get selectedStaff(): Staff | null {
-    return this.selection === "staff" ? (this.staffById(this.selectedId) ?? null) : null;
+    return this.selection === "staff"
+      ? (this.staffById(this.selectedId) ?? null)
+      : null;
   }
 }
 

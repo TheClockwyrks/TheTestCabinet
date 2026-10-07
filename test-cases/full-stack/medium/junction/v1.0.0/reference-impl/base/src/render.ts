@@ -29,7 +29,16 @@ import {
   ZONE_COLOR,
 } from "./constants";
 import { roadSprite, zoneSprite, type Assets } from "./assets";
-import { drawHud, blit, hexA, inRect, lineCount, roundRect, text, wrap } from "./hud";
+import {
+  drawHud,
+  blit,
+  hexA,
+  inRect,
+  lineCount,
+  roundRect,
+  text,
+  wrap,
+} from "./hud";
 import { drawOverlay } from "./overlays";
 import { colOf, idx, inBounds, rowOf } from "./grid";
 import type { Bursts, Haze, HazePatch } from "./particles";
@@ -71,7 +80,12 @@ const VIEW_CY = (VIEW_Y0 + VIEW_Y1) / 2;
 const TERRAIN_COL = TERRAIN_ORDER.map((t) => COL[t]);
 
 // ---- Entry ---------------------------------------------------------------------
-export function render(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, fx: RenderFx): Clickable[] {
+export function render(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  fx: RenderFx,
+): Clickable[] {
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = COL.bg;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
@@ -102,7 +116,13 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, assets: Assets
 }
 
 // ---- City view (drawn under the camera world transform) ------------------------
-function drawCityScene(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, fx: RenderFx, dim: boolean): void {
+function drawCityScene(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  fx: RenderFx,
+  dim: boolean,
+): void {
   const cam = game.camera;
   ctx.save();
   ctx.beginPath();
@@ -147,7 +167,11 @@ interface TileRange {
   r1: number;
 }
 
-function drawTerrain(ctx: CanvasRenderingContext2D, game: Game, range: TileRange): void {
+function drawTerrain(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  range: TileRange,
+): void {
   const w = game.world;
   const t = time;
   for (let row = range.r0; row <= range.r1; row++) {
@@ -158,7 +182,10 @@ function drawTerrain(ctx: CanvasRenderingContext2D, game: Game, range: TileRange
       ctx.fillRect(col * TILE, row * TILE, TILE + 0.6, TILE + 0.6);
       // Water shimmers faintly so the river reads as a live amenity.
       if (code === 2) {
-        ctx.fillStyle = hexA("#3d7f9c", 0.12 + 0.08 * Math.sin(t * 1.6 + col * 0.7 + row));
+        ctx.fillStyle = hexA(
+          "#3d7f9c",
+          0.12 + 0.08 * Math.sin(t * 1.6 + col * 0.7 + row),
+        );
         ctx.fillRect(col * TILE, row * TILE, TILE + 0.6, TILE + 0.6);
       }
     }
@@ -167,10 +194,17 @@ function drawTerrain(ctx: CanvasRenderingContext2D, game: Game, range: TileRange
 
 // Empty zoned lots (code-drawn hatch, ASSETS.md §1.1) and developed building sprites, with
 // the construction sheet playing while a lot builds or upgrades.
-function drawLotsAndBuildings(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, range: TileRange): void {
+function drawLotsAndBuildings(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  range: TileRange,
+): void {
   const w = game.world;
   const cframes = assets.anim.construction;
-  const cf = cframes.length ? cframes[Math.floor(time * 8) % cframes.length]! : null;
+  const cf = cframes.length
+    ? cframes[Math.floor(time * 8) % cframes.length]!
+    : null;
   for (let row = range.r0; row <= range.r1; row++) {
     for (let col = range.c0; col <= range.c1; col++) {
       const i = idx(col, row);
@@ -202,7 +236,12 @@ function drawLotsAndBuildings(ctx: CanvasRenderingContext2D, game: Game, assets:
   }
 }
 
-function drawEmptyLot(ctx: CanvasRenderingContext2D, col: number, row: number, color: string): void {
+function drawEmptyLot(
+  ctx: CanvasRenderingContext2D,
+  col: number,
+  row: number,
+  color: string,
+): void {
   const x = col * TILE + 1;
   const y = row * TILE + 1;
   const sz = TILE - 2;
@@ -217,7 +256,12 @@ function drawEmptyLot(ctx: CanvasRenderingContext2D, col: number, row: number, c
 
 // Road (shape-selected), rail, station, then wire/pipe (DESIGN §5.1 draw order), plus a small
 // bridge/tunnel mark on span tiles.
-function drawCarriers(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, range: TileRange): void {
+function drawCarriers(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  range: TileRange,
+): void {
   const w = game.world;
   for (let row = range.r0; row <= range.r1; row++) {
     for (let col = range.c0; col <= range.c1; col++) {
@@ -231,16 +275,48 @@ function drawCarriers(ctx: CanvasRenderingContext2D, game: Game, assets: Assets,
         blit(ctx, assets.sprite(sprite), cx, cy, TILE + 0.6, TILE + 0.6, rot);
       }
       if (n & (NET_RAIL | NET_STATION)) {
-        blit(ctx, assets.sprite("transit/rail"), cx, cy, TILE + 0.6, TILE + 0.6, runAngle(w, col, row, NET_RAIL | NET_STATION));
+        blit(
+          ctx,
+          assets.sprite("transit/rail"),
+          cx,
+          cy,
+          TILE + 0.6,
+          TILE + 0.6,
+          runAngle(w, col, row, NET_RAIL | NET_STATION),
+        );
       }
       if (n & NET_STATION) {
-        blit(ctx, assets.sprite("transit/station"), cx, cy, TILE + 0.6, TILE + 0.6, 0);
+        blit(
+          ctx,
+          assets.sprite("transit/station"),
+          cx,
+          cy,
+          TILE + 0.6,
+          TILE + 0.6,
+          0,
+        );
       }
       if (n & NET_WIRE) {
-        blit(ctx, assets.sprite("utility/wire"), cx, cy, TILE, TILE, runAngle(w, col, row, NET_WIRE));
+        blit(
+          ctx,
+          assets.sprite("utility/wire"),
+          cx,
+          cy,
+          TILE,
+          TILE,
+          runAngle(w, col, row, NET_WIRE),
+        );
       }
       if (n & NET_PIPE) {
-        blit(ctx, assets.sprite("utility/pipe"), cx, cy, TILE, TILE, runAngle(w, col, row, NET_PIPE));
+        blit(
+          ctx,
+          assets.sprite("utility/pipe"),
+          cx,
+          cy,
+          TILE,
+          TILE,
+          runAngle(w, col, row, NET_PIPE),
+        );
       }
       if (n & NET_SPAN) {
         ctx.strokeStyle = hexA(COL.text3, 0.6);
@@ -262,18 +338,32 @@ function roadMask(w: Game["world"], col: number, row: number): number {
 }
 
 // Rail/wire/pipe art is authored vertical; rotate a quarter-turn for a horizontal run.
-function runAngle(w: Game["world"], col: number, row: number, bit: number): number {
+function runAngle(
+  w: Game["world"],
+  col: number,
+  row: number,
+  bit: number,
+): number {
   const h = hasNetAt(w, col - 1, row, bit) || hasNetAt(w, col + 1, row, bit);
   const v = hasNetAt(w, col, row - 1, bit) || hasNetAt(w, col, row + 1, bit);
   return h && !v ? Math.PI / 2 : 0;
 }
 
-function hasNetAt(w: Game["world"], col: number, row: number, bit: number): boolean {
+function hasNetAt(
+  w: Game["world"],
+  col: number,
+  row: number,
+  bit: number,
+): boolean {
   return inBounds(col, row) && (w.net[idx(col, row)]! & bit) !== 0;
 }
 
 // The 2×2 power plants and water sources (ASSETS.md §1.3), anchored at their top-left tile.
-function drawSources(ctx: CanvasRenderingContext2D, game: Game, assets: Assets): void {
+function drawSources(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+): void {
   for (const src of game.world.sources) {
     const cx = (src.col + 1) * TILE;
     const cy = (src.row + 1) * TILE;
@@ -287,7 +377,12 @@ function drawSources(ctx: CanvasRenderingContext2D, game: Game, assets: Assets):
     if (src.supplied >= src.capacity - 0.01) {
       ctx.strokeStyle = hexA(COL.alert, 0.6);
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(src.col * TILE + 1, src.row * TILE + 1, TILE * 2 - 2, TILE * 2 - 2);
+      ctx.strokeRect(
+        src.col * TILE + 1,
+        src.row * TILE + 1,
+        TILE * 2 - 2,
+        TILE * 2 - 2,
+      );
     }
   }
 }
@@ -323,41 +418,82 @@ function hazePatches(game: Game, range: TileRange): HazePatch[] {
   return patches;
 }
 
-function drawVehicles(ctx: CanvasRenderingContext2D, game: Game, assets: Assets): void {
+function drawVehicles(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+): void {
   const tramFrames = assets.anim.tram;
   for (const v of game.vehicles) {
     const p = { x: v.x, y: v.y }; // the core resolves the interpolated world position
     const ang = v.angle + Math.PI / 2; // art faces "up"; align to the heading
     if (v.kind === "tram") {
-      const img = tramFrames.length ? tramFrames[Math.floor(v.animT * 10) % tramFrames.length]! : assets.sprite("vehicles/tram");
+      const img = tramFrames.length
+        ? tramFrames[Math.floor(v.animT * 10) % tramFrames.length]!
+        : assets.sprite("vehicles/tram");
       blit(ctx, img, p.x, p.y, 11, 16, ang);
     } else {
-      blit(ctx, assets.sprite(v.kind === "truck" ? "vehicles/truck" : "vehicles/car"), p.x, p.y, 12, 12, ang);
+      blit(
+        ctx,
+        assets.sprite(v.kind === "truck" ? "vehicles/truck" : "vehicles/car"),
+        p.x,
+        p.y,
+        12,
+        12,
+        ang,
+      );
     }
   }
 }
 
 // Animated traffic signals at road junctions (ASSETS.md §2), on a 4-frame timer + per-signal
 // phase so they are not all in lock-step.
-function drawSignals(ctx: CanvasRenderingContext2D, game: Game, assets: Assets): void {
+function drawSignals(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+): void {
   const frames = assets.anim.signal;
   if (!frames.length) return;
   for (const sig of game.signals) {
     const f = Math.floor(time * 3 + sig.phase * frames.length) % frames.length;
-    blit(ctx, frames[f]!, (sig.col + 0.5) * TILE, (sig.row + 0.5) * TILE - TILE * 0.28, 9, 9, 0);
+    blit(
+      ctx,
+      frames[f]!,
+      (sig.col + 0.5) * TILE,
+      (sig.row + 0.5) * TILE - TILE * 0.28,
+      9,
+      9,
+      0,
+    );
   }
 }
 
 // ---- Selection & tool feedback (world space) -----------------------------------
 function drawTileHighlight(ctx: CanvasRenderingContext2D, game: Game): void {
   if (game.selectedTile >= 0) cellOutline(ctx, game.selectedTile, COL.text, 2);
-  if (game.hoverTile >= 0 && game.hoverTile !== game.selectedTile && !game.activeTool) cellOutline(ctx, game.hoverTile, hexA(COL.text, 0.55), 1);
+  if (
+    game.hoverTile >= 0 &&
+    game.hoverTile !== game.selectedTile &&
+    !game.activeTool
+  )
+    cellOutline(ctx, game.hoverTile, hexA(COL.text, 0.55), 1);
 }
 
-function cellOutline(ctx: CanvasRenderingContext2D, tile: number, color: string, lw: number): void {
+function cellOutline(
+  ctx: CanvasRenderingContext2D,
+  tile: number,
+  color: string,
+  lw: number,
+): void {
   ctx.strokeStyle = color;
   ctx.lineWidth = lw;
-  ctx.strokeRect(colOf(tile) * TILE + 0.5, rowOf(tile) * TILE + 0.5, TILE - 1, TILE - 1);
+  ctx.strokeRect(
+    colOf(tile) * TILE + 0.5,
+    rowOf(tile) * TILE + 0.5,
+    TILE - 1,
+    TILE - 1,
+  );
 }
 
 interface ToolPreview {
@@ -374,10 +510,19 @@ function computeToolPreview(game: Game): ToolPreview | null {
   // renderer only draws the ghost. `dragAnchor` (the tile a drag began on) is passed so the
   // preview spans the whole in-progress run/rectangle (specs/simulation.md).
   const preview = game.toolPreview(dragAnchor, game.hoverTile);
-  return { tool, cells: preview.cells, cost: preview.cost, refusal: preview.refusal };
+  return {
+    tool,
+    cells: preview.cells,
+    cost: preview.cost,
+    refusal: preview.refusal,
+  };
 }
 
-function drawToolCells(ctx: CanvasRenderingContext2D, game: Game, assets: Assets): void {
+function drawToolCells(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+): void {
   const preview = computeToolPreview(game);
   if (!preview) return;
   for (const cell of preview.cells) {
@@ -396,7 +541,15 @@ function drawToolCells(ctx: CanvasRenderingContext2D, game: Game, assets: Assets
     const r0 = rowOf(game.hoverTile);
     ctx.save();
     ctx.globalAlpha = 0.55;
-    blit(ctx, assets.sprite(tool === "plant" ? "utility/plant" : "utility/source"), (c0 + 1) * TILE, (r0 + 1) * TILE, TILE * 2, TILE * 2, 0);
+    blit(
+      ctx,
+      assets.sprite(tool === "plant" ? "utility/plant" : "utility/source"),
+      (c0 + 1) * TILE,
+      (r0 + 1) * TILE,
+      TILE * 2,
+      TILE * 2,
+      0,
+    );
     ctx.restore();
   }
 }
@@ -407,7 +560,11 @@ function drawCursorFeedback(ctx: CanvasRenderingContext2D, game: Game): void {
   if (pointerY < VIEW_Y0 || pointerY > VIEW_Y1) return;
   const preview = computeToolPreview(game);
   if (!preview) return;
-  const label = preview.refusal ?? (preview.tool === "bulldoze" ? "BULLDOZE" : `${TOOL_BY_KIND[preview.tool].name} · $${preview.cost}`);
+  const label =
+    preview.refusal ??
+    (preview.tool === "bulldoze"
+      ? "BULLDOZE"
+      : `${TOOL_BY_KIND[preview.tool].name} · $${preview.cost}`);
   const color = preview.refusal ? COL.alert : COL.text;
   ctx.font = `700 12px ${FONT}`;
   const tw = ctx.measureText(label).width;
@@ -435,14 +592,37 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game): void {
   const bw = 188;
   const rows: [string, string, string][] = [];
   rows.push(["TILE", `${colOf(i)}, ${rowOf(i)}`, COL.text]);
-  rows.push(["TERRAIN", TERRAIN_ORDER[w.terrain[i]!]!.toUpperCase(), COL.text2]);
-  if (src) rows.push([src.kind === "plant" ? "POWER PLANT" : "WATER SOURCE", `${Math.round(src.supplied)}/${src.capacity}`, src.kind === "plant" ? COL.power : COL.pipe]);
-  if (zk) rows.push(["ZONE", `${zk.toUpperCase()} · TIER ${w.tier[i]!}`, ZONE_COLOR[zk]]);
+  rows.push([
+    "TERRAIN",
+    TERRAIN_ORDER[w.terrain[i]!]!.toUpperCase(),
+    COL.text2,
+  ]);
+  if (src)
+    rows.push([
+      src.kind === "plant" ? "POWER PLANT" : "WATER SOURCE",
+      `${Math.round(src.supplied)}/${src.capacity}`,
+      src.kind === "plant" ? COL.power : COL.pipe,
+    ]);
+  if (zk)
+    rows.push([
+      "ZONE",
+      `${zk.toUpperCase()} · TIER ${w.tier[i]!}`,
+      ZONE_COLOR[zk],
+    ]);
   if (n !== 0) rows.push(["NETWORK", carrierNames(n), COL.text2]);
-  rows.push(["LAND VALUE", `${Math.round(w.land[i]! * 100)}%`, landTone(w.land[i]!)]);
-  if (w.pollution[i]! > 1) rows.push(["POLLUTION", `${Math.round(w.pollution[i]!)}`, COL.pollution]);
+  rows.push([
+    "LAND VALUE",
+    `${Math.round(w.land[i]! * 100)}%`,
+    landTone(w.land[i]!),
+  ]);
+  if (w.pollution[i]! > 1)
+    rows.push(["POLLUTION", `${Math.round(w.pollution[i]!)}`, COL.pollution]);
   const svc = `${w.powered[i]! ? "P" : "·"} ${w.watered[i]! ? "W" : "·"} ${w.access[i]! ? "A" : "·"}`;
-  rows.push(["SERVICE", svc, w.powered[i]! && w.watered[i]! && w.access[i]! ? COL.money : COL.text3]);
+  rows.push([
+    "SERVICE",
+    svc,
+    w.powered[i]! && w.watered[i]! && w.access[i]! ? COL.money : COL.text3,
+  ]);
 
   const bh = 14 + rows.length * 16 + 8;
   ctx.save();
@@ -495,14 +675,28 @@ function drawNotifications(ctx: CanvasRenderingContext2D, game: Game): void {
     ctx.strokeStyle = hexA(toneColor[note.tone], 0.6);
     ctx.lineWidth = 1;
     ctx.stroke();
-    text(ctx, note.text, STAGE_W / 2, y + 14, 12, toneColor[note.tone], "center", "700", 0.5);
+    text(
+      ctx,
+      note.text,
+      STAGE_W / 2,
+      y + 14,
+      12,
+      toneColor[note.tone],
+      "center",
+      "700",
+      0.5,
+    );
     ctx.globalAlpha = 1;
     y += 32;
   }
 }
 
 // ---- Title / how-to / pause / bankruptcy (screen space) ------------------------
-function drawTitle(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawTitle(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   const grad = ctx.createLinearGradient(440, 0, 840, 0);
   grad.addColorStop(0, COL.res);
   grad.addColorStop(0.5, COL.com);
@@ -515,31 +709,85 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   ctx.fillStyle = grad;
   drawSpaced(ctx, "JUNCTION", STAGE_W / 2, 234, 92, 12);
   ctx.restore();
-  text(ctx, game.mode.tagline, STAGE_W / 2, 306, 16, COL.text2, "center", "600", 6);
+  text(
+    ctx,
+    game.mode.tagline,
+    STAGE_W / 2,
+    306,
+    16,
+    COL.text2,
+    "center",
+    "600",
+    6,
+  );
 
   const items = game.menuItems();
   items.forEach((it, i) => {
     const y = 410 + i * 62;
     const on = highlighted(i, STAGE_W / 2 - 200, y - 26, 400, 52);
-    text(ctx, it.label, STAGE_W / 2, y, 28, on ? COL.money : COL.text, "center", "700", 6);
+    text(
+      ctx,
+      it.label,
+      STAGE_W / 2,
+      y,
+      28,
+      on ? COL.money : COL.text,
+      "center",
+      "700",
+      6,
+    );
     if (on) {
       text(ctx, "▶", STAGE_W / 2 - 186, y, 18, COL.money, "center", "700");
       text(ctx, "◀", STAGE_W / 2 + 186, y, 18, COL.money, "center", "700");
     }
-    clicks.push({ x: STAGE_W / 2 - 200, y: y - 26, w: 400, h: 52, action: it.action });
+    clicks.push({
+      x: STAGE_W / 2 - 200,
+      y: y - 26,
+      w: 400,
+      h: 52,
+      action: it.action,
+    });
   });
-  text(ctx, "↑↓ SELECT     ENTER CONFIRM     MOUSE OK", STAGE_W / 2, 660, 12, COL.text3, "center", "500", 4);
+  text(
+    ctx,
+    "↑↓ SELECT     ENTER CONFIRM     MOUSE OK",
+    STAGE_W / 2,
+    660,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    4,
+  );
 }
 
 function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   text(ctx, "HOW TO PLAY", STAGE_W / 2, 58, 32, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
-    ["GOAL", "Grow a solvent city. There is no win — the score is your PEAK POPULATION and the MONTHS you survive solvent. Go past the debt limit while still losing money and the city goes bankrupt."],
-    ["ZONE", "Paint land Residential, Commercial, or Industrial. A zoned lot develops itself — but ONLY where it has road access, power, water, and demand — growing through three density tiers, then abandoning when a precondition is lost."],
-    ["CONNECT", "Lay ROADS so lots are within reach of the network; add a RAIL line with STATIONS along a busy corridor to pull through-traffic off jammed roads. Roads/rail crossing water or a hill cost extra as a span."],
-    ["SERVE", "Place a POWER PLANT + WIRES and a WATER SOURCE + PIPES; a source must sit beside water. A network past its capacity starves its farthest tiles first."],
-    ["BALANCE", "Every month settles tax income vs. upkeep. Raise TAX for revenue, but too high suppresses demand. Industry and jams emit POLLUTION that lowers land value and suppresses growth."],
-    ["CONTROLS", "Pick a tool from the bottom palette (or click it) and click / drag on the map to build. Select a tile to inspect it; RAZE to bulldoze (partial refund). Drag or arrows to pan, wheel to zoom. SPACE pauses in place, TAB cycles overlays, 1/2/3 sets speed, M mutes, ESC opens the menu."],
+    [
+      "GOAL",
+      "Grow a solvent city. There is no win — the score is your PEAK POPULATION and the MONTHS you survive solvent. Go past the debt limit while still losing money and the city goes bankrupt.",
+    ],
+    [
+      "ZONE",
+      "Paint land Residential, Commercial, or Industrial. A zoned lot develops itself — but ONLY where it has road access, power, water, and demand — growing through three density tiers, then abandoning when a precondition is lost.",
+    ],
+    [
+      "CONNECT",
+      "Lay ROADS so lots are within reach of the network; add a RAIL line with STATIONS along a busy corridor to pull through-traffic off jammed roads. Roads/rail crossing water or a hill cost extra as a span.",
+    ],
+    [
+      "SERVE",
+      "Place a POWER PLANT + WIRES and a WATER SOURCE + PIPES; a source must sit beside water. A network past its capacity starves its farthest tiles first.",
+    ],
+    [
+      "BALANCE",
+      "Every month settles tax income vs. upkeep. Raise TAX for revenue, but too high suppresses demand. Industry and jams emit POLLUTION that lowers land value and suppresses growth.",
+    ],
+    [
+      "CONTROLS",
+      "Pick a tool from the bottom palette (or click it) and click / drag on the map to build. Select a tile to inspect it; RAZE to bulldoze (partial refund). Drag or arrows to pan, wheel to zoom. SPACE pauses in place, TAB cycles overlays, 1/2/3 sets speed, M mutes, ESC opens the menu.",
+    ],
   ];
   let y = 104;
   for (const [k, v] of lines) {
@@ -553,26 +801,54 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   panelButton(ctx, clicks, bx, by, 180, 42, "BACK", "menu:back", on);
 }
 
-function drawPause(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawPause(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   dim(ctx);
   panelBox(ctx, 440, 210, 400, 300);
   text(ctx, "PAUSED", STAGE_W / 2, 262, 30, COL.text, "center", "700", 4);
   menuButtons(ctx, game.menuItems(), 316, 58, 260, clicks);
 }
 
-function drawBankrupt(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawBankrupt(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   dim(ctx);
   panelBox(ctx, 400, 168, 480, 384);
-  text(ctx, "CITY BANKRUPT", STAGE_W / 2, 214, 14, COL.alert, "center", "700", 3);
+  text(
+    ctx,
+    "CITY BANKRUPT",
+    STAGE_W / 2,
+    214,
+    14,
+    COL.alert,
+    "center",
+    "700",
+    3,
+  );
   text(ctx, "INSOLVENT", STAGE_W / 2, 258, 40, COL.alert, "center", "800", 2);
   const stat = (label: string, value: string, y: number, c: string): void => {
     text(ctx, label, STAGE_W / 2, y, 12, COL.text3, "center", "600", 2);
     text(ctx, value, STAGE_W / 2, y + 24, 24, c, "center", "700", 1);
   };
-  stat("PEAK POPULATION", game.stats.peakPopulation.toLocaleString("en-US"), 316, COL.text);
+  stat(
+    "PEAK POPULATION",
+    game.stats.peakPopulation.toLocaleString("en-US"),
+    316,
+    COL.text,
+  );
   stat("SURVIVED", `${game.stats.monthsSurvived} MONTHS`, 372, COL.text);
   const debt = Math.round(Math.min(0, game.budget.treasury));
-  stat("FINAL DEBT", `-$${Math.abs(debt).toLocaleString("en-US")}`, 428, COL.alert);
+  stat(
+    "FINAL DEBT",
+    `-$${Math.abs(debt).toLocaleString("en-US")}`,
+    428,
+    COL.alert,
+  );
   const items = game.menuItems();
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];
   items.forEach((it, i) => {
@@ -582,7 +858,14 @@ function drawBankrupt(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickab
 }
 
 // ---- menu / panel helpers ------------------------------------------------------
-function menuButtons(ctx: CanvasRenderingContext2D, items: MenuItem[], y0: number, gap: number, w: number, clicks: Clickable[]): void {
+function menuButtons(
+  ctx: CanvasRenderingContext2D,
+  items: MenuItem[],
+  y0: number,
+  gap: number,
+  w: number,
+  clicks: Clickable[],
+): void {
   const x = STAGE_W / 2 - w / 2;
   items.forEach((it, i) => {
     const y = y0 + i * gap;
@@ -591,18 +874,44 @@ function menuButtons(ctx: CanvasRenderingContext2D, items: MenuItem[], y0: numbe
   });
 }
 
-function panelButton(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, w: number, h: number, label: string, action: string, on: boolean): void {
+function panelButton(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  action: string,
+  on: boolean,
+): void {
   roundRect(ctx, x, y, w, h, 8);
   ctx.fillStyle = on ? hexA(COL.money, 0.16) : "rgba(255,255,255,0.04)";
   ctx.fill();
   ctx.strokeStyle = on ? COL.money : "rgba(255,255,255,0.12)";
   ctx.lineWidth = on ? 2 : 1;
   ctx.stroke();
-  text(ctx, label, x + w / 2, y + h / 2 + 1, 15, on ? COL.money : COL.text, "center", "700", 1);
+  text(
+    ctx,
+    label,
+    x + w / 2,
+    y + h / 2 + 1,
+    15,
+    on ? COL.money : COL.text,
+    "center",
+    "700",
+    1,
+  );
   clicks.push({ x, y, w, h, action });
 }
 
-function highlighted(i: number, x: number, y: number, w: number, h: number): boolean {
+function highlighted(
+  i: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return menuIndex === i || inRect(pointerX, pointerY, x, y, w, h);
 }
 
@@ -611,7 +920,13 @@ function dim(ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
 
-function panelBox(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+function panelBox(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.5)";
   ctx.shadowBlur = 30;
@@ -625,7 +940,14 @@ function panelBox(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.stroke();
 }
 
-function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: number, size: number, letter: number): void {
+function drawSpaced(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  cx: number,
+  y: number,
+  size: number,
+  letter: number,
+): void {
   const chars = [...s];
   const adv = size * 0.62 + letter;
   const total = chars.length * adv;

@@ -32,14 +32,14 @@ face-on coin is a full circle (widest), an edge-on coin is a thin vertical slive
 (narrowest). The height never changes; the width shrinks to the edge and grows
 back:
 
-| Frame | Pose | Face | Width |
-| --- | --- | --- | --- |
-| 0 | full face | round face fully visible | widest — a full circle |
-| 1 | three-quarter | face compressed | narrower ellipse |
-| 2 | near edge | a sliver of face | narrow ellipse |
-| 3 | **edge-on** | no face — just the edge | thinnest — a vertical sliver |
-| 4 | near edge | face reappearing (other side) | narrow ellipse |
-| 5 | three-quarter | face widening back | wider ellipse |
+| Frame | Pose          | Face                          | Width                        |
+| ----- | ------------- | ----------------------------- | ---------------------------- |
+| 0     | full face     | round face fully visible      | widest — a full circle       |
+| 1     | three-quarter | face compressed               | narrower ellipse             |
+| 2     | near edge     | a sliver of face              | narrow ellipse               |
+| 3     | **edge-on**   | no face — just the edge       | thinnest — a vertical sliver |
+| 4     | near edge     | face reappearing (other side) | narrow ellipse               |
+| 5     | three-quarter | face widening back            | wider ellipse                |
 
 Playing 0 → 5 and looping back to 0 makes the coin spin forever: it narrows to the
 edge at frame 3, then widens back, and frame 5 flows straight into frame 0. Keep
@@ -77,12 +77,12 @@ across it** as the coin turns:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Gold — face (lit) | `#f2c531` |
-| Gold — rim / shadow (dark) | `#b07d16` |
+| Role                            | Hex       |
+| ------------------------------- | --------- |
+| Gold — face (lit)               | `#f2c531` |
+| Gold — rim / shadow (dark)      | `#b07d16` |
 | Rim outline / minting (darkest) | `#5c3d08` |
-| Glint (highlight) | `#ffffff` |
+| Glint (highlight)               | `#ffffff` |
 
 ## Working the tool
 

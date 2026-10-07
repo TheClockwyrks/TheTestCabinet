@@ -8,7 +8,20 @@ export {
   type DialogProps,
 } from "./Dialog";
 export { Markdown } from "./Markdown";
+export { Input, type InputProps } from "./Input";
+export { Textarea, type TextareaProps } from "./Textarea";
+export { Select, type SelectProps } from "./Select";
+export {
+  Button,
+  buttonClass,
+  type ButtonProps,
+  type ButtonSize,
+  type ButtonVariant,
+} from "./Button";
+export { ControlRow } from "./ControlRow";
 export { RatingBadge } from "./RatingBadge";
+export { FailureCapBadge, type FailureCapOutcome } from "./FailureCapBadge";
+export { AestheticBadge } from "./AestheticBadge";
 export { GradeBadge } from "./GradeBadge";
 export { Panel } from "./Panel";
 export { Spinner, type SpinnerProps, type SpinnerVariant } from "./Spinner";
@@ -19,11 +32,17 @@ export { SegmentedControl, type SegmentedOption } from "./SegmentedControl";
 export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
+export { ChartWidget, SectionWidget } from "./ChartWidget";
+export { ChartSortControl } from "./ChartSortControl";
+export { ChartModeControl, type ChartMode } from "./ChartModeControl";
 export {
-  DonutChartWidget,
-  type DonutSegment,
-} from "./DonutChartWidget";
-export { MetricChartWidget } from "./MetricChartWidget";
+  orderBars,
+  type BetterIs,
+  type ChartSort,
+  type ChartTieBreak,
+} from "./chartSort";
+export { DonutChartWidget, type DonutSegment } from "./DonutChartWidget";
+export { MetricChartWidget, type BarBuildOptions } from "./MetricChartWidget";
 export { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";
 export {
   ReliabilityRingWidget,
@@ -31,14 +50,47 @@ export {
   type ReliabilityTone,
 } from "./ReliabilityRingWidget";
 export {
+  Treemap,
+  placeTreemapTiles,
+  type TreemapTile,
+  type PlacedTreemapTile,
+  type TreemapLegendKey,
+  type TreemapLegendKind,
+} from "./plot/Treemap";
+export {
   barChart,
+  horizontalBarChart,
   stackedBarChart,
+  stackedAreaChart,
+  metricLineChart,
+  timeSeriesChart,
+  distributionChart,
+  scatterChart,
   type BarPoint,
+  type BarDistribution,
+  type ScatterGroup,
+  type ScatterLabels,
+  type HorizontalBarPoint,
+  type HorizontalBarLabels,
   type StackedBarSegment,
   type StackedSeries,
+  type StackedAreaPoint,
+  type StackedAreaMarker,
+  type MetricPoint,
+  type MetricLineLabels,
+  type TimeSeriesPoint,
+  type TimeSeriesLabels,
+  type DistributionPoint,
+  type DistributionGroup,
 } from "./plot/charts";
 export {
   basePlotOptions,
   readChartPalette,
   type ChartPalette,
 } from "./plot/theme";
+export {
+  quantile,
+  summarizeValues,
+  type DistributionStats,
+} from "./plot/distribution";
+export { CATEGORICAL_COLORS, categoricalColor } from "./plot/palette";

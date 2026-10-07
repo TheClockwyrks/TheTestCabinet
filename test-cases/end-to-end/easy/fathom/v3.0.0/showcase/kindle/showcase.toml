@@ -1,0 +1,11 @@
+[[media]]
+file = "dive.json.gz"
+name = "A dive through the trench, seen through the window"
+
+[[media]]
+file = "window.png"
+name = "A Flarefish charging inside the vision circle"
+
+[[media]]
+file = "sonar.png"
+name = "A pulse washing down the corridors"

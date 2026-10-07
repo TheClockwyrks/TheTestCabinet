@@ -52,7 +52,11 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 // Keep the camera's top-left world point so the world border sits flush at a view edge and
 // never scrolls past the sealed rim into empty space (specs/world.md).
-export function clampCamera(camX: number, camY: number, zoom: number): { x: number; y: number } {
+export function clampCamera(
+  camX: number,
+  camY: number,
+  zoom: number,
+): { x: number; y: number } {
   const viewWorldW = VIEW_W / zoom;
   const viewWorldH = VIEW_H / zoom;
   const maxX = Math.max(0, WORLD_W - viewWorldW);
@@ -60,18 +64,40 @@ export function clampCamera(camX: number, camY: number, zoom: number): { x: numb
   return { x: clamp(camX, 0, maxX), y: clamp(camY, 0, maxY) };
 }
 // The camera top-left that centers tile (tx, ty) in the colony view (load / camTo).
-export function centerOn(tx: number, ty: number, zoom: number): { x: number; y: number } {
+export function centerOn(
+  tx: number,
+  ty: number,
+  zoom: number,
+): { x: number; y: number } {
   const cx = tileCenterX(tx) - VIEW_W / zoom / 2;
   const cy = tileCenterY(ty) - VIEW_H / zoom / 2;
   return clampCamera(cx, cy, zoom);
 }
-export function worldToScreen(camX: number, camY: number, zoom: number, wx: number, wy: number): { x: number; y: number } {
+export function worldToScreen(
+  camX: number,
+  camY: number,
+  zoom: number,
+  wx: number,
+  wy: number,
+): { x: number; y: number } {
   return { x: VIEW_X0 + (wx - camX) * zoom, y: VIEW_Y0 + (wy - camY) * zoom };
 }
-export function screenToWorld(camX: number, camY: number, zoom: number, sx: number, sy: number): { x: number; y: number } {
+export function screenToWorld(
+  camX: number,
+  camY: number,
+  zoom: number,
+  sx: number,
+  sy: number,
+): { x: number; y: number } {
   return { x: camX + (sx - VIEW_X0) / zoom, y: camY + (sy - VIEW_Y0) / zoom };
 }
-export function screenToTile(camX: number, camY: number, zoom: number, sx: number, sy: number): PathNode {
+export function screenToTile(
+  camX: number,
+  camY: number,
+  zoom: number,
+  sx: number,
+  sy: number,
+): PathNode {
   const w = screenToWorld(camX, camY, zoom, sx, sy);
   return { tx: tileOfPixelX(w.x), ty: tileOfPixelY(w.y) };
 }
@@ -97,8 +123,10 @@ export class World {
   // not yet — settlers path to build it (specs/economy.md).
   recompute(t: Tile): void {
     const blockedTerrain = t.terrain === "rock";
-    const s = t.structure && t.structure.built ? STRUCTURES[t.structure.kind] : null;
-    t.walkable = !blockedTerrain && t.node === null && !(s?.blocksMove ?? false);
+    const s =
+      t.structure && t.structure.built ? STRUCTURES[t.structure.kind] : null;
+    t.walkable =
+      !blockedTerrain && t.node === null && !(s?.blocksMove ?? false);
     t.blocksSight = blockedTerrain || (s?.blocksSight ?? false);
     t.givesCover = s?.cover ?? false;
   }
@@ -116,13 +144,24 @@ export class World {
   passable(x: number, y: number, forRaider = false): boolean {
     const t = this.tileAt(x, y);
     if (!t || !t.walkable) return false;
-    if (forRaider && t.structure && t.structure.built && t.structure.kind === "door") return false;
+    if (
+      forRaider &&
+      t.structure &&
+      t.structure.built &&
+      t.structure.kind === "door"
+    )
+      return false;
     return true;
   }
 
   isFloor(x: number, y: number): boolean {
     const t = this.tileAt(x, y);
-    return !!(t && t.structure && t.structure.built && t.structure.kind === "floor");
+    return !!(
+      t &&
+      t.structure &&
+      t.structure.built &&
+      t.structure.kind === "floor"
+    );
   }
 
   // Line of sight / fire between two tile centers: a supercover walk from a→b; any tile
@@ -149,7 +188,12 @@ export class World {
   // Cover (tile granularity): the target is in cover vs the shooter when the tile one step
   // from the target TOWARD the shooter carries a cover-giving structure (wall/door) — the
   // wall soaks part of the incoming fire (specs/combat.md, DESIGN §3.7).
-  inCover(targetTx: number, targetTy: number, shooterTx: number, shooterTy: number): boolean {
+  inCover(
+    targetTx: number,
+    targetTy: number,
+    shooterTx: number,
+    shooterTy: number,
+  ): boolean {
     const sx = Math.sign(shooterTx - targetTx);
     const sy = Math.sign(shooterTy - targetTy);
     if (sx === 0 && sy === 0) return false;
@@ -175,14 +219,26 @@ function makeTile(x: number, y: number): Tile {
 
 // A rough organic blob grown by a bounded random walk from (cx, cy); returns the visited
 // tiles (used for grass belts, rock outcrops, tree stands, and ore veins).
-function blob(rng: RNG, cx: number, cy: number, size: number, spread = 1): PathNode[] {
+function blob(
+  rng: RNG,
+  cx: number,
+  cy: number,
+  size: number,
+  spread = 1,
+): PathNode[] {
   const out: PathNode[] = [];
   const seen = new Set<number>();
   let x = cx;
   let y = cy;
   for (let i = 0; i < size; i++) {
     const key = y * COLS + x;
-    if (!seen.has(key) && x >= BORDER && x < COLS - BORDER && y >= BORDER && y < ROWS - BORDER) {
+    if (
+      !seen.has(key) &&
+      x >= BORDER &&
+      x < COLS - BORDER &&
+      y >= BORDER &&
+      y < ROWS - BORDER
+    ) {
       seen.add(key);
       out.push({ tx: x, ty: y });
     }
@@ -201,14 +257,16 @@ function blob(rng: RNG, cx: number, cy: number, size: number, spread = 1): PathN
 export function generateWorld(seed: number): World {
   const rng = new RNG(seed);
   const tiles: Tile[] = [];
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) tiles.push(makeTile(x, y));
+  for (let y = 0; y < ROWS; y++)
+    for (let x = 0; x < COLS; x++) tiles.push(makeTile(x, y));
   const world = new World(tiles);
   const at = (x: number, y: number): Tile | null => world.tileAt(x, y);
 
   // 1. Sealed rock border ring.
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
-      if (x < BORDER || x >= COLS - BORDER || y < BORDER || y >= ROWS - BORDER) at(x, y)!.terrain = "rock";
+      if (x < BORDER || x >= COLS - BORDER || y < BORDER || y >= ROWS - BORDER)
+        at(x, y)!.terrain = "rock";
     }
   }
 
@@ -216,7 +274,8 @@ export function generateWorld(seed: number): World {
   const cy = Math.floor(ROWS / 2);
   world.landing = { tx: cx, ty: cy };
   world.stockpile = { tx: cx, ty: cy };
-  const nearLanding = (x: number, y: number, r: number): boolean => Math.abs(x - cx) <= r && Math.abs(y - cy) <= r;
+  const nearLanding = (x: number, y: number, r: number): boolean =>
+    Math.abs(x - cx) <= r && Math.abs(y - cy) <= r;
 
   // 2. Grass belts (fertile ground — best for farm plots).
   for (let i = 0; i < 5; i++) {
@@ -242,7 +301,12 @@ export function generateWorld(seed: number): World {
   // 4. Tree stands (clusters, not scattered singles — chopping is a deliberate objective).
   const canNode = (x: number, y: number): boolean => {
     const t = at(x, y);
-    return !!(t && t.terrain !== "rock" && t.node === null && !nearLanding(x, y, 4));
+    return !!(
+      t &&
+      t.terrain !== "rock" &&
+      t.node === null &&
+      !nearLanding(x, y, 4)
+    );
   };
   for (let i = 0; i < 8; i++) {
     const tx = rng.between(BORDER + 2, COLS - BORDER - 3);
@@ -270,9 +334,19 @@ export function generateWorld(seed: number): World {
     for (let k = 0; k < run; k++) {
       if (canNode(vx, vy)) {
         const t = at(vx, vy)!;
-        t.node = { kind: "ore", hp: 5.0, maxHp: 5.0, claimedBy: null, workAnim: 0 }; // MINE_HP
+        t.node = {
+          kind: "ore",
+          hp: 5.0,
+          maxHp: 5.0,
+          claimedBy: null,
+          workAnim: 0,
+        }; // MINE_HP
       }
-      vx = clamp(vx + dir.dx + rng.between(-1, 1) * 0, BORDER, COLS - BORDER - 1);
+      vx = clamp(
+        vx + dir.dx + rng.between(-1, 1) * 0,
+        BORDER,
+        COLS - BORDER - 1,
+      );
       vy = clamp(vy + dir.dy, BORDER, ROWS - BORDER - 1);
     }
   }
@@ -298,7 +372,10 @@ export function generateWorld(seed: number): World {
   for (const s of spawns) {
     // open the border tile itself plus a short throat inward so the spawn is truly reachable
     for (let d = 0; d <= 1; d++) {
-      const t = at(s.tx + Math.sign(cx - s.tx) * d, s.ty + Math.sign(cy - s.ty) * d);
+      const t = at(
+        s.tx + Math.sign(cx - s.tx) * d,
+        s.ty + Math.sign(cy - s.ty) * d,
+      );
       if (t) {
         t.terrain = "soil";
         t.node = null;
@@ -314,7 +391,12 @@ export function generateWorld(seed: number): World {
 }
 
 // Attach a built/ghost structure to a tile and refresh the tile's derived flags.
-export function setStructure(world: World, s: Structure | null, x: number, y: number): void {
+export function setStructure(
+  world: World,
+  s: Structure | null,
+  x: number,
+  y: number,
+): void {
   const t = world.tileAt(x, y);
   if (!t) return;
   t.structure = s;

@@ -1,4 +1,5 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
 
 // The Appearance settings surface. The panel stacks its settings with even
 // spacing and no dead space above the first one (the title sits flush with the
@@ -101,7 +102,7 @@
 
 .optionActive .optionName {
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .optionHint {

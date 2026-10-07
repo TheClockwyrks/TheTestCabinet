@@ -23,6 +23,10 @@ use crate::error::ApiError;
 #[derive(Debug, Clone)]
 pub struct MatchExecutor {
     semaphore: Arc<Semaphore>,
+    /// The permit count the executor was built with, retained so the at-capacity
+    /// rejection can name the ceiling that was hit (the semaphore reports only how
+    /// many permits are free, which is zero exactly when the message is rendered).
+    capacity: usize,
 }
 
 impl MatchExecutor {
@@ -34,6 +38,7 @@ impl MatchExecutor {
         let permits = max_concurrent.max(1);
         Self {
             semaphore: Arc::new(Semaphore::new(permits)),
+            capacity: permits,
         }
     }
 
@@ -71,11 +76,13 @@ impl MatchExecutor {
         self.semaphore.clone().try_acquire_owned().map_err(|_| {
             tracing::warn!(
                 permits = self.semaphore.available_permits(),
-                "arena at capacity; rejecting request with 503"
+                capacity = self.capacity,
+                "arena at capacity"
             );
-            ApiError::service_unavailable(
-                "the arena is at capacity; retry the match or tournament shortly",
-            )
+            ApiError::service_unavailable(format!(
+                "arena at capacity ({} concurrent matches or tournaments)",
+                self.capacity
+            ))
         })
     }
 }

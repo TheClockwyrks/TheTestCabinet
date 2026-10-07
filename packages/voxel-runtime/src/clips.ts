@@ -60,7 +60,13 @@ export function sampleKeyframes(
       };
       // Neighbours for auto tangents wrap around the loop: before `last` is the
       // penultimate key; after the wrapped `first` is the second key.
-      return evalSegment(last, wrap, frames[n - 2] ?? null, frames[1] ?? null, t);
+      return evalSegment(
+        last,
+        wrap,
+        frames[n - 2] ?? null,
+        frames[1] ?? null,
+        t,
+      );
     }
     return last.value;
   }
@@ -69,9 +75,14 @@ export function sampleKeyframes(
     const a = frames[i]!;
     const b = frames[i + 1]!;
     if (t >= a.tMs && t <= b.tMs) {
-      const prev = i > 0 ? frames[i - 1]! : looping ? wrapBefore(frames, periodMs) : null;
+      const prev =
+        i > 0 ? frames[i - 1]! : looping ? wrapBefore(frames, periodMs) : null;
       const next =
-        i + 2 < n ? frames[i + 2]! : looping ? wrapAfter(frames, periodMs) : null;
+        i + 2 < n
+          ? frames[i + 2]!
+          : looping
+            ? wrapAfter(frames, periodMs)
+            : null;
       return evalSegment(a, b, prev, next, t);
     }
   }
@@ -82,16 +93,26 @@ export function sampleKeyframes(
 /** The synthetic neighbour *before* the first key when looping: the last key,
  * shifted one period earlier, so the auto tangent at the first key is continuous
  * across the loop seam. */
-function wrapBefore(frames: readonly KeyframeSpec[], periodMs: number): KeyframeSpec {
+function wrapBefore(
+  frames: readonly KeyframeSpec[],
+  periodMs: number,
+): KeyframeSpec {
   const last = frames[frames.length - 1]!;
   return { tMs: last.tMs - periodMs, value: last.value, interp: last.interp };
 }
 
 /** The synthetic neighbour *after* the last key when looping: the first key,
  * shifted one period later. */
-function wrapAfter(frames: readonly KeyframeSpec[], periodMs: number): KeyframeSpec {
+function wrapAfter(
+  frames: readonly KeyframeSpec[],
+  periodMs: number,
+): KeyframeSpec {
   const first = frames[0]!;
-  return { tMs: first.tMs + periodMs, value: first.value, interp: first.interp };
+  return {
+    tMs: first.tMs + periodMs,
+    value: first.value,
+    interp: first.interp,
+  };
 }
 
 /** Normalised preset handles in `(u, w)` space — `u` a fraction of the segment's
@@ -149,7 +170,11 @@ function evalBezier(
   let aOut: [number, number];
   let bIn: [number, number];
 
-  if (interp === "ease-in" || interp === "ease-out" || interp === "ease-in-out") {
+  if (
+    interp === "ease-in" ||
+    interp === "ease-out" ||
+    interp === "ease-in-out"
+  ) {
     const preset = EASE_PRESETS[interp];
     aOut = [a.tMs + preset.out[0] * dt, a.value + preset.out[1] * dv];
     bIn = [b.tMs + preset.in[0] * dt, b.value + preset.in[1] * dv];
@@ -164,13 +189,7 @@ function evalBezier(
       : autoIn(a, b, next, dt);
   }
 
-  return bezierValueAtTime(
-    [a.tMs, a.value],
-    aOut,
-    bIn,
-    [b.tMs, b.value],
-    t,
-  );
+  return bezierValueAtTime([a.tMs, a.value], aOut, bIn, [b.tMs, b.value], t);
 }
 
 /** Auto out-handle at `a` for the segment `a → b`: slope from `a`'s neighbours,
@@ -204,9 +223,17 @@ function autoIn(
 }
 
 /** One coordinate of a cubic Bézier at parameter `s ∈ [0, 1]`. */
-function cubic(p0: number, p1: number, p2: number, p3: number, s: number): number {
+function cubic(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+  s: number,
+): number {
   const u = 1 - s;
-  return u * u * u * p0 + 3 * u * u * s * p1 + 3 * u * s * s * p2 + s * s * s * p3;
+  return (
+    u * u * u * p0 + 3 * u * u * s * p1 + 3 * u * s * s * p2 + s * s * s * p3
+  );
 }
 
 /** Value of a cubic Bézier `(time, value)` curve at a given query `time`: solve

@@ -1,0 +1,73 @@
+Build **Wireworm**, a fixed-shooter arcade descent that runs entirely in the
+browser.
+
+Your project root is `{{workspace}}`. Build the game there. Its dependencies are
+already installed, so you can build and test right away.
+
+## Your starting point
+
+{{#if (eq engine.slug "none")}}
+A TypeScript project is already in place at `{{workspace}}`. What is missing is
+everything under `src/`, and that directory does not exist yet.
+{{else if (eq engine.slug "simple-2d")}}
+A TypeScript project is already in place at `{{workspace}}`. It does not
+type-check on a fresh checkout: the seeded `src/game.ts` is written against the
+types the specification asks it to declare. That first `tsc` failure is
+expected; declaring the types clears it.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`. It does not
+type-check on a fresh checkout: `src/main.ts` imports `src/game.ts`, which does
+not exist yet. That first `tsc` failure is expected; creating the module clears
+it.
+{{/if}}
+{{#unless (eq engine.slug "none")}}
+
+## The {{engine.name}} engine
+
+The **{{engine.name}}** engine is installed as a dependency of the project, so
+import it by its bare package name; there is nothing to add to `package.json`
+for it and nothing to install. Its own documentation is at `{{engine.docs}}`,
+and it carries a complete worked example of unit-testing a game built on it.
+{{/unless}}
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Produce an implementation that matches the specification
+exactly. `specs/overview.md` states what you implement, which files stay as they
+are, the code quality the build is held to, and the commands that run over the
+finished repository. It also lists the other files of the specification and what
+each one fixes.
+
+## The art
+
+`specs/assets.md` is the contract for the sprite art seeded under
+`{{workspace}}/assets/`.
+
+## The build interface
+
+`npm ci` then `npm run build` produces the static site into `dist/` at the
+project root, with no other manual step.
+
+## Driving the game in a browser
+
+Playwright and a headless Chromium are installed in this project.
+
+When you launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on `PATH`;
+it lives in your project's `node_modules` like any other dependency. Launch
+Chromium with the `--no-sandbox` argument, since this container has no Chromium
+sandbox and a default launch fails.
+
+## The showcase
+
+`specs/showcase.md` defines a showcase the finished game ships.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+from this repository's commits, so leave a clean working tree: everything
+committed, nothing untracked. A `.gitignore` already excludes `node_modules/`,
+the build output, and coverage reports.

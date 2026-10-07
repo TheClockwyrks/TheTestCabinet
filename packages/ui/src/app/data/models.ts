@@ -1,5 +1,6 @@
 import { canonicalModelId } from "../../modelId";
 import type {
+  ListPriceSource,
   Model,
   ModelAlias,
   ModelPrices,
@@ -35,14 +36,44 @@ export interface ModelSummary {
   /** The canonical model ids this model claims, each tagged with the harness
    * family it is usable with (seeds the config form and drives run→model matching). */
   aliases: ModelAlias[];
-  /** The latest observed comparable per-token prices, or null. */
+  /** The billed rate: the latest observed per-token price of the official
+   * OpenRouter endpoint, refreshed by the backend. Null until observed. */
   prices: ModelPrices | null;
+  /** The curated developer list price (per token) a run's comparable cost is
+   * computed from, or null while the model has none. */
+  listPrice: ModelPrices | null;
+  /** The date (`YYYY-MM-DD`) the list-price figures were taken, or null. */
+  listPriceAsOf: string | null;
+  /** Where the list price came from, or null while the model has none. */
+  listPriceSource: ListPriceSource | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
   contextLength: number | null;
+  /** The developer provider: the OpenRouter provider name of the developer's
+   * own endpoint, hand-set or observed, or null when none is known. */
+  providerPin: string | null;
+  /** Whether `providerPin` is set by hand rather than observed. */
+  providerPinSetByHand: boolean;
+  /** Whether a gg run's candidate list is filtered to the native quantization.
+   * False accepts every endpoint at whatever level it declares. */
+  quantizationFilter: boolean;
+  /** The native quantization set by hand, or null for the listing's highest. */
+  nativeQuantization: string | null;
+  /** The price ceiling's input half, USD per million tokens, or null. */
+  maxInputPrice: number | null;
+  /** The price ceiling's output half, USD per million tokens, or null. */
+  maxOutputPrice: number | null;
+  /** The providers a gg run of the model never uses. */
+  bannedProviders: string[];
+  /** The providers accepted despite declaring `unknown` quantization. */
+  unknownQuantizationProviders: string[];
   /** Release date as an RFC 3339 UTC timestamp, or null. */
   releasedAt: string | null;
+  /** The input modalities the model accepts (`text`, `image`, …), lowercased.
+   * Empty means the catalog has not observed a list yet, which is "unknown"
+   * rather than "text only". */
+  inputModalities: string[];
 }
 
 /** Map a wire `Model` (from the backend or the snapshot) to a display summary. */
@@ -58,9 +89,23 @@ export function toModelSummary(model: Model): ModelSummary {
     modelIds: model.coveredModelIds,
     aliases: model.aliases,
     prices: model.price,
+    listPrice: model.listPrice,
+    listPriceAsOf: model.listPriceAsOf,
+    listPriceSource: model.listPriceSource,
     priceHistory: model.priceHistory,
     contextLength: model.contextLength,
+    providerPin: model.providerPin,
+    providerPinSetByHand: model.providerPinSetByHand,
+    // A snapshot published before the provider policy existed carries none of it,
+    // and one published before the filter could be switched off had it on.
+    quantizationFilter: model.quantizationFilter ?? true,
+    nativeQuantization: model.nativeQuantization ?? null,
+    maxInputPrice: model.maxInputPrice ?? null,
+    maxOutputPrice: model.maxOutputPrice ?? null,
+    bannedProviders: model.bannedProviders ?? [],
+    unknownQuantizationProviders: model.unknownQuantizationProviders ?? [],
     releasedAt: model.releasedAt,
+    inputModalities: model.inputModalities ?? [],
   };
 }
 

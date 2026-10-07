@@ -70,14 +70,22 @@ export class World {
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setClearColor(new THREE.Color(PALETTE.sand));
-    Object.assign(this.renderer.domElement.style, { position: "absolute", left: "0", top: "0" });
+    Object.assign(this.renderer.domElement.style, {
+      position: "absolute",
+      left: "0",
+      top: "0",
+    });
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(PALETTE.sand);
     this.addLighting();
     buildTerrain(this.scene, this.registry);
 
-    this.units = new InstancedUnitRenderer(this.scene, assets.units, createUnitMaterial(this.registry));
+    this.units = new InstancedUnitRenderer(
+      this.scene,
+      assets.units,
+      createUnitMaterial(this.registry),
+    );
 
     // Fog of war (specs/playfield.md): a ground overlay driven by the player's vision.
     this.fog = new FogOverlay(this.scene);
@@ -108,7 +116,10 @@ export class World {
   }
 
   /** Sync the instanced units for this frame (only unit-type entities are drawn here). */
-  syncUnits(entities: readonly RenderEntity[], typeOf: (e: RenderEntity) => UnitType): void {
+  syncUnits(
+    entities: readonly RenderEntity[],
+    typeOf: (e: RenderEntity) => UnitType,
+  ): void {
     this.units.sync(entities, (e) => {
       const t = typeOf(e);
       return this.unitTypes.has(t) ? t : null;
@@ -146,9 +157,16 @@ export class World {
   private bindInput(container: HTMLElement): void {
     window.addEventListener("keydown", (e) => {
       this.held.add(e.code);
-      if (e.code === "F3") { e.preventDefault(); this.toggleFps(); }
-      if (e.code === "F4") { e.preventDefault(); this.registry.toggleWireframe(); }
-      if (this.panEnabled && (e.code === "KeyH" || e.code === "Home")) this.camera.recenter();
+      if (e.code === "F3") {
+        e.preventDefault();
+        this.toggleFps();
+      }
+      if (e.code === "F4") {
+        e.preventDefault();
+        this.registry.toggleWireframe();
+      }
+      if (this.panEnabled && (e.code === "KeyH" || e.code === "Home"))
+        this.camera.recenter();
     });
     window.addEventListener("keyup", (e) => this.held.delete(e.code));
     container.addEventListener("pointermove", (e) => {
@@ -156,10 +174,14 @@ export class World {
       this.pointer.x = e.clientX - rect.left;
       this.pointer.y = e.clientY - rect.top;
       this.pointer.inside =
-        this.pointer.x >= 0 && this.pointer.x <= rect.width &&
-        this.pointer.y >= 0 && this.pointer.y <= rect.height;
+        this.pointer.x >= 0 &&
+        this.pointer.x <= rect.width &&
+        this.pointer.y >= 0 &&
+        this.pointer.y <= rect.height;
     });
-    container.addEventListener("pointerleave", () => { this.pointer.inside = false; });
+    container.addEventListener("pointerleave", () => {
+      this.pointer.inside = false;
+    });
   }
 
   // --- Letterboxed 16:9 fit (specs/overview.md) -------------------------------
@@ -219,7 +241,10 @@ export class World {
    * `(x, z)` there or `null` if the ray misses. Drives build-cell placement and
    * friendly-structure selection (specs/flow.md controls).
    */
-  pickGround(clientX: number, clientY: number): { x: number; z: number } | null {
+  pickGround(
+    clientX: number,
+    clientY: number,
+  ): { x: number; z: number } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return null;
     this.ndc.set(
@@ -227,7 +252,10 @@ export class World {
       -(((clientY - rect.top) / rect.height) * 2 - 1),
     );
     this.raycaster.setFromCamera(this.ndc, this.camera.camera);
-    const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this.pickPoint);
+    const hit = this.raycaster.ray.intersectPlane(
+      this.groundPlane,
+      this.pickPoint,
+    );
     if (!hit) return null;
     return { x: hit.x, z: hit.z };
   }
@@ -254,13 +282,19 @@ export class World {
    */
   viewRegion(): { x: number; z: number }[] {
     const corners: readonly [number, number][] = [
-      [-1, -1], [1, -1], [1, 1], [-1, 1],
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
     ];
     const out: { x: number; z: number }[] = [];
     for (const [nx, ny] of corners) {
       this.ndc.set(nx, ny);
       this.raycaster.setFromCamera(this.ndc, this.camera.camera);
-      const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this.pickPoint);
+      const hit = this.raycaster.ray.intersectPlane(
+        this.groundPlane,
+        this.pickPoint,
+      );
       if (hit) out.push({ x: this.pickPoint.x, z: this.pickPoint.z });
     }
     return out;

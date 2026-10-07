@@ -36,6 +36,7 @@ use test_cabinet_core::{
     r2::{R2Client, R2Config},
 };
 
+use super::capture_baselines::Target;
 use crate::cli::PublishReferenceArgs;
 
 /// Publish every targeted variant's asset reference to the object store.
@@ -45,21 +46,20 @@ use crate::cli::PublishReferenceArgs;
 /// a multi-variant sweep still makes progress.
 pub(super) async fn execute(
     test_case: &TestCaseVersion,
-    targets: &[&Variant],
+    targets: &[Target<'_>],
     args: &PublishReferenceArgs,
 ) -> Result<()> {
     if args.dry_run {
         println!("\n--dry-run: nothing was built or uploaded.");
-        for variant in targets {
-            let dir = variant
-                .reference_impl
-                .as_ref()
-                .expect("targets are pre-filtered to variants with a reference_impl");
-            println!("  {}", variant.slug);
-            println!("    script: {}", dir.join(ASSET_REFERENCE_SCRIPT).display());
+        for target in targets {
+            println!("  {}", target.label());
+            println!(
+                "    script: {}",
+                target.dir.join(ASSET_REFERENCE_SCRIPT).display()
+            );
             println!(
                 "    keys:   {}/frames/…",
-                reference_prefix(&test_case.slug, &test_case.version, &variant.slug)
+                reference_prefix(&test_case.slug, &test_case.version, &target.variant.slug)
             );
         }
         return Ok(());
@@ -71,9 +71,8 @@ pub(super) async fn execute(
     // the bucket is echoed below so a publish into the wrong one is visible
     // immediately rather than after the site fails to show the reference.
     let config = R2Config::from_env().context(
-        "publishing an asset-generation reference needs the R2 credentials for the target \
-         environment (TCAB_R2_ACCOUNT_ID, TCAB_R2_BUCKET, TCAB_R2_ACCESS_KEY_ID, \
-         TCAB_R2_SECRET_ACCESS_KEY)",
+        "the target environment's R2 credentials are unset (TCAB_R2_ACCOUNT_ID, \
+         TCAB_R2_BUCKET, TCAB_R2_ACCESS_KEY_ID, TCAB_R2_SECRET_ACCESS_KEY)",
     )?;
     println!(
         "  uploading to bucket `{}` (env `{}`)",
@@ -85,7 +84,8 @@ pub(super) async fn execute(
 
     let mut published = 0usize;
     let mut failures = 0usize;
-    for variant in targets {
+    for target in targets {
+        let variant = target.variant;
         match publish_one(&runner, &client, test_case, variant).await {
             Ok(frames) => {
                 println!("  {} — published {frames} frame(s)", variant.slug);
@@ -166,7 +166,8 @@ async fn publish_one(
             let bytes =
                 std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
             client
-                .put_object(&key, bytes, content_type)
+                // Reference frames are PNG and JSON, neither of them framed.
+                .put_object(&key, bytes, content_type, None)
                 .await
                 .with_context(|| format!("uploading {key}"))?;
         }

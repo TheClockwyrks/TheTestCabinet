@@ -1,0 +1,74 @@
+@use "../../styles/tokens" as t;
+
+// The Runs settings surface: one panel stacking the account-wide run
+// preferences, each a label block over its control (the Appearance tab's shape).
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xl;
+}
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.description {
+  margin: 0;
+  max-width: 52ch;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.muted {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.errorPanel {
+  margin-bottom: t.$space-lg;
+  border-color: t.$color-negative;
+}
+
+.error {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}
+
+// The number field, its no-limit switch, and the save action in a row, wrapping on
+// narrow viewports.
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  align-items: center;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  cursor: pointer;
+}
+
+// The number field's own width: a limit is a handful of digits.
+.input {
+  width: 8rem;
+}

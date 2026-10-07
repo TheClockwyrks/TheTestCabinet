@@ -1,0 +1,85 @@
+// heat/heat-mult-reported — the reported multiplier follows the heat.
+//
+// A snapshot reports `heatMult` per tower (`specs/instrumentation.md`), and it is
+// not a free number: `specs/heat.md` fixes it as `heatMultiplier(H, R)`. So the
+// readout is derived, and what this item decides is that it is derived LIVE from
+// the heat the tower is carrying rather than latched at some earlier moment or
+// computed off a different curve.
+//
+// THE DAMAGE READOUT IS ITS OWN POINT. `damage` is `baseDamage(level)` times this
+// multiplier (`specs/combat.md`), so a build whose multiplier is right and whose
+// damage does not follow it is a different defect from one whose curve is wrong;
+// that reading is `heat.damage-reported`'s.
+//
+// FIVE HEATS, chosen to pin the whole shape of the curve on one tower: the cold
+// end, two points on the quadratic climb, the redline itself, and one inside the
+// plateau. A level-I Arc carries the reading, so its redline is `80`.
+//
+// NEITHER FACULTY RUNS. The tower is posed with its thermal model off, so the
+// heat cannot drift between the pose and the read, and with its guns off, so
+// nothing is fired: this item is about a readout, not about a shot. Each heat is
+// followed by one frame, so a build that recomputes its readouts inside its
+// update is read after that update rather than before it.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  posePinnedTower,
+  startRun,
+  towerOf,
+  type Harness,
+} from "../harness";
+import { heatMultiplierOf } from "../thermal";
+import { redlineOf } from "./roster";
+import { FREE_SITE } from "./sites";
+
+/** The emitter read, and the redline specs/towers.md gives it. */
+const TOWER = "arc";
+const REDLINE = redlineOf(TOWER);
+
+/** The five heats: the cold end, two on the climb, the redline, and the plateau. */
+const HEATS: readonly number[] = [0, 20, 40, REDLINE, 99];
+
+/**
+ * How close each readout must come, as decimal places.
+ *
+ * Four places on the multiplier is `0.00005`, and three on the damage is `0.0005`
+ * hp. Both readouts are a build's own evaluation of a closed-form expression over
+ * figures the specification states exactly, so a conformant build needs no room
+ * at all; the bounds are set to exclude every other curve the multiplier could
+ * have been given, the nearest of which differs by hundredths at the very least.
+ */
+const MULT_DIGITS = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("The reported multiplier follows the heat", async () => {
+  startRun(h);
+  const id = posePinnedTower(h, TOWER, FREE_SITE.col, FREE_SITE.row, 0);
+  h.debug.setTowerFiring(id, false);
+
+  for (const heat of HEATS) {
+    h.debug.setTowerHeat(id, heat);
+    await h.advance(1);
+    const read = towerOf(h.snapshot(), id);
+    captureStill(h, "multiplier");
+
+    const expectedMult = heatMultiplierOf(heat, REDLINE);
+    assertCloseTo(
+      read.heatMult,
+      expectedMult,
+      MULT_DIGITS,
+      `heatMult at heat ${heat} with a redline of ${REDLINE}`,
+    );
+  }
+});

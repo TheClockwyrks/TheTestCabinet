@@ -1,0 +1,186 @@
+---
+title: Diagnostics and Overlay
+---
+
+A build named Patrol that names the values a reviewer would otherwise read off
+the pixels. Two of them belong to the whole game and are registered by the game
+instance; four belong to one match and are registered by the game mode. Both
+registries are drawn on the overlay while the game runs.
+
+## src/main.ts
+
+```ts
+import { createEngine } from "@clockwyrks/structured-2d";
+import { patrol } from "./game";
+
+const canvas = document.querySelector<HTMLCanvasElement>("#game");
+if (canvas === null) throw new Error("missing canvas #game");
+
+const engine = createEngine({
+  canvas,
+  width: 640,
+  height: 360,
+  background: "#05060a",
+  game: patrol,
+});
+
+await engine.initialize();
+await engine.run();
+```
+
+The boot module registers nothing. Sources belong to the objects that own the
+values, so each line stays in step with what produces it.
+
+## src/instance.ts
+
+```ts
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
+
+const BUILD = "patrol 1.4.0";
+
+export class PatrolInstance extends GameInstance<null> {
+  opens = 0;
+
+  override initialize(api: InitApi): null {
+    api.diagnostics.register("build", () => BUILD);
+    api.diagnostics.register("opens", () => this.opens);
+    return null;
+  }
+
+  override worldOpened(): void {
+    this.opens += 1;
+  }
+}
+```
+
+`initialize` runs once, before the start level opens, and a source registered
+from `InitApi` belongs to the whole game. Patrol offers no debug surface, so
+`initialize` returns `null`. `build` and `opens` therefore survive
+every transition, and `opens` counts them because `worldOpened` runs after each
+world's game mode has begun play.
+
+## src/game.ts
+
+```ts
+import { Actor, ShapeComponent } from "@clockwyrks/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
+import { PatrolInstance } from "./instance";
+import { PatrolMode, TAG } from "./levels/patrol-mode";
+
+const drones = Array.from({ length: 6 }, (_, i) => ({
+  type: Actor,
+  transform: { x: 40 + i * 96, y: 120 + (i % 3) * 60 },
+  tags: [TAG],
+  configure: (actor: Actor) => {
+    actor.attach(
+      new ShapeComponent({
+        shape: { kind: "rect", width: 24, height: 12 },
+        fill: "#7fd1ff",
+      }),
+    );
+  },
+}));
+
+export const patrol: GameDefinition<null> = {
+  instance: PatrolInstance,
+  levels: { patrol: { mode: PatrolMode, actors: drones } },
+  startLevel: "patrol",
+};
+```
+
+## src/levels/patrol-mode.ts
+
+```ts
+import { GameMode } from "@clockwyrks/structured-2d";
+
+export const TAG = "drone";
+
+export class PatrolMode extends GameMode {
+  private wave = 1;
+  private pace = 61.75;
+
+  override beginPlay(): void {
+    const diagnostics = this.world.diagnostics;
+    diagnostics.register("wave", () => this.wave);
+    diagnostics.register("drones", () => this.world.byTag(TAG).length);
+    diagnostics.register("lead", () => {
+      const lead = this.world.byTag(TAG)[0];
+      return lead === undefined
+        ? "none"
+        : `${lead.transform.x.toFixed(1)}, ${lead.transform.y.toFixed(1)}`;
+    });
+    diagnostics.register("pace", () => this.pace);
+
+    this.world.every(6, () => {
+      this.wave += 1;
+      this.pace += 6.5;
+    });
+    this.setPhase("playing");
+  }
+
+  override tick(dt: number): void {
+    for (const drone of this.world.byTag(TAG)) {
+      drone.transform.x = (drone.transform.x + this.pace * dt) % 640;
+    }
+  }
+}
+```
+
+A source registered from `world.diagnostics` lives as long as the world, so
+these four are dropped when the world closes while the instance's two persist.
+Each one closes over the object that holds the value rather than over a copy,
+and the engine evaluates every source on each read, so a line reports what the
+game holds at that instant.
+
+## What the overlay draws
+
+The overlay is hidden when the engine is created and is toggled by the
+`Backquote` key, which is engine chrome rather than a registered action. It
+draws the engine's own world line first, then the instance's sources, then the
+world's, then a metrics line, then the frame-time graph.
+
+```text
+level: patrol  phase: playing  actors: 6
+build: patrol 1.4.0
+opens: 1
+wave: 3
+drones: 6
+lead: 217.4, 120.0
+pace: 74.750
+frame: 3.417 / 5.208 / 6.125 ms
+```
+
+The shapes the sources return cover the formatting rules. A string prints as
+itself, an integer prints whole, and a non-integer prints to three decimal
+places. `lead` formats the position inside the source, since a source reports a
+string, a number, or a boolean.
+
+The metrics line reads the mean, the 95th, and the 99th percentile of the wall
+time spent in the frame's ticks, its collision pass, its render, and the
+overlay, over a window of the last 10 seconds of simulated time. The percentiles
+are nearest-rank.
+
+## Reading the values back
+
+A check reads the same values by holding the engine rather than the page, so it
+asserts what Patrol registered rather than what the panel drew.
+
+```ts
+const readings = engine.diagnostics();
+
+expect(readings.map((r) => r.name)).toEqual([
+  "build",
+  "opens",
+  "wave",
+  "drones",
+  "lead",
+  "pace",
+]);
+expect(readings[0]).toEqual({ name: "build", value: "patrol 1.4.0" });
+expect(readings[3]).toEqual({ name: "drones", value: 6 });
+```
+
+The instance's two sources come first and the world's four follow, each in
+registration order, which is the order the panel draws them in. Reading changes
+nothing the engine holds, and the overlay stays hidden throughout.

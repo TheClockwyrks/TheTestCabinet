@@ -2,7 +2,7 @@
 
 You are authoring the **Caldera basalt**: a tileable, seamless PBR material of
 **weathered volcanic basalt** — the cooled-lava rock of a caldera. It dresses the
-terraced hex terrain of *Caldera*, a volcanic tower-defense case: the near-vertical
+terraced hex terrain of _Caldera_, a volcanic tower-defense case: the near-vertical
 cliff walls and the flat terrace floors of a volcanic bowl. The terrain mesh has no
 UV layout; the material is applied by **triplanar projection**, so it must **tile
 seamlessly** — no visible repeat, no seam, no single focal feature that would betray
@@ -17,7 +17,7 @@ ashy caldera:
   the whole surface. It is not flat black: it carries a faint mineral grain (fine
   worley/fbm noise) so it reads as rough rock rather than a painted panel.
 - **A hairline fissure network** — the cracks where the lava cooled and split.
-  Thin, branching, irregular fissures that cut *into* the surface. Most are dark and
+  Thin, branching, irregular fissures that cut _into_ the surface. Most are dark and
   ashen; a few carry a **faint ember** hint at their deepest points, as if heat
   still lingers far below — but the surface is **cooled**, so the ember is a subtle
   warm tint in the base-color, never a bright glowing line.
@@ -47,13 +47,13 @@ The base-color (and the faint ember tint within it) works within this palette. S
 your colors against these named hexes so the surface reads unambiguously as weathered
 volcanic basalt:
 
-| Role | Hex |
-| --- | --- |
-| Basalt body (near-black rock) | `#191a1d` |
-| Basalt mottle (lifted grey grain) | `#33363b` |
-| Cooled fissure (ashen, dark) | `#2b2f36` |
-| Mineral crust / ash (pale, dusty) | `#6b5a44` |
-| Ash grit (light dusting) | `#8a7c66` |
+| Role                                 | Hex       |
+| ------------------------------------ | --------- |
+| Basalt body (near-black rock)        | `#191a1d` |
+| Basalt mottle (lifted grey grain)    | `#33363b` |
+| Cooled fissure (ashen, dark)         | `#2b2f36` |
+| Mineral crust / ash (pale, dusty)    | `#6b5a44` |
+| Ash grit (light dusting)             | `#8a7c66` |
 | Faint ember (deep-fissure warm hint) | `#5a2412` |
 
 Basalt is a **dielectric**, so there is **no metallic** channel and no metal in the
@@ -71,7 +71,7 @@ size, painted seamlessly (everything wraps across the edges).
   grey mottle, the ashen fissures with their faint ember hint, and the pale mineral
   crust and grit. **No baked lighting or shadow** goes here — that is the AO map's
   job. This is the color of the rock, lit flat.
-- **`normal`** (linear) — the surface relief: the fissures cut *in*, the vesicle
+- **`normal`** (linear) — the surface relief: the fissures cut _in_, the vesicle
   pits sunk, the mineral crust patches raised with a soft lip. **Do not hand-paint an
   RGB normal.** Paint the relief once into a grayscale **`height`** field (dark =
   recessed fissures and pits, light = raised crust) and **bake** the normal from it
@@ -94,7 +94,7 @@ is a base-color tint). Do not spend effort on those channels.
 Paint all the relief — the fissure network, the vesicle pits, the raised crust lips —
 into the grayscale **`height`** map, then bake `normal` and `ao` from it. `height` is
 **never** one of the emitted maps; it exists only so the normal, AO, and any
-curvature-driven color describe the *same* relief. Baking the relief maps from one
+curvature-driven color describe the _same_ relief. Baking the relief maps from one
 height field is what keeps them coherent.
 
 ## Working the tools
@@ -116,7 +116,7 @@ A sensible path for this surface:
   `height` map — brushes, noise, and patterns all wrap and stay tileable. Add the
   **vesicle pits** as small dark round marks (a scattered hard brush is ideal). Then
   let `pbr` derive the relief maps from it: `pbr bake-normal --from height --strength
-  <n>` writes the `normal` map, and `pbr bake-ao --from height --radius <n>` writes
+<n>` writes the `normal` map, and `pbr bake-ao --from height --radius <n>` writes
   the `ao` map. `pbr bake-curvature --from height` is available if you want to drive
   crust/edge wear in the base-color from the same relief.
 - **Paint the fissures and crust into `base-color`**, aligned to the height relief:
@@ -125,11 +125,11 @@ A sensible path for this surface:
   raised patches. Warping one map by another (`warp`) keeps the color and relief
   organically aligned.
 - **Fill the scalar maps with a uniform, then vary.** Use `pbr set-uniform --map
-  roughness --value 0.7` for the body base, then paint the glassier fissures (~0.35)
+roughness --value 0.7` for the body base, then paint the glassier fissures (~0.35)
   and the matte crust (~0.9) on top with `texture`. There is no metallic map to fill.
 - **Assemble and preview.** `pbr assemble` writes `material.json` (also run
   automatically when the run finishes). Render periodically with `pbr render --shape
-  <sphere|cube|cylinder|plane>` — this applies the maps by the **same triplanar
+<sphere|cube|cylinder|plane>` — this applies the maps by the **same triplanar
   projection** the terrain uses, so you judge how the maps combine on geometry, not
   just as flat swatches. `texture` re-renders the active map's flat 2x2-tiled preview
   after every op so you can watch for seams; the `pbr` 3D preview is the one on-request

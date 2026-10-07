@@ -1,6 +1,7 @@
 import { Route } from "react-router";
 import { routePatterns } from "../../routes";
 import { ModelOverviewPage } from "./[modelId]/ModelOverviewPage";
+import { ModelProbesPage } from "./[modelId]/ModelProbesPage";
 import { ModelRunsPage } from "./[modelId]/ModelRunsPage";
 import { ModelStatsPage } from "./[modelId]/ModelStatsPage";
 import { ModelConfigPage } from "./ModelConfigPage";
@@ -18,12 +19,22 @@ import { ModelsPage } from "./ModelsPage";
 export function modelsRoutes() {
   return (
     <>
-      <Route path={routePatterns.models} element={<ModelsPage />} />
+      <Route
+        path={routePatterns.models}
+        element={<ModelsPage tab="models" />}
+      />
+      {/* A literal segment beside `/models/:modelId`, which it outranks — the
+          section's second tab, like `/models/new`. */}
+      <Route
+        path={routePatterns.modelsProviders}
+        element={<ModelsPage tab="providers" />}
+      />
       <Route path={routePatterns.modelNew} element={<ModelConfigPage />} />
       <Route path={routePatterns.modelDetail} element={<ModelOverviewPage />} />
       <Route path={routePatterns.modelStats} element={<ModelStatsPage />} />
       <Route path={routePatterns.modelEdit} element={<ModelConfigPage />} />
       <Route path={routePatterns.modelRuns} element={<ModelRunsPage />} />
+      <Route path={routePatterns.modelProbes} element={<ModelProbesPage />} />
     </>
   );
 }

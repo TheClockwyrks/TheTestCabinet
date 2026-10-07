@@ -1,0 +1,115 @@
+# gg's **Rust** program-language library set.
+#
+# Deliberately its own workspace (`[workspace]`, empty) rather than a member of the repository's:
+# it is compiled for `wasm32-wasip1` by `build.sh`, its output is a set of generated
+# `.rlib` files rather than a binary anything links, and a member would be built by every
+# `cargo build --workspace` in the repository for no reason.
+
+[workspace]
+
+[package]
+name = "gg"
+version = "0.7.0"
+edition = "2021"
+publish = false
+# The crate a model's program names. Short on purpose: `rustc --extern gg=…` is what puts it in
+# scope, so this is the word every Rust program in the study begins with.
+
+[lib]
+path = "src/lib.rs"
+# `rlib` and nothing else. The final artifact is the *program*'s `bin`, compiled per turn with
+# this named on `--extern`; this half is compiled once, at build time, and shipped inside gg's
+# binary. See `build.sh`.
+crate-type = ["rlib"]
+
+[dependencies]
+# The **runtime** half of `wit-bindgen`, and only that half: `default-features = false` drops the
+# `macros` feature, which is what keeps the `wit-bindgen-rust-macro` proc macro out of this rlib's
+# metadata. See `rust-version.sh` for why that matters — a proc macro is a host `.so`, and one
+# named in the metadata makes the whole library set unloadable on any other architecture.
+#
+# The generated bindings in `src/bindings.rs` are what use it, through `wit_bindgen::rt`. THIS
+# REQUIREMENT, AND THE VERSION `Cargo.lock` RESOLVES IT TO, ARE ALSO WHICH GENERATOR EMITS THOSE
+# BINDINGS: `rust-version.sh` reads `GG_WIT_BINDGEN_VERSION` out of the lock rather than restating
+# it, because the generator and this runtime are two halves of one release and a disagreement
+# between them surfaces as an unresolved symbol in a wasm module rather than as anything either
+# file could be read to predict. Bump it here — or with `cargo update -p wit-bindgen` — and the
+# downloaded CLI follows.
+wit-bindgen = { version = "0.60", default-features = false }
+
+# ------------------------------------------------------------------------------------------------
+# THE CURATED LIBRARY SET a model's program may reach for.
+#
+# Everything below this line is here for the model rather than for this crate: a program is compiled
+# with each of these named on `--extern`, so `use regex::Regex;` works with no manifest to edit and
+# no registry to reach. The rule is the seam's — commonly used libraries are available by default,
+# because an arm that made a model live without its own idioms would be measuring how well it copes
+# without them rather than how well it works.
+#
+# Two constraints decide what may be in it, and both are hard.
+#
+#   * NO PROC MACROS, anywhere in the tree. A proc macro is a HOST dynamic library, and one named in
+#     an rlib's metadata makes the whole set unloadable on any other architecture (measured: E0463).
+#     That is what rules out `serde`'s `derive`, `thiserror` and `clap`, and it is checked rather
+#     than trusted: `build.sh` fails if the build produced a proc-macro artifact.
+#   * IT MUST COMPILE FOR `wasm32-wasip1`, which has no clock, no filesystem, no sockets and
+#     no randomness. That is what rules out `rand` (its `getrandom` has no backend on this target),
+#     `chrono` and `reqwest`. Reaching the world is what `fs` and `system` are for.
+#
+# The `# --- heading ---` lines are MACHINE-READABLE: `tools/signatures.py` groups the catalogue's
+# `libraries` section by them, so the record of what a program may use is reflected out of the file
+# that decides the set. A `use` of a crate this arm does not carry is refused by `rustc`, in its own
+# words.
+
+# --- Text and parsing ---
+# The crate a Rust author reaches for the moment a `str::contains` is not enough. Its own
+# `regex-syntax`/`regex-automata` are the two largest things in the set, and they are dead-stripped
+# out of the artifact of any program that does not use them.
+regex = "1"
+
+# --- Data formats ---
+# Reading and writing JSON — for what a command printed, never for gg's own calls, whose arguments
+# and results are typed values rather than documents a program assembles. `serde`'s `derive` is a
+# proc macro and is therefore absent, so this is `Value`, `from_str` and `to_string_pretty` rather
+# than `#[derive(Deserialize)]`.
+serde_json = "1"
+# Encoding and decoding base64, for the one direction the membrane does not carry bytes.
+base64 = "0.22"
+
+# --- Collections and iteration ---
+# The iterator adaptors `std` leaves out: `chunk_by`, `sorted_by_key`, `unique`, `join`, `counts`.
+itertools = "0.14"
+# A map and a set that remember insertion order, which is what makes a program's output stable
+# without sorting it.
+indexmap = "2"
+
+# The `std` modules a program reaches for most, listed so the catalogue's `libraries` section says
+# out loud that the whole standard library is there — a section naming five third-party crates and
+# nothing else would understate the set badly. It is a pointer list rather than a set: `std` is not a
+# dependency and nothing here decides what is in it.
+[package.metadata.gg]
+standard-library = [
+    "std::collections",
+    "std::fmt",
+    "std::iter",
+    "std::str",
+    "std::string",
+    "std::vec",
+    "std::cmp",
+    "std::ops",
+    "std::num",
+    "std::error",
+    "std::mem",
+    "std::borrow",
+]
+
+# One profile, because there is only one thing to build. `opt-level = "s"` because the artifact
+# crosses no wire but is compiled by wasmtime on every turn, and a smaller module compiles faster;
+# `panic = "abort"` because wasm has no unwinder at all, so the alternative is
+# not a choice; `strip = "symbols"` because the name section is a third of the artifact and nothing
+# reads it — a Rust program's failures are located by the PANIC HOOK, out of `Location`, which is
+# static data rather than a symbol name.
+[profile.release]
+opt-level = "s"
+panic = "abort"
+strip = "symbols"

@@ -32,11 +32,11 @@ composites over the dark trench (the game draws it as an additive glow).
 
 The flare in **three beats**:
 
-| Frames | Beat | Contents |
-| --- | --- | --- |
-| 0, 1, 2 | **charge-up** | a small warm glow at the center swelling and brightening toward a white core — the telegraph before the flare |
-| 3, 4, 5 | **bloom** | a bright radial burst: a white-hot core ringed by warm light spreading outward, growing to its widest, brightest peak at frame 5 |
-| 6, 7 | **fade** | the bloom collapses and dims back toward dark |
+| Frames  | Beat          | Contents                                                                                                                         |
+| ------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 0, 1, 2 | **charge-up** | a small warm glow at the center swelling and brightening toward a white core — the telegraph before the flare                    |
+| 3, 4, 5 | **bloom**     | a bright radial burst: a white-hot core ringed by warm light spreading outward, growing to its widest, brightest peak at frame 5 |
+| 6, 7    | **fade**      | the bloom collapses and dims back toward dark                                                                                    |
 
 Make it read as a **flare going off**, not a steady lamp:
 
@@ -54,10 +54,10 @@ Make it read as a **flare going off**, not a steady lamp:
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Flare peak / core (white-hot) | `#ffffff` |
-| Flare glow (warm) | `#ffd166` |
+| Role                                  | Hex       |
+| ------------------------------------- | --------- |
+| Flare peak / core (white-hot)         | `#ffffff` |
+| Flare glow (warm)                     | `#ffd166` |
 | Flare edge (warm orange, outer rings) | `#ff7a59` |
 
 ## Working the tool

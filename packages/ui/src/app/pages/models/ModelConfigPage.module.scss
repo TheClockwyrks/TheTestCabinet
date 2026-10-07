@@ -16,72 +16,59 @@
   margin-bottom: t.$space-xl;
 }
 
-.fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: t.$space-md;
-  margin-bottom: t.$space-lg;
-
-  // The grid's own bottom margin sets the gap to the next row, and the column gap
-  // spaces the fields within it — so the gridded fields must not add their own
-  // bottom margin on top, or the first-row gap reads as double the ones below it.
-  .field {
-    margin-bottom: 0;
-  }
+// One group of rows: the first the entry itself, then the list price, then the
+// providers a gg run may use. Each row is a `SettingRow` — its name and a line
+// about it on the left, its control on the right, a hairline between rows — and a
+// group after the first leads with a small uppercase title.
+.group + .group {
+  margin-top: t.$space-lg;
 }
 
-.field {
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin: 0;
+  padding-bottom: t.$space-xs;
+  font-size: t.$font-sm;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+// A row's control column. Every input takes the column's width, so the fields
+// line up on the panel's right edge; the wide column holds the controls that are
+// a list, a picker, or prose.
+.control {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
-  margin-bottom: t.$space-lg;
+  width: 22rem;
+  max-width: 100%;
 }
 
-// A field that follows another stacked field, kept flush with the grid rhythm.
-.fieldStacked {
-  margin-top: 0;
+.controlWide {
+  width: 34rem;
 }
 
-.fieldLabel {
+// A one-name-per-line list: a few rows, not a prose field. The description
+// textarea takes the primitive's own height.
+.textareaShort {
+  min-height: 5rem;
+}
+
+// The slug + fill row and each alias row are a `ControlRow`: the text field
+// takes the spare width and the actions drop under it when cramped.
+
+.fillError {
+  color: t.$color-negative;
   font-size: t.$font-sm;
-  color: t.$color-text-muted;
-}
-
-.input,
-.textarea {
-  width: 100%;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &::placeholder {
-    color: t.$color-text-muted;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
-}
-
-.textarea {
-  resize: vertical;
-  min-height: 9rem;
+  @include h.halo;
 }
 
 // --- Aliases: a repeatable id list --------------------------------------------
-
-.aliasBlock {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
-  margin-bottom: t.$space-lg;
-}
 
 .aliasList {
   list-style: none;
@@ -92,81 +79,25 @@
   gap: t.$space-sm;
 }
 
-.aliasRow {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-}
-
-// The per-row harness-family selector: sized to its content and styled like the
-// text input so the slug + family read as one control group.
+// The per-row harness-family selector: sized to its content beside the slug.
 .aliasFamily {
   flex: 0 0 auto;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
-  }
+  width: auto;
 }
 
-// A small explanatory note shown under a field label.
-.fieldHint {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-}
-
-// The per-row remove control: a muted destructive glyph, brightening on hover;
-// dimmed when it is the last remaining row (which can't be removed).
+// The per-row remove control: a square glyph button, dimmed when it is the last
+// remaining row (which can't be removed).
 .aliasRemove {
   flex: 0 0 auto;
   width: 2.25rem;
   height: 2.25rem;
+  padding: 0;
   font-size: t.$font-lg;
-  line-height: 1;
-  color: t.$color-text-muted;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  cursor: pointer;
-
-  &:hover:not(:disabled),
-  &:focus-visible:not(:disabled) {
-    color: t.$color-negative;
-    border-color: t.$color-negative;
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
 }
 
-// The add-row action: an outlined accent affordance, self-sized to its label.
+// The add-row action, self-sized to its label.
 .aliasAdd {
   align-self: flex-start;
-  padding: t.$space-xs t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  border-radius: t.$radius-sm;
-  background: transparent;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background: color-mix(in srgb, t.$color-accent 14%, transparent);
-  }
 }
 
 // --- Actions ------------------------------------------------------------------
@@ -179,50 +110,9 @@
   flex-wrap: wrap;
 }
 
-.primary {
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  padding: t.$space-sm t.$space-lg;
-  border-radius: t.$radius-md;
-  cursor: pointer;
-  background: t.$color-accent;
-  border: t.$border-hairline solid t.$color-accent;
-  color: t.$color-bg;
-  box-shadow: var(--ttc-glow);
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-// A muted destructive button that only brightens to the negative color on
-// hover/focus, matching the run-delete control.
+// The delete action sits at the row's far end, away from the save.
 .deleteButton {
   margin-left: auto;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-text-muted;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  background: transparent;
-  cursor: pointer;
-  @include h.halo;
-
-  &:hover:not(:disabled),
-  &:focus-visible:not(:disabled) {
-    color: t.$color-negative;
-    border-color: t.$color-negative;
-    background: color-mix(in srgb, t.$color-negative 8%, transparent);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: progress;
-  }
 }
 
 .notice {
@@ -236,9 +126,4 @@
 
 .warn {
   border-color: t.$color-accent-2;
-}
-
-.error {
-  border-color: t.$color-negative;
-  color: t.$color-negative;
 }

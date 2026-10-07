@@ -20,6 +20,7 @@ describe("isKnownRoute", () => {
 
   it("knows a path built by the route builders", () => {
     expect(isKnownRoute(routes.runDetail("abc123"))).toBe(true);
+    expect(isKnownRoute(routes.runVerdict("abc123"))).toBe(true);
     expect(isKnownRoute(routes.runPlay("abc123"))).toBe(true);
     expect(isKnownRoute(routes.testCaseRuns("carom"))).toBe(true);
     expect(isKnownRoute(routes.modelStats("claude-opus-5"))).toBe(true);

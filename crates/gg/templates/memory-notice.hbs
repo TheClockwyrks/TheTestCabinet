@@ -1,0 +1,16 @@
+Another agent sharing your memories has made changes since your last turn:
+{{#each entries}}
+- {{change}} `{{name}}`{{#if description}} — {{description}}{{/if}}
+{{#if body}}
+
+{{body}}
+{{/if}}
+{{/each}}
+{{#if readCall}}
+
+Read one with {{readCall}} if it bears on what you are doing.
+{{/if}}
+{{#if indexed}}
+Your memory index still shows the set as it stood before these changes; it is
+rebuilt at your next compaction.
+{{/if}}

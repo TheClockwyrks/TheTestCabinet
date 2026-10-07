@@ -1,0 +1,15 @@
+# The base variant's carousel, in the order it is presented. The replay leads:
+# it is the entry the catalog's preview stage plays, and it is a sustained
+# stretch of real play rather than a moment. Both stills come from that take.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "A run opened and played out over three levels and three waves"
+
+[[media]]
+file = "mid-wave.png"
+name = "The Load crossing the maze, with a combination tower inspected"
+
+[[media]]
+file = "build-phase.png"
+name = "A build phase: five rolls compared, the next rock on the cursor"

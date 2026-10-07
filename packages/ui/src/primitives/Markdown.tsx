@@ -1,4 +1,7 @@
-import ReactMarkdown, { type Options } from "react-markdown";
+import ReactMarkdown, {
+  defaultUrlTransform,
+  type Options,
+} from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "./Markdown.module.scss";
 
@@ -15,6 +18,17 @@ interface MarkdownProps {
    * collapsing soft breaks is correct.
    */
   breaks?: boolean;
+  /**
+   * Resolve a *relative* image reference to the URL it should load from, for
+   * prose whose images live somewhere the page knows about but the Markdown does
+   * not — a run showcase's `![Title](title.png)` resolving to the run's served
+   * showcase file. Called with the reference exactly as authored (decoded, so
+   * the resolver sees the plain file name); returning null leaves the reference
+   * as written. Absolute references (a scheme or a leading `/`) are never passed
+   * through this — they keep the renderer's default URL handling, sanitization
+   * included.
+   */
+  resolveImageUrl?: (src: string) => string | null;
 }
 
 // A minimal node shape for the soft-break transform below: every mdast node has a
@@ -51,6 +65,18 @@ function remarkSoftBreaks() {
   return (tree: MdNode): void => split(tree);
 }
 
+// Whether a Markdown URL reference is relative — no scheme, and not
+// document-anchored (`/`, `#`, `?`). Only these are offered to a caller's
+// `resolveImageUrl`; everything else keeps the default handling.
+function isRelativeReference(url: string): boolean {
+  return (
+    !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) &&
+    !url.startsWith("/") &&
+    !url.startsWith("#") &&
+    !url.startsWith("?")
+  );
+}
+
 // The single Markdown renderer shared across the GUIs. Every piece of prose —
 // run writeups, test-case descriptions, model descriptions, About copy — goes
 // through here so GFM support (tables, strikethrough, task lists) and the
@@ -60,14 +86,40 @@ export function Markdown({
   children,
   className,
   breaks = false,
+  resolveImageUrl,
 }: MarkdownProps) {
   const cls = className ? `${styles.prose} ${className}` : styles.prose;
   const plugins = (
     breaks ? [remarkGfm, remarkSoftBreaks] : [remarkGfm]
   ) as Options["remarkPlugins"];
+  // Rewrite relative image references through the caller's resolver; every other
+  // URL (links, absolute images) goes through react-markdown's default transform
+  // exactly as it would without a resolver. The resolved URL is returned as-is —
+  // NOT re-sanitized — because it is the host's own URL (an artifact-service or
+  // snapshot link), not model-authored input, and a host may resolve to a scheme
+  // the default transform would strip.
+  const urlTransform: Options["urlTransform"] = resolveImageUrl
+    ? (url, key) => {
+        if (key === "src" && isRelativeReference(url)) {
+          // The parser percent-encodes the destination; the resolver expects the
+          // plain file name the author wrote.
+          let file = url;
+          try {
+            file = decodeURIComponent(url);
+          } catch {
+            // Malformed escapes: hand the reference over as written.
+          }
+          const resolved = resolveImageUrl(file);
+          if (resolved !== null) return resolved;
+        }
+        return defaultUrlTransform(url);
+      }
+    : undefined;
   return (
     <div className={cls}>
-      <ReactMarkdown remarkPlugins={plugins}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={plugins} urlTransform={urlTransform}>
+        {children}
+      </ReactMarkdown>
     </div>
   );
 }

@@ -7,13 +7,13 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { ReviewPlanCombo } from "./coverage";
+import type { InFlightLimit, ReviewPlanCombo } from "./coverage";
 import type { HarnessSlug } from "./index";
 import type { Rating } from "./review";
 
 /**
  * How many of a rung's runs must clear the [floor](Gate::floor) for the climber to
- * advance.
+ * pass the rung.
  */
 export type GateThreshold =
   | {
@@ -26,7 +26,7 @@ export type GateThreshold =
   | {
       kind: "fraction";
       /**
-       * The share of completed runs that must clear the floor.
+       * The share of the rung's runs that must clear the floor.
        */
       fraction: number;
     };
@@ -49,25 +49,18 @@ export type Gate = {
    */
   threshold: GateThreshold;
   /**
-   * Whether a run whose build never loaded counts as [`Rating::Broken`] without
-   * waiting for a review. On by default: there is nothing for a reviewer to
-   * judge, so counting it immediately keeps it from blocking the climb *and*
-   * from occupying a review-buffer slot.
+   * Whether a run whose build never loaded counts as [`Rating::Broken`] outright,
+   * whatever its validator rating says. On by default: there was nothing to play.
    */
   unloadedCountsAsBroken: boolean;
   /**
-   * Whether the gate may decide on partial results and let the caller cancel the
-   * rung's still-queued runs. **Off** by default — the runs are evidence in
+   * Whether the gate may decide on partial results, the caller then cancelling the
+   * slot's jobs that have not started yet. **Off** by default — the runs are evidence in
    * their own right, so a rung finishes what it started even when the verdict is
    * already certain.
    */
   earlyStop: boolean;
 };
-
-/**
- * What a rung's evidence says about one climber.
- */
-export type GateOutcome = "advance" | "wall" | "undecided";
 
 /**
  * Which axis a ladder's emission loop nests on — and therefore the order its runs
@@ -77,45 +70,8 @@ export type GateOutcome = "advance" | "wall" | "undecided";
 export type LadderAxis = "rung" | "combination";
 
 /**
- * How a ladder is **fed**, held apart from what it declares for exactly the reason
- * [`super::coverage::CoverageSchedule`] is: the two are edited by different gestures,
- * so saving an edited climb must never un-pause the ladder. The axis vocabulary is
- * the only difference between the two — a ladder has rungs where a plan has cases.
- */
-export type LadderSchedule = {
-  /**
-   * Which axis the emission loop nests on.
-   */
-  outerAxis: LadderAxis;
-  /**
-   * Whether topping up is suspended — the console calls this ladder **disabled**.
-   *
-   * A ladder is created suspended and enqueues nothing at all until the reviewer
-   * enables it: a climb is declared long before it is meant to start spending, and a
-   * ladder that launched runs the moment it was saved would have spent a buffer's
-   * worth of tokens before its author had finished reading it back.
-   */
-  paused: boolean;
-  /**
-   * Whether submitting a review re-runs this ladder's top-up automatically.
-   *
-   * **On** by default, because it is the only thing that moves an enabled ladder
-   * along: a review is the verdict that decides a rung, and the moment it frees a
-   * buffer slot is exactly the moment the next rung's runs should be asked for.
-   * Enqueueing is already gated on the ladder being enabled at all, so this cannot
-   * make an untouched ladder start spending.
-   */
-  autoTopUp: boolean;
-  /**
-   * This ladder's override of the account's review-buffer target, or null to
-   * inherit it. Null and `0` are different instructions — "no opinion" versus
-   * "never top up".
-   */
-  bufferTarget?: number;
-};
-
-/**
- * One rung: exactly one test case, pinned to an exact version and variant.
+ * One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a
+ * variant, and the engine its runs are built on.
  */
 export type LadderRung = {
   /**
@@ -140,6 +96,15 @@ export type LadderRung = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   *
+   * Part of the rung's identity within the climb, because clearing a case with a
+   * runtime underneath is a different achievement from clearing it with nothing: one
+   * ladder holds the same case at the same version and variant twice when the two
+   * pins name different engines.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit
    * it — so one pivotal step can demand more evidence without making the whole
@@ -171,15 +136,18 @@ export type LadderRungInput = {
    */
   variant: string;
   /**
+   * The engine to climb on, or null for the `none` engine.
+   */
+  engine?: string;
+  /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit.
    */
   runs?: number;
 };
 
 /**
- * A ladder **as declared**: the climb, the climbers, and the rule every rung is
- * judged by. How it is fed is [`LadderSchedule`]; how far anyone has got is derived,
- * and lives in [`LadderProgress`].
+ * A ladder's **configuration**: the climb, the climbers, the rule every rung is judged
+ * by, and how a dispatch of it is fed. What a dispatch did is [`LadderProgress`].
  */
 export type Ladder = {
   /**
@@ -191,8 +159,8 @@ export type Ladder = {
    */
   name: string;
   /**
-   * The default target number of runs for each `rung × combination` cell; a rung
-   * may raise it for itself via [`LadderRung::runs`].
+   * The default target number of runs for each rung slot; a rung may raise it for
+   * itself via [`LadderRung::runs`].
    */
   runsPerCell: number;
   /**
@@ -216,82 +184,18 @@ export type Ladder = {
    */
   rungs: Array<LadderRung>;
   /**
-   * RFC 3339 of when the ladder was last saved.
-   */
-  updatedAt: string;
-};
-
-/**
- * One ladder as a reader sees it: declaration and schedule flattened into a single
- * object, exactly as [`super::coverage::CoveragePlanOut`] does for a plan.
- */
-export type LadderOut = {
-  /**
-   * The ladder's opaque id (minted on create).
-   */
-  id: string;
-  /**
-   * The reviewer-chosen display name.
-   */
-  name: string;
-  /**
-   * The default target number of runs for each `rung × combination` cell; a rung
-   * may raise it for itself via [`LadderRung::runs`].
-   */
-  runsPerCell: number;
-  /**
-   * The single parameterised rule every rung is judged by. Per ladder, not per
-   * rung: a ladder asks *one* question of an ordered series of cases, and only how
-   * many runs it takes to answer varies by rung.
-   */
-  gate: Gate;
-  /**
-   * The referenced combination groups' ids — the same `kind = "combo"` coverage
-   * groups a plan uses, so one saved set of models drives both and editing it
-   * reshapes both.
-   */
-  comboGroupIds: Array<string>;
-  /**
-   * One-off combinations pinned directly on the ladder, unioned with the groups.
-   */
-  combos: Array<ReviewPlanCombo>;
-  /**
-   * The rungs, low to high. The order **is** the climb.
-   */
-  rungs: Array<LadderRung>;
-  /**
-   * RFC 3339 of when the ladder was last saved.
-   */
-  updatedAt: string;
-  /**
-   * Which axis the emission loop nests on.
+   * Which axis a dispatch's launch order nests on.
    */
   outerAxis: LadderAxis;
   /**
-   * Whether topping up is suspended — the console calls this ladder **disabled**.
-   *
-   * A ladder is created suspended and enqueues nothing at all until the reviewer
-   * enables it: a climb is declared long before it is meant to start spending, and a
-   * ladder that launched runs the moment it was saved would have spent a buffer's
-   * worth of tokens before its author had finished reading it back.
+   * This ladder's override of the account's runs-in-flight limit, or null to inherit
+   * it. A dispatch resolves it when it starts and keeps it.
    */
-  paused: boolean;
+  inFlightLimit: InFlightLimit | null;
   /**
-   * Whether submitting a review re-runs this ladder's top-up automatically.
-   *
-   * **On** by default, because it is the only thing that moves an enabled ladder
-   * along: a review is the verdict that decides a rung, and the moment it frees a
-   * buffer slot is exactly the moment the next rung's runs should be asked for.
-   * Enqueueing is already gated on the ladder being enabled at all, so this cannot
-   * make an untouched ladder start spending.
+   * RFC 3339 of when the ladder was last saved.
    */
-  autoTopUp: boolean;
-  /**
-   * This ladder's override of the account's review-buffer target, or null to
-   * inherit it. Null and `0` are different instructions — "no opinion" versus
-   * "never top up".
-   */
-  bufferTarget?: number;
+  updatedAt: string;
 };
 
 /**
@@ -303,13 +207,13 @@ export type LadderInput = {
    */
   name: string;
   /**
-   * The default target number of runs for each `rung × combination` cell.
+   * The default target number of runs for each rung slot.
    */
   runsPerCell: number;
   /**
-   * The rule every rung is judged by, or null for [`Gate::default`] — the gentlest
-   * gate that still stops a hopeless climb (advance as long as one run was playable
-   * at all).
+   * The rule every rung is decided by, or null for [`Gate::default`] — the gentlest
+   * gate that still stops a hopeless climb (pass as long as one run was playable at
+   * all).
    */
   gate?: Gate;
   /**
@@ -325,61 +229,213 @@ export type LadderInput = {
    */
   rungs: Array<LadderRungInput>;
   /**
-   * The schedule to apply along with this save, or null to leave it alone. Nested
-   * and optional for the same reason a plan's is: saving an edited climb must not
-   * un-pause the ladder as a side effect. On **create** an absent schedule means
-   * [`LadderSchedule::default`].
+   * Which axis a dispatch's launch order nests on.
    */
-  schedule?: LadderSchedule;
+  outerAxis: LadderAxis;
+  /**
+   * This ladder's override of the account's runs-in-flight limit, or null to inherit.
+   */
+  inFlightLimit?: InFlightLimit;
 };
 
 /**
- * A resolved verdict on one rung, as the wire names it. The gate's third answer,
- * "not decided yet", is deliberately absent: an unresolved rung has *no* verdict,
- * and is reported as the absence of one rather than as a verdict of nothing.
+ * Where a ladder's latest dispatch stands. A ladder never run has no dispatch, which
+ * the console reads as "Not run yet".
  */
-export type LadderOutcome = "advanced" | "walled";
+export type DispatchStatus = "running" | "finished" | "stopped";
 
 /**
- * Where one climber stands. Five states, because "stopped" has three genuinely
- * different causes and conflating them makes a ladder impossible to act on.
+ * Where one **rung slot** — one climber on one rung of a dispatch — stands.
  */
-export type ClimberStatus =
-  | "climbing"
-  | "awaitingReview"
-  | "walled"
-  | "held"
-  | "toppedOut";
+export type SlotStatus =
+  | "running"
+  | "blocked"
+  | "passed"
+  | "failed"
+  | "pending"
+  | "skipped";
 
 /**
- * The counts one gate decision was made from, so a dashboard can say *why* a climber
- * is walled or waiting without re-deriving the floor and unloaded-run rules a second
- * time and getting them subtly different.
+ * Where one climber of a dispatch stands.
+ *
+ * There is no "waiting on a review" state: the validators rate every completed run, so
+ * a rung the dispatch can still feed is `running`, and one nothing it does can move is
+ * `blocked`, with the reason in [`LadderClimber::blocked`].
+ */
+export type ClimberStatus = "running" | "blocked" | "failed" | "completed";
+
+/**
+ * Why a climber is [`blocked`](ClimberStatus::Blocked), each reason naming its fix.
+ */
+export type ClimberBlock =
+  | {
+      kind: "unlaunchable";
+      /**
+       * Why, in the words the launch pass reports it with.
+       */
+      reason: string;
+    }
+  | {
+      kind: "failing";
+      /**
+       * How many failed jobs in a row marked it failing.
+       */
+      attempts: number;
+    }
+  | {
+      kind: "unrated";
+      /**
+       * How many of the rung's counted runs carry no validator rating.
+       */
+      runs: number;
+    };
+
+/**
+ * How many of a dispatch's rung slots are in each [`SlotStatus`].
+ */
+export type SlotCounts = {
+  /**
+   * Every rung slot: climbers × rungs.
+   */
+  total: number;
+  /**
+   * Slots `running`.
+   */
+  running: number;
+  /**
+   * Slots `blocked`.
+   */
+  blocked: number;
+  /**
+   * Slots `passed`.
+   */
+  passed: number;
+  /**
+   * Slots `failed`.
+   */
+  failed: number;
+  /**
+   * Slots `pending`.
+   */
+  pending: number;
+  /**
+   * Slots `skipped`.
+   */
+  skipped: number;
+};
+
+/**
+ * How much of a dispatch's execution is behind it: the figures its progress bar is
+ * drawn from.
+ */
+export type DispatchRuns = {
+  /**
+   * The sum over rung slots of the rung's target runs.
+   */
+  total: number;
+  /**
+   * The runs that need no more executing, summed per slot: a passed, failed or
+   * skipped slot's whole target less its runs still in flight, a running or blocked
+   * slot's counted runs up to its target, and nothing of a pending one. Equal to
+   * `total` once nothing is left to execute.
+   */
+  done: number;
+  /**
+   * The dispatch's jobs still in flight (`queued` through `running`).
+   */
+  inFlight: number;
+};
+
+/**
+ * A ladder's latest dispatch, as its board reports it.
+ */
+export type LadderDispatch = {
+  /**
+   * The dispatch's id: the second segment of its jobs' origins.
+   */
+  id: string;
+  /**
+   * Where it stands.
+   */
+  status: DispatchStatus;
+  /**
+   * RFC 3339 of the Run that started it.
+   */
+  startedAt: string;
+  /**
+   * RFC 3339 of when it finished or was stopped, absent while running.
+   */
+  endedAt?: string;
+  /**
+   * The gate, as it stood at Run.
+   */
+  gate: Gate;
+  /**
+   * The climb order, as it stood at Run.
+   */
+  outerAxis: LadderAxis;
+  /**
+   * The runs-in-flight limit resolved at Run.
+   */
+  inFlightLimit: InFlightLimit;
+  /**
+   * The rung-slot counts.
+   */
+  slots: SlotCounts;
+  /**
+   * The runs: total, done, in flight.
+   */
+  runs: DispatchRuns;
+  /**
+   * How many climbers are running.
+   */
+  climbersRunning: number;
+  /**
+   * How many climbers are blocked.
+   */
+  climbersBlocked: number;
+  /**
+   * How many climbers failed a rung.
+   */
+  climbersFailed: number;
+  /**
+   * How many climbers passed every rung.
+   */
+  climbersCompleted: number;
+};
+
+/**
+ * The counts one gate answer was made from, so a dashboard can say *why* a slot passed,
+ * failed, or is still running without re-deriving the floor and unloaded-run rules.
  *
  * The wire mirror of [`GateTally`], which is an internal type of the pure core.
  */
 export type RungTally = {
   /**
-   * Completed runs on the rung.
+   * The slot's counted runs: finished runs that are the model's result.
    */
-  completed: number;
+  counted: number;
   /**
-   * Completed runs the gate has a rating for — reviewed by you, or decided as
-   * broken because the build never loaded.
+   * Counted runs the gate has a rating for — carrying a validator rating, or
+   * decided as broken because the build never loaded or the model failed.
    */
-  judged: number;
+  rated: number;
   /**
-   * Completed runs still waiting on your review.
+   * Counted runs with no validator rating.
    */
-  unjudged: number;
+  unrated: number;
   /**
-   * Judged runs rated at or above the gate's floor.
+   * Rated runs rated at or above the gate's floor.
    */
   passing: number;
   /**
-   * Runs the rung has yet to complete against its target.
+   * Runs the slot will still finish with: `max(target, counted + inFlight) − counted`.
    */
   pending: number;
+  /**
+   * The slot's jobs still in flight.
+   */
+  inFlight: number;
   /**
    * How many passing runs the threshold demands, as the whole number of runs it
    * actually takes — a fractional bar of 2.5 means three.
@@ -388,10 +444,9 @@ export type RungTally = {
 };
 
 /**
- * The rung a climber currently stands on: the coverage cell it is filling, the gate
- * evidence gathered so far, and what the gate makes of it right now.
+ * One rung slot of one climber.
  */
-export type LadderCell = {
+export type LadderSlot = {
   /**
    * Which rung, by its stable id.
    */
@@ -401,151 +456,51 @@ export type LadderCell = {
    */
   position: number;
   /**
-   * The gate evidence gathered so far.
+   * Where the slot stands.
    */
-  tally: RungTally;
+  status: SlotStatus;
   /**
-   * What the gate makes of that evidence *now*, including its "not decided yet"
-   * answer — which a recorded outcome can never express.
+   * The gate evidence behind the slot's answer: present on a slot that has been
+   * reached or has runs.
    */
-  outcome: GateOutcome;
+  tally?: RungTally;
   /**
-   * The test-case slug.
+   * RFC 3339 of when the gate decided the slot, on a passed or failed slot. A verdict
+   * a read computed live, which the next launch pass records, carries the read's time.
    */
-  slug: string;
+  decidedAt?: string;
   /**
-   * The pinned version this cell counts against.
+   * The dispatch's counted runs of this slot, oldest first.
    */
-  version: string;
+  runIds: Array<string>;
   /**
-   * The variant.
+   * The dispatch's jobs of this slot still in flight, in queue order.
    */
-  variant: string;
-  /**
-   * The harness.
-   */
-  harness: HarnessSlug;
-  /**
-   * The model id.
-   */
-  model: string;
-  /**
-   * The provider for a provider-routed harness, or null.
-   */
-  provider?: string;
-  /**
-   * The target run count (the plan's `runs_per_cell`).
-   */
-  desired: number;
-  /**
-   * Completed runs for this cell, counted globally.
-   */
-  completed: number;
-  /**
-   * In-flight jobs (queued / pending / dispatched / starting / running) for this
-   * cell, counted globally.
-   */
-  inFlight: number;
-  /**
-   * How many of [`Self::in_flight`] are `pending` — deliberately held back rather
-   * than merely waiting to be claimed, because their harness is at its parallelism
-   * cap or (for a game jam) another run of the same jam is already going on that
-   * model.
-   *
-   * Surfaced separately because it is the answer to "why is my buffer full but
-   * nothing running?", which is otherwise indistinguishable from a stuck queue. It
-   * is a **subset** of `inFlight`, not an addition to it.
-   */
-  pending: number;
-  /**
-   * How many of [`Self::completed`] the **requesting account** has not reviewed.
-   * The only per-account number on the cell: it changes nothing about what the
-   * cell needs, but it occupies the review buffer, which is what makes an
-   * otherwise mysteriously idle plan explicable.
-   */
-  unreviewed: number;
-  /**
-   * How many more runs to trigger: `max(0, desired - (completed + in_flight))`.
-   */
-  remaining: number;
-  /**
-   * The newest ingested version of this case (may differ from `version` when
-   * the pin is stale). Empty when the case is not ingested.
-   */
-  latestVersion: string;
-  /**
-   * Whether the pinned `version` is not the newest ingested one — a hint to the
-   * reviewer that they may want to bump the pin.
-   */
-  stale: boolean;
+  jobIds: Array<string>;
 };
 
 /**
- * One recorded (or freshly computed) verdict on one rung for one climber.
- */
-export type LadderRungOutcome = {
-  /**
-   * Which rung, by its stable id.
-   */
-  rungId: string;
-  /**
-   * The exact case version the verdict was decided against.
-   *
-   * Part of the verdict's identity, not decoration: bumping a rung to a newer case
-   * neither erases the verdict earned on the old one nor silently inherits it, and
-   * re-pinning back restores it.
-   */
-  decidedVersion: string;
-  /**
-   * What the gate computed. Recomputable at any time from your reviews.
-   */
-  outcome: LadderOutcome;
-  /**
-   * Your manual override of that result, or null for none. Kept beside the
-   * automatic verdict rather than replacing it, so a recompute can never silently
-   * undo it and clearing it reverses the override exactly.
-   */
-  overrideOutcome?: LadderOutcome;
-  /**
-   * The verdict that actually governs the climb: the override when there is one,
-   * else the automatic outcome.
-   */
-  effective: LadderOutcome;
-  /**
-   * RFC 3339 of when the automatic outcome was computed.
-   */
-  decidedAt: string;
-  /**
-   * RFC 3339 of when the override was applied, or null when there is none.
-   */
-  overrideAt?: string;
-  /**
-   * Whether this verdict was decided against a version the rung no longer pins —
-   * history kept honest across a bump, and never allowed to govern the climb.
-   */
-  stale: boolean;
-  /**
-   * Whether the verdict is stored, or was computed live for this response and will
-   * be written down by the next top-up. A read never writes.
-   */
-  recorded: boolean;
-};
-
-/**
- * One climber's whole standing on the ladder.
+ * One climber of a dispatch and its whole standing.
  */
 export type LadderClimber = {
   /**
-   * The combination's canonical key (`harness|model|provider`), which is how
-   * steering and verdicts reference it.
+   * The combination's canonical key — the text the dispatch records this climber's
+   * state against.
+   *
+   * Its shape follows the shape of the combination: a harness climber's key is its
+   * `harness|model|provider` triple, and a gg climber's names the configuration and the
+   * models it binds, because two climbers running one configuration on different models
+   * are exactly the two arms a ladder exists to separate. It is written and compared,
+   * never parsed.
    */
   key: string;
   /**
-   * The harness.
+   * The harness the climber runs — `gg` on a gg climber.
    */
   harness: HarnessSlug;
   /**
-   * The canonical model id.
+   * The model the climber's runs are attributed to: the harness climber's own, and for a
+   * gg climber the model its bound configuration's root agent runs.
    */
   model: string;
   /**
@@ -553,33 +508,38 @@ export type LadderClimber = {
    */
   provider?: string;
   /**
-   * Climb-order weight; higher goes first, zero is the default. Pushes one model to
-   * the front without reordering the ladder — which would change what every *other*
-   * climber is measured against.
+   * The gg configuration this climber runs (`saved:<id>`), or null on a harness climber.
    */
-  priority: number;
+  ggConfigId?: string;
   /**
-   * The reviewer's "watch this one" flag, and the tiebreak between equal
-   * priorities.
+   * That configuration's current display name, or null on a harness climber.
    */
-  focused: boolean;
+  ggConfigName?: string;
   /**
-   * Whether the climber is stopped by hand.
+   * The model bound to each of the configuration's launch slots, keyed by slot name.
+   * Empty on a harness climber.
    */
-  held: boolean;
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * Why this climber cannot be launched at all, or null when it can.
+   */
+  unlaunchable?: string;
   /**
    * Where the climber stands.
    */
   status: ClimberStatus;
   /**
-   * The rung it stands on, or null once it has topped out.
+   * Why the climber is blocked, naming the fix, or null when it is not.
    */
-  currentRung?: LadderCell;
+  blocked?: ClimberBlock;
   /**
-   * Every verdict this climber has on the ladder, in climb order, with any decided
-   * against a superseded version flagged and trailing.
+   * The position of the rung it stands on (or failed), absent once it completed.
    */
-  outcomes: Array<LadderRungOutcome>;
+  currentRung?: number;
+  /**
+   * One slot per rung of the dispatch, in rung order.
+   */
+  slots: Array<LadderSlot>;
 };
 
 /**
@@ -596,8 +556,7 @@ export type LadderProgressRung = {
    */
   latestVersion: string;
   /**
-   * Whether the pinned version is not the newest ingested one — a hint that the
-   * rung could be bumped, and a warning that doing so re-opens every verdict on it.
+   * Whether the pinned version is not the newest ingested one.
    */
   stale: boolean;
   /**
@@ -623,6 +582,15 @@ export type LadderProgressRung = {
    */
   variant: string;
   /**
+   * The engine to climb on, or null for the `none` engine.
+   *
+   * Part of the rung's identity within the climb, because clearing a case with a
+   * runtime underneath is a different achievement from clearing it with nothing: one
+   * ladder holds the same case at the same version and variant twice when the two
+   * pins name different engines.
+   */
+  engine?: string;
+  /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit
    * it — so one pivotal step can demand more evidence without making the whole
    * climb more expensive.
@@ -631,8 +599,7 @@ export type LadderProgressRung = {
 };
 
 /**
- * The ladder's board: the climb, every climber's standing, and the roll-ups the
- * dashboard header shows.
+ * The ladder's board: the rungs, its latest dispatch, and every climber of it.
  */
 export type LadderProgress = {
   /**
@@ -640,122 +607,108 @@ export type LadderProgress = {
    */
   ladderId: string;
   /**
-   * The axis the climbers below are ordered on, and the order runs are emitted in.
+   * The latest dispatch, or null for a ladder never run.
    */
-  outerAxis: LadderAxis;
+  dispatch: LadderDispatch | null;
   /**
-   * The rungs, low to high.
+   * The rungs, low to high: the dispatch's when there is one, else the
+   * configuration's.
    */
   rungs: Array<LadderProgressRung>;
   /**
-   * Every climber, in the order the ladder would feed them.
+   * Every climber of the dispatch, in its resolved order. Empty without one.
    */
   climbers: Array<LadderClimber>;
   /**
-   * How many climbers have cleared every rung.
-   */
-  climbersToppedOut: number;
-  /**
-   * How many climbers are walled.
-   */
-  climbersWalled: number;
-  /**
-   * The runs still to trigger across every climber's current rung.
-   */
-  runsMissing: number;
-  /**
-   * The completed runs the requester has not reviewed, across every rung every
-   * climber has **reached** — not just the current ones. A rung the gate has already
-   * decided keeps the runs nobody looked at, and they are exactly what
-   * `GET /ladders/{id}/queue` offers, so the two always describe the same runs.
+   * The dispatch's completed runs the requester has not reviewed — exactly what
+   * `GET /ladders/{id}/queue` offers. Information only.
    */
   runsUnreviewed: number;
-  /**
-   * The review-buffer occupancy: in-flight jobs plus unreviewed runs, over the same
-   * reached rungs [`Self::runs_unreviewed`] counts. When this has reached
-   * `bufferTarget`, a top-up deliberately enqueues nothing — which is the difference
-   * between a finished ladder and a full one.
-   */
-  runsOutstanding: number;
-  /**
-   * The buffer target in force (the ladder's override, else the account's setting,
-   * else the backend default).
-   */
-  bufferTarget: number;
 };
 
 /**
- * One combination's stored steering, echoed back after a write.
+ * One ladder on the ladders list: its configuration's headline and its latest
+ * dispatch's totals.
  */
-export type StoredClimberOut = {
+export type LadderSummary = {
   /**
-   * The combination's canonical key.
+   * The ladder's id.
    */
-  key: string;
+  id: string;
   /**
-   * Climb-order weight; higher goes first.
+   * Its display name.
    */
-  priority: number;
+  name: string;
   /**
-   * The "watch this one" flag.
+   * How many rungs the configuration holds.
    */
-  focused: boolean;
+  rungs: number;
   /**
-   * Whether the climber is stopped by hand.
+   * The configuration's runs per rung slot.
    */
-  held: boolean;
+  runsPerCell: number;
   /**
-   * RFC 3339 of when the steering was written.
+   * How many climbers the configuration resolves to now.
    */
-  updatedAt: string;
+  climbers: number;
+  /**
+   * The latest dispatch, or null for a ladder never run.
+   */
+  dispatch: LadderDispatchSummary | null;
 };
 
 /**
- * The `POST /ladders/{id}/climbers` body: one combination's steering, written whole.
- *
- * Whole rather than field-by-field because it is one decision — "climb this one first
- * and watch it" — and a partial update can leave a combination focused-but-forgotten.
+ * A dispatch's totals, for the ladders list.
  */
-export type LadderClimberInput = {
+export type LadderDispatchSummary = {
   /**
-   * Which combination to steer. Identified by the combination itself rather than by
-   * its key, because a model id contains slashes and has no business in a URL path.
+   * The dispatch's id.
+   */
+  id: string;
+  /**
+   * Where it stands.
+   */
+  status: DispatchStatus;
+  /**
+   * RFC 3339 of the Run.
+   */
+  startedAt: string;
+  /**
+   * RFC 3339 of when it ended, absent while running.
+   */
+  endedAt?: string;
+  /**
+   * The rung-slot counts, for the whole ladder.
+   */
+  slots: SlotCounts;
+  /**
+   * The runs: total, done, in flight.
+   */
+  runs: DispatchRuns;
+};
+
+/**
+ * The `POST /ladders/{id}/stop` body.
+ */
+export type LadderStopInput = {
+  /**
+   * Whether to cancel the dispatch's `dispatched`, `starting` and `running` jobs as
+   * well as its waiting ones. Those are partly or wholly paid for, so a client
+   * confirms first.
+   */
+  cancelRunning: boolean;
+};
+
+/**
+ * The `POST /ladders/{id}/climbers/retry` body: the climber to retry.
+ */
+export type LadderRetryInput = {
+  /**
+   * Which climber, in either shape and either — stored or read — form: the key is
+   * taken from the member as it would be stored, so a climber read off the board can
+   * be handed straight back.
    */
   combination: ReviewPlanCombo;
-  /**
-   * Climb-order weight; higher goes first.
-   */
-  priority: number;
-  /**
-   * The "watch this one" flag.
-   */
-  focused: boolean;
-  /**
-   * Whether to stop this climber where it stands — the downward half of manual
-   * control. Reversible: the automatic outcomes underneath are never touched, so
-   * clearing it resumes exactly where the climb left off.
-   */
-  held: boolean;
-};
-
-/**
- * The `POST /ladders/{id}/outcomes` body: apply (or clear) a manual override of one
- * recorded verdict — the upward half of manual control.
- */
-export type LadderOverrideInput = {
-  /**
-   * Which combination.
-   */
-  combination: ReviewPlanCombo;
-  /**
-   * Which rung, by its stable id.
-   */
-  rungId: string;
-  /**
-   * The verdict to impose, or null to clear the override and restore exactly what
-   * the gate itself says.
-   */
-  outcome?: LadderOutcome;
 };
 
 /**
@@ -763,8 +716,7 @@ export type LadderOverrideInput = {
  * climb order.
  *
  * Ids rather than a list of rungs, because a reorder must not be able to edit a rung
- * in passing — and because reordering by stable id is precisely what keeps every
- * climber's recorded verdicts attached to the case that earned them.
+ * in passing.
  */
 export type LadderRungOrderInput = {
   /**

@@ -9,14 +9,18 @@
 //
 // The scoring and aggregation *rules* used to live here too, but they are shared
 // with consumers that must not depend on React — anything computing the same
-// figure outside a browser bundle — so they moved to `@test-cabinet/run-stats` and
+// figure outside a browser bundle — so they moved to `@clockwyrks/run-stats` and
 // are re-exported below. Every existing import of them from this module keeps
 // working; what this module still owns is the **display** metadata that goes with
 // them (labels, emoji, prose descriptions), which is presentation and belongs to
 // the UI.
 
 import type {
+  AestheticChange,
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   RatingChange,
   ReviewDiff,
@@ -25,14 +29,15 @@ import type {
   VerdictChange,
   VerdictStatus,
   WriteupChange,
-} from "@test-cabinet/run-record/review";
-import {
-  GRADE_POINTS,
-  type GradeStatus,
-} from "@test-cabinet/run-stats/scoring";
+} from "@clockwyrks/run-record/review";
+import { GRADE_POINTS, type GradeStatus } from "@clockwyrks/run-stats/scoring";
 
 export type {
+  AestheticChange,
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   RatingChange,
   ReviewDiff,
@@ -45,7 +50,7 @@ export type {
 
 // The scoring rules themselves, re-exported so this module stays the one place
 // the UI reaches for anything rating-related.
-export * from "@test-cabinet/run-stats/scoring";
+export * from "@clockwyrks/run-stats/scoring";
 
 /** Display metadata for a rating tier. */
 export interface RatingMeta {
@@ -68,7 +73,7 @@ export const RATING_META: Record<Rating, RatingMeta> = {
   passable: {
     label: "Passable",
     description:
-      "Implemented to spec and playable, but with rough edges beyond the minor issues of a great run — noticeable, though not enough to deviate from the spec or impair playability.",
+      "Implemented to spec and playable, but with rough edges beyond the minor issues of a great run. They are noticeable, though not enough to deviate from the spec or impair playability.",
   },
   scuffed: {
     label: "Scuffed",
@@ -79,6 +84,70 @@ export const RATING_META: Record<Rating, RatingMeta> = {
     label: "Broken",
     description:
       "Doesn't follow the spec or has bugs severe enough to render the game unplayable.",
+  },
+};
+
+/**
+ * Display metadata for the five **aesthetic** tiers, best to worst — the second
+ * rating channel, which a reviewer rates **run-wide** (one tier for the whole
+ * build) on a validator-rated run (the functional {@link RATING_META} channel
+ * is decided by the validators there). Amazing is the normal maximum; Legendary
+ * is exceptional and reserved, which is why its badge shimmers.
+ */
+export const AESTHETIC_META: Record<AestheticRating, RatingMeta> = {
+  legendary: {
+    label: "Legendary",
+    description:
+      "Exceptionally beautiful, reserved for a build whose look and feel stand above anything the case has seen. Amazing is the normal maximum.",
+  },
+  amazing: {
+    label: "Amazing",
+    description:
+      "Looks and feels polished throughout: cohesive art, motion, and sound with nothing that jars. The normal maximum.",
+  },
+  good: {
+    label: "Good",
+    description:
+      "Pleasant and coherent, with a few rough or plain spots that don't spoil the whole.",
+  },
+  okay: {
+    label: "Okay",
+    description:
+      "Functional presentation with little polish: placeholder-grade art or motion, inconsistent styling, or an unfinished feel.",
+  },
+  slop: {
+    label: "Slop",
+    description:
+      "Careless or ugly presentation: clashing, broken, or missing visuals and feel that actively detract from playing.",
+  },
+};
+
+/**
+ * Display metadata for a **failure cap** — the highest functional rating a review
+ * item's domains may reach while that item's validator fails, declared per item
+ * on a validator-rated case version. The label is the capped tier's own label
+ * (a cap of `scuffed` reads "Scuffed"); the description says what the cap means.
+ */
+export const FAILURE_CAP_META: Record<FailureCap, RatingMeta> = {
+  broken: {
+    label: RATING_META.broken.label,
+    description:
+      "Gameplay-critical: while this check fails, the affected domains rate no better than Broken.",
+  },
+  scuffed: {
+    label: RATING_META.scuffed.label,
+    description:
+      "A rule noticeably wrong: while this check fails, the affected domains rate no better than Scuffed.",
+  },
+  passable: {
+    label: RATING_META.passable.label,
+    description:
+      "A tolerance or edge case: while this check fails, the affected domains rate no better than Passable.",
+  },
+  great: {
+    label: RATING_META.great.label,
+    description:
+      "A cosmetic detail: while this check fails, the affected domains rate no better than Great.",
   },
 };
 
@@ -94,7 +163,7 @@ export interface GradeMeta {
 
 /**
  * The five graded tiers keyed by status, worst to best. The point values are read
- * from `GRADE_POINTS` in `@test-cabinet/run-stats` rather than restated, so the
+ * from `GRADE_POINTS` in `@clockwyrks/run-stats` rather than restated, so the
  * scale that scores a run and the scale shown beside it can never disagree.
  */
 export const GRADE_META: Record<GradeStatus, GradeMeta> = {
@@ -130,4 +199,12 @@ export const VERDICT_META: Record<VerdictStatus, { label: string }> = {
 export function formatPoints(points: number): string {
   if (Number.isInteger(points)) return String(points);
   return points.toFixed(2).replace(/\.?0+$/, "");
+}
+
+/**
+ * A point weight with its unit: `1 pt`, `2 pts`, `0.5 pts`. The figure is
+ * {@link formatPoints}; the unit is singular only for exactly one point.
+ */
+export function formatWeight(weight: number): string {
+  return `${formatPoints(weight)} ${weight === 1 ? "pt" : "pts"}`;
 }

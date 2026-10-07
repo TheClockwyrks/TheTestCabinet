@@ -8,18 +8,37 @@ evaluate a model's coding and visual/spatial capabilities using test cases that
 require significantly more code than most other commonly used software
 development benchmarks.
 
-Each run is validated automatically — it must build, load, and expose the debug
-tooling the case requires so the harness can drive it through the states that
-exercise its mechanics — and then scored by a human reviewer who plays the
-finished build: it earns a numeric score (the points its checklist earned out of
-those available) and a quality rating for each of the case's scoring domains, and
-every test case has a per-variant leaderboard ranking models by score.
+For more information, see <https://docs.testcabinet.ai/>.
 
-Test cases in this repository intentionally do *not* attempt to create exact
-copies of the games the tests are based on. This is both to avoid legal issues
-around copyright, and as a way to ensure that models have to adapt to the
-benchmarks. Adjustments to the original designs force models to follow the
-specs provided for each test case, rather than exactly replicating the original
-games that inspire each of the test cases. These modifications may also change
-from one version of a benchmark to the next, reducing the impact of test case
-contamination in training sets.
+## Getting started
+
+Open the repository in its dev container, which carries the tooling the gates
+need. Before its first start, copy your host's file to `.devcontainer/.env`
+(`.env.macos` on a Mac, `.env.podman` on a Linux Podman host; an Ubuntu Docker
+host needs none). See
+[Running](apps/docs/src/content/docs/development/running.md#the-dev-container).
+The image carries every toolchain a build needs, gg's program languages
+included, so the whole workspace builds as soon as the container is created.
+
+One command runs every gate:
+
+```sh
+make gate
+```
+
+Each gate is a file under `ci/gates/` whose stem is the gate's id, and that id is
+what a commit hook, a pipeline step and an issue all call the check by.
+`uv run --quiet --project ci gate list` names them all, and `make clean` removes
+the build output. [Building](apps/docs/src/content/docs/development/building.md)
+is the authoritative guide to the layout, the gates and the pipelines.
+
+## The template
+
+This repository is rendered from the k8s standard workspace template, a
+[copier](https://copier.readthedocs.io) template. `.copier-answers.yml` records
+the template's source, the version the repository was last rendered against,
+and the answers it asks. `copier update` is a three-way merge: the recorded
+version is rendered again, what this repository changed in a rendered file
+since is carried onto the new version's render, and a line both changed is
+left with conflict markers to resolve. A rendered file is therefore edited here
+like any other, and the edit survives the next update.

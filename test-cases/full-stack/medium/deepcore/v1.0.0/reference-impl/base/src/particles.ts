@@ -2,14 +2,14 @@
 //
 // Every world event (a drill bite, a jetpack plume, an ore glint, a gas blast, the core
 // extraction and detonation, the launch column, a death burst) fires the matching
-// PRODUCED `system.json`, simulated live through @test-cabinet/particle-runtime's canvas
+// PRODUCED `system.json`, simulated live through @clockwyrks/particle-runtime's canvas
 // binding — not a flat flash or a hand-coded loop. Each burst simulates on its own small
 // offscreen field canvas and is composited additively over the mine at the event's WORLD
 // position; being simulated, it varies shot to shot. If a system.json is not present yet,
 // the burst is simply skipped (the build still runs — specs/assets.md tolerance rule).
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 export type FxKind =
   | "gas-seep"

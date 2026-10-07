@@ -32,7 +32,10 @@ export class Input {
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => {
       // Keep the page from scrolling on Space / arrows while playing.
-      if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
+      if (
+        [" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+      )
+        e.preventDefault();
       this.keys.push(e.key);
     });
   }
@@ -44,7 +47,10 @@ export class Input {
   }
 
   toLogical(clientX: number, clientY: number): { x: number; y: number } {
-    return { x: (clientX - this.offX) / this.scale, y: (clientY - this.offY) / this.scale };
+    return {
+      x: (clientX - this.offX) / this.scale,
+      y: (clientY - this.offY) / this.scale,
+    };
   }
 
   get pointerLogical(): { x: number; y: number } {

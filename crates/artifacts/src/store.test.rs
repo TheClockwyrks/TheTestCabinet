@@ -118,6 +118,20 @@ fn delete_run_refuses_an_unsafe_id() {
     std::fs::remove_dir_all(&sibling).ok();
 }
 
+/// Collect a streaming archive writer into a buffer.
+///
+/// The store writes an archive into a sink as it walks — in the service that sink is
+/// the response body — so a test that wants the whole thing supplies a `Vec<u8>` as
+/// the sink. That is the shape these assertions always had; only where the buffer
+/// lives has moved.
+fn collect(
+    write: impl FnOnce(&mut dyn std::io::Write) -> Result<(), StoreError>,
+) -> Result<Vec<u8>, StoreError> {
+    let mut out = Vec::new();
+    write(&mut out)?;
+    Ok(out)
+}
+
 /// Untar `archive` into a `(path, contents)` map for asserting on a built tree.
 fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
     let mut out = std::collections::BTreeMap::new();
@@ -136,7 +150,7 @@ fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
 }
 
 #[test]
-fn read_run_tree_archives_the_implementation_tree_record_and_events() {
+fn write_run_tree_archives_the_implementation_tree_record_and_events() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
 
@@ -154,7 +168,7 @@ fn read_run_tree_archives_the_implementation_tree_record_and_events() {
         )
         .unwrap();
 
-    let archive = store.read_run_tree("abc").expect("read tree");
+    let archive = collect(|out| store.write_run_tree("abc", out)).expect("write tree");
     let entries = untar_to_map(&archive);
 
     assert_eq!(
@@ -182,7 +196,7 @@ fn read_run_tree_archives_the_implementation_tree_record_and_events() {
 }
 
 #[test]
-fn read_run_tree_omits_absent_optional_files() {
+fn write_run_tree_omits_absent_optional_files() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
 
@@ -194,20 +208,50 @@ fn read_run_tree_omits_absent_optional_files() {
         )
         .unwrap();
 
-    let entries = untar_to_map(&store.read_run_tree("bare").unwrap());
+    let entries = untar_to_map(&collect(|out| store.write_run_tree("bare", out)).unwrap());
     assert!(entries.contains_key("implementation/src/main.ts"));
     assert!(!entries.contains_key("run-record.json"));
     assert!(!entries.contains_key("events.jsonl"));
 }
 
 #[test]
-fn read_run_tree_is_not_found_for_an_unstored_run() {
+fn write_run_tree_is_not_found_for_an_unstored_run() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
     assert!(
-        matches!(store.read_run_tree("nope"), Err(StoreError::NotFound(_))),
+        matches!(
+            collect(|out| store.write_run_tree("nope", out)),
+            Err(StoreError::NotFound(_))
+        ),
         "an unstored run reads as NotFound, not an I/O fault"
     );
+}
+
+#[test]
+fn ensure_run_tree_answers_before_a_byte_is_written() {
+    // The two writers stream, so the HTTP layer has to learn "unknown run" and "bad
+    // id" *before* it commits a status code. This is the question it asks, and the
+    // answers have to be the same ones the writers would have raised.
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run(
+            "here",
+            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
+        )
+        .unwrap();
+
+    assert!(store.ensure_run_tree("here").is_ok());
+    assert!(
+        matches!(store.ensure_run_tree("gone"), Err(StoreError::NotFound(_))),
+        "an unstored run is NotFound, so the route can still answer 404"
+    );
+    for id in ["..", ".", "../other", "a/b", ""] {
+        assert!(
+            matches!(store.ensure_run_tree(id), Err(StoreError::Traversal(_))),
+            "id `{id}` must be refused as a traversal, so the route can still answer 400"
+        );
+    }
 }
 
 #[test]
@@ -286,7 +330,7 @@ fn ungzip_untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec
 }
 
 #[test]
-fn read_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
+fn write_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
 
@@ -306,7 +350,8 @@ fn read_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
         )
         .unwrap();
 
-    let entries = ungzip_untar_to_map(&store.read_run_archive("abc").expect("read archive"));
+    let entries =
+        ungzip_untar_to_map(&collect(|out| store.write_run_archive("abc", out)).expect("archive"));
 
     // Every entry is prefixed with the run id, so the archive unpacks into its own
     // directory rather than over the caller's working directory.
@@ -336,26 +381,154 @@ fn read_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
 }
 
 #[test]
-fn read_run_archive_is_not_found_for_an_unstored_run() {
+fn write_run_archive_is_not_found_for_an_unstored_run() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
     assert!(
-        matches!(store.read_run_archive("nope"), Err(StoreError::NotFound(_))),
+        matches!(
+            collect(|out| store.write_run_archive("nope", out)),
+            Err(StoreError::NotFound(_))
+        ),
         "an unstored run reads as NotFound, not an I/O fault"
     );
 }
 
 #[test]
-fn read_run_archive_refuses_an_unsafe_id() {
+fn write_run_archive_refuses_an_unsafe_id() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
     // The archive walks a directory tree rather than going through the canonicalizing
     // core resolvers, so — as with `delete_run` — an id that is not a single safe
-    // path segment must never reach the filesystem.
+    // path segment must never reach the filesystem. The writers re-check rather than
+    // trusting the caller's `ensure_run_tree`.
     for id in ["..", ".", "../other", "a/b"] {
         assert!(
-            matches!(store.read_run_archive(id), Err(StoreError::Traversal(_))),
+            matches!(
+                collect(|out| store.write_run_archive(id, out)),
+                Err(StoreError::Traversal(_))
+            ),
             "id `{id}` must be refused as a traversal"
         );
     }
+}
+
+/// A sink that accepts `budget` bytes and then fails, standing in for a client that
+/// hung up part-way through its download.
+struct HungUpSink {
+    budget: usize,
+    written: usize,
+}
+
+impl std::io::Write for HungUpSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.written >= self.budget {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "the archive download was closed by the client",
+            ));
+        }
+        self.written += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_sink_that_fails_aborts_the_walk_rather_than_finishing_it() {
+    // The whole point of writing into a sink is that the walk proceeds at the client's
+    // pace — which means a client that goes away has to stop the walk, not merely have
+    // its bytes thrown away. If a sink failure were swallowed, a reviewer cancelling a
+    // download would leave the service reading the rest of a large tree for nobody.
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    let big = vec![b'x'; 128 * 1024];
+    store
+        .store_run(
+            "abc",
+            &mut Cursor::new(tar_of(&[
+                ("implementation/a.bin", &big),
+                ("implementation/b.bin", &big),
+                ("implementation/c.bin", &big),
+            ])),
+        )
+        .unwrap();
+
+    let mut sink = HungUpSink {
+        budget: 4096,
+        written: 0,
+    };
+    let err = store
+        .write_run_tree("abc", &mut sink)
+        .expect_err("a failing sink must surface, not be swallowed");
+    assert!(matches!(err, StoreError::Io(_)), "got {err:?}");
+    assert!(
+        sink.written < big.len(),
+        "the walk stopped at the failure rather than reading the whole tree, wrote {}",
+        sink.written
+    );
+}
+
+#[test]
+fn list_runs_reports_one_entry_per_stored_tree() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    let before = std::time::SystemTime::now();
+    for id in ["abc", "def"] {
+        store
+            .store_run(id, &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])))
+            .unwrap();
+    }
+
+    let mut listed: Vec<String> = store
+        .list_runs()
+        .unwrap()
+        .into_iter()
+        .map(|tree| tree.id)
+        .collect();
+    listed.sort();
+    assert_eq!(listed, vec!["abc".to_string(), "def".to_string()]);
+
+    // The reported time is the tree's own write time, which is what the backend's
+    // sweep measures its grace window against.
+    for tree in store.list_runs().unwrap() {
+        assert!(
+            tree.modified >= before,
+            "tree `{}` reports a modified time from before it was stored",
+            tree.id
+        );
+    }
+}
+
+#[test]
+fn list_runs_ignores_a_file_at_the_store_root() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run(
+            "abc",
+            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
+        )
+        .unwrap();
+    // An upload in flight is spooled into this same root; only a run directory is a
+    // tree, and reporting a spool file would hand the sweep an id it cannot delete.
+    std::fs::write(root.path().join("spooled-upload"), b"tar bytes").unwrap();
+
+    let listed: Vec<String> = store
+        .list_runs()
+        .unwrap()
+        .into_iter()
+        .map(|tree| tree.id)
+        .collect();
+    assert_eq!(listed, vec!["abc".to_string()]);
+}
+
+#[test]
+fn list_runs_is_empty_for_an_empty_store() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    assert!(store.list_runs().unwrap().is_empty());
 }

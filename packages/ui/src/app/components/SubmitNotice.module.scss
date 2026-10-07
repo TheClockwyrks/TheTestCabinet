@@ -1,0 +1,32 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// Mirrors the `notice` family the exec surfaces already draw, so the outcome of a
+// press reads the same wherever it is raised.
+.notice {
+  margin: t.$space-md 0;
+  padding: t.$space-sm t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+}
+
+.error {
+  border-color: t.$color-negative;
+  color: t.$color-negative;
+}
+
+.ok {
+  border-color: t.$color-positive;
+}
+
+// A notice at a panel's edge is already spaced by the panel's own padding, so it
+// drops the margin on that side rather than doubling the inset.
+.notice:first-child {
+  margin-top: 0;
+}
+
+.notice:last-child {
+  margin-bottom: 0;
+}

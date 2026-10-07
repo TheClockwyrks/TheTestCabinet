@@ -1,0 +1,57 @@
+# Shatter — The gravity well
+
+This file defines the pull the star exerts: the law, the bodies it acts on, and
+the bodies it never touches. The star's position and its core are in
+`specs/field.md`, and the tick the pull is applied in is in `specs/simulation.md`.
+
+## The law
+
+Every tick, each pulled body gains an acceleration toward the star's centre:
+
+```
+d     = the distance from the body's centre to (STAR_X, STAR_Y)
+dEff  = max(d, SOFTEN)
+aMag  = MU / (dEff * dEff)
+a     = aMag, directed along the unit vector from the body to the star's centre
+```
+
+`MU` is `4 500 000` and `SOFTEN`, the softening radius, is `90`. Inside `SOFTEN`
+the magnitude is capped at `MU / (SOFTEN * SOFTEN)`, so a body approaching the
+core is pulled no harder than a body at `d = 90`.
+
+| Distance | Acceleration |
+| --- | --- |
+| `d = 200` | `112.5` |
+| `d = 150` | `200` |
+| `d = 120` | `312.5` |
+| `d <= 90` | `555.6` (the cap) |
+
+The pull uses the body's direct vector to `(STAR_X, STAR_Y)`, not a wrapped one,
+so a body near a corner is pulled by its full distance across the field rather
+than by the distance to a wrapped image of the star.
+
+## Which bodies are pulled
+
+| Body | Pulled |
+| --- | --- |
+| A bullet the ship fired | Yes |
+| A saucer bullet | Yes |
+| A rock, of any size | Yes |
+{{#if (eq variant.slug "warhead")}}
+| The ship | No |
+| The saucer | No |
+| A torpedo | No |
+{{else}}
+| The ship | No |
+| The saucer | No |
+{{/if}}
+
+{{#if (eq variant.slug "warhead")}}
+The ship, the saucer, and the torpedo are powered craft with their own drive. The
+well never adds anything to their velocity, whatever their distance from the star,
+so each holds exactly the course it is steering.
+{{else}}
+The ship and the saucer are powered craft with their own drive. The well never
+adds anything to their velocity, whatever their distance from the star, so each
+holds exactly the course it is steering.
+{{/if}}

@@ -136,7 +136,13 @@ export async function loadSheet(sheetUrl, atlas, palette) {
     return c;
   };
 
-  return { atlas, palette, neutral: base, red: tint("red"), blue: tint("blue") };
+  return {
+    atlas,
+    palette,
+    neutral: base,
+    red: tint("red"),
+    blue: tint("blue"),
+  };
 }
 
 // --- Drawing ---------------------------------------------------------------
@@ -188,7 +194,8 @@ export class Renderer {
   #isWall(x, y) {
     // Out-of-bounds reads as wall so the perimeter ring connects to itself
     // instead of growing a cap that faces off the board.
-    if (x < 0 || y < 0 || x >= this.board.width || y >= this.board.height) return true;
+    if (x < 0 || y < 0 || x >= this.board.width || y >= this.board.height)
+      return true;
     return this.wallSet.has(`${x},${y}`);
   }
 
@@ -221,12 +228,21 @@ export class Renderer {
     for (let y = 0; y < b.height; y++) {
       for (let x = 0; x < b.width; x++) {
         if (this.wallSet.has(`${x},${y}`)) {
-          this.#blitCell(this.sheet.neutral, this.atlas.wall_tiles[this.#wallMask(x, y)], x, y);
+          this.#blitCell(
+            this.sheet.neutral,
+            this.atlas.wall_tiles[this.#wallMask(x, y)],
+            x,
+            y,
+          );
         } else if (this.#isBorderFloor(x, y)) {
           const top = this.#isBorderFloor(x, y - 1);
           const bot = this.#isBorderFloor(x, y + 1);
           const tiles = this.atlas.border_tiles;
-          const name = !top ? tiles.cap_top : !bot ? tiles.cap_bottom : tiles.mid;
+          const name = !top
+            ? tiles.cap_top
+            : !bot
+              ? tiles.cap_bottom
+              : tiles.mid;
           this.#blitCell(this.sheet.neutral, name, x, y);
         } else {
           this.#blitCell(this.sheet.neutral, "floor", x, y);
@@ -258,13 +274,24 @@ export class Renderer {
   // across the current cell; a moving agent cycles its walk anim by phase, a
   // stationary one shows the rest pose (frame 0).
   #agentFrame(role, laden, face, moving, phase) {
-    const key = role === "soldier" ? `soldier_walk_${face}` : laden ? `raider_laden_walk_${face}` : `raider_walk_${face}`;
+    const key =
+      role === "soldier"
+        ? `soldier_walk_${face}`
+        : laden
+          ? `raider_laden_walk_${face}`
+          : `raider_walk_${face}`;
     const anim = this.atlas.anims && this.atlas.anims[key];
     if (!anim || !anim.frames.length) {
       // Fallback if walk anims are absent: a single static frame name.
-      return role === "soldier" ? `soldier_${face}_0` : laden ? `raider_laden_${face}_0` : `raider_${face}_0`;
+      return role === "soldier"
+        ? `soldier_${face}_0`
+        : laden
+          ? `raider_laden_${face}_0`
+          : `raider_${face}_0`;
     }
-    const idx = moving ? Math.floor(phase * anim.frames.length) % anim.frames.length : 0;
+    const idx = moving
+      ? Math.floor(phase * anim.frames.length) % anim.frames.length
+      : 0;
     return anim.frames[idx];
   }
 
@@ -280,10 +307,13 @@ export class Renderer {
     // seeds come straight from the current tick (they pop in/out, not move).
     const activeJelly = new Set(a.jelly.map(([x, y]) => `${x},${y}`));
     for (const [x, y] of this.jellyNodes) {
-      if (!activeJelly.has(`${x},${y}`)) this.#blitCell(this.sheet.neutral, "jelly_spent", x, y);
+      if (!activeJelly.has(`${x},${y}`))
+        this.#blitCell(this.sheet.neutral, "jelly_spent", x, y);
     }
-    for (const [x, y] of a.jelly) this.#blitCell(this.sheet.neutral, "jelly_active", x, y);
-    for (const [x, y] of a.seeds) this.#blitCell(this.sheet.neutral, "seed", x, y);
+    for (const [x, y] of a.jelly)
+      this.#blitCell(this.sheet.neutral, "jelly_active", x, y);
+    for (const [x, y] of a.seeds)
+      this.#blitCell(this.sheet.neutral, "seed", x, y);
     // Large seeds last, so they sit on top of an ordinary seed if one is ever laid on
     // the same tile by a scattered load. They MOVE (drifting a tile at a time toward
     // the border) but they are not interpolated: a drift step is a discrete hop every
@@ -298,18 +328,24 @@ export class Renderer {
     // progress. A respawn after a tag teleports across the board — detected as a
     // manhattan jump > 1 — so snap to the current cell instead of sliding.
     const nextById = new Map();
-    if (b && b !== a) for (const n of b.agents) nextById.set(`${n.team}:${n.id}`, n);
+    if (b && b !== a)
+      for (const n of b.agents) nextById.set(`${n.team}:${n.id}`, n);
 
     for (const ag of a.agents) {
       const id = `${ag.team}:${ag.id}`;
       const nxt = nextById.get(id);
-      const teleport = nxt && Math.abs(nxt.x - ag.x) + Math.abs(nxt.y - ag.y) > 1;
+      const teleport =
+        nxt && Math.abs(nxt.x - ag.x) + Math.abs(nxt.y - ag.y) > 1;
       const moving = !!nxt && !teleport && (nxt.x !== ag.x || nxt.y !== ag.y);
 
-      const px = (teleport || !nxt ? ag.x : lerp(ag.x, nxt.x, frac)) * this.cellPx;
-      const py = (teleport || !nxt ? ag.y : lerp(ag.y, nxt.y, frac)) * this.cellPx;
+      const px =
+        (teleport || !nxt ? ag.x : lerp(ag.x, nxt.x, frac)) * this.cellPx;
+      const py =
+        (teleport || !nxt ? ag.y : lerp(ag.y, nxt.y, frac)) * this.cellPx;
 
-      const face = moving ? facing(nxt.x - ag.x, nxt.y - ag.y, this.prev.get(id)) : this.prev.get(id) || "s";
+      const face = moving
+        ? facing(nxt.x - ag.x, nxt.y - ag.y, this.prev.get(id))
+        : this.prev.get(id) || "s";
       if (moving) this.prev.set(id, face);
 
       const laden = ag.carrying > 0;
@@ -332,14 +368,26 @@ export class Renderer {
     const my = py + this.cellPx / 2;
     const r = this.cellPx * (0.5 + 0.18 * pulse);
     const a = 0.15 + 0.3 * pulse;
-    const grad = ctx.createRadialGradient(mx, my, this.cellPx * 0.18, mx, my, r);
+    const grad = ctx.createRadialGradient(
+      mx,
+      my,
+      this.cellPx * 0.18,
+      mx,
+      my,
+      r,
+    );
     grad.addColorStop(0, `rgba(${IMMUNE_RGB}, ${a * 0.5})`);
     grad.addColorStop(0.55, `rgba(${IMMUNE_RGB}, ${a})`);
     grad.addColorStop(1, `rgba(${IMMUNE_RGB}, 0)`);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.fillStyle = grad;
-    ctx.fillRect(px - this.cellPx * 0.25, py - this.cellPx * 0.25, this.cellPx * 1.5, this.cellPx * 1.5);
+    ctx.fillRect(
+      px - this.cellPx * 0.25,
+      py - this.cellPx * 0.25,
+      this.cellPx * 1.5,
+      this.cellPx * 1.5,
+    );
     ctx.restore();
   }
 

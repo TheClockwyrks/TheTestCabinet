@@ -1,4 +1,4 @@
-import { Markdown, Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import type { ErratumSeverity } from "../../../data/testCases";
 import { useTestCase } from "../../../data/useTestCase";
 import styles from "./RunErrataCallout.module.scss";
@@ -49,8 +49,8 @@ export function RunErrataCallout({
         Known errata for {subject.testCaseVersion}
       </h2>
       <p className={styles.note}>
-        Issues found in this version after it shipped. Weigh them when scoring —
-        an issue marked{" "}
+        Issues found in this version after it shipped. Weigh them when scoring.
+        An issue marked{" "}
         <span className={styles.scoringWord}>affects scoring</span> is a known
         defect a run should not be penalised for. An issue marked{" "}
         <span className={styles.scoringWord}>excluded from scoring</span> has

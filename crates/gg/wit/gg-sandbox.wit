@@ -1,0 +1,1416 @@
+// The membrane between gg (the host) and the sandbox that runs an agent's program. It
+// is the whole trust boundary: a program can reach exactly what is declared here and nothing else,
+// because the guest component imports nothing else and is built with every WASI capability
+// disabled.
+//
+// The package is deliberately UNVERSIONED: `componentize-js` resolves the guest's bare
+// `test-cabinet:gg/<interface>` import specifiers only against an unversioned package.
+//
+// One interface per gg capability family, so the Rust host implements one `Host` trait per file and
+// the guest SDK ships one module per family. Every function on those interfaces corresponds to
+// exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
+// equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
+//
+// Seven interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
+// carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
+// `views` is how a program puts material into its own context window; `programs` is the library
+// of programs this agent has already run; `wire` is not model-facing either — it is the one door the JVM arms
+// come through, naming a call by string BELOW their typed surface, for the reason it states; and
+// neither is `math`, which answers the `java.lang.Math` primitives TeaVM's WebAssembly backend
+// leaves to a host. None of the four model-facing ones has a name in `ALL_TOOL_NAMES` — no
+// capability offers them and nothing dispatches them by name — so keeping them out of the tool
+// interfaces is what lets the bijection above be checked mechanically rather than by reading.
+package test-cabinet:gg;
+
+/// The types shared across the tool interfaces. It declares no functions: it exists so that one
+/// `api-error` crosses the whole membrane rather than one per family.
+interface types {
+    /// Why a call failed, in the vocabulary a program branches on.
+    ///
+    /// This is never derived by matching on a tool's English output: every gg tool classifies its
+    /// own failures at the point it raises them (`ToolFailure`, crates/gg/src/tools/data.rs) and
+    /// the host maps that classification straight onto this enum.
+    enum error-code {
+        /// The arguments were malformed, ill-typed, or out of range.
+        invalid-argument,
+        /// The named file, skill, memory, task, epic, issue, subagent, stored program, or
+        /// documentation entry does not exist.
+        not-found,
+        /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency
+        /// cycle, a duplicate id, a subagent that already returned.
+        conflict,
+        /// gg refused the call: a memory instance this agent holds read-only, a call a pending
+        /// compaction does not admit, a second succession in a turn that already declared one, or
+        /// a hook that blocked it. Each is a rule about this agent's *state*; a ceiling the call
+        /// ran into is `limit-exceeded`, including the delegation depth cap.
+        refused,
+        /// The call exists but this run does not offer it to you: a tool outside this run's
+        /// capability set, an ending your role does not declare, a program library this agent does
+        /// not keep, or a family whose runtime this run has none of.
+        ///
+        /// A guest whose SDK withholds a name from a program's scope makes most of these
+        /// unreachable — the name is simply not there — but the host checks them all regardless,
+        /// because a guest that links its SDK as a library cannot withhold anything. The recovery
+        /// is the same one a name that was never in scope gets: stop asking for it.
+        unavailable,
+        /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation
+        /// depth cap, one of the view caps a program spends, or the run's wall-clock budget
+        /// running out mid-program.
+        limit-exceeded,
+        /// The underlying I/O or process failed.
+        io-error,
+        /// The failure was not classified. Reserved for outcomes raised outside a tool
+        /// implementation (the loop's bridge degradation paths); no tool produces it.
+        other,
+    }
+
+    /// A failed call. Surfaces in the guest as a thrown `ApiError`.
+    record api-error {
+        /// The failure class, so a catch site branches on a value rather than on prose.
+        code: error-code,
+        /// The call that failed, by the KEY of the operation the program reached for:
+        /// `read_file` for `files.read_file`, `open_file` for `views.open_file`. A catch site
+        /// branches on the call the program wrote
+        /// rather than on prose; it is never the name of whatever ran underneath, which several
+        /// operations share.
+        operation: string,
+        /// The model-facing guidance, written in this program's own spelling of the call.
+        message: string,
+    }
+
+    /// A three-way edit of an optional text field: leave it, empty it, or replace it.
+    ///
+    /// It replaces gg's stringly sentinel (today an empty string clears a description), so "clear
+    /// it" and "set it to the empty string" stop being the same request. Each language's SDK
+    /// presents this in its own idiom for "absent, empty, or a value", so a model never writes a
+    /// tagged union.
+    variant text-edit {
+        /// Leave the field as it is.
+        keep,
+        /// Empty the field.
+        clear,
+        /// Replace the field with this text.
+        set(string),
+    }
+}
+
+/// Running commands in the workspace.
+interface shell {
+    use types.{api-error};
+
+    /// What a completed process reported.
+    record shell-output {
+        /// The exit status; `none` when the process was terminated by a signal.
+        exit-code: option<s32>,
+        /// Merged stdout-then-stderr, tail-truncated at gg's 16 KiB cap — or, when the run offloads
+        /// shell output, at the configured line/character ceiling, followed by a note naming the
+        /// files holding the command's full stdout and stderr.
+        output: string,
+        /// Whether the cap cut `output` (the head was dropped, the tail kept).
+        truncated: bool,
+    }
+
+    /// Run a command with `sh -c` in the workspace directory.
+    ///
+    /// A non-zero exit is a SUCCESS of this call: the output and the code come back so the program
+    /// can branch on them. Checking whether a build or a test run passed is the single most common
+    /// thing a program does, so throwing on it would make `shell` unusable inside an expression.
+    /// Only a failure to launch the process, or the timeout killing it, is an error.
+    ///
+    /// `timeout-secs` defaults to gg's 3600 s and is CLAMPED to whatever is left of the run's
+    /// wall-clock budget, so one call cannot outlive the run it belongs to.
+    shell: func(command: string, timeout-secs: option<f64>) -> result<shell-output, api-error>;
+}
+
+/// Reading and writing files. A relative path is resolved against gg's working directory (the
+/// agent's workspace root, or its worktree); an absolute one is used as given. There is no
+/// confinement to the workspace: the container is the boundary, and gg's own shell writes offloaded
+/// output outside it.
+interface files {
+    use types.{api-error};
+
+    /// A text file, or the window of one this run's read policy returned.
+    record text-read {
+        /// The file's text. Where the read was windowed — by an `offset`/`limit` it named, or by a
+        /// capped read policy's default — this is the window only, with no explanatory footer: the
+        /// window is described by the fields below instead.
+        contents: string,
+        /// The 1-based first line returned.
+        first-line: u32,
+        /// The 1-based last line returned.
+        last-line: u32,
+        /// The file's total line count, so a program knows whether to page again.
+        total-lines: u32,
+        /// The 256 KiB byte ceiling cut the returned text.
+        byte-truncated: bool,
+    }
+
+    /// A picture. The bytes never enter the program: they are attached to the turn's feedback so
+    /// the model can look at the picture directly, which is worth far more than base64 in a
+    /// variable — and which is silently lost in today's code mode.
+    record image-read {
+        /// The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`).
+        media-type: string,
+        /// The short format label (`PNG`, `JPEG`, `GIF`, `WebP`).
+        label: string,
+        /// The file's size in bytes.
+        bytes: u64,
+        /// Whether the picture is being attached to this turn for the model to look at.
+        shown: bool,
+        /// Why it is not being shown: a text-only model, a provider refusal, gg's 8 MiB attach cap,
+        /// or this program's per-turn image budget. `none` when `shown` is true.
+        not-shown-reason: option<string>,
+    }
+
+    /// What a read returned. A picture is a different kind of thing from text, so it is a different
+    /// case — a program that treats an image as text is caught here rather than silently writing an
+    /// empty string somewhere. The format is detected by magic bytes, never by extension.
+    variant file-read {
+        /// The file is text.
+        text(text-read),
+        /// The file is a picture.
+        image(image-read),
+    }
+
+    /// Read a file.
+    ///
+    /// `offset`/`limit` are honoured under every read policy. The policy decides only what an absent
+    /// `limit` means: its default cap under a capped policy, the end of the file under the unlimited
+    /// one. An absent `offset` starts at the first line under every policy.
+    read-file: func(path: string, offset: option<u32>, limit: option<u32>)
+        -> result<file-read, api-error>;
+
+    /// Write UTF-8 text to a file, creating parent directories and overwriting any
+    /// existing file. Returns the number of bytes written.
+    write-file: func(path: string, contents: string) -> result<u64, api-error>;
+
+    /// Replace the single exact occurrence of `old-string` with `new-string`.
+    ///
+    /// An occurrence that is missing is `not-found`; one that appears more than once is a
+    /// `conflict` whose message carries the count. The count stays in the message rather than
+    /// becoming a field: `api-error` is shared by every function and a per-operation payload on it
+    /// would be a wart on every other call — a program that needs to disambiguate should add
+    /// surrounding context, not count.
+    edit-file: func(path: string, old-string: string, new-string: string) -> result<_, api-error>;
+
+    /// What a directory holds.
+    enum entry-kind { file, directory, other }
+
+    /// One directory entry.
+    record dir-entry {
+        /// The entry's name (not a path — join it with the directory you listed).
+        name: string,
+        /// Whether it is a file, a directory, or something else.
+        kind: entry-kind,
+    }
+
+    /// List a directory, sorted by name. `none` lists the workspace root. An empty
+    /// directory is an empty list, not an error.
+    list-dir: func(path: option<string>) -> result<list<dir-entry>, api-error>;
+
+    /// Render the directory tree beneath `path` — `none` is the workspace root — as one block of
+    /// text: the root itself unnamed, each level indented two further spaces than its parent, every
+    /// level in path order, and directories suffixed `/`. A root with nothing beneath it renders as
+    /// `(empty directory)`.
+    ///
+    /// `depth` counts levels of children below the root: `1` is the root's own entries. It is 2
+    /// when it is absent and never more than 10, so a larger request is answered at 10; a `depth`
+    /// of zero is `invalid-argument`. A directory sitting at the bound is suffixed with how many
+    /// entries it holds that the walk did not enter.
+    ///
+    /// The tree honours ignore files exactly as `search` does: what `.gitignore`, `.ignore` and
+    /// their kin exclude is never walked and never rendered, `.git` itself included. A `path` that
+    /// does not exist is `not-found`; one that is not a directory is `invalid-argument`.
+    ///
+    /// The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut
+    /// by either ends with a line saying so.
+    tree: func(path: option<string>, depth: option<u32>) -> result<string, api-error>;
+
+    /// One line a `search` matched.
+    record search-match {
+        /// The file's path, relative to the workspace root (or absolute, for a search rooted
+        /// outside it), with `/` separators.
+        path: string,
+        /// The 1-based line number of the match within that file.
+        line: u32,
+        /// The matching line, without its line ending. A line longer than gg's 200-character clip
+        /// is cut there and annotated in place as `foo (123 more chars...)`.
+        text: string,
+    }
+
+    /// Search the workspace's files for `query` and return every line that matches it, each with
+    /// its path and 1-based line number, in path order and then line order.
+    ///
+    /// `query` is a **regular expression** (Rust syntax: `foo|bar`, `fn\s+update`, `(?i)todo` for a
+    /// case-insensitive match), matched against each line on its own; a blank query, or one that is
+    /// not a valid pattern, is `invalid-argument`. `path` narrows the search to one directory or one
+    /// file — `none` is the workspace root — and a `path` that does not exist is `not-found`.
+    ///
+    /// The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude is never
+    /// scanned and never returned, `.git` itself included, and a file that is not text (one carrying
+    /// a NUL byte) is skipped. `limit` bounds how many matches come back — gg's default is 50 and
+    /// its ceiling 200, so a larger request is answered with the first 200 — and a `limit` of zero
+    /// is `invalid-argument`. A list exactly `limit` long may have been cut: narrow the query or the
+    /// path, or page nothing, because there is no offset — a search is a question about where to
+    /// point the other tools, not a way of reading a file.
+    search: func(query: string, path: option<string>, limit: option<u32>)
+        -> result<list<search-match>, api-error>;
+}
+
+/// The authored skill library.
+interface skills {
+    use types.{api-error};
+
+    /// Read an authored skill by name and return its body, front matter stripped.
+    ///
+    /// Reading a skill also pins it permanently into the session's context, exactly as a native
+    /// `read_skill` does. The name is a plain string rather than an enum because the skill
+    /// catalogue is per-run while this component is baked once; the available names are listed in
+    /// the system prompt, and an unknown one comes back as `not-found` with the full list.
+    read-skill: func(name: string) -> result<string, api-error>;
+}
+
+/// Durable memories that survive context compaction.
+///
+/// A run picks ONE of three memory strategies, and only that strategy's functions are bound into a
+/// program's scope: the scratchpad's `write-memory`/`update-memory`, or the file-shaped
+/// `create-memory`/`read-memory`/`edit-memory` (plus `search-memories` where there is no index).
+/// `delete-memory` is bound under all three. The whole interface is declared here because the
+/// component is baked once, for every run there will ever be; what a given program can call is
+/// decided at instantiation.
+interface memories {
+    use types.{api-error};
+
+    /// A memory to record or revise.
+    record memory-input {
+        /// The unique short name the memory is addressed by.
+        name: string,
+        /// A one-line description of what it holds. Required by every strategy that shows one;
+        /// optional (and reported with search results) where none does.
+        description: string,
+        /// The memory body.
+        body: string,
+        /// Reusable code, as a module in the agent's own program language: every later program of
+        /// yours may import whatever it exports, so a helper you write once you never write again.
+        /// Using the memory opens a documentation view per function the module declares, and each
+        /// states the line a program writes to reach it.
+        ///
+        /// It is NOT context — it costs you no window and is never shown back to you — so it is
+        /// bounded on its own and counts against no body limit. `export` what you want to reach;
+        /// a module with no `export` at all exports everything it declares. It may call the same gg
+        /// functions your programs can.
+        code: option<string>,
+        /// A script to run on EVERY use of this memory — on each read that loads it, or, under the
+        /// scratchpad strategy, the moment you write it.
+        ///
+        /// It runs after the program that used the memory has ended, so whatever **views** it
+        /// opens reach you on your NEXT turn. It may import the memory's own `code`. It cannot end
+        /// your session.
+        on-use: option<string>,
+    }
+
+    /// How much of the memory budget is used, so a program can check a limit instead of parsing a
+    /// sentence about it.
+    ///
+    /// Every maximum is an `option`: each limit is independently disableable, and a strategy
+    /// applies only some of them, so `none` says "nothing bounds this" rather than leaving a
+    /// program to read a zero as either a limit or its absence.
+    record memory-usage {
+        /// Memories currently held.
+        count: u32,
+        /// The most memories this run allows, if it limits the count.
+        max-count: option<u32>,
+        /// Characters of body currently held, across all memories.
+        total-chars: u32,
+        /// The most characters of body this run allows in total, if it limits the aggregate.
+        max-total-chars: option<u32>,
+        /// Characters the pinned index occupies, under a strategy that keeps one.
+        index-chars: option<u32>,
+        /// The most characters the index may occupy, if it is limited.
+        max-index-chars: option<u32>,
+    }
+
+    /// A revision to a memory: replace the one exact occurrence of `search` with `replace`.
+    record memory-edit {
+        /// The memory's slug.
+        name: string,
+        /// The exact text to replace, which must occur exactly once.
+        search: string,
+        /// What to put in its place; empty cuts the text out.
+        replace: string,
+    }
+
+    /// One memory a search matched, and why it ranked where it did.
+    record memory-hit {
+        /// The memory's slug — what `read-memory` takes.
+        name: string,
+        /// Its description, or empty when it was created without one.
+        description: string,
+        /// How many distinct keywords it matched — the primary ranking.
+        matched: u32,
+        /// How many times those keywords occur in it — the tiebreak.
+        occurrences: u32,
+        /// A short window of the memory around its first match.
+        excerpt: string,
+    }
+
+    /// Record a new durable memory. A duplicate name, or a body that would breach a limit, is an
+    /// error — revise or evict instead of accruing more.
+    write-memory: func(memory: memory-input) -> result<memory-usage, api-error>;
+    /// Replace an existing memory's description and body.
+    update-memory: func(memory: memory-input) -> result<memory-usage, api-error>;
+    /// Record a new memory file, whose contents stay out of the context window until read.
+    create-memory: func(memory: memory-input) -> result<memory-usage, api-error>;
+    /// Read one memory's contents back, by slug.
+    read-memory: func(name: string) -> result<string, api-error>;
+    /// Revise a memory in place. A search that is missing or ambiguous, and an edit that would
+    /// leave the memory empty, are errors.
+    edit-memory: func(edit: memory-edit) -> result<memory-usage, api-error>;
+    /// Find the memories mentioning any of `keywords`, best first. An empty keyword list is an
+    /// error; a list that matches nothing is an empty result.
+    search-memories: func(keywords: list<string>) -> result<list<memory-hit>, api-error>;
+    /// Evict a memory by name, freeing room for new ones.
+    delete-memory: func(name: string) -> result<memory-usage, api-error>;
+}
+
+/// The task DAG.
+interface tasks {
+    use types.{api-error, text-edit};
+
+    /// Where a task stands. WIT identifiers cannot contain `_`, so `in-progress` is mapped to the
+    /// store's `in_progress` by the host — an SDK uses gg's spelling, so a model sees one
+    /// vocabulary in both execution modes.
+    enum task-status { pending, in-progress, done }
+
+    /// A task to add.
+    record task-input {
+        /// The unique short id other tasks reference it by.
+        id: string,
+        /// The task title.
+        title: string,
+        /// An optional longer description.
+        description: option<string>,
+        /// Ids of tasks that must finish first. An edge that would create a cycle is refused.
+        blocked-by: list<string>,
+    }
+
+    /// A revision of a task. Every field is optional; supply at least one.
+    record task-patch {
+        /// A new title.
+        title: option<string>,
+        /// A three-way edit of the description.
+        description: text-edit,
+        /// A new status.
+        status: option<task-status>,
+    }
+
+    /// How much of the task budget is used.
+    record task-usage {
+        /// Tasks currently held.
+        count: u32,
+        /// The most tasks this run allows.
+        max-tasks: u32,
+    }
+
+    /// Add a task to the DAG.
+    add-task: func(task: task-input) -> result<task-usage, api-error>;
+    /// Revise a task's title, description, and/or status.
+    update-task: func(id: string, patch: task-patch) -> result<_, api-error>;
+    /// Replace a task's full blocker set; an empty list clears every blocker.
+    set-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, api-error>;
+    /// Mark a task done. Tasks it blocked become actionable once all their blockers are done.
+    complete-task: func(id: string) -> result<_, api-error>;
+    /// Remove a task and every blocker edge pointing at it.
+    remove-task: func(id: string) -> result<task-usage, api-error>;
+}
+
+/// The epic/issue board.
+interface board {
+    use types.{api-error, text-edit};
+
+    /// Where an issue stands.
+    enum issue-status { open, in-progress, done }
+
+    /// An epic to create.
+    record epic-input {
+        /// A 3-6 letter prefix naming the epic. Upper-cased, it becomes the epic's id and the stem
+        /// its issues are numbered from (`AUTH` → `AUTH-1`, `AUTH-2`, …).
+        prefix: string,
+        /// The epic title.
+        title: string,
+        /// What the epic covers.
+        description: string,
+    }
+
+    /// An issue to create — a heavyweight, self-contained, dispatchable unit of work. It has no id:
+    /// the board assigns one from the epic's prefix and reports it back.
+    record issue-input {
+        /// The issue title.
+        title: string,
+        /// An optional overview.
+        description: option<string>,
+        /// What this issue is responsible for.
+        in-scope: string,
+        /// What it is explicitly not responsible for.
+        out-of-scope: string,
+        /// How it will be judged done.
+        completion-criteria: string,
+        /// Ids of issues that must finish first; a cycle is refused.
+        blocked-by: list<string>,
+        /// The epic to group it under.
+        epic-id: option<string>,
+        /// The agent gg dispatches this issue to. Must be one this agent may spawn.
+        agent: string,
+        /// The agents that must approve this issue's work, drawn from the same set as `agent`.
+        /// Required when the run's reviewers feature is on, and empty otherwise.
+        reviewers: list<string>,
+    }
+
+    /// How an issue's epic grouping changes.
+    variant epic-assignment {
+        /// Leave the grouping alone.
+        keep,
+        /// Detach the issue from its epic.
+        ungroup,
+        /// Group the issue under this epic.
+        set(string),
+    }
+
+    /// A revision of an issue. Every field is optional; supply at least one.
+    record issue-patch {
+        /// A new title.
+        title: option<string>,
+        /// A three-way edit of the description.
+        description: text-edit,
+        /// New scope.
+        in-scope: option<string>,
+        /// New out-of-scope.
+        out-of-scope: option<string>,
+        /// New completion criteria.
+        completion-criteria: option<string>,
+        /// A new status.
+        status: option<issue-status>,
+        /// A change of epic grouping.
+        epic: epic-assignment,
+    }
+
+    /// How much of the board budget is used.
+    record board-usage {
+        /// Epics currently held.
+        epics: u32,
+        /// The most epics this run allows.
+        max-epics: u32,
+        /// Issues currently held.
+        issues: u32,
+        /// The most issues this run allows.
+        max-issues: u32,
+    }
+
+    /// An epic the board just created: the id its prefix resolved to, and how full the board now is.
+    record epic-created {
+        /// The epic's id — its upper-cased prefix (`auth` → `AUTH`), which its issues are numbered
+        /// from and which they reference as their `epic-id`.
+        id: string,
+        /// How much of the board budget is used.
+        board: board-usage,
+    }
+
+    /// An issue the board just created: the id it assigned, and how full the board now is.
+    record issue-created {
+        /// The id the board assigned the issue (`AUTH-1`) — the handle every later reference uses.
+        id: string,
+        /// How much of the board budget is used.
+        board: board-usage,
+    }
+
+    /// Create an epic to group related issues, returning the id (the upper-cased prefix) it was
+    /// given.
+    create-epic: func(epic: epic-input) -> result<epic-created, api-error>;
+    /// Create a self-contained, dispatchable issue, returning the id the board assigned it.
+    create-issue: func(issue: issue-input) -> result<issue-created, api-error>;
+    /// Revise an issue.
+    update-issue: func(id: string, patch: issue-patch) -> result<_, api-error>;
+    /// Replace an issue's full blocker set; an empty list clears every blocker.
+    set-issue-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, api-error>;
+    /// Remove an epic. Its issues are kept and ungrouped.
+    remove-epic: func(id: string) -> result<board-usage, api-error>;
+    /// Remove an issue and every blocker edge pointing at it.
+    remove-issue: func(id: string) -> result<board-usage, api-error>;
+    /// Register a wait on an issue and return an acknowledgement. It does NOT block inside the
+    /// program: it records the wait and returns at once, so the rest of the program still runs.
+    /// After the program ends the run suspends — freeing this agent's slot for others — until the
+    /// issue is terminal (done, or failed if its assigned agent could not complete it), then
+    /// resumes and reports which. You cannot wait on the issue you were assigned to implement.
+    wait-for-issue: func(id: string) -> result<string, api-error>;
+}
+
+/// Managing the agent's own context window.
+interface context {
+    use types.{api-error};
+
+    /// What a reclaim actually freed from the live context window.
+    record reclaim-report {
+        /// Context items dropped from the live window.
+        items: u32,
+        /// Approximately how many tokens that freed.
+        reclaimed-tokens: u32,
+        /// The workspace paths whose views were evicted. Empty for an archive.
+        paths: list<string>,
+        /// The same prose the native tool-calling path shows the model.
+        detail: string,
+    }
+
+    /// Who said an archived message.
+    enum message-role { system, user, assistant, tool }
+
+    /// One archived message that matched a search.
+    record archive-hit {
+        /// The archived message's sequence number.
+        seq: u32,
+        /// Who said it.
+        role: message-role,
+        /// The message text.
+        text: string,
+    }
+
+    /// An inclusive span of turn numbers, as read off the header on each of your results.
+    record turn-range {
+        /// The first turn in the span. (Named `start`/`end` rather than `from`/`to` only because
+        /// `from` is a WIT keyword; the SDK spells them `from`/`to`, as the model writes them.)
+        start: u32,
+        /// The last turn in the span, inclusive.
+        end: u32,
+    }
+
+    /// Drop file contents you have read from the context window. `none` drops every file view. The
+    /// files on disk are unchanged.
+    evict-file-view: func(path: option<string>) -> result<reclaim-report, api-error>;
+    /// Move whole turns out of the window, named by the turn numbers on your results. Ranges are
+    /// inclusive and may overlap. Your own messages in an archived turn are dropped; the results are
+    /// kept and stay searchable.
+    archive-thread: func(ranges: list<turn-range>) -> result<reclaim-report, api-error>;
+    /// What a search of the archive found.
+    record archive-search {
+        /// Nothing has been archived yet, so there was nothing to search. Distinct from a search
+        /// that ran and matched nothing — the native path already says these two differently, and
+        /// collapsing them into an empty list would make a program archive again in the belief its
+        /// first `archive-thread` failed.
+        archive-empty: bool,
+        /// The matches, most recent first, capped at gg's 8-hit ceiling.
+        hits: list<archive-hit>,
+    }
+
+    /// Search archived history (case-insensitive substring). At most 8 hits; no match is an empty
+    /// `hits` list, not an error.
+    search-archive: func(query: string) -> result<archive-search, api-error>;
+
+    /// Compact the context window: gg drops the detailed thread and restarts it from `summary`,
+    /// plus a fresh read of each path in `files`. Skills, memories and the task list are kept.
+    ///
+    /// Like `wait-for-issue` it is **registered, not performed**: the call validates and returns,
+    /// the program carries on, and the loop rewrites the window once the program has ended — a
+    /// context reset has no shape inside the program whose context it resets. Calling it again
+    /// simply replaces the request.
+    ///
+    /// gg asks for this call when the window is full, and refuses every other call until it is
+    /// made; it is available at all times so the offered surface never changes mid-run.
+    compact: func(summary: string, files: list<string>) -> result<_, api-error>;
+}
+
+/// Ending the session.
+///
+/// The model-facing functions on this membrane that are NOT gg tools. No capability offers them, they
+/// dispatch nothing, and exactly one group of them is bound into every program's scope — including a
+/// program in a run that enables no tools at all, which must still be able to end. They are declared
+/// in their own interface precisely so the one-to-one correspondence the tool interfaces hold with
+/// `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs) is not perturbed by them.
+///
+/// Under responses-as-code every turn is a program, so there is no prose turn that could mean "I am
+/// done". These are what mean it, and they are the ONLY things that do.
+///
+/// **Which group a program gets is decided by the role the agent was dispatched in** — see
+/// `ending-kind`. A reviewer cannot call `finish`, because "the work is complete" is not a verdict;
+/// an ordinary agent cannot call `approve`, because it has nothing to approve. That is what makes an
+/// ending a *typed declaration* rather than prose the host has to parse back out of a final message.
+interface session {
+    use types.{api-error};
+
+    /// Which group of ending functions a program is given, decided by the role the agent was
+    /// dispatched in. Exactly one group is bound; the others are not names in the program's scope.
+    ///
+    /// The host keeps this value too, and refuses any ending call outside the group `unavailable`.
+    /// The two halves answer different guests: a guest that can withhold a name makes the check
+    /// unreachable, and a guest that links its SDK as a library has every name and nothing but the
+    /// check. Without it a standard agent could call `approve` and hand back a verdict nobody asked
+    /// it for — which the loop reads straight off the declaration, never re-asking whose it was.
+    enum ending-kind {
+        /// `harness.finish(summary)` — an agent doing work.
+        standard,
+        /// `review.approve()` / `review.request-changes(items)` — an agent reviewing work.
+        review,
+        /// NO ending group at all — the arm an on-use script runs under.
+        ///
+        /// An on-use script is the code a skill or a memory runs when the agent first reads it. It
+        /// is not the agent's turn: the model did not write it, does not see it, and is not
+        /// answering for it. So it must not be able to say the session is over: the name is not in
+        /// its scope, and the host refuses the call even where it is.
+        none,
+    }
+
+    /// Declare the work complete. `summary` becomes the session's final text — for the root agent the
+    /// run's last word, for a subagent its return value to the agent that asked for the work.
+    ///
+    /// It sets a **flag in the agent's host-side context** and returns normally. It does not stop the
+    /// program, it raises nothing, and nothing after it is refused: the flag is what the loop reads
+    /// once the program has ended, so an ending is a declaration the host owns rather than a
+    /// control-flow trick played on the guest. Calling it again simply replaces the declaration, and
+    /// the replacements are counted.
+    ///
+    /// The flag is **revoked** if the program then fails — an uncaught throw, or a sandbox ceiling
+    /// stopping it. A program that did not run to its end did not run the checks its summary claims,
+    /// so the session continues and the model is told its ending was cancelled.
+    ///
+    /// It is never refused for the run's wall-clock budget being spent, unlike every API call:
+    /// ending performs no work and ends the session, which is exactly what a spent budget wants. Its
+    /// failures are `unavailable` when this agent's role does not end this way, and
+    /// `invalid-argument` for an empty `summary` — in that order, so a reviewer is told it is not
+    /// the one to say the work is finished rather than told to write a better summary.
+    ///
+    /// Bound only under `ending-kind.standard`, and refused by the host under any other.
+    finish: func(summary: string) -> result<_, api-error>;
+
+    /// Declare the work under review acceptable. Takes nothing: an approval carries no further
+    /// obligation, and a shape that demanded prose would be a shape the host had to read back.
+    ///
+    /// Ends the session under the same flag rules as `finish`. Bound only under
+    /// `ending-kind.review`, and refused `unavailable` by the host under any other.
+    approve: func() -> result<_, api-error>;
+
+    /// Declare the work under review unacceptable, listing every change that must be made before it
+    /// can be accepted. Each item must say what is wrong and what to change.
+    ///
+    /// `items` must be non-empty and every entry must be non-blank — `invalid-argument` otherwise.
+    /// That is the whole reason this is a typed call: a rejection with nothing to act on gives the
+    /// agent that has to fix the work no work to do, so the membrane refuses to represent one.
+    ///
+    /// Ends the session under the same flag rules as `finish`. Bound only under
+    /// `ending-kind.review`, and refused `unavailable` by the host under any other.
+    request-changes: func(items: list<string>) -> result<_, api-error>;
+
+}
+
+/// Documentation lookup — the second model-facing carve-out, and like `session` NOT a gg tool.
+///
+/// It dispatches nothing through the tool seam, and it is kept out of the tool interfaces for the
+/// same reason `session` is: so the one-to-one correspondence they hold with `ALL_TOOL_NAMES`
+/// (crates/gg/src/tools/mod.rs) is not perturbed by it.
+///
+/// Discovering what you have and reading what it does are bound into every program's scope whatever
+/// a run enables — a model must always be able to find the functions it *does* have. Taking
+/// documentation back OUT of the window is the exception, and is bought by a capability: opening a
+/// documentation view only ever adds to the end of your prompt, while closing one rewrites its
+/// middle, and those are different enough trades to be different decisions.
+interface docs {
+    use types.{api-error};
+
+    /// One thing a documentation search found: enough to choose from, and no more.
+    record doc-hit {
+        /// What `open-doc-view` takes to read the whole entry.
+        key: string,
+        /// `"module"`, `"function"` or `"type"`.
+        kind: string,
+        /// The module it lives in: the one that publishes a function, or the one that declares a
+        /// type.
+        module: string,
+        /// The name a program calls it by, the type's own name, or the module's own path.
+        name: string,
+        /// Its one-line brief — and only that. The rest is what a documentation view is for.
+        summary: string,
+    }
+
+    /// A page of search results, with the total behind it.
+    record doc-search {
+        /// How many entries matched BEFORE paging, so you can tell a capped page from a complete
+        /// answer without guessing.
+        total: u32,
+        /// The offset this page starts at, echoed back.
+        offset: u32,
+        /// The page itself, best first.
+        hits: list<doc-hit>,
+    }
+
+    /// Search every module you can import, everything you can call in one, and everything their
+    /// signatures mention, by keyword — the way to find a function nobody named to you.
+    ///
+    /// Matching is CASE-INSENSITIVE SUBSTRING over identifiers, signatures, briefs and detailed
+    /// descriptions, so `foobar` finds `getFoobar`. Results are ranked by the KIND of thing that
+    /// matched — an entry whose own name matched comes before one that merely mentions your word in
+    /// a paragraph — and only entries THIS run bound are ever returned, so nothing you find is
+    /// something you cannot call.
+    ///
+    /// The filters compose with the query and with each other. `modules` is exact and is a lookup
+    /// rather than a search: naming several returns the entries of ANY of them, and a `modules`
+    /// filter with no query is those modules' whole directory. `type` narrows to one type and what
+    /// takes or returns it. `kind` is `"module"`, `"function"` or `"type"`.
+    /// No query and no filter at all is `invalid-argument` — "nothing matched" and "you asked
+    /// for nothing" are different answers.
+    ///
+    /// Results come back as a value AND are opened as a view, so you can read them next turn without
+    /// showing them to yourself. That view is REPLACED by your next search: it names what you are
+    /// working from, not a permanent record, which is the opposite of how a documentation view
+    /// behaves. It is a `text` view, under the selector `search results`, and `close-view` on that
+    /// selector closes it.
+    search: func(query: option<string>, modules: list<string>, %type: option<string>,
+                 kind: option<string>, offset: option<u32>, limit: option<u32>)
+        -> result<doc-search, api-error>;
+
+    /// Take one documentation view back out of your context window, by the key it was opened under,
+    /// and return how many were closed. A key that is not open closes `0`; it is not a failure.
+    ///
+    /// It is a plain removal with NO cascade. Closing the view of a type leaves every function view
+    /// beside it exactly where it is, and closing a function's leaves its types. Nothing remembers
+    /// why a view was opened, so a type you close is opened again by the next function that
+    /// mentions it — "closed" and "never opened" are the same thing here.
+    ///
+    /// It is NOT bound into every program's scope. Unlike the rest of this interface it is bought by
+    /// a capability, because opening documentation only ever adds to the end of your prompt while
+    /// closing it rewrites the middle. A run that did not enable it gets `unavailable`.
+    close-doc-view: func(key: string) -> result<u32, api-error>;
+
+    /// Take EVERY documentation view out of your context window and return how many went. The
+    /// blanket form of `close-doc-view`, on exactly the same terms and behind the same capability.
+    close-doc-views: func() -> result<u32, api-error>;
+}
+
+/// Putting material into your own context window — the third model-facing carve-out, and like
+/// `session` and `docs` NOT a set of gg tools.
+///
+/// Under responses-as-code a whole program's `console.*` output used to collapse into one anonymous
+/// blob in the next prompt: unlabelled, uncharged to anything but `tool-output`, un-evictable,
+/// un-persisted and un-restored after a compaction. A view is the counterpart of one tool result per
+/// tool call — the program registers what should be VISIBLE to it, and gg emits one attributable
+/// message per view.
+///
+/// There are exactly three kinds and the taxonomy is closed. Everything on disk is a **file**;
+/// everything a program can compute is a **string**, so a directory listing, a `shell` result, a
+/// subagent's answer, a computed diff and an assembled table are all text views. An image is not a
+/// fourth kind: it is a file view of an image file, and the view carries the picture. **Docs** are
+/// the third kind because they are neither — gg holds them, not the workspace and not the program —
+/// and because they are the one kind whose content the model cannot produce for itself.
+///
+/// `open-text-view` and `open-docs-view` are bound into every program's scope whatever a run
+/// enables — a run with no tools at all must still be able to show its model something, and must
+/// always be able to read what the functions it *does* have do. `open-file-view` is bound only when
+/// the `read-file` tool is: it is a read, and a run with reading withheld must not get one through a
+/// side door. `close-view` is bought by the `agent-managed-context` capability: closing a view is
+/// context management, exactly as evicting a file view is, and a run that withholds the capability
+/// refuses it as `unavailable`.
+interface views {
+    use types.{api-error};
+    use files.{file-read};
+
+    /// Read a file AND show it to yourself: the read's result comes back exactly as
+    /// `read-file` returns it, and the file is added to your context window as its own attributable
+    /// item.
+    ///
+    /// The separation from `read-file` is the point: `read-file` gets bytes for your PROGRAM,
+    /// `open-file-view` shows a file to YOU. A program that reads forty files to grep them still
+    /// puts nothing in your window.
+    ///
+    /// The key is `(path, region)`, so two pages of one file are two views and coexist. Re-opening
+    /// the SAME page replaces it rather than piling up a duplicate — this call names an intent
+    /// ("this file should be visible"), and re-stating an intent replaces it.
+    ///
+    /// The view's text body is held to the same 65,536-byte cap a text view's body is: a window
+    /// that would carry more is `limit-exceeded`, naming the size and the bound, and nothing is
+    /// opened — never a truncation. The program narrows the window with `offset`/`limit`, or cuts
+    /// the file's long lines with `max-line-chars`: when it is set, each line of the VIEW longer
+    /// than that many characters is cut there and annotated in place as `foo (123 more chars...)`,
+    /// with the count of characters dropped. The cut is the view's alone — the `file-read` this
+    /// returns and the file itself are untouched — and the byte cap is measured against the body
+    /// after it. Absent, lines arrive whole; a value of zero, or one over 65,536, is
+    /// `invalid-argument`.
+    open-file-view: func(path: string, offset: option<u32>, limit: option<u32>,
+        max-line-chars: option<u32>) -> result<file-read, api-error>;
+
+    /// Show yourself a value you computed, under `label`. Opening the same label again replaces what
+    /// it showed.
+    ///
+    /// An empty label is `invalid-argument` — a view with no selector could never be closed,
+    /// replaced or attributed. An empty BODY is allowed: it is how a program says that something it
+    /// was showing is now empty. A body or label over gg's caps is `limit-exceeded` naming the cap,
+    /// never a silent truncation.
+    open-text-view: func(label: string, body: string) -> result<_, api-error>;
+
+    /// Show yourself the full documentation for one thing gg's SDK offers, addressed by the name it
+    /// is called by (`readFile`, `createIssue`, `finish`) or by the function itself
+    /// (`view.openDocsView(fs.readFile)`): its signature and its description. A TYPE's name works
+    /// too, and shows its declaration with a line per member.
+    ///
+    /// Opening a FUNCTION also opens the SDK types in its signature, so you get what it hands back
+    /// (or that plus its arguments, or neither) without asking again — how much is a per-agent
+    /// setting. Exactly one level: a type's own view never drags in further types, so if you want
+    /// the shape of a field you open it by name.
+    ///
+    /// It is a VIEW, not a return value. The documentation reaches you in your next prompt, under a
+    /// `Documentation` heading keyed by the name — the same way a file or a computed value reaches
+    /// you. Opening something you ALREADY have open does nothing at all: it is not moved, not
+    /// re-sent, not duplicated. An unknown name is `not-found`.
+    open-docs-view: func(name: string) -> result<_, api-error>;
+
+    /// Close every file, text or search-results view whose selector matches — for a file, every page
+    /// of that path — and return how many were closed. Closing a selector that is not open returns
+    /// `0`; it is not a failure.
+    ///
+    /// A DOCUMENTATION view is closed too, but only for a run that enabled the documentation-close
+    /// capability: taking documentation out of your window is bought, and this call is not. The
+    /// call that names that act is `docs.close-doc-view`, and this sweep is a transitional
+    /// convenience for the arms whose SDKs do not spell it yet — a run without the capability gets
+    /// `0` for a documentation key, because it cannot reclaim one by any route.
+    close-view: func(selector: string) -> result<u32, api-error>;
+
+}
+
+/// The programs this agent has already run — the fourth model-facing carve-out, and like `session`,
+/// `docs` and `views` NOT a set of gg tools.
+///
+/// Under responses-as-code a model answers with a whole program, so a trivial mistake in a long one
+/// costs the whole program again: the model has to re-emit sixty correct lines to change one of
+/// them. gg therefore keeps the source of every program it ran, and this interface is how a program
+/// reaches back for one — fetch the source, patch it with ordinary string work, hand it back.
+///
+/// `rerun` is the half that makes the other two worth having. It is **registered, not performed**,
+/// exactly as `context.compact` and `delegation.transition-state` are: the call validates the source
+/// and returns, the calling program carries on to its end, and gg then runs what it was handed as
+/// this turn's program. Running it inside the call would mean a program executing inside itself,
+/// with two sets of API calls, two throw sites and one turn to report them in.
+///
+/// The whole interface is bound only when the run enables the program library — see the `library`
+/// parameter of `run` in the world below. A guest that can withhold a name gives a run without it
+/// no `programs` object at all, on the same rule a withheld tool is an undefined identifier rather
+/// than a call that is refused. The host checks the flag as well, on every one of the three, because
+/// a guest that links its SDK as a library has no name to withhold: there, `unavailable` is the
+/// gate rather than a backstop behind one.
+interface programs {
+    use types.{api-error};
+
+    /// One program this agent ran, as `history` lists it. It carries the SHAPE of the program and
+    /// not its source: a directory that inlined sixty lines per entry would put the whole session's
+    /// output back into the one place that exists to avoid re-reading it.
+    record program-summary {
+        /// The id its `submit_program` acknowledgement carried — what `get` takes.
+        id: string,
+        /// The turn it ran on.
+        turn: u32,
+        /// How many lines of source it was.
+        lines: u32,
+        /// How many characters of source it was.
+        chars: u32,
+        /// Whether it ran to its end: no uncaught throw, and no sandbox ceiling stopping it. A
+        /// program that failed is kept and can still be fetched — fixing the thing that failed is
+        /// the single most likely reason to reach for one.
+        ok: bool,
+        /// The error it ended with, when it did not run to its end.
+        error: option<string>,
+    }
+
+    /// The programs this agent has run, oldest first. Empty before its first program has been
+    /// recorded.
+    ///
+    /// It is a `result` for one reason, and it is not that a lookup can fail: an agent that keeps
+    /// no library is refused `unavailable`, and an empty list would be indistinguishable from the
+    /// honest empty answer on the first turn of a session that does keep one.
+    history: func() -> result<list<program-summary>, api-error>;
+
+    /// The exact source of one program, as it was RUN, by the id its `submit_program`
+    /// acknowledgement carried.
+    ///
+    /// "As it was run" is the contract that matters: when a submission's program was itself handed
+    /// to `rerun` by the one before it, what is kept — under the submission's id — is the program
+    /// that executed, not the few lines that asked for it. So fetching, patching and re-running
+    /// composes — the patched program is what the next fetch of that id returns.
+    ///
+    /// An id this agent was never issued, or one whose program the library's retention has already
+    /// dropped, is `not-found` naming the ids that are held and the turn each ran in.
+    get: func(id: string) -> result<string, api-error>;
+
+    /// Hand gg a program to run in place of this one: your program ends, and gg runs `source` as
+    /// this submission's program, under the same id.
+    ///
+    /// It is **registered, not performed**. The call returns and the rest of your program still
+    /// runs; only when it has ended does gg compile and run what you handed over. Everything the
+    /// registering program did stands — its API calls, its views — and the program that runs next
+    /// sees exactly the world it left behind.
+    ///
+    /// The FIRST call stands and a second is `refused`: a silently replaced program is a change you
+    /// cannot see. A blank source is `invalid-argument`. The request is **revoked** if your program
+    /// then fails, on the same rule an ending is: a program that did not run to its end did not
+    /// decide anything.
+    ///
+    /// The chain is bounded, so a program handed over cannot hand over indefinitely; when the bound
+    /// is reached gg says so in your turn's feedback and the last program it ran is the turn's.
+    rerun: func(source: string) -> result<_, api-error>;
+}
+
+/// Delegating work to child agents.
+interface delegation {
+    use types.{api-error};
+
+    /// What a child agent is asked to do. Exactly one of the two — today's JSON schema declares
+    /// both optional and enforces "one of" only at runtime, so "neither" is representable and costs
+    /// a wasted call.
+    variant subagent-brief {
+        /// A self-contained brief written here.
+        prompt(string),
+        /// A board issue whose scope and completion criteria become the brief.
+        issue(string),
+    }
+
+    /// A spawn request.
+    record spawn-request {
+        /// The agent to run the child as — the name of one of the agents you may spawn (the
+        /// system prompt lists them). Selects the child's model, tools, and instructions.
+        agent: string,
+        /// What the child should do.
+        task: subagent-brief,
+    }
+
+    /// A spawned child.
+    record subagent-handle {
+        /// The child's id — pass it to `wait-for-subagents` or `send-message`.
+        id: string,
+        /// The agent profile it runs as.
+        slot: string,
+        /// The model actually bound to that agent.
+        model-id: string,
+    }
+
+    /// How a child agent finished. `limit-exceeded` is a child an execution ceiling stopped —
+    /// consecutive errors, error rate, cost, turns or runtime — which, like `exhausted`, means it
+    /// was cut off partway rather than that it failed at the work.
+    enum agent-status { completed, exhausted, timed-out, model-error, auth-error, limit-exceeded }
+
+    /// One collected child result.
+    record subagent-result {
+        /// The child's id.
+        id: string,
+        /// How it finished; `none` when it produced no return value at all.
+        status: option<agent-status>,
+        /// Its final message.
+        summary: string,
+    }
+
+    /// Delegate scoped work to a child agent. Returns immediately with its handle; the child runs
+    /// in parallel.
+    spawn-subagent: func(request: spawn-request) -> result<subagent-handle, api-error>;
+    /// Wait for the named children — or, with `none`, every outstanding child — and collect their
+    /// results. This blocks while it waits, and the run's wall-clock budget keeps running.
+    wait-for-subagents: func(ids: option<list<string>>) -> result<list<subagent-result>, api-error>;
+    /// Deliver a message to a running child's inbox; it receives it at its next turn.
+    send-message: func(agent-id: string, message: string) -> result<_, api-error>;
+
+    /// Move the process you are running inside on to another of its states, naming the state the
+    /// way you name an agent to spawn. `note` is the opening message the next state's agent sees.
+    ///
+    /// Like `compact` it is **registered, not performed**: the call validates the target against
+    /// the states you may move to, returns, and your program carries on to its end; the transition
+    /// itself happens after that. Replacing the agent — and its window — while its own program is
+    /// still running would pull every remaining call out from under it. Unlike `compact`, the
+    /// FIRST declaration stands and a second is refused: a silently replaced successor is a change
+    /// you cannot see.
+    ///
+    /// Bound only when a state machine is driving you and the state you are in has somewhere to go.
+    /// `invalid-argument` names a state you may not move to; `unavailable` means no machine.
+    transition-state: func(state: string, note: option<string>) -> result<_, api-error>;
+
+    /// Continue this session as a different agent: it takes over from your next turn with its own
+    /// model, tools and instructions, keeping every capability the two of you both have — your
+    /// whole conversation above all. `prompt` is the opening message it sees.
+    ///
+    /// Registered exactly as `transition-state` is, and for the same reason: your window would
+    /// otherwise be pulled out from under the program still composing into it. The FIRST
+    /// declaration of a succession stands, so an `exec` after a `transition-state` (or a second
+    /// `exec`) throws `refused`.
+    ///
+    /// Bound only when your agent may make agent transitions and has agents it may become, and
+    /// never while a state machine is driving you — there, `transition-state` is the move.
+    /// `invalid-argument` names an agent you may not become.
+    exec: func(agent: string, prompt: option<string>) -> result<_, api-error>;
+
+    /// Run a copy of yourself, in parallel, on something you will not do yourself. The copy has
+    /// your model, your tools and a private copy of your whole conversation, so `prompt` is the
+    /// difference rather than a briefing.
+    ///
+    /// Returns the copy's handle immediately, but the copy itself starts once this turn's tool
+    /// results are recorded — the conversation it inherits has to be a complete one — so
+    /// `wait-for-subagents` can only collect it on a later turn. Everything that can refuse a fork
+    /// is checked here: `limit-exceeded` at the delegation depth cap, `unavailable` with no
+    /// delegation runtime to collect the copy with.
+    fork: func(prompt: string) -> result<subagent-handle, api-error>;
+}
+
+/// The channel the interpreter SHIM reports back to gg through.
+///
+/// It is deliberately NOT part of the model-facing surface: it is absent from the signature
+/// catalogue, absent from the system prompt, and never bound into a program's scope. A model's
+/// program reaches it only indirectly — through `console.*` (rebound to `log`), by throwing (caught
+/// by the shim, reported through `report-error`), and by deferring work into a microtask (detected
+/// by the shim, reported through `report-deferred`).
+interface feedback {
+    use types.{error-code};
+
+    /// What kind of failure a program hit, so gg can choose the right feedback and the right
+    /// telemetry rather than matching on prose.
+    enum error-kind {
+        /// An API call failed and the throw was not caught.
+        api-failure,
+        /// The program referenced a name that is not in scope.
+        unknown-name,
+        /// Anything else the program threw.
+        other,
+    }
+
+    /// A program that did not run to its end.
+    record program-error {
+        /// The failure class, as the guest reads it.
+        kind: error-kind,
+        /// The failure class the CALL carried, when the throw was a failed model-facing call.
+        /// `none` for anything the program threw on its own account.
+        ///
+        /// The host classifies the turn's error from this rather than from `kind`, because the one
+        /// distinction that matters across language arms is not one a guest can be trusted with:
+        /// `unavailable` means the model reached for something this run does not offer it, which
+        /// is the same fact — and the same recovery — as a name that was never in scope. A guest
+        /// that can withhold the name raises `ReferenceError` and reports `unknown-name`; a guest
+        /// that cannot raises a failed call and would report `api-failure`. Same event, two
+        /// metrics, one per arm. The code is the fact both guests agree on.
+        code: option<error-code>,
+        /// The rendered message, already naming the operation for an API failure and the available
+        /// identifiers for an unknown name.
+        message: string,
+        /// Where in the PROGRAM it happened (`line 5, column 12`), remapped out of the
+        /// interpreter's own coordinates. Absent when no usable frame was found.
+        location: option<string>,
+    }
+
+    /// One line the program produced with `console.*`. The host caps how much it keeps. This is the
+    /// ONLY channel a program has for showing gg a value.
+    log: func(line: string);
+    /// The program ended with a `return` that carried a value. Called at most once per run.
+    ///
+    /// A returned value is **discarded**: the only way to see a value is to log it. That is not a
+    /// limitation being worked around — it is the rule that removes a whole class of questions
+    /// (what if it is not serialisable, how deep may it nest, why is my object rendered as
+    /// `[object Object]`) at the cost of nothing a program cannot do with one `console.log`. A
+    /// silent discard would be the failure this protocol most needs to avoid, so the host says so
+    /// in the turn's feedback.
+    note-return: func();
+    /// An API call happened AFTER the program ended — i.e. from work the program deferred into a
+    /// microtask with `.then()` or after an `await`. Called at most once per run.
+    ///
+    /// Deferred work still executes (its effects are real and are recorded), but it happens after
+    /// the turn's program has ended and a throw inside it is invisible — the engine defines
+    /// `addEventListener("unhandledrejection", …)` but never fires it. So the host tells the model
+    /// plainly rather than reporting a clean turn over a half-failed program.
+    report-deferred: func(note: string);
+    /// The program threw and did not run to its end. Called at most once per run, from the one
+    /// place the guest's runtime delivers an uncaught failure to — an interpreter's top-level
+    /// `except`, an engine's exception slot, a rejection tracker — never from a catch chain built
+    /// to type it.
+    ///
+    /// A guest that CAN observe the failure there MUST report it here rather than die: a turn so
+    /// ended is a `program_*` type, and an uncaught failed call is `program_api_error` on every
+    /// arm that reports. The `sandbox_*` types are reserved for a ceiling gg imposed or a real
+    /// wasmtime trap, and a guest that dies of a failure it could have reported files a program
+    /// fault under a sandbox limit.
+    ///
+    /// It is also what **revokes** a completion the same program declared with `session.finish`: a
+    /// program that ended the run and then failed did not check what its summary claims, so the host
+    /// drops the flag and the run carries on.
+    report-error: func(error: program-error);
+    /// One of the code modules handed to `run` threw while it was being evaluated, so its exports
+    /// are missing and `lib.<name>` is an empty object.
+    ///
+    /// Reported rather than raised, because a broken module belongs to whoever authored the skill or
+    /// wrote the memory — not to the program that merely has it in scope. Taking the turn down over
+    /// it would blame the model for someone else's code. The host puts one sentence in the model's
+    /// feedback and the whole message in the operator's stream.
+    report-module-error: func(name: string, message: string);
+}
+
+/// **The one door the JVM arms come through**, and the only interface on this membrane that names a
+/// call by a string.
+///
+/// Every other guest reaches the fourteen interfaces above directly, because every other guest has a
+/// binding generator that can write the canonical ABI for them: `wit-bindgen` for Rust, C++ and
+/// Swift, `componentize-js` for the ECMAScript arms, `wit-bindgen` again through the C the C#, Python
+/// and Ruby guests link. **There is no wit-bindgen for Java**, and there is no prospect of one — so
+/// the Java and Kotlin arms, which compile to wasm through TeaVM, would otherwise have to carry a
+/// hand-written canonical-ABI lowering for every record, variant, enum, option and list in this
+/// 1200-line file. That is the cost this interface removes: the JVM side implements the canonical
+/// ABI for **one string, two byte lists and a scalar**, and gg owns what travels inside them.
+///
+/// # This is not a generic door onto the capability model
+///
+/// The seam's rule — that a capability reaches a program as a typed, namespaced binding and never as
+/// a dispatcher taking a name as data — is a rule about **what a model writes**. A model writing
+/// Java writes `Files.readFile("notes.txt")`, on a typed surface that is namespaced exactly like
+/// every other arm's; this is what that surface is implemented over, one layer below anything a model
+/// can see, in a package no catalogue describes and no program imports. It is the same split the
+/// arms' SDKs already had when their far side was a JavaScript object rather than gg's Rust: one
+/// bridge, written once, under a typed surface.
+///
+/// What is on **this** side of it is unchanged by that. `op` is one of gg's own rendered operation
+/// ids (`files.read_file`, `views.open_text`), and the host answers it by decoding the request and
+/// calling the very same typed host function the fourteen interfaces above are implemented by — same
+/// capability gate, same recorded call, same deadline, same `api-error`. Nothing here is a second
+/// implementation of anything, and nothing reachable through it is reachable any other way.
+///
+/// # What travels inside the byte lists
+///
+/// gg's own tagged value encoding, described where it is implemented
+/// (`crates/gg/src/sandbox/membrane/wire.rs`, `packages/gg-sandbox-java/src/gg/internal/Coding.java`).
+/// It is deliberately **not** JSON: the rule that neither an argument nor a result is a JSON document
+/// is about the model-facing surface, and this is the wire beneath it, where gg holds both ends and
+/// pays for what it chose. A tagged binary form costs the guest no parser and cannot be confused with
+/// a document a model was expected to read.
+///
+/// # Why the answer arrives in two steps
+///
+/// Because a JVM guest cannot be told how big an answer is until the answer exists, and the one
+/// moment it may allocate is before the host is holding an address into its memory.
+///
+/// The canonical ABI hands a returned `list<u8>` to the guest by asking the guest's own
+/// `cabi_realloc` for room. TeaVM's collector **compacts** — it moves objects — so `cabi_realloc`
+/// cannot allocate a Java object: the host is holding the address of the return area across that
+/// call, and a collection would move it. It is therefore a bump pointer over a pre-sized arena, and
+/// an answer larger than the arena leaves it nothing to hand back. Measured, that ends the program
+/// with `wasm trap: cannot leave component instance` — a trap naming nothing the model could act on,
+/// for an answer gg itself chose to send.
+///
+/// So `call` runs the operation and answers **how many bytes** its encoded result is, holding those
+/// bytes; the guest sizes its arena — ordinary Java allocation, with nothing outstanding — and `take`
+/// hands them over. Any answer gg can produce, a program can receive; the ceiling is the guest's own
+/// heap, and reaching *that* is a resource fault its runtime reports in the model's own coordinates.
+///
+/// It is also what lets the guest keep gg's allocations apart from the ones the preview1 adapter
+/// makes through the same `cabi_realloc`: `take` is the one imported call the SDK receives bytes
+/// through, so it is the one moment gg is the caller. See
+/// `packages/gg-sandbox-java/src/gg/internal/Abi.java` for what the alternative did.
+interface wire {
+    /// Run one gg call and hold its encoded result: `op` is a rendered operation id and `request` is
+    /// the encoded arguments. What comes back is the **byte length** of the result — the value the
+    /// call returned, or the three fields of the `api-error` it failed with — which [`take`] then
+    /// hands over.
+    ///
+    /// It cannot trap and it cannot fail: a request the host cannot decode, or an `op` it does not
+    /// know, is held as an encoded failure exactly as a refusal is, because a guest that trapped on a
+    /// malformed request would report a defect in gg as a defect in the model's program.
+    call: func(op: string, request: list<u8>) -> u32;
+
+    /// Hand over the result [`call`] is holding, and stop holding it.
+    ///
+    /// Called immediately after `call`, with the guest's arena sized for exactly the length `call`
+    /// answered. Taking twice, or taking with nothing held, answers an encoded failure saying gg's
+    /// own two halves have parted — the same shape a request that did not decode answers with, and
+    /// for the same reason.
+    take: func() -> list<u8>;
+}
+
+/// **The `java.lang.Math` primitives TeaVM's WebAssembly backend leaves to its host** — and the
+/// second of the two interfaces the JVM arms import that no model can see.
+///
+/// TeaVM's `WEBASSEMBLY_WASI` backend does not lower `Math.sin` to anything: `java.lang.Math`'s
+/// transcendental methods are `native`, annotated `@Import(module = "teavmMath", …)`, and the
+/// backend emits them as **core imports of a module named `teavmMath`** for a host to answer. Its
+/// own C runtime answers them with `#define teavmMath_sqrt sqrt` — that is, with libc — and a
+/// WebAssembly component has no libc. Measured on the production route: a program calling
+/// `Math.sqrt` produced a module gg could not encode at all, *"failed to resolve import
+/// `teavmMath::sqrt`"*.
+///
+/// So gg answers them, and a `ClassHolderTransformer` in each arm's SDK jar
+/// (`gg.internal.MathImports`) rewrites the annotation's module to this interface's own id, which is
+/// what makes the emitted import one `wit-component` resolves against this world. Nothing about the
+/// program changes; what changes is which module name the same fourteen imports carry.
+///
+/// **The set is the classlib's rather than gg's.** These are exactly the methods
+/// `org.teavm.classlib.java.lang.TMath` annotates with that module, read out of the compiled class
+/// rather than chosen — so a TeaVM release that added a fifteenth would fail the encode by name
+/// rather than silently losing a function.
+///
+/// Not model-facing, and not a capability: no name here is in `ALL_TOOL_NAMES`, nothing dispatches
+/// one, and a model writes `kotlin.math.sqrt(2.0)` or `Math.sqrt(2.0)` exactly as it would anywhere
+/// else. Every one is a total function on `f64` with no failure mode, which is why none of them can
+/// return an `api-error`: `log(-1)` is `NaN` on this interface for the same reason it is `NaN` in
+/// Java.
+interface math {
+    /// The sine of an angle in radians.
+    sin: func(x: f64) -> f64;
+    /// The cosine of an angle in radians.
+    cos: func(x: f64) -> f64;
+    /// The tangent of an angle in radians.
+    tan: func(x: f64) -> f64;
+    /// The arc sine, in radians.
+    asin: func(x: f64) -> f64;
+    /// The arc cosine, in radians.
+    acos: func(x: f64) -> f64;
+    /// The arc tangent, in radians.
+    atan: func(x: f64) -> f64;
+    /// The angle in radians from the x-axis to the point (`x`, `y`).
+    atan2: func(y: f64, x: f64) -> f64;
+    /// Euler's number raised to `x`.
+    exp: func(x: f64) -> f64;
+    /// The natural logarithm.
+    log: func(x: f64) -> f64;
+    /// `base` raised to `power`.
+    pow: func(base: f64, power: f64) -> f64;
+    /// The positive square root.
+    sqrt: func(x: f64) -> f64;
+    /// The smallest whole number that is not less than `x`.
+    ceil: func(x: f64) -> f64;
+    /// The largest whole number that is not greater than `x`.
+    floor: func(x: f64) -> f64;
+    /// A pseudo-random number in [0, 1).
+    ///
+    /// Declared because the classlib annotates a method with it, and **not imported on this
+    /// target**: measured, `Math.random()` on `WEBASSEMBLY_WASI` reaches `random_get` through WASI
+    /// instead, and this is the WebAssembly-GC backend's spelling. Answered all the same, from the
+    /// same source WASI would have used, so the two roads cannot disagree.
+    random: func() -> f64;
+}
+
+/// **The world the JVM arms' compiled programs declare**: gg through one door, and the same two
+/// exports every other component of this membrane has.
+///
+/// A Java or Kotlin program is compiled — by `javac`/`kotlinc`, then by TeaVM's `WEBASSEMBLY_WASI`
+/// backend — into a component of its own, per turn, exactly as the Rust, C++ and Swift arms are.
+/// There is no baked JVM guest and there cannot be one: TeaVM does not produce a Java interpreter
+/// that later runs a program, it produces the program.
+///
+/// The exports are byte-for-byte the `sandbox` world's, because they are what gg instantiates every
+/// component through. The imports are not: this world imports [`wire`] and nothing else of gg's, for
+/// the reason that interface states.
+world jvm-sandbox {
+    use session.{ending-kind};
+
+    /// One code module bound into a program's scope, from a code skill or a code memory the agent
+    /// has read. The same record the `sandbox` world declares, because `run` is the same function.
+    record code-module {
+        /// The binding key: the module is reached as `lib.<name>`.
+        name: string,
+        /// The module's source.
+        source: string,
+    }
+
+    import wire;
+    import math;
+
+    /// Evaluate one program — the `sandbox` world's `run`, with the same parameters and the same
+    /// nothing returned. See that world for what each parameter is and why a compiled arm reads
+    /// none of them.
+    export run: func(
+        program: string,
+        modules: list<code-module>,
+        operations: list<string>,
+        ending: ending-kind,
+        library: bool,
+    );
+
+    /// The gg tool interfaces this component imports. A compiled arm's component imports exactly one
+    /// — [`wire`] — and so answers the empty list; the export exists because gg instantiates every
+    /// component through the `sandbox` world's bindings and a missing export is an instantiation
+    /// failure.
+    export bound-operations: func() -> list<string>;
+}
+
+/// The sandbox: one baked component that evaluates a program against exactly the tools a run
+/// enables.
+world sandbox {
+    use session.{ending-kind};
+
+    /// One code module a program may reach, from a code skill or a code memory the agent has read.
+    ///
+    /// The host has already prepared it for this guest, exactly as it prepares a program, so the
+    /// guest does nothing to the source but make it reachable under the name below — which is what
+    /// lets a module call gg tools.
+    record code-module {
+        /// The binding key the module is reached under, in whatever form this guest reaches one.
+        /// Already a valid identifier and already unique across this list; the host deduplicated it
+        /// and told the model which key it really got.
+        name: string,
+        /// The module's source, in whatever this guest evaluates.
+        source: string,
+    }
+
+    import types;
+    import shell;
+    import files;
+    import skills;
+    import memories;
+    import tasks;
+    import board;
+    import context;
+    import session;
+    import docs;
+    import views;
+    import programs;
+    import delegation;
+    import feedback;
+
+    /// Evaluate one program.
+    ///
+    /// `program` is source the host has already prepared for this guest. `operations` is what this
+    /// agent was GRANTED, as gg's own rendered operation ids (`files.read_file`, `shell.shell`,
+    /// `views.open_file`); every SDK is static, so nothing is withheld from a program's scope — the
+    /// whole surface compiles, and a call this agent does not hold travels to the host and is
+    /// refused there, in the one place that can answer the same way for all eleven arms. `ending`
+    /// and `library` are the same fact said twice more, for the session group and the program
+    /// library, and they are equally advisory.
+    ///
+    /// NO GUEST READS ANY OF THE THREE. They are kept because the world is shared with ten sibling
+    /// guests and removing a parameter reshapes every one of them, and because a guest that wanted
+    /// to say something useful about what it holds would need them. What a guest must not do is
+    /// treat them as the gate: an SDK that withheld a name would make an ungranted call an undefined
+    /// identifier in one arm and a refusal in another, and a study comparing the two would be
+    /// comparing the arms rather than the models.
+    ///
+    /// `modules` is the code the agent has loaded by using a code skill or a code memory. A guest
+    /// **supplies** them and evaluates none of them: each is made reachable under its own key, and
+    /// the line the program writes to reach one is what runs its body. An empty list supplies no
+    /// module at all, on the rule every other family obeys: what a run does not offer is not a name.
+    /// A module that throws while it is being evaluated is reported over
+    /// `feedback.report-module-error` and leaves its binding empty — it never takes the program down
+    /// with it, on a guest whose language keeps the two separable.
+    ///
+    /// It returns **nothing**, because a program's return value is not a channel: what a program
+    /// has to say about its own work it says over `feedback`, and what it has to say about its own
+    /// death it says the way its runtime says it.
+    ///
+    /// A guest whose runtime delivers an uncaught throw to this export's boundary MUST report it
+    /// over `feedback.report-error` and return normally, which is what carries the failure's class
+    /// to the host and files the turn under one of the `program_*` types. Only a guest whose
+    /// runtime kills the program before any entry point can see the throw lets it die: the
+    /// runtime's own words reach the host on standard error, the crossing ends in a trap, and the
+    /// turn is filed as `sandbox_trap`. Both are
+    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the mechanism is
+    /// capture rather than interception, and no guest may build a catch chain to type a throw it
+    /// would otherwise have died of. A `sandbox_*` type is a ceiling gg imposed or a real trap,
+    /// never an API failure a program did not catch.
+    export run: func(
+        program: string,
+        modules: list<code-module>,
+        operations: list<string>,
+        ending: ending-kind,
+        library: bool,
+    );
+
+    /// The gg tool interfaces this component imports, by the name each is declared under above.
+    /// gg's tests call it to assert the built component and `ALL_TOOL_NAMES` have not drifted
+    /// apart — the one check that catches a stale artifact rather than a stale source file.
+    ///
+    /// It says nothing about what a PROGRAM may call: that is the operations vocabulary, which is
+    /// richer than this one (several operations share one of these, and many reach none of them at
+    /// all) and is decided by the host from the agent's grant.
+    export bound-operations: func() -> list<string>;
+}

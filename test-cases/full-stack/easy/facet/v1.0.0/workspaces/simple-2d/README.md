@@ -1,0 +1,95 @@
+# Facet — starter project
+
+This repository is the starting point for building Facet, the game the
+specification under `specs/` describes. Read `specs/overview.md` first; it says
+how the rest of the specification is organized. This file is the starter
+README, not a deliverable: `specs/overview.md` states the `README.md` the
+finished build ships in its place.
+
+The project is already wired up. It builds on the Simple 2D engine, which is
+installed as an ordinary dependency and documents itself under `engine/`; read
+that alongside the specs. What is missing is the game, and the art, effects, and
+sounds it plays.
+
+## What you own
+
+`src/game.ts`, and any new files you add beside it.
+
+Start by declaring and exporting `FacetState`, exactly as `specs/state.md` fixes
+it, and `FacetDebugApi`, exactly as `specs/instrumentation.md` fixes it. The
+stub in `src/game.ts` is written against both names, so the project does not
+compile until they exist.
+
+`src/game.ts` then exports `game`, a `Game<FacetState, FacetDebugApi>`: three
+functions over that state. `initialize` builds the state and the debug surface
+once and returns them together as `[state, debug]`; `update` takes the current
+state as a read-only view (`DeepReadonly<FacetState>`, from `ts-essentials`) and
+returns the next state, advanced against the frame's delta time in seconds; and
+`render` is handed that next state, read-only again, and draws it. The engine
+holds the state by value and replaces it with whatever `update` returns, so a
+frame builds the next state from the current one rather than writing into it,
+and the type is what guarantees that rendering changes nothing. All three throw
+as they stand. Implement them; where their implementation lives under `src/` is
+your call.
+
+The pointer comes from the engine. A gem is selected by pressing on it and a
+swap is requested by pressing its neighbor or dragging onto it, and the engine
+hands the game the pointer's position already in logical stage units along with
+its press and release edges; read the engine's input documentation for the API.
+`specs/controls.md` states what Facet does with the three of them.
+
+The assets are yours to produce. Facet ships no art and no sound: you produce
+every sprite, sheet, particle system, and cue with the asset tools on this
+machine's `PATH`, commit the files under `public/assets/`, and load them through
+the engine's own asset and audio APIs. `specs/assets.md` is the contract, and
+the engine's `assets.md` and `audio.md` state the asset root, the path rules,
+and the looping cues. The tools are absent when the build is installed and
+rebuilt elsewhere, so the build bundles the committed files and invokes no tool.
+
+The debug surface is a required deliverable. The engine returns it from
+`engine.debug` exactly as `initialize` handed it over, and that is how the game
+is driven from code, so it is present and exactly as `specs/instrumentation.md`
+specifies. Because nothing holds a writable state, its operations are written in
+the shape of `update`: a pose takes the current state and returns the next, and
+a caller applies it through `engine.apply((s) => debug.loadBoard(s, rows))`; a
+reading takes the state and returns what it read, as
+`debug.snapshot(engine.state)`. Nothing is published to the page.
+
+`FacetState` is a contract. Keep every field, under the name, type, and meaning
+`specs/state.md` gives it. You may add fields, but only for data you can rebuild
+from the declared ones: the declared fields are the whole of the authoritative
+state, and the surface's `reset` restores exactly those. Loaded images and
+decoded audio are the one exception, since they are not game state.
+
+Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
+runs them in process, with coverage over `src/`. The engine's `debug.md` and
+`frame.md` show how a test stands the engine up over a `ConstantClock`, poses a
+board through the debug surface, and advances it a counted number of frames.
+
+## What you must not edit
+
+- `src/main.ts`, the fixed entry point. It creates the engine over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, every figure the specification fixes: the stage and the
+  board geometry, the gem kinds and the cuts, the strain and match figures, the
+  chain and refusal durations, the scoring and level figures, the action names,
+  the cue names, and the screen copy. Read from it.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- The toolchain: `package.json`, `tsconfig.json`, `vite.config.ts`,
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
+- `.vendor/` and `engine/`, the vendored engine and its documentation.
+
+Add dependencies to `package.json` if you genuinely need them, and commit the
+`package-lock.json`; the build is installed with `npm ci`. Leave the existing
+entries alone.
+
+## Commands
+
+- `npm run dev` serves the game with hot reload.
+- `npm run build` type-checks, then emits the static site into `dist/`.
+- `npm run preview` serves `dist/` for a final check.
+- `npm run typecheck` runs `tsc --noEmit`.
+- `npm run lint` runs ESLint.
+- `npm run format` runs Prettier in check mode.
+- `npm test` runs Vitest over `src/**/*.test.ts`, with coverage.

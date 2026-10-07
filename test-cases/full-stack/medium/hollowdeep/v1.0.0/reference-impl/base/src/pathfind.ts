@@ -91,7 +91,11 @@ function neighborsOf(world: World, node: number): number[] {
 
   // Ladder up: from a ladder tile, or into a ladder tile directly above.
   const upK = kindAt(world, tx, ty - 1);
-  if (passableKind(upK) && (hereK === "ladder" || upK === "ladder") && standable(world, tx, ty - 1)) {
+  if (
+    passableKind(upK) &&
+    (hereK === "ladder" || upK === "ladder") &&
+    standable(world, tx, ty - 1)
+  ) {
     out.push(idx(world.w, tx, ty - 1));
   }
   // Step down onto a ladder directly below — enter (or continue) a laddered shaft from the
@@ -141,7 +145,11 @@ export function bfsFrom(world: World, fromTx: number, fromTy: number): Flood {
 
 // Reconstruct the hop path from `flood.from` to `to` (a list of {tx,ty} EXCLUDING the start,
 // ending at `to`). Null if unreachable; [] if already there.
-export function pathTo(flood: Flood, to: number, w: number): { tx: number; ty: number }[] | null {
+export function pathTo(
+  flood: Flood,
+  to: number,
+  w: number,
+): { tx: number; ty: number }[] | null {
   if (to === flood.from) return [];
   if (!flood.prev.has(to)) return null;
   const rev: number[] = [];

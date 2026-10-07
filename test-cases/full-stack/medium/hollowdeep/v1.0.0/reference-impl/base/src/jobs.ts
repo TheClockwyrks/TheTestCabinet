@@ -14,8 +14,20 @@ import type { Job, JobKind } from "./types";
 // flowing (harvest, refine) comes before opening space and construction; hauling is folded
 // into the other jobs (ore/material/food are colony stocks — see the README) so there are
 // no standalone haul jobs, but the kind is ordered for completeness.
-export const PRIORITY: JobKind[] = ["harvest", "refine", "dig", "build", "haul"];
-const PRIORITY_BUILD_FIRST: JobKind[] = ["harvest", "refine", "build", "dig", "haul"];
+export const PRIORITY: JobKind[] = [
+  "harvest",
+  "refine",
+  "dig",
+  "build",
+  "haul",
+];
+const PRIORITY_BUILD_FIRST: JobKind[] = [
+  "harvest",
+  "refine",
+  "build",
+  "dig",
+  "haul",
+];
 
 function kindRank(kind: JobKind, buildsFirst: boolean): number {
   const order = buildsFirst ? PRIORITY_BUILD_FIRST : PRIORITY;
@@ -62,7 +74,8 @@ export class JobBoard {
 
   at(tx: number, ty: number, kind?: JobKind): Job | null {
     for (const j of this.jobs) {
-      if (j.tx === tx && j.ty === ty && (kind === undefined || j.kind === kind)) return j;
+      if (j.tx === tx && j.ty === ty && (kind === undefined || j.kind === kind))
+        return j;
     }
     return null;
   }
@@ -86,7 +99,8 @@ export class JobBoard {
   // removed jobs so the caller can free any delver that had claimed one.
   cancelAt(tx: number, ty: number): Job[] {
     const removed = this.jobs.filter((j) => j.tx === tx && j.ty === ty);
-    if (removed.length) this.jobs = this.jobs.filter((j) => j.tx !== tx || j.ty !== ty);
+    if (removed.length)
+      this.jobs = this.jobs.filter((j) => j.tx !== tx || j.ty !== ty);
     return removed;
   }
 

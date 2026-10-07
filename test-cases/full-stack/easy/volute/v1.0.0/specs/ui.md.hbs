@@ -1,0 +1,200 @@
+# Volute — Screens, the HUD, and audio
+
+This file defines the seven screens the game holds, what each one puts in front
+of the player, the HUD that reads over the hall during play, and the game's
+audio. The keys and actions the screens are driven by are in
+`specs/controls.md`, the moments that move the game from one screen to the next
+are in `specs/progression.md`, and the sprites, sounds, and music each screen
+draws and plays are the produced files `specs/assets.md` lists.
+
+## Presentation
+
+Volute fixes no palette, no font, and no styling for any screen, and no layout
+beyond the placements the tables in this file name. Every piece of text a screen
+shows is legible against whatever sits behind it across the whole field, the HUD
+included, which draws over the live hall. Wherever a screen names a charge it
+draws that charge's core, so the player reads which charge is meant without
+reading its name.
+
+{{#if (eq engine.slug "none")}}
+The runtime you write owns the canvas fit, and every screen and the HUD are
+drawn on that canvas in logical units.
+{{else if (eq engine.slug "simple-2d")}}
+The engine fits the field to the canvas and hands the game the frame's state to
+draw, so every screen and the HUD are drawn from there in logical units.
+{{else}}
+Rendering belongs to the engine, as `engine/` documents. Every screen and the
+HUD draw in the field's logical units, the HUD above the hall.
+{{/if}}
+
+## Screens
+
+`screen` names the screen the game is in.
+
+| Screen | What it is |
+| --- | --- |
+| `title` | The front door. |
+| `playing` | The live hall. |
+| `paused` | The hall held still. |
+| `cleared` | The interlude after a level is cleared. |
+| `setback` | The interlude after a cell is spent. |
+| `gameover` | The end of a run with no cells left. |
+| `victory` | The end of a run that cleared the last level. |
+
+### `title`
+
+The game opens here. It carries the title `VOLUTE`, a prompt telling the player
+how to begin a run, and the controls of the hall named for the player: how the
+injector aims, how it fires, how the loaded and queued cores are exchanged, how
+the game pauses, and how sound is muted. The hall may show behind, dimmed or
+otherwise quieted.
+
+### `playing`
+
+The live hall, showing everything the run holds: the channel drawn along its
+whole length from the inlet to the intake, every core on the channel drawn at
+its arc position, the injector at its fixed position with the direction it is
+aimed readable and the core it holds, and every projectile between the injector
+and what it meets. The HUD draws over the hall and hides none of them.
+
+### `paused`
+
+The hall drawn exactly as the tick that paused it left it, under a legible
+indication that the game is paused. The HUD stays readable.
+
+### `cleared`
+
+Shown over the hall for the interlude that follows a cleared level. It names the
+level just cleared and shows the run's score, the clear's award already counted
+into it.
+
+### `setback`
+
+Shown over the emptied channel for the interlude that follows a core reaching
+the intake. It shows that a cell was spent and how many cells remain.
+
+### `gameover`
+
+Shown when the last cell is spent. It shows the run's final score, the level it
+reached, and a prompt telling the player how to dismiss it.
+
+### `victory`
+
+Shown when the final level is cleared. It shows the run's final score, that
+every level of the hall was cleared, and a prompt telling the player how to
+dismiss it.
+
+## What advances on each screen
+
+| Screen | What advances |
+| --- | --- |
+| `playing` | Everything: the train, the projectiles, pressure, every timer, and the inlet. |
+| `cleared`, `setback` | The interlude's own timer, and nothing else. |
+| `title`, `paused`, `gameover`, `victory` | Nothing. |
+
+The accumulated simulation time the debug surface reports stands outside this
+table and runs on every screen.
+
+## The HUD
+
+The HUD is drawn on `playing`, `paused`, `cleared`, and `setback`, and reads
+against the hall beneath it. It carries these fields and each is legible at a
+glance:
+
+| Field | What the player reads |
+| --- | --- |
+| Score | The run's score in digits, updated on the tick it changes. |
+| Level | The number of the level in play. |
+| Cells | The cells remaining, as one produced cell icon per cell. |
+| Pressure | A gauge marked with the produced pressure icon, filled in proportion to the current pressure: empty at `0`, full at `100`. |
+| Loaded | The charge the injector holds, drawn as that charge's core. The machine draws the core it holds as well, so this readout is read as the HUD's own mark: it is drawn with its center further from the injector center than the injector radius and `CORE_RADIUS` together. |
+| Queued | The charge that loads on the next firing, drawn as that charge's core, standing off the injector center in the same way and placed so it is never mistaken for the loaded one. |
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, and what it plays are the
+produced files `specs/assets.md` lists. Define and play exactly the fifteen cues
+below, under exactly these names, one per event. The layer supports a looping
+cue: starting a loop plays the cue's file end to end without a gap until the
+loop is stopped, and a cue is either looping or not, so starting one that is
+already looping changes nothing.
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus, each cue bound with `api.audio.load`
+to the produced file `specs/assets.md` lists, and played from `update` with
+`api.audio.play`. Define and play exactly the fifteen cues below, under exactly
+these names, one per event. `api.audio.loop` starts a cue looping,
+`api.audio.stop` ends it, and `api.audio.looping` reports whether it is.
+{{else}}
+Audio plays through the engine's cue bus, each cue bound with `api.audio.load`
+to the produced file `specs/assets.md` lists, and played from a tick with
+`world.audio.play`. Define and play exactly the fifteen cues below, under
+exactly these names, one per event. `world.audio.loop` starts a cue looping,
+`world.audio.stop` ends it, and `world.audio.looping` reports whether it is.
+{{/if}}
+
+| Cue | Played when |
+| --- | --- |
+| `fire` | The injector fires a core. |
+| `seat` | A projectile is inserted into the train. |
+| `swap` | The loaded and queued cores are exchanged. |
+| `denied` | The fire action is read while the injector's cooldown is still running. |
+| `machinery` | Machinery is granted. |
+| `extract-1` | An extraction resolves at chain step `1`. |
+| `extract-2` | An extraction resolves at chain step `2`. |
+| `extract-3` | An extraction resolves at chain step `3`. |
+| `extract-4` | An extraction resolves at chain step `4`. |
+| `extract-5` | An extraction resolves at chain step `5` or beyond. |
+| `intake` | A core reaches the intake. |
+| `level-clear` | A level is cleared. |
+| `cell-lost` | A cell is spent. |
+| `hall-loop` | Loops under the hall, as below. |
+| `danger-loop` | Loops under the hall, as below. |
+
+The thirteen one-shot cues are each a distinct sound, so the events are told
+apart by ear, and the five extraction steps rise in pitch or in brightness from
+`extract-1` to `extract-5` so a chain is heard climbing. Each sounds on the tick
+its event happens, and at most once on that tick: a tick that resolves two
+extractions at the same chain step sounds that step's cue once, and a tick
+raising several different cues sounds each of them once.
+
+### The music beds
+
+`hall-loop` and `danger-loop` are the two beds, and they loop until stopped
+rather than playing once. Exactly one of them is looping on `playing`, and
+neither loops on any other screen.
+
+| Condition | Bed |
+| --- | --- |
+| The run is in danger | `danger-loop` |
+| Otherwise | `hall-loop` |
+
+The change happens on the tick the danger condition changes: the running bed
+stops and the other starts at once, so the two never sound together.
+
+### Mute
+
+{{#if (eq engine.slug "none")}}
+Muting and the first-interaction unlock belong to the runtime you write. The
+game binds the mute action to the runtime's mute bit and toggles it from any
+screen. Muting silences every cue and the running bed without stopping the bed,
+and the bed returns in place when unmuted. The game stays fully playable with
+sound muted, and nothing else on screen changes.
+{{else if (eq engine.slug "simple-2d")}}
+Muting and the first-gesture unlock belong to the engine. The game toggles
+`api.audio.setMuted` from any screen and reads the bit back with
+`api.audio.muted()`. A muted bed keeps looping silently and returns when unmuted.
+The game stays fully playable with sound muted, and nothing else on screen
+changes.
+{{else}}
+Muting and the first-gesture unlock belong to the engine. The game toggles
+`world.audio.setMuted` from any screen and reads the bit back with
+`world.audio.muted()`. A muted bed keeps looping silently and returns when
+unmuted. The game stays fully playable with sound muted, and nothing else on
+screen changes.
+{{/if}}
+
+## Out of scope
+
+- Network or online play, leaderboards, and any server interaction.
+- Persistence of scores or settings between sessions. Each session starts fresh.

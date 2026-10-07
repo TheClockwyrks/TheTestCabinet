@@ -9,9 +9,7 @@ import { LeaderboardContent } from "../../testcases/[slug]/TestCaseLeaderboardPa
 export function JamLeaderboardPage() {
   return (
     <JamDetailLayout tab="leaderboard">
-      {({ testCase, variant }) => (
-        <LeaderboardContent testCase={testCase} variant={variant} />
-      )}
+      {(ctx) => <LeaderboardContent ctx={ctx} />}
     </JamDetailLayout>
   );
 }

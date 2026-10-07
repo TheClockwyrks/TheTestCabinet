@@ -11,11 +11,8 @@ import type {
   ControllerRef,
   MatchSummary,
   TournamentRecord,
-} from "@test-cabinet/run-record";
-import type {
-  ArenaApi,
-  ArenaWorkerOption,
-} from "../app/data/galleryContext";
+} from "@clockwyrks/run-record";
+import type { ArenaApi, ArenaWorkerOption } from "../app/data/galleryContext";
 import { getJson, joinUrl, postJson } from "./http";
 
 // The arena service's `POST /tournaments` ack: the id plus the URLs to observe it.
@@ -66,7 +63,7 @@ export function createHttpArena(
   const requireArena = (): string => {
     if (!arenaUrl) {
       throw new Error(
-        "arena execution is not configured (the backend reported no arenaUrl)",
+        "arena execution not configured (the backend reported no arenaUrl)",
       );
     }
     return arenaUrl;
@@ -103,12 +100,16 @@ export function createHttpArena(
     },
 
     async runTournament(input): Promise<string> {
-      const ack = await postJson<TournamentAck>(requireArena(), "/tournaments", {
-        testCase: input.testCase,
-        version: input.version,
-        variant: input.variant,
-        participants: input.participants,
-      });
+      const ack = await postJson<TournamentAck>(
+        requireArena(),
+        "/tournaments",
+        {
+          testCase: input.testCase,
+          version: input.version,
+          variant: input.variant,
+          participants: input.participants,
+        },
+      );
       return ack.tournamentId;
     },
 
@@ -161,8 +162,15 @@ async function streamTournament(
         signal: controller.signal,
       },
     );
-    if (!res.ok || !res.body) {
-      throw new Error(`tournament event stream failed: ${res.status}`);
+    // Split: a 2xx with no readable body is its own condition, and folding it in
+    // reported a success status as the failure.
+    if (!res.ok) {
+      throw new Error(
+        `tournament ${id} event stream failed: HTTP ${res.status} ${res.statusText}`,
+      );
+    }
+    if (!res.body) {
+      throw new Error(`tournament ${id} event stream carried no body`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

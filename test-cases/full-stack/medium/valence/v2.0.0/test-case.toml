@@ -1,9 +1,9 @@
 slug = "valence"
 # The Test Cabinet test case manifest.
 #
-# Declares, for this exact version, which files are seeded into a run, which
-# reference views are rendered and seeded as visual targets, and which validation
-# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+# Declares, for this exact version, which files are seeded into a run and which
+# validation checks run. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
 
 experimental = true
 
@@ -16,11 +16,12 @@ name = "Valence"
 # then build a game that uses them. It is NOT the older two-run pattern where a
 # separate asset-gen run makes an asset a later game merely consumes; here one model
 # both produces the art/effects/audio and builds the game around it. The `full-stack`
-# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
-# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
-# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
-# with one of them (`specs/assets.md` is the production contract). A root identity
-# field, so it sits above the first table.
+# type, with `asset_dimension` left at its `2d` default, schedules the run onto the
+# `test-cabinet-full-stack-2d` image, which carries exactly six binaries on `PATH` —
+# `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and
+# no others; every asset the game needs is produced with one of them
+# (`specs/assets.md` is the production contract). A root identity field, so it sits
+# above the first table.
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Valence is
@@ -81,7 +82,7 @@ workspace = "workspaces/base"
 
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages`
-# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# injects the `@clockwyrks/particle-runtime` `file:` dependency this build plays
 # its produced particle systems with, so the lockfile is completed at seed time; the
 # same command downloads the Playwright Chromium build (the base image ships the OS
 # libraries Chromium links against, but not the browser binary), so the model can
@@ -91,12 +92,10 @@ init = "npm install && npx playwright install chromium"
 # NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
 # whole point of a full-stack case: the model PRODUCES the game's art, effects, and
 # audio itself, during the run, with the six binaries on the run image's `PATH` (see
-# `type` above and `specs/assets.md`). The `reference/` screenshots below are
-# harness-side visual targets declared via `[[reference]]` — captured from this case's
-# own reference-impl build and seeded as images, not seeded game assets.
+# `type` above and `specs/assets.md`).
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and
 # the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
 # the build imports it (its `/canvas` binding) like any other dependency and plays
@@ -105,20 +104,33 @@ init = "npm install && npx playwright install chromium"
 # and tower muzzle effects are all produced `particle-2d` systems played this way;
 # see `specs/assets.md` for the consumption contract. (A root key, so it must sit
 # above the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
 # first is the default. No variant seeds a spec of its own: the single Containment
 # campaign start — its menu entry and its starting energy and integrity — is folded
-# into the common `specs/gameplay.md`. Each variant still supplies its own `title`
-# menu reference (the main menu lists the campaign start; `gameplay` and `game-over`
-# are common):
+# into the common `specs/gameplay.md`.
 #   - base — the standard containment campaign.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
 ]
+
+# The audio packs the run container is staged with, and the whole of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind.
+#
+# The board's sounds are electrical and structural, and `combat-core` holds all
+# of that material: the zap and arc behind a tower's shot, the snap behind a
+# chipped bond, the heavy impact behind a nuclear crack, and the debris behind a
+# leak alarm, which `specs/assets.md` sends to `sfx-sample` for the richer cues.
+# The bed is specified as a driving, low, atmospheric reactor loop, which
+# `synthwave` carries on its sub bass, analog pads, and drum machine. `cinematic`
+# and `gm-lite` are not staged, because a played instrument reads as something
+# standing outside the reactor.
+[audio]
+packs = ["combat-core@0.1.0", "synthwave@0.1.0"]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -149,7 +161,7 @@ tick_hz = 60
 # matter, the towers, the controls, the gameplay (the campaign start, the economy,
 # integrity, the round progression and victory, scoring, and the key behaviors), the
 # UI (the game states, the required menus, the HUD, and what is out of scope), the
-# asset-production contract, the debugging/automation surface, and the proof captures.
+# asset-production contract, and the debugging/automation surface.
 # The single Containment campaign start is folded into `specs/gameplay.md` rather than
 # seeded from a separate per-variant file, so each variant's set reads as one
 # self-contained game. The common specs reference each other by name and never name a
@@ -189,67 +201,9 @@ source = "specs/assets.md"
 # from code (select a map, place towers, spawn matter, run rounds); and a read-only
 # debug overlay. Seeded for every variant and framed as an ordinary developer
 # affordance of the game. It underpins the automated-validation scripts a review item
-# drives, and it doubles as the surface the build uses to verify itself and to stage
-# the proof captures.
+# drives, and it doubles as the surface the build uses to verify itself.
 [[spec]]
 source = "specs/instrumentation.md"
-
-# Proof of implementation: instructs the build to capture evidence at the exact paths
-# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
-# entries must match.
-[[spec]]
-source = "specs/proof.md"
-
-# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
-# captured (with Playwright) from this case's playable reference-impl build — the
-# authored, correct game under `reference-impl/` — and served as-is (seeded into
-# the run as a visual target, never rendered). See `reference/README.md` for how
-# they are regenerated. The `title` view is variant-specific (declared per variant
-# below) because the menu differs by variant; `gameplay` and `game-over` look the
-# same in every variant.
-[[reference]]
-view = "gameplay"
-media = "reference/screenshots/gameplay.png"
-
-[[reference]]
-view = "game-over"
-media = "reference/screenshots/game-over.png"
-
-# Proof of implementation, requested for every variant. Each declares a `dest` path
-# (relative to the run workspace root) the build must write a screenshot or `.webm`
-# clip to; `specs/proof.md` instructs the build to produce them at exactly these
-# paths. Validation records whether each turned up (informational). The media kind is
-# inferred from the extension: `.png` is an image, `.webm` a video (the format
-# Playwright records natively; the public gallery transcodes it to mp4).
-[[proof]]
-id = "title"
-name = "Title menu"
-dest = "proof/title.png"
-
-[[proof]]
-id = "gameplay"
-name = "Live board"
-dest = "proof/gameplay.png"
-
-[[proof]]
-id = "game-over"
-name = "Containment failed"
-dest = "proof/game-over.png"
-
-[[proof]]
-id = "systems"
-name = "Decomposition clip"
-dest = "proof/systems.webm"
-
-[[proof]]
-id = "pressure"
-name = "Late-round pressure clip"
-dest = "proof/pressure.webm"
-
-# Reference-similarity checks (opt-in) are intentionally not declared. The reference
-# screenshots are seeded as illustrative examples of the screens, not layouts to
-# reproduce, so menus and screens are left to the model's design and are reviewed by
-# a human rather than scored against a baseline. The automated load check still runs.
 
 # Scoring domains. The reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — flawless simulation cannot mask
@@ -723,24 +677,18 @@ title = "Produced, Animated Matter"
 id = "sprites"
 title = "Matter is drawn from produced sprites"
 description = "The atoms, bonded clusters, inert matter, heavy isotopes, and boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with electron shells, ball-and-stick clusters, a dense isotope, a sealed inert atom — not static dots or ad-hoc code-drawn circles."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "electron-animation"
 title = "Atoms animate and shed electrons visibly"
 description = "Atoms visibly animate — an orbiting-electron cycle — and visibly shed an electron as they are stripped, rather than being static."
-proof = "systems"
 [[review.categories.items]]
 id = "trait-reads"
 title = "Traits read clearly, including stacked combos"
 description = "A unit's traits read at a glance from its sprite — bonded vs heavy vs inert, and the stacked combos (a cloaked isotope, a cloaked cluster) — so a player can tell what each unit demands."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "boss-animation"
 title = "The boss animates as it is worn down"
 description = "The Macromass boss has its own unstable, seething motion that reads as it is worn down."
-proof = "pressure"
 
 # --- Produced Tower Sprites & Fire --------------------------------------------
 [[review.categories]]
@@ -750,14 +698,10 @@ title = "Produced Tower Sprites & Fire"
 id = "sprites"
 title = "Towers, projectiles, and tracks are produced sprites"
 description = "The seven towers, the damage-type-colored projectiles, the path tracks, the inlet, and the collector are rendered from sprites the build produced with `draw` — not flat rectangles or ad-hoc canvas fills."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "tier-branch-reads"
 title = "A tower's sprite reads its tier and branch"
 description = "A tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "aim"
 title = "A damage tower's head aims at its target"
@@ -857,14 +801,10 @@ title = "Readable HUD & Build Panel"
 id = "reads"
 title = "The HUD and inspector read at a glance"
 description = "Energy, integrity, the round number and its progress, the shop, and the selected-tower inspector (damage type, tier, branch) all read at a glance — even at fast speed — and a player can tell what each unit on screen demands (chip its bonds vs kinetic/nuclear vs detect it)."
-reference = "gameplay"
-proof = "gameplay"
 [[review.categories.items]]
 id = "next-round-preview"
 title = "The next-round preview names what is coming"
 description = "The between-round preview names the coming round's distinct types and what each asks of the board, so the player can re-shape it."
-reference = "gameplay"
-proof = "gameplay"
 
 # =============================================================================
 # General (no domain)
@@ -907,5 +847,3 @@ title = "Window Fit"
 id = "fit"
 title = "Window fit"
 description = "The entire 1280x720 stage — the full board, the top status bar, the right build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
-reference = "title"
-proof = "title"

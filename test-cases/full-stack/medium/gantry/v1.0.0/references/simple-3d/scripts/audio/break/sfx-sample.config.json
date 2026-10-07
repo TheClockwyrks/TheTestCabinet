@@ -1,0 +1,10 @@
+{
+  "sample_rate": 44100,
+  "channels": "mono",
+  "max_duration_ms": 300,
+  "seed": 7,
+  "sample_pack": "combat-core@0.1.0",
+  "actions": "log.json",
+  "preview": "preview.png",
+  "wav": "break.wav"
+}

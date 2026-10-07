@@ -24,8 +24,8 @@ asset_kind = "sfx-synth"
 variants = ["variants/base.toml"]
 
 # The output format the rendered clip must land in. A mono 44.1 kHz clip capped at
-# 800 ms keeps every run comparable. An sfx-synth case names NO sample_pack and NO
-# instrument_bank — the sound is built from oscillators and noise alone.
+# 800 ms keeps every run comparable. An sfx-synth case declares NO audio.packs — the
+# sound is built from oscillators and noise alone.
 [audio]
 sample_rate = 44100
 channels = "mono"

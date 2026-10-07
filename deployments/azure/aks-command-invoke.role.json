@@ -1,0 +1,17 @@
+{
+  "Name": "Test Cabinet AKS Command Invoke",
+  "IsCustom": true,
+  "Description": "Run a command inside an AKS cluster with az aks command invoke and read its result. Grants nothing else on the cluster resource; what the command may do inside the cluster is decided by the caller's Kubernetes RBAC.",
+  "Actions": [
+    "Microsoft.ContainerService/managedClusters/read",
+    "Microsoft.ContainerService/managedClusters/runCommand/action",
+    "Microsoft.ContainerService/managedClusters/commandResults/read"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/43b1dca0-619f-424b-9fc5-bb7f1591e625/resourceGroups/testcabinet-staging-westus2-rg/providers/Microsoft.ContainerService/managedClusters/testcabinet-staging-westus2-aks",
+    "/subscriptions/43b1dca0-619f-424b-9fc5-bb7f1591e625/resourceGroups/testcabinet-prod-westus2-rg/providers/Microsoft.ContainerService/managedClusters/testcabinet-prod-westus2-aks"
+  ]
+}

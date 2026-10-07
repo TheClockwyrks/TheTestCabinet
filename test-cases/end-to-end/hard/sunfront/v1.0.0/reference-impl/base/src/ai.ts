@@ -75,7 +75,12 @@ const BASE_WEIGHTS: Record<UnitType, number> = {
 export class EnemyAI {
   private decisionTimer = DECISION_INTERVAL_S;
   /** Decaying memory of the enemy's seen composition, per category. */
-  private readonly ema: Record<Category, number> = { air: 0, heavy: 0, swarm: 0, support: 0 };
+  private readonly ema: Record<Category, number> = {
+    air: 0,
+    heavy: 0,
+    swarm: 0,
+    support: 0,
+  };
 
   constructor(
     private readonly world: World,
@@ -102,7 +107,12 @@ export class EnemyAI {
 
   private observe(dt: number): void {
     const vision = collectVision(this.world, this.team);
-    const counts: Record<Category, number> = { air: 0, heavy: 0, swarm: 0, support: 0 };
+    const counts: Record<Category, number> = {
+      air: 0,
+      heavy: 0,
+      swarm: 0,
+      support: 0,
+    };
     for (const u of this.world.units) {
       if (u.team === this.team || u.dead) continue;
       if (!pointVisible(vision, u.x, u.z)) continue;
@@ -126,8 +136,11 @@ export class EnemyAI {
 
     // 1. Hard air counter: air in sight and no Flak yet — answer it immediately.
     if (
-      this.ema.air > AIR_TRIGGER && (owned.get("flakhound") ?? 0) === 0 &&
-      cell && spawners < MAX_SPAWNERS && afford(buildCost("flakhound"))
+      this.ema.air > AIR_TRIGGER &&
+      (owned.get("flakhound") ?? 0) === 0 &&
+      cell &&
+      spawners < MAX_SPAWNERS &&
+      afford(buildCost("flakhound"))
     ) {
       this.world.place(this.team, "flakhound", cell.col, cell.row);
       return;
@@ -135,8 +148,11 @@ export class EnemyAI {
 
     // 2. Hard heavy counter: heavies in sight and no Piercing yet — answer with a Lancer.
     if (
-      this.ema.heavy > HEAVY_TRIGGER && (owned.get("lancer") ?? 0) === 0 &&
-      cell && spawners < MAX_SPAWNERS && afford(buildCost("lancer"))
+      this.ema.heavy > HEAVY_TRIGGER &&
+      (owned.get("lancer") ?? 0) === 0 &&
+      cell &&
+      spawners < MAX_SPAWNERS &&
+      afford(buildCost("lancer"))
     ) {
       this.world.place(this.team, "lancer", cell.col, cell.row);
       return;
@@ -156,8 +172,15 @@ export class EnemyAI {
     }
 
     // 4. Grow a modest economy (capped, so the player can out-economise it).
-    const desiredExtractors = Math.min(MAX_EXTRACTORS, Math.max(1, Math.floor(spawners / 3)));
-    if (extractors < desiredExtractors && cell && afford(SOLAR_EXTRACTOR_COST)) {
+    const desiredExtractors = Math.min(
+      MAX_EXTRACTORS,
+      Math.max(1, Math.floor(spawners / 3)),
+    );
+    if (
+      extractors < desiredExtractors &&
+      cell &&
+      afford(SOLAR_EXTRACTOR_COST)
+    ) {
       this.world.place(this.team, "solar-extractor", cell.col, cell.row);
       return;
     }
@@ -186,7 +209,10 @@ export class EnemyAI {
     const weights = this.desiredWeights();
     let total = 0;
     for (const t of BUILD_PALETTE_ORDER) total += weights[t];
-    const targetArmy = Math.min(MAX_SPAWNERS, 3 + Math.floor(this.world.elapsedS / 22));
+    const targetArmy = Math.min(
+      MAX_SPAWNERS,
+      3 + Math.floor(this.world.elapsedS / 22),
+    );
 
     let bestType: UnitType | null = null;
     let bestDeficit = 0;

@@ -2,119 +2,67 @@
   "parts": [
     {
       "name": "pelvis",
-      "pivot": [
-        12,
-        24,
-        10
-      ]
+      "pivot": [12, 24, 10]
     },
     {
       "name": "torso",
       "parent": "pelvis",
-      "pivot": [
-        12,
-        27,
-        10
-      ]
+      "pivot": [12, 27, 10]
     },
     {
       "name": "head",
       "parent": "torso",
-      "pivot": [
-        12,
-        40,
-        10
-      ]
+      "pivot": [12, 40, 10]
     },
     {
       "name": "left_arm",
       "parent": "torso",
-      "pivot": [
-        5,
-        38,
-        10
-      ]
+      "pivot": [5, 38, 10]
     },
     {
       "name": "right_arm",
       "parent": "torso",
-      "pivot": [
-        19,
-        38,
-        10
-      ]
+      "pivot": [19, 38, 10]
     },
     {
       "name": "rifle",
       "parent": "torso",
-      "pivot": [
-        13,
-        36,
-        10
-      ]
+      "pivot": [13, 36, 10]
     },
     {
       "name": "muzzle",
       "parent": "rifle",
-      "pivot": [
-        13,
-        36,
-        18
-      ]
+      "pivot": [13, 36, 18]
     },
     {
       "name": "left_thigh",
       "parent": "pelvis",
-      "pivot": [
-        8,
-        24,
-        10
-      ]
+      "pivot": [8, 24, 10]
     },
     {
       "name": "left_shin",
       "parent": "left_thigh",
-      "pivot": [
-        8,
-        15,
-        10
-      ]
+      "pivot": [8, 15, 10]
     },
     {
       "name": "left_foot",
       "parent": "left_shin",
-      "pivot": [
-        8,
-        3,
-        10
-      ]
+      "pivot": [8, 3, 10]
     },
     {
       "name": "right_thigh",
       "parent": "pelvis",
-      "pivot": [
-        16,
-        24,
-        10
-      ]
+      "pivot": [16, 24, 10]
     },
     {
       "name": "right_shin",
       "parent": "right_thigh",
-      "pivot": [
-        16,
-        15,
-        10
-      ]
+      "pivot": [16, 15, 10]
     },
     {
       "name": "right_foot",
       "parent": "right_shin",
-      "pivot": [
-        16,
-        3,
-        10
-      ]
+      "pivot": [16, 3, 10]
     }
   ],
   "joints": [
@@ -123,11 +71,7 @@
       "part": "pelvis",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        12,
-        24,
-        10
-      ],
+      "pivot": [12, 24, 10],
       "min": -4.0,
       "max": 0.6,
       "rest": 0.0,
@@ -138,11 +82,7 @@
       "part": "left_thigh",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        8,
-        24,
-        10
-      ],
+      "pivot": [8, 24, 10],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -153,11 +93,7 @@
       "part": "left_shin",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        8,
-        15,
-        10
-      ],
+      "pivot": [8, 15, 10],
       "min": -0.2,
       "max": 1.7,
       "rest": 0.0,
@@ -168,11 +104,7 @@
       "part": "left_foot",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        8,
-        3,
-        10
-      ],
+      "pivot": [8, 3, 10],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -183,11 +115,7 @@
       "part": "right_thigh",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        16,
-        24,
-        10
-      ],
+      "pivot": [16, 24, 10],
       "min": -1.0,
       "max": 1.0,
       "rest": 0.0,
@@ -198,11 +126,7 @@
       "part": "right_shin",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        16,
-        15,
-        10
-      ],
+      "pivot": [16, 15, 10],
       "min": -0.2,
       "max": 1.7,
       "rest": 0.0,
@@ -213,11 +137,7 @@
       "part": "right_foot",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        16,
-        3,
-        10
-      ],
+      "pivot": [16, 3, 10],
       "min": -0.7,
       "max": 0.7,
       "rest": 0.0,
@@ -228,11 +148,7 @@
       "part": "rifle",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        13,
-        36,
-        10
-      ],
+      "pivot": [13, 36, 10],
       "min": -0.6,
       "max": 0.7,
       "rest": 0.0,
@@ -243,11 +159,7 @@
       "part": "rifle",
       "kind": "translation",
       "axis": "z",
-      "pivot": [
-        13,
-        36,
-        10
-      ],
+      "pivot": [13, 36, 10],
       "min": -2.0,
       "max": 0.0,
       "rest": 0.0,
@@ -258,11 +170,7 @@
       "part": "head",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        12,
-        40,
-        10
-      ],
+      "pivot": [12, 40, 10],
       "min": -0.8,
       "max": 0.8,
       "rest": 0.0,
@@ -273,11 +181,7 @@
       "part": "muzzle",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        13,
-        36,
-        18
-      ],
+      "pivot": [13, 36, 18],
       "min": -0.1,
       "max": 0.1,
       "rest": 0.0,

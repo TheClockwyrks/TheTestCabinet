@@ -5,11 +5,11 @@ difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
-a top-down machine with two belt inputs on one side and two outputs on the other, \
-a solid housing hiding the balancing mechanism between them, a visible moving part \
-that suggests the sort/split at work and an arrow-shaped output end, and short belt \
-mouths whose amber chevrons scroll East, produced one drawing operation at a \
-time."""
+a top-down machine with two belt inputs on one side and two outputs on the other. \
+Its housing, arrow-shaped output end, and moving sort/split part are drawn on a \
+separate `mechanism` layer over a CONTINUOUS belt bed, so items ride the belt and \
+pass under the machine rather than being hidden — the amber chevrons scrolling \
+East, produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads

@@ -1,0 +1,35 @@
+# The one and only Gantry variant: the whole game, all six sites. Listed as the
+# single entry in the case manifest's `variants`, so it is the default and every
+# run is a run of it.
+slug = "base"
+name = "Base"
+description = "The full crane yard: six sites, from the first lift to the heavy haul."
+
+# This variant declares NO `spec` of its own, and that is deliberate. The six
+# sites are content inside every build, the way Refract's twenty-four boards
+# are, not variants; nothing in the seeded set branches on the variant at all —
+# the only axis the specs branch on is `engine.slug`.
+
+# Curated presentation media for this variant, captured from the `none` reference
+# build below: the directory holds `showcase.md`, `showcase.toml`, and the media
+# the carousel names, flat. Gantry is a 3D game, so the leading entry is a video
+# of a whole lift rather than a draw-command recording, which would carry the
+# flat readouts and none of the yard. `showcase/capture/` beside it holds the
+# driver that recorded it and the steps for doing it again.
+showcase = "showcase/base"
+
+# The authored correct builds, one per engine. `tcab validate --implementation`
+# runs the same validator suites against these that decide a run's points, and
+# `tcab capture-baselines` drives them to produce the baseline half of this
+# variant's validation media. The validators are written from the specs, never
+# from these; a reference only demonstrates them passing.
+[reference_implementation]
+none = "references/none"
+"simple-3d" = "references/simple-3d"
+"structured-3d" = "references/structured-3d"
+
+# No `[workspaces]` table either: the case's common table covers every engine it
+# declares and there is nothing variant-specific to replace it with. No
+# `[[review.categories]]` and no `[[domain]]`: with a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml`.

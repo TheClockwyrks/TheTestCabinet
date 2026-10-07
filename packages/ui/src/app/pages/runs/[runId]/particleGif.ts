@@ -1,7 +1,7 @@
 /// <reference path="../../../../gifenc.d.ts" />
 import * as THREE from "three";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import { ParticleSystemPlayer } from "@test-cabinet/particle-runtime/three";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import { ParticleSystemPlayer } from "@clockwyrks/particle-runtime/three";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { fieldCenter, type ParticleBlend } from "./ParticleViewer";
 

@@ -53,25 +53,54 @@ pub fn ts_decl<T: TS + 'static + ?Sized>(cfg: &Config) -> TsDecl {
     }
 }
 
-/// One generated TypeScript module: a file under `packages/run-record/src/` and
+/// One generated TypeScript module: a file in some generated package's `src/` and
 /// the declarations it owns.
 pub struct TsModule {
-    /// File name under `packages/run-record/src/` (e.g. `index.ts`).
+    /// The npm package that owns this module (e.g. `@clockwyrks/run-record`).
+    ///
+    /// Modules are spread over more than one package because the *audience* differs,
+    /// not because the contract does. The asset shapes a produced rig is described
+    /// by are consumed by runtimes that get vendored into a run's workspace, so they
+    /// live in a package of their own; the evaluation contract — records, reviews,
+    /// ladders — must never reach a run and stays out of it.
+    pub package: &'static str,
+    /// File name under that package's `src/` (e.g. `index.ts`).
     pub file: &'static str,
     /// The declarations this module defines, in order.
     pub decls: Vec<TsDecl>,
+    /// Type names defined in *another package* that this module republishes, so a
+    /// consumer of the aggregate package keeps importing them from one place even
+    /// though their declaration moved. Each name is resolved to its owning package.
+    pub reexports: &'static [&'static str],
+}
+
+/// Where a contract type is declared.
+#[derive(Clone, Copy)]
+struct Home {
+    package: &'static str,
+    file: &'static str,
 }
 
 /// Finalize every TypeScript module: resolve cross-module imports and prepend the
 /// generated header. A type referenced by one module but defined in another is
-/// imported from that module by relative path; references within the same module
-/// need no import. Returns `(file, content)` pairs ready to write.
-pub fn finalize_ts(modules: Vec<TsModule>, header: &str) -> Vec<(&'static str, String)> {
-    // Global map: every contract type name → the module file that defines it.
-    let mut home: HashMap<&str, &'static str> = HashMap::new();
+/// imported from it — by relative path within a package, and by the package's npm
+/// name across packages; references within the same module need no import. Returns
+/// `(package, file, content)` triples ready to write.
+pub fn finalize_ts(
+    modules: Vec<TsModule>,
+    header: &str,
+) -> Vec<(&'static str, &'static str, String)> {
+    // Global map: every contract type name → where it is defined.
+    let mut home: HashMap<&str, Home> = HashMap::new();
     for module in &modules {
         for decl in &module.decls {
-            home.insert(decl.name.as_str(), module.file);
+            home.insert(
+                decl.name.as_str(),
+                Home {
+                    package: module.package,
+                    file: module.file,
+                },
+            );
         }
     }
 
@@ -82,11 +111,11 @@ pub fn finalize_ts(modules: Vec<TsModule>, header: &str) -> Vec<(&'static str, S
                 module.decls.iter().map(|d| d.name.as_str()).collect();
             let body: String = module.decls.iter().map(|d| d.body.as_str()).collect();
 
-            // Group the external types this module references by their defining
-            // module. A dependency is imported only if it actually appears in this
-            // module's text, so transitive dependencies never become unused
+            // Group the external types this module references by the specifier they
+            // are imported from. A dependency is imported only if it actually appears
+            // in this module's text, so transitive dependencies never become unused
             // imports.
-            let mut imports: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
+            let mut imports: std::collections::BTreeMap<String, std::collections::BTreeSet<&str>> =
                 std::collections::BTreeMap::new();
             for decl in &module.decls {
                 for dep in &decl.deps {
@@ -95,30 +124,71 @@ pub fn finalize_ts(modules: Vec<TsModule>, header: &str) -> Vec<(&'static str, S
                         continue;
                     }
                     if let Some(&source) = home.get(dep)
-                        && source != module.file
+                        && !(source.package == module.package && source.file == module.file)
                         && mentions(&body, dep)
                     {
-                        imports.entry(source).or_default().insert(dep);
+                        imports
+                            .entry(specifier(source, module.package))
+                            .or_default()
+                            .insert(dep);
                     }
                 }
             }
 
+            // Types this module republishes on another package's behalf. These are
+            // deliberately not conditioned on `mentions`: the point is to re-export a
+            // name this module does not itself use.
+            let mut reexports: std::collections::BTreeMap<
+                String,
+                std::collections::BTreeSet<&str>,
+            > = std::collections::BTreeMap::new();
+            for name in module.reexports {
+                let source = home
+                    .get(name)
+                    .unwrap_or_else(|| panic!("re-exported type {name} is not declared anywhere"));
+                reexports
+                    .entry(specifier(*source, module.package))
+                    .or_default()
+                    .insert(name);
+            }
+
             let mut content = String::from(header);
             for (source, names) in &imports {
-                let stem = source.strip_suffix(".ts").unwrap_or(source);
                 let names: Vec<&str> = names.iter().copied().collect();
                 content.push_str(&format!(
-                    "import type {{ {} }} from \"./{stem}\";\n",
+                    "import type {{ {} }} from \"{source}\";\n",
                     names.join(", ")
                 ));
             }
             if !imports.is_empty() {
                 content.push('\n');
             }
+            for (source, names) in &reexports {
+                let names: Vec<&str> = names.iter().copied().collect();
+                content.push_str(&format!(
+                    "export type {{ {} }} from \"{source}\";\n",
+                    names.join(", ")
+                ));
+            }
+            if !reexports.is_empty() {
+                content.push('\n');
+            }
             content.push_str(&body);
-            (module.file, content)
+            (module.package, module.file, content)
         })
         .collect()
+}
+
+/// The import specifier `from_package` uses to reach a type declared at `source`:
+/// a relative module path inside the same package, and the owning package's npm
+/// name across packages.
+fn specifier(source: Home, from_package: &str) -> String {
+    if source.package == from_package {
+        let stem = source.file.strip_suffix(".ts").unwrap_or(source.file);
+        format!("./{stem}")
+    } else {
+        source.package.to_string()
+    }
 }
 
 /// Whether `name` appears in `text` as a whole identifier (not as a substring of a

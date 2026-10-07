@@ -1,0 +1,494 @@
+{
+  "provenance": "gg's responses-as-code turn-1 request for the Rust arm, projected by `gg probe-fixtures` (regenerate with scripts/gg-probe-fixtures.sh). Nothing model-facing is authored here twice: the system prompt, the opening bootstrap program, the module listing, every documentation view and the file-view headings are the same bytes gg's own machinery produces for a real session; the task prompts and spec files are the probe's own material. The backend replays each case through OpenRouter with the one `submit_program` tool offered and `tool_choice` forced to it, and classifies the program each reply submitted.",
+  "language": "rust",
+  "displayName": "Rust",
+  "tool": {
+    "name": "submit_program",
+    "description": "Run this turn's program. `program` must be one whole Rust program; it is compiled and executed exactly as written.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "program": {
+          "description": "The complete Rust program to run.",
+          "type": "string"
+        }
+      },
+      "required": ["program"],
+      "type": "object"
+    }
+  },
+  "cases": [
+    {
+      "scenario": "baseline",
+      "prompt": "write-plan",
+      "expectedCalls": ["files::write_file"],
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Rust program: pass one whole, legal\nRust program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `rustc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole Rust program, and must define\n`main`: `fn main() -> Result<(), gg::Failure> { … }` is where your work goes. A\nfailure of your own is built from a sentence with\n`gg::program::message(\"no rows\")`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg::session::finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg::files`: Read, write, edit, list, walk and search the files of the workspace. — brought into scope with `use gg::files;`\n- `gg::shell`: Run shell commands in the workspace. — brought into scope with `use gg::shell;`\n- `gg::views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `use gg::views;`\n- `gg::docs`: Find the modules, functions and types this run bound, and take their documentation out of context. — brought into scope with `use gg::docs;`\n- `gg::session`: End the session, with the ending that belongs to this session's role. — brought into scope with `use gg::session;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nCreate the file `notes/plan.md` in the workspace. Its required content is specified in `specs/plan-brief.md`, which is already open in your context. Write the file exactly as the brief specifies."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::docs::search(gg::docs::SearchOptions {\\n        modules: &[\\\"gg::files\\\", \\\"gg::shell\\\"],\\n        limit: Some(100),\\n        ..Default::default()\\n    })?;\\n\\n    let functions = [\\n        \\\"gg::docs::search\\\",\\n        \\\"gg::views::open_docs_view\\\",\\n        \\\"gg::views::open_text\\\",\\n        \\\"gg::views::open_file\\\",\\n        \\\"gg::files::write_file\\\",\\n    ];\\n    for name in functions {\\n        gg::views::open_docs_view(name)?;\\n    }\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg::files, gg::shell\n----\n13 matches for modules `gg::files`, `gg::shell`, showing 1-13.\n\nModules:\ngg::files — Read, write, edit, list, walk and search the files of the workspace.\ngg::shell — Run shell commands in the workspace.\n\nFunctions:\ngg::files::edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg::files::list_dir — List a directory, sorted by name; `None` lists the workspace root.\ngg::files::read_file — Read a file, as either a `FileRead::Text` or a `FileRead::Image`.\ngg::files::tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg::files::write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg::shell::run — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg::files::DirEntry — One entry `list_dir` found.\ngg::files::FileRead — What a read returned: a text file's window, or a picture's description.\ngg::files::ReadOptions — The window of lines a read covers. `Default` reads the whole file.\ngg::files::TreeOptions — Where a `tree` is rooted and how deep it is walked; `Default` is the workspace root, two levels.\ngg::shell::ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::search\n----\nsearch(options: docs::SearchOptions<'_>) -> Result<docs::DocSearch, core::ApiError>\n  options: docs::SearchOptions<'_> — The words to look for, the filters that narrow them, and the page. Every field is optional, and `docs::SearchOptions::default()`, which narrows nothing at all, is refused.\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nSearch the bound modules, functions and types by keyword, by module, or by both — best match first.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the kind of evidence that matched: an entry whose own name matched outranks one that merely mentions the word in a paragraph. Only what this run bound is ever returned.\n\nEvery part of the call is optional and composes. `modules` is a union — naming several returns the entries of any of them — and naming them with no `query` at all returns those modules' whole directory. No query and no filter at all is `InvalidArgument`.\n\nThe result is a value and a view. The value is readable in the turn that asked for it; the view puts the same page in the next prompt under the selector `search results`, replaced by the next search rather than accumulating. A hit carries a brief and its `key`.\n\nPaging is `offset` and `limit`, and `total` counts the matches behind the page. The default page is 20 hits and the largest is 100; a larger `limit` clamps rather than fails.\n\n# Returns\n\nOne page of hits, best first, and how many matched behind it. Each hit carries a brief and the key that reads it in full, never the entry itself.\n\n# Errors\n\n`InvalidArgument` when `options` carries neither a query nor a filter, and when `limit` is `Some(0)`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::SearchOptions\n----\nstruct SearchOptions<'a> { query: Option<&'a str>, modules: &'a [&'a str], declared_type: Option<&'a str>, kind: Option<docs::DocKind>, offset: Option<u32>, limit: Option<u32> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nThe query, the filters and the page a `search` runs under. `Default` asks for nothing, which is what `search` refuses.\n\nEvery field composes with every other. Fields left out are taken from `Default`: `docs::SearchOptions { modules: &[\"files\"], ..Default::default() }`.\n  query: Option<&'a str> — The words to look for, matched as case-insensitive substrings.\n\n`None` looks for no word at all and leaves the filters below to say what the page is. An entry is ranked by how many of the words it matches.\n  modules: &'a [&'a str] — The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).\n\nAn empty slice looks in all of them.\n\nMatching is exact and case-insensitive, and several modules are a union: the answer is the entries of any of them. Naming them with no query returns those modules' whole directory. `DocHit::module` is a value this filter takes back unchanged.\n  declared_type: Option<&'a str> — One type's own name (`FileRead`), narrowing to that type and to the functions that name it.\n\nEvery bound function whose signature mentions the type comes back beside the type's own entry.\n  kind: Option<docs::DocKind> — One kind of entry to return — only modules, only functions or only types; `None` returns all three.\n  offset: Option<u32> — How many hits to skip, for paging through a total larger than one page.\n  limit: Option<u32> — How many hits to return; `None` takes the default page of 20, and the ceiling is 100."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::DocSearch\n----\nstruct DocSearch { total: u32, offset: u32, hits: Vec<docs::DocHit> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nOne page of what a `search` matched, and the total behind it.\n  total: u32 — How many entries matched before paging, so a capped page is legible rather than guessed at.\n  offset: u32 — The offset this page starts at, echoed back.\n  hits: Vec<docs::DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::core::ApiError\n----\nstruct ApiError { code: core::ApiErrorCode, operation: String, message: String }\n\nDefined in `gg::core`, brought into scope with `use gg::core;`.\n\nA gg call that failed.\n\nEvery function in this SDK returns one of these in its `Err` arm. It implements `std::error::Error`, so `?` composes it into a `fn main` returning `Result<(), gg::Failure>`.\n\nAn expected failure is a `match` on `code`:\n\n```\nmatch files::write_file(\"notes.md\", \"what the program computed\") {\n    Ok(bytes) => bytes,\n    Err(failure) if failure.code == core::ApiErrorCode::IoError => 0,\n    Err(failure) => return Err(failure.into()),\n};\n```\n  code: core::ApiErrorCode — The failure class.\n  operation: String — The gg call that failed, by the key of the operation the program reached for.\n\ngg's own operation key — `read_file`, `spawn_subagent` — rather than the name of whatever ran underneath it.\n  message: String — What went wrong, in gg's words. It is prose rather than a value to match on."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_docs_view\n----\nopen_docs_view(name: &str) -> Result<(), core::ApiError>\n  name: &str — The entry to document, by the fully-qualified name its documentation is keyed by — `\"gg::views::open_text\"`, and for a module its own path, `\"gg::views\"`. The bare name a function is called by in its module (`\"open_text\"`) also resolves, and is ambiguous where two modules declare the same name.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace one module's, function's or type's full documentation into the context window.\n\nIts signature or declaration, its description, and the declarations of any types it refers to that have not already been shown this session. It is a view rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name, so it is not available in the turn it is asked for. Opening a key that is already open does nothing: the view is neither moved nor sent again.\n\n# Errors\n\n`NotFound` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_text\n----\nopen_text(label: &str, body: &str) -> Result<(), core::ApiError>\n  label: &str — What to file the view under. Opening the same label again replaces what it showed. It may not be empty.\n  body: &str — What to show. An empty body is allowed.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace a value the program computed into the context window, under `label`.\n\nA directory listing, a command's output, a child agent's answer, a table the program assembled. Opening the same label again replaces what it showed.\n\n# Errors\n\n`InvalidArgument` for an empty label, and `LimitExceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever silently truncated."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_file\n----\nopen_file(path: &str, options: views::ViewOptions) -> Result<files::FileRead, core::ApiError>\n  path: &str — The file to open, relative to the workspace or absolute.\n  options: views::ViewOptions — The window of lines to show and the cut its long lines get; `views::ViewOptions::default()` shows the whole file with every line whole.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`options.offset` and `options.limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture, and this is the only call that shows one.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened. `max_line_chars`, when set, cuts each line of the view longer than that many characters and annotates it in place as `foo (123 more chars...)`; the cut is the view's alone, and the cap is measured against the body after it. Left `None`, lines arrive whole.\n\n# Returns\n\nThe file's window as a value, long lines and all. The value and the view are separate copies.\n\n# Errors\n\n`NotFound` for a missing path, `InvalidArgument` for an offset past the end of the file or a `max_line_chars` outside `1..=65536`, and `LimitExceeded` — naming the size and the bound — for a text body over 65,536 bytes after the cut. Nothing is opened when the read fails."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::ViewOptions\n----\nstruct ViewOptions { offset: Option<u32>, limit: Option<u32>, max_line_chars: Option<u32> }\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nThe window of lines a file view shows, and the cut its long lines get. `Default` shows the whole file.\n\n`offset` and `limit` are the same window a read takes, honoured under every read policy; the policy decides only what an absent `limit` means. `max_line_chars` cuts the lines the view shows and leaves the returned value whole.\n\nFields left out are taken from `Default`: `views::ViewOptions { max_line_chars: Some(200), ..Default::default() }`.\n  offset: Option<u32> — The 1-based line to start at; `None` starts at the first line.\n  limit: Option<u32> — How many lines to show from `offset`; `None` shows to the end, or the read policy's default cap.\n  max_line_chars: Option<u32> — Cut each line of the view longer than this many characters; `None` leaves every line whole.\n\nA cut line is annotated in place as `foo (123 more chars...)`. The range is `1..=65536`, and a value outside it refuses the open."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::FileRead\n----\nenum FileRead { Text(files::TextFile), Image(files::ImageFile) }\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\nImage bytes never enter the program; gg attaches the picture to the turn instead.\n  Text: files::TextFile — This file is text.\n  Image: files::ImageFile — This file is a picture, which gg shows rather than handing over its bytes."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::write_file\n----\nwrite_file(path: &str, contents: &str) -> Result<u64, core::ApiError>\n  path: &str — Where to write, relative to the workspace or absolute. Parent directories are created.\n  contents: &str — The UTF-8 text to write. It replaces the file entirely.\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nWrite UTF-8 text to a file, creating parent directories and replacing what is there.\n\n# Returns\n\nHow many bytes reached the file, which is `contents` measured in UTF-8 rather than in characters.\n\n# Errors\n\n`InvalidArgument` for an empty path, and `IoError` when creating the parent directories or the write itself failed."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::views::open_file(\\\"specs/plan-brief.md\\\", gg::views::ViewOptions::default())?;\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/plan-brief.md:1-20 of 20 lines\n----\n# Plan brief\n\nWrite `notes/plan.md` with exactly the following structure.\n\n## Required sections\n\n1. A top-level heading reading `# Delivery plan`.\n2. A section `## Milestones` holding a numbered list of three milestones:\n   1. `Skeleton` — the project builds and serves a blank page.\n   2. `Core loop` — the simulation advances and renders.\n   3. `Polish` — audio, menus, and the win screen.\n3. A section `## Risks` holding a bulleted list with two entries:\n   - `Scope creep in the core loop`\n   - `Untested browser input handling`\n\n## Rules\n\n- The file's content is exactly the sections above, in that order.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
+        }
+      ]
+    },
+    {
+      "scenario": "baseline",
+      "prompt": "inventory",
+      "expectedCalls": ["files::list_dir", "files::write_file"],
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Rust program: pass one whole, legal\nRust program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `rustc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole Rust program, and must define\n`main`: `fn main() -> Result<(), gg::Failure> { … }` is where your work goes. A\nfailure of your own is built from a sentence with\n`gg::program::message(\"no rows\")`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg::session::finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg::files`: Read, write, edit, list, walk and search the files of the workspace. — brought into scope with `use gg::files;`\n- `gg::shell`: Run shell commands in the workspace. — brought into scope with `use gg::shell;`\n- `gg::views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `use gg::views;`\n- `gg::docs`: Find the modules, functions and types this run bound, and take their documentation out of context. — brought into scope with `use gg::docs;`\n- `gg::session`: End the session, with the ending that belongs to this session's role. — brought into scope with `use gg::session;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nProduce an inventory of the workspace root: list the entries of the workspace's top-level directory, then write the inventory file described in `specs/inventory-brief.md`, which is already open in your context."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::docs::search(gg::docs::SearchOptions {\\n        modules: &[\\\"gg::files\\\", \\\"gg::shell\\\"],\\n        limit: Some(100),\\n        ..Default::default()\\n    })?;\\n\\n    let functions = [\\n        \\\"gg::docs::search\\\",\\n        \\\"gg::views::open_docs_view\\\",\\n        \\\"gg::views::open_text\\\",\\n        \\\"gg::views::open_file\\\",\\n        \\\"gg::files::list_dir\\\",\\n        \\\"gg::files::write_file\\\",\\n    ];\\n    for name in functions {\\n        gg::views::open_docs_view(name)?;\\n    }\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg::files, gg::shell\n----\n13 matches for modules `gg::files`, `gg::shell`, showing 1-13.\n\nModules:\ngg::files — Read, write, edit, list, walk and search the files of the workspace.\ngg::shell — Run shell commands in the workspace.\n\nFunctions:\ngg::files::edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg::files::list_dir — List a directory, sorted by name; `None` lists the workspace root.\ngg::files::read_file — Read a file, as either a `FileRead::Text` or a `FileRead::Image`.\ngg::files::tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg::files::write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg::shell::run — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg::files::DirEntry — One entry `list_dir` found.\ngg::files::FileRead — What a read returned: a text file's window, or a picture's description.\ngg::files::ReadOptions — The window of lines a read covers. `Default` reads the whole file.\ngg::files::TreeOptions — Where a `tree` is rooted and how deep it is walked; `Default` is the workspace root, two levels.\ngg::shell::ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::search\n----\nsearch(options: docs::SearchOptions<'_>) -> Result<docs::DocSearch, core::ApiError>\n  options: docs::SearchOptions<'_> — The words to look for, the filters that narrow them, and the page. Every field is optional, and `docs::SearchOptions::default()`, which narrows nothing at all, is refused.\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nSearch the bound modules, functions and types by keyword, by module, or by both — best match first.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the kind of evidence that matched: an entry whose own name matched outranks one that merely mentions the word in a paragraph. Only what this run bound is ever returned.\n\nEvery part of the call is optional and composes. `modules` is a union — naming several returns the entries of any of them — and naming them with no `query` at all returns those modules' whole directory. No query and no filter at all is `InvalidArgument`.\n\nThe result is a value and a view. The value is readable in the turn that asked for it; the view puts the same page in the next prompt under the selector `search results`, replaced by the next search rather than accumulating. A hit carries a brief and its `key`.\n\nPaging is `offset` and `limit`, and `total` counts the matches behind the page. The default page is 20 hits and the largest is 100; a larger `limit` clamps rather than fails.\n\n# Returns\n\nOne page of hits, best first, and how many matched behind it. Each hit carries a brief and the key that reads it in full, never the entry itself.\n\n# Errors\n\n`InvalidArgument` when `options` carries neither a query nor a filter, and when `limit` is `Some(0)`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::SearchOptions\n----\nstruct SearchOptions<'a> { query: Option<&'a str>, modules: &'a [&'a str], declared_type: Option<&'a str>, kind: Option<docs::DocKind>, offset: Option<u32>, limit: Option<u32> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nThe query, the filters and the page a `search` runs under. `Default` asks for nothing, which is what `search` refuses.\n\nEvery field composes with every other. Fields left out are taken from `Default`: `docs::SearchOptions { modules: &[\"files\"], ..Default::default() }`.\n  query: Option<&'a str> — The words to look for, matched as case-insensitive substrings.\n\n`None` looks for no word at all and leaves the filters below to say what the page is. An entry is ranked by how many of the words it matches.\n  modules: &'a [&'a str] — The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).\n\nAn empty slice looks in all of them.\n\nMatching is exact and case-insensitive, and several modules are a union: the answer is the entries of any of them. Naming them with no query returns those modules' whole directory. `DocHit::module` is a value this filter takes back unchanged.\n  declared_type: Option<&'a str> — One type's own name (`FileRead`), narrowing to that type and to the functions that name it.\n\nEvery bound function whose signature mentions the type comes back beside the type's own entry.\n  kind: Option<docs::DocKind> — One kind of entry to return — only modules, only functions or only types; `None` returns all three.\n  offset: Option<u32> — How many hits to skip, for paging through a total larger than one page.\n  limit: Option<u32> — How many hits to return; `None` takes the default page of 20, and the ceiling is 100."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::DocSearch\n----\nstruct DocSearch { total: u32, offset: u32, hits: Vec<docs::DocHit> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nOne page of what a `search` matched, and the total behind it.\n  total: u32 — How many entries matched before paging, so a capped page is legible rather than guessed at.\n  offset: u32 — The offset this page starts at, echoed back.\n  hits: Vec<docs::DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::core::ApiError\n----\nstruct ApiError { code: core::ApiErrorCode, operation: String, message: String }\n\nDefined in `gg::core`, brought into scope with `use gg::core;`.\n\nA gg call that failed.\n\nEvery function in this SDK returns one of these in its `Err` arm. It implements `std::error::Error`, so `?` composes it into a `fn main` returning `Result<(), gg::Failure>`.\n\nAn expected failure is a `match` on `code`:\n\n```\nmatch files::write_file(\"notes.md\", \"what the program computed\") {\n    Ok(bytes) => bytes,\n    Err(failure) if failure.code == core::ApiErrorCode::IoError => 0,\n    Err(failure) => return Err(failure.into()),\n};\n```\n  code: core::ApiErrorCode — The failure class.\n  operation: String — The gg call that failed, by the key of the operation the program reached for.\n\ngg's own operation key — `read_file`, `spawn_subagent` — rather than the name of whatever ran underneath it.\n  message: String — What went wrong, in gg's words. It is prose rather than a value to match on."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_docs_view\n----\nopen_docs_view(name: &str) -> Result<(), core::ApiError>\n  name: &str — The entry to document, by the fully-qualified name its documentation is keyed by — `\"gg::views::open_text\"`, and for a module its own path, `\"gg::views\"`. The bare name a function is called by in its module (`\"open_text\"`) also resolves, and is ambiguous where two modules declare the same name.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace one module's, function's or type's full documentation into the context window.\n\nIts signature or declaration, its description, and the declarations of any types it refers to that have not already been shown this session. It is a view rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name, so it is not available in the turn it is asked for. Opening a key that is already open does nothing: the view is neither moved nor sent again.\n\n# Errors\n\n`NotFound` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_text\n----\nopen_text(label: &str, body: &str) -> Result<(), core::ApiError>\n  label: &str — What to file the view under. Opening the same label again replaces what it showed. It may not be empty.\n  body: &str — What to show. An empty body is allowed.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace a value the program computed into the context window, under `label`.\n\nA directory listing, a command's output, a child agent's answer, a table the program assembled. Opening the same label again replaces what it showed.\n\n# Errors\n\n`InvalidArgument` for an empty label, and `LimitExceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever silently truncated."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_file\n----\nopen_file(path: &str, options: views::ViewOptions) -> Result<files::FileRead, core::ApiError>\n  path: &str — The file to open, relative to the workspace or absolute.\n  options: views::ViewOptions — The window of lines to show and the cut its long lines get; `views::ViewOptions::default()` shows the whole file with every line whole.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`options.offset` and `options.limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture, and this is the only call that shows one.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened. `max_line_chars`, when set, cuts each line of the view longer than that many characters and annotates it in place as `foo (123 more chars...)`; the cut is the view's alone, and the cap is measured against the body after it. Left `None`, lines arrive whole.\n\n# Returns\n\nThe file's window as a value, long lines and all. The value and the view are separate copies.\n\n# Errors\n\n`NotFound` for a missing path, `InvalidArgument` for an offset past the end of the file or a `max_line_chars` outside `1..=65536`, and `LimitExceeded` — naming the size and the bound — for a text body over 65,536 bytes after the cut. Nothing is opened when the read fails."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::ViewOptions\n----\nstruct ViewOptions { offset: Option<u32>, limit: Option<u32>, max_line_chars: Option<u32> }\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nThe window of lines a file view shows, and the cut its long lines get. `Default` shows the whole file.\n\n`offset` and `limit` are the same window a read takes, honoured under every read policy; the policy decides only what an absent `limit` means. `max_line_chars` cuts the lines the view shows and leaves the returned value whole.\n\nFields left out are taken from `Default`: `views::ViewOptions { max_line_chars: Some(200), ..Default::default() }`.\n  offset: Option<u32> — The 1-based line to start at; `None` starts at the first line.\n  limit: Option<u32> — How many lines to show from `offset`; `None` shows to the end, or the read policy's default cap.\n  max_line_chars: Option<u32> — Cut each line of the view longer than this many characters; `None` leaves every line whole.\n\nA cut line is annotated in place as `foo (123 more chars...)`. The range is `1..=65536`, and a value outside it refuses the open."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::FileRead\n----\nenum FileRead { Text(files::TextFile), Image(files::ImageFile) }\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\nImage bytes never enter the program; gg attaches the picture to the turn instead.\n  Text: files::TextFile — This file is text.\n  Image: files::ImageFile — This file is a picture, which gg shows rather than handing over its bytes."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::list_dir\n----\nlist_dir(path: Option<&str>) -> Result<Vec<files::DirEntry>, core::ApiError>\n  path: Option<&str> — The directory to list, relative to the workspace or absolute; `None` lists the workspace root.\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nList a directory, sorted by name; `None` lists the workspace root.\n\nEach entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty `Vec`, not a failure.\n\n# Returns\n\nOne entry per name directly in the directory, files and directories alike. Nothing is recursed into.\n\n# Errors\n\n`NotFound` for a directory that is not there, and `InvalidArgument` for a path that is given but empty."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::DirEntry\n----\nstruct DirEntry { name: String, kind: files::EntryKind }\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nOne entry `list_dir` found.\n  name: String — The entry's bare name, with no directory part. Join it with the directory that was listed.\n  kind: files::EntryKind — What the entry is."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::write_file\n----\nwrite_file(path: &str, contents: &str) -> Result<u64, core::ApiError>\n  path: &str — Where to write, relative to the workspace or absolute. Parent directories are created.\n  contents: &str — The UTF-8 text to write. It replaces the file entirely.\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nWrite UTF-8 text to a file, creating parent directories and replacing what is there.\n\n# Returns\n\nHow many bytes reached the file, which is `contents` measured in UTF-8 rather than in characters.\n\n# Errors\n\n`InvalidArgument` for an empty path, and `IoError` when creating the parent directories or the write itself failed."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::views::open_file(\\\"specs/inventory-brief.md\\\", gg::views::ViewOptions::default())?;\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/inventory-brief.md:1-17 of 17 lines\n----\n# Inventory brief\n\nWrite `notes/inventory.md` describing the workspace root.\n\n## Required content\n\n1. A top-level heading reading `# Workspace inventory`.\n2. One Markdown list entry per entry of the workspace's top-level\n   directory, in the order the listing returns them.\n3. Each entry formatted as `- `, the entry's name, then ` (dir)` for a\n   directory or ` (file)` for a file.\n\n## Rules\n\n- List the top-level directory only; do not recurse.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
+        }
+      ]
+    },
+    {
+      "scenario": "missing-docview",
+      "prompt": "run-tests",
+      "forbiddenCalls": ["shell::run"],
+      "docviewCall": "views::open_docs_view",
+      "docviewKey": "gg::shell::run",
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Rust program: pass one whole, legal\nRust program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `rustc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole Rust program, and must define\n`main`: `fn main() -> Result<(), gg::Failure> { … }` is where your work goes. A\nfailure of your own is built from a sentence with\n`gg::program::message(\"no rows\")`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg::session::finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg::files`: Read, write, edit, list, walk and search the files of the workspace. — brought into scope with `use gg::files;`\n- `gg::shell`: Run shell commands in the workspace. — brought into scope with `use gg::shell;`\n- `gg::views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `use gg::views;`\n- `gg::docs`: Find the modules, functions and types this run bound, and take their documentation out of context. — brought into scope with `use gg::docs;`\n- `gg::session`: End the session, with the ending that belongs to this session's role. — brought into scope with `use gg::session;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nRun the project's test suite and show yourself the output. `specs/test-brief.md`, already open in your context, says what the suite is and what to check for."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::docs::search(gg::docs::SearchOptions {\\n        modules: &[\\\"gg::files\\\", \\\"gg::shell\\\"],\\n        limit: Some(100),\\n        ..Default::default()\\n    })?;\\n\\n    let functions = [\\n        \\\"gg::docs::search\\\",\\n        \\\"gg::views::open_docs_view\\\",\\n        \\\"gg::views::open_text\\\",\\n        \\\"gg::views::open_file\\\",\\n    ];\\n    for name in functions {\\n        gg::views::open_docs_view(name)?;\\n    }\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg::files, gg::shell\n----\n13 matches for modules `gg::files`, `gg::shell`, showing 1-13.\n\nModules:\ngg::files — Read, write, edit, list, walk and search the files of the workspace.\ngg::shell — Run shell commands in the workspace.\n\nFunctions:\ngg::files::edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg::files::list_dir — List a directory, sorted by name; `None` lists the workspace root.\ngg::files::read_file — Read a file, as either a `FileRead::Text` or a `FileRead::Image`.\ngg::files::tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg::files::write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg::shell::run — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg::files::DirEntry — One entry `list_dir` found.\ngg::files::FileRead — What a read returned: a text file's window, or a picture's description.\ngg::files::ReadOptions — The window of lines a read covers. `Default` reads the whole file.\ngg::files::TreeOptions — Where a `tree` is rooted and how deep it is walked; `Default` is the workspace root, two levels.\ngg::shell::ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::search\n----\nsearch(options: docs::SearchOptions<'_>) -> Result<docs::DocSearch, core::ApiError>\n  options: docs::SearchOptions<'_> — The words to look for, the filters that narrow them, and the page. Every field is optional, and `docs::SearchOptions::default()`, which narrows nothing at all, is refused.\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nSearch the bound modules, functions and types by keyword, by module, or by both — best match first.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the kind of evidence that matched: an entry whose own name matched outranks one that merely mentions the word in a paragraph. Only what this run bound is ever returned.\n\nEvery part of the call is optional and composes. `modules` is a union — naming several returns the entries of any of them — and naming them with no `query` at all returns those modules' whole directory. No query and no filter at all is `InvalidArgument`.\n\nThe result is a value and a view. The value is readable in the turn that asked for it; the view puts the same page in the next prompt under the selector `search results`, replaced by the next search rather than accumulating. A hit carries a brief and its `key`.\n\nPaging is `offset` and `limit`, and `total` counts the matches behind the page. The default page is 20 hits and the largest is 100; a larger `limit` clamps rather than fails.\n\n# Returns\n\nOne page of hits, best first, and how many matched behind it. Each hit carries a brief and the key that reads it in full, never the entry itself.\n\n# Errors\n\n`InvalidArgument` when `options` carries neither a query nor a filter, and when `limit` is `Some(0)`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::SearchOptions\n----\nstruct SearchOptions<'a> { query: Option<&'a str>, modules: &'a [&'a str], declared_type: Option<&'a str>, kind: Option<docs::DocKind>, offset: Option<u32>, limit: Option<u32> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nThe query, the filters and the page a `search` runs under. `Default` asks for nothing, which is what `search` refuses.\n\nEvery field composes with every other. Fields left out are taken from `Default`: `docs::SearchOptions { modules: &[\"files\"], ..Default::default() }`.\n  query: Option<&'a str> — The words to look for, matched as case-insensitive substrings.\n\n`None` looks for no word at all and leaves the filters below to say what the page is. An entry is ranked by how many of the words it matches.\n  modules: &'a [&'a str] — The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).\n\nAn empty slice looks in all of them.\n\nMatching is exact and case-insensitive, and several modules are a union: the answer is the entries of any of them. Naming them with no query returns those modules' whole directory. `DocHit::module` is a value this filter takes back unchanged.\n  declared_type: Option<&'a str> — One type's own name (`FileRead`), narrowing to that type and to the functions that name it.\n\nEvery bound function whose signature mentions the type comes back beside the type's own entry.\n  kind: Option<docs::DocKind> — One kind of entry to return — only modules, only functions or only types; `None` returns all three.\n  offset: Option<u32> — How many hits to skip, for paging through a total larger than one page.\n  limit: Option<u32> — How many hits to return; `None` takes the default page of 20, and the ceiling is 100."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::DocSearch\n----\nstruct DocSearch { total: u32, offset: u32, hits: Vec<docs::DocHit> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nOne page of what a `search` matched, and the total behind it.\n  total: u32 — How many entries matched before paging, so a capped page is legible rather than guessed at.\n  offset: u32 — The offset this page starts at, echoed back.\n  hits: Vec<docs::DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::core::ApiError\n----\nstruct ApiError { code: core::ApiErrorCode, operation: String, message: String }\n\nDefined in `gg::core`, brought into scope with `use gg::core;`.\n\nA gg call that failed.\n\nEvery function in this SDK returns one of these in its `Err` arm. It implements `std::error::Error`, so `?` composes it into a `fn main` returning `Result<(), gg::Failure>`.\n\nAn expected failure is a `match` on `code`:\n\n```\nmatch files::write_file(\"notes.md\", \"what the program computed\") {\n    Ok(bytes) => bytes,\n    Err(failure) if failure.code == core::ApiErrorCode::IoError => 0,\n    Err(failure) => return Err(failure.into()),\n};\n```\n  code: core::ApiErrorCode — The failure class.\n  operation: String — The gg call that failed, by the key of the operation the program reached for.\n\ngg's own operation key — `read_file`, `spawn_subagent` — rather than the name of whatever ran underneath it.\n  message: String — What went wrong, in gg's words. It is prose rather than a value to match on."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_docs_view\n----\nopen_docs_view(name: &str) -> Result<(), core::ApiError>\n  name: &str — The entry to document, by the fully-qualified name its documentation is keyed by — `\"gg::views::open_text\"`, and for a module its own path, `\"gg::views\"`. The bare name a function is called by in its module (`\"open_text\"`) also resolves, and is ambiguous where two modules declare the same name.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace one module's, function's or type's full documentation into the context window.\n\nIts signature or declaration, its description, and the declarations of any types it refers to that have not already been shown this session. It is a view rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name, so it is not available in the turn it is asked for. Opening a key that is already open does nothing: the view is neither moved nor sent again.\n\n# Errors\n\n`NotFound` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_text\n----\nopen_text(label: &str, body: &str) -> Result<(), core::ApiError>\n  label: &str — What to file the view under. Opening the same label again replaces what it showed. It may not be empty.\n  body: &str — What to show. An empty body is allowed.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace a value the program computed into the context window, under `label`.\n\nA directory listing, a command's output, a child agent's answer, a table the program assembled. Opening the same label again replaces what it showed.\n\n# Errors\n\n`InvalidArgument` for an empty label, and `LimitExceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever silently truncated."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_file\n----\nopen_file(path: &str, options: views::ViewOptions) -> Result<files::FileRead, core::ApiError>\n  path: &str — The file to open, relative to the workspace or absolute.\n  options: views::ViewOptions — The window of lines to show and the cut its long lines get; `views::ViewOptions::default()` shows the whole file with every line whole.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`options.offset` and `options.limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture, and this is the only call that shows one.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened. `max_line_chars`, when set, cuts each line of the view longer than that many characters and annotates it in place as `foo (123 more chars...)`; the cut is the view's alone, and the cap is measured against the body after it. Left `None`, lines arrive whole.\n\n# Returns\n\nThe file's window as a value, long lines and all. The value and the view are separate copies.\n\n# Errors\n\n`NotFound` for a missing path, `InvalidArgument` for an offset past the end of the file or a `max_line_chars` outside `1..=65536`, and `LimitExceeded` — naming the size and the bound — for a text body over 65,536 bytes after the cut. Nothing is opened when the read fails."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::ViewOptions\n----\nstruct ViewOptions { offset: Option<u32>, limit: Option<u32>, max_line_chars: Option<u32> }\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nThe window of lines a file view shows, and the cut its long lines get. `Default` shows the whole file.\n\n`offset` and `limit` are the same window a read takes, honoured under every read policy; the policy decides only what an absent `limit` means. `max_line_chars` cuts the lines the view shows and leaves the returned value whole.\n\nFields left out are taken from `Default`: `views::ViewOptions { max_line_chars: Some(200), ..Default::default() }`.\n  offset: Option<u32> — The 1-based line to start at; `None` starts at the first line.\n  limit: Option<u32> — How many lines to show from `offset`; `None` shows to the end, or the read policy's default cap.\n  max_line_chars: Option<u32> — Cut each line of the view longer than this many characters; `None` leaves every line whole.\n\nA cut line is annotated in place as `foo (123 more chars...)`. The range is `1..=65536`, and a value outside it refuses the open."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::FileRead\n----\nenum FileRead { Text(files::TextFile), Image(files::ImageFile) }\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\nImage bytes never enter the program; gg attaches the picture to the turn instead.\n  Text: files::TextFile — This file is text.\n  Image: files::ImageFile — This file is a picture, which gg shows rather than handing over its bytes."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::views::open_file(\\\"specs/test-brief.md\\\", gg::views::ViewOptions::default())?;\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/test-brief.md:1-15 of 15 lines\n----\n# Test brief\n\nThe project's test suite runs with `npm test` from the workspace root.\n\n## What to check\n\n1. The command exits with status 0.\n2. The summary line reports no failing tests.\n3. No test is reported as skipped.\n\n## Rules\n\n- Run the suite from the workspace root, not from a subdirectory.\n- Show yourself the command's output before drawing any conclusion\n  from it."
+        }
+      ]
+    },
+    {
+      "scenario": "missing-docview",
+      "prompt": "fix-typo",
+      "forbiddenCalls": ["files::edit_file"],
+      "docviewCall": "views::open_docs_view",
+      "docviewKey": "gg::files::edit_file",
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one Rust program: pass one whole, legal\nRust program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `rustc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole Rust program, and must define\n`main`: `fn main() -> Result<(), gg::Failure> { … }` is where your work goes. A\nfailure of your own is built from a sentence with\n`gg::program::message(\"no rows\")`.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `gg::session::finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `gg::files`: Read, write, edit, list, walk and search the files of the workspace. — brought into scope with `use gg::files;`\n- `gg::shell`: Run shell commands in the workspace. — brought into scope with `use gg::shell;`\n- `gg::views`: Show a file, a computed value, or an entry's documentation. — brought into scope with `use gg::views;`\n- `gg::docs`: Find the modules, functions and types this run bound, and take their documentation out of context. — brought into scope with `use gg::docs;`\n- `gg::session`: End the session, with the ending that belongs to this session's role. — brought into scope with `use gg::session;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\n`specs/errata.md`, already open in your context, names one exact string in `README.md` and the replacement for it. Make exactly that replacement in place."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::docs::search(gg::docs::SearchOptions {\\n        modules: &[\\\"gg::files\\\", \\\"gg::shell\\\"],\\n        limit: Some(100),\\n        ..Default::default()\\n    })?;\\n\\n    let functions = [\\n        \\\"gg::docs::search\\\",\\n        \\\"gg::views::open_docs_view\\\",\\n        \\\"gg::views::open_text\\\",\\n        \\\"gg::views::open_file\\\",\\n    ];\\n    for name in functions {\\n        gg::views::open_docs_view(name)?;\\n    }\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: gg::files, gg::shell\n----\n13 matches for modules `gg::files`, `gg::shell`, showing 1-13.\n\nModules:\ngg::files — Read, write, edit, list, walk and search the files of the workspace.\ngg::shell — Run shell commands in the workspace.\n\nFunctions:\ngg::files::edit_file — Replace the one exact occurrence of some text in a file with something else.\ngg::files::list_dir — List a directory, sorted by name; `None` lists the workspace root.\ngg::files::read_file — Read a file, as either a `FileRead::Text` or a `FileRead::Image`.\ngg::files::tree — Render the tree beneath a directory, skipping everything the ignore files exclude.\ngg::files::write_file — Write UTF-8 text to a file, creating parent directories and replacing what is there.\ngg::shell::run — Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.\n\nTypes:\ngg::files::DirEntry — One entry `list_dir` found.\ngg::files::FileRead — What a read returned: a text file's window, or a picture's description.\ngg::files::ReadOptions — The window of lines a read covers. `Default` reads the whole file.\ngg::files::TreeOptions — Where a `tree` is rooted and how deep it is walked; `Default` is the workspace root, two levels.\ngg::shell::ShellOutput — What a command reported when it finished.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::search\n----\nsearch(options: docs::SearchOptions<'_>) -> Result<docs::DocSearch, core::ApiError>\n  options: docs::SearchOptions<'_> — The words to look for, the filters that narrow them, and the page. Every field is optional, and `docs::SearchOptions::default()`, which narrows nothing at all, is refused.\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nSearch the bound modules, functions and types by keyword, by module, or by both — best match first.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the kind of evidence that matched: an entry whose own name matched outranks one that merely mentions the word in a paragraph. Only what this run bound is ever returned.\n\nEvery part of the call is optional and composes. `modules` is a union — naming several returns the entries of any of them — and naming them with no `query` at all returns those modules' whole directory. No query and no filter at all is `InvalidArgument`.\n\nThe result is a value and a view. The value is readable in the turn that asked for it; the view puts the same page in the next prompt under the selector `search results`, replaced by the next search rather than accumulating. A hit carries a brief and its `key`.\n\nPaging is `offset` and `limit`, and `total` counts the matches behind the page. The default page is 20 hits and the largest is 100; a larger `limit` clamps rather than fails.\n\n# Returns\n\nOne page of hits, best first, and how many matched behind it. Each hit carries a brief and the key that reads it in full, never the entry itself.\n\n# Errors\n\n`InvalidArgument` when `options` carries neither a query nor a filter, and when `limit` is `Some(0)`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::SearchOptions\n----\nstruct SearchOptions<'a> { query: Option<&'a str>, modules: &'a [&'a str], declared_type: Option<&'a str>, kind: Option<docs::DocKind>, offset: Option<u32>, limit: Option<u32> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nThe query, the filters and the page a `search` runs under. `Default` asks for nothing, which is what `search` refuses.\n\nEvery field composes with every other. Fields left out are taken from `Default`: `docs::SearchOptions { modules: &[\"files\"], ..Default::default() }`.\n  query: Option<&'a str> — The words to look for, matched as case-insensitive substrings.\n\n`None` looks for no word at all and leaves the filters below to say what the page is. An entry is ranked by how many of the words it matches.\n  modules: &'a [&'a str] — The modules to look in, each by gg's id (`files`) or by this arm's path (`gg::files`).\n\nAn empty slice looks in all of them.\n\nMatching is exact and case-insensitive, and several modules are a union: the answer is the entries of any of them. Naming them with no query returns those modules' whole directory. `DocHit::module` is a value this filter takes back unchanged.\n  declared_type: Option<&'a str> — One type's own name (`FileRead`), narrowing to that type and to the functions that name it.\n\nEvery bound function whose signature mentions the type comes back beside the type's own entry.\n  kind: Option<docs::DocKind> — One kind of entry to return — only modules, only functions or only types; `None` returns all three.\n  offset: Option<u32> — How many hits to skip, for paging through a total larger than one page.\n  limit: Option<u32> — How many hits to return; `None` takes the default page of 20, and the ceiling is 100."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::docs::DocSearch\n----\nstruct DocSearch { total: u32, offset: u32, hits: Vec<docs::DocHit> }\n\nDefined in `gg::docs`, brought into scope with `use gg::docs;`.\n\nOne page of what a `search` matched, and the total behind it.\n  total: u32 — How many entries matched before paging, so a capped page is legible rather than guessed at.\n  offset: u32 — The offset this page starts at, echoed back.\n  hits: Vec<docs::DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::core::ApiError\n----\nstruct ApiError { code: core::ApiErrorCode, operation: String, message: String }\n\nDefined in `gg::core`, brought into scope with `use gg::core;`.\n\nA gg call that failed.\n\nEvery function in this SDK returns one of these in its `Err` arm. It implements `std::error::Error`, so `?` composes it into a `fn main` returning `Result<(), gg::Failure>`.\n\nAn expected failure is a `match` on `code`:\n\n```\nmatch files::write_file(\"notes.md\", \"what the program computed\") {\n    Ok(bytes) => bytes,\n    Err(failure) if failure.code == core::ApiErrorCode::IoError => 0,\n    Err(failure) => return Err(failure.into()),\n};\n```\n  code: core::ApiErrorCode — The failure class.\n  operation: String — The gg call that failed, by the key of the operation the program reached for.\n\ngg's own operation key — `read_file`, `spawn_subagent` — rather than the name of whatever ran underneath it.\n  message: String — What went wrong, in gg's words. It is prose rather than a value to match on."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_docs_view\n----\nopen_docs_view(name: &str) -> Result<(), core::ApiError>\n  name: &str — The entry to document, by the fully-qualified name its documentation is keyed by — `\"gg::views::open_text\"`, and for a module its own path, `\"gg::views\"`. The bare name a function is called by in its module (`\"open_text\"`) also resolves, and is ambiguous where two modules declare the same name.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace one module's, function's or type's full documentation into the context window.\n\nIts signature or declaration, its description, and the declarations of any types it refers to that have not already been shown this session. It is a view rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the entry's name, so it is not available in the turn it is asked for. Opening a key that is already open does nothing: the view is neither moved nor sent again.\n\n# Errors\n\n`NotFound` for an unknown or unbound name."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_text\n----\nopen_text(label: &str, body: &str) -> Result<(), core::ApiError>\n  label: &str — What to file the view under. Opening the same label again replaces what it showed. It may not be empty.\n  body: &str — What to show. An empty body is allowed.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nPlace a value the program computed into the context window, under `label`.\n\nA directory listing, a command's output, a child agent's answer, a table the program assembled. Opening the same label again replaces what it showed.\n\n# Errors\n\n`InvalidArgument` for an empty label, and `LimitExceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever silently truncated."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::open_file\n----\nopen_file(path: &str, options: views::ViewOptions) -> Result<files::FileRead, core::ApiError>\n  path: &str — The file to open, relative to the workspace or absolute.\n  options: views::ViewOptions — The window of lines to show and the cut its long lines get; `views::ViewOptions::default()` shows the whole file with every line whole.\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nRead a file and place it in the context window, attributed to its path and filed under it.\n\n`options.offset` and `options.limit` select a window of lines. Two pages of one file are two views that coexist; re-opening the same page replaces what it showed. An image is shown as a picture, and this is the only call that shows one.\n\nThe view's text body is held to a 65,536-byte cap: a window that would carry more is refused, naming the size and the bound, and nothing is opened. `max_line_chars`, when set, cuts each line of the view longer than that many characters and annotates it in place as `foo (123 more chars...)`; the cut is the view's alone, and the cap is measured against the body after it. Left `None`, lines arrive whole.\n\n# Returns\n\nThe file's window as a value, long lines and all. The value and the view are separate copies.\n\n# Errors\n\n`NotFound` for a missing path, `InvalidArgument` for an offset past the end of the file or a `max_line_chars` outside `1..=65536`, and `LimitExceeded` — naming the size and the bound — for a text body over 65,536 bytes after the cut. Nothing is opened when the read fails."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::views::ViewOptions\n----\nstruct ViewOptions { offset: Option<u32>, limit: Option<u32>, max_line_chars: Option<u32> }\n\nDefined in `gg::views`, brought into scope with `use gg::views;`.\n\nThe window of lines a file view shows, and the cut its long lines get. `Default` shows the whole file.\n\n`offset` and `limit` are the same window a read takes, honoured under every read policy; the policy decides only what an absent `limit` means. `max_line_chars` cuts the lines the view shows and leaves the returned value whole.\n\nFields left out are taken from `Default`: `views::ViewOptions { max_line_chars: Some(200), ..Default::default() }`.\n  offset: Option<u32> — The 1-based line to start at; `None` starts at the first line.\n  limit: Option<u32> — How many lines to show from `offset`; `None` shows to the end, or the read policy's default cap.\n  max_line_chars: Option<u32> — Cut each line of the view longer than this many characters; `None` leaves every line whole.\n\nA cut line is annotated in place as `foo (123 more chars...)`. The range is `1..=65536`, and a value outside it refuses the open."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: gg::files::FileRead\n----\nenum FileRead { Text(files::TextFile), Image(files::ImageFile) }\n\nDefined in `gg::files`, brought into scope with `use gg::files;`.\n\nWhat a read returned: a text file's window, or a picture's description.\n\nImage bytes never enter the program; gg attaches the picture to the turn instead.\n  Text: files::TextFile — This file is text.\n  Image: files::ImageFile — This file is a picture, which gg shows rather than handing over its bytes."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"fn main() -> Result<(), gg::Failure> {\\n    gg::views::open_file(\\\"specs/errata.md\\\", gg::views::ViewOptions::default())?;\\n    Ok(())\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/errata.md:1-14 of 14 lines\n----\n# Errata\n\n`README.md` carries one error to correct.\n\n## The replacement\n\n- Find the exact string: `serves the build on port 8000`\n- Replace it with: `serves the build on port 5173`\n\n## Rules\n\n- Make exactly this one replacement, in `README.md` only.\n- The string occurs once; replace that one occurrence.\n- Change nothing else in the workspace."
+        }
+      ]
+    }
+  ]
+}

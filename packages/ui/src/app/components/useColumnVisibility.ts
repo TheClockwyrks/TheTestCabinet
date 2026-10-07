@@ -47,7 +47,8 @@ function load(storageKey: string): Overrides {
 function save(storageKey: string, overrides: Overrides): void {
   if (typeof localStorage === "undefined") return;
   try {
-    if (Object.keys(overrides).length === 0) localStorage.removeItem(storageKey);
+    if (Object.keys(overrides).length === 0)
+      localStorage.removeItem(storageKey);
     else localStorage.setItem(storageKey, JSON.stringify(overrides));
   } catch {
     // Non-fatal: the choice just won't survive a reload.

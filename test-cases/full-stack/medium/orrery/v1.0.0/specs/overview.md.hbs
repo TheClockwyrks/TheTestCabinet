@@ -1,0 +1,401 @@
+# Orrery
+
+## Overview
+
+Orrery is a machine-building puzzle game for the browser. Each challenge
+names reagents and products: constellations of celestial motes. The player
+engraves sigils on a hex field, places arms over them, and writes each arm a
+looping tape of instructions, then sets the machine running. Arms grab,
+swing, and carry motes across the field, sigils bind and transmute what
+rests on them, and the machine succeeds when it has delivered every product
+`CONSTELLATION_TARGET` (`6`) times without two motes ever colliding.
+
+A finished machine is judged three ways at once: what it cost, how many
+cycles it ran, and how much of the field it touched. The game records a
+player's best of each.
+
+Orrery ships the art and the sound it plays, and this build makes them. The
+motes and filaments, the parts, the sigil engravings, the instruction
+glyphs, the apertures a rise and a set turn, the effects a running machine
+throws, and the game's seven cues are produced during the build with the
+asset tools on the `PATH`, committed to the repository, and bundled by the
+build. `specs/assets.md` is that contract.
+
+Orrery has its own name, look, and rules, and its assets, branding, and
+design are original to it.
+
+The specification spans several files under `specs/`.
+
+| File | What it fixes |
+| --- | --- |
+| `specs/overview.md` | The stage, the project, the build interface, and the coordinate system. |
+| `specs/field.md` | The hex geometry, the motes, and the filaments. |
+| `specs/parts.md` | The arms, the wheel, track, and placement. |
+| `specs/sigils.md` | Every sigil's footprint and effect. |
+| `specs/instructions.md` | The instruction set and the tapes. |
+| `specs/simulation.md` | The cycle, motion, collision, faults, and metrics. |
+| `specs/controls.md` | The pointer and the keyboard actions. |
+| `specs/editor.md` | The machine editor. |
+| `specs/formats.md` | The challenge and solution documents. |
+| `specs/challenges.md` | The fixed Extras challenges. |
+| `specs/state.md` | What the game's state carries. |
+| `specs/instrumentation.md` | The debug and automation surface. |
+| `specs/ui.md` | The screens, the menus, and the audio cues. |
+| `specs/assets.md` | The assets this build produces, how each is made, and how it is wired in. |
+| `specs/modes/campaign.md` | The campaign course, its progression, and its select screen. |
+| `specs/modes/extras.md` | The Extras shelf and its select screen. |
+| `specs/showcase.md` | The showcase the finished game ships beside its source. |
+
+Read all of them and build the game they describe as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write:
+the frame loop and the delta time it measures, the canvas fit, input from
+both the keyboard and the pointer, audio cues, loading the images and sounds
+this build produces, and the debug overlay. Where this specification speaks
+of the runtime it means that layer, and it states only what Orrery needs
+from it. How the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in
+the `engine/` directory at the root of this repository. It owns the frame
+loop and the delta time the game is given, the input actions the menus and
+editor verbs are driven by, the pointer the editor and the menus are operated
+with, audio cues, asset loading, the canvas fit, and the debug overlay. Read its
+documentation before you start. This specification states only what is
+specific to Orrery.
+
+The pointer reaches the game from the engine already in the stage's logical
+units, with its press and release edges. `specs/controls.md` states what
+Orrery does with them.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in
+the `engine/` directory at the root of this repository. It is a gameplay
+framework as much as a runtime: the game is written as subclasses of its
+classes, a game instance, a game mode, actors and their components, and the
+controllers that drive them, and the engine constructs, ticks, and renders
+them in a fixed order. It owns the frame loop and the delta time the game is
+given, rendering and the camera, the canvas fit, the input actions the menus
+and editor verbs are driven by, the pointer the editor and the menus are
+operated with, audio cues, asset loading, and the debug overlay. Read its
+documentation before you start. This specification states only what is
+specific to Orrery.
+
+The logical design field handed to the engine is the stage, and the game
+leaves the camera at rest, so world units and the stage's logical units
+coincide and every position in this specification is both. The pointer
+reaches the game from the engine already in those units, as ordered samples
+carrying its press and release edges. `specs/controls.md` states what Orrery
+does with them.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested
+with Vitest, linted with ESLint, and formatted with Prettier. That toolchain
+is fixed and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`, and the assets under `assets/`. Neither directory
+exists yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is
+where your build starts. Beyond that the structure is yours: the frame loop
+and the canvas fit, keyboard and pointer input, audio, asset loading, the
+diagnostics overlay, the debug and automation surface, the figures this
+specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must
+carry, and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- `.vendor/`, holding the vendored particle playback library that
+  `package.json` resolves its dependency from.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and
+  `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, asset path, and piece of
+screen copy this specification fixes is stated here under a name. Anything
+this specification does not name is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and the
+assets under `assets/`, which does not exist yet.
+
+`src/game.ts` exports `game`, a `Game<OrreryState, OrreryDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a
+read-only view (`DeepReadonly<OrreryState>`) and returns the next state,
+advanced against the frame's delta time in seconds, and `render` is handed
+that next state, read-only again, and draws it. The engine holds the state
+by value and replaces it with what each `update` returns, so a frame builds
+the next state from the current one rather than writing into it, and
+nothing but `update` and the debug surface's poses advances the game. All
+three functions throw `"not implemented"` as they stand. Implement them.
+
+`src/game.ts` also declares and exports `OrreryState` and the types it is
+built from, exactly as `specs/state.md` states them, and `OrreryDebugApi`,
+the debug and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the sky
+itself. The seeded stub exports a placeholder; replace it with the color
+your sky uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine and particle playback library that
+  `package.json` resolves its dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and
+  `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, asset path, and piece of
+screen copy this specification fixes is exported from `src/constants.ts`
+under the name this specification gives it. Import it and use it. Where a
+spec states a value it also names the constant that holds it, and the
+constant is authoritative. Anything this specification does not name is
+yours to decide.
+{{else}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and the
+assets under `assets/`, which does not exist yet.
+
+`src/game.ts` exports `game`, a `GameDefinition<OrreryDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in,
+and `startLevel` naming it. The game opens that one level and never opens
+another; every screen is a value of the state's `screen` field, so the
+world and its game state live for the whole session. The instance's
+`initialize` registers the actions, defines the cues, loads the produced
+assets, and returns the debug surface. The level's game mode runs the
+screens, the editor, and the simulation, and it adds a single player in its
+`beginPlay`, possessing nothing; that player's controller is where the
+actions and the pointer are read. The mode's `gameStateClass` is
+`OrreryState`, so the world's game state is the state `specs/state.md`
+declares. The actors, components, and controllers you write draw that state
+and drive it. As seeded, the definition is a stub whose instance throws
+`"not implemented"`. Implement it.
+
+`src/game.ts` also declares and exports `OrreryState` and the types it is
+built from, exactly as `specs/state.md` states them, and `OrreryDebugApi`,
+the debug and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the sky
+itself. The seeded stub exports a placeholder; replace it with the color
+your sky uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.vendor/`, holding the vendored engine and particle playback library that
+  `package.json` resolves its dependencies from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and
+  `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, asset path, level name,
+actor tag, and piece of screen copy this specification fixes is exported
+from `src/constants.ts` under the name this specification gives it. Import
+it and use it. Where a spec states a value it also names the constant that
+holds it, and the constant is authoritative. Anything this specification
+does not name is yours to decide.
+{{/if}}
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as
+`src/**/*.test.ts`. `npm test` runs them in process with Vitest, in Node,
+with coverage measured over `src/`.
+
+{{#if (eq engine.slug "none")}}
+A test drives the game over its own clock for a counted number of frames, so
+it needs no browser, and `@napi-rs/canvas` is installed for a test that
+wants a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser, and
+`@napi-rs/canvas` is installed to supply the 2D context.
+{{else}}
+A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of
+frames with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`,
+`npm run lint`, `npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. That directory runs correctly when served
+as-is, both at the root of a static file server and mounted under a
+sub-path, so every URL the build emits or constructs at runtime is
+page-relative rather than root-absolute. The scripts that do this are
+already in `package.json`.
+
+The build is self-contained. The asset tools on this machine's `PATH` are
+development tools for producing the files `specs/assets.md` lists and
+locates; the produced files are committed, the build bundles them, and
+neither `npm ci` nor `npm run build` invokes a tool.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser,
+and the art and sound it plays. This is a substantial front-end build: a
+rules-exact simulation with simultaneous motion and collision, a
+direct-manipulation editor with drags, tapes, and undo, a course of
+challenges you design yourself, a presentation that makes a machine of
+spinning arms worth watching, and a produced set of sprites, effects, and
+sounds. Aim for a game a person would enjoy playing and replaying for better
+records.
+
+The build ships both of the game's modes, chosen from the title menu:
+Campaign, the course of challenges you author to
+`specs/modes/campaign.md`, and Extras, the fixed shelf of
+`specs/modes/extras.md`. The field, the parts, the simulation, the editor,
+and the debug surface the other spec files describe are the same in both.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time,
+  the canvas fit, keyboard and pointer input, audio, asset loading, and the
+  debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input
+  actions, the pointer, audio, asset loading, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, the pointer, audio, asset loading, the canvas fit, and the
+  debug overlay from it, and writing the game inside its framework of game
+  modes, actors, components, and controllers.
+{{/if}}
+- Ship both modes, Campaign and Extras, each reachable from the title menu,
+  with the Extras challenges exactly as `specs/challenges.md` writes them
+  and a campaign of your own that satisfies `specs/modes/campaign.md`,
+  reference solutions included.
+- Render real graphics on the canvas, drawn as sprites, shapes, and text,
+  and animate a run's motion smoothly along the same paths the collision
+  rule samples. A text-only or character-cell rendering does not meet this.
+- Produce the sprites, effects, and sounds `specs/assets.md` lists during
+  this build, commit the produced files at the paths it names, and wire them
+  in as it states; draw everything else in code. The build fetches nothing
+  at runtime from outside its own `dist/`.
+- Run in the browser with no backend. Everything needed to play is
+  self-contained, and no API key or credential is needed to build, run, or
+  play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances
+  and the debug surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `OrreryState`, as `specs/state.md`
+  declares it.
+{{else}}
+- Hold the game's whole authoritative state in `OrreryState`, the world's
+  game state, as `specs/state.md` declares it.
+{{/if}}
+- Replace the starter `README.md` with one explaining what the game is, how
+  to install dependencies, how to run it in development, how to produce the
+  static production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the
+simulation and the editor's rules.
+
+## Coordinate system and presentation
+
+All positions and sizes in this specification are given in the game's own
+logical units on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`, 16:9).
+The origin `(0, 0)` is the top-left; `x` increases to the right and `y`
+increases downward. The stage center is `(STAGE_CX, STAGE_CY)`
+(`640, 360`). Where the field sits within the stage, and where each hex's
+center falls, are given in `specs/field.md`; the editor's regions are given
+in `specs/editor.md`.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's: the uniform scale that preserves the
+  aspect ratio, the letterboxed centering, and the device pixel ratio. The
+  complete stage is therefore on screen at every window size, on load and
+  at any pixel density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the
+  runtime alone.
+- Game logic operates in logical units, independent of the rendered scale.
+  The pointer position the game is given is in those same units, so a hit
+  test against a hex center needs no conversion.
+
+Every rate in this specification is per second and every duration is in
+seconds, integrated against the delta time the runtime hands each update. A
+run's own unit is the cycle, and `specs/simulation.md` fixes how cycles
+advance against that delta time.
+
+## Visual design
+
+The sky is dark. The look is yours to art-direct within what
+`specs/assets.md` fixes about the produced art: the palette, the typography,
+how a mote, a filament, an arm, and each sigil's engraving are drawn, and
+how a running machine moves and glows.
+
+Whatever look you choose, a player reads everything the legibility lists
+fix: the mote classes and types in `specs/field.md`, the parts and their
+working state in `specs/parts.md`, the editor's selection, ghosts, cursor,
+and tape glyphs in `specs/editor.md`, the art and sound bars in
+`specs/assets.md`, and every piece of text on the stage. The palette, type,
+glow, and every other aspect of the look are yours.

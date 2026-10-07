@@ -1,0 +1,670 @@
+# Armored rocks and a homing torpedo. Both changes apply to the one game the case
+# describes, so warhead is rated on the case's common four domains — it adds no
+# domain of its own, and every point below rolls up to one of them.
+slug = "warhead"
+name = "Warhead"
+description = "Rocks carry armor and the ship carries a homing torpedo: one guided munition on a ten-second recharge that flies true through the well and destroys any rock outright."
+
+# The rules that vary live in the common `.hbs` specs, branched on this variant's
+# slug when rendered: `specs/rocks.md.hbs` gives a rock health and a damaged look,
+# `specs/weapons.md.hbs` adds the whole torpedo section, `specs/collision.md.hbs`
+# adds the armor rule and the torpedo rows, `specs/gravity.md.hbs` names the
+# torpedo among the powered bodies the well never pulls, `specs/controls.md.hbs`
+# binds the torpedo key, `specs/ui.md.hbs` adds the charge indicator,
+# `specs/state.md.hbs` adds the torpedo fields, `specs/instrumentation.md.hbs`
+# adds the torpedo operations and `setRockHealth`, and `specs/overview.md.hbs`
+# carries the two extra rows of the legibility table. So warhead declares no
+# `spec` of its own, and its seeded set reads as one self-contained game that
+# never names a sibling variant.
+
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/warhead"
+
+# The authored, *correct* static build of this variant, one per engine — see
+# `variants/base.toml` for what a reference implementation is and how it is
+# published.
+[reference_implementation]
+none = "references/none/warhead"
+"simple-2d" = "references/simple-2d/warhead"
+"structured-2d" = "references/structured-2d/warhead"
+
+# This variant needs a starter project of its own under each engine that seeds
+# one: the seeded `src/constants.ts` under `simple-2d` and under `structured-2d`
+# carries the Armor group (ROCK_HEALTH, HIT_FLASH_TIME) and the Torpedo group,
+# and binds the `b` action to `KeyF` rather than to `Space`. The table REPLACES
+# the case's `[workspaces]` rather than layering on it, so it names one directory
+# per engine exactly as the case's does.
+#
+# The engineless project is the case's own, shared with every variant. It holds no
+# game code for a variant to differ in — only the configuration the build is
+# written against — and what this variant changes about the game is carried by the
+# specs, which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/warhead/simple-2d"
+"structured-2d" = "workspaces/warhead/structured-2d"
+
+# The warhead checklist: 54 points on top of the case's 240, so a warhead run is
+# rated on 294. The `format` is inherited from the case manifest
+# (`[review] format = 2`); a variant only adds `[[review.categories]]`. Every point
+# carries `domains` and `failure_cap` on the same scale the case manifest sets out
+# above its `[review]` table, and every point carries the validator that decides
+# it.
+#
+# SIX categories are declared, and four of them REUSE a common category's id so
+# their points fold into it (see `merge_review_items` in the core):
+#   - `instrumentation` — the four torpedo operations of the debug surface, plus
+#     the three points that carry what the variant ADDS to a common item's
+#     requirement: the four snapshot fields, what `reset` does to the torpedo, and
+#     the two rows the diagnostics overlay gains. All of them belong beside the
+#     case's other per-operation instrumentation points. Their scripts live in the
+#     COMMON `instrumentation/` directory of each validator project; only a warhead
+#     checklist names them.
+#   - `screens` — the one word the how-to screen gains, `F`, which belongs beside
+#     the case's other screen points. Its script lives in the COMMON `screens/`
+#     directory; only a warhead checklist names it.
+#   - `rocks` — the thirteen Armor points, which are rules about a rock and belong
+#     beside the case's other rock points. Their scripts live in a directory of
+#     their own, `armor/`, which never loads against a base build.
+#   - `presentation` — the two things a warhead build draws that a base one does
+#     not, the torpedo itself and the HUD's charge readout, which belong beside the
+#     case's other legibility points. Their scripts live in the COMMON
+#     `presentation/` directory.
+#   - `torpedo` and `detonation` are NEW categories with headings of their own.
+#
+# Detonation is deliberately its own category rather than a second block with
+# `id = "torpedo"`. Two blocks sharing an id resolve without a verdict collision —
+# the sub-item sets are disjoint — but `merge_review_items` folds the second into
+# the first by extending its items and DISCARDS the second block's `title`, so the
+# reviewer would get thirty-one items under one "Homing torpedo" heading and no
+# Detonation heading at all.
+
+# --- Instrumentation ---------------------------------------------------------
+# The four torpedo operations of the debug surface, folded into the case's common
+# Instrumentation category by id-match. They exist because every other debug
+# operation is graded by an item of its own — the per-roster clears, the per-id
+# removals, the world gates, the saucer faculties, and (in Armor below)
+# setRockHealth — and the torpedo operations otherwise got nothing. setTorpedoHeading
+# is the fourth: the specification charges every warhead build for it, so an item
+# drives it rather than leaving it a requirement the case never reads. The
+# consequences are the ones an item count exists to prevent: clearTorpedoes sits
+# inside the harness's clearWorld, so a build that implements it wrongly
+# contaminates warhead scenarios across Homing torpedo, Detonation and Armor with
+# no item naming the cause; and a setTorpedoHoming that does nothing fails
+# torpedo/flies-true-through-the-well, whose domains are gravity and arcade, so a
+# broken instrumentation gate would lower the GRAVITY rating of a build whose well
+# is perfectly correct. Their scripts live in the common instrumentation
+# directory; only a warhead checklist names them.
+#
+# AND THE THREE THAT CARRY WHAT THE VARIANT ADDS TO A COMMON ITEM. `snapshot-shape`,
+# `reset-restores-title` and `overlay` are on BOTH checklists, and
+# `specs/instrumentation.md` states more of each under this variant: four more
+# snapshot fields, two more title values `reset` restores, and two more rows on the
+# diagnostics panel. A common script cannot ask for those
+# without deciding first whether it is running under this variant, and the only
+# thing it could decide that from is the BUILD — whether it installed `addTorpedo`,
+# or reports a torpedo roster. That makes the requirement a function of what the
+# build implemented rather than of what the variant requires, which is the one thing
+# a grade must never be: a warhead build that never wrote the torpedo would be asked
+# for nothing extra and pass all three, while one that wrote the whole torpedo and
+# mistyped a snapshot field would fail — the grade rewarding the less complete
+# build. So each addition is its own point on this checklist, asked
+# unconditionally, and every common script asks for the common requirement alone.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "clear-torpedoes"
+title = "clearTorpedoes empties the torpedoes alone"
+description = "clearTorpedoes() removes every torpedo and leaves the rocks, bullets, enemy bullets and saucer standing."
+domains = ["gravity", "flight", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-torpedoes.test.ts", outputs = [
+  { id = "cleared", name = "The field with the torpedoes gone and the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-torpedo"
+title = "removeTorpedo removes one torpedo by id"
+description = "Of three posed torpedoes, removeTorpedo(id) removes exactly the one named and leaves the other two carrying their ids."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-torpedo.test.ts", outputs = [
+  { id = "removed", name = "The two torpedoes that outlived the one addressed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "torpedo-heading"
+title = "setTorpedoHeading turns a torpedo and its velocity with it"
+description = "setTorpedoHeading(id, radians) reads back on the snapshot's heading, and the torpedo's reported velocity turns onto that heading while its magnitude stays the TORPEDO_SPEED it was carrying."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/torpedo-heading.test.ts", outputs = [
+  { id = "turned", name = "The torpedo on the heading it was turned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "torpedo-homing-gate"
+title = "Homing off holds the torpedo's heading"
+description = "With setTorpedoHoming(id, false) a torpedo holds its heading past a rock squarely inside its forward cone; with it on, the same pose turns it onto that rock."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/torpedo-homing-gate.test.ts", outputs = [
+  { id = "held", name = "The torpedo holding its heading past an acquirable rock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "warhead-snapshot-shape"
+title = "Snapshot reports the warhead fields"
+description = "Over a field carrying a rock and a torpedo, snapshot() reports torpedoes, torpedoCharge and torpedoReady with their documented types and a health on every rock, and torpedoReady is built at the call: true exactly when the charge is 1."
+domains = ["arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/warhead-snapshot-shape.test.ts", outputs = [
+  { id = "snapshot", name = "The field the reported warhead snapshot describes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-clears-the-torpedoes"
+title = "reset empties the torpedoes and fills the charge"
+description = "After torpedoes have been put in flight and the charge run down, reset() leaves the torpedo roster empty and torpedoCharge at 1."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-clears-the-torpedoes.test.ts", outputs = [
+  { id = "reset", name = "The title screen reset restored, with no torpedo left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-reports-the-torpedo"
+title = "The overlay reports the torpedo"
+description = "Toggled on over a field carrying two torpedoes at a charge of 0.6, the overlay draws the charge and how many torpedoes are in flight."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-reports-the-torpedo.test.ts", outputs = [
+  { id = "overlay", name = "The debug overlay over the posed torpedoes", kind = "image" },
+] }
+
+# --- The rocks ---------------------------------------------------------------
+# Armor: the health a rock carries under this variant, folded into the case's
+# common Rocks category by id-match. The three that matter most are graded in both
+# directions — a hit that does not kill spends the bullet, splits nothing and
+# scores nothing — so a build that splits on every hit fails exactly the rules it
+# breaks. Scripts are armor/<id>.test.ts.
+[[review.categories]]
+id = "rocks"
+title = "The rocks"
+[[review.categories.items]]
+id = "health-large-3"
+title = "A Large takes three hits"
+description = "Two rounds leave a Large standing with health 1; the third destroys it."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "armor/health-large-3.test.ts", outputs = [
+  { id = "armor", name = "The Large after the round that finally took it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "health-medium-2"
+title = "A Medium takes two hits"
+description = "One round leaves a Medium standing with health 1; the second destroys it."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "armor/health-medium-2.test.ts", outputs = [
+  { id = "armor", name = "The Medium after the round that finally took it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "health-small-1"
+title = "A Small takes one hit"
+description = "One round destroys a Small."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "armor/health-small-1.test.ts", outputs = [
+  { id = "armor", name = "The Small taken by a single round", kind = "image" },
+] }
+[[review.categories.items]]
+id = "non-fatal-hit-spends-the-bullet"
+title = "A non-fatal hit removes the bullet"
+description = "The round that chips a Large is gone from the bullet roster on the tick it lands."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "armor/non-fatal-hit-spends-the-bullet.test.ts", outputs = [
+  { id = "chip", name = "The chipped Large with the round spent on it gone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "non-fatal-hit-does-not-split"
+title = "A non-fatal hit does not split the rock"
+description = "The rock count is unchanged by a chipping hit."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "armor/non-fatal-hit-does-not-split.test.ts", outputs = [
+  { id = "chip", name = "The chipped Large still whole", kind = "image" },
+] }
+[[review.categories.items]]
+id = "non-fatal-hit-scores-nothing"
+title = "A non-fatal hit scores nothing"
+description = "The score is unchanged by a chipping hit."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "armor/non-fatal-hit-scores-nothing.test.ts", outputs = [
+  { id = "chip", name = "The unchanged score over a chipped Large", kind = "image" },
+] }
+[[review.categories.items]]
+id = "health-falls-by-one"
+title = "Each hit costs exactly one health"
+description = "A Large posed at health 3 reports 2 after one round and 1 after two."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "armor/health-falls-by-one.test.ts", outputs = [
+  { id = "armor", name = "The Large's health after two rounds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hit-flash"
+title = "A chipped rock flashes"
+description = "The rock is drawn differently on the tick a non-fatal hit lands from 0.2 s later, by more than its own cosmetic spin redraws over the same span."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "armor/hit-flash.test.ts", outputs = [
+  { id = "flash", name = "The rock on the tick the flash landed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "damaged-look"
+title = "A damaged rock reads as damaged"
+description = "A Large posed at health 1 is drawn measurably differently from the same Large at health 3 one tick earlier, by more than 30 of 441 sampled inside its outline and by more than its own cosmetic spin redraws over one tick."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "armor/damaged-look.test.ts", outputs = [
+  { id = "damage", name = "A damaged Large beside an undamaged one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fragments-enter-at-full-health"
+title = "Fragments enter at full health"
+description = "The two Medium fragments of a destroyed Large each report health ROCK_HEALTH.medium (2)."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "armor/fragments-enter-at-full-health.test.ts", outputs = [
+  { id = "fragments", name = "The two fragments at full health for their size", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycling-preserves-health"
+title = "Recycling carries the damage across"
+description = "A Large chipped to health 1 and slung into the star re-enters reporting health 1."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "armor/recycling-preserves-health.test.ts", outputs = [
+  { id = "recycle", name = "The recycled Large still carrying its damage", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recycling-resets-speed-when-damaged"
+title = "A damaged rock still gets a fresh drift speed"
+description = "A Large chipped to health 1 and slung into the star at 150 units per second re-enters at a speed inside [60, 110], so the recycle path draws a fresh speed for a damaged rock as it does for a whole one. That the health survives is recycling-preserves-health's to decide, and the reset itself is rocks/recycle-resets-speed's; this item decides only that damage does not divert the recycle path."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "armor/recycling-resets-speed-when-damaged.test.ts", outputs = [
+  { id = "recycle", name = "The recycled Large back at a Large's drift speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-rock-health-reads-back"
+title = "Posing a rock's health reads back"
+description = "setRockHealth(id, hp) is reported by that rock's health for every legal value of its size."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "armor/set-rock-health-reads-back.test.ts", outputs = [
+  { id = "posed", name = "The rocks posed at each legal health", kind = "image" },
+] }
+
+# --- Homing torpedo ----------------------------------------------------------
+# The warhead's secondary weapon: a single charge, a launch that carries none of
+# the ship's drift, a flight the well never bends, and a forward acquisition cone.
+# `flies-true-through-the-well` follows the torpedo PAST the star's column, so the
+# reading is taken after the closest approach to the well the item exists to prove
+# it flies through (see the fold-in fix in changelog.md); with setTorpedoHoming
+# off, the only thing that could turn it is the well, so a build that treats the
+# star as an acquirable body cannot confound the reading. Every item that then
+# reads a torpedo hard-asserts it first, so a build that launched nothing fails
+# `the-torpedo-action-launches-one` rather than crashing the suite and being
+# misreported as failing to expose the debug surface.
+[[review.categories]]
+id = "torpedo"
+title = "Homing torpedo"
+[[review.categories.items]]
+id = "ready-at-the-start-of-a-game"
+title = "A game starts with the torpedo charged"
+description = "A game opened from the title reports torpedoReady true and torpedoCharge 1."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/ready-at-the-start-of-a-game.test.ts", outputs = [
+  { id = "charged", name = "The fresh game with its torpedo charged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "the-torpedo-action-launches-one"
+title = "The torpedo action launches a torpedo"
+description = "Driving the torpedo binding from a charged ship puts exactly one torpedo in the roster."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "torpedo/the-torpedo-action-launches-one.test.ts", outputs = [
+  { id = "launch", name = "The torpedo the action put in flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "firing-spends-the-charge"
+title = "Launching spends the charge"
+description = "torpedoCharge is 0 and torpedoReady false the tick after a launch."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/firing-spends-the-charge.test.ts", outputs = [
+  { id = "spent", name = "The spent charge the tick after a launch", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recharges-in-ten-seconds"
+title = "The charge refills over ten seconds"
+description = "torpedoCharge reaches 1 at TORPEDO_RECHARGE (10 s) of game time after a launch, within 3 percent."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/recharges-in-ten-seconds.test.ts", outputs = [
+  { id = "recharged", name = "The charge back at full ten seconds on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "recharge-is-linear"
+title = "The charge fills at a steady rate"
+description = "torpedoCharge reads 0.5 at 5 s within 0.03, and 0.25 at 2.5 s within 0.03. specs/weapons.md states the charge rises linearly from 0 to 1 over TORPEDO_RECHARGE, which is what makes the shape of the refill a rule rather than the build's choice; without that statement an ease-in curve or a stepped refill would be conformant and would fail."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/recharge-is-linear.test.ts", outputs = [
+  { id = "halfway", name = "The charge half full, five seconds into the refill", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-launch-while-recharging"
+title = "The action does nothing while recharging"
+description = "With setTorpedoCharge(0.5), driving the binding adds no torpedo."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/no-launch-while-recharging.test.ts", outputs = [
+  { id = "refused", name = "The half-charged ship with nothing launched", kind = "image" },
+] }
+[[review.categories.items]]
+id = "at-most-one-in-flight"
+title = "Only one torpedo is in flight at a time"
+description = "With one torpedo posed in flight through addTorpedo and the charge posed full with setTorpedoCharge(1), driving the torpedo binding leaves the roster holding exactly one. Posing the charge full is what makes this a different point from no-launch-while-recharging: with the charge spent, the recharge rule alone accounts for the refusal and no build could fail the two items differently."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/at-most-one-in-flight.test.ts", outputs = [
+  { id = "refused", name = "The one torpedo up, with the launch refused", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refills-on-respawn"
+title = "A respawn refills the torpedo"
+description = "With the charge at 0.36 and a fatal contact taken, the respawned ship reports torpedoCharge 1."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/refills-on-respawn.test.ts", outputs = [
+  { id = "refilled", name = "The respawned ship with a full charge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launches-from-the-nose"
+title = "A torpedo leaves from the nose"
+description = "A launched torpedo appears within the ship's own radius of its centre, ahead of it along its facing."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/launches-from-the-nose.test.ts", outputs = [
+  { id = "launch", name = "The torpedo leaving the ship's nose", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-heading-is-the-ship-facing"
+title = "A torpedo leaves along the ship's facing"
+description = "Its heading at launch is the ship's facing within one degree, sampled at four facings."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/launch-heading-is-the-ship-facing.test.ts", outputs = [
+  { id = "facings", name = "The four facings a torpedo was launched at", kind = "image" },
+] }
+[[review.categories.items]]
+id = "does-not-inherit-the-ships-drift"
+title = "A torpedo carries none of the ship's drift"
+description = "Launched from a ship moving at 300 units per second across its facing, the torpedo's velocity is TORPEDO_SPEED along the facing within 3 percent, with no component of the drift."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/does-not-inherit-the-ships-drift.test.ts", outputs = [
+  { id = "launch", name = "The torpedo leaving a drifting ship on the facing alone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "speed"
+title = "A torpedo travels at 420 units per second"
+description = "Its speed is TORPEDO_SPEED within 2 percent, sampled over a second of straight flight."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/speed.test.ts", outputs = [
+  { id = "flight", name = "A second of straight torpedo flight", kind = "image" },
+] }
+[[review.categories.items]]
+id = "holds-speed-while-turning"
+title = "A turning torpedo keeps its speed"
+description = "With a target off-axis, the torpedo's speed stays TORPEDO_SPEED within 3 percent throughout the turn."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/holds-speed-while-turning.test.ts", outputs = [
+  { id = "turn", name = "The torpedo holding its speed through the turn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flies-true-through-the-well"
+title = "A torpedo is not bent by the well"
+description = "With homing off, a torpedo launched horizontally on the star's row is followed 240 ticks, past the star's column out to about x = 1058: its heading is unchanged within one degree and its path stays within 4 units of the straight line."
+domains = ["gravity", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/flies-true-through-the-well.test.ts", outputs = [
+  { id = "true", name = "The torpedo running straight through the well and out the far side", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wraps"
+title = "A torpedo wraps at the field edges"
+description = "A torpedo driven off the right edge re-enters at the left carrying its speed."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/wraps.test.ts", outputs = [
+  { id = "wrap", name = "The torpedo re-entering at the opposite edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "homing-cone-is-forward-only"
+title = "The cone looks forward alone"
+description = "A rock placed directly behind a torpedo is never acquired: the torpedo's heading is unchanged over a second and the rock survives."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/homing-cone-is-forward-only.test.ts", outputs = [
+  { id = "forward", name = "The torpedo running on past a rock behind it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cone-half-angle"
+title = "The cone reaches 15 degrees off the heading"
+description = "A rock 14 degrees off the launch centre line is acquired and destroyed; one 16 degrees off is not."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "torpedo/cone-half-angle.test.ts", outputs = [
+  { id = "cone", name = "The rock just inside the cone, taken", kind = "image" },
+] }
+[[review.categories.items]]
+id = "picks-the-nearest-in-the-cone"
+title = "The nearest body in the cone is chosen"
+description = "With two rocks in the cone, the torpedo turns toward the nearer by shortest wrapped distance."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/picks-the-nearest-in-the-cone.test.ts", outputs = [
+  { id = "acquired", name = "The torpedo turning onto the nearer of two rocks", kind = "image" },
+] }
+[[review.categories.items]]
+id = "turn-rate"
+title = "A torpedo turns at 160 degrees per second"
+description = "Turning onto a target 90 degrees off, the heading changes at TORPEDO_TURN within 5 percent."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/turn-rate.test.ts", outputs = [
+  { id = "turn", name = "The torpedo coming round onto its target", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "re-acquires-after-losing-a-target"
+title = "A torpedo re-acquires"
+description = "With its first target removed mid-flight, the torpedo flies straight and then turns onto a second rock brought into its cone."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/re-acquires-after-losing-a-target.test.ts", outputs = [
+  { id = "reacquired", name = "The torpedo turning onto its second target", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lifetime"
+title = "A torpedo that hits nothing expires after 3.5 seconds"
+description = "A torpedo posed on an empty field is in flight at 3.4 s of game time and gone by 3.6 s."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "torpedo/lifetime.test.ts", outputs = [
+  { id = "expiry", name = "The field the instant after the torpedo expired", kind = "image" },
+] }
+
+# --- Detonation --------------------------------------------------------------
+# Its own category, never a second block with id = "torpedo": merge_review_items in
+# the core folds a same-id block into the first and discards the second block's
+# title, so the reviewer would get thirty-one items under one "Homing torpedo"
+# heading and no Detonation heading at all. What a torpedo hit does: it destroys
+# outright whatever a rock's health, it scores like a gun kill, it blasts the
+# fragments outward far harder, and it stops at the core. `harder-scatter` reads
+# the gun spread and the torpedo spread each at the instant of ITS OWN kill, so
+# gravity enters neither side of the comparison (see the fold-in fix in
+# changelog.md).
+[[review.categories]]
+id = "detonation"
+title = "Detonation"
+[[review.categories.items]]
+id = "one-hit-large"
+title = "A torpedo destroys a Large outright"
+description = "A torpedo into a full-health Large destroys it in one hit, leaving two Medium."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "detonation/one-hit-large.test.ts", outputs = [
+  { id = "detonation", name = "The Large taken outright by one torpedo", kind = "image" },
+] }
+[[review.categories.items]]
+id = "one-hit-medium"
+title = "A torpedo destroys a Medium outright"
+description = "A torpedo into a full-health Medium destroys it in one hit, leaving two Small."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "detonation/one-hit-medium.test.ts", outputs = [
+  { id = "detonation", name = "The Medium taken outright by one torpedo", kind = "image" },
+] }
+[[review.categories.items]]
+id = "one-hit-small"
+title = "A torpedo destroys a Small outright"
+description = "A torpedo into a Small removes it."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/one-hit-small.test.ts", outputs = [
+  { id = "detonation", name = "The Small taken by one torpedo", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scores-like-a-bullet-kill"
+title = "A torpedo kill scores the same as a gun kill"
+description = "A torpedo into a Large raises the score by exactly SCORE_LARGE."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/scores-like-a-bullet-kill.test.ts", outputs = [
+  { id = "score", name = "The score after a torpedo took a Large", kind = "image" },
+] }
+[[review.categories.items]]
+id = "destroys-the-saucer"
+title = "A torpedo destroys the saucer"
+description = "A torpedo into the saucer removes both and raises the score by SCORE_SAUCER."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/destroys-the-saucer.test.ts", outputs = [
+  { id = "kill", name = "The field the instant the torpedo took the saucer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "harder-scatter"
+title = "A torpedo blasts fragments harder than the gun"
+description = "Half the magnitude of the difference between the two fragments' velocities is TORPEDO_SCATTER (240) within 10 percent, and more than twice the same reading taken from a gun kill on the same posed rock; both spreads are read at the instant of their own kill. The gun's own figure is rocks/fragment-kick-magnitude's to decide, not this item's."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "detonation/harder-scatter.test.ts", outputs = [
+  { id = "scatter", name = "The fragments blasted apart by the detonation", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scatter-runs-along-the-blast"
+title = "The torpedo scatter runs along the blast"
+description = "Each fragment's kick, less the parent's velocity, lies within 10 degrees of the torpedo's travel line, rather than across it."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/scatter-runs-along-the-blast.test.ts", outputs = [
+  { id = "scatter", name = "The fragments thrown along the torpedo's line", kind = "image" },
+] }
+[[review.categories.items]]
+id = "absorbed-by-the-core"
+title = "The core absorbs a torpedo"
+description = "A torpedo driven into the core is removed and scores nothing."
+domains = ["gravity", "arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/absorbed-by-the-core.test.ts", outputs = [
+  { id = "absorbed", name = "The core with the torpedo gone into it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "does-not-chain"
+title = "A torpedo destroys only the rock it strikes"
+description = "A second rock 20 units from the destroyed one survives the detonation."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/does-not-chain.test.ts", outputs = [
+  { id = "bystander", name = "The neighboring rock left whole by the blast", kind = "image" },
+] }
+[[review.categories.items]]
+id = "harmless-to-the-ship"
+title = "A torpedo never harms the ship"
+description = "A torpedo driven through the ship with its contact gate on leaves the ship whole and the torpedo in flight."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "detonation/harmless-to-the-ship.test.ts", outputs = [
+  { id = "passthrough", name = "The torpedo passing through its own ship", kind = "image" },
+] }
+
+# --- Screens and menus -------------------------------------------------------
+# The one word the how-to screen gains under this variant, folded into the case's
+# common "Screens and menus" category by id-match. `specs/controls.md` binds `b` to
+# `KeyF` here and to `Space` under `base`, and `specs/ui.md` has the how-to screen
+# name every key the specification binds — so the common item
+# `screens/howto-shows-the-controls` grades the seven words both variants share and
+# this one grades the eighth. It is a point of its own for the reason the three
+# instrumentation additions above are: the common script would otherwise have to
+# decide from the BUILD whether to ask for `F`, and a warhead build that never wrote
+# the torpedo would then be asked for one word fewer and pass. Its script lives in
+# the COMMON `screens/` directory.
+[[review.categories]]
+id = "screens"
+title = "Screens and menus"
+[[review.categories.items]]
+id = "howto-names-the-torpedo-key"
+title = "The how-to screen names the torpedo key"
+description = "The how-to screen draws F as a standalone word, beside the keys every variant binds, so a player is told the key that launches the torpedo."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-torpedo-key.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen naming the torpedo key", kind = "image" },
+] }
+
+# --- Presentation ------------------------------------------------------------
+# The two things a warhead build draws that a base one does not, folded into the
+# case's common "Look and readouts" category by id-match. `specs/overview.md`'s
+# legibility table adds a row for the torpedo and `specs/ui.md`'s HUD table adds
+# the charge readout, and the base checklist grades every other row of both — so
+# without these two a warhead build that draws its torpedo exactly like a bullet
+# and ships no charge indicator loses nothing, while a base build that omits its
+# ships-in-reserve glyphs loses a point. Both ask only that a thing is drawn and
+# that it can be told from what it sits beside, exactly as the base group's
+# legibility points do: no palette, no silhouette and no placement is asserted
+# anywhere, because `specs/overview.md` leaves all three to the build.
+[[review.categories]]
+id = "presentation"
+title = "Look and readouts"
+[[review.categories.items]]
+id = "torpedo-is-drawn-and-distinct"
+title = "The torpedo is drawn on the field"
+description = "Pixels inside a posed torpedo differ from the background the build drew."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/torpedo-is-drawn-and-distinct.test.ts", outputs = [
+  { id = "torpedo", name = "The torpedo beside a round, told apart", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-torpedo-charge-is-drawn"
+title = "The torpedo charge is drawn in the HUD"
+description = "A torpedo readout is drawn in the upper portion of the field clear of the star, drawn differently at a full charge from at an empty one, and carrying more ink at the full charge than at the empty one."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-torpedo-charge-is-drawn.test.ts", outputs = [
+  { id = "charge", name = "The torpedo readout at the last charge posed", kind = "image" },
+] }

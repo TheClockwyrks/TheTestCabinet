@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { RunSubject } from "@test-cabinet/run-record";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { RunSubject } from "@clockwyrks/run-record";
 import {
   NotSupportedError,
   type BackendClient,
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
+import { isAbsence } from "../../client/absence";
 import {
   fetchGrafanaUrl,
   fetchSnapshotUrl,
@@ -23,24 +24,29 @@ import { toRunSummary } from "../data/runSummary";
 import { toModelSummary, type ModelSummary } from "../data/models";
 import type {
   ArenaApi,
+  CaseVariantRef,
   CatalogStatus,
   GalleryDataInput,
-  HarnessAuthApi,
   RunDetail,
 } from "../data/galleryContext";
+import { DEFAULT_ENGINE_SLUG } from "../data/engines";
 import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
   ErrataEntry,
   SeededInput,
   TestCaseDetail,
+  TestCaseGroupSummary,
   TestCaseSummary,
+  VariantRef,
+  VariantSummary,
 } from "../data/testCases";
+import type { CabinetStats } from "../data/cabinetStats";
 import { useRunsRuntime } from "./runsRuntime";
 
-// The shared live gallery data source for the consoles (web and desktop). It is
-// written against the BackendClient/WorkerClient interfaces alone, so the two
-// apps differ only in the transports behind those contexts. The published gallery
+// The live gallery data source for the web console. It is written against the
+// BackendClient/WorkerClient interfaces alone, so it depends only on the
+// transports behind those contexts, never on a concrete one. The published gallery
 // is no longer drained whole: pages fetch a page at a time through
 // {@link queryRunSummaries} (the backend's numbered offset endpoint), so this only
 // reads the small produced-but-unpublished worklist from the active worker (flagged
@@ -83,7 +89,7 @@ function ingest(stored: StoredRun, into: ProducedRuns): void {
   if (reviews.length > 0) into.reviews[stored.id] = reviews;
   const framed = frameReviews(reviews);
   if (framed !== null) into.writeups[stored.id] = framed;
-  into.summaries.push(toRunSummary(stored.record, reviews));
+  into.summaries.push(toRunSummary(stored));
 }
 
 async function fetchProducedRuns(worker: WorkerClient): Promise<ProducedRuns> {
@@ -116,9 +122,10 @@ async function fetchSeededInputs(
   slug: string,
   version: string,
   variant: string,
+  engine: string,
 ): Promise<SeededInput[]> {
   try {
-    const spec = await backend.readSpecs(slug, version, variant);
+    const spec = await backend.readSpecs(slug, version, variant, engine);
     return spec.specs.map((s) => ({
       path: s.dest,
       kind: "text" as const,
@@ -130,6 +137,112 @@ async function fetchSeededInputs(
   }
 }
 
+// One resolved variant as the gallery's `VariantSummary`. `info` must already have
+// been resolved for `engine` — the backend renders each variant's prompt for the
+// engine the resolve named — and the same engine is used for the seeded spec
+// bodies, so the pair a caller shows is one consistent rendering.
+async function toVariantSummary(
+  backend: BackendClient,
+  info: VersionInfo,
+  v: VersionInfo["variants"][number],
+  engine: string,
+): Promise<VariantSummary> {
+  return {
+    slug: v.slug,
+    name: v.name,
+    description: v.description,
+    // The backend renders the prompt and serves the references; the seeded
+    // spec bodies are fetched per file (see fetchSeededInputs).
+    prompt: v.prompt,
+    seededInputs: await fetchSeededInputs(
+      backend,
+      info.slug,
+      info.version,
+      v.slug,
+      engine,
+    ),
+    // Case-level runtime packages ride on the resolved version; every variant of
+    // the case ships the same set, so carry them onto each variant summary.
+    packages: info.packages ?? [],
+    referenceScreenshots: v.references.map((r) => ({
+      view: r.view,
+      kind: r.kind,
+      url: r.url,
+    })),
+    reviewItems: v.reviewItems.map((item) => ({
+      id: item.id,
+      title: item.title,
+      text: item.text,
+      reference: item.reference ?? null,
+      proof: item.proof ?? null,
+      sequences: item.sequences ?? [],
+      frames: item.frames ?? [],
+      weight: item.weight,
+      graded: item.graded ?? false,
+      domain: item.domain ?? null,
+      // A validator-rated version's per-point failure cap and domains — what the
+      // validator-decided functional rating is computed from. Absent/empty on a
+      // legacy version.
+      failureCap: item.failureCap ?? null,
+      domains: item.domains ?? [],
+      // Whether this point counts toward the score. `false` only when the
+      // version's errata (`excludeFromScore`) retired it — carried through so the
+      // reviewer UIs can flag it "not scored". Dropping it here left the console
+      // (unlike the static site) silently unable to mark excluded points.
+      scored: item.scored,
+      // The point's validator scoping: which engines decide it. Carried so a
+      // run-scoped surface can drop a point the run's engine does not carry.
+      validation: item.validation ?? null,
+      subItems: (item.subItems ?? []).map((sub) => ({
+        id: sub.id,
+        title: sub.title,
+        description: sub.description ?? null,
+        weight: sub.weight,
+        reference: sub.reference ?? null,
+        proof: sub.proof ?? null,
+        failureCap: sub.failureCap ?? null,
+        domains: sub.domains ?? [],
+        // Same as the whole-item `scored` above: preserved so an erratum that
+        // excludes one sub-item of a category still surfaces as "not scored".
+        scored: sub.scored,
+        // Same as the whole-item `validation` above: the engines this point's
+        // validator decides it on.
+        validation: sub.validation ?? null,
+      })),
+    })),
+    // The variant's effective scoring domains (common + its own), already
+    // merged on the resolved VariantInfo — the set a run of this variant is
+    // rated against.
+    domains: v.domains.map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+    })),
+    // Validator-rated iff the version is on the engine manifest format and is
+    // not a game jam — the same rule as the Rust `TestCaseVersion::validator_rated`.
+    validatorRated: info.engineFormat && info.testType !== "game-jam",
+    // The reference-implementation build URLs the backend records for this
+    // variant, one per engine, or empty when it declares none. Drives whether the
+    // case-detail Reference tab appears for the selected variant, and what its
+    // engine switch offers.
+    referenceBuilds: v.referenceBuilds ?? {},
+    // An asset-generation variant's published reference frames (indices only —
+    // the images and action logs live in the snapshot bucket). Null on a backend
+    // that predates the field, so the tab simply never appears.
+    referenceSheet: v.referenceSheet ?? null,
+    // The variant's authored showcase (description + media carousel), carried
+    // through verbatim; the media bytes resolve through the gallery's
+    // `caseShowcaseMediaUrl`. Null when the variant declares none or the backend
+    // predates the field, and the Play surfaces then show no showcase.
+    showcase: v.showcase ?? null,
+    // The variant's effective starter-workspace files, already selected for
+    // `engine` and resolved to artifact URLs by the transport (the resolved
+    // version is one consistent rendering, workspace included). Empty when the
+    // case seeds none for the engine or the backend predates the tables.
+    workspace: v.workspace ?? [],
+  };
+}
+
 async function toTestCaseDetail(
   backend: BackendClient,
   /** The case's published versions, newest first. */
@@ -137,74 +250,17 @@ async function toTestCaseDetail(
   info: VersionInfo,
   changelog: ChangelogEntry[],
   errata: ErrataEntry[],
+  /** The engines each version declares, keyed by version. */
+  enginesByVersion: Record<string, string[]>,
+  /** Each version's variant identities, keyed by version. */
+  variantsByVersion: Record<string, VariantRef[]>,
+  /** Each version's own site-facing description, keyed by version. */
+  descriptionsByVersion: Record<string, string | null>,
 ): Promise<TestCaseDetail> {
   const variants = await Promise.all(
-    info.variants.map(async (v) => ({
-      slug: v.slug,
-      name: v.name,
-      description: v.description,
-      // The backend renders the prompt and serves the references; the seeded
-      // spec bodies are fetched per file (see fetchSeededInputs).
-      prompt: v.prompt,
-      seededInputs: await fetchSeededInputs(
-        backend,
-        info.slug,
-        info.version,
-        v.slug,
-      ),
-      // Case-level runtime packages ride on the resolved version; every variant of
-      // the case ships the same set, so carry them onto each variant summary.
-      packages: info.packages ?? [],
-      referenceScreenshots: v.references.map((r) => ({
-        view: r.view,
-        kind: r.kind,
-        url: r.url,
-      })),
-      reviewItems: v.reviewItems.map((item) => ({
-        id: item.id,
-        title: item.title,
-        text: item.text,
-        reference: item.reference ?? null,
-        proof: item.proof ?? null,
-        sequences: item.sequences ?? [],
-        frames: item.frames ?? [],
-        weight: item.weight,
-        graded: item.graded ?? false,
-        domain: item.domain ?? null,
-        // Whether this point counts toward the score. `false` only when the
-        // version's errata (`excludeFromScore`) retired it — carried through so the
-        // reviewer UIs can flag it "not scored". Dropping it here left the console
-        // (unlike the static site) silently unable to mark excluded points.
-        scored: item.scored,
-        subItems: (item.subItems ?? []).map((sub) => ({
-          id: sub.id,
-          title: sub.title,
-          description: sub.description ?? null,
-          weight: sub.weight,
-          reference: sub.reference ?? null,
-          proof: sub.proof ?? null,
-          // Same as the whole-item `scored` above: preserved so an erratum that
-          // excludes one sub-item of a category still surfaces as "not scored".
-          scored: sub.scored,
-        })),
-      })),
-      // The variant's effective scoring domains (common + its own), already
-      // merged on the resolved VariantInfo — the set a run of this variant is
-      // rated against.
-      domains: v.domains.map((d) => ({
-        id: d.id,
-        name: d.name,
-        description: d.description,
-      })),
-      // The reference-implementation build URL the backend records for this
-      // variant, or null when it declares none. Drives whether the case-detail
-      // Reference tab appears for the selected variant.
-      referenceBuild: v.referenceBuild ?? null,
-      // An asset-generation variant's published reference frames (indices only —
-      // the images and action logs live in the snapshot bucket). Null on a backend
-      // that predates the field, so the tab simply never appears.
-      referenceSheet: v.referenceSheet ?? null,
-    })),
+    info.variants.map((v) =>
+      toVariantSummary(backend, info, v, DEFAULT_ENGINE_SLUG),
+    ),
   );
   return {
     slug: info.slug,
@@ -222,6 +278,19 @@ async function toTestCaseDetail(
     versions,
     latestVersion: versions[0] ?? info.version,
     variants,
+    // The engines each version supports. Every version was resolved to build the
+    // changelog, so the declared set for all of them is already in hand — which is
+    // what lets the detail header offer an older version's engines rather than
+    // the latest version's.
+    enginesByVersion,
+    // The variant identities each version declares, from the same per-version
+    // resolutions, so the header's variant selector offers exactly the selected
+    // version's variants.
+    variantsByVersion,
+    // Each version's own description, from the same per-version resolutions: a
+    // description ships with the version it describes, so the detail page
+    // anchored to an older version shows that version's text.
+    descriptionsByVersion,
     domains: info.domains.map((d) => ({
       id: d.id,
       name: d.name,
@@ -274,6 +343,11 @@ async function fetchTestCases(
         summary: tc.summary,
         versions,
         latestVersion: versions[0]!,
+        // The catalog showcase preview (latest version, first variant in
+        // manifest order that declares one), carried through verbatim; null on
+        // a backend that predates the field, and the catalog then renders its
+        // placeholder stage.
+        showcase: tc.showcase ?? null,
       };
     });
 }
@@ -293,7 +367,11 @@ async function fetchTestCase(
   // contributing its own entry (every version declares a changelog) — and the
   // newest supplies the case's display metadata and variants.
   const infos = await Promise.all(
-    versions.map((version) => backend.resolveVersion(slug, version)),
+    versions.map((version) =>
+      // A case page is not a run, so nothing has selected an engine: resolve the
+      // engineless rendering.
+      backend.resolveVersion(slug, version, DEFAULT_ENGINE_SLUG),
+    ),
   );
   const changelog: ChangelogEntry[] = infos.map((info) => ({
     version: info.version,
@@ -307,25 +385,41 @@ async function fetchTestCase(
       version: info.version,
       errata: info.errata ?? [],
     }));
-  return toTestCaseDetail(backend, versions, infos[0]!, changelog, errata);
+  const enginesByVersion = Object.fromEntries(
+    infos.map((info) => [info.version, info.engines]),
+  );
+  const variantsByVersion = Object.fromEntries(
+    infos.map((info) => [
+      info.version,
+      info.variants.map((v) => ({ slug: v.slug, name: v.name })),
+    ]),
+  );
+  const descriptionsByVersion = Object.fromEntries(
+    infos.map((info) => [info.version, info.description ?? null]),
+  );
+  return toTestCaseDetail(
+    backend,
+    versions,
+    infos[0]!,
+    changelog,
+    errata,
+    enginesByVersion,
+    variantsByVersion,
+    descriptionsByVersion,
+  );
 }
 
-// The host supplies its own arena capability (the consoles wire one when a worker
-// is connected; the static site never calls this hook). It is threaded through
-// unchanged so the arena UI resolves it off the shared gallery data. `harnessAuth`
-// is the same: only the desktop host (which manages the local cluster's harness
-// credentials) supplies it, so it gates the Tauri-only Authentication settings.
-export function useLiveGallery(
-  arena?: ArenaApi,
-  harnessAuth?: HarnessAuthApi,
-): GalleryDataInput {
+// The host supplies its own arena capability (the web console wires one when a
+// backend is connected; the static site never calls this hook). It is threaded
+// through unchanged so the arena UI resolves it off the shared gallery data.
+export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
   // Grafana's base URL, reported by the backend's `GET /config`. Resolved here
-  // rather than in the app shells so the web and desktop consoles both pick it up
-  // without each wiring its own fetch. Best-effort by construction: a backend that
+  // rather than in the app shell so the console picks it up without wiring its
+  // own fetch. Best-effort by construction: a backend that
   // is unreachable, or one whose deployment runs no observability stack, leaves
   // this null and the run view simply omits its link to the run's traces.
   const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
@@ -342,8 +436,8 @@ export function useLiveGallery(
   }, [backendUrl]);
 
   // The public snapshot bucket's read base URL, reported by the same
-  // `GET /config`. Resolved here for the same reason Grafana's is — both consoles
-  // pick it up without wiring their own fetch — and kept separate from the artifact
+  // `GET /config`. Resolved here for the same reason Grafana's is — the console
+  // picks it up without wiring its own fetch — and kept separate from the artifact
   // service's base because a case's published asset-reference frames live in the
   // bucket, not in any run tree. Best-effort: an unreachable backend (or one with no
   // bucket) leaves this null and the asset Reference tab degrades to a placeholder.
@@ -371,23 +465,39 @@ export function useLiveGallery(
   // reached, distinct from a reachable-but-empty catalog.
   const [testCasesStatus, setTestCasesStatus] =
     useState<CatalogStatus>("loading");
+  const [testCaseGroups, setTestCaseGroups] = useState<TestCaseGroupSummary[]>(
+    [],
+  );
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [modelsStatus, setModelsStatus] = useState<CatalogStatus>("loading");
 
   const workerClient = worker?.client ?? null;
   const workerUrl = worker?.url ?? null;
 
+  // The produced worklist, for the resolvers below to consult WITHOUT depending
+  // on it. Every callback this hook hands the gallery is keyed on by some
+  // consumer's effect or cache — the Events tab's read, the variant cache, the
+  // media memos — and the worklist is re-read (as a fresh set) on every refresh,
+  // i.e. every time a run finishes. A resolver that closed over the set would
+  // take a new identity on each of those and restart everything keyed on it,
+  // blanking a loaded tab the reader is scrolled through. Read through a ref,
+  // the resolvers change identity only when the transport behind them does
+  // (backend/worker), while still answering from the current worklist: the ref
+  // is written during render, so any resolver called during or after this
+  // render sees the set this render carries.
+  const localIdsRef = useRef(localIds);
+  localIdsRef.current = localIds;
+
   // Resolve a run's proof media URL: a produced (local) run is served by its
-  // worker, any other (published) run by the backend. A worker reachable over HTTP
-  // serves proofs under its base URL; a worker with no HTTP base (the built-in
-  // Tauri worker) instead supplies its own resolver — `proofMediaUrl` — returning a
-  // custom-scheme URL the desktop shell serves. When neither is available the proof
-  // is not URL-loadable here and resolves to null (the UI then shows presence
-  // without media).
+  // worker, any other (published) run by the backend. A worker that supplies its
+  // own resolver — `proofMediaUrl`, which the HTTP transport points at the
+  // artifact service — is asked first; otherwise the proof resolves under the
+  // worker's base URL. When the resolver declines the proof is not URL-loadable
+  // here and resolves to null (the UI then shows presence without media).
   const proofMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/proof/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.proofMediaUrl) {
           return workerClient.proofMediaUrl(runId, file);
         }
@@ -395,16 +505,16 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
   );
 
   // Asset-generation run media (regenerated/preview/target/actions) resolves the
-  // same way proof media does: the desktop transport supplies a custom-scheme
-  // resolver, the web worker/backend an HTTP endpoint.
+  // same way proof media does: the worker's own resolver when it has one, else an
+  // HTTP endpoint on the worker or backend.
   const assetMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/asset/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.assetMediaUrl) {
           return workerClient.assetMediaUrl(runId, file);
         }
@@ -412,17 +522,17 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
   );
 
   // A run's automated-validation media (a debug script's synthesized actual/baseline
-  // clips and stills) resolves exactly the way proof and asset media do: the desktop
-  // transport may supply a custom-scheme resolver, the web worker/backend an HTTP
-  // endpoint under `/runs/{id}/validation/{file}`.
+  // clips and stills) resolves exactly the way proof and asset media do: the
+  // worker's own resolver when it has one, else an HTTP endpoint under
+  // `/runs/{id}/validation/{file}`.
   const validationMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/validation/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.validationMediaUrl) {
           return workerClient.validationMediaUrl(runId, file);
         }
@@ -430,7 +540,49 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
+  );
+
+  // A run's showcase files (the carousel media, plus any image the description
+  // references by bare relative path) resolve exactly the way proof and asset
+  // media do: the worker's own resolver when it has one, else an HTTP endpoint
+  // under `/runs/{id}/showcase/{file}`.
+  const showcaseMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/showcase/${encodeURIComponent(file)}`;
+      if (localIdsRef.current.has(runId)) {
+        if (workerClient?.showcaseMediaUrl) {
+          return workerClient.showcaseMediaUrl(runId, file);
+        }
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, workerClient],
+  );
+
+  // A CASE variant's authored showcase media — the case-side counterpart of the
+  // run showcase above. Case-scoped like the validation baseline below (the
+  // showcase is committed with the version, not produced by a run), so there is
+  // no published-vs-local split: the backend's case-scoped showcase route is the
+  // single source, and a host with no backend resolves null (the surfaces then
+  // degrade exactly like the run showcase).
+  const caseShowcaseMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null => {
+      if (!backendUrl) return null;
+      const path =
+        `/test-cases/${encodeURIComponent(slug)}` +
+        `/versions/${encodeURIComponent(version)}` +
+        `/showcase/${encodeURIComponent(variant)}` +
+        `/${encodeURIComponent(file)}`;
+      return joinPath(backendUrl, path);
+    },
+    [backendUrl],
   );
 
   // A run's whole-tree download resolves differently from the media above: it is
@@ -438,27 +590,29 @@ export function useLiveGallery(
   // publishing a run copies its media to the backend but does not move (or remove)
   // the tree. So there is no published-vs-local split and no backend fallback; the
   // transport's own resolver is the single source, and a transport that has none
-  // (the built-in Tauri worker, whose runs are already on the user's disk) resolves
-  // null and the console simply offers no download.
+  // resolves null and the console simply offers no download.
   const runArchiveUrl = useCallback(
     (runId: string): string | null =>
       workerClient?.runArchiveUrl?.(runId) ?? null,
     [workerClient],
   );
 
-  // A case variant's **baseline** validation media is case-scoped — a fixed property
-  // of the case version — so, unlike the run-scoped actual media above, it resolves
-  // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
-  // run's subject (slug/version/variant), the same way reference screenshots resolve.
-  // This holds for local and published runs alike; a host with no backend (no
-  // case-scoped source) resolves it to null.
+  // A reference build's **baseline** validation media is case-scoped — a fixed
+  // property of the case version — so, unlike the run-scoped actual media above, it
+  // resolves against the backend's `/test-cases/.../validation-baseline/...` route
+  // keyed by the run's subject (slug/version/engine/variant), the same way reference
+  // screenshots resolve. The ENGINE is part of that key: a variant has one reference
+  // implementation per engine, and a run must be compared against the one it was
+  // built on. This holds for local and published runs alike; a host with no backend
+  // (no case-scoped source) resolves it to null.
   const validationBaselineUrl = useCallback(
     (subject: RunSubject, file: string): string | null => {
       if (!backendUrl) return null;
       const path =
         `/test-cases/${encodeURIComponent(subject.testCaseSlug)}` +
         `/versions/${encodeURIComponent(subject.testCaseVersion)}` +
-        `/validation-baseline/${encodeURIComponent(subject.variant)}` +
+        `/validation-baseline/${encodeURIComponent(subject.engineSlug)}` +
+        `/${encodeURIComponent(subject.variant)}` +
         `/${encodeURIComponent(file)}`;
       return joinPath(backendUrl, path);
     },
@@ -494,16 +648,33 @@ export function useLiveGallery(
     (async () => {
       // Only the small produced (local) worklist is read here; the published set is
       // paged over the wire by each page through `queryRunSummaries`, never drained.
+      //
+      // A read that FAILED resolves null, and is not the same as a worker holding
+      // nothing. This is re-read on every refresh token — every run that finishes,
+      // every cancel, every publish — so one unreachable moment used to empty the
+      // whole worklist, which is what decides (among other things) which runs the
+      // console offers to delete. A failed re-read now leaves what is on screen
+      // alone; the next token re-reads it.
       const produced = workerClient
-        ? await fetchProducedRuns(workerClient).catch(() => emptyProduced())
+        ? await fetchProducedRuns(workerClient).catch(() => null)
         : emptyProduced();
       if (!active) return;
+      if (produced === null) {
+        setRunsLoading(false);
+        return;
+      }
       // The produced (local) cards, which a paged page pins ahead of the queried
       // published window (the backend's numbered listing never returns them — they
       // are unpublished). Only the local runs contribute reviews/writeups here;
       // published runs get their reviews from the lazy `readRun` per-detail fetch.
       setProducedSummaries(produced.summaries);
-      setLocalIds(produced.localIds);
+      // Keep the worklist's identity when a refresh finds the same ids: the
+      // gallery value (and everything memoized on it) is rebuilt whenever this
+      // changes, so a re-read that learned nothing new should not read as a
+      // change.
+      setLocalIds((prev) =>
+        sameIds(prev, produced.localIds) ? prev : produced.localIds,
+      );
       setWriteups(produced.writeups);
       setReviews(produced.reviews);
       setRunsLoading(false);
@@ -513,24 +684,41 @@ export function useLiveGallery(
     };
   }, [workerClient, refreshToken]);
 
+  // Which backend the test-case catalog on screen was read from, exactly as
+  // `modelsBackend` does for the models below: it is what tells a failed FIRST
+  // load (nothing to keep, so the section starts over) apart from a failed
+  // RE-READ of a catalog that is already on screen (keep it — the pages that
+  // hold it must not be blanked by one unreachable moment).
+  const testCasesBackend = useRef<BackendClient | null>(null);
   useEffect(() => {
     // No backend configured is the same broken state as an unreachable one: the
     // catalog can't be resolved, so it reads as an error rather than empty.
     if (!backend) {
+      testCasesBackend.current = null;
       setTestCases([]);
       setTestCasesStatus("error");
       return;
     }
     let active = true;
-    setTestCasesStatus("loading");
+    if (testCasesBackend.current !== backend) setTestCasesStatus("loading");
     fetchTestCases(backend)
       .then((cs) => {
         if (!active) return;
+        testCasesBackend.current = backend;
         setTestCases(cs);
         setTestCasesStatus("ready");
       })
       .catch(() => {
         if (!active) return;
+        // A failed READ is never an empty catalog (see the models effect below
+        // for the same split). A re-read that failed over a catalog already read
+        // from this backend keeps every case on screen and only reports the
+        // failure; a failed first load has nothing to keep.
+        if (testCasesBackend.current === backend) {
+          setTestCasesStatus("error");
+          return;
+        }
+        testCasesBackend.current = null;
         setTestCases([]);
         setTestCasesStatus("error");
       });
@@ -539,26 +727,82 @@ export function useLiveGallery(
     };
   }, [backend]);
 
+  // The test-case groups, fetched once per backend like the catalog above. The
+  // groups only decorate the home page (one leaderboard per group), so — unlike
+  // the catalog with its status — a failed fetch degrades to an empty set and
+  // the section simply does not render.
+  useEffect(() => {
+    setTestCaseGroups([]);
+    if (!backend) return;
+    let active = true;
+    backend
+      .listTestCaseGroups()
+      .then((groups) => {
+        if (active) setTestCaseGroups(groups);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backend]);
+
   // The model catalog, from the backend `GET /models`. Re-fetched when the runs
   // runtime bumps its refresh token, so a model created/edited/deleted in the
   // config UI (which requests a refresh) reappears without a reload.
+  //
+  // Only the FIRST load from a backend reads as `loading`. The token is also
+  // bumped every time a run finishes, and a refresh that flipped an already-
+  // loaded catalog back to `loading` would blank every model page open at the
+  // time (the detail chrome shows its loading state while the catalog loads),
+  // for a re-read that almost always returns the same models. So a refresh
+  // re-fetches in place — the loaded catalog stays on screen until the fresh
+  // one replaces it — and a switched backend, whose catalog is a different one
+  // entirely, starts over from `loading`. `modelsBackend` records which backend
+  // the catalog on screen came from, which is also what tells a failed FIRST
+  // load (nothing to keep) apart from a failed REFRESH (keep what is loaded).
+  const modelsBackend = useRef<BackendClient | null>(null);
   useEffect(() => {
     if (!backend) {
+      // A console with no backend has no catalog to show and no read to wait on.
+      // There is nothing on screen to keep here: a catalog belongs to the backend
+      // it was read from, so this is `error` (the catalog is unavailable), never
+      // `ready` with an empty list (the cabinet curates no models).
+      modelsBackend.current = null;
       setModels([]);
       setModelsStatus("error");
       return;
     }
     let active = true;
-    setModelsStatus("loading");
+    if (modelsBackend.current !== backend) setModelsStatus("loading");
     backend
       .listModels()
       .then((ms) => {
         if (!active) return;
+        modelsBackend.current = backend;
         setModels(ms.map(toModelSummary));
         setModelsStatus("ready");
       })
       .catch(() => {
         if (!active) return;
+        // A failed READ is never an empty catalog. Which of the two this is
+        // depends on whether a catalog from this backend is already on screen:
+        //
+        // - A REFRESH failed. The token is bumped on every finished run, so a
+        //   single network blip used to blank the catalog under an open model
+        //   page — and every "if loading show a spinner, else show unknown"
+        //   branch in the app then reported a model the cabinet holds as one it
+        //   has never heard of. The loaded catalog stays exactly as it is and the
+        //   failure is reported alongside it; `modelsBackend` still names this
+        //   backend, so the next refresh re-reads in place rather than flipping
+        //   the whole section back to a spinner.
+        // - A FIRST load failed. Nothing was ever resolvable from this backend,
+        //   so there is nothing to keep, and the next attempt is a first load
+        //   again.
+        if (modelsBackend.current === backend) {
+          setModelsStatus("error");
+          return;
+        }
+        modelsBackend.current = null;
         setModels([]);
         setModelsStatus("error");
       });
@@ -582,6 +826,25 @@ export function useLiveGallery(
     [backend],
   );
 
+  // Resolve one variant of one EXACT case version, rendered for one engine — the
+  // inputs a run was given. It resolves that version rather than the case's latest
+  // and names the run's engine on both reads, so the prompt and the spec bodies are
+  // the branch of the templates that run's harness received.
+  const readCaseVariant = useCallback(
+    async (ref: CaseVariantRef): Promise<VariantSummary | null> => {
+      if (!backend) return null;
+      const info = await backend.resolveVersion(
+        ref.slug,
+        ref.version,
+        ref.engine,
+      );
+      const variant = info.variants.find((v) => v.slug === ref.variant);
+      if (!variant) return null;
+      return toVariantSummary(backend, info, variant, ref.engine);
+    },
+    [backend],
+  );
+
   // Answer one page of a filtered/sorted/windowed summary query from the backend's
   // numbered-pager endpoint. Forcing an `offset` (defaulting to 0) selects the
   // backend's offset path, so it returns the matching `total` used to size the
@@ -601,6 +864,20 @@ export function useLiveGallery(
     [backend],
   );
 
+  // The cabinet's headline figures, from the backend's `GET /stats/cabinet`
+  // (whose corpus covers every recorded run, published or not). Best-effort by
+  // contract: no backend, or an unreachable one, resolves null and the home
+  // page hides its totals band rather than showing zeros.
+  const getCabinetStats =
+    useCallback(async (): Promise<CabinetStats | null> => {
+      if (!backend) return null;
+      try {
+        return await backend.getCabinetStats();
+      } catch {
+        return null;
+      }
+    }, [backend]);
+
   // Resolve a run's recorded events by origin: a produced (local) run's streams
   // come from the worker (events + raw, off its output directory); any other run
   // is a published one read from the backend (TTC events only). A transport that
@@ -609,7 +886,7 @@ export function useLiveGallery(
   const fetchRunEvents = useCallback(
     async (runId: string, onProgress?: ProgressCallback) => {
       try {
-        if (localIds.has(runId) && workerClient) {
+        if (localIdsRef.current.has(runId) && workerClient) {
           return await workerClient.readRunEvents(runId, onProgress);
         }
         if (backend) return await backend.readRunEvents(runId, onProgress);
@@ -622,7 +899,27 @@ export function useLiveGallery(
         throw e;
       }
     },
-    [backend, workerClient, localIds],
+    [backend, workerClient],
+  );
+
+  // Resolve a run's unbounded code-analysis document from the backend's store-backed
+  // route. Console-only in practice: the worker holds a run's tree, not the mirrored
+  // document, so a produced run's explorer waits on the run reaching the backend. A
+  // transport that cannot reach it (`NotSupportedError`, or no backend at all) resolves
+  // to null, which the tab reports as "not available here" rather than as an error; a
+  // run that was simply never analysed resolves to null the same way through the
+  // client's 404 handling.
+  const readCodeAnalysis = useCallback(
+    async (runId: string) => {
+      if (!backend?.readCodeAnalysis) return null;
+      try {
+        return await backend.readCodeAnalysis(runId);
+      } catch (e) {
+        if (e instanceof NotSupportedError) return null;
+        throw e;
+      }
+    },
+    [backend],
   );
 
   // Resolve a single run's detail by id for a run the loaded list doesn't carry
@@ -639,11 +936,19 @@ export function useLiveGallery(
       const toDetail = (stored: StoredRun): RunDetail => ({
         record: stored.record,
         reviews: stored.reviews ?? [],
+        // The store's word on the two rating channels and which way the
+        // functional one was decided (see `StoredRun`).
+        validatorRated: stored.validatorRated,
+        rating: stored.rating,
+        aesthetic: stored.aesthetic,
         // The store's own publish flag, not the produced worklist: a run this
         // console did not produce (or one produced before the worklist loaded)
         // must still read as published so the review surfaces don't offer to
         // publish it a second time.
         published: stored.published ?? false,
+        // The run's showcase, lifted off the record the same way the rating
+        // channels are so a page reads `run.showcase` directly.
+        showcase: stored.record.showcase ?? null,
       });
       try {
         // Prefer the worker (execution) client whenever one is connected. In the
@@ -665,38 +970,106 @@ export function useLiveGallery(
         if (backend) return toDetail(await backend.readRun(runId));
         return null;
       } catch (e) {
+        // A host whose transport cannot resolve a run by id has none to resolve,
+        // which is an absence and resolves to null.
         if (e instanceof NotSupportedError) return null;
-        return null;
+        // Everything else is a read that FAILED, and only the store's own 404 is
+        // the store saying it holds no such run. Collapsing the two here is what
+        // made an unreachable backend render as "No run found for <id>" — the
+        // page claiming a run does not exist on the strength of a request that
+        // never got an answer.
+        //
+        // The status is read off the error's own `status` field (`isAbsence`,
+        // the shared seam in `client/absence`), never out of its message. This
+        // line used to match `/\bHTTP 404\b/` against `String(e)`, and the
+        // transports' message is `<path>: HTTP <status>: <detail>` where `detail`
+        // is the backend's own envelope sentence — free to quote a URL or an
+        // upstream's reply. A 500 whose message mentioned "HTTP 404" was
+        // therefore reported as an absence: the same defect, back through the
+        // string channel. An error carrying no status at all — a network failure,
+        // an abort, a transport that never reached a store — is a FAILURE and
+        // rethrows.
+        if (isAbsence(e)) return null;
+        throw e;
       }
     },
     [backend, workerClient],
   );
 
-  return {
-    producedSummaries,
-    localIds,
-    writeups,
-    reviews,
-    runsLoading,
-    testCases,
-    testCasesStatus,
-    readTestCase,
-    models,
-    modelsStatus,
-    canExecute: true,
-    grafanaUrl,
-    queryRunSummaries,
-    fetchRunEvents,
-    readRun,
-    proofMediaUrl,
-    assetMediaUrl,
-    validationMediaUrl,
-    validationBaselineUrl,
-    referenceMediaUrl,
-    runArchiveUrl,
-    arena,
-    harnessAuth,
-  };
+  // Memoized so the gallery value the app hands its provider keeps its identity
+  // across renders that changed none of it. The app shell re-renders on every
+  // runs-runtime change (each in-flight run's state transition among them), and
+  // `GalleryDataProvider` rebuilds its derived value from this object — a fresh
+  // literal per render would make every one of those renders read as a change
+  // to every consumer of the gallery.
+  return useMemo<GalleryDataInput>(
+    () => ({
+      producedSummaries,
+      localIds,
+      writeups,
+      reviews,
+      runsLoading,
+      testCases,
+      testCasesStatus,
+      testCaseGroups,
+      readTestCase,
+      readCaseVariant,
+      models,
+      modelsStatus,
+      canExecute: true,
+      grafanaUrl,
+      queryRunSummaries,
+      getCabinetStats,
+      fetchRunEvents,
+      readCodeAnalysis,
+      readRun,
+      proofMediaUrl,
+      assetMediaUrl,
+      validationMediaUrl,
+      showcaseMediaUrl,
+      caseShowcaseMediaUrl,
+      validationBaselineUrl,
+      referenceMediaUrl,
+      runArchiveUrl,
+      arena,
+    }),
+    [
+      producedSummaries,
+      localIds,
+      writeups,
+      reviews,
+      runsLoading,
+      testCases,
+      testCasesStatus,
+      testCaseGroups,
+      readTestCase,
+      readCaseVariant,
+      models,
+      modelsStatus,
+      grafanaUrl,
+      queryRunSummaries,
+      getCabinetStats,
+      fetchRunEvents,
+      readCodeAnalysis,
+      readRun,
+      proofMediaUrl,
+      assetMediaUrl,
+      validationMediaUrl,
+      showcaseMediaUrl,
+      caseShowcaseMediaUrl,
+      validationBaselineUrl,
+      referenceMediaUrl,
+      runArchiveUrl,
+      arena,
+    ],
+  );
+}
+
+/** Whether two id sets hold exactly the same ids. */
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
 }
 
 /** Join a base URL and an absolute path, collapsing the boundary slash. */

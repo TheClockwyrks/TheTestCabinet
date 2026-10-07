@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { useGalleryData } from "./galleryContext";
 import type { RunQuery, RunQueryResult } from "./runQuery";
 
 // A model's runs are drained a bounded window at a time, model-scoped, the same
 // way the case tabs drain their case (see `useCaseRunSummaries`). One model rarely
 // has enough runs to need more than a page.
-// Matches the backend's own per-request ceiling (`MAX_LIMIT` in api/runs.rs), which
-// it clamps to silently — see the note in `useRuns`.
-const MODEL_PAGE_LIMIT = 200;
+const MODEL_PAGE_LIMIT = 1000;
 
 export interface ModelRunSummariesState {
   /** Every published run summary across the model's ids, deduped by run id. */
@@ -26,8 +24,7 @@ async function drainModelSummaries(
   modelId: string,
 ): Promise<RunSummary[]> {
   const acc: RunSummary[] = [];
-  let offset = 0;
-  for (;;) {
+  for (let offset = 0; ; offset += MODEL_PAGE_LIMIT) {
     const { summaries, total } = await query({
       state: "published",
       model: modelId,
@@ -35,8 +32,6 @@ async function drainModelSummaries(
       limit: MODEL_PAGE_LIMIT,
     });
     acc.push(...summaries);
-    // Advance by what ARRIVED, never by the requested stride — see `useRuns`.
-    offset += summaries.length;
     if (summaries.length === 0 || acc.length >= total) break;
   }
   return acc;
@@ -58,6 +53,8 @@ export function useModelRunSummaries(
 
   // Stabilize the id list so the effect only re-runs when the actual ids change,
   // not on every render's fresh array identity.
+  // Joined on NUL — the one character a model id cannot contain, so the key round-trips
+  // back into exactly the ids that went in.
   const idsKey = useMemo(() => modelIds.join("\u0000"), [modelIds]);
 
   useEffect(() => {

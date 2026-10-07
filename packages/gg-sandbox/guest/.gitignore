@@ -1,0 +1,8 @@
+# Cargo's target directory for this guest. THIS PACKAGE COMMITS NOTHING it builds: `guest.sh` writes
+# the core module, the adapter and the manifest into $GG_ARTIFACTS_OUT_DIR, which is the `OUT_DIR` of
+# crates/gg-sandbox-artifacts/typescript.
+#
+# It is named `.build/target` rather than `target/` deliberately: `crates/gg-sandbox-artifacts/
+# build-support` names this crate's sources a file at a time so that cargo does not walk a directory
+# the build writes into, and keeping the writes under one directory is what makes that list short.
+.build/

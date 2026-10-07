@@ -262,11 +262,13 @@ pub enum RunError {
     /// this build of wasmtime).
     #[error("failed to build the wasm engine: {0}")]
     Engine(String),
-    /// Red's controller module failed to load.
-    #[error("red controller failed to load: {0}")]
+    /// Red's controller module failed to load. [`LoadError`] names the controller
+    /// and the verb, so this layer contributes only the side.
+    #[error("red's {0}")]
     LoadRed(#[source] LoadError),
-    /// Blue's controller module failed to load.
-    #[error("blue controller failed to load: {0}")]
+    /// Blue's controller module failed to load. [`LoadError`] names the controller
+    /// and the verb, so this layer contributes only the side.
+    #[error("blue's {0}")]
     LoadBlue(#[source] LoadError),
 }
 

@@ -11,7 +11,7 @@
     "noEmit": false,
     "allowImportingTsExtensions": false
   },
-  "references": [{ "path": "../run-record" }],
+  "references": [{ "path": "../asset-contract" }],
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]
 }

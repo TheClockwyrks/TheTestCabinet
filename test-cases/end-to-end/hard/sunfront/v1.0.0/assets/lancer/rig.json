@@ -2,110 +2,62 @@
   "parts": [
     {
       "name": "pelvis",
-      "pivot": [
-        16,
-        32,
-        26
-      ]
+      "pivot": [16, 32, 26]
     },
     {
       "name": "torso",
       "parent": "pelvis",
-      "pivot": [
-        16,
-        36,
-        26
-      ]
+      "pivot": [16, 36, 26]
     },
     {
       "name": "head",
       "parent": "torso",
-      "pivot": [
-        15,
-        45,
-        26
-      ]
+      "pivot": [15, 45, 26]
     },
     {
       "name": "shoulder_mount",
       "parent": "torso",
-      "pivot": [
-        26,
-        40,
-        28
-      ]
+      "pivot": [26, 40, 28]
     },
     {
       "name": "cradle",
       "parent": "shoulder_mount",
-      "pivot": [
-        26,
-        42,
-        28
-      ]
+      "pivot": [26, 42, 28]
     },
     {
       "name": "lance",
       "parent": "cradle",
-      "pivot": [
-        26,
-        42,
-        28
-      ]
+      "pivot": [26, 42, 28]
     },
     {
       "name": "thigh_l",
       "parent": "pelvis",
-      "pivot": [
-        11,
-        32,
-        26
-      ]
+      "pivot": [11, 32, 26]
     },
     {
       "name": "shin_l",
       "parent": "thigh_l",
-      "pivot": [
-        11,
-        21,
-        26
-      ]
+      "pivot": [11, 21, 26]
     },
     {
       "name": "foot_l",
       "parent": "shin_l",
-      "pivot": [
-        11,
-        6,
-        26
-      ]
+      "pivot": [11, 6, 26]
     },
     {
       "name": "thigh_r",
       "parent": "pelvis",
-      "pivot": [
-        20,
-        32,
-        26
-      ]
+      "pivot": [20, 32, 26]
     },
     {
       "name": "shin_r",
       "parent": "thigh_r",
-      "pivot": [
-        20,
-        21,
-        26
-      ]
+      "pivot": [20, 21, 26]
     },
     {
       "name": "foot_r",
       "parent": "shin_r",
-      "pivot": [
-        20,
-        6,
-        26
-      ]
+      "pivot": [20, 6, 26]
     }
   ],
   "joints": [
@@ -114,11 +66,7 @@
       "part": "thigh_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        11,
-        32,
-        26
-      ],
+      "pivot": [11, 32, 26],
       "min": -0.75,
       "max": 0.95,
       "rest": 0.0,
@@ -129,11 +77,7 @@
       "part": "shin_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        11,
-        21,
-        26
-      ],
+      "pivot": [11, 21, 26],
       "min": -1.6,
       "max": 0.08,
       "rest": 0.0,
@@ -144,11 +88,7 @@
       "part": "foot_l",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        11,
-        6,
-        26
-      ],
+      "pivot": [11, 6, 26],
       "min": -0.7,
       "max": 0.75,
       "rest": 0.0,
@@ -159,11 +99,7 @@
       "part": "thigh_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        20,
-        32,
-        26
-      ],
+      "pivot": [20, 32, 26],
       "min": -0.75,
       "max": 0.95,
       "rest": 0.0,
@@ -174,11 +110,7 @@
       "part": "shin_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        20,
-        21,
-        26
-      ],
+      "pivot": [20, 21, 26],
       "min": -1.6,
       "max": 0.08,
       "rest": 0.0,
@@ -189,11 +121,7 @@
       "part": "foot_r",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        20,
-        6,
-        26
-      ],
+      "pivot": [20, 6, 26],
       "min": -0.7,
       "max": 0.75,
       "rest": 0.0,
@@ -204,11 +132,7 @@
       "part": "pelvis",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        16,
-        32,
-        26
-      ],
+      "pivot": [16, 32, 26],
       "min": -3.0,
       "max": 2.0,
       "rest": 0.0,
@@ -219,11 +143,7 @@
       "part": "pelvis",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        16,
-        32,
-        26
-      ],
+      "pivot": [16, 32, 26],
       "min": -0.12,
       "max": 0.12,
       "rest": 0.0,
@@ -234,11 +154,7 @@
       "part": "shoulder_mount",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        26,
-        40,
-        28
-      ],
+      "pivot": [26, 40, 28],
       "min": -0.3,
       "max": 0.3,
       "rest": 0.0,
@@ -249,11 +165,7 @@
       "part": "cradle",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        26,
-        42,
-        28
-      ],
+      "pivot": [26, 42, 28],
       "min": -0.28,
       "max": 0.5,
       "rest": 0.0,
@@ -264,11 +176,7 @@
       "part": "lance",
       "kind": "translation",
       "axis": "z",
-      "pivot": [
-        26,
-        42,
-        28
-      ],
+      "pivot": [26, 42, 28],
       "min": -6.5,
       "max": 1.0,
       "rest": 0.0,
@@ -279,11 +187,7 @@
       "part": "head",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        15,
-        45,
-        26
-      ],
+      "pivot": [15, 45, 26],
       "min": -0.45,
       "max": 0.45,
       "rest": 0.0,

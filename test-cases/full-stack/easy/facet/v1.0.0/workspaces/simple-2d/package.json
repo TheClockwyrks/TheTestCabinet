@@ -1,0 +1,34 @@
+{
+  "name": "facet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Facet — a puzzle game of matching cut gems on a board that strains and flaws under pressure, built on the Simple 2D engine, that runs entirely in the browser, whose art, effects, and audio the build produces itself.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d",
+    "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime",
+    "ts-essentials": "^10.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10",
+    "@napi-rs/canvas": "^1",
+    "@types/node": "^26",
+    "@vitest/coverage-istanbul": "^5",
+    "eslint": "^10",
+    "playwright": "^1.63.0",
+    "prettier": "^3",
+    "typescript": "^6",
+    "typescript-eslint": "^8",
+    "vite": "^8",
+    "vitest": "^5"
+  }
+}

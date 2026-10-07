@@ -28,7 +28,11 @@ export interface Stocks {
   food: number;
 }
 
-export function makeStocks(ore: number, material: number, food: number): Stocks {
+export function makeStocks(
+  ore: number,
+  material: number,
+  food: number,
+): Stocks {
   return { ore, material, food };
 }
 
@@ -36,7 +40,12 @@ export function makeStocks(ore: number, material: number, food: number): Stocks 
 // no pending ghost; a farm additionally needs solid ground beneath it to root in. Walls
 // against rock, floors across open space, ladders/wires/machines on open space all satisfy
 // this (specs/economy.md).
-export function canPlace(world: World, tx: number, ty: number, kind: BuildKind): boolean {
+export function canPlace(
+  world: World,
+  tx: number,
+  ty: number,
+  kind: BuildKind,
+): boolean {
   const t = tileAt(world, tx, ty);
   if (!t) return false;
   if (t.kind !== "open") return false;
@@ -45,7 +54,13 @@ export function canPlace(world: World, tx: number, ty: number, kind: BuildKind):
     const below = tileAt(world, tx, ty + 1);
     if (!below) return false;
     const b = below.kind;
-    const supported = b === "dirt" || b === "ore" || b === "rock" || b === "bedrock" || b === "floor" || b === "wall";
+    const supported =
+      b === "dirt" ||
+      b === "ore" ||
+      b === "rock" ||
+      b === "bedrock" ||
+      b === "floor" ||
+      b === "wall";
     if (!supported) return false;
   }
   return true;
@@ -54,7 +69,12 @@ export function canPlace(world: World, tx: number, ty: number, kind: BuildKind):
 // Mark a build ghost on a tile (the material is paid at completion, not here — the ghost
 // waits in the queue until the colony can afford it; no partial refund, see the README).
 // Returns false if the placement is illegal.
-export function placeGhost(world: World, tx: number, ty: number, kind: BuildKind): boolean {
+export function placeGhost(
+  world: World,
+  tx: number,
+  ty: number,
+  kind: BuildKind,
+): boolean {
   if (!canPlace(world, tx, ty, kind)) return false;
   const t = tileAt(world, tx, ty)!;
   t.ghost = kind;
@@ -70,7 +90,12 @@ export function canAfford(stocks: Stocks, kind: BuildKind): boolean {
 // Complete a build: pay its material, turn the ghost into the finished tile, and register
 // any machine/farm/refinery so power, gas, and the walk graph pick it up. Assumes the build
 // was affordable (the caller gates the job on canAfford). Returns the finished kind.
-export function completeBuild(world: World, stocks: Stocks, tx: number, ty: number): BuildKind | null {
+export function completeBuild(
+  world: World,
+  stocks: Stocks,
+  tx: number,
+  ty: number,
+): BuildKind | null {
   const t = tileAt(world, tx, ty);
   if (!t || t.ghost === null) return null;
   const kind = t.ghost;
@@ -166,7 +191,11 @@ export function farmAt(world: World, tx: number, ty: number): Farm | null {
 }
 
 // The machine record backing a machine tile (via its machineId).
-export function machineAt(world: World, tx: number, ty: number): Machine | null {
+export function machineAt(
+  world: World,
+  tx: number,
+  ty: number,
+): Machine | null {
   const t = tileAt(world, tx, ty);
   if (!t || !isMachine(t.kind) || t.kind === "farm") return null;
   return world.machines[t.machineId] ?? null;

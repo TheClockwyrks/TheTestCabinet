@@ -37,7 +37,12 @@ pub fn auth_url() -> String {
 /// The directory the CLI stores its credentials under: `$TCAB_CONFIG_DIR` when
 /// set, otherwise `~/.config/tcab` (or `./.tcab` as a last resort when no home
 /// directory is known).
-fn config_dir() -> PathBuf {
+///
+/// Public because it is also where the CLI caches things it downloads — today the older `gg`
+/// binaries the CLI resolves. One directory, honoring one override, is
+/// what keeps a container or a CI job able to relocate *everything* `tcab` writes with a single
+/// environment variable.
+pub fn config_dir() -> PathBuf {
     if let Some(dir) = nonempty_env("TCAB_CONFIG_DIR") {
         return PathBuf::from(dir);
     }

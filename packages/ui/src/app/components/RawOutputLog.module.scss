@@ -1,7 +1,7 @@
 @use "../styles/tokens" as t;
 
 // The raw harness output log: a terminal-style transcript of the recorded
-// stdout/stderr lines. Mirrors the EventFeed container so the two views of the
+// stdout/stderr lines. Mirrors the FeedView container so the two views of the
 // Events tab sit consistently — a fixed- or fill-height box that clips to its
 // radius while react-virtuoso scrolls the rows inside it. The global monospace
 // font (`--ttc-font`) applies.

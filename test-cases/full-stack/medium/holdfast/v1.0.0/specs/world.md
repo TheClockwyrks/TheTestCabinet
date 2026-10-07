@@ -40,7 +40,7 @@ Every tile has a **terrain kind** and may additionally carry a **resource node**
 
 - **Rock / outcrop** — solid stone. **Impassable** and **not minable** as terrain (it
   is scenery and the map border), so it shapes where the colony can expand and where
-  raiders must funnel. (Ore is a *node* on ground, below — not this rock.)
+  raiders must funnel. (Ore is a _node_ on ground, below — not this rock.)
 
 Whether a tile is **walkable** is a property of its terrain plus whatever sits on it:
 plain and fertile ground are walkable; rock is not; a resource node or a wall on a

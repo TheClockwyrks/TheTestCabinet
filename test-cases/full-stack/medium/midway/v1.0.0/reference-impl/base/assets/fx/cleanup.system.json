@@ -11,18 +11,10 @@
     {
       "name": "dust",
       "shape": "disc",
-      "position": [
-        64.0,
-        56.0,
-        0.0
-      ],
+      "position": [64.0, 56.0, 0.0],
       "extent": {
         "radius": 4.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 110.0,
       "speed": 54.0,
       "speedSpread": 20.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 3,
       "forces": {
@@ -73,18 +61,10 @@
     {
       "name": "flecks",
       "shape": "disc",
-      "position": [
-        64.0,
-        56.0,
-        0.0
-      ],
+      "position": [64.0, 56.0, 0.0],
       "extent": {
         "radius": 3.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -95,11 +75,7 @@
       "lifetimeSpread": 120.0,
       "speed": 66.0,
       "speedSpread": 24.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 7,
       "forces": {

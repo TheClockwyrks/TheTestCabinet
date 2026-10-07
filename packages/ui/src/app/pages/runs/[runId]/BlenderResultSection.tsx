@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { AnimationSpec, JointSpec } from "@test-cabinet/run-record";
+import type { AnimationSpec, JointSpec } from "@clockwyrks/run-record";
 import { type VoxelResultView } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import { FullscreenViewport } from "./FullscreenViewport";
@@ -155,7 +155,7 @@ export function BlenderResultSection({ view }: { view: VoxelResultView }) {
           <div className={styles.voxelModeList}>
             {isStatic ? (
               <p className={styles.secondary}>
-                A static model — no animations to play.
+                A static model, with no animations to play.
               </p>
             ) : (
               animations.map((animation) => (
@@ -184,8 +184,8 @@ export function BlenderResultSection({ view }: { view: VoxelResultView }) {
             <div className={styles.blenderDofControls}>
               <p className={styles.voxelPickerName}>Game controls</p>
               <p className={styles.secondary}>
-                Drivable at runtime — a game sets these from its own state (aim
-                a turret, pitch a soldier). Baked into the glTF as node{" "}
+                Drivable at runtime: a game sets these from its own state (aim a
+                turret, pitch a soldier). Baked into the glTF as node{" "}
                 <code>extras</code>.
               </p>
               {callerDofs.map((joint) => {

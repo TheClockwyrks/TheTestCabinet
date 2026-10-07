@@ -123,8 +123,7 @@ seconds, and angles in degrees.
   combat cadence, redoubt damage, and spawns advance in real time (scaled by the
   elapsed time between frames), never per rendered frame, so behavior is the same
   whether a machine draws fast or slow. Use whatever integration approach you like —
-  the requirement is the observable one: the game plays the same at 30 FPS and at
-  120.
+  the requirement is the observable one: the game plays the same at 30 FPS and at 120.
 - The world is **procedurally generated with randomness** each match (the terrain
   and the spawns; see `specs/world.md` and `specs/phases.md`) — two matches should
   not lay out identically.
@@ -138,35 +137,35 @@ factions are told apart by color — the **Wardens** (you and your squad) in
 told apart by an accent that plates over the same silhouette. The canonical
 palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Sky (background) | `#8fb8d6` |
-| Sky haze (horizon) | `#c2d6e4` |
-| Terrain — grass top | `#5a8f3c` |
-| Terrain — grass shadow | `#47702f` |
-| Terrain — dirt / soil | `#6b4e34` |
-| Terrain — rock / stone | `#6d6b66` |
-| Terrain — rock dark | `#4c4a46` |
-| Terrain — sand / path | `#b8a066` |
-| Redoubt structure (concrete) | `#c8ccd2` |
-| Redoubt structure (shadow) | `#9aa0a8` |
-| Warden — Cobalt (you & squad) | `#3d7bd6` |
-| Warden — Cobalt light (accent) | `#7fb0f0` |
-| Medic — Teal (squad medic) | `#2fb59a` |
-| Medic cross / heal accent | `#eafcf6` |
-| Scourge — Ember (Tier I body) | `#b83a3a` |
+| Element                           | Color     |
+| --------------------------------- | --------- |
+| Sky (background)                  | `#8fb8d6` |
+| Sky haze (horizon)                | `#c2d6e4` |
+| Terrain — grass top               | `#5a8f3c` |
+| Terrain — grass shadow            | `#47702f` |
+| Terrain — dirt / soil             | `#6b4e34` |
+| Terrain — rock / stone            | `#6d6b66` |
+| Terrain — rock dark               | `#4c4a46` |
+| Terrain — sand / path             | `#b8a066` |
+| Redoubt structure (concrete)      | `#c8ccd2` |
+| Redoubt structure (shadow)        | `#9aa0a8` |
+| Warden — Cobalt (you & squad)     | `#3d7bd6` |
+| Warden — Cobalt light (accent)    | `#7fb0f0` |
+| Medic — Teal (squad medic)        | `#2fb59a` |
+| Medic cross / heal accent         | `#eafcf6` |
+| Scourge — Ember (Tier I body)     | `#b83a3a` |
 | Scourge — Tier II plating (steel) | `#c9ced6` |
-| Scourge — Tier III trim (elite) | `#ffcf4d` |
-| Scourge — energy / eye | `#ff6a5a` |
-| Health — healthy | `#5ec96b` |
-| Health — critical | `#ff5c5a` |
-| Ammo / accent | `#ffce54` |
-| Artillery telegraph (warning) | `#ff7a3d` |
-| Artillery telegraph (imminent) | `#ff3a2f` |
-| Primary text | `#eef3f7` |
-| Secondary text | `#9fb0c0` |
-| Faint text / hints | `#6f8090` |
-| Selection / valid | `#7fb0f0` |
+| Scourge — Tier III trim (elite)   | `#ffcf4d` |
+| Scourge — energy / eye            | `#ff6a5a` |
+| Health — healthy                  | `#5ec96b` |
+| Health — critical                 | `#ff5c5a` |
+| Ammo / accent                     | `#ffce54` |
+| Artillery telegraph (warning)     | `#ff7a3d` |
+| Artillery telegraph (imminent)    | `#ff3a2f` |
+| Primary text                      | `#eef3f7` |
+| Secondary text                    | `#9fb0c0` |
+| Faint text / hints                | `#6f8090` |
+| Selection / valid                 | `#7fb0f0` |
 
 - Use a **monospace** type family for all HUD text (health, ammo, timers, labels).
   Do not depend on a downloaded web font; a system monospace stack is required so
@@ -205,25 +204,3 @@ which you pick your **class** on the spawn UI each time you deploy or respawn �
 **paused** overlay, and a **defeat** screen. Every state must be reachable and
 behave as `specs/flow.md` describes. The title screen is what the game shows on
 load.
-
-## Reference images
-
-The `reference/` folder holds screenshots showing how key screens should look.
-The gameplay reference is **HUD-only** — the mockups cannot fake the 3D world
-convincingly, so the in-siege reference shows only the HUD overlay (its layout,
-palette, and type) over a neutral viewport; you render the 3D world itself from
-this specification.
-
-- `reference/title.png` — the **title** screen shown on load: the `SIEGE` title
-  and the **PLAY** and **HOW TO PLAY** options.
-- `reference/gameplay.png` — the in-siege **HUD** over a neutral viewport: the
-  crosshair and the full HUD (health, ammo, survival clock, kills, the active
-  redoubt label and health bar, and the squad panel).
-- `reference/game-over.png` — the defeat screen with the run's survival time and
-  kill count.
-
-Treat them as **illustrative examples, not targets to reproduce**: they show
-one way the screens can look, but design your own menus and layout rather than
-copy them. The only firm requirement is that every menu and navigation path
-this specification mandates is present, rendered in the palette and type the
-spec defines. They are images only — build the screens from this specification.

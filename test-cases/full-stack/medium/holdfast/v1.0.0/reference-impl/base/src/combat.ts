@@ -98,7 +98,8 @@ export class Threat {
 
   update(game: Game, dt: number): void {
     const now = game.nowDays;
-    if (this.state === "idle" && now >= this.nextRaidAt - this.leadDays) this.announce(game);
+    if (this.state === "idle" && now >= this.nextRaidAt - this.leadDays)
+      this.announce(game);
     if (this.state === "announced") {
       this.countdown = Math.max(0, (this.nextRaidAt - now) * DAY_SECONDS);
       game.raidCountdown = this.countdown;
@@ -107,7 +108,8 @@ export class Threat {
     if (this.state === "active") {
       this.elapsed += dt;
       this.stepRaiders(game, dt);
-      const enoughDead = this.spawnCount > 0 && this.killed / this.spawnCount >= RAID_BREAK_FRAC;
+      const enoughDead =
+        this.spawnCount > 0 && this.killed / this.spawnCount >= RAID_BREAK_FRAC;
       if (!this.broke && (enoughDead || this.elapsed >= RAID_TIMEOUT)) {
         for (const r of game.raiders) if (!r.dead) r.fleeing = true; // survivors break and run
         this.broke = true;
@@ -125,7 +127,8 @@ export class Threat {
 
   // Spawn the wave at 1–2 edge gaps, sized by day + wealth (specs/combat.md escalation).
   spawnRaid(game: Game, forced?: number): void {
-    const count = forced ?? raiderCount(threatPoints(game.day, computeWealth(game)));
+    const count =
+      forced ?? raiderCount(threatPoints(game.day, computeWealth(game)));
     const points = this.chooseSpawns(game);
     const hp = raiderHp(game.day);
     for (let i = 0; i < count; i++) {
@@ -184,7 +187,10 @@ export class Threat {
     this.raidsSoFar += 1;
     game.score.raidsRepelled += 1;
     game.onRaidRepelled();
-    this.nextRaidAt = this.applyNightBias(game, game.nowDays + raidInterval(this.raidsSoFar));
+    this.nextRaidAt = this.applyNightBias(
+      game,
+      game.nowDays + raidInterval(this.raidsSoFar),
+    );
   }
 
   // ---- Raider movement AI --------------------------------------------------------
@@ -194,7 +200,8 @@ export class Threat {
       r.animT += dt;
 
       if (r.fleeing) {
-        if (r.path.length === 0 || r.pathIdx >= r.path.length) this.pathToEdge(game, r);
+        if (r.path.length === 0 || r.pathIdx >= r.path.length)
+          this.pathToEdge(game, r);
         const arrived = moveAlong(r, RAIDER_SPEED, dt);
         if (arrived) {
           r.dead = true; // ran off the map — despawns without a kill for the colony
@@ -212,17 +219,29 @@ export class Threat {
       let holding = false;
       if (target) {
         const dist = Math.hypot(target.x - r.x, target.y - r.y);
-        const los = game.world.lineOfSight(rtx, rty, tileOfPixelX(target.x), tileOfPixelY(target.y));
+        const los = game.world.lineOfSight(
+          rtx,
+          rty,
+          tileOfPixelX(target.x),
+          tileOfPixelY(target.y),
+        );
         if (dist <= RAIDER_RANGE * 0.92 && los) holding = true;
       }
       if (holding) {
         r.path = [];
         r.pathIdx = 0;
-        r.facing = target ? Math.atan2(target.y - r.y, target.x - r.x) : r.facing;
+        r.facing = target
+          ? Math.atan2(target.y - r.y, target.x - r.x)
+          : r.facing;
         continue;
       }
       if (goal && (r.path.length === 0 || r.pathIdx >= r.path.length)) {
-        const path = reachableAdjacent(game.world, { tx: rtx, ty: rty }, goal, true);
+        const path = reachableAdjacent(
+          game.world,
+          { tx: rtx, ty: rty },
+          goal,
+          true,
+        );
         r.path = path ?? [];
         r.pathIdx = 0;
       }
@@ -230,7 +249,10 @@ export class Threat {
     }
   }
 
-  private acquireTarget(game: Game, r: Raider): { id: number; x: number; y: number } | null {
+  private acquireTarget(
+    game: Game,
+    r: Raider,
+  ): { id: number; x: number; y: number } | null {
     let best: { id: number; x: number; y: number } | null = null;
     let bestD = Infinity;
     for (const s of game.settlers) {
@@ -254,8 +276,12 @@ export class Threat {
     return best;
   }
 
-  private goalTile(game: Game, target: { x: number; y: number } | null): { tx: number; ty: number } | null {
-    if (target) return { tx: tileOfPixelX(target.x), ty: tileOfPixelY(target.y) };
+  private goalTile(
+    game: Game,
+    target: { x: number; y: number } | null,
+  ): { tx: number; ty: number } | null {
+    if (target)
+      return { tx: tileOfPixelX(target.x), ty: tileOfPixelY(target.y) };
     return game.world.landing;
   }
 
@@ -289,7 +315,18 @@ export function resolveShooting(game: Game, dt: number): void {
     s.facing = Math.atan2(target.y - s.y, target.x - s.x);
     if (s.fireCooldown > 0) continue;
     s.fireCooldown = 1 / SETTLER_FIRE_RATE;
-    fire(game, s.x, s.y, target.x, target.y, SETTLER_RANGE, SETTLER_BASE_HIT, s.skills.shoot, false, () => hitRaider(game, target, SETTLER_DMG));
+    fire(
+      game,
+      s.x,
+      s.y,
+      target.x,
+      target.y,
+      SETTLER_RANGE,
+      SETTLER_BASE_HIT,
+      s.skills.shoot,
+      false,
+      () => hitRaider(game, target, SETTLER_DMG),
+    );
   }
 
   // Turrets fire autonomously.
@@ -304,7 +341,18 @@ export function resolveShooting(game: Game, dt: number): void {
     t.aim = Math.atan2(target.y - cy, target.x - cx);
     if (t.cooldown > 0) continue;
     t.cooldown = 1 / TURRET_FIRE_RATE;
-    fire(game, cx, cy, target.x, target.y, TURRET_RANGE, TURRET_HIT, 0, false, () => hitRaider(game, target, TURRET_DMG));
+    fire(
+      game,
+      cx,
+      cy,
+      target.x,
+      target.y,
+      TURRET_RANGE,
+      TURRET_HIT,
+      0,
+      false,
+      () => hitRaider(game, target, TURRET_DMG),
+    );
   }
 
   // Raiders fire on the nearest settler or turret in range and line of sight.
@@ -316,7 +364,18 @@ export function resolveShooting(game: Game, dt: number): void {
     r.facing = Math.atan2(target.y - r.y, target.x - r.x);
     if (r.fireCooldown > 0) continue;
     r.fireCooldown = 1 / RAIDER_FIRE_RATE;
-    fire(game, r.x, r.y, target.x, target.y, RAIDER_RANGE, RAIDER_HIT, 0, true, () => target.apply(RAIDER_DMG));
+    fire(
+      game,
+      r.x,
+      r.y,
+      target.x,
+      target.y,
+      RAIDER_RANGE,
+      RAIDER_HIT,
+      0,
+      true,
+      () => target.apply(RAIDER_DMG),
+    );
   }
 }
 
@@ -325,7 +384,12 @@ interface RaiderTarget {
   x: number;
   y: number;
 }
-function nearestRaider(game: Game, x: number, y: number, range: number): (Raider & RaiderTarget) | null {
+function nearestRaider(
+  game: Game,
+  x: number,
+  y: number,
+  range: number,
+): (Raider & RaiderTarget) | null {
   let best: Raider | null = null;
   let bestD = range;
   const stx = tileOfPixelX(x);
@@ -334,7 +398,8 @@ function nearestRaider(game: Game, x: number, y: number, range: number): (Raider
     if (r.dead) continue;
     const d = Math.hypot(r.x - x, r.y - y);
     if (d > bestD) continue;
-    if (!game.world.lineOfSight(stx, sty, tileOfPixelX(r.x), tileOfPixelY(r.y))) continue;
+    if (!game.world.lineOfSight(stx, sty, tileOfPixelX(r.x), tileOfPixelY(r.y)))
+      continue;
     bestD = d;
     best = r;
   }
@@ -348,7 +413,12 @@ interface ColonyTarget {
   y: number;
   apply(dmg: number): void;
 }
-function nearestColonyTarget(game: Game, x: number, y: number, range: number): ColonyTarget | null {
+function nearestColonyTarget(
+  game: Game,
+  x: number,
+  y: number,
+  range: number,
+): ColonyTarget | null {
   let best: ColonyTarget | null = null;
   let bestD = range;
   const stx = tileOfPixelX(x);
@@ -362,13 +432,21 @@ function nearestColonyTarget(game: Game, x: number, y: number, range: number): C
   };
   for (const s of game.settlers) {
     if (s.dead || s.downed) continue;
-    consider(tileOfPixelX(s.x), tileOfPixelY(s.y), { x: s.x, y: s.y, apply: (dmg) => hitSettler(game, s, dmg) });
+    consider(tileOfPixelX(s.x), tileOfPixelY(s.y), {
+      x: s.x,
+      y: s.y,
+      apply: (dmg) => hitSettler(game, s, dmg),
+    });
   }
   for (const t of game.structures) {
     if (!t.built || t.kind !== "turret" || t.hp <= 0) continue;
     const cx = tileCenterX(t.tx);
     const cy = tileCenterY(t.ty);
-    consider(t.tx, t.ty, { x: cx, y: cy, apply: (dmg) => hitTurret(game, t, dmg) });
+    consider(t.tx, t.ty, {
+      x: cx,
+      y: cy,
+      apply: (dmg) => hitTurret(game, t, dmg),
+    });
   }
   return best;
 }
@@ -388,9 +466,21 @@ function fire(
   onHit: () => void,
 ): void {
   const dist = Math.hypot(tx - sx, ty - sy);
-  const cover = game.world.inCover(tileOfPixelX(tx), tileOfPixelY(ty), tileOfPixelX(sx), tileOfPixelY(sy));
+  const cover = game.world.inCover(
+    tileOfPixelX(tx),
+    tileOfPixelY(ty),
+    tileOfPixelX(sx),
+    tileOfPixelY(sy),
+  );
   const p = hitChance(baseHit, dist, range, cover, shootLevel);
-  game.tracers.push({ x0: sx, y0: sy, x1: tx, y1: ty, life: TRACER_LIFE, hostile });
+  game.tracers.push({
+    x0: sx,
+    y0: sy,
+    x1: tx,
+    y1: ty,
+    life: TRACER_LIFE,
+    hostile,
+  });
   game.pushFx("muzzle", sx, sy);
   game.pushCue("gunshot");
   if (game.rng.chance(p)) onHit();

@@ -1,0 +1,125 @@
+// levels/levelclear-quit-to-title — QUIT abandons a cleared level and returns to
+// the title.
+//
+// specs/ui.md gives `levelclear` two items and this is the second: "`QUIT` — Sets
+// `screen = title` and `menuIndex = 0`, abandoning the round: the board is put
+// down and nothing of the round is left in play." specs/ui.md's title section
+// says what putting it down is, once, for all three menus that offer `QUIT`:
+// "wherever it is taken from, `QUIT` returns `board` to `{ cols: 0, rows: 0,
+// cells: [] }`, returns `phase` to `idle` with `chainStep`, `swapTimer` and
+// `stepTimer` at `0`, and clears the selection, the offer, the refusal and the
+// armed target", and specs/instrumentation.md fixes the resting values a
+// snapshot reports for those. It is `QUIT` that puts the round down rather than
+// the title screen that forbids a board behind it — `back` off `gameover`
+// reaches the same screen and leaves the finished board standing — so this
+// reads the item.
+//
+// WHY IT IS ITS OWN POINT. It is the same choice `screens/quit-from-paused` and
+// `screens/quit-from-gameover` read from their own menus, offered from a THIRD
+// screen. A build wires
+// a menu screen at a time, so one that answered QUIT on the two menus a player
+// meets more often can still strand a player on a cleared level, and nothing else
+// in this checklist would see it. specs/ui.md also says `back` does nothing on
+// `levelclear`, so the two items are the whole of the way off that screen and
+// this is one of them.
+//
+// NO BOARD IN PLAY IS PART OF THE READING. specs/instrumentation.md's snapshot
+// shape says `board` "is `{ cols: 0, rows: 0, cells: [] }` while no board is in
+// play", so a build that returned to the title with the finished board still
+// standing behind it is caught here rather than at the screen alone.
+//
+// WHERE THE TARGET COMES FROM. Off the round, not out of `LEVEL_TARGET_STEP`:
+// what that figure ought to be is `levels/level-target-derived`'s point, and this
+// one only needs a level that finishes.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLength,
+  assertTrue,
+} from "../assert";
+import { LEVELCLEAR_ITEMS } from "../constants";
+import {
+  hasAnyRun,
+  quietRowsWithEscape,
+  swapIsLegal,
+  type CellRef,
+  type PlacedToken,
+} from "../board";
+import {
+  captureStill,
+  createHarness,
+  loadBoard,
+  resolveChain,
+  swapAndStep,
+  takeMenuItem,
+  type Harness,
+} from "../harness";
+
+/** Three rubies one exchange short of a run in row 4, clear of the filler's corner. */
+const RUN_CELLS: readonly PlacedToken[] = [
+  { col: 2, row: 4, token: "R0" },
+  { col: 4, row: 4, token: "R0" },
+  { col: 3, row: 3, token: "R0" },
+];
+
+/** The exchange that drops the third ruby into row 4 and makes the run. */
+const RUN_SWAP: { a: CellRef; b: CellRef } = {
+  a: { col: 3, row: 3 },
+  b: { col: 3, row: 4 },
+};
+
+/** Where `QUIT` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const LEVELCLEAR_QUIT_INDEX = LEVELCLEAR_ITEMS.indexOf("QUIT");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title with no board in play", async () => {
+  const posed = quietRowsWithEscape(RUN_CELLS);
+  assertEqual(hasAnyRun(posed), false, "a maximal run on the posed board");
+  assertTrue(
+    swapIsLegal(posed, RUN_SWAP.a, RUN_SWAP.b),
+    "the scenario's exchange is legal under R1 and R3",
+  );
+
+  loadBoard(h, posed);
+  h.debug.setLevel(1);
+
+  const opened = h.snapshot();
+  assertGreaterThan(opened.levelTarget, 0, "the target the round reports");
+  h.debug.setLevelScore(opened.levelTarget);
+
+  await swapAndStep(h, RUN_SWAP.a, RUN_SWAP.b);
+  const settled = await resolveChain(h);
+  assertTrue(settled.settled, "the chain returned to idle within the cap");
+  assertEqual(
+    settled.snapshot.screen,
+    "levelclear",
+    "the screen QUIT is offered from",
+  );
+
+  // QUIT is really CHOSEN, which is what the item says: the highlight is
+  // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+  // it, through the key specs/controls.md binds and the build's own input path.
+  await takeMenuItem(h, LEVELCLEAR_QUIT_INDEX);
+
+  // The frame the title is drawn on, and the picture of it.
+  await h.advance(1);
+  captureStill(h, "title");
+
+  const left = h.snapshot();
+  assertEqual(left.screen, "title", "the screen QUIT returns to");
+  assertEqual(left.menuIndex, 0, "the highlighted item on the title menu");
+  assertEqual(left.board.cols, 0, "the columns of the board left in play");
+  assertEqual(left.board.rows, 0, "the rows of the board left in play");
+  assertLength(left.board.cells, 0, "the cells of the board left in play");
+});

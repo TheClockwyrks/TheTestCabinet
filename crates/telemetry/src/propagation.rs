@@ -9,7 +9,7 @@
 //! `default-features = false`.
 //!
 //! All functions route through the process-global text-map propagator. A binary
-//! that called [`crate::init`] (with the `otlp` feature) will have installed the
+//! that called [`crate::init()`] (with the `otlp` feature) will have installed the
 //! W3C TraceContext propagator; if nothing installed one, the global default is
 //! a no-op propagator and these helpers degrade to doing nothing — never an
 //! error and never a panic.

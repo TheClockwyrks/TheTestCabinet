@@ -6,6 +6,10 @@
 //! screenshots that serve as visual targets. The reference *source* mockups are
 //! never seeded.
 
+#[cfg(test)]
+#[path = "execution.test.rs"]
+mod tests;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -16,6 +20,7 @@ use crate::error::Result;
 use crate::preview::LivePreviewEndpoint;
 use crate::reference::RenderedReference;
 use crate::test_case::{SpecFile, TestCaseVersion, Variant, WorkspaceFile};
+use crate::validation::StepResult;
 
 /// The directory the seeded run repository is copied into inside the run
 /// container, and the working directory the harness builds in. Spec `dest` paths
@@ -30,6 +35,19 @@ pub const WORKSPACE_DIR: &str = "/work";
 /// seeder (which writes it) and the prompt (which points the model at it) name it
 /// through this constant so they never drift.
 pub const GAME_JAM_PRIOR_ENTRIES_DIR: &str = "previous-entries";
+
+/// The workspace-relative folder the selected [engine](crate::engine)'s own
+/// documentation is seeded into, copied out of the engine package's declared
+/// `docs` directory.
+///
+/// It sits at the run root rather than under `.vendor/` because it is material the
+/// model is *meant to read*: the engine documents itself from its own package, so
+/// a case's specs never restate it and the rendered prompt points at
+/// `/work/engine` instead. Both the seeder (which writes it) and the prompt (which
+/// points the model at it) name it through this constant so they never drift —
+/// the same reason [`GAME_JAM_PRIOR_ENTRIES_DIR`] exists. Empty of meaning for a
+/// run with no engine, which seeds nothing here.
+pub const ENGINE_DOCS_DIR: &str = "engine";
 
 /// A request to seed a run's repository.
 ///
@@ -68,6 +86,24 @@ pub struct SeedRequest<'a> {
     /// and deliberately git-ignored (they are context, not part of the submission).
     /// Empty for every non-game-jam run and for a jam's first run.
     pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],
+    /// The [engine](crate::engine) this run selected — the runtime the produced
+    /// game is built on — when the caller resolved one.
+    ///
+    /// Seeding is where an engine becomes real: its package (and that package's
+    /// `@clockwyrks` closure) is vendored into
+    /// [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR), its own
+    /// documentation is copied to [`ENGINE_DOCS_DIR`], and the seeded workspace
+    /// `package.json` gains the matching `file:` dependency — the one file the
+    /// harness ever rewrites, because an engine is a run dimension the (frozen)
+    /// case cannot name for itself.
+    ///
+    /// `None` means no engine was selected, which is *exactly* what selecting
+    /// [`NONE_SLUG`](crate::engine::NONE_SLUG) means: nothing is vendored and the
+    /// seeded tree is byte-for-byte what it was before engines existed. Both
+    /// spellings reach the same place, so a caller that never consulted the
+    /// catalogue (a test standing up a repository, an older payload) need not
+    /// invent a selection to say "no runtime".
+    pub engine: Option<&'a crate::engine::ResolvedEngine>,
 }
 
 /// A seeded run repository, ready to be copied into a container.
@@ -78,6 +114,18 @@ pub struct SeededRepo {
     pub path: PathBuf,
     /// The initial commit hash of the seeded repository.
     pub initial_commit: String,
+    /// The version of the [engine](crate::engine) runtime vendored into this
+    /// repository — the `version` declared by the package staged in the host
+    /// package store — or `None` when the run selected an engine with no runtime.
+    ///
+    /// Read at seed time rather than inferred from the engine's slug, because the
+    /// slug is stable while the runtime behind it moves: two runs of the same case
+    /// under `simple-2d` months apart were built on different engines, and this is
+    /// the only thing that says so. It is recorded on the run, which is why the
+    /// seeder refuses to proceed when the staged package declares no real version
+    /// rather than recording a placeholder.
+    #[serde(default)]
+    pub engine_version: Option<String>,
 }
 
 /// Seeds fresh per-run repositories.
@@ -115,13 +163,20 @@ pub struct ContainerSpec {
     /// `secrets` instead.
     pub env: BTreeMap<String, String>,
     /// Files materialized inside the container before the session, at absolute
-    /// paths under the run user's home. This is how subscription-authentication
-    /// credential files are made visible to a harness's CLI, and how a harness
-    /// that configures telemetry from a file rather than the environment (Codex,
-    /// OpenCode) gets that file. Like [`secrets`](Self::secrets), these may carry
-    /// credentials and must never be written into the seeded repository or
-    /// committed.
+    /// paths outside the seeded repository. This is how subscription-authentication
+    /// credential files are made visible to a harness's CLI (under the run user's
+    /// home) and how a harness that configures telemetry from a file rather than the
+    /// environment (Codex, OpenCode) gets that file. Some of these carry credentials,
+    /// so like [`secrets`](Self::secrets) they must never be written into the seeded
+    /// repository or committed.
     pub files: Vec<ContainerFile>,
+    /// Host directories whose contents are materialized inside the container before
+    /// the session, at absolute paths outside the seeded repository. This is how a
+    /// run's declared [audio packs](crate::audio_stage) are staged under `/opt/audio`.
+    /// A tree carried here stays on the host until the container is started, so a
+    /// palette of tens of megabytes never becomes a second copy held in the driver's
+    /// memory for the run's duration.
+    pub dirs: Vec<ContainerDir>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is
     /// expected to be enabled.
@@ -138,8 +193,8 @@ pub struct ContainerSpec {
 /// Subscription authentication needs a harness's credential files present in
 /// the container at the paths its CLI reads (under the run user's `$HOME`).
 /// Carrying the bytes here — rather than a host path — keeps the runtime free of
-/// host-path coupling and lets an in-memory runtime used by tests record exactly
-/// what would be written.
+/// host-path coupling, lets an in-memory runtime used by tests record exactly what
+/// would be written, and keeps a secret off every argument list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerFile {
     /// Absolute destination path inside the container (for example
@@ -150,6 +205,25 @@ pub struct ContainerFile {
     /// The Unix mode the file is given — for example `0o600` so a credential is
     /// never left group- or world-readable.
     pub mode: u32,
+}
+
+/// A host directory whose *contents* are materialized inside a started run
+/// container, at an absolute path outside the seeded repository and owned by the
+/// run user.
+///
+/// The counterpart of [`ContainerFile`] for a tree too large to carry as bytes on
+/// the spec: a run's [staged audio palette](crate::audio_stage) is tens of
+/// megabytes across dozens of files, and holding it inline would keep a second copy
+/// resident in the driver for the whole run and cost a per-file round trip to
+/// materialize. A tree carried here holds nothing sensitive, so it needs no
+/// per-file mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerDir {
+    /// The host directory to copy the contents of.
+    pub host_path: PathBuf,
+    /// Absolute destination directory inside the container (for example
+    /// `/opt/audio`).
+    pub container_path: String,
 }
 
 /// A handle to a running container.
@@ -328,6 +402,43 @@ pub struct ExecOutput {
     pub idle_timed_out: bool,
 }
 
+/// The case's dependency install, already run to its final outcome over a
+/// collected tree.
+///
+/// The [toolchain stage](crate::toolchain_stage) runs the case's `[build]` install
+/// over the collected tree so its commands have their dependencies, and validation
+/// then needs that same tree installed. A lockfile install such as `npm ci` clears
+/// `node_modules` and rebuilds it from the lockfile, so running the command a second
+/// time reproduces the state it already produced. Carrying the recorded install on
+/// the tree's own description is what lets validation skip the repeat and report the
+/// recorded step in its place.
+///
+/// An install that did not succeed is carried too. The [verified
+/// install](crate::install) has already made every attempt it is allowed, so its
+/// failure is final: validation reports that step as its own and never builds the
+/// tree, rather than spending the attempts over again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedInstall {
+    /// The install command that was run, verbatim as the case's `[build]` table
+    /// declares it. Validation compares its own case's install command against this
+    /// before reusing the step, so a tree prepared by one command is never taken as
+    /// preparation for a different one.
+    pub command: String,
+    /// The recorded outcome, reported by validation as its own install step so a
+    /// reader sees the same summary whether or not validation ran the command.
+    pub step: StepResult,
+}
+
+impl PreparedInstall {
+    /// Describe the tree an install left behind, whatever it came to.
+    pub fn recorded(step: &StepResult) -> Self {
+        Self {
+            command: step.command.trim().to_string(),
+            step: step.clone(),
+        }
+    }
+}
+
 /// The collected output of a finished run.
 ///
 /// When a run finishes, the working tree is collected as the run's primary
@@ -338,6 +449,84 @@ pub struct ExecOutput {
 pub struct ArtifactCollection {
     /// Host path to the collected working tree.
     pub repo_path: PathBuf,
+    /// The dependency install a [post-run stage](crate::post_run) already ran over
+    /// this tree, when one did.
+    ///
+    /// Deliberately not serialized. This describes the tree as it stands in **this**
+    /// process, right now, and the only writer is the engine stamping what its own
+    /// stages just did to the tree it is about to validate. A value that could be
+    /// persisted or shipped could outlive the tree it describes, and validation would
+    /// then skip an install for a tree nobody ever installed into. Every collection
+    /// built anywhere else — `tcab validate` against an implementation directory
+    /// among them — starts with nothing prepared and installs for itself.
+    #[serde(skip)]
+    pub prepared_install: Option<PreparedInstall>,
+    /// The [engine](crate::engine) the run that produced this tree selected, when
+    /// the caller resolved one.
+    ///
+    /// A seeded tree is engine-specific: the engine's package is vendored into it,
+    /// its documentation is copied beside the specs, and the build writes its game
+    /// against that runtime's API. The selection is a property of the tree itself,
+    /// so it is carried on the tree's own description rather than passed to every
+    /// [`Validator`](crate::validation::Validator) implementation, only one of which
+    /// has any use for it.
+    ///
+    /// Deliberately not serialized, for the same reason
+    /// [`prepared_install`](Self::prepared_install) is not: it describes the tree as
+    /// it stands in **this** process. The run record carries the run's engine slug
+    /// and version for anything that reads the selection back later.
+    #[serde(skip)]
+    pub engine: Option<crate::engine::ResolvedEngine>,
+}
+
+impl ArtifactCollection {
+    /// A tree at `repo_path` that nothing has prepared.
+    pub fn new(repo_path: impl Into<PathBuf>) -> Self {
+        Self {
+            repo_path: repo_path.into(),
+            prepared_install: None,
+            engine: None,
+        }
+    }
+
+    /// The same tree, now carrying the install that was run over it.
+    #[must_use]
+    pub fn prepared_by(mut self, install: Option<PreparedInstall>) -> Self {
+        self.prepared_install = install;
+        self
+    }
+
+    /// The same tree, now carrying the engine the run that produced it was built on.
+    #[must_use]
+    pub fn built_on(mut self, engine: Option<crate::engine::ResolvedEngine>) -> Self {
+        self.engine = engine;
+        self
+    }
+
+    /// The engine **runtime** this tree was built on, or `None` when the run vendored
+    /// none.
+    ///
+    /// The filter is what makes the answer usable directly: a run that selected
+    /// [`NONE_SLUG`](crate::engine::NONE_SLUG) resolved an engine supplying no
+    /// runtime, and that is indistinguishable here from a tree recording no selection
+    /// at all, because both are validated by driving the build in a browser.
+    pub fn engine_runtime(&self) -> Option<&crate::engine::ResolvedEngine> {
+        self.engine
+            .as_ref()
+            .filter(|engine| engine.provides_runtime())
+    }
+
+    /// The recorded install to reuse for `command`, when this tree has had exactly
+    /// that command run over it.
+    ///
+    /// The comparison is what keeps the signal honest: a tree prepared by one case's
+    /// install command answers only for that command, and any other caller gets
+    /// `None` and installs for itself.
+    pub fn prepared_install_for(&self, command: &str) -> Option<&PreparedInstall> {
+        self.prepared_install
+            .as_ref()
+            .filter(|prepared| prepared.command == command.trim())
+    }
 }
 
 /// Collects artifacts from a finished run's container.
@@ -346,4 +535,34 @@ pub trait ArtifactCollector: Send + Sync {
     /// Collect the run's working tree from the container as the primary
     /// artifact.
     async fn collect(&self, container: &ContainerHandle) -> Result<ArtifactCollection>;
+
+    /// Salvage **one** file out of a container by its absolute in-container path,
+    /// writing it to `dest` on the host. Returns whether the file was recovered.
+    ///
+    /// This exists for the runs that never reach [`collect`](Self::collect) at all.
+    /// A `hung` or `timed_out` run is torn down on the engine's error path, which
+    /// stops the container and returns *before* the tree is collected — so the
+    /// analysis sidecars a run writes as it goes (gg's capture journal first among
+    /// them) are lost for exactly the surprising outcomes they were captured to
+    /// explain. One narrow copy is enough to rescue them: the sidecars are small,
+    /// self-contained, and already complete on disk when the run stops responding.
+    ///
+    /// **Best-effort by contract.** A missing file, a container already gone, or a
+    /// collector that cannot reach into a dying container reports `Ok(false)`, not an
+    /// error: this runs on a path that is *already* failing a run, and a salvage
+    /// attempt must never be what turns a diagnosable timeout into an unexplained
+    /// collection failure. `Err` is reserved for a host-side failure to write `dest`.
+    ///
+    /// The default implementation salvages nothing, which is the honest answer for a
+    /// collector with no per-file channel into the container — every caller must
+    /// already handle "not recovered", since a run may simply not have written the
+    /// file.
+    async fn collect_file(
+        &self,
+        _container: &ContainerHandle,
+        _container_path: &str,
+        _dest: &std::path::Path,
+    ) -> Result<bool> {
+        Ok(false)
+    }
 }

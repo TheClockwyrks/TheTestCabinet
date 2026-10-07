@@ -5,7 +5,7 @@ build grid, the fog of war, and every HUD and menu element, all of which you
 **generate in code** (`specs/overview.md`, `specs/playfield.md`) — every **unit and
 structure** in Sunfront is **provided to you** as a finished **rigid voxel rig**, and
 the **muzzle-flash effects** its firing units play are **provided** too, as particle
-systems (see *Provided muzzle-flash effects* below). This file defines what you are
+systems (see _Provided muzzle-flash effects_ below). This file defines what you are
 given and what you must do with it. The units these models represent are in
 `specs/units.md`; the structures are in `specs/economy.md` and `specs/playfield.md`.
 
@@ -23,7 +23,7 @@ given and what you must do with it. The units these models represent are in
 - **Provided as particle effects** (played, not drawn): the **muzzle-flash effects**
   that firing units play — a small-arms, a heavy-cannon, and a rail-lance flash, one
   shared system each — seeded under `assets/effects/` and played with the provided
-  particle runtime (see *Provided muzzle-flash effects* below).
+  particle runtime (see _Provided muzzle-flash effects_ below).
 
 ## The models, their manifest, and their scale
 
@@ -64,14 +64,14 @@ name up in the rig, rather than hard-coding it.
 
 You do **not** write a glTF loader or an animation mixer, and you do **not** fetch any
 other art: the runtime that decodes and poses these rigs,
-**`@test-cabinet/voxel-runtime`**, is already a dependency of your project (it is in
+**`@clockwyrks/voxel-runtime`**, is already a dependency of your project (it is in
 your `package.json`; run your install as usual and import it by name). It is the same
 library the rigs were authored against. For each entity, at load time:
 
 - **Read `assets/models.json`** to resolve the entity's `rig.json` path, its `clips`
   role→name map, its `dimensions`, and (for firing units) its `muzzle` joint.
 - **Fetch each part's `meshes/*.glb`** (the parts named in the `rig.json`) **and the
-  `rig.json` itself**, page-relative (see *Loading rule* below). Decode each part with
+  `rig.json` itself**, page-relative (see _Loading rule_ below). Decode each part with
   the runtime's `parseGlb` and build its geometry with the `/three` binding's
   `buildPartGeometry`; **reuse one geometry per (entity type, part)** across all
   instances of that type.
@@ -101,7 +101,7 @@ library the rigs were authored against. For each entity, at load time:
   animation — the flash is the only destruction cue.
 - **Play a muzzle flash for each shot.** A unit that fires a weapon plays **one
   instance** of its **provided muzzle-flash effect** at its muzzle **per shot**, in
-  sync with its firing cadence (the *Provided muzzle-flash effects* section below);
+  sync with its firing cadence (the _Provided muzzle-flash effects_ section below);
   melee units (Scarab, Bulwark) and the support Lumen play none.
 - **Orient** each model to its facing on the field: a unit faces along its travel or
   toward its target; the Aegis **rotates its hull** to bring its main-gun target into
@@ -142,9 +142,9 @@ roughly once a second. Do **not** hold a single instance on continuously.
 ### Play them with the provided runtime
 
 You do **not** write a particle simulator, and you do **not** fetch anything: the
-runtime that plays these systems, **`@test-cabinet/particle-runtime`**, is already a
+runtime that plays these systems, **`@clockwyrks/particle-runtime`**, is already a
 dependency of your project (it is in your `package.json`; run your install as usual
-and import it by name, like any other dependency). It is the *same* library the
+and import it by name, like any other dependency). It is the _same_ library the
 effects were authored against, so each flash plays in your game exactly as intended.
 For Sunfront's 3D world use the package's **`/three`** binding — it simulates the
 system and renders its particles as billboards in your `three` scene. The package's

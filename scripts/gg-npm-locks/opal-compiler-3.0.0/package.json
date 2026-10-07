@@ -1,0 +1,7 @@
+{
+  "name": "opal-compiler-3.0.0",
+  "private": true,
+  "dependencies": {
+    "opal-compiler": "3.0.0"
+  }
+}

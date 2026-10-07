@@ -1,9 +1,8 @@
 {
-  "name": "@test-cabinet/docs",
+  "name": "@the-test-cabinet/docs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "MIT",
   "scripts": {
     "dev": "astro dev --host",
     "build": "astro build",
@@ -12,11 +11,11 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.40.0",
-    "astro": "^6.4.7"
+    "@astrojs/starlight": "0.40.0",
+    "astro": "6.4.8"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9",
-    "typescript": "^5.9.3"
+    "@astrojs/check": "0.9.10",
+    "typescript": "5.9.3"
   }
 }

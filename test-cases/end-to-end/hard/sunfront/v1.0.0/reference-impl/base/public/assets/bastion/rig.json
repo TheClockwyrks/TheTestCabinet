@@ -2,38 +2,22 @@
   "parts": [
     {
       "name": "keep",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "crown",
       "parent": "keep",
-      "pivot": [
-        45,
-        72,
-        45
-      ]
+      "pivot": [45, 72, 45]
     },
     {
       "name": "gate",
       "parent": "keep",
-      "pivot": [
-        45,
-        24,
-        84
-      ]
+      "pivot": [45, 24, 84]
     },
     {
       "name": "beacon",
       "parent": "keep",
-      "pivot": [
-        45,
-        107,
-        45
-      ]
+      "pivot": [45, 107, 45]
     }
   ],
   "joints": [
@@ -42,11 +26,7 @@
       "part": "gate",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        45,
-        24,
-        84
-      ],
+      "pivot": [45, 24, 84],
       "min": 0.0,
       "max": 34.0,
       "rest": 0.0,
@@ -57,11 +37,7 @@
       "part": "crown",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        45,
-        72,
-        45
-      ],
+      "pivot": [45, 72, 45],
       "min": -0.2,
       "max": 6.5,
       "rest": 0.0,
@@ -72,11 +48,7 @@
       "part": "beacon",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        45,
-        107,
-        45
-      ],
+      "pivot": [45, 107, 45],
       "min": -0.2,
       "max": 6.5,
       "rest": 0.0,
