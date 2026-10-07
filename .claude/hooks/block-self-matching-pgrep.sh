@@ -75,7 +75,39 @@ VALUE_OPTS = {
 }
 
 LOOP_KEYWORDS = {"while", "until", "for"}
-in_loop = any(t in LOOP_KEYWORDS for t in tokens)
+
+# A token sits at command position when it starts the command or follows a
+# separator or a keyword that introduces a command. shlex keeps `;` and `&`
+# glued to the previous word but splits `&&`, `||` and `|` into their own
+# tokens, so both shapes are checked.
+COMMAND_LEADERS = {"do", "then", "else", "elif", "{", "(", "!", "&&", "||", "|", ";", "&"}
+
+
+def bare(token):
+	"""The token without the shell operator shlex left glued to its end."""
+	return re.sub(r"[;&|)]+$", "", token)
+
+
+def at_command_position(index):
+	if index == 0:
+		return True
+	prev = tokens[index - 1]
+	return prev in COMMAND_LEADERS or bool(re.search(r"[;&|(]$", prev))
+
+
+# loop_depth[i] is how many loops enclose token i. Only a `ps | grep` inside a
+# loop can hang, so the grep is judged by the depth at its own position rather
+# than by whether a loop appears anywhere in the command: an unrelated loop
+# before or after it is not a wait on the grep.
+loop_depth = []
+depth = 0
+for index, token in enumerate(tokens):
+	word = bare(token)
+	if word == "done" and depth > 0:
+		depth -= 1
+	loop_depth.append(depth)
+	if word in LOOP_KEYWORDS and at_command_position(index):
+		depth += 1
 
 
 def pattern_matches_self(pattern):
@@ -129,8 +161,9 @@ for i, token in enumerate(tokens):
 			sys.exit(0)
 
 	# `ps aux | grep foo` self-matches the same way. Only a loop turns that
-	# into a hang rather than one wrong line of output, so only flag loops.
-	if base == "grep" and in_loop and "ps" in tokens:
+	# into a hang rather than one wrong line of output, so only flag a grep
+	# that is itself inside a loop.
+	if base == "grep" and loop_depth[i] > 0 and "ps" in tokens:
 		pattern = scan_procmatcher(i, want_full_flag=False)
 		if pattern and pattern_matches_self(pattern):
 			print("{}\t{}".format("ps-grep", pattern))
