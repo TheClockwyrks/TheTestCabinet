@@ -66,10 +66,11 @@ confidence interval on the median. A run missing a metric is left out of that
 metric's distribution rather than folded in as a zero.
 
 Each arm also reports its counted runs' raw values as `runPoints`, one entry
-per run in sorted-id order carrying the run id and its comparable cost, total
-tokens, and session seconds. A metric the run did not report is absent from its
-entry. These are the points a chart draws beside each box, and each one links
-to its run.
+per run, in the sorted order of the ids the arm recorded. An entry carries the
+stored run's own id, which is the id the run's page is addressed by, and the
+run's comparable cost, total tokens, and session seconds. A metric the run did
+not report is absent from its entry. These are the points a chart draws beside
+each box, and each one links to its run.
 
 The interval comes from 10,000 bootstrap resamples, taking the 2.5th and 97.5th
 percentiles of the resulting medians. Bootstrapping assumes no normality,

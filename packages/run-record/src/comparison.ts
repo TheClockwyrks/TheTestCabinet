@@ -153,7 +153,9 @@ export type ArmDiagnostics = {
  */
 export type ArmRunPoint = {
   /**
-   * The run's id, as the arm recorded it.
+   * The stored run's own id, which is the id the run's page is addressed by. It
+   * differs from the id the arm [recorded](ComparisonArm::run_ids), which names
+   * the job that produced the run.
    */
   runId: string;
   /**

@@ -479,13 +479,18 @@ fn session_duration_summarizes_measured_runs_and_skips_unmeasured_ones() {
     assert!((summary.max - 150.0).abs() < 1e-9);
 }
 
-/// Every counted run is reported as a raw point in sorted-id order, carrying the
-/// values its distributions summarize, with an unreported metric left absent.
+/// Every counted run is reported as a raw point, in the sorted order of the ids the
+/// arm recorded, carrying the values its distributions summarize, with an unreported
+/// metric left absent. A point names the stored run, whose id is its own rather than
+/// the recorded one: the arm records the job a launch handed back.
 #[test]
 fn an_arm_reports_each_counted_run_as_a_raw_point() {
     let items = [item("a", 3)];
     let mut runs = BTreeMap::new();
-    for (id, cost, session) in [("pi-2", 0.75, None), ("pi-1", 0.5, Some(90.0))] {
+    for (recorded, id, cost, session) in [
+        ("job-2", "run-b", 0.75, None),
+        ("job-1", "run-z", 0.5, Some(90.0)),
+    ] {
         let mut run = record(Run {
             id,
             harness: HarnessSlug::Pi,
@@ -497,26 +502,26 @@ fn an_arm_reports_each_counted_run_as_a_raw_point() {
             auth: AuthMode::ApiKey,
         });
         run.metrics.session_seconds = session;
-        runs.insert(id.to_string(), run);
+        runs.insert(recorded.to_string(), run);
     }
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    // `pi-3` was recorded but never counted, so it has no point.
-    config.arms[0].run_ids = vec!["pi-2".into(), "pi-1".into(), "pi-3".into()];
+    // `job-3` was recorded but never counted, so it has no point.
+    config.arms[0].run_ids = vec!["job-2".into(), "job-1".into(), "job-3".into()];
 
     let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     assert_eq!(
         arms[0].run_points,
         vec![
             ArmRunPoint {
-                run_id: "pi-1".into(),
+                run_id: "run-z".into(),
                 cost: Some(0.5),
                 tokens: Some(100.0),
                 session_seconds: Some(90.0),
             },
             ArmRunPoint {
-                run_id: "pi-2".into(),
+                run_id: "run-b".into(),
                 cost: Some(0.75),
                 tokens: Some(100.0),
                 session_seconds: None,
