@@ -44,6 +44,7 @@ import {
   withArmRunIds,
 } from "./comparisonMath";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { MedianRatioTile } from "./MedianRatioTile";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
@@ -614,25 +615,24 @@ export function ComparisonDetailPage() {
       )}
 
       {(costRatio || sessionRatio) && (
-        <div className={styles.ratioCallouts}>
+        <div className={styles.ratioTiles}>
           {costRatio && (
-            <p className={styles.ratioCallout}>
-              {costRatio.higher.arm.label}&rsquo;s median cost is ~
-              {costRatio.ratio.toFixed(1)}× {costRatio.lower.arm.label}&rsquo;s
-              ({formatUsd(costRatio.higher.cost!.median)} vs{" "}
-              {formatUsd(costRatio.lower.cost!.median)}).
-            </p>
+            <MedianRatioTile
+              title="Median cost"
+              ratio={costRatio}
+              metric="cost"
+              format={formatUsd}
+              colorForArm={colorForArm}
+            />
           )}
           {sessionRatio && (
-            <p className={styles.ratioCallout}>
-              {sessionRatio.higher.arm.label}&rsquo;s median session duration is
-              ~{sessionRatio.ratio.toFixed(1)}× {sessionRatio.lower.arm.label}
-              &rsquo;s (
-              {formatRunTime(
-                sessionRatio.higher.sessionDuration!.median,
-              )} vs {formatRunTime(sessionRatio.lower.sessionDuration!.median)}
-              ).
-            </p>
+            <MedianRatioTile
+              title="Median session duration"
+              ratio={sessionRatio}
+              metric="sessionDuration"
+              format={formatRunTime}
+              colorForArm={colorForArm}
+            />
           )}
         </div>
       )}

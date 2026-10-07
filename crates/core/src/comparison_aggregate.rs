@@ -104,11 +104,13 @@ fn aggregate_arm(
         .collect();
     let session_duration = MetricSummary::compute(&sessions, seed);
     // The raw values the three distributions summarize, one entry per counted run.
-    let run_points: Vec<ArmRunPoint> = ids
+    // Each names the run by its own id rather than by the id the arm recorded, which
+    // is the launching job's: a point links to the run's page, and the page is
+    // addressed by the run.
+    let run_points: Vec<ArmRunPoint> = arm_runs
         .iter()
-        .zip(&arm_runs)
-        .map(|(id, r)| ArmRunPoint {
-            run_id: id.clone(),
+        .map(|r| ArmRunPoint {
+            run_id: r.id.clone(),
             cost: r.metrics.cost.comparable,
             tokens: r.metrics.tokens.total().map(|t| t as f64),
             session_seconds: r.metrics.session_seconds,
