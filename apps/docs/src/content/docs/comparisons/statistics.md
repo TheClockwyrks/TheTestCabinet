@@ -96,6 +96,11 @@ both arms have a distribution for it and the denominator median is above zero.
 Cost and session duration each get their own, since the slower arm is not
 necessarily the more expensive one.
 
+Each ratio is shown as a tile that leads with the ratio and lists the two arms
+under it, the higher median first. An arm's row carries its color, its median,
+and a bar whose length is the median's share of the higher one. The tile uses
+the arms' identity colors alone, so neither arm reads as the better one.
+
 No p-value and no significance badge is shown. A significance verdict is a
 verdict, and at three runs per arm a rank-based test would mislead.
 
