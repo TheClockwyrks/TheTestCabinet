@@ -331,10 +331,6 @@
   flex-direction: column;
   gap: t.$space-xs;
   min-width: 0;
-  // The symbol table is the long one; cap it so the sections below stay reachable
-  // without a page-length scroll through functions.
-  max-height: 34rem;
-  overflow-y: auto;
 }
 
 .symbolName {
