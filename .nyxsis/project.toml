@@ -1,5 +1,25 @@
+# What Nyxsis runs in a workspace of this repository. Every command runs inside the
+# devcontainer, from the checkout's root, with no shell, and each names what a
+# developer's shell runs for the same thing: a Makefile target where one exists, or
+# the npm script where the Makefile has none (`make docs` builds the site; the `docs`
+# command below serves it live).
+
+# What removes this project's build output.
 clean = ["make", "clean"]
 
+# The issues board Nyxsis reads.
 [issues]
 format = "files"
 root = "tasks"
+
+# Every gate, through the ci project's runner.
+[[command]]
+name = "gate"
+run = ["make", "gate"]
+
+# The documentation site, served live on the port Astro's dev server binds.
+[[command]]
+name = "docs"
+run = ["npm", "run", "--workspace", "apps/docs", "dev"]
+background = true
+ports = [4321]

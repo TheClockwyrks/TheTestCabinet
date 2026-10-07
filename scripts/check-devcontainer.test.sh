@@ -119,7 +119,7 @@ check_contains "names the folder it works in" "/workspaces/demo" "$out"
 tree="$(fresh_tree "$DECLARATION" 'services:
   dev:
     volumes:
-      - cargo-target:/cargo-target')"
+      - cache:/cache')"
 out="$(run "$tree")"
 check_failed "a service mounting the checkout nowhere fails" $?
 check_contains "says so" "mounts this checkout nowhere" "$out"

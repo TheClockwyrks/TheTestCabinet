@@ -176,11 +176,10 @@ stages:
           # for a `cargo-<name>` subcommand on PATH. That is a contract with
           # ci/images/rust.Dockerfile, stated there too.
           CARGO_HOME: $(ciCache)/cargo-home
-          # Full debug information and incremental state are most of a target
-          # directory and no gate reads either. Line tables are kept, so a
-          # failed test's backtrace still names its lines.
+          # Incremental state is much of a target directory and no gate reads
+          # it. Cargo.toml's dev profile already keeps the debug information to
+          # line tables, so a failed test's backtrace still names its lines.
           CARGO_INCREMENTAL: 0
-          CARGO_PROFILE_DEV_DEBUG: line-tables-only
         steps:
           - checkout: self
             fetchDepth: 1

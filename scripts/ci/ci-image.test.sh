@@ -310,6 +310,12 @@ check_contains "the rust image is built with the amd64 archive checksum the anch
 	"NEXTEST_SHA256_AMD64=$(sed -n 's/^ *NEXTEST_SHA256_AMD64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
 check_contains "the rust image is built with the arm64 archive checksum the anchor pins" \
 	"NEXTEST_SHA256_ARM64=$(sed -n 's/^ *NEXTEST_SHA256_ARM64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_contains "the rust image is built with the linker the anchor pins" \
+	"MOLD_VERSION=$(sed -n 's/^ *MOLD_VERSION: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_contains "the rust image is built with the linker's amd64 archive checksum the anchor pins" \
+	"MOLD_SHA256_AMD64=$(sed -n 's/^ *MOLD_SHA256_AMD64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_contains "the rust image is built with the linker's arm64 archive checksum the anchor pins" \
+	"MOLD_SHA256_ARM64=$(sed -n 's/^ *MOLD_SHA256_ARM64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
 check_absent "an ARG carrying its own default is the Dockerfile's business" \
 	"DEBIAN_FRONTEND=" "$out"
 check_absent "a pin no image installs is not passed to the build" \

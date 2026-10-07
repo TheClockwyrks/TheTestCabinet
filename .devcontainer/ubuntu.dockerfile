@@ -31,6 +31,9 @@ ARG PLAYWRIGHT_VERSION
 ARG NEXTEST_VERSION
 ARG NEXTEST_SHA256_AMD64
 ARG NEXTEST_SHA256_ARM64
+ARG MOLD_VERSION
+ARG MOLD_SHA256_AMD64
+ARG MOLD_SHA256_ARM64
 ARG RUST_VERSION
 ARG WRANGLER_VERSION
 
@@ -41,11 +44,6 @@ RUN bash /tmp/scripts/apt.sh && \
 	bash /tmp/scripts/system-config.sh && \
 	bash /tmp/scripts/init-user.sh && \
 	rm -rf /tmp/scripts
-
-# Where tools/cargo-target.sh, run from post-create.sh, links the directory
-# cargo builds into. Owned by the container user, so writing the link takes no
-# privilege once the container is running.
-RUN mkdir -p /cargo-target && chown "${USER_UID}:${USER_GID}" /cargo-target
 
 # Claude Code's managed settings. Every session in the image runs unattended,
 # and the managed file is the one source Claude Code takes a default of bypass
@@ -60,8 +58,18 @@ USER $USERNAME
 # entries are load-bearing at build time as well as at run time: a Dockerfile
 # RUN sources no profile, and the gg toolchain layer at the bottom of this
 # file needs `rustc` from .cargo/bin and puts `purs` and `esbuild` in
-# .local/bin, which the installers after it shell out to.
+# .local/bin, which the installers after it shell out to. The order is
+# load-bearing too: languages/rust/permit-wrapper.sh places a wrapper named
+# cargo in ~/.local/bin, which has to be found ahead of the toolchain's own.
 ENV PATH="$PATH:/home/$USERNAME/.local/bin:/home/$USERNAME/.cargo/bin"
+
+# The linker cargo links the two glibc targets with: cc-mold, the driver
+# languages/rust/mold.sh installs beside cargo, which hands the link to mold.
+# It is set in the image, so a terminal, an editor's language server and an
+# `exec` naming cargo with no shell all link alike, and it names those two
+# targets alone, so a build for any other target keeps its own linker.
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc-mold \
+	CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=cc-mold
 
 # Copy the install scripts and shell config.
 COPY --chown=${USER_UID}:${USER_GID} \
@@ -89,6 +97,8 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./.devcontainer/languages/rust/rustup.sh \
 	./.devcontainer/languages/rust/targets.sh \
 	./.devcontainer/languages/rust/cargo-nextest.sh \
+	./.devcontainer/languages/rust/mold.sh \
+	./.devcontainer/languages/rust/permit-wrapper.sh \
 	/tmp/scripts/languages/rust/
 
 # wrangler follows the Node install, which it is installed with.
@@ -102,6 +112,7 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/languages/node/install.sh && \
 	bash /tmp/scripts/wrangler.sh && \
 	bash /tmp/scripts/languages/rust/install.sh && \
+	bash /tmp/scripts/languages/rust/permit-wrapper.sh && \
 	bash /tmp/scripts/claude.sh && \
 	bash /tmp/scripts/codex.sh && \
 	bash /tmp/scripts/post-install.sh
@@ -166,6 +177,13 @@ COPY --chown=${USER_UID}:${USER_GID} \
 COPY --chown=${USER_UID}:${USER_GID} \
 	./scripts/gg-*.sh \
 	/tmp/scripts/gg-repo/scripts/
+# The lock each npm-delivered build tool's tree is installed from. The resolver
+# in gg-npm-tools.sh reads it beside itself, and install-gg-build-tools.sh runs
+# that resolver in this layer; a lock moving reinstalls the tool, so the
+# directory is part of this layer's cache key on purpose.
+COPY --chown=${USER_UID}:${USER_GID} \
+	./scripts/gg-npm-locks/ \
+	/tmp/scripts/gg-repo/scripts/gg-npm-locks/
 COPY --chown=${USER_UID}:${USER_GID} \
 	./rust-toolchain.toml \
 	/tmp/scripts/gg-repo/rust-toolchain.toml

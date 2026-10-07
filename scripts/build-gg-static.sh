@@ -74,17 +74,12 @@ log "build-gg-static: building gg for $target (release, static)"
 # silently updated into a shipped artifact nobody can reproduce.
 cargo build -p test-cabinet-gg --release --locked --target "$target"
 
-# Resolve the built binary. `CARGO_TARGET_DIR`, or the target directory the dev
-# container's cargo config names, may move it off the default ./target path.
+# Resolve the built binary. `CARGO_TARGET_DIR`, when set, moves it off the
+# default ./target path.
 candidates=(
   "${CARGO_TARGET_DIR:-}/$target/release/gg"
   "$repo_root/target/$target/release/gg"
 )
-# `.devcontainer/tools/cargo-target.sh` links /cargo-target/the-test-cabinet to the target
-# directory cargo builds into in the dev container: the checkout's target/ on a Linux
-# host, ~/.cache/cargo-target/the-test-cabinet on a virtiofs or FUSE host (macOS
-# Podman, Docker Desktop). Discover it through the link if present.
-while IFS= read -r p; do candidates+=("$p"); done < <(ls -1 /cargo-target/*/"$target"/release/gg 2>/dev/null || true)
 
 bin=""
 for c in "${candidates[@]}"; do

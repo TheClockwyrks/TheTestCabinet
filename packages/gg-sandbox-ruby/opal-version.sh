@@ -32,4 +32,10 @@ OPAL_VERSION="1.7.3"
 # one. It is the SAME release the ECMAScript guest is baked with, deliberately —
 # this guest is that guest plus a runtime, and two engines would be a difference between the arms
 # nobody chose.
+#
+# The version alone pins the one package; the tree below it — jco, the WASI shim its bindings
+# splicer reads the WIT through, wizer and weval — is pinned by the lock at
+# `scripts/gg-npm-locks/bytecodealliance-componentize-js-0.21.0/`, which `scripts/gg-npm-tools.sh`
+# installs it from and checks against this pin. A bump here is a new lock there; that script's header
+# says how it is written.
 COMPONENTIZE_VERSION="0.21.0"

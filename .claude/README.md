@@ -5,7 +5,18 @@ request attribution empty, runs sessions without permission prompts and
 registers the gate hooks below. `skills/` holds the policies an agent reads
 before it writes code, documentation or an issue; the `coding`, `documentation`,
 `repo-tasks` and `drain-issues-queue` skills carry this project's own policies
-alongside the template's, and are edited here like any other file.
+alongside the template's, and are edited here like any other file. The skill named
+`nyxsis`, at `.claude/skills/nyxsis/SKILL.md`, <!-- cspell:disable-line -->
+states what the repository carries for the fleet that manages it: read it
+before configuring the repository for that fleet or changing anything the fleet
+reads, such as the declarations folder at the root, the answers file, the
+devcontainer's compose file, `forwardPorts` or the pipeline's test results.
+The skill named `template-migration`, at
+`.claude/skills/template-migration/SKILL.md`, holds a migration guide per
+version of the template the repository is rendered from, under `versions/`:
+read it before updating the repository against its template, by hand or
+through a template update tool, and before resolving the conflicts or taking
+the steps an update left.
 
 ## Gate hooks
 

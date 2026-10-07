@@ -296,11 +296,8 @@ fn local(host_path: PathBuf) -> GgInstall {
 }
 
 /// The default host paths a locally-built `gg` binary is looked for at, in priority
-/// order. `.devcontainer/tools/cargo-target.sh` links `/cargo-target/the-test-cabinet` to the
-/// target directory cargo builds into in the dev container: the checkout's `target/` on
-/// a Linux host, and `~/.cache/cargo-target/the-test-cabinet` in the container layer on a
-/// virtiofs or FUSE host (macOS Podman, Docker Desktop). A plain `./target` is the
-/// fallback for a stock layout outside the dev container.
+/// order: the path a deployment installs it at, then the checkout's `target/`, which is
+/// where cargo builds in the dev container and in a stock layout outside it alike.
 fn default_local_candidates() -> Vec<PathBuf> {
     [
         // The canonical install path a deployment bakes the static-musl `gg` binary
@@ -311,12 +308,7 @@ fn default_local_candidates() -> Vec<PathBuf> {
         // driver image also points `TCAB_GG_BINARY` at this path, so this candidate is
         // the belt-and-suspenders fallback that keeps the convention discoverable in code.
         "/usr/local/lib/tcab/gg",
-        // `.devcontainer/tools/cargo-target.sh` links `/cargo-target/the-test-cabinet` to the
-        // target directory cargo builds into in the dev container (the checkout's
-        // `target/` on a Linux host, `~/.cache/cargo-target/the-test-cabinet` on a
-        // virtiofs or FUSE host), then a stock `./target`.
-        "/cargo-target/the-test-cabinet/release/gg",
-        "/cargo-target/the-test-cabinet/debug/gg",
+        // The checkout's `target/`, a release build ahead of a debug one.
         "target/release/gg",
         "target/debug/gg",
     ]

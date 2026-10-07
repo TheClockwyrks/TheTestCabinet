@@ -13,6 +13,25 @@ and its staging publish and deploy. `.copier-answers.yml` records the template's
 source, its version and this project's answers; see
 [The workspace template](#the-workspace-template).
 
+## Toolchains
+
+Everything is built inside the devcontainer under `.devcontainer/`, which
+carries every toolchain below at a pinned version. A gate whose toolchain is
+absent fails and names the command that installs it, so the container is what
+makes a gate judge rather than complain.
+
+| Toolchain | Pinned by |
+| --- | --- |
+| Rust, with `rustfmt` and `clippy` | `rust-toolchain.toml`, and `RUST_VERSION` in `.devcontainer/docker-compose.yml` |
+| `cargo-nextest` | `NEXTEST_VERSION` in `.devcontainer/docker-compose.yml` |
+| `mold`, the linker of a glibc build | `MOLD_VERSION` in `.devcontainer/docker-compose.yml` |
+| Node and npm | `NODE_VERSION` in `.devcontainer/docker-compose.yml` |
+| `cspell`, `markdownlint-cli2`, Prettier, ESLint | `package.json` and `package-lock.json` |
+| Vite, Vitest, React and TypeScript | `apps/web/package.json` and `package-lock.json` |
+| uv, which the gates run under, and pre-commit | `.devcontainer/tools/uv.sh` |
+| `kubectl` | `.devcontainer/tools/kubectl.sh` |
+| `k3d`, `kubelogin` | `.devcontainer/tools/k8s.sh` |
+
 Setting up a machine that executes test cases (container runtime,
 run-container image, credentials) is covered by
 [First Time Setup](/guides/setup/first-time-setup/). Running the services on your

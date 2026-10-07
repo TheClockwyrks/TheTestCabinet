@@ -27,6 +27,8 @@
       ]
     }
   },
+  "forwardPorts": [4321],
+  "portsAttributes": { "4321": { "label": "Documentation site" } },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "postStartCommand": "bash .devcontainer/post-start.sh",
   "updateRemoteUserUID": false

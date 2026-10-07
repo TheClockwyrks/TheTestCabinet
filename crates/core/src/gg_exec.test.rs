@@ -468,7 +468,7 @@ fn explicit_binary_override_errors_when_missing() {
 #[test]
 fn auto_detects_a_default_local_build() {
     let env = env_map(&[]);
-    let exists = |p: &Path| p == Path::new("/cargo-target/the-test-cabinet/debug/gg");
+    let exists = |p: &Path| p == Path::new("target/debug/gg");
     let install = resolve_install_with(env, exists, "0.7.0", "x86_64").unwrap();
     assert!(matches!(install, GgInstall::Local { .. }));
     assert_eq!(install.container_path(), "/tmp/gg");

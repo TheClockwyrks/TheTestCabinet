@@ -21,13 +21,8 @@
 # and said to be skipped rather than failing the creation of a container that is
 # otherwise ready to work in.
 #
-# Between the two, tools/cargo-target.sh places cargo's target directory for
-# this checkout and links /cargo-target/the-test-cabinet to it. Where the
-# checkout is mounted is a property of the host, known only once the container
-# runs, and it does not change between starts, so once at creation is the right
-# time. The script never fails, so a checkout it cannot place still gets its
-# dependencies. `npm ci` is what gives crates/gg the pinned `typescript` two of
-# its catalogues are reflected with; everything else that build needs is in the
+# `npm ci` is what gives crates/gg the pinned `typescript` two of its
+# catalogues are reflected with; everything else that build needs is in the
 # image, so a container is ready to build the workspace when this returns.
 set -euo pipefail
 
@@ -37,7 +32,5 @@ else
   echo "--- the commit hook (skipped: this is not a git repository yet)"
   echo "    run 'git init && bash scripts/setup-hooks.sh' once it is one"
 fi
-
-bash .devcontainer/tools/cargo-target.sh
 
 npm ci

@@ -522,11 +522,15 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
 fn declare_rerun_set(root: &Path, id: &str) {
     // `build.sh` runs `scripts/gg-artifacts-out-dir.sh` and the scratch lock, and for several arms
     // the shared download and npm-tool resolvers, so those are inputs to every arm as much as its
-    // own script is. So is the table this crate reads its row out of.
+    // own script is. So is the table this crate reads its row out of, and so are the committed
+    // locks the npm-tool resolver installs each tool's tree from: a re-resolved lock is a different
+    // componentiser, and the artifacts it bakes are different bytes. That one is a directory, and
+    // it is safe to name as one because nothing writes into it — see the note on [`rerun_paths`].
     let shared = [
         "scripts/gg-arms.sh",
         "scripts/gg-artifacts-out-dir.sh",
         "scripts/gg-downloads.sh",
+        "scripts/gg-npm-locks",
         "scripts/gg-npm-tools.sh",
         "scripts/gg-scratch-lock.sh",
     ];

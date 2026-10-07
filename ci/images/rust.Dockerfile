@@ -29,6 +29,9 @@ ARG RUST_VERSION
 ARG NEXTEST_VERSION
 ARG NEXTEST_SHA256_AMD64
 ARG NEXTEST_SHA256_ARM64
+ARG MOLD_VERSION
+ARG MOLD_SHA256_AMD64
+ARG MOLD_SHA256_ARM64
 
 # Built as root, with no USER line, and the steps do not run as root. Azure runs
 # `useradd -m -u 1001 vsts_azpcontainer` against a container job and execs every
@@ -44,8 +47,8 @@ ENV HOME=/root \
 	LANG=C.UTF-8
 
 # Where the toolchain lives, and the hard contract this image owes the pipeline:
-# /usr/local/cargo/bin is on the PATH and holds `cargo`, `rustup` and
-# `cargo-nextest`.
+# /usr/local/cargo/bin is on the PATH and holds `cargo`, `rustup`,
+# `cargo-nextest`, `mold` and `cc-mold`.
 #
 # A job that caches the crate registry repoints CARGO_HOME at its cache
 # directory. That works only because the toolchain is not under CARGO_HOME:
@@ -55,6 +58,14 @@ ENV HOME=/root \
 # first run of every job.
 ENV RUSTUP_HOME=/usr/local/rustup \
 	CARGO_HOME=/usr/local/cargo
+
+# The linker cargo links the two glibc targets with: cc-mold, the driver
+# languages/rust/mold.sh installs beside cargo, which hands the link to mold.
+# It is set in the environment and resolved on the PATH, so it holds whichever
+# directory a job repoints CARGO_HOME at, and every gate that compiles links
+# the way the devcontainer does.
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc-mold \
+	CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=cc-mold
 
 # The PATH has to be complete here. In the devcontainer the interactive shell's
 # rc file fills it in; a pipeline step reads no rc file, and nothing
@@ -76,16 +87,17 @@ ENV UV_INSTALL_DIR=/usr/local/bin \
 # ssh, sudo — and splitting it would risk the devcontainer to save nothing. This
 # list is short enough to state with its reasons in place.
 #
-#   - ca-certificates, curl, wget: rustup-init, the cargo-nextest release
-#     archive and the uv installer are all downloads.
+#   - ca-certificates, curl, wget: rustup-init, the cargo-nextest and mold
+#     release archives and the uv installer are all downloads.
 #   - git: the gate runner shells out to `git rev-parse` before any gate does
 #     anything else, and cargo fetches git dependencies.
 #   - jq: the shell scripts under scripts/ read JSON with it.
 #   - tar, gzip, unzip, xz-utils: what the downloads above arrive in.
 #   - locales, tzdata: a UTF-8 locale and a timezone database, so a test that
 #     formats a date agrees with one run in the devcontainer.
-#   - build-essential, pkg-config: the linker cargo links a binary with, and the
-#     tool the crates below resolve their system libraries through.
+#   - build-essential, pkg-config: the C compiler cargo drives a link through,
+#     with the libraries a link takes, and the tool the crates below resolve
+#     their system libraries through.
 #   - musl-tools: musl-gcc, the linker a static build against this
 #     architecture's musl target links with, and the C compiler a crate that
 #     compiles C of its own calls for that target. The target itself is added
@@ -141,18 +153,18 @@ RUN apt-get update -y && \
 # the toolchain layer below.
 COPY .devcontainer/languages/rust/ /tmp/scripts/rust/
 
-# The toolchain and the test runner, from the scripts the devcontainer uses.
-# languages/rust/install.sh runs rustup.sh and cargo-nextest.sh, and
-# targets.sh between them. targets.sh adds this architecture's musl standard
-# library, so a static build compiles on this track as it does in the
+# The toolchain, the test runner and the linker, from the scripts the
+# devcontainer uses. languages/rust/install.sh runs rustup.sh, targets.sh,
+# cargo-nextest.sh and mold.sh. targets.sh adds this architecture's musl
+# standard library, so a static build compiles on this track as it does in the
 # devcontainer.
 #
-# Both are safe to reuse here now that cargo-nextest.sh reads CARGO_HOME instead
-# of assuming a home directory: rustup-init honours CARGO_HOME and RUSTUP_HOME
-# itself, and cargo-nextest.sh takes the nextest binary out of its release
-# archive into CARGO_HOME/bin once the archive matches the checksum the anchor
-# pins, which this image receives as a build argument like the version. Each
-# one resolves its own architecture out of the image and each one runs what it
+# All are safe to reuse here because each reads CARGO_HOME instead of assuming
+# a home directory: rustup-init honours CARGO_HOME and RUSTUP_HOME itself, and
+# cargo-nextest.sh and mold.sh each take a binary out of its release archive
+# into CARGO_HOME/bin once the archive matches the checksum the anchor pins,
+# which this image receives as a build argument like the version. Each one
+# resolves its own architecture out of the image and each one runs what it
 # installed once before it finishes, which is what catches a download for the
 # wrong architecture here rather than in a gate.
 #

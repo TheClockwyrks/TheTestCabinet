@@ -473,6 +473,7 @@ kubelet
 kubelet's
 Kustomization
 kustomization
+kustomize
 Lancer
 landvalue
 langversion
@@ -538,6 +539,7 @@ mand
 mandibled
 mapselect
 mariozechner
+markdownlint
 marlite
 matchover
 matchup
@@ -567,6 +569,7 @@ mobrienv
 modeselect
 modularised
 modulemap
+mold
 Monatom
 Monatoms
 Monolith

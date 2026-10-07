@@ -64,8 +64,8 @@ cd "$ROOT"
 # repository goes, and is exactly what `crates/backend`'s `TCAB_GG_REFERENCE` default resolves to
 # from the checkout it was pointed at. Nothing here can be committed by any arrangement of `git add`.
 #
-# Note that this is the CHECKOUT's `target/`, not cargo's — a devcontainer that sets
-# `CARGO_TARGET_DIR` elsewhere (this one does) puts compiled artifacts on another disk entirely and
+# Note that this is the CHECKOUT's `target/`, not cargo's — a developer who sets
+# `CARGO_TARGET_DIR` elsewhere puts compiled artifacts on another disk entirely and
 # these twelve documents still land here. That is deliberate and it is what makes the two defaults
 # agree: the backend resolves its own default from `TCAB_BACKEND_CHECKOUT`, which knows nothing about
 # where cargo was told to build.

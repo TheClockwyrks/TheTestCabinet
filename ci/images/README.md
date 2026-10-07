@@ -44,9 +44,12 @@ first cache write is a permission error.
 - The Rust toolchain, `rustfmt` and `clippy`, which `rust-fmt`, `rust-clippy`
   and `rust-doc` run and whose own test harness `rust-doctest` runs, and
   `cargo-nextest`, which `rust-test` invokes.
-- The apt packages a compile needs: `build-essential` for the linker,
-  `pkg-config`, and `git`, which every gate asks for the workspace root before
-  it does anything else.
+- `mold`, which every gate that compiles links with: the image's environment
+  names `cc-mold` as the linker of the two glibc targets, as the devcontainer's
+  does. See [Linker](../../.devcontainer/README.md#linker).
+- The apt packages a compile needs: `build-essential` for the C compiler a
+  link is driven through, `pkg-config`, and `git`, which every gate asks for
+  the workspace root before it does anything else.
 - This architecture's musl target and `musl-tools`, whose `musl-gcc` links a
   static build against it, so a static build compiles here as it does in the
   devcontainer.
