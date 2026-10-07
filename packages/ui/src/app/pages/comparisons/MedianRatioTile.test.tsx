@@ -1,5 +1,5 @@
 import type { ComparisonArmResult } from "@clockwyrks/run-record/comparison";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { presentedRatio } from "./comparisonMath";
 import { MedianRatioTile } from "./MedianRatioTile";
@@ -43,38 +43,33 @@ function renderTile(arms: readonly ComparisonArmResult[]) {
       colorForArm={COLORS}
     />,
   );
-  return screen.getByRole("region", { name: "Median cost" });
 }
 
 describe("MedianRatioTile", () => {
   it("leads with the ratio and names what it compares", () => {
-    const tile = renderTile([arm("pi", "Pi", 0.2), arm("codex", "Codex", 0.5)]);
+    renderTile([arm("pi", "Pi", 0.2), arm("codex", "Codex", 0.5)]);
 
     expect(
-      within(tile).getByRole("heading", { name: "Median cost" }),
+      screen.getByRole("heading", { name: "Median cost" }),
     ).toBeInTheDocument();
-    expect(within(tile).getByText(/~2\.5×/)).toBeInTheDocument();
+    expect(screen.getByText(/~2\.5×/)).toBeInTheDocument();
   });
 
   it("lists the higher arm first, each with its own median", () => {
-    const tile = renderTile([arm("pi", "Pi", 0.2), arm("codex", "Codex", 0.5)]);
+    renderTile([arm("pi", "Pi", 0.2), arm("codex", "Codex", 0.5)]);
 
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
+      ["Codex", "Pi"],
+    );
     expect(
-      within(tile)
-        .getAllByRole("term")
-        .map((term) => term.textContent),
-    ).toEqual(["Codex", "Pi"]);
-    expect(
-      within(tile)
-        .getAllByRole("definition")
-        .map((value) => value.textContent),
+      screen.getAllByRole("definition").map((value) => value.textContent),
     ).toEqual(["$0.50", "$0.20"]);
   });
 
   it("draws each arm's bar in its color at its share of the higher median", () => {
-    const tile = renderTile([arm("pi", "Pi", 0.2), arm("codex", "Codex", 0.5)]);
+    renderTile([arm("pi", "Pi", 0.2), arm("codex", "Codex", 0.5)]);
 
-    const bars = within(tile).getAllByTestId("median-bar");
+    const bars = screen.getAllByTestId("median-bar");
     expect(bars.map((bar) => bar.style.width)).toEqual(["100%", "40%"]);
     expect(bars.map((bar) => bar.style.background)).toEqual([
       "rgb(10, 20, 30)",

@@ -1,3 +1,4 @@
+import { SectionWidget } from "@clockwyrks/ui";
 import type { ArmMetric, PresentedRatio } from "./comparisonMath";
 import styles from "./Comparisons.module.scss";
 
@@ -16,7 +17,8 @@ interface MedianRatioTileProps {
 
 /**
  * A two-arm comparison's ratio for one metric (docs/comparisons/statistics.md,
- * "Comparing two arms"): the ratio as the tile's figure, and under it each arm's
+ * "Comparing two arms"), in the shell the page's charts wear so it reads as one of
+ * them: the ratio as the tile's figure, and under it each arm's
  * median beside a bar scaled to the higher one, so the size of the gap reads
  * before any number does. The ratio is a presented number rather than a verdict,
  * so the only colors here are the arms' own.
@@ -43,8 +45,7 @@ export function MedianRatioTile({
   });
 
   return (
-    <section className={styles.ratioTile} aria-label={title}>
-      <h2 className={styles.ratioTileTitle}>{title}</h2>
+    <SectionWidget title={title}>
       <p className={styles.ratioTileFigure}>
         ~{ratio.ratio.toFixed(1)}×
         <span className={styles.ratioTileCaption}>
@@ -76,6 +77,6 @@ export function MedianRatioTile({
           </div>
         ))}
       </dl>
-    </section>
+    </SectionWidget>
   );
 }
