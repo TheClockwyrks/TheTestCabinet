@@ -76,6 +76,15 @@ pub struct Backend {
 /// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
 /// that explicit Chromium.
 pub async fn build(config: Config) -> error::Result<Backend> {
+    build_with_prices(config, test_cabinet_core::OpenRouterPrices::new()).await
+}
+
+/// [`build`], reading model prices from `prices` rather than OpenRouter's public
+/// catalog, so a test assembles a backend without reaching the network.
+async fn build_with_prices(
+    config: Config,
+    prices: test_cabinet_core::OpenRouterPrices,
+) -> error::Result<Backend> {
     use test_cabinet_migration::MigratorTrait;
 
     if let Some(browser) = &config.reference_browser {
@@ -286,7 +295,6 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // Model catalog bootstrap: seed the curated configs into an empty store and
     // re-associate any legacy `:free`-tagged runs to their base model. Both are
     // idempotent, so a restart or a shared deployment database is a safe no-op.
-    let prices = test_cabinet_core::OpenRouterPrices::new();
     crate::bootstrap::seed_models_if_empty(&db).await?;
     if let Err(err) = crate::bootstrap::backfill_alias_families(&db).await {
         // Best-effort: a stale harness family only mis-filters a run form's model
