@@ -38,7 +38,7 @@ authors and the versions exported from them:
 ```
 
 The Test Cabinet ingests [exported versions](#exported-versions) and never reads
-a [draft](#drafts). A backend configured to also reads the
+a [draft](#drafts). A backend can be configured to also read the
 [previews](#previews) under `.previews/`. The Test Cabinet never writes the
 checkout.
 
