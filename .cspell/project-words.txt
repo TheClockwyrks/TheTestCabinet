@@ -617,6 +617,7 @@ nslookup
 nullcore
 numpad
 nvcc
+nyxsis
 offence
 offsuit
 OPENCODE

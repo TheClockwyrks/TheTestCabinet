@@ -953,7 +953,7 @@ passing anything else, and on a file under `.azure/` naming an image at all.
 | `submodule_pins` | every push; a pull request that touches a submodule pin | `submodule-pins.sh`; see [Submodules in CI](#submodules-in-ci) |
 | `gg_amd64`, `gg_arm64` | `master`, `staging` | The static gg binary per architecture (`gg-dist.sh`) |
 | `audiostore_<arch>`, `runimages_<arch>`, `services_<arch>` and their manifests | `master`, `staging` | Every image, built natively per architecture and fused by `manifest.sh`; the eight service images of an architecture on one builder, so their Rust compile happens once |
-| `mirror` | `master`, `staging`, `nightly` | Force-pushes the branch to GitHub, after every check job |
+| `mirror` | `master`, `staging`, `nightly` | Pushes the branch to GitHub, after every check job; see [The GitHub mirror](#the-github-mirror) |
 
 ### Which check jobs a pull request runs
 
@@ -1006,10 +1006,39 @@ one job on one builder (`service-images.sh`), because seven of them share one
 seven times over. The 27 `-gg` run images share one `/opt/gg` layer, so the
 registry stores it once and each push after the first mounts it.
 
-The `mirror` job force-pushes the branch with its tags to
-`github.com/TheClockwyrks/TheTestCabinet`, with the deploy key held in the
-secure file `github-mirror-key`. It is the only thing that pushes there, so the
-mirror holds gated commits only.
+### The GitHub mirror
+
+The `mirror` job runs `scripts/ci/mirror.sh`, which pushes the branch with
+every tag it contains, or the tag a release built, to the repository's GitHub
+mirror over ssh, with the deploy key held in a secure file. It is the only
+thing that pushes there, so the mirror holds gated commits only.
+
+The target is the one the repository declares in `.nyxsis/mirrors.toml`, the
+file the fleet that manages the repository reads its mirrors from, here
+`https://github.com/TheClockwyrks/TheTestCabinet`. The job template,
+`.azure/tcab/mirror-job.yml`, takes it as its `url` parameter, which
+`.azure/project/jobs.yml` and the release pipeline pass, and the script refuses
+a `url` the file does not declare, so the two cannot drift apart. The template's
+`secureFile` parameter names the key, `github-mirror-key` by default; GitHub
+refuses one deploy key on two repositories, so each mirror has a key of its
+own. A pipeline that passes no `url` has no `mirror` job at all, so a pipeline
+copied into another repository pushes nowhere, and asks for no key, until its
+own target is written in. Run directly with neither a `url` nor a declared
+mirror, the script says so and pushes nothing.
+
+Before it pushes, the script reads the mirror's refs and refuses the push when:
+
+- the target branch exists on the mirror and its head is not an ancestor of the
+  commit being pushed, or is a commit the clone does not hold; or
+- a tag it would push already names a different object on the mirror.
+
+Either means the mirror holds history this repository does not, such as another
+repository's history pushed by a copied pipeline, or a history rewritten under
+it. The push itself is not forced, so a mirror that moved between the check and
+the push is refused by GitHub too. When replacing the mirror's history is
+meant, queue a run with the pipeline variable `mirrorAllowRewrite` set to
+`true`, which skips the check and forces the push; locally, `--allow-rewrite`
+or `MIRROR_ALLOW_REWRITE=true` does the same.
 
 ### The release pipeline
 
@@ -1087,7 +1116,7 @@ variables:
 | `the-test-cabinet-acr` | Docker Registry connection | `AcrPush` and `AcrDelete` on `testcabinet.azurecr.io`: pulls the CI images, pushes them from the image pipeline and purges the stale ones, and pushes every image |
 | `tcab-deploy` | Azure Resource Manager | The publish stage's registry sign-in (`AcrPush`), the registry purge after each deployment (`AcrDelete`) and the cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
 | `tcab-gg-publish` | Azure Resource Manager | Storage Blob Data Contributor on `testcabinetartifacts` |
-| `github-mirror-key` | Secure file | The GitHub mirror's write deploy key |
+| `github-mirror-key` | Secure file | The GitHub mirror's write deploy key, one per mirror |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Secret pipeline variables | The docs deploy |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | Secret pipeline variables | Staging the audio store out of the audio object store (read-only) |
 

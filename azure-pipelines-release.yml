@@ -91,6 +91,7 @@ jobs:
 
   - template: .azure/tcab/mirror-job.yml
     parameters:
+      url: https://github.com/TheClockwyrks/TheTestCabinet
       dependsOn:
         - binary_linux
         - binary_windows
