@@ -222,6 +222,7 @@ colouring
 colours
 comborecipe
 comboupgrade
+conftest
 Consolas
 cooldown
 cooldowns
@@ -908,6 +909,7 @@ Sunhawk
 supercover
 superproject
 superproject's
+superrepo
 svgl
 swiftc
 swiftmodule
@@ -937,6 +939,7 @@ terraforming
 teslaprime
 testcabinet
 testcabinetartifacts
+testpaths
 tfsgit
 thiserror
 tiktoken

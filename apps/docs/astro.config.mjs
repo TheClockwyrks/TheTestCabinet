@@ -391,6 +391,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             "development/building",
+            "development/repositories",
             "development/running",
             "development/releasing",
             "development/observability",

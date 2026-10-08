@@ -84,6 +84,10 @@ files, are the ones an update's conflict is usually about:
 | Web dev server port | `1430` |
 | Service image platform | `linux/arm64` |
 
+`copier.yml` at the root is unrelated to it: it declares the repository kit,
+the template this project renders its own repositories from (see
+[Repositories](apps/docs/src/content/docs/development/repositories.md)).
+
 See [The workspace template](apps/docs/src/content/docs/development/building.md#the-workspace-template).
 
 ## Repository layout, building & testing
@@ -94,6 +98,10 @@ Cargo and npm workspaces live in
 Running the services locally on one machine (the development mirror of a
 deployment):
 [`development/running.md`](apps/docs/src/content/docs/development/running.md).
+The repositories the project is split into, the edges between them, and the
+repository kit (`copier.yml`, `templates/repository/`, `scripts/repos/`) every
+one is rendered from:
+[`development/repositories.md`](apps/docs/src/content/docs/development/repositories.md).
 Releasing the `tcab` binary and the static sites (gallery, docs, per-run builds):
 [`development/releasing.md`](apps/docs/src/content/docs/development/releasing.md).
 Deploying the always-on services (backend + workers) as remote staging/prod
@@ -122,9 +130,11 @@ uv run --quiet --project ci gate run <id>...  # run some of them
 audio-packs              every version's [audio] packs resolve
 build-context            Dockerfile COPY sources; containers/ Rust pins
 ci-image-pins            every CI image reference reads ciImageTag
-ci-tests                 pytest over ci/
+ci-tests                 pytest over ci/ and scripts/repos/
 contract-drift           the generated contract is current (no hook)
 cspell                   the prose's spelling, .cspell/project-words.txt
+dependency-graph         the repositories against their edges, the patch
+                         table and the package links
 devcontainer-declaration the checkout is mounted where the container works
 docs-build               the documentation site's build
 docs-typecheck           the documentation site's astro check
@@ -134,7 +144,7 @@ k8s-deploy-sets          the staging and prod deploy sets, pinned
 k8s-manifests            the render of every overlay
 markdownlint             the Markdown style (90 columns)
 no-nul-bytes             a NUL byte in a file not declared binary
-python-lint              ruff over ci/
+python-lint              ruff over ci/, scripts/repos/ and the repository kit
 rust-clippy              cargo clippy, warnings denied
 rust-doc                 cargo doc (private items too, via .cargo/config.toml)
 rust-doctest             the doctests (no hook)
@@ -142,7 +152,8 @@ rust-fmt                 cargo fmt --check
 rust-test                cargo nextest run, every crate but gg (no hook)
 scripts-test             node --test over scripts/lib
 seeded-contract          no evaluation vocabulary in the seeded packages
-shell-tests              every *.test.sh under scripts/ and scripts/ci/
+shell-tests              every *.test.sh under scripts/, scripts/ci/ and
+                         scripts/repos/
 site-build               the gallery build (no hook)
 spec-prose               markdownlint and cspell over test-case prose
 spec-vocabulary          no evaluation vocabulary in seeded specs

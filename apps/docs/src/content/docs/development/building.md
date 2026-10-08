@@ -322,6 +322,10 @@ image's gg layer and apt packages, the project's skills and hooks under
 `.claude/`, and the project's pipeline work in `.azure/project/*.yml`, which
 the template's pipeline includes.
 
+`copier.yml` at the root is a second copier template, the repository kit this
+project renders its own repositories from; see
+[Repositories](/development/repositories/#the-kit).
+
 ## The gates
 
 One command runs every check a commit runs, over the whole tree:
@@ -350,7 +354,7 @@ The template's gates:
 | --- | --- |
 | `no-nul-bytes` | No NUL byte in a file `.gitattributes` does not declare binary |
 | `devcontainer-declaration` | The checkout is mounted at the folder the container works in |
-| `shell-tests` | Every `*.test.sh` under `scripts/` and `scripts/ci/` |
+| `shell-tests` | Every `*.test.sh` under `scripts/`, `scripts/ci/` and `scripts/repos/` |
 | `rust-fmt` | `cargo fmt --all -- --check` |
 | `rust-clippy` | `cargo clippy --locked --workspace --all-targets -- -D warnings` |
 | `rust-doc` | `cargo doc --locked --workspace --no-deps`, with private items (see below) |
@@ -367,8 +371,8 @@ The template's gates:
 | `format` | Prettier, with `.prettierignore` as its scope (plus the k8s manifests and the case-harness fixture page) and the frozen versions left out |
 | `docs-typecheck` | This site's `astro check` |
 | `docs-build` | This site's build |
-| `python-lint` | ruff over `ci/` |
-| `ci-tests` | pytest over `ci/` |
+| `python-lint` | ruff over `ci/`, `scripts/repos/` and the repository kit's `templates/repository/` |
+| `ci-tests` | pytest over `ci/` and `scripts/repos/`, the latter rendering the repository kit for each kind |
 
 The project's own gates, wired the same way:
 
@@ -382,6 +386,7 @@ The project's own gates, wired the same way:
 | `build-context` | Every project Dockerfile's `COPY` sources, and the `containers/` Rust pins |
 | `k8s-deploy-sets` | The staging and prod deploy sets, pinned to a commit |
 | `ci-image-pins` | The root pipelines name every CI image as `<repository>:${{ variables.ciImageTag }}` and include `ci/images/tags.yml`, `azure-pipelines.yml` passes the Rust one to `.azure/project/jobs.yml` as `rustImage`, and no file under `.azure/` names one |
+| `dependency-graph` | The submodules, the patch table and the package links against the repositories' [edges](/development/repositories/#the-edges) |
 | `scripts-test` | `node --test` over `scripts/lib` |
 | `workspace-test` | Every npm workspace's Vitest run but the console's and this site's; no hook |
 | `validators-typecheck` | `tsc` over every test case's validator projects; no hook |
