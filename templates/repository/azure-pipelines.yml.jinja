@@ -1,0 +1,292 @@
+# The pipeline of a repository of The Test Cabinet: every gate a commit has to
+# pass, then for a tag the publish of the TypeScript packages to the project's
+# feed, and last the push of a gated branch or tag to the GitHub mirror.
+#
+# Each job runs inside a CI image the superrepo builds, described under its
+# ci/images/ and pushed to {{ci_registry}} by its image pipeline: the checks
+# job in the web image and, for a kind carrying a Rust crate, the Rust job in
+# its track's image. The images are pulled through the {{ci_image_endpoint}}
+# service connection, and each is named under resources at the commit whose
+# image pipeline run built it, the `ciImageTag` the superrepo's
+# ci/images/tags.yml pins, so what a gate ran inside is a fact written in the
+# diff. ci/tests/test_wiring.py holds each track to its image.
+#
+{% if rust_crate %}
+# A manifest names a dependency on another repository by its public source,
+# the GitHub mirror, which a run cannot reach while the mirrors are private.
+# Every repository the run may fetch is declared under resources and named by
+# the Rust job as one it uses, which is what scopes the job's access token to
+# read it, and scripts/ci/git-sources.sh rewrites each public source to the
+# Azure repository and sends that token with it.
+#
+# The Rust job caches the cargo home and the build output, and on a miss each
+# cache task archives its directory on the agent's disk after the job's steps,
+# in the reverse order of the restores. So the job's last step, run whatever
+# the gates answered, has scripts/ci/prune-target.sh remove from the build
+# output what no later build reads, keeping the compiled dependencies, and the
+# archive fits beside it.
+#
+{% endif %}
+{% if ci_npm_feed %}
+# This repository's kind carries the `typescript` gate, so its workspace may
+# name a package of the project, which installs from the project's private
+# feed. Before a job's first `npm ci`, scripts/ci/npm-feed.sh writes the job's
+# access token into the user's npm configuration as the credential npm
+# presents to the feed, so the token reaches npm through configuration alone.
+#
+{% endif %}
+# A push of a tag `{{release_tags}}` runs the gates too, and such a run then
+# runs the publish stage, which publishes each public package of the workspace
+# to the feed at the version its manifest carries, the tag's. Every repository
+# is rendered the stage, and one whose kind builds no TypeScript workspace has
+# nothing to publish, so its stage skips with a notice.
+#
+# The repository kit writes this file, so a change arrives with
+# `scripts/repos/render.py --update` run from the superrepo rather than by
+# hand here.
+#
+# `master` and `staging` take pull requests alone, and a branch policy runs
+# this pipeline as their build validation; `nightly` takes pushes. A push to
+# any of the three runs the pipeline.
+trigger:
+  batch: true
+  branches:
+    include:
+{% for branch in branches %}
+      - {{branch}}
+{% endfor %}
+  tags:
+    include:
+      - {{release_tags}}
+
+{{ci_resources}}
+
+pool:
+  vmImage: ubuntu-24.04
+
+variables:
+  ciCache: $(Pipeline.Workspace)/ci-cache
+
+stages:
+  - stage: gates
+    displayName: Gates
+    jobs:
+{% if rust_crate %}
+      - job: rust
+        displayName: Rust
+        timeoutInMinutes: 60
+        container: {{ci_rust_track}}
+{% if ci_uses %}
+{{ci_uses}}
+{% endif %}
+{{ci_rust_variables}}
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
+          - script: |
+              {{host_disk_command}}
+              df -h /
+            displayName: Free the host's disk of the software the job never uses
+            target: host
+          - task: Cache@2
+            displayName: Restore the cargo home
+            inputs:
+              key: 'cargo-home | v2 | "$(Agent.OS)" | rust-toolchain.toml | **/Cargo.toml, !**/target/**'
+              restoreKeys: |
+                cargo-home | v2 | "$(Agent.OS)" | rust-toolchain.toml
+              path: $(ciCache)/cargo-home
+          - task: Cache@2
+            displayName: Restore the build output
+            inputs:
+              key: 'cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml | **/Cargo.toml, !**/target/**'
+              restoreKeys: |
+                cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml
+              path: target
+          - script: scripts/ci/git-sources.sh
+            displayName: Fetch the project's dependencies from Azure
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          - script: echo "##vso[task.setvariable variable=checksReady]true"
+            displayName: Ready to run the checks
+          - script: uv run --quiet --project ci gate run dependency-edges
+            displayName: dependency edges
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run rust-fmt
+            displayName: cargo fmt (--check)
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run rust-clippy
+            displayName: cargo clippy (warnings denied)
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run rust-doc
+            displayName: cargo doc (warnings denied)
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run rust-test
+            displayName: cargo nextest
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/rust-test
+          - task: PublishTestResults@2
+            displayName: Publish the Rust test results
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/rust-test/junit.xml
+              testRunTitle: Rust tests
+              failTaskOnMissingResultsFile: false
+          - script: scripts/ci/prune-target.sh target
+            displayName: Prune the build output to what the next build reads
+            condition: succeededOrFailed()
+{% endif %}
+      - job: checks
+        displayName: Checks
+        timeoutInMinutes: 30
+        container: web
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            clean: true
+{% if ci_npm_feed %}
+{{ci_npm_feed}}
+{% endif %}
+          - script: npm ci
+            displayName: Install the npm workspace
+          - script: pre-commit install-hooks
+            displayName: Install the hook environments
+          - script: echo "##vso[task.setvariable variable=checksReady]true"
+            displayName: Ready to run the checks
+{% if not rust_crate %}
+          - script: uv run --quiet --project ci gate run dependency-edges
+            displayName: dependency edges
+            condition: eq(variables['checksReady'], 'true')
+{% endif %}
+          - script: pre-commit run check-added-large-files --all-files --show-diff-on-failure
+            displayName: Check for added large files
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-case-conflict --all-files --show-diff-on-failure
+            displayName: Check for case conflicts
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-executables-have-shebangs --all-files --show-diff-on-failure
+            displayName: Check that executables have shebangs
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-illegal-windows-names --all-files --show-diff-on-failure
+            displayName: Check for illegal Windows names
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-json --all-files --show-diff-on-failure
+            displayName: Check JSON
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-merge-conflict --all-files --show-diff-on-failure
+            displayName: Check for merge conflicts
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run end-of-file-fixer --all-files --show-diff-on-failure
+            displayName: Newline at end of file
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-shebang-scripts-are-executable --all-files --show-diff-on-failure
+            displayName: Check that shebang scripts are executable
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-symlinks --all-files --show-diff-on-failure
+            displayName: Check for broken symlinks
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-toml --all-files --show-diff-on-failure
+            displayName: Check TOML
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-vcs-permalinks --all-files --show-diff-on-failure
+            displayName: Check VCS permalinks
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-xml --all-files --show-diff-on-failure
+            displayName: Check XML
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run check-yaml --all-files --show-diff-on-failure
+            displayName: Check YAML
+            condition: eq(variables['checksReady'], 'true')
+          - script: pre-commit run shellcheck --all-files --show-diff-on-failure
+            displayName: shellcheck
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run no-nul-bytes
+            displayName: NUL bytes in text files
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run shell-tests
+            displayName: shell tests
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run markdownlint
+            displayName: markdownlint
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run cspell
+            displayName: cspell
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run format
+            displayName: prettier (--check)
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run python-lint
+            displayName: ruff (check, format)
+            condition: eq(variables['checksReady'], 'true')
+          - script: uv run --quiet --project ci gate run ci-tests
+            displayName: ci tests (pytest)
+            condition: eq(variables['checksReady'], 'true')
+            env:
+              CI_GATE_ARTIFACTS: target/gate-artifacts/ci-tests
+          - task: PublishTestResults@2
+            displayName: Publish the ci test results
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: {{checks_root}}/target/gate-artifacts/ci-tests/junit.xml
+              testRunTitle: ci tests
+              failTaskOnMissingResultsFile: false
+{% if ci_kind_checks %}
+{{ci_kind_checks}}
+{% endif %}
+
+  # A tag's run publishes here, after every gate passed: each package of the
+  # npm workspace whose manifest is public is published to the project's feed
+  # at the version its manifest carries, which has to be the tag's. The script
+  # authenticates npm with the job's access token, so no secret is stored for
+  # it, and builds the workspace in the run, since a repository commits no
+  # built output. A repository with no workspace, or none public, skips with a
+  # notice, and a workspace no `typescript` gate of the repository builds is
+  # refused.
+{{ci_publish}}
+{% if ci_mirror %}
+
+  # The mirror on GitHub is the public source every manifest names, and only
+  # this stage writes to it, so it holds gated commits and nothing else. Each
+  # of {{branches | join(', ')}} is pushed to the branch of its name once
+  # every gate passed, and a tag once its packages are published.
+  # scripts/ci/mirror.sh refuses a push that would not move the mirror
+  # forward; queue a run with the variable `mirrorAllowRewrite` set to `true`
+  # to push over it anyway. The deploy key is the secure file
+  # `{{mirror_key}}`, with write access to this mirror alone, since GitHub
+  # refuses one key on two repositories.
+  - stage: mirror
+    displayName: Mirror
+    dependsOn:
+      - gates
+      - publish
+    condition: >-
+      and(eq(dependencies.gates.result, 'Succeeded'),
+      in(dependencies.publish.result, 'Succeeded', 'Skipped'),
+      or(in(variables['Build.SourceBranch'], {% for branch in branches %}'refs/heads/{{branch}}'{% if not loop.last %}, {% endif %}{% endfor %}),
+      startsWith(variables['Build.SourceBranch'], 'refs/tags/v')))
+    jobs:
+      - job: github
+        displayName: Push to GitHub
+        timeoutInMinutes: 10
+        steps:
+          # GitHub refuses a push from a shallow clone, a branch carries its
+          # tags, and the guard needs the mirror's head in the local history.
+          - checkout: self
+            fetchDepth: 0
+            fetchTags: true
+            clean: true
+          - task: DownloadSecureFile@1
+            name: mirrorKey
+            displayName: Fetch the mirror's deploy key
+            inputs:
+              secureFile: {{mirror_key}}
+          - script: >-
+              {{mirror_script}} --url '{{public_source}}'
+              "$(mirrorKey.secureFilePath)" "$(Build.SourceBranch)"
+            displayName: Push to the GitHub mirror
+            env:
+              MIRROR_ALLOW_REWRITE: $(mirrorAllowRewrite)
+{% endif %}

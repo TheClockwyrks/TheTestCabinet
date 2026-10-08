@@ -63,22 +63,33 @@ def _projects_linted() -> list[str]:
 
 
 def test_the_python_gate_names_every_uv_project() -> None:
-    """A project the gate does not name is Python nothing lints. The projects
-    are the list the gate names, so one added without naming it there fails
-    here rather than going unlinted."""
-    assert sorted(_projects_linted()) == _uv_projects()
+    """A project the gate does not name is Python nothing lints, so one added
+    without naming it, or a directory holding it, fails here rather than going
+    unlinted. The gate also names the repository scripts and the repository
+    kit, whose Python is held to the same rules from those directories."""
+    named = [Path(path) for path in _projects_linted()]
+    missing = [project for project in _uv_projects() if not any(Path(project).is_relative_to(path) for path in named)]
+    assert missing == [], f"python-lint names none of the uv projects {missing}"
 
 
 def test_every_uv_project_is_linted_by_one_configuration() -> None:
-    """The rules are settled in `ci/` alone, so the projects cannot drift."""
+    """The rules are settled in `ci/` alone, so the projects cannot drift. A
+    directory the gate names that is no uv project, such as the scripts, or the
+    kit, whose `ci/` is the rendered repository's own settled project, is
+    passed over."""
     for project in _projects_linted():
-        if project == "ci":
+        if project == "ci" or not (ROOT / project / "pyproject.toml").is_file():
             continue
         pyproject = tomllib.loads((ROOT / project / "pyproject.toml").read_text(encoding="utf-8"))
         back = "/".join([".."] * len(Path(project).parts))
         assert pyproject.get("tool", {}).get("ruff") == {"extend": f"{back}/ci/pyproject.toml"}, (
             f"{project}/pyproject.toml settles ruff's rules itself rather than extending ci/pyproject.toml's"
         )
+
+
+def test_the_repository_scripts_extend_the_one_configuration() -> None:
+    settings = tomllib.loads((ROOT / "scripts" / "repos" / "ruff.toml").read_text(encoding="utf-8"))
+    assert settings == {"extend": "../../ci/pyproject.toml"}
 
 
 def test_ruff_is_pinned_where_a_gate_finds_it() -> None:

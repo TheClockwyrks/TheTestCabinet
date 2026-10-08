@@ -564,6 +564,10 @@ stages:
             displayName: "project jobs pin the Rust CI image"
             condition: eq(variables['checksReady'], 'true')
 
+          - script: uv run --quiet --project ci gate run dependency-graph
+            displayName: "dependency graph (edges, patch table, package links)"
+            condition: eq(variables['checksReady'], 'true')
+
           # As the web tests do, the two test gates below name an artifact
           # directory, which has each leave its JUnit report there for the
           # collection at the end of the job.

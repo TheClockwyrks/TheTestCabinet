@@ -1,6 +1,7 @@
 """Run every *.test.sh under scripts/, each driving its script through stubs.
 
-Every `*.test.sh` under `scripts/` and `scripts/ci/` runs, and a failure does
+Every `*.test.sh` under `scripts/`, `scripts/ci/` and `scripts/repos/` runs
+(the last is this project's: the repository scripts), and a failure does
 not stop the ones after it: a run names every test that failed rather than the
 first one, which is what makes one run enough to see the whole picture. Each
 test drives its script through stubs of the tools it calls, so none reaches a
@@ -15,7 +16,11 @@ from the_test_cabinet_ci import enter_repo_root, fail, run, say, skip
 # names printed below are the ones a developer types back.
 enter_repo_root()
 
-tests = sorted(Path("scripts").glob("*.test.sh")) + sorted(Path("scripts/ci").glob("*.test.sh"))
+tests = [
+    test
+    for directory in ("scripts", "scripts/ci", "scripts/repos")
+    for test in sorted(Path(directory).glob("*.test.sh"))
+]
 if not tests:
     skip("No shell tests under scripts/.")
 

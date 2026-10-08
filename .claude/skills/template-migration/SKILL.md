@@ -120,3 +120,25 @@ everywhere else.
   `ci/tests/test_wiring.py` maps that job to the `rust-browser` image; keep
   all three. A template change to the Rust image reaches the rust-browser image
   through its `FROM`.
+- The repository kit's Python and its gate: the project renders other
+  repositories from a copier template of its own (`copier.yml`,
+  `templates/repository/`, `scripts/repos/`; see the Repositories development
+  page), and four rendered files carry it. `ci/pyproject.toml`'s dev group
+  adds `copier` and `copier-template-extensions`, with the comment above them
+  saying why, and its pytest `testpaths` adds `../scripts/repos`; keep both,
+  and take the template's `ci/uv.lock` only after `uv lock` has run over the
+  merged file. `ci/gates/python-lint.py`'s `PROJECTS` is
+  `["ci", "scripts/repos", "templates/repository"]` with the comment above it,
+  and `ci/tests/test_gates.py`'s two uv-project tests match a project by
+  `is_relative_to` a named path, pass over a named directory holding no
+  `pyproject.toml`, and add `test_the_repository_scripts_extend_the_one_configuration`;
+  keep them. `ci/gates/shell-tests.py` globs `scripts/repos/` beside `scripts/`
+  and `scripts/ci/`, with the docstring saying so. In `.pre-commit-config.yaml`
+  the `python-lint` hook's `files` adds `scripts/repos/` and
+  `templates/repository/`, the `ci-tests` hook's adds the kit, `copier.yml`,
+  `.cargo/config.toml` and `.package-links.json` with the comment saying why,
+  and the project's `dependency-graph` hook sits after `ci-image-pins`; in
+  `azure-pipelines.yml` its step sits after the `ci-image-pins` step. The gate
+  itself (`ci/gates/dependency-graph.py`) and its library module
+  (`ci/src/the_test_cabinet_ci/graph.py`, `ci/tests/test_graph.py`) are the
+  project's own files in the template's directories.

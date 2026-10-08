@@ -1,0 +1,3 @@
+# The scripts are held to the rules every uv project of the superrepo is, from
+# the one place they are settled.
+extend = "../../ci/pyproject.toml"

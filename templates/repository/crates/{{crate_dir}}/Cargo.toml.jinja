@@ -1,0 +1,14 @@
+[package]
+name = "{{crate}}"
+description = "{{description}}"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Take a crate of another repository up with `<crate> = { workspace = true }`;
+# the root manifest offers the ones the dependency edges permit.

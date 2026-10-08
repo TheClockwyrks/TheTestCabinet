@@ -1,0 +1,8 @@
+# Cargo fetches a git dependency through the git on PATH rather than its own
+# client, so a fetch honors the user's git configuration: the SSH agent, and
+# the URL rewrites that send a fetch of a GitHub mirror of a repository of The
+# Test Cabinet to Azure DevOps while the mirrors are private (the superrepo's
+# scripts/repos/sources.py rewrites, and scripts/ci/git-sources.sh in a
+# pipeline).
+[net]
+git-fetch-with-cli = true

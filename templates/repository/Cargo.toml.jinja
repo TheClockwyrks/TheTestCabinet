@@ -1,0 +1,29 @@
+# The workspace of the {{name}} repository. Every crate under crates/ is a
+# member; add a crate by adding its directory.
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+repository = "{{public_source}}"
+
+# Warnings-as-errors, baked into the manifests for every member crate that
+# opts in with `[lints] workspace = true`, so a plain `cargo build` enforces
+# the policy the clippy gate enforces on the command line.
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = "deny"
+
+# The crates of the other repositories this one may depend on, each at its
+# public source, the GitHub mirror, and the tag its dependents pin. The
+# superrepo's .cargo/config.toml redirects every one of these to the sibling
+# checkout, so a build inside the superrepo never fetches them. A manifest
+# never names an Azure URL or a path outside the repository: the
+# dependency-edges gate refuses both.
+[workspace.dependencies]
+{{workspace_dependencies}}

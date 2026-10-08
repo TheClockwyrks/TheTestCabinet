@@ -1,0 +1,27 @@
+# Shell scripts keep LF endings on every platform: a CRLF shebang line, which a
+# Windows checkout would otherwise introduce when core.autocrlf is on, makes the
+# interpreter fail to start.
+*.sh text eol=lf
+
+# Formats this repository commits as binary, declared rather than inferred.
+#
+# Git guesses binary from content, and what it guesses on is a NUL byte, so
+# without these lines "is this file binary?" and "does this file contain a NUL?"
+# are the same question and a gate cannot use one to judge the other.
+# ci/gates/no-nul-bytes.py reads these declarations for that reason.
+#
+# Declaring them also stops git trying to diff or merge them as text. A new
+# binary format needs a line here; a file that needs a NUL and is NOT one of
+# these formats almost certainly wants an escape instead.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.icns binary
+*.pdf  binary
+*.zip  binary
+*.jar  binary
+*.gz   binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary

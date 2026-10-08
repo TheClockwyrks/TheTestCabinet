@@ -1,0 +1,29 @@
+{
+  "name": "{{name}}-repository",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+{% if typescript_workspace %}
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+{% endif %}
+  "scripts": {
+{% if typescript_workspace %}
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+{% endif %}
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:md": "markdownlint-cli2",
+    "spell": "cspell lint --no-progress --cache"
+  },
+  "devDependencies": {
+    "cspell": "10.2.2",
+    "markdownlint-cli2": "0.22.1",
+    "prettier": "3.8.4"
+  }
+}

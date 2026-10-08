@@ -15,7 +15,14 @@ gate = "the_test_cabinet_ci.gate_cli:main"
 metrics = "the_test_cabinet_ci.metrics_cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.4", "ruff>=0.16.8"]
+dev = [
+    # The repository kit's renderer (scripts/repos/render.py) and its context
+    # extension, which copier loads from the template by path.
+    "copier>=9.18",
+    "copier-template-extensions>=0.3.3",
+    "pytest>=8.4",
+    "ruff>=0.16.8",
+]
 
 # uv's own backend, which the pinned uv (.devcontainer/tools/uv.sh) carries, so
 # building the project fetches nothing. It reads the package out of `src/` by
@@ -26,7 +33,7 @@ requires = ["uv_build>=0.11.29,<0.12"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "../scripts/repos"]
 addopts = "-ra"
 
 # The settings a Python gate holds this project to, and every other uv project

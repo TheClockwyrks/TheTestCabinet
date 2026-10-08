@@ -317,7 +317,7 @@ repos:
         description: Lint and check the formatting of the Python every uv project is written in.
         entry: uv run --quiet --project ci gate run python-lint
         language: system
-        files: '^ci/.*\.py$|^ci/pyproject\.toml$'
+        files: '^ci/.*\.py$|^ci/pyproject\.toml$|^scripts/repos/.*\.(py|toml)$|^templates/repository/.*\.(py|toml)$'
         pass_filenames: false
 
       - id: ci-tests
@@ -328,7 +328,10 @@ repos:
         # The pipeline and this file are inputs too: ci/tests/test_wiring.py
         # reads both, with ci/images/tags.yml, and holds the gates, the hooks,
         # the pipeline steps and the images the jobs pull to one another.
-        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$'
+        # The repository scripts' tests run here too, and render the kit, so the
+        # kit, its declaration and the patch and link tables they hold current
+        # are inputs as well.
+        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$|^scripts/repos/|^templates/repository/|^copier\.yml$|^\.cargo/config\.toml$|^\.package-links\.json$'
         pass_filenames: false
 
       # This project's own gates, each a script under ci/gates/. The ones too
@@ -392,6 +395,15 @@ repos:
         # The project's pipeline files that name a CI image, and the gate
         # that holds each reference to the commit ci/images/tags.yml pins.
         files: '^\.azure/|^azure-pipelines-release\.yml$|^ci/gates/ci-image-pins\.py$'
+        pass_filenames: false
+
+      - id: dependency-graph
+        name: "dependency graph (edges, patch table, package links)"
+        entry: uv run --quiet --project ci gate run dependency-graph
+        language: system
+        # The submodules, the two tables joining them, the kit's tables the
+        # check judges by, and every checked-out repository's manifests.
+        files: '^\.gitmodules$|^\.cargo/config\.toml$|^\.package-links\.json$|^templates/repository/ci/src/the_test_cabinet_ci/(edges|links)\.py$|^scripts/repos/render\.py$|^ci/images/tags\.yml$|^ci/src/the_test_cabinet_ci/graph\.py$|^ci/gates/dependency-graph\.py$'
         pass_filenames: false
 
       - id: scripts-test

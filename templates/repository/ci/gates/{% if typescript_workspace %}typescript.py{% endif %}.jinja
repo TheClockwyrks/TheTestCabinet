@@ -1,0 +1,266 @@
+"""Install, build, type-check and test the npm workspace at the repository root.
+
+The gate's id is `typescript`. The workspace is the repository root: its
+`package.json` names the packages under `workspaces` (`packages/*` and
+`apps/*`, the layout the monorepo had, so a path a build or a Dockerfile names
+does not move when a repository is extracted), and `package-lock.json` beside
+it is its lock file, which the repository commits. The same manifest carries
+the prose tools the other gates run, and the kit merges its changes to it on
+an update.
+
+A package whose manifest is public names the project's feed under
+`publishConfig.registry`, as the Repositories development page requires, so
+`npm publish` sends it to the feed wherever it is run; a manifest without one
+would go to the public registry. The gate refuses a public package naming
+another registry, or none, before it installs anything, and the publish
+stage's script refuses it again. A private package is never published and
+needs none.
+
+The workspace manifest declares three scripts, and the gate runs each from the
+repository root after installing it with `npm ci`:
+
+    build       builds every package, generating what the build generates
+    typecheck   type-checks every package against what the build produced
+    test        runs every package's tests
+
+The build runs before the type check because the build is what generates the
+types the packages are checked against, so a change to a generated type that
+breaks a package fails the type check.
+
+Inside the superrepo the workspace builds against the sibling checkouts rather
+than the feed, as the Rust gates build against the patch table there. The
+superrepo marks itself with `.package-links.json` at its root, the table of the
+packages its checked-out repositories produce (see `the_test_cabinet_ci.links`),
+and a workspace naming one of them is installed with each producer's directory
+linked in its place: npm's dry run of `npm ci` first holds the lock to the
+manifests, then `npm install --no-save --install-links=false` with the
+producers' directories installs everything else from the lock and writes a
+symlink for each linked package, fetching no linked version from the feed and
+leaving the manifest and the lock as committed. Each producer workspace is
+built first, producers of producers before it, and installed with its own
+links when it is not installed or has lost one, since a consumer compiles
+against the producer's `dist/`. On its own, where the pipeline runs, no table
+stands above the repository and the workspace installs from the lock alone.
+
+When the runner asks for artifacts, `CI_GATE_ARTIFACTS` reaches the `test`
+script as an absolute path, and the script writes `junit.xml` (JUnit) and
+`coverage-summary.json` (istanbul `json-summary`) into it, as ci/README.md
+names them. The gate fails when the run left either of them unwritten. Without
+the variable the script writes no report and collects no coverage.
+
+Nothing the gate builds may be offered to a commit, because a repository
+commits no built artifact: a path whose git status the run changed, a build
+output the ignore file misses among them, fails the gate. A tree git knows
+nothing about, a fresh render, skips that check.
+
+A workspace with no member package yet, a fresh render, passes with a notice.
+"""
+
+import json
+import time
+from pathlib import Path
+
+from the_test_cabinet_ci import (
+    ARTIFACTS_ENV,
+    artifacts_dir,
+    enter_repo_root,
+    fail,
+    git,
+    require_tool,
+    say,
+    skip,
+    succeeded,
+)
+from the_test_cabinet_ci import links as package_links
+
+# The repository root, which `Path()` names.
+WORKSPACE = Path()
+MANIFEST = WORKSPACE / "package.json"
+# The npm registry of the project's feed, which every public package names.
+FEED_REGISTRY = "{{feed_registry}}"
+LOCK = WORKSPACE / "package-lock.json"
+# In the order the gate runs them; see the docstring for why the build is first.
+SCRIPTS = ("build", "typecheck", "test")
+# What the `test` script writes into the artifacts directory, as ci/README.md
+# names them.
+REPORTS = ("junit.xml", "coverage-summary.json")
+
+
+def unpublishable() -> list[str]:
+    """Each public package of the workspace that does not name the feed under `publishConfig.registry`."""
+    astray = []
+    for directory in package_links.member_directories(WORKSPACE):
+        path = directory / "package.json"
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(f"{path} is not JSON: {error}")
+        if not isinstance(manifest, dict):
+            fail(f"{path} is not a JSON object.")
+        if manifest.get("private"):
+            continue
+        name = manifest.get("name") or path.parent.as_posix()
+        config = manifest.get("publishConfig")
+        registry = config.get("registry") if isinstance(config, dict) else None
+        if not isinstance(registry, str) or not registry:
+            astray.append(f"    {name} ({path}) names no registry under publishConfig")
+        elif registry.rstrip("/") + "/" != FEED_REGISTRY:
+            astray.append(f"    {name} ({path}) names {registry} under publishConfig")
+    return astray
+
+
+def status() -> set[str] | None:
+    """The workspace's git status, one entry per path, or None outside a checkout.
+
+    Untracked files are listed one by one, so a build output the ignore file
+    misses shows up as the file it is rather than as its directory.
+    """
+    listed = git(["status", "--porcelain=v1", "--untracked-files=all", "--", str(WORKSPACE)], quiet=True)
+    if listed.returncode != 0:
+        return None
+    return {line for line in listed.stdout.splitlines() if line}
+
+
+def install(superrepo: Path, workspace: str, links: list[package_links.Link]) -> bool:
+    """Install a workspace of the superrepo with its links, or from its lock alone when it links nothing."""
+    directory = superrepo / workspace
+    if links:
+        say(f"=== npm ci --dry-run ({workspace}) ===")
+        if not succeeded(package_links.LOCK_CHECK, cwd=directory, unset=(ARTIFACTS_ENV,)):
+            return False
+    command = package_links.install_arguments(superrepo, links)
+    say("", f"=== {' '.join(command[:2])} ({workspace}) ===")
+    for link in links:
+        say(f"    {link.package} from {link.directory}")
+    return succeeded(command, cwd=directory, unset=(ARTIFACTS_ENV,))
+
+
+def link_producers(superrepo: Path, table: package_links.Table, workspace: str) -> None:
+    """Install and build every producer workspace the workspace links, producers of producers first."""
+    try:
+        producers = package_links.build_order(superrepo, table, workspace)
+    except package_links.LinkCycleError as error:
+        fail(f"The package links cannot be built in any order: {error}.")
+    for producer in producers:
+        links = package_links.links_of(superrepo, table, producer)
+        current = package_links.installed(superrepo / producer) and all(
+            package_links.linked(superrepo, producer, link) for link in links
+        )
+        if not current and not install(superrepo, producer, links):
+            fail("", f"{producer}, whose packages this workspace links, did not install.")
+        say("", f"=== npm run build ({producer}) ===")
+        if not succeeded(["npm", "run", "build"], cwd=superrepo / producer, unset=(ARTIFACTS_ENV,)):
+            fail("", f"{producer}, whose packages this workspace links, did not build.")
+
+
+# From the repository root, so every path above resolves the same way whatever
+# directory the caller ran the gate from.
+root = enter_repo_root()
+
+if not MANIFEST.is_file() or not package_links.member_directories(WORKSPACE):
+    skip(f"No TypeScript package yet: the workspaces {MANIFEST} names hold no package.json.")
+
+require_tool("npm", "Node and npm come with the devcontainer and the web CI image.")
+
+if not LOCK.is_file():
+    fail(
+        f"{LOCK} is missing, so the workspace cannot be installed from its lock. Write it with:",
+        "    npm install",
+        "and commit it.",
+    )
+
+try:
+    declared = json.loads(MANIFEST.read_text(encoding="utf-8")).get("scripts", {})
+except (json.JSONDecodeError, AttributeError) as error:
+    fail(f"{MANIFEST} is not a JSON object: {error}")
+missing = [script for script in SCRIPTS if script not in declared]
+if missing:
+    fail(
+        f"{MANIFEST} declares no {', '.join(repr(script) for script in missing)} script.",
+        f"The gate runs {', '.join(SCRIPTS)} from the workspace root, in that order.",
+    )
+
+astray = unpublishable()
+if astray:
+    wanted = json.dumps({"registry": FEED_REGISTRY})
+    fail(
+        "A public package does not name the project's feed under publishConfig.registry, so `npm publish`",
+        "would send it elsewhere:",
+        *astray,
+        f'Set "publishConfig": {wanted} in each, or mark the package "private": true.',
+    )
+
+before = status()
+artifacts = artifacts_dir()
+started = time.time()
+
+# Inside the superrepo, the table above the repository says which packages its
+# siblings produce; the docstring says how a workspace naming one is linked.
+try:
+    superrepo, table = package_links.surrounding(root)
+except package_links.LinkTableError as error:
+    fail(f"{error}. Write it again with scripts/repos/link-packages.sh in the superrepo.")
+own = ""
+links: list[package_links.Link] = []
+if superrepo is not None:
+    own = (root / WORKSPACE).resolve().relative_to(superrepo).as_posix()
+    links = package_links.links_of(superrepo, table, own)
+    if links:
+        say(f"Inside the superrepo at {superrepo}: the workspace links {len(links)} package(s) from its siblings.")
+        link_producers(superrepo, table, own)
+        say("")
+
+if superrepo is not None and links:
+    if not install(superrepo, own, links):
+        fail(
+            "",
+            f"The npm workspace did not install with its links. A failed dry run of `npm ci` is a {LOCK}",
+            "that disagrees with the manifests; write it again with `npm install` outside the superrepo.",
+        )
+    unlinked = [link for link in links if not package_links.linked(superrepo, own, link)]
+    if unlinked:
+        fail(
+            "",
+            "The install left these packages unlinked, so the build would not see the sibling checkouts:",
+            *(f"    {link.package} (expected a symlink to {link.directory})" for link in unlinked),
+        )
+else:
+    say(f"=== npm ci ({WORKSPACE}) ===")
+    # `ci` installs exactly what the lock pins, and refuses a lock that disagrees
+    # with the manifest instead of rewriting it.
+    if not succeeded(["npm", "ci", "--no-audit", "--no-fund"], cwd=root / WORKSPACE, unset=(ARTIFACTS_ENV,)):
+        fail("", f"The npm workspace did not install from {LOCK}.")
+
+for script in SCRIPTS:
+    say("", f"=== npm run {script} ({WORKSPACE}) ===")
+    # Only the tests are handed the artifacts directory, as the absolute path
+    # the runner's may not be; every other step has the variable removed.
+    handed = script == "test" and artifacts is not None
+    env = {ARTIFACTS_ENV: str(artifacts)} if handed else None
+    unset = () if handed else (ARTIFACTS_ENV,)
+    if not succeeded(["npm", "run", script], cwd=root / WORKSPACE, env=env, unset=unset):
+        fail("", f"`npm run {script}` failed in {WORKSPACE}. Fix it, then run this gate again.")
+
+if artifacts is not None:
+    # A report left by an earlier run is not this run's, so each has to have
+    # been written since the gate started.
+    unwritten = [
+        name for name in REPORTS if not (artifacts / name).is_file() or (artifacts / name).stat().st_mtime < started - 1
+    ]
+    if unwritten:
+        fail(
+            "",
+            f"`npm run test` did not write {', '.join(unwritten)} into {artifacts}.",
+            "Given CI_GATE_ARTIFACTS, the test script writes the JUnit report and the coverage summary there.",
+        )
+
+after = status()
+if before is not None and after is not None and after - before:
+    fail(
+        "",
+        "The run left files git would offer to commit, and a built artifact is never committed:",
+        *(f"    {entry}" for entry in sorted(after - before)),
+        "Ignore the build output in .gitignore, or stop the build rewriting a tracked file.",
+    )
+
+say("", "The npm workspace installed, built, type-checked and passed its tests.")

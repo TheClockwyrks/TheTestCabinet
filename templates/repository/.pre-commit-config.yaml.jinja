@@ -1,0 +1,94 @@
+# The commit hooks: the gates under ci/gates/ that are trivial to run, each as
+# one hook, plus the file checks and the shell linting the hook framework
+# brings from upstream. A failing check is one red hook named for the check.
+# A gate that compiles, builds or runs a test suite (rust-clippy, rust-doc,
+# rust-test, shell-tests, ci-tests, typescript) has no hook: it is usually run before the
+# commit, so a hook would run it twice, and a commit that skipped it is caught
+# by the pipeline, which runs every gate. ci/tests/test_wiring.py names the
+# hookless gates, so adding a gate is a decision. `pre-commit install` installs
+# the hooks.
+minimum_pre_commit_version: "4.6.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-illegal-windows-names
+      - id: check-json
+        # A tsconfig is JSON with comments, which TypeScript reads and this
+        # hook does not.
+        exclude: '(^|/)tsconfig(\.[^/]+)?\.json$'
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+        exclude: '\.(svg|png|ico|woff2?)$'
+      - id: check-shebang-scripts-are-executable
+        exclude: '\.rs$'
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-vcs-permalinks
+      - id: check-xml
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: [-x]
+
+  - repo: local
+    hooks:
+      - id: no-nul-bytes
+        name: NUL bytes in text files
+        description: Reject a NUL byte in a file that is not a declared binary format, which makes grep and rg report zero matches in it.
+        entry: uv run --quiet --project ci python ci/gates/no-nul-bytes.py
+        language: system
+        types: [file]
+        require_serial: true
+      - id: dependency-edges
+        name: dependency edges
+        description: Refuse a dependency the Repositories development page does not permit this repository.
+        entry: uv run --quiet --project ci gate run dependency-edges
+        language: system
+        files: '(^|/)Cargo\.toml$|(^|/)package\.json$|^\.test-cabinet-repo\.toml$|^ci/src/the_test_cabinet_ci/edges\.py$|^ci/gates/dependency-edges\.py$'
+        pass_filenames: false
+{% if rust_crate %}
+      - id: rust-fmt
+        name: cargo fmt (--check)
+        description: Enforce rustfmt formatting across the workspace.
+        entry: uv run --quiet --project ci gate run rust-fmt
+        language: system
+        files: '\.rs$|^rustfmt\.toml$|^rust-toolchain\.toml$|^ci/gates/rust-fmt\.py$'
+        pass_filenames: false
+{% endif %}
+      - id: markdownlint
+        name: markdownlint
+        description: Lint the Markdown style (shares .markdownlint-cli2.yaml).
+        entry: uv run --quiet --project ci gate run markdownlint
+        language: system
+        files: '\.mdx?$|^\.markdownlint-cli2\.yaml$|^ci/gates/markdownlint\.py$'
+        pass_filenames: false
+      - id: cspell
+        name: cspell
+        description: Spell-check the prose (shares cspell.json + the project dictionary).
+        entry: uv run --quiet --project ci gate run cspell
+        language: system
+        files: '\.mdx?$|^cspell\.json$|^\.cspell/|^ci/gates/cspell\.py$'
+        pass_filenames: false
+      - id: format
+        name: prettier (--check)
+        description: Check formatting with Prettier across everything .prettierignore does not exclude.
+        entry: uv run --quiet --project ci gate run format
+        language: system
+        files: '\.(m|c)?(j|t)sx?$|\.(css|html|json|ya?ml)$|^\.prettierrc\.yaml$|^\.prettierignore$|^ci/gates/format\.py$'
+        pass_filenames: false
+      - id: python-lint
+        name: ruff (check, format)
+        description: Lint and check the formatting of the Python the gates are written in.
+        entry: uv run --quiet --project ci gate run python-lint
+        language: system
+        files: '^ci/.*\.py$|^ci/pyproject\.toml$'
+        pass_filenames: false
