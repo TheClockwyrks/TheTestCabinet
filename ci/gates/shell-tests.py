@@ -10,7 +10,7 @@ container runtime, a registry or a cluster.
 
 from pathlib import Path
 
-from the_test_cabinet_ci import enter_repo_root, fail, run, say, skip
+from the_test_cabinet_ci import GIT_LOCATION_VARIABLES, enter_repo_root, fail, run, say, skip
 
 # From the workspace root, so each test resolves its script beside it and the
 # names printed below are the ones a developer types back.
@@ -28,8 +28,10 @@ failed: list[str] = []
 for test in tests:
     say("", f"=== {test} ===")
     # The path holds a slash, so it is executed relative to the workspace root
-    # rather than looked up on PATH.
-    if run([str(test)]).returncode != 0:
+    # rather than looked up on PATH. The fixtures run git in throwaway
+    # repositories, so a commit hook's GIT_DIR must not reach them: from a
+    # linked worktree it names the real repository, which they would rewrite.
+    if run([str(test)], unset=GIT_LOCATION_VARIABLES).returncode != 0:
         failed.append(str(test))
 
 say("", "=== shell tests ===")
