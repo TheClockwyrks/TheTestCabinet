@@ -1,0 +1,143 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+// The tab bar sits on its own full-width row above the rows, exactly as it does
+// on the catalog page.
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+// Full-width cards stacked one per row, so each suite gets the whole content
+// width for its name, summary, tags, and the versions it holds.
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// Translucent neon panel matching the catalog's cards. The card is not itself an
+// anchor: it holds several links (the suite and each version it holds), and a
+// card-wide link cannot contain them.
+.card {
+  position: relative;
+  padding: t.$space-md;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  box-shadow: inset 0 0 1.5rem
+    color-mix(in srgb, t.$color-accent 8%, transparent);
+}
+
+// Name, slug, newest version and the experimental marker share the card's first
+// row; the name hugs the left and the rest trail it.
+.cardHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-sm;
+}
+
+.name {
+  margin: 0;
+  font-size: t.$font-lg;
+  @include h.halo;
+}
+
+.slug {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.version {
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// A suite the deployment serves as experimental. Tinted like the catalog's
+// hardest difficulty so it reads as a caveat rather than a category.
+.experimental {
+  flex-shrink: 0;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  color: t.$color-accent-2;
+  border: t.$border-hairline solid currentcolor;
+  border-radius: t.$radius-sm;
+}
+
+.summary {
+  margin: 0;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  color: t.$color-text-muted;
+}
+
+.tags {
+  list-style: none;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.tag {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+}
+
+// Every version the suite holds, newest first, each opening the suite at that
+// version.
+.versions {
+  list-style: none;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-sm;
+}
+
+.versionsLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.versionLink {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// An unreachable backend, distinct from a deployment that offers no suites:
+// tinted with the warning accent so it reads as a fault rather than just
+// "nothing here yet".
+.error {
+  color: t.$color-accent-2;
+  @include h.halo-glow;
+}

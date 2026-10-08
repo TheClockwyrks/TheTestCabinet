@@ -1,0 +1,205 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
+
+// Shared styles for the suite detail tabs. Every tab is a stack of panels, one
+// per entity the anchored version declares, so the pieces are defined once here
+// and each tab picks the ones it needs.
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// Authored prose — a showcase description, a specification's `.md`, a changelog.
+// The Markdown primitive brings its themed typography; this only reins in stray
+// media an author embedded.
+.prose {
+  img {
+    max-width: 100%;
+    height: auto;
+    border-radius: t.$radius-sm;
+  }
+}
+
+// A quiet line: a summary, an absence, or the parenthetical beside an id.
+.note {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// One entity's name with the badges that classify it.
+.entryHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-sm;
+}
+
+.entryTitle {
+  margin: 0;
+  font-size: t.$font-lg;
+  @include h.halo;
+}
+
+.entrySubtitle {
+  margin: t.$space-md 0 t.$space-sm;
+  font-size: t.$font-md;
+  @include h.halo;
+}
+
+// A classification token — a test case type, a difficulty, an asset kind, a
+// requirement's kind. Difficulty and requirement kind tint themselves; the rest
+// read in the muted register.
+.badge {
+  flex-shrink: 0;
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid currentcolor;
+  border-radius: t.$radius-sm;
+
+  &[data-level="easy"] {
+    color: t.$color-positive;
+  }
+
+  &[data-level="medium"] {
+    color: t.$color-warning;
+  }
+
+  &[data-level="hard"] {
+    color: t.$color-accent-2;
+  }
+
+  &[data-kind="functional"] {
+    color: t.$color-accent;
+  }
+}
+
+// An entity's facts as a label/value grid: the labels in a narrow first column,
+// the values beside them.
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: t.$space-xs t.$space-md;
+  margin: 0;
+  font-size: t.$font-sm;
+
+  dt {
+    color: t.$color-text-muted;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+// The requirements under a specification: one bordered block each, so a long
+// list stays scannable.
+.requirements {
+  list-style: none;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.requirement {
+  padding: t.$space-sm t.$space-md;
+  border-left: 0.2rem solid t.$color-border;
+}
+
+.requirementHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// The identity results record a requirement under: `<spec id>/<requirement id>`.
+.requirementId {
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  @include h.halo;
+}
+
+.requirementText {
+  margin: t.$space-xs 0 0;
+  line-height: 1.5;
+}
+
+// The validator module paths a requirement claims, relative to `validators/`.
+.validators,
+.files {
+  list-style: none;
+  margin: t.$space-xs 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-sm;
+}
+
+.validator,
+.file {
+  padding: 0 t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+}
+
+// One covered specification inside a definition: its requirements under its name.
+.covered {
+  margin-top: t.$space-md;
+}
+
+// An asset's inline previews, side by side so a sprite sheet's frames read as a
+// set.
+.previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-top: t.$space-md;
+}
+
+.preview {
+  margin: 0;
+  max-width: 16rem;
+
+  img {
+    border: t.$border-hairline solid t.$color-border;
+  }
+}
+
+.caption {
+  margin-top: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-align: center;
+  @include h.halo;
+}
+
+// The engines a version ships a reference implementation for.
+.engines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.engine {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+}

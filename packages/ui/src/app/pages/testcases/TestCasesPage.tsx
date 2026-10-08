@@ -1,30 +1,28 @@
 import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
-import { Link, NavLink } from "react-router";
+import { Link } from "react-router";
+
+import { CatalogTabs } from "./catalog-tabs";
+import styles from "./TestCasesPage.module.scss";
 import { Input } from "../../../primitives";
-import { PageLayout } from "../../components/PageLayout";
-import { LoadingState } from "../../components/LoadingState";
-import { PromptHeader } from "../../components/PromptHeader";
-import { CabinetIcon } from "../../components/CabinetIcon";
 import { useRecordSectionIndex } from "../../components/backReturn";
-import { useTestCases } from "../../data/useTestCases";
+import { CabinetIcon } from "../../components/CabinetIcon";
+import { LoadingState } from "../../components/LoadingState";
+import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData } from "../../data/galleryContext";
 import type { ShowcaseMediaRef, TestCaseSummary } from "../../data/testCases";
-import { CATALOG_TABS, inTab } from "../../data/testCaseTabs";
-import { ReplayPlayer } from "../runs/replay/ReplayPlayer";
+import { inTab } from "../../data/testCaseTabs";
+import { useTestCases } from "../../data/useTestCases";
 import { routes } from "../../routes";
 import type { CatalogTab } from "../../routes";
+import { ReplayPlayer } from "../runs/replay/ReplayPlayer";
 import exec from "../runs/RunExec.module.scss";
-import styles from "./TestCasesPage.module.scss";
 
-// The catalog's type tabs are defined in `../../data/testCaseTabs` (shared with
-// the coverage plan editor). On a console (canExecute) they are all shown
-// regardless of which types the catalog currently holds, so the bar's shape is
-// stable even for a type that has cases but no runs yet. On the static gallery
-// site the catalog holds only cases with a published run, so a tab with no case
-// under it is hidden (see `visibleTabs`) — mirroring, for the tab bar, the way
-// the grid already lists only published cases. The catalog shows exactly one tab
-// at a time.
+// The catalog's type tabs, and the Test Suites tab ahead of them, are rendered by
+// the shared `CatalogTabs` bar, which the Test Suites page renders too so the bar
+// is identical whichever tab is selected. The catalog shows exactly one tab at a
+// time.
 
 interface TestCasesPageProps {
   /** Which type tab this route renders. Carried in the URL (one route per tab)
@@ -64,7 +62,6 @@ function clampSplit(fraction: number): number {
 // listed alphabetically — never ranked.
 export function TestCasesPage({ tab }: TestCasesPageProps) {
   const { testCases, status } = useTestCases();
-  const { canExecute } = useGalleryData();
   const [query, setQuery] = useState("");
   // The index's selection: which case the preview pane stages. Held as the slug
   // rather than an object so the fallback below can resolve it against whatever
@@ -77,19 +74,6 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
   // Remember the viewed tab so a case's detail back-control returns here, not to
   // the catalog default tab.
   useRecordSectionIndex("testCases");
-
-  // On the static site (no execution) drop tabs the catalog has no case for, so
-  // the bar advertises only types with a published run; the consoles keep the
-  // full, stable bar.
-  const visibleTabs = useMemo(
-    () =>
-      canExecute
-        ? CATALOG_TABS
-        : CATALOG_TABS.filter((entry) =>
-            testCases.some((testCase) => inTab(testCase, entry.tab)),
-          ),
-    [canExecute, testCases],
-  );
 
   // What decides this page's body: the catalog it holds, not the last read's
   // outcome. An empty-but-settled catalog still renders the chrome and its empty
@@ -146,21 +130,7 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
             </p>
           )}
           <div className={styles.controls}>
-            <nav className={styles.tabs} aria-label="Test type">
-              {visibleTabs.map((entry) => (
-                <NavLink
-                  key={entry.tab}
-                  to={routes.testCasesCatalog(entry.tab)}
-                  className={
-                    entry.tab === tab
-                      ? `${styles.tab} ${styles.tabActive}`
-                      : styles.tab
-                  }
-                >
-                  {entry.label}
-                </NavLink>
-              ))}
-            </nav>
+            <CatalogTabs active={tab} />
             <Input
               type="search"
               placeholder="Search by title, tag, or difficulty…"

@@ -149,3 +149,65 @@
     height: 100%;
   }
 }
+
+// A suite's reference builds: one entry per engine above the build being played.
+.buildList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.buildEntries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.buildEntry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.buildEngine {
+  font-weight: 600;
+  @include h.halo;
+}
+
+.buildSlug {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.buildPlay {
+  margin-left: auto;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &[aria-pressed="true"] {
+    color: t.$color-text;
+    background: t.$color-bg-2;
+    border: t.$border-hairline solid t.$color-border;
+  }
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.buildMissing {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}

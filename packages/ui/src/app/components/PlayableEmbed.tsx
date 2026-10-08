@@ -267,3 +267,83 @@ export function ReferencePlayable({
     />
   );
 }
+
+interface ReferenceBuildListProps {
+  /**
+   * The engines to list, each once. An engine absent from {@link builds} is
+   * listed without a play action.
+   */
+  engines: readonly string[];
+  /** The loadable URLs of the uploaded builds, keyed by engine. */
+  builds: Record<string, string>;
+  /** Names what the builds implement, labelling each embed. */
+  subject: string;
+  /**
+   * The engine whose build plays first, when it has one. Falls back to the
+   * first engine with a build, so a list holding any build opens on one.
+   */
+  initialEngine?: string;
+}
+
+/**
+ * A test suite's reference builds, one entry per engine: an engine with an
+ * uploaded build carries a Play action, and the build being played is embedded
+ * below the list inline, exactly as a case variant's reference build is. An
+ * engine with no uploaded build is listed without one, so a reader sees which
+ * engines are covered and which are playable at a glance.
+ */
+export function ReferenceBuildList({
+  engines,
+  builds,
+  subject,
+  initialEngine,
+}: ReferenceBuildListProps) {
+  const listed = orderEngines([
+    ...new Set([...engines, ...Object.keys(builds)]),
+  ]);
+  const firstPlayable =
+    initialEngine !== undefined && builds[initialEngine] !== undefined
+      ? initialEngine
+      : listed.find((engine) => builds[engine]);
+  const [playing, setPlaying] = useState<string | undefined>(firstPlayable);
+  const src = playing === undefined ? undefined : builds[playing];
+
+  return (
+    <div className={styles.buildList}>
+      <ul className={styles.buildEntries} aria-label="Reference builds">
+        {listed.map((engine) => {
+          const url = builds[engine];
+          const active = engine === playing && url !== undefined;
+          return (
+            <li key={engine} className={styles.buildEntry}>
+              <span className={styles.buildEngine}>{engineName(engine)}</span>
+              <span className={styles.buildSlug}>{engine}</span>
+              {url ? (
+                <button
+                  type="button"
+                  className={styles.buildPlay}
+                  aria-pressed={active}
+                  aria-label={`Play the ${engineName(engine)} reference build`}
+                  onClick={() => {
+                    setPlaying(engine);
+                  }}
+                >
+                  {active ? "Playing" : "Play"}
+                </button>
+              ) : (
+                <span className={styles.buildMissing}>No build uploaded</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {src && playing ? (
+        <PlayableEmbed
+          src={src}
+          title={`Reference implementation for ${subject} on ${engineName(playing)}`}
+          mode="inline"
+        />
+      ) : null}
+    </div>
+  );
+}

@@ -4,6 +4,8 @@ import type {
   ModelSpec,
   TestType,
 } from "@clockwyrks/run-record";
+import type { StoredSuiteCoordinate } from "@clockwyrks/run-record/backend-api";
+
 import type {
   AssetKind,
   CaseShowcase,
@@ -262,6 +264,11 @@ export interface VariantSummary {
    * catalog populates it from the `case_reference_build` table, the static snapshot
    * from `CaseVariantOut.referenceBuilds`. */
   referenceBuilds: Record<string, string>;
+  /** The test suite coordinate the anchored version was lowered from, or null
+   * (or absent) for an authored case. A suite-defined version's
+   * {@link referenceBuilds} are the builds uploaded for its suite version, which
+   * the Play tab lists one entry per engine. */
+  suite?: StoredSuiteCoordinate | null;
   /** The published **reference frames** of this variant of an asset-generation
    * case — the other shape a reference implementation takes. An asset case builds
    * no site, so its reference is data rather than a page: `tcab publish-reference`

@@ -50,6 +50,8 @@ import type {
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
+  SuiteVersionResponse,
+  SuiteOut,
   TestCaseGroupOut,
 } from "@clockwyrks/run-record/backend-api";
 import type {
@@ -279,6 +281,34 @@ export interface BackendClient {
    */
   listTestCaseGroups(): Promise<TestCaseGroupOut[]>;
   listVersions(slug: string): Promise<string[]>;
+
+  // The ingested [test suites](https://docs.testcabinet.ai/test-suites/overview/)
+  // a deployment offers. Optional for the reason the coverage and gg reads are:
+  // a transport that cannot reach them (the static gallery's read-only one, and
+  // any backend predating the endpoints) simply omits them, and the console reads
+  // their presence as "this host has suites at all" — the Test Suites tab and
+  // everything under it is mounted on exactly that condition rather than on a
+  // second flag that could disagree with it.
+  /**
+   * Every suite the deployment offers, with the versions it holds oldest first
+   * (`GET /test-suites`). Each version carries the identity a listing renders.
+   * Experimental versions ride here only where the deployment opted in, so a
+   * client shows what it is served rather than filtering again.
+   */
+  listTestSuites?(): Promise<SuiteOut[]>;
+  /**
+   * One suite version in full (`GET /test-suites/{slug}/{version}`): the
+   * manifest and prose, the changelog, the specifications with their
+   * requirements, the definitions, the assets, the demonstrations, the engines
+   * a reference implementation covers, and the showcase.
+   *
+   * The stored record *is* the response, so this is served unmapped — a suite
+   * detail surface reads exactly what the deployment ingested. Rejects where the
+   * slug or version names nothing the deployment offers, which is how an unknown
+   * coordinate reaches the not-found state.
+   */
+  getTestSuite?(slug: string, version: string): Promise<SuiteVersionResponse>;
+
   /**
    * Resolve one exact case version, with each variant's `prompt` rendered for
    * `engine`.

@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { Markdown, Panel } from "@clockwyrks/ui";
 import { MediaView } from "../../../components/MediaView";
-import { ReferencePlayable } from "../../../components/PlayableEmbed";
+import {
+  ReferenceBuildList,
+  ReferencePlayable,
+} from "../../../components/PlayableEmbed";
 import { engineName } from "../../../data/engines";
 import { useGalleryData } from "../../../data/galleryContext";
 import type { ShowcaseMediaRef, TestCaseDetail } from "../../../data/testCases";
@@ -26,7 +29,9 @@ import styles from "./TestCaseOverviewPage.module.scss";
 //     unavailable rather than mounting a broken viewer).
 //   • The reference-implementation launch panel — the deployed build for the
 //     anchored engine, embedded inline (this is where the old Reference tab's
-//     build embed folded to; the tab remains only for asset cases' frames).
+//     build embed folded to; the tab remains only for asset cases' frames). A
+//     suite-defined version lists the builds uploaded for its suite version
+//     instead, one entry per engine, with the anchored engine's playing.
 //   • The description panel — always. The anchored version's site-facing
 //     description plus, when the variant declares a showcase, its authored
 //     `showcase.md`.
@@ -53,7 +58,7 @@ export function TestCaseOverviewPage() {
 // The tab body for a resolved coordinate. A component (not inlined in the render
 // prop) because it reads the gallery's media resolver with a hook.
 function PlayBody({ ctx }: { ctx: DetailTabContext }) {
-  const { testCase, version, engine, variant } = ctx;
+  const { testCase, version, variant } = ctx;
   const { caseShowcaseMediaUrl } = useGalleryData();
   // The case-side counterpart of the run showcase's run-scoped resolver: the
   // showcase is authored material of the anchored (version, variant), so the
@@ -71,22 +76,7 @@ function PlayBody({ ctx }: { ctx: DetailTabContext }) {
       {showcase && (
         <ShowcaseCarousel media={showcase.media} resolve={resolve} />
       )}
-      {Object.keys(variant.referenceBuilds).length > 0 && (
-        <Panel>
-          <h2 className={styles.launchHeading}>
-            Play the reference implementation
-          </h2>
-          <p className={styles.launchNote}>
-            The reference build for {variant.name} · {engineName(engine)}.
-          </p>
-          <ReferencePlayable
-            referenceBuilds={variant.referenceBuilds}
-            variantName={variant.name}
-            engine={engine}
-            version={version}
-          />
-        </Panel>
-      )}
+      <ReferencePanel ctx={ctx} />
       <DescriptionPanel
         testCase={testCase}
         version={version}
@@ -95,6 +85,51 @@ function PlayBody({ ctx }: { ctx: DetailTabContext }) {
       />
     </div>
   );
+}
+
+// The reference-implementation launch panel, or nothing when the anchored
+// variant has no build to play.
+function ReferencePanel({ ctx }: { ctx: DetailTabContext }) {
+  const { testCase, version, engine, variant } = ctx;
+  if (variant.suite && testCase.testType !== "asset-generation") {
+    // A suite-defined version plays the builds uploaded for its suite version:
+    // one entry per engine the version supports, opening on the anchored
+    // engine's build when it has one.
+    return (
+      <Panel>
+        <h2 className={styles.launchHeading}>
+          Play the reference implementation
+        </h2>
+        <p className={styles.launchNote}>
+          The reference builds uploaded for {variant.suite.suite}{" "}
+          {variant.suite.suiteVersion}.
+        </p>
+        <ReferenceBuildList
+          key={`${version}:${engine}`}
+          engines={testCase.enginesByVersion[version] ?? [engine]}
+          builds={variant.referenceBuilds}
+          subject={`${testCase.name} ${version}`}
+          initialEngine={engine}
+        />
+      </Panel>
+    );
+  }
+  return Object.keys(variant.referenceBuilds).length > 0 ? (
+    <Panel>
+      <h2 className={styles.launchHeading}>
+        Play the reference implementation
+      </h2>
+      <p className={styles.launchNote}>
+        The reference build for {variant.name} · {engineName(engine)}.
+      </p>
+      <ReferencePlayable
+        referenceBuilds={variant.referenceBuilds}
+        variantName={variant.name}
+        engine={engine}
+        version={version}
+      />
+    </Panel>
+  ) : null;
 }
 
 // The anchored version's site-facing description, written for readers browsing

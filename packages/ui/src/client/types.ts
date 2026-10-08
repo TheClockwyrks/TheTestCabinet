@@ -14,9 +14,11 @@ import type {
 // Re-exported so console code can keep importing the asset-kind type from the
 // client layer alongside the shapes it discriminates.
 export type { AssetKind };
-import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import type { StoredSuiteCoordinate } from "@clockwyrks/run-record/backend-api";
 import type { HarnessEvent } from "@clockwyrks/run-record/event";
 import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+
 import type {
   AestheticRating,
   DomainAesthetic,
@@ -775,6 +777,9 @@ export interface VersionInfo {
   // engineless run. This is the compatibility gate a run is held to, so the
   // new-run form offers exactly this set and nothing else.
   engines: string[];
+  // The test suite coordinate this version was lowered from: the suite, the suite
+  // version and the definition. Null (or absent) on an authored case.
+  suite?: StoredSuiteCoordinate | null;
   // For an asset-generation case, which asset shape it produces — the finer
   // discriminator the catalog partitions its 2D / 3D / Particle / Audio tabs on.
   // Carried by every host, including the static snapshot; null only for a

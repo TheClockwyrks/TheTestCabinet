@@ -1,16 +1,19 @@
 import { Navigate, Route } from "react-router";
+
 import { routePatterns, routes } from "../../routes";
-import { TestCaseOverviewPage } from "./[slug]/TestCaseOverviewPage";
-import { TestCaseInputsPage } from "./[slug]/TestCaseInputsPage";
-import { TestCaseReviewingPage } from "./[slug]/TestCaseReviewingPage";
-import { TestCaseRunsPage } from "./[slug]/TestCaseRunsPage";
-import { TestCaseLeaderboardPage } from "./[slug]/TestCaseLeaderboardPage";
-import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
+import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
 import { TestCaseChangelogPage } from "./[slug]/TestCaseChangelogPage";
 import { TestCaseErrataPage } from "./[slug]/TestCaseErrataPage";
-import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
+import { TestCaseInputsPage } from "./[slug]/TestCaseInputsPage";
+import { TestCaseLeaderboardPage } from "./[slug]/TestCaseLeaderboardPage";
+import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
+import { TestCaseOverviewPage } from "./[slug]/TestCaseOverviewPage";
 import { TestCaseReferencePage } from "./[slug]/TestCaseReferencePage";
+import { TestCaseReviewingPage } from "./[slug]/TestCaseReviewingPage";
+import { TestCaseRunsPage } from "./[slug]/TestCaseRunsPage";
+import { TestSuitesPage } from "./test-suites-page";
 import { TestCasesPage } from "./TestCasesPage";
+import { testSuiteRoutes } from "../testsuites/router";
 
 // Routes owned by the test-cases section: the catalog list — one route per type
 // tab (E2E / 2D / 3D / Particle / Audio / Adversarial / Performance) so the
@@ -20,15 +23,38 @@ import { TestCasesPage } from "./TestCasesPage";
 // the selected variant, carried in the query string) is linkable.
 // Returned as a fragment so the app's single <Routes> stitches every section's
 // routes together.
-export function testCasesRoutes() {
+//
+// The Test Suites tab is mounted on `suiteReads` — whether the host's transport
+// exposes the suite reads at all — and leads the section where it is. That is
+// also what the bare `/test-cases` redirect follows: it targets the suites tab
+// where the route exists and the catalog's first type tab where it does not, so
+// no host is redirected into the catch-all.
+export function testCasesRoutes(suiteReads: boolean) {
   return (
     <>
       <Route
         path={routePatterns.testCases}
         element={
-          <Navigate to={routes.testCasesCatalog("end-to-end")} replace />
+          <Navigate
+            to={
+              suiteReads
+                ? routes.testCasesSuites()
+                : routes.testCasesCatalog("end-to-end")
+            }
+            replace
+          />
         }
       />
+      {suiteReads && (
+        <Route
+          path={routePatterns.testCasesSuites}
+          element={<TestSuitesPage />}
+        />
+      )}
+      {/* One suite's detail surfaces, under the listing. Mounted on the same
+          condition the listing is: a host whose transport cannot answer the
+          suite reads is offered neither. */}
+      {suiteReads && testSuiteRoutes()}
       <Route
         path={routePatterns.testCasesE2E}
         element={<TestCasesPage tab="end-to-end" />}

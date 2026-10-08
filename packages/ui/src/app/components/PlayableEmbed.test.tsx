@@ -1,6 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { PlayableEmbed, ReferencePlayable } from "./PlayableEmbed";
+import {
+  PlayableEmbed,
+  ReferenceBuildList,
+  ReferencePlayable,
+} from "./PlayableEmbed";
 
 const BUILD = "https://example.pages.dev/";
 
@@ -84,5 +88,76 @@ describe("ReferencePlayable", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/published for Simple 2D/i)).toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
+  });
+});
+
+/** The list entry naming `slug`, found by the slug it prints. */
+function entryFor(slug: string): HTMLElement {
+  const entry = screen
+    .getAllByRole("listitem")
+    .find((item) => within(item).queryByText(slug, { exact: true }));
+  if (entry === undefined) throw new Error(`no entry lists ${slug}`);
+  return entry;
+}
+
+describe("ReferenceBuildList", () => {
+  const NONE =
+    "https://backend.test/suites/carom/versions/v1.0.0/reference-builds/none/";
+  const SIMPLE =
+    "https://backend.test/suites/carom/versions/v1.0.0/reference-builds/simple-2d/";
+  const EMBED = /^Reference implementation for Carom v1\.0\.0 on /;
+
+  it("lists one entry per engine and plays only the ones with an upload", () => {
+    render(
+      <ReferenceBuildList
+        engines={["none", "simple-2d", "simple-3d"]}
+        builds={{ none: NONE, "simple-2d": SIMPLE }}
+        subject="Carom v1.0.0"
+      />,
+    );
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    // The first engine with an upload plays inline, with no caveat.
+    expect(screen.getByTitle(EMBED)).toHaveAttribute("src", NONE);
+    expect(
+      screen.queryByText(/exactly as it was written/i),
+    ).not.toBeInTheDocument();
+    // An engine without an upload has no play action.
+    const missing = entryFor("simple-3d");
+    expect(within(missing).getByText("No build uploaded")).toBeInTheDocument();
+    expect(within(missing).queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Play the / })).toHaveLength(
+      2,
+    );
+
+    // Playing another entry switches the embed to it.
+    const simplePlay = within(entryFor("simple-2d")).getByRole("button");
+    fireEvent.click(simplePlay);
+    expect(screen.getByTitle(EMBED)).toHaveAttribute("src", SIMPLE);
+    expect(simplePlay).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("opens on the initial engine when it has a build, and plays nothing without any", () => {
+    const { unmount } = render(
+      <ReferenceBuildList
+        engines={["none", "simple-2d"]}
+        builds={{ none: NONE, "simple-2d": SIMPLE }}
+        subject="Carom v1.0.0"
+        initialEngine="simple-2d"
+      />,
+    );
+    expect(screen.getByTitle(EMBED)).toHaveAttribute("src", SIMPLE);
+    unmount();
+
+    render(
+      <ReferenceBuildList
+        engines={["none"]}
+        builds={{}}
+        subject="Carom v1.0.0"
+        initialEngine="none"
+      />,
+    );
+    expect(screen.queryByTitle(EMBED)).not.toBeInTheDocument();
+    expect(screen.getByText("No build uploaded")).toBeInTheDocument();
   });
 });
