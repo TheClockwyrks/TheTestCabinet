@@ -476,7 +476,14 @@ fn list_runs_reports_one_entry_per_stored_tree() {
     let root = TempDir::new().unwrap();
     let store = LocalFsStore::new(root.path()).unwrap();
 
-    let before = std::time::SystemTime::now();
+    // The baseline is a file's write time on the same filesystem rather than the
+    // wall clock: a filesystem stamps with the kernel's coarse clock, which can
+    // lag `SystemTime::now()` by a tick, so a tree stored right after a clock
+    // reading can carry a stamp from just before it.
+    let marker = root.path().join("before");
+    std::fs::write(&marker, b"").unwrap();
+    let before = std::fs::metadata(&marker).unwrap().modified().unwrap();
+    std::fs::remove_file(&marker).unwrap();
     for id in ["abc", "def"] {
         store
             .store_run(id, &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])))
