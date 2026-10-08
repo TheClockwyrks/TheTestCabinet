@@ -1,0 +1,13 @@
+# What the rust-browser CI image's build may see of the checkout.
+#
+# An allowlist, for the reasons rust.Dockerfile.dockerignore gives: the context
+# is the scripts this image installs and nothing else, and BuildKit reads this
+# file in preference to the root .dockerignore, whose allowlist is written for
+# the images under deployments/ and would hide every COPY source below.
+#
+# The paths are the COPY sources of rust-browser.Dockerfile. Everything the Rust
+# image copies is in the base image already, so none of it is here.
+
+*
+!/.devcontainer/languages/node
+!/scripts/ci/install-playwright-chromium.sh

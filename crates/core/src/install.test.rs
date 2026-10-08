@@ -7,21 +7,17 @@
 //! is how a test makes "the first two attempts drop a package and the third does
 //! not" happen on demand. The lockfile check itself runs through the embedded
 //! script with the host's `node`, so a host without one skips the tests that need
-//! it rather than failing them.
+//! it rather than failing them, unless `TCAB_REQUIRE_BROWSER=1` requires it (see
+//! [`crate::test_browser`]).
 
 use std::path::Path;
 use std::time::Duration;
 
 use super::*;
 use crate::lockfile_check::node_host;
+use crate::test_browser::{node_available, skip_without_browser};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
-
-/// Whether the host has a `node` to run the lockfile check with. CI's rust-test
-/// agent provisions one (gg's arms need it); a developer's machine might not.
-fn node_available() -> bool {
-    which::which("node").is_ok()
-}
 
 /// A lockfile declaring one always-required package, one dev-only package, and one
 /// optional package that applies only to the host this test runs on, plus one that
@@ -85,7 +81,7 @@ fn installs(repo: &Path) -> u32 {
 #[tokio::test]
 async fn an_install_that_completes_first_time_is_not_retried() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH to run the lockfile check");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -115,7 +111,7 @@ async fn an_install_that_completes_first_time_is_not_retried() {
 #[tokio::test]
 async fn a_dropped_package_is_retried_until_the_install_completes() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH to run the lockfile check");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -143,7 +139,7 @@ async fn a_dropped_package_is_retried_until_the_install_completes() {
 #[tokio::test]
 async fn a_package_still_missing_after_the_last_attempt_fails_the_install() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH to run the lockfile check");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -237,7 +233,7 @@ async fn a_tree_without_a_lockfile_is_accepted_unchecked() {
 #[tokio::test]
 async fn the_install_commands_own_omit_flags_are_honored() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH to run the lockfile check");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");

@@ -43,10 +43,12 @@
 # WHICH DOCKERFILES. Every one built from the repository root: `deployments/images/*`,
 # `containers/**`, and `.devcontainer/ubuntu.dockerfile`, whose compose service sets
 # the context to the repository root so that its last layer can run gg's toolchain
-# installers against the pins under packages/. The two CI images
-# (`ci/images/*.Dockerfile`) build from `ci/images/` against their own sibling ignore
-# files and copy nothing from this repository's tree, so this gate has nothing to say
-# about them; they are left out by name (TEMPLATE_DOCKERFILES below).
+# installers against the pins under packages/. The template's two CI images
+# (`ci/images/rust.Dockerfile`, `ci/images/web.Dockerfile`) copy only the
+# devcontainer's install scripts, through their own sibling ignore files, and the
+# template answers for them, so they are left out by name (TEMPLATE_DOCKERFILES
+# below). The project's own CI image, `ci/images/rust-browser.Dockerfile`, is
+# checked like any other Dockerfile with a sibling ignore file.
 #
 # THE RUST PIN. The template decides the compiler, in `rust-toolchain.toml`. The
 # case images under `containers/` pin their own Rust (`FROM … rust:<v>-bookworm`,

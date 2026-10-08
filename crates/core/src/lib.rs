@@ -76,6 +76,11 @@ pub mod vitest_validator;
 #[path = "lib.test.rs"]
 mod tests;
 
+/// What a test driving a real browser needs, and the `TCAB_REQUIRE_BROWSER`
+/// rule for when it is missing.
+#[cfg(test)]
+pub(crate) mod test_browser;
+
 /// The Test Cabinet commit this build was produced from, stamped at compile time
 /// by `build.rs` into the `TEST_CABINET_COMMIT` environment variable and suffixed
 /// with `-dirty` when the working tree was modified. `None` when the build could

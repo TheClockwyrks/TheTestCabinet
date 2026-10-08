@@ -334,6 +334,17 @@ check_contains "keeps the same pins, which name both tracks' images" \
 check_contains "and deletes the web repository's unkept tag" "ubuntu-the-test-cabinet-web-cicd@sha256:stale" "$(deleted)"
 check_lacks "keeping master's" "ubuntu-the-test-cabinet-web-cicd@sha256:master" "$(deleted)"
 
+echo "--- the rust-browser track ---"
+write_fixtures
+cp "$stub/$REPOSITORY.manifests.json" "$stub/ubuntu-the-test-cabinet-rust-browser-cicd.manifests.json"
+cp "$stub/$REPOSITORY-cache.manifests.json" "$stub/ubuntu-the-test-cabinet-rust-browser-cicd-cache.manifests.json"
+out="$(run rust-browser)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps the same pins, which name every track's image" \
+	"ubuntu-the-test-cabinet-rust-browser-cicd: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY" "$out"
+check_contains "and deletes its repository's unkept tag" "ubuntu-the-test-cabinet-rust-browser-cicd@sha256:stale" "$(deleted)"
+check_lacks "keeping master's" "ubuntu-the-test-cabinet-rust-browser-cicd@sha256:master" "$(deleted)"
+
 echo "--- --dry-run ---"
 write_fixtures
 out="$(run --dry-run rust)"
@@ -448,7 +459,7 @@ echo "--- usage ---"
 write_fixtures
 out="$(run gates)"
 check_equal "an unknown track is a usage error" "1" "$?"
-check_contains "which says how to call it" "usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|web>" "$out"
+check_contains "which says how to call it" "usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>" "$out"
 out="$(run)"
 check_equal "as is no track" "1" "$?"
 check_equal "and neither touched the registry" "" "$(cat "$stub/curl.log" 2>/dev/null)"

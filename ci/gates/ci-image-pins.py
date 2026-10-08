@@ -26,9 +26,11 @@ REPOSITORY = "testcabinet.azurecr.io/ubuntu-the-test-cabinet-{track}-cicd"
 TAG = "${{ variables.ciImageTag }}"
 RUST_IMAGE = REPOSITORY.format(track="rust") + ":" + TAG
 # Any reference to a CI image: the repository and whatever follows its colon,
-# a whole `${{ }}` expression or a bare tag.
+# a whole `${{ }}` expression or a bare tag. A track's name may be hyphenated,
+# as `rust-browser` is, and a reference to one is held like any other.
 REFERENCE = re.compile(
-    r"testcabinet\.azurecr\.io/ubuntu-the-test-cabinet-(?P<track>[a-z]+)-cicd:(?P<tag>\$\{\{[^}]*\}\}|\S+)"
+    r"testcabinet\.azurecr\.io/ubuntu-the-test-cabinet-(?P<track>[a-z]+(?:-[a-z]+)*)-cicd:"
+    r"(?P<tag>\$\{\{[^}]*\}\}|\S+)"
 )
 # The variables file, included from a pipeline's own top-level variables list.
 TAGS = "ci/images/tags.yml"

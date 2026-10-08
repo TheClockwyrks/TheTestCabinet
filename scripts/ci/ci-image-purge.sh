@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deletes every manifest in a CI image's repository that no live branch pins.
 #
-#   scripts/ci/ci-image-purge.sh [--dry-run] <rust|web>
+#   scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>
 #
 # The registry's tier has no retention policy, so without this every CI image
 # ever built stays for ever, and each build leaves untagged manifests behind
@@ -21,7 +21,7 @@
 #
 # What is kept is what `master`, `staging` and `nightly` pin in
 # ci/images/tags.yml as `ciImageTag`, the commit whose image pipeline run built
-# both tracks' images, plus what this checkout's copy of the file pins, plus
+# every track's image, plus what this checkout's copy of the file pins, plus
 # the commit this run is on: the image the job pushed a step ago is tagged with
 # it, and nothing pins it until the next commit writes it into the file.
 # Usually that is one or two tags; it is more while a change sits on `nightly`
@@ -65,7 +65,7 @@ readonly LIVE_BRANCHES=("master" "staging" "nightly")
 
 usage() {
 	cat >&2 <<'USAGE'
-usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|web>
+usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>
 USAGE
 	exit 1
 }
@@ -78,7 +78,7 @@ fi
 
 track="${1:-}"
 case "$track" in
-rust | web) ;;
+rust | rust-browser | web) ;;
 *) usage ;;
 esac
 

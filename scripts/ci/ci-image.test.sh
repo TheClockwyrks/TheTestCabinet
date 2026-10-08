@@ -25,7 +25,7 @@ readonly CI_DIR
 REPO_ROOT="$(cd "$CI_DIR/../.." && pwd)"
 readonly REPO_ROOT
 
-readonly TRACKS=(rust web)
+readonly TRACKS=(rust rust-browser web)
 readonly REGISTRY="testcabinet.azurecr.io"
 readonly BUILDER="the-test-cabinet-ci-images"
 readonly COMPOSE=".devcontainer/docker-compose.yml"
@@ -219,6 +219,10 @@ for track in "${TRACKS[@]}"; do
 	repository="$REGISTRY/ubuntu-the-test-cabinet-${track}-cicd"
 	reference="$repository:$AZURE_COMMIT"
 	build_args="$(build_args_of "$track")"
+	# rust-browser is built on the Rust image this run pushed, at its commit.
+	if [ "$track" = rust-browser ]; then
+		build_args+=" --build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$AZURE_COMMIT"
+	fi
 	cache="type=registry,ref=${repository}-cache:latest"
 
 	image build "$track"
@@ -250,6 +254,11 @@ check_equal "a run with no BUILD_SOURCEVERSION exits 0" 0 "$status"
 check_contains "it tags the image with the checkout's HEAD" \
 	"--tag $REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$head_commit " "$log"
 check_absent "and not with a commit the run is not on" "$AZURE_COMMIT" "$log"
+
+image build rust-browser
+check_equal "a rust-browser run from a terminal exits 0" 0 "$status"
+check_contains "it builds on the Rust image of the checkout's HEAD" \
+	"--build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$head_commit " "$log"
 
 # Every path the script names is relative to the root: the Dockerfile, the
 # build context and ci/images/build-args.sh.
@@ -300,6 +309,21 @@ while read -r pin; do
 	[ -n "$pin" ] || continue
 	check_contains "the web build is handed ${pin%%=*}" "--build-arg $pin " "$log"
 done <<<"$out"
+
+for track in rust web; do
+	image build "$track"
+	check_absent "the $track build is built on no other track's image" "RUST_CI_IMAGE" "$log"
+done
+
+image build rust-browser
+pins rust-browser
+while read -r pin; do
+	[ -n "$pin" ] || continue
+	check_contains "the rust-browser build is handed ${pin%%=*}" "--build-arg $pin " "$log"
+done <<<"$out"
+check_equal "the rust-browser image takes Node and Playwright alone from the anchor" \
+	"NODE_VERSION PLAYWRIGHT_VERSION" "$(cut -d= -f1 <<<"$out" | paste -sd ' ')"
+check_absent "its base image is no pin of the anchor's" "RUST_CI_IMAGE" "$out"
 
 pins rust
 check_contains "the rust image is built with the compiler the anchor pins" \

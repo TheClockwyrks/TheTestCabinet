@@ -449,6 +449,35 @@ scripts/ci/gg-test.sh [k/N]   # gg's unit tests, whole or one hash partition
 gg's unit tests are the one part of the suite no gate runs; see
 [Testing gg](#testing-gg).
 
+### Tests that need a browser
+
+A few of core's tests run a real toolchain rather than a stand-in for one: the
+lockfile check's script under the host's `node`, and Playwright's Chromium
+launched through the npm workspace, which is how a validator project runs under
+Vitest's browser mode. A machine without that toolchain prints `skipped:` and
+what is missing, and the test passes, so the rest of the suite still runs on a
+laptop with no browser. `crates/core/src/test_browser.rs` holds the helpers such
+a test uses, and `test_browser::tests::the_repository_workspace_launches_chromium`
+checks the toolchain on its own.
+
+Where the toolchain is meant to be present, a skip is a pass nobody earned.
+`TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
+workspace without the packages a test names, or a Chromium that does not
+launch fails the test instead. The `rust` gate job sets it and runs in the
+[rust-browser CI image](#ci-images), which carries Node and Chromium. To hold
+a local run to the same standard:
+
+```sh
+npm ci                                   # the workspace: Vitest, Playwright
+scripts/ci/install-playwright-chromium.sh  # Chromium and its libraries (as root)
+TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-core
+```
+
+The dev container already carries Chromium. A test finds the npm workspace from
+its crate's `CARGO_MANIFEST_DIR`, as the nearest ancestor holding a
+`package.json` and a `node_modules`, and stops at the repository's root, so a
+checkout inside another repository never borrows that repository's install.
+
 ```sh
 uv run --quiet --project ci gate run audio-packs
 ```
@@ -942,7 +971,8 @@ The project adds steps to both through `.azure/project/setup-steps.yml` and
 - In `rust`: `scripts/ci/free-disk-linux.sh`, which reclaims what the
   template's own reclaim leaves; the gg toolchains, restored from the
   `gg-toolchains` cache and completed by `scripts/ci/gg-ci-toolchains.sh`, since
-  the Rust CI image carries no Node and no gg toolchains; and, last,
+  the CI images carry no gg toolchains, with the npm workspace the browser
+  tests run under; and, last,
   `scripts/ci/cargo-target-prune.sh`, which removes the executables cargo linked
   before the template saves its `target/` cache, so the cache holds the compiled
   libraries and fits beside the tree on the agent's disk.
@@ -968,9 +998,12 @@ off it.
 in `.azure/tcab/`, shared with the release pipeline. The amd64 jobs that
 compile Rust run as container jobs in the template's Rust CI image, with the
 template `rust` job's paths, variables and cargo cache, so they share its caches
-and seed them. A template cannot read the pin itself (a `${{ variables.* }}`
-inside an included jobs template expands to nothing), so `azure-pipelines.yml`
-names the image the way its `rust` job does,
+and seed them. The `rust` job's own rust-browser image is built on that image,
+so the toolchain and its paths are the same in both and a compile in one is a
+cache hit in the other. A template cannot read the pin itself (a
+`${{ variables.* }}` inside an included jobs template expands to nothing), so
+`azure-pipelines.yml` names the image with the expression its `rust` job names
+its own with,
 `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}`,
 and passes it to `jobs.yml` as its `rustImage` parameter; the release
 pipeline, a root file itself, names it the same way. The `ci-image-pins` gate
@@ -1094,7 +1127,8 @@ template's CI images:
 
 | Image | Jobs |
 | --- | --- |
-| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | `rust`, `gg_tests_<k>_of_4`, `rust_build`, `binary_linux`, `gg_amd64` |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | `gg_tests_<k>_of_4`, `rust_build`, `binary_linux`, `gg_amd64` |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd` | `rust` |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | `web` |
 
 `ci/images/README.md` describes each. The Rust image carries the pinned
@@ -1103,10 +1137,20 @@ need beyond a compile's, which `ci/images/rust.Dockerfile` installs (`cmake`,
 `ffmpeg`, `libicu-dev`, `python3`, `ruby`, `zip`); gg's toolchains and Node
 come from the `gg-toolchains` cache.
 
+The rust-browser image is the project's own. It is the Rust image of the same
+commit with Node and Playwright's Chromium on top
+(`ci/images/rust-browser.Dockerfile`, which installs the browser with
+`scripts/ci/install-playwright-chromium.sh`), and the `rust` job runs in it
+with `TCAB_REQUIRE_BROWSER=1`, so the Rust tests that drive a browser run there
+and fail rather than skip when it is missing (see
+[Tests that need a browser](#tests-that-need-a-browser)). The project's other
+Rust jobs need no browser and stay on the Rust image.
+
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
-image is built from and on nothing else, and every run builds both tracks and
+image is built from and on nothing else, and every run builds every track and
 pushes each as `<repository>:<commit>`, the commit its run is on, from the
-layer cache. `ci/images/tags.yml` holds one variable, `ciImageTag`, as a
+layer cache. The rust-browser job waits for the Rust one, since it builds on
+the image that job pushed. `ci/images/tags.yml` holds one variable, `ciImageTag`, as a
 variables template both pipelines include: the full commit whose image
 pipeline run built the images every gates job pulls, so a commit's diff says
 which images it ran in. The template renders the file with forty zeros, which

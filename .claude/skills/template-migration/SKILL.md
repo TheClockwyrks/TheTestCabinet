@@ -82,3 +82,24 @@ everywhere else.
   reads the file for that set (`--submodules`), so a re-inclusion lost in a
   merge drops the submodule from the image jobs' init as well as from the
   context.
+- The CI image tracks: the template renders two, `rust` and `web`, and the
+  project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
+  its `.dockerignore`, the project's own files): the Rust image of the same
+  commit with Node and Playwright's Chromium on top, which the template's
+  `rust` gate job runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
+  each rendered file that lists the tracks: the `rust | rust-browser | web`
+  cases and usage lines of `scripts/ci/ci-image.sh` and
+  `ci/images/build-args.sh`, and the former's `RUST_CI_IMAGE` build argument
+  for the `rust-browser` track; `TRACKS` and the rust-browser cases of
+  `scripts/ci/ci-image.test.sh`; the `rustBrowserImage` job of
+  `azure-pipelines-ci-images.yml`, which `dependsOn: rustImage`, the comment
+  above the jobs saying why, and the three paths it adds to the trigger's
+  filter (the Dockerfile, its `.dockerignore` and
+  `scripts/ci/install-playwright-chromium.sh`); and the image table and the
+  "Rust browser" section of `ci/images/README.md`. Once the pin names an image
+  run that built the track, the `rust` job's `container:` image in
+  `azure-pipelines.yml` is `ubuntu-the-test-cabinet-rust-browser-cicd` and its
+  `variables:` carry `TCAB_REQUIRE_BROWSER: 1`, and
+  `ci/tests/test_wiring.py` maps that job to the `rust-browser` image; keep
+  all three. A template change to the Rust image reaches the rust-browser image
+  through its `FROM`.
