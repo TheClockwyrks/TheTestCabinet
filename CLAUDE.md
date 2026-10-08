@@ -149,7 +149,7 @@ spec-vocabulary          no evaluation vocabulary in seeded specs
 validators-typecheck     tsc over every validator project (no hook)
 web-browser-test         apps/web's vitest, in real browser engines
 web-build                apps/web's vite build
-web-lint                 eslint over the TypeScript
+web-lint                 eslint over the TypeScript, ratcheted by eslint-suppressions.json
 web-test                 apps/web's vitest, under jsdom
 web-typecheck            apps/web's tsc -b
 workspace-test           every npm workspace's vitest (no hook)

@@ -357,7 +357,7 @@ The template's gates:
 | `rust-test` | `cargo nextest run --locked --workspace`, which skips gg's unit tests; no hook |
 | `rust-doctest` | `cargo test --locked --workspace --doc`; no hook |
 | `k8s-manifests` | The template's render of every overlay; see [Kubernetes](/deployment/kubernetes/overview/) |
-| `web-lint` | `npm run lint`: ESLint over the TypeScript |
+| `web-lint` | `npm run lint`: ESLint over the TypeScript, ratcheted by `eslint-suppressions.json`; see [Linting](#linting) |
 | `web-typecheck` | The web console's `tsc -b` |
 | `web-test` | The web console's Vitest run, under jsdom |
 | `web-browser-test` | The web console's Vitest run, in real browser engines |
@@ -728,12 +728,67 @@ npm run build
 
 The other root scripts delegate to each workspace that defines them:
 `npm run dev`, `npm run test`, and `npm run typecheck`. `npm run lint` is ESLint
-over the whole workspace from the root `eslint.config.js` (the `web-lint` gate).
+over the whole workspace from the root `eslint.config.js` (the `web-lint` gate);
+see [Linting](#linting).
 
 `npm run test` runs `vitest` in each workspace. Iterate on the gallery's own
 suite with `npm run test -w @clockwyrks/ui`. On a clean checkout, build the
 workspace runtime packages first with `npm run build:packages`, since the tests
 import them from a built `dist/`.
+
+### Linting
+
+ESLint lints the hand-written TypeScript of four projects with type information:
+`apps/web/src`, `packages/ui/src`, `apps/site/src` and `apps/lattice-designer/src`.
+It also lints the build configurations beside them (each Vite configuration and
+the plugins it loads) and the gallery's `apps/site/scripts/` without type
+information. The `PROJECTS` list at the top of `eslint.config.js` names each
+project with the `tsconfig.json` that owns it. Every file set is derived from
+that list, so a new project is brought under the gate by adding one entry to it.
+
+The gate has one tier. The configuration raises every rule a preset leaves at
+`warn` to an error, and an `eslint-disable` comment that suppresses nothing is an
+error too.
+
+Most of that code was written before the gate covered it, so the gate is a
+ratchet over it rather than a demand that it be clean.
+`eslint-suppressions.json` at the repository root records, for each file, how
+many errors of each rule the file had when it was recorded. It is ESLint's own
+[bulk suppressions](https://eslint.org/docs/latest/use/suppressions) file, and
+`npm run lint` reads it:
+
+- A file whose count for a rule is at or under its record passes, and its
+  recorded errors are not printed.
+- A file whose count for a rule grows past its record fails, and ESLint prints
+  every error of that rule in the file, since it cannot tell which one is new.
+- A file the record does not name, or a rule it does not name for that file,
+  fails on its first error. New code is held to the whole gate.
+- An error ESLint cannot attribute to a rule is never recorded: a file that does
+  not parse, or a file outside every project's `tsconfig.json`, fails as it is,
+  and so does an `eslint-disable` comment that suppresses nothing.
+- A count that shrinks passes. Record the shrink with `npm run lint:prune`,
+  which lowers each count to what the code now has and drops what reached zero,
+  so the shrink cannot be spent again.
+
+| Command | What it does |
+| --- | --- |
+| `npm run lint` | The gate: ESLint, with the baseline applied |
+| `npm run lint:prune` | Lowers the baseline to the current counts; never raises one |
+| `npm run lint:baseline` | Rewrites the baseline from scratch to the current errors |
+| `npm run lint -- --fix` | Applies ESLint's automatic fixes, then checks as the gate does |
+
+`npm run lint:baseline` accepts every error the code has now, new ones included.
+It is for widening the gate: adding a project to `PROJECTS`, or adopting a rule
+set the existing code does not yet meet. A diff that raises a count in
+`eslint-suppressions.json` is the visible record that it was run, and fixing the
+new error is the usual answer instead. ESLint writes the file in its own
+formatting, with no final newline, so `.prettierignore` leaves it out of the
+`format` gate and the `end-of-file-fixer` hook leaves it alone.
+
+A file moved or renamed loses its record, because the record is keyed by path.
+Move its entry in `eslint-suppressions.json` to the new path with it, or run
+`npm run lint:baseline` in the same change and check that the diff only moves
+counts.
 
 ### Every page loads
 

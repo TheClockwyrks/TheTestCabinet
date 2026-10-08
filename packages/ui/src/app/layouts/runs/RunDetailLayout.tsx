@@ -184,7 +184,6 @@ export function RunDetailLayout({
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
   const run = detail?.record ?? null;

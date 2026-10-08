@@ -65,7 +65,9 @@ repos:
         # and game-jam version: a frozen version is immutable (the
         # `frozen-paths` gate refuses a change to it), and some of them hold
         # files that end without a newline, which this hook would rewrite.
-        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
+        # ESLint writes the lint ratchet's baseline, `eslint-suppressions.json`,
+        # without one and rewrites it on every prune, so it is left alone too.
+        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^eslint-suppressions\.json$'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
