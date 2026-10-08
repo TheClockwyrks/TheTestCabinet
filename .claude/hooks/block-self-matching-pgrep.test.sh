@@ -78,6 +78,24 @@ echo "--- must ALLOW: ps | grep outside a loop is one wrong line, not a hang ---
 check allow 'ps aux | grep "cargo nextest"'
 check allow "ps -eo pid,args | grep -E '[p]grep|[p]kill'"
 
+echo "--- must ALLOW: a loop elsewhere in the command is not a wait on the grep ---"
+# Found blocked in the wild: the grep is a one-shot listing, and the `for` that
+# follows it runs the very command the bracket pattern matches. Only a grep that
+# is itself inside a loop can hang.
+# shellcheck disable=SC2016
+check allow "cat out.txt; ps -eo pid,etimes,args | grep '[a]z repos policy' | head -10; for p in vantaloc wishtome; do az repos policy list -p \$p; done"
+# shellcheck disable=SC2016
+check allow 'for p in a b; do echo "$p"; done; ps aux | grep "cargo nextest"'
+check allow 'while true; do sleep 1; done & ps aux | grep "cargo nextest"'
+# A loop keyword used as a plain word is not a loop.
+check allow 'echo waiting for the build; ps aux | grep "cargo nextest"'
+
+echo "--- must DENY: the grep inside the loop body, not only its condition ---"
+check deny 'for i in 1 2 3; do ps aux | grep "cargo nextest"; sleep 5; done'
+check deny 'while true; do if ps aux | grep -q "cargo nextest"; then sleep 5; else break; fi; done'
+# shellcheck disable=SC2016
+check deny 'for p in a b; do echo "$p"; done; until ! ps aux | grep -q "cargo nextest"; do sleep 10; done'
+
 echo "--- must ALLOW: ordinary commands ---"
 check allow 'cargo nextest run --workspace'
 check allow 'git status --porcelain'
