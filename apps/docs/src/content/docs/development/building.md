@@ -1167,6 +1167,15 @@ meant, queue a run with the pipeline variable `mirrorAllowRewrite` set to
 `true`, which skips the check and forces the push; locally, `--allow-rewrite`
 or `MIRROR_ALLOW_REWRITE=true` does the same.
 
+In the main pipeline the `mirror` job sits in the gates stage, which the
+staging publish and deploy stages wait on, but the mirror is not an input to
+either. Its push step therefore continues on error: a refused or failed push
+ends the job with issues, the run shows the warning, and the stage still
+succeeds, so a re-run of an older run, a branch rewritten here or a tag moved
+after it was mirrored never holds back a deploy of a commit that passed every
+check. The release pipeline's `mirror` job has nothing after it and fails
+outright.
+
 ### The release pipeline
 
 `azure-pipelines-release.yml` is the project's second pipeline, triggered by
