@@ -190,7 +190,7 @@ stops it.
 ### The Rust jobs and their caches
 
 gg's unit tests are not in the template's `rust-test` gate. That gate runs the whole
-workspace in one job capped at 60 minutes, and gg's suite alone takes longer, so
+workspace in one job capped at 120 minutes, and gg's suite alone takes longer, so
 `crates/gg/Cargo.toml` sets `test = false` on gg's lib and bin, and `gg-test.sh`
 runs the suite with `cargo nextest run -p test-cabinet-gg --lib`, whose `--lib`
 overrides it. `make gate` therefore does not run gg's tests; a change under
@@ -221,7 +221,7 @@ so what they compile carries the fingerprints that job's would:
 | `cargo-target-gg-dist \| v1` | `target`                              | `gg_amd64`                                                            | the same                                                                    |
 
 Cache@2 saves only after every step of a job succeeded. So a cold template `rust`
-job that outlasts its 60 minutes would never warm itself; **the seed** is what warms
+job that outlasts its 120 minutes would never warm itself; **the seed** is what warms
 it. When no seed is cached for the current `Cargo.lock`, `rust_build` runs
 `rust-build.sh --seed` after its own build: the template gates' exact clippy,
 rustdoc and nextest-build commands, each run whether or not the one before it passed,

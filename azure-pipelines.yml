@@ -162,8 +162,14 @@ stages:
         container:
           image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
-        # The most a Microsoft-hosted agent gives a private project.
-        timeoutInMinutes: 60
+        # A warm run takes about 45 minutes and a cold one, after the
+        # branch's build-output cache expired, about 65: Azure scopes a
+        # pipeline cache to the branch that saved it, so a branch that has not
+        # run in a week (`master` between releases) starts cold. 60 minutes is
+        # the most a Microsoft-hosted agent gives a private project on the
+        # free tier, and the organisation's purchased parallel jobs lift that
+        # cap to 360.
+        timeoutInMinutes: 120
         variables:
           # The registry and the git checkouts, under the directory the cache
           # task saves, which is the whole reason CARGO_HOME moves at all.

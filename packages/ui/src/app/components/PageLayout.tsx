@@ -209,7 +209,7 @@ export function PageLayout({
             {chrome?.back ? (
               <BackArrowIcon className={styles.mark} />
             ) : (
-              <CabinetIcon className={styles.mark} />
+              <CabinetIcon className={styles.mark} brand />
             )}
             <span className={styles.wordmark}>
               {chrome?.label ?? "The Test Cabinet"}
