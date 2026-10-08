@@ -3,16 +3,21 @@
 # from which the keyvault-csi component materializes the `tcab-test-suites-credential`
 # Kubernetes Secret (key `token`) the backend pod's ingest sidecar mounts.
 #
-# The superproject's .gitmodules names the test suites repository by its Azure DevOps
-# SSH URL. The sidecar rewrites that URL to the repository's HTTPS address and answers
-# git's credential request with this token, so a deployed checkout clones and refreshes
-# the submodule at the commit its branch names. Azure DevOps SSH keys carry the full
-# rights of the user who added them, so the credential is a personal access token
-# scoped to Code (Read) on the test suites repository instead.
+# The superproject's .gitmodules names the test suites repository relative to itself
+# (`../test-suites`), which in the sidecar's clone of the GitHub mirror resolves to
+# the mirror's sibling repository. The sidecar rewrites that address to the Azure
+# Repos HTTPS one and answers git's credential request with this token, so a deployed
+# checkout clones and refreshes the submodule at the commit its branch names. The
+# credential is a personal access token scoped to Code (Read) on the test suites
+# repository, so it can read nothing else.
 #
-# Run it once per environment before applying its azure-* overlay (the CSI mount fails
-# while any listed vault object is absent), and again whenever the token is rotated;
-# secret auto-rotation reconciles the new value into the Secret within ~2m, and the
+# Run it once per environment, before the first deploy that carries the test suites,
+# and again whenever the token is rotated. Until it has run, the credential's own
+# mounter (tcab-keyvault-sync-test-suites, components/keyvault-csi/
+# test-suites-credential.yaml) waits in ContainerCreating and the deploy's settle step
+# reports it; the other Secrets and the backend are unaffected, and the backend
+# ingests without the suites. After it has run, the pod mounts on its next retry and
+# secret auto-rotation reconciles a rotated value into the Secret within ~2m; the
 # sidecar reads the mounted file on every fetch.
 #
 # The token is read from TCAB_TEST_SUITES_TOKEN when it is set, and otherwise prompted
