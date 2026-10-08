@@ -148,7 +148,9 @@ stages:
     displayName: Gates
     jobs:
       # The Rust track: every check that compiles the workspace, and nothing
-      # else. The image carries no Node, so nothing here may reach for one.
+      # else. It runs in the rust-browser image, the Rust image with Node and
+      # Playwright's Chromium on top, so the Rust tests that drive a browser
+      # run here rather than skip.
       - job: rust
         displayName: Rust
         # Every step of this job runs inside the Rust CI image, at the commit
@@ -160,7 +162,7 @@ stages:
         # says so with `target: host`, and the disk cleanup below is the one
         # that does.
         container:
-          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         # A warm run takes about 45 minutes and a cold one, after the
         # branch's build-output cache expired, about 65: Azure scopes a
@@ -186,6 +188,9 @@ stages:
           # it. Cargo.toml's dev profile already keeps the debug information to
           # line tables, so a failed test's backtrace still names its lines.
           CARGO_INCREMENTAL: 0
+          # The image carries the browser toolchain, so a Rust test that would
+          # skip for want of it fails instead (crates/core/src/test_browser.rs).
+          TCAB_REQUIRE_BROWSER: 1
         steps:
           - checkout: self
             fetchDepth: 1

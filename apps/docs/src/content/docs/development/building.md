@@ -483,13 +483,10 @@ checks the toolchain on its own.
 Where the toolchain is meant to be present, a skip is a pass nobody earned.
 `TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
 workspace without the packages a test names, or a Chromium that does not
-launch fails the test instead. The `rust` gate job is meant to be such a place:
-it moves into the [rust-browser CI image](#ci-images), which carries Node and
-Chromium, and sets the variable, in the commit that pins `ciImageTag` to an
-image pipeline run that built that image. Until that commit lands, the job runs
-in the Rust image without the variable, and these tests skip in CI as they do
-on a machine with no browser. To hold a local run to the standard CI is meant
-to hold:
+launch fails the test instead. The `rust` gate job is such a place: it runs in
+the [rust-browser CI image](#ci-images), which carries Node and Chromium, and
+sets the variable, so these tests run in CI and a missing toolchain fails them.
+To hold a local run to the same standard:
 
 ```sh
 npm ci                                   # the workspace: Vitest, Playwright
@@ -1228,14 +1225,10 @@ come from the `gg-toolchains` cache.
 The rust-browser image is the project's own. It is the Rust image of the same
 commit with Node and Playwright's Chromium on top
 (`ci/images/rust-browser.Dockerfile`, which installs the browser with
-`scripts/ci/install-playwright-chromium.sh`). The `rust` job is to run in it
-with `TCAB_REQUIRE_BROWSER=1`, so the Rust tests that drive a browser run there
-and fail rather than skip when it is missing (see
-[Tests that need a browser](#tests-that-need-a-browser)). That switch waits on
-the pin: no image pipeline run has built the track at the commit `ciImageTag`
-names, so the job stays on the Rust image until the commit that moves the pin to
-a run that did, which also points the job at the image, sets the variable and
-maps the job to `rust-browser` in `ci/tests/test_wiring.py`. The project's other
+`scripts/ci/install-playwright-chromium.sh`). The `rust` job runs in it with
+`TCAB_REQUIRE_BROWSER=1`, so the Rust tests that drive a browser run there and
+fail rather than skip when it is missing (see
+[Tests that need a browser](#tests-that-need-a-browser)). The project's other
 Rust jobs need no browser and stay on the Rust image.
 
 The repository split plans an `android` track, which the template renders only

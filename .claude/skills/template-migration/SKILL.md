@@ -103,8 +103,7 @@ everywhere else.
   project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
   its `.dockerignore`, the project's own files): the Rust image of the same
   commit with Node and Playwright's Chromium on top, which the template's
-  `rust` gate job is to run in with `TCAB_REQUIRE_BROWSER=1` (it still runs in
-  the Rust image until the pin names an image run that built the track). Keep the track in
+  `rust` gate job runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
   each rendered file that lists the tracks: the `rust | rust-browser | web`
   cases and usage lines of `scripts/ci/ci-image.sh` and
   `ci/images/build-args.sh`, and the former's `RUST_CI_IMAGE` build argument
@@ -114,8 +113,7 @@ everywhere else.
   above the jobs saying why, and the three paths it adds to the trigger's
   filter (the Dockerfile, its `.dockerignore` and
   `scripts/ci/install-playwright-chromium.sh`); and the image table and the
-  "Rust browser" section of `ci/images/README.md`. Once the pin names an image
-  run that built the track, the `rust` job's `container:` image in
+  "Rust browser" section of `ci/images/README.md`. The `rust` job's `container:` image in
   `azure-pipelines.yml` is `ubuntu-the-test-cabinet-rust-browser-cicd` and its
   `variables:` carry `TCAB_REQUIRE_BROWSER: 1`, and
   `ci/tests/test_wiring.py` maps that job to the `rust-browser` image; keep
