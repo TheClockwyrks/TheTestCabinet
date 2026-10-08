@@ -105,6 +105,11 @@ fails any run resolving that version mid-cycle. Publish catalog changes between
 deploys with `tcab ingest --env <env>`, which refreshes the live checkout to the
 branch tip through `az aks command invoke` and ingests it. The backend swaps
 each version into place atomically, so it is safe to run while runs execute.
+Both paths treat the `test-suites` update as the one step allowed to fail: when the
+credential is absent, expired or refused, the refresh prints
+`ingest: test suites update failed; ingesting without them` and ingests the test
+cases and the reference-build lockfile without the suites' changes. Every other
+step of `tcab ingest --env <env>` fails it before anything is ingested.
 
 ## Auth service
 

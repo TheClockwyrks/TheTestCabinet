@@ -283,7 +283,18 @@ impl ShellAz {
             "kubectl",
             "#!/bin/sh\nwhile [ \"$#\" -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nexec \"$@\"\n",
         );
-        executable(bin.path(), "git", "#!/bin/sh\necho \"git $*\"\n");
+        // `git` succeeds, except on the arguments ending in the word written to
+        // `git-fails` by [`ShellAz::failing_git`].
+        executable(
+            bin.path(),
+            "git",
+            "#!/bin/sh\n\
+             for last; do :; done\n\
+             if [ -f \"$RECORD/git-fails\" ] && [ \"$last\" = \"$(cat \"$RECORD/git-fails\")\" ]; then\n\
+             echo \"fatal: could not read Username for 'https://dev.azure.com'\" >&2; exit 128\n\
+             fi\n\
+             echo \"git $*\"\n",
+        );
         executable(
             bin.path(),
             "curl",
@@ -318,6 +329,17 @@ esac
             bin,
             scripts: Mutex::new(Vec::new()),
         })
+    }
+
+    /// The stand-in, with the `git` command whose last argument is `last` failing.
+    fn failing_git(feed: &str, last: &str) -> Arc<Self> {
+        let az = Self::new(feed);
+        std::fs::write(az.bin.path().join("git-fails"), last).expect("the failure is written");
+        az
+    }
+
+    fn has_record(&self, name: &str) -> bool {
+        self.bin.path().join(name).exists()
     }
 
     fn record(&self, name: &str) -> Vec<u8> {
@@ -403,6 +425,47 @@ async fn the_ingest_command_refreshes_with_submodules_and_posts_the_body_intact(
             "git -C /state/checkout submodule status --recursive",
         ]
     );
+}
+
+#[tokio::test]
+async fn a_test_suites_update_that_fails_still_ingests_the_rest() {
+    let feed = "{\"event\":\"start\",\"total\":0}\n{\"event\":\"done\",\"total\":0,\"ingested\":0,\"skipped\":0}\n";
+    let az = ShellAz::failing_git(feed, "test-suites");
+    let backend = RemoteBackend::new(staging(), Arc::clone(&az) as Arc<dyn AzRunner>);
+    let mut lines = Vec::new();
+    backend
+        .ingest(
+            &[],
+            false,
+            IngestMode::Changed,
+            &mut |line| lines.push(line.to_owned()),
+            &mut |_| {},
+        )
+        .await
+        .expect("the ingest finished without the suites");
+    assert!(az.has_record("ingest-body"), "the ingest was posted");
+    assert!(
+        lines.iter().any(|line| line == SUITES_UPDATE_FAILED),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "git -C /state/checkout submodule status --recursive"),
+        "{lines:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_cold_storage_update_that_fails_posts_nothing() {
+    let az = ShellAz::failing_git("", "cold-storage");
+    let backend = RemoteBackend::new(staging(), Arc::clone(&az) as Arc<dyn AzRunner>);
+    let error = backend
+        .ingest(&[], false, IngestMode::Changed, &mut |_| {}, &mut |_| {})
+        .await
+        .expect_err("the refresh failed");
+    assert!(matches!(error, RemoteError::Command { .. }), "{error}");
+    assert!(!az.has_record("ingest-body"), "nothing was posted");
 }
 
 #[tokio::test]

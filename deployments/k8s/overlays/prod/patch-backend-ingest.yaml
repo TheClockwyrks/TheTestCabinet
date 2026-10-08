@@ -42,7 +42,8 @@
 # Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
 # The refresh commands below are the ones crates/core/src/remote_backend.rs
-# (`refresh_commands`) runs on demand; keep the two in step.
+# (`refresh_commands`) runs on demand; keep the two in step. Both let the test suites
+# update fail with the same message; on demand, every other step is fatal.
 #
 # Targets kind: Deployment because the postgres component converts the backend
 # StatefulSet to a Deployment; the strategic-merge patch appends the `ingest`

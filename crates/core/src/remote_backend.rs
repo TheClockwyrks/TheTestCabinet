@@ -662,8 +662,16 @@ impl RemoteBackend {
 /// cold-storage shallowly, since its history is about 2 GB of baseline media and
 /// ingest needs only the pinned commit, and the test suites after it.
 ///
+/// The test suites step is the only one allowed to fail. It is the one that needs the
+/// read-only test suites credential, and a credential not yet uploaded, expired or
+/// refused must not keep the test cases and the reference-build lockfile from being
+/// republished: the refresh names the failure and the ingest goes on without the
+/// suites' changes, as the sidecar's own start does. Every other step fails the
+/// refresh before anything is posted.
+///
 /// The patch-backend-ingest.yaml of each `azure-*` overlay runs the same commands
-/// when its sidecar starts.
+/// when its sidecar starts, where each step is allowed to fail so a fresh pod always
+/// ingests what it has.
 pub fn refresh_commands(branch: &str) -> String {
     format!(
         "echo \"ingest: refreshing {CHECKOUT} to origin/{branch} with its submodules\"\n\
@@ -671,10 +679,14 @@ pub fn refresh_commands(branch: &str) -> String {
          git -C {CHECKOUT} reset --hard FETCH_HEAD\n\
          git -C {CHECKOUT} submodule sync --recursive\n\
          git -C {CHECKOUT} submodule update --init --depth 1 cold-storage\n\
-         git -C {CHECKOUT} submodule update --init --recursive --force test-suites\n\
+         git -C {CHECKOUT} submodule update --init --recursive --force test-suites \
+         || echo \"{SUITES_UPDATE_FAILED}\"\n\
          git -C {CHECKOUT} submodule status --recursive"
     )
 }
+
+/// The line the refresh prints when the test suites submodule could not be updated.
+pub const SUITES_UPDATE_FAILED: &str = "ingest: test suites update failed; ingesting without them";
 
 /// The name an archive is attached under.
 fn archive_name(index: usize) -> String {

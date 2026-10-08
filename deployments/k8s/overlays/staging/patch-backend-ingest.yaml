@@ -32,7 +32,8 @@
 # staging. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
 # The refresh commands below are the ones crates/core/src/remote_backend.rs
-# (`refresh_commands`) runs on demand; keep the two in step.
+# (`refresh_commands`) runs on demand; keep the two in step. Both let the test suites
+# update fail with the same message; on demand, every other step is fatal.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
