@@ -220,6 +220,31 @@ reference resolved at run time from the newest image run would test a branch
 that changes a Dockerfile in the old image until it merged, and the diff would
 no longer name the image a commit ran in.
 
+## Tracks and tags still to come
+
+The repository split plans more tracks than these three, and a different tag.
+Neither is here yet, and each waits on the step that brings it:
+
+- **`android`.** The template renders an Android image track only where both
+  its `tauri_desktop` and `tauri_android` answers are true, and this
+  repository answers `tauri_desktop: false`, with no Tauri app to build. The
+  track arrives with those answers, when the superrepo sets them and copier
+  renders the track's Dockerfile, its `.dockerignore` and the pipeline's job; a
+  hand-written track now would build an image no job pulls, and would collide
+  with that render.
+- **`base`.** No template version ships a base track (v0.33.0, the latest, has
+  `rust`, `web` and the conditional `android`), so it is a project track like
+  `rust-browser`, added when the first image that builds on it does.
+- **`spec-cabinet`.** Built on `rust-browser` for the Spec Cabinet's sandbox
+  toolchains, it lives on the branch that carries the Spec Cabinet.
+- **The tag.** The split's default is a digest of each track's inputs rather
+  than the commit an image run is on. The commit tag above is the template's
+  scheme, written into the files it renders (`scripts/ci/ci-image.sh`,
+  `tags.yml`, the image pipeline) and into the repository kit's pins
+  (`scripts/repos/render.py` reads `ciImageTag` as a commit), so a digest is a
+  divergence from the template every update has to merge. It is not taken yet;
+  until it is, every image is tagged by commit as described above.
+
 ## Architecture
 
 All of these are `linux/amd64` only, built natively on the hosted agents, which

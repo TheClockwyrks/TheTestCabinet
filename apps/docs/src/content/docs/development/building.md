@@ -1223,6 +1223,11 @@ a run that did, which also points the job at the image, sets the variable and
 maps the job to `rust-browser` in `ci/tests/test_wiring.py`. The project's other
 Rust jobs need no browser and stay on the Rust image.
 
+The repository split plans an `android` track, which the template renders only
+once the `tauri_desktop` and `tauri_android` answers are both true, a `base`
+track, and tags computed from each track's inputs rather than from a commit.
+None is here yet; `ci/images/README.md` says what each waits on.
+
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
 image is built from and on nothing else, and every run builds every track and
 pushes each as `<repository>:<commit>`, the commit its run is on, from the
