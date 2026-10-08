@@ -13,7 +13,7 @@
 #
 # THE SEED warms the template's `rust` job. That job restores `target/` from
 # its cache and saves it only when every one of its steps succeeded, so a cold
-# run that outlasts its 60 minutes never warms itself. The pipeline runs this
+# run that outlasts its timeout never warms itself. The pipeline runs this
 # when no seed is cached for the Cargo.lock yet, in the same image, with the
 # same job variables and at the same path, and caches the result under a key
 # that job's restore key matches. So it runs the template gates' own commands
