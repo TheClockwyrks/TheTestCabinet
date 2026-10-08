@@ -103,7 +103,8 @@ everywhere else.
   project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
   its `.dockerignore`, the project's own files): the Rust image of the same
   commit with Node and Playwright's Chromium on top, which the template's
-  `rust` gate job runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
+  `rust` gate job is to run in with `TCAB_REQUIRE_BROWSER=1` (it still runs in
+  the Rust image until the pin names an image run that built the track). Keep the track in
   each rendered file that lists the tracks: the `rust | rust-browser | web`
   cases and usage lines of `scripts/ci/ci-image.sh` and
   `ci/images/build-args.sh`, and the former's `RUST_CI_IMAGE` build argument

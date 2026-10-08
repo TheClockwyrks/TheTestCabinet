@@ -10,8 +10,10 @@
 //! skips there reports a pass it did not earn, and so does every gate run after
 //! it. `TCAB_REQUIRE_BROWSER=1` names such a place. With it set, a missing
 //! toolchain fails the test (it panics) instead of skipping it. The Rust gate job
-//! sets it, because its CI image (`ci/images/rust-browser.Dockerfile`) carries
-//! Node and Chromium. See the Testing section of `development/building.md`.
+//! is to set it once it runs in the CI image that carries Node and Chromium
+//! (`ci/images/rust-browser.Dockerfile`), which waits on `ciImageTag` pinning an
+//! image run that built that image; until then it sets nothing and these tests
+//! skip in CI. See the Testing section of `development/building.md`.
 //!
 //! The npm workspace is the one in the test's own repository: the nearest
 //! ancestor of the crate's manifest directory that holds a `package.json` and a

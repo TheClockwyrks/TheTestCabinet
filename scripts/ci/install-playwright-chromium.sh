@@ -7,9 +7,10 @@
 # ci/images/rust-browser.Dockerfile runs this, as root, to give the Rust gate job
 # a browser. Some of core's tests drive a real browser through the npm
 # workspace's Playwright, in the Chromium it launches. With
-# TCAB_REQUIRE_BROWSER=1, which that job sets, a missing browser fails them
-# rather than letting them skip (see crates/core/src/test_browser.rs). `npm ci`
-# installs Playwright and downloads no browser, so the image has to carry one.
+# TCAB_REQUIRE_BROWSER=1, which that job sets once it runs in that image, a
+# missing browser fails them rather than letting them skip (see
+# crates/core/src/test_browser.rs). `npm ci` installs Playwright and downloads
+# no browser, so the image has to carry one.
 #
 # The web image installs all three engines with .devcontainer/tools/browsers.sh
 # and .devcontainer/system/browser-deps.sh. Those two run as different users in

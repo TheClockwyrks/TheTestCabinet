@@ -175,7 +175,8 @@ jobs:
           image: web
 
   # The Rust image plus Node and Playwright's Chromium, which the gates
-  # pipeline's `rust` job runs in so that the tests driving a browser run
+  # pipeline's `rust` job is to run in (once ciImageTag pins a run that built
+  # it) so that the tests driving a browser run
   # rather than skip (ci/images/rust-browser.Dockerfile). It is built FROM the
   # Rust image of this run's commit, which ci-image.sh passes in, so it waits
   # for that image to be pushed and is skipped when it was not.

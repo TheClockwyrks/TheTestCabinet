@@ -5,9 +5,11 @@
 # Playwright, in the Chromium it launches (a validator project under Vitest's
 # browser mode, for one), and they skip on a machine that has no browser. The
 # Rust image has none by design, so in it those tests would skip on every run
-# and the gate would pass without proving them. The `rust` job runs here instead
-# and sets TCAB_REQUIRE_BROWSER=1, which turns a missing browser into a failed
-# test (see crates/core/src/test_browser.rs). The project's other Rust jobs stay
+# and the gate would pass without proving them. The `rust` job is to run here
+# instead and set TCAB_REQUIRE_BROWSER=1, which turns a missing browser into a
+# failed test (see crates/core/src/test_browser.rs); it moves in the commit that
+# pins ci/images/tags.yml to an image run that built this track, and until then
+# runs in the Rust image, where those tests skip. The project's other Rust jobs stay
 # on the Rust image, where those tests skip: the `rust` job is the one that holds
 # them to running, so this is a track of its own rather than a heavier Rust
 # image for every job.

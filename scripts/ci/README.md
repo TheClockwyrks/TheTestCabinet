@@ -205,8 +205,9 @@ the expression the template's `rust` job uses: `azure-pipelines.yml` passes it t
 it directly. The `ci-image-pins` gate fails on a root pipeline naming a CI image
 another way and on any file under `.azure/` naming one. Moving the pin is one edit of
 `tags.yml` once the image pipeline's run on a commit has pushed every image. The
-template's `rust` job itself runs in the project's rust-browser image, the Rust image
-with Node and Chromium on top, named with the same expression.
+template's `rust` job itself runs in the Rust image for now. It is to move into the
+project's rust-browser image, the Rust image with Node and Chromium on top, named with
+the same expression, in the commit that pins `ciImageTag` to a run that built it.
 
 Those jobs take the template `rust` job's variables (`CARGO_HOME` under
 `$(Pipeline.Workspace)/ci-cache`, `CARGO_INCREMENTAL` 0, `CARGO_PROFILE_DEV_DEBUG`

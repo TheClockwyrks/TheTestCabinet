@@ -468,9 +468,13 @@ checks the toolchain on its own.
 Where the toolchain is meant to be present, a skip is a pass nobody earned.
 `TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
 workspace without the packages a test names, or a Chromium that does not
-launch fails the test instead. The `rust` gate job sets it and runs in the
-[rust-browser CI image](#ci-images), which carries Node and Chromium. To hold
-a local run to the same standard:
+launch fails the test instead. The `rust` gate job is meant to be such a place:
+it moves into the [rust-browser CI image](#ci-images), which carries Node and
+Chromium, and sets the variable, in the commit that pins `ciImageTag` to an
+image pipeline run that built that image. Until that commit lands, the job runs
+in the Rust image without the variable, and these tests skip in CI as they do
+on a machine with no browser. To hold a local run to the standard CI is meant
+to hold:
 
 ```sh
 npm ci                                   # the workspace: Vitest, Playwright
@@ -1058,9 +1062,9 @@ off it.
 in `.azure/tcab/`, shared with the release pipeline. The amd64 jobs that
 compile Rust run as container jobs in the template's Rust CI image, with the
 template `rust` job's paths, variables and cargo cache, so they share its caches
-and seed them. The `rust` job's own rust-browser image is built on that image,
-so the toolchain and its paths are the same in both and a compile in one is a
-cache hit in the other. A template cannot read the pin itself (a
+and seed them. The rust-browser image the `rust` job is to move into is built
+on that image, so the toolchain and its paths are the same in both and a
+compile in one is a cache hit in the other. A template cannot read the pin itself (a
 `${{ variables.* }}` inside an included jobs template expands to nothing), so
 `azure-pipelines.yml` names the image with the expression its `rust` job names
 its own with,
@@ -1196,8 +1200,8 @@ template's CI images:
 
 | Image | Jobs |
 | --- | --- |
-| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | `gg_tests_<k>_of_4`, `rust_build`, `binary_linux`, `gg_amd64` |
-| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd` | `rust` |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | `rust`, `gg_tests_<k>_of_4`, `rust_build`, `binary_linux`, `gg_amd64` |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd` | none yet; `rust`, once `ciImageTag` pins a run that built it |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | `web` |
 
 `ci/images/README.md` describes each. The Rust image carries the pinned
@@ -1209,10 +1213,14 @@ come from the `gg-toolchains` cache.
 The rust-browser image is the project's own. It is the Rust image of the same
 commit with Node and Playwright's Chromium on top
 (`ci/images/rust-browser.Dockerfile`, which installs the browser with
-`scripts/ci/install-playwright-chromium.sh`), and the `rust` job runs in it
+`scripts/ci/install-playwright-chromium.sh`). The `rust` job is to run in it
 with `TCAB_REQUIRE_BROWSER=1`, so the Rust tests that drive a browser run there
 and fail rather than skip when it is missing (see
-[Tests that need a browser](#tests-that-need-a-browser)). The project's other
+[Tests that need a browser](#tests-that-need-a-browser)). That switch waits on
+the pin: no image pipeline run has built the track at the commit `ciImageTag`
+names, so the job stays on the Rust image until the commit that moves the pin to
+a run that did, which also points the job at the image, sets the variable and
+maps the job to `rust-browser` in `ci/tests/test_wiring.py`. The project's other
 Rust jobs need no browser and stay on the Rust image.
 
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
