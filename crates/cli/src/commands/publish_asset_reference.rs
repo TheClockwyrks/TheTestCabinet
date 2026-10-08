@@ -19,7 +19,7 @@
 //!   ([`reference_prefix`]), so the backend discovers published references by
 //!   listing the prefix rather than ingesting a committed URL — nothing has to be
 //!   committed to record where a reference went. It performs that listing at
-//!   ingest, so a publish still ends with the same `reingest-cluster.sh` step the
+//!   ingest, so a publish still ends with the same `tcab ingest --env` step the
 //!   Pages path ends with; what it skips is the commit-and-push in between.
 //!
 //! Because the images are regenerated from the committed script rather than
@@ -106,7 +106,7 @@ pub(super) async fn execute(
         // rather than by ingesting a recorded URL. It does that listing at ingest,
         // so a publish still needs the same re-ingest step the Pages path ends with.
         println!("next: have the backend rediscover them from its own listing:");
-        println!("  scripts/reingest-cluster.sh --env {env}");
+        println!("  tcab ingest --env {env}");
     }
 
     if failures > 0 {

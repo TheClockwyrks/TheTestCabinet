@@ -1,0 +1,8 @@
+name = "Carom, sparks"
+type = "particle"
+difficulty = "medium"
+specifications = ["assets"]
+prompt = "prompts/particle.hbs"
+
+[particle]
+id = "sparks"

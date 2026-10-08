@@ -244,6 +244,14 @@ cuid2 = "0.1"
 dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 toml = "0.8"
+# Format-preserving TOML *writing*, for the test suite model's canonical emitter
+# (`crates/core`'s `test_suite`). A suite's write model is a whole-file rewrite of
+# canonically formatted TOML, so the emitter has to control table order, array
+# layout and string quoting directly rather than accept whatever a plain
+# serializer produces — which means building a `DocumentMut` and rewriting its
+# formatting before rendering it. `serde` carries the serializer that turns the
+# model into that document.
+toml_edit = { version = "0.25", features = ["serde"] }
 # Semantic-version parsing and ordering. A test case declares, per engine it
 # supports, the range of engine versions it was written against (`[[engine]]`'s
 # `min_version`/`max_version`), and the run gate compares the catalogue's staged

@@ -1,0 +1,9 @@
+name = "Carom, player ship walk cycle"
+type = "sprite"
+difficulty = "medium"
+specifications = ["assets"]
+prompt = "prompts/sprite.hbs"
+
+[sprite]
+id = "player-ship-walk"
+sheet = true

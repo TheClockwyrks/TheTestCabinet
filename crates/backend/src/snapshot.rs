@@ -1643,7 +1643,8 @@ impl SnapshotBuilder {
     /// published even when the carousel does not list it, which is why the driver
     /// mirrors the whole directory (see `upload_showcase_to_backend`). Any name
     /// the store listing misses — a carousel entry, or an image reference
-    /// extracted from the record's description ([`description_image_references`])
+    /// extracted from the record's description
+    /// ([`description_image_references`](test_cabinet_core::showcase::description_image_references))
     /// — is still tried through the store-then-artifact-service fallback
     /// ([`Self::read_media`]): the backend store is an ephemeral emptyDir, so a
     /// run mirrored before a restart may list nothing at publish time, and a
@@ -1682,7 +1683,8 @@ impl SnapshotBuilder {
                 files.push(media.file.clone());
             }
         }
-        for file in description_image_references(&showcase.description) {
+        for file in test_cabinet_core::showcase::description_image_references(&showcase.description)
+        {
             if !files.contains(&file) {
                 files.push(file);
             }
@@ -1958,93 +1960,6 @@ async fn transcode_webm_to_mp4(webm: &[u8]) -> Option<Vec<u8>> {
     // Best-effort cleanup regardless of outcome.
     let _ = tokio::fs::remove_dir_all(&dir).await;
     result
-}
-
-/// The showcase file names a description references as inline Markdown images
-/// (`![alt](file)`), deduplicated in reference order.
-///
-/// A description may embed an image by bare relative path without listing it in
-/// the carousel, and such a name lives nowhere else on the record — so this
-/// extraction is what lets [`run_showcase`](SnapshotBuilder::run_showcase) try
-/// the artifact-service fallback for it after the ephemeral store has been
-/// wiped, instead of publishing a description whose image is permanently broken
-/// (the write-once media convention means a later snapshot never heals it).
-///
-/// Only a name the store and serve routes would accept is returned: the same
-/// relative-reference rule the console's Markdown renderer applies before it
-/// resolves an image against the published showcase (no scheme, not
-/// document-anchored), then the flat-namespace rule of the showcase dir itself
-/// (no separators, no `..`, not `showcase.toml`). A percent-escaped destination
-/// is decoded to the plain file name the author wrote, exactly as the renderer
-/// decodes it before resolving.
-fn description_image_references(description: &str) -> Vec<String> {
-    let mut files = Vec::new();
-    // Inline-image syntax only (`![alt](dest)` / `![alt](<dest>)`, optionally
-    // with a title after the destination) — the convention the specs instruct.
-    let mut rest = description;
-    while let Some(start) = rest.find("![") {
-        rest = &rest[start + 2..];
-        // The destination opens at the first `](` after the alt text.
-        let Some(open) = rest.find("](") else { break };
-        let after = &rest[open + 2..];
-        let dest = if let Some(bracketed) = after.strip_prefix('<') {
-            // An angle-bracketed destination runs to the closing `>` (the form
-            // that permits spaces in the name).
-            let Some(end) = bracketed.find('>') else {
-                rest = after;
-                continue;
-            };
-            &bracketed[..end]
-        } else {
-            // A plain destination ends at the first whitespace (a title may
-            // follow) or the closing parenthesis.
-            match after.find(|c: char| c.is_whitespace() || c == ')') {
-                Some(end) => &after[..end],
-                None => after,
-            }
-        };
-        rest = after;
-        // Only a relative reference resolves against the showcase — the same rule
-        // the renderer applies (no scheme, not `/`-, `#`- or `?`-anchored).
-        if dest.is_empty() || dest.starts_with(['/', '#', '?']) || has_url_scheme(dest) {
-            continue;
-        }
-        // The parser hands the renderer a percent-encoded destination and the
-        // resolver decodes it; decode here too so the extracted name is the plain
-        // file name the store and the published key use.
-        let file = match percent_encoding::percent_decode_str(dest).decode_utf8() {
-            Ok(decoded) => decoded.into_owned(),
-            // Malformed escapes: take the reference as written.
-            Err(_) => dest.to_string(),
-        };
-        // The flat-namespace rule every showcase route enforces.
-        if file.contains(['/', '\\']) || file.contains("..") || file == "showcase.toml" {
-            continue;
-        }
-        if !files.contains(&file) {
-            files.push(file);
-        }
-    }
-    files
-}
-
-/// Whether a Markdown URL reference opens with a scheme (`letter` then
-/// letters/digits/`+`/`.`/`-` up to a `:`), mirroring the renderer's
-/// relative-reference test.
-fn has_url_scheme(url: &str) -> bool {
-    let mut chars = url.chars();
-    if !chars.next().is_some_and(|c| c.is_ascii_alphabetic()) {
-        return false;
-    }
-    for c in chars {
-        if c == ':' {
-            return true;
-        }
-        if !c.is_ascii_alphanumeric() && !matches!(c, '+' | '.' | '-') {
-            return false;
-        }
-    }
-    false
 }
 
 /// The top-level prefix every snapshot generation is written under.
@@ -3451,39 +3366,16 @@ fn seeded_inputs(
 }
 
 /// Render one variant's prompt for `engine` off the stored manifest, exactly as a
-/// run on that engine receives it. `None` renders the engineless form.
+/// run on that engine receives it (see [`crate::prompt::render_stored_prompt`]).
+/// `None` renders the engineless form, and `suite` is the record of the suite
+/// version a suite-defined manifest was lowered from.
 fn render_case_prompt(
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    suite: Option<&crate::suite_store::StoredSuite>,
     engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
 ) -> Result<String, BackendError> {
-    let spec_dests: Vec<String> = manifest
-        .common_specs
-        .iter()
-        .chain(variant.specs.iter())
-        .map(|spec| spec.dest.clone())
-        .collect();
-    test_cabinet_core::render_prompt_from_template(
-        &manifest.slug,
-        &manifest.version,
-        &manifest.prompt_template,
-        &variant.slug,
-        &variant.name,
-        variant.description.as_deref(),
-        &spec_dests,
-        manifest.test_type,
-        // The dimension decides which asset-generation binaries the standing
-        // full-stack directive names, so the baked prompt reads as the run's own.
-        manifest.asset_dimension,
-        manifest.max_runtime_seconds,
-        // The variant's own volume overrides the case's for its prompt.
-        variant.voxel.as_ref().or(manifest.voxel.as_ref()),
-        // A snapshot bakes the standing prompt only — prior game-jam entries are a
-        // property of the run, so no distinctness section.
-        0,
-        engine,
-    )
-    .map_err(|e| {
+    crate::prompt::render_stored_prompt(manifest, variant, suite, engine).map_err(|e| {
         BackendError::Snapshot(format!(
             "rendering prompt for `{}@{}` variant `{}`: {e}",
             manifest.slug, manifest.version, variant.slug
@@ -3513,13 +3405,16 @@ fn case_metadata(
     showcases: &std::collections::HashMap<String, CaseShowcaseOut>,
     workspace_files: &VariantWorkspaceFiles,
 ) -> Result<CaseMetadata, BackendError> {
+    // A suite-defined version's prompt renders against the specifications its suite
+    // version declares, so its record is read once for every rendering below.
+    let suite = store.read_suite_of(manifest)?;
     let variants = manifest
         .variants
         .iter()
         .map(|v| {
             // The engineless rendering: what a reader browsing the case sees, and
             // exactly what a run on the `none` engine was handed.
-            let prompt = render_case_prompt(manifest, v, None)?;
+            let prompt = render_case_prompt(manifest, v, suite.as_ref(), None)?;
             // Every engine this version declares that vendors a runtime, rendered
             // under its own branch of the templates so a run's Inputs surface can
             // show the text that run actually received. An engine slug this build
@@ -3548,7 +3443,7 @@ fn case_metadata(
                 engine_renderings.insert(
                     support.slug.clone(),
                     CaseVariantRenderingOut {
-                        prompt: render_case_prompt(manifest, v, Some(&resolved))?,
+                        prompt: render_case_prompt(manifest, v, suite.as_ref(), Some(&resolved))?,
                         seeded_inputs: seeded_inputs(store, manifest, v, Some(&resolved)),
                         workspace_files: workspace_files
                             .get(&v.slug)

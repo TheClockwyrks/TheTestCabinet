@@ -181,8 +181,20 @@ impl Validator for BuildValidator {
                 &output_dir,
             ),
         };
+        // A suite-defined case decides requirements rather than checklist points: its
+        // suite version's `validators/` project is run against this same build, and
+        // each requirement of the specifications the definition covers collects the
+        // results of the validators it claims. An authored case is suite-defined by
+        // nothing, so this is empty for one and the two never both report on a run.
+        let requirements = crate::test_suite::run_suite_validators(
+            test_case,
+            artifacts,
+            &output_dir,
+            &build_commands.install,
+        );
         Ok(ValidationSummary {
             loaded: true,
+            requirements,
             detail,
             install: Some(install),
             build: Some(build),
@@ -1195,6 +1207,7 @@ impl Validator for AssetGenValidator {
         Ok(ValidationSummary {
             // The run produced scorable image(s): the load signal is positive.
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -1555,6 +1568,7 @@ impl Validator for VoxelGenValidator {
         Ok(ValidationSummary {
             // The run produced scorable voxel data: the load signal is positive.
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -2042,6 +2056,7 @@ impl Validator for PaintGenValidator {
 
         let mut summary = ValidationSummary {
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -2130,6 +2145,7 @@ impl Validator for ParticleGenValidator {
         let particle = validate_particle(repo, tool);
         Ok(ValidationSummary {
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -2183,6 +2199,7 @@ impl Validator for AudioGenValidator {
         let result = validate_audio(repo, audio, test_case.asset_kind, tool);
         Ok(ValidationSummary {
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -2913,6 +2930,7 @@ impl Validator for BlenderGenValidator {
             // A positive load is a well-formed glTF with at least one mesh; a character
             // must additionally carry a skin.
             loaded: summary.mesh_count > 0 && (!expect_skin || summary.skins_present),
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -3294,6 +3312,7 @@ fn failed_load(
 ) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some(detail.to_string()),
         install,
         build,

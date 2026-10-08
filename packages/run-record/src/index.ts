@@ -9,6 +9,7 @@
 
 import type { CodeAnalysisSummary } from "./code-analysis";
 import type { GgCapabilitySet, GgSessionSummary } from "./gg";
+import type { RequirementOutcome } from "./test-suite";
 import type { ModelSpec } from "@clockwyrks/asset-contract";
 
 export type {
@@ -1792,6 +1793,19 @@ export type RunValidation = {
    * point it backs: see [`DebugScriptResult`].
    */
   debugScripts?: Array<DebugScriptResult>;
+  /**
+   * One outcome per requirement of the specifications a
+   * [suite-defined](crate::test_suite) test case covers, decided by running the
+   * suite version's `validators/` project against the produced build. Empty for
+   * an authored test case, whose checklist points are decided by
+   * [`Self::debug_scripts`] instead, so an unchanged case serializes with no new
+   * field at all.
+   *
+   * A requirement the runner could not decide is recorded
+   * [undecided](crate::test_suite::RequirementStatus::Undecided) rather than
+   * failed, and never changes [`Self::loaded`].
+   */
+  requirements?: Array<RequirementOutcome>;
   /**
    * The regenerate-and-score result of an asset-generation run. `None` for an
    * end-to-end run, so an end-to-end summary serializes with no new field at

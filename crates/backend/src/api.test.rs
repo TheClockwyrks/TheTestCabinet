@@ -450,6 +450,165 @@ async fn an_unbounded_account_limit_is_stored_as_itself_and_inherited_by_a_plan(
     );
 }
 
+/// Copy a directory tree, for seeding the harness checkout with a fixture.
+fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+/// Issue one request and return its status, `Content-Type` and raw body.
+async fn call_raw(router: &Router, request: Request<Body>) -> (StatusCode, String, Vec<u8>) {
+    let response = router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 24)
+        .await
+        .unwrap();
+    (status, content_type, bytes.to_vec())
+}
+
+fn put_build(uri: &str, archive: Vec<u8>) -> Request<Body> {
+    Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header("content-type", "application/gzip")
+        .body(Body::from(archive))
+        .unwrap()
+}
+
+fn get(uri: &str) -> Request<Body> {
+    Request::builder().uri(uri).body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn a_suite_reference_build_is_uploaded_listed_played_and_replaced() {
+    use crate::suite_store::reference_builds::tests::gzipped_tar;
+
+    let h = harness().await;
+    // Ingest the committed fixture suite into the store the router serves.
+    let checkout = h._store.path();
+    std::fs::create_dir_all(checkout.join("test-cases")).unwrap();
+    copy_dir(
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../core/src/testdata/test-suite"),
+        &checkout.join("test-suites"),
+    );
+    let store = DefinitionStore::open(checkout.join("store")).unwrap();
+    crate::ingest::Ingestor::new(checkout, &store)
+        .scan(&crate::ingest::IngestRequest::default())
+        .unwrap();
+    assert!(store.has_suite_version("carom", "v1.0.0"));
+
+    const BASE: &str = "/suites/carom/versions/v1.0.0/reference-builds";
+    let first = gzipped_tar(&[
+        (
+            "index.html",
+            b"<!doctype html><html><head></head><body><script src=\"/assets/app.js\"></script></body></html>",
+        ),
+        ("assets/app.js", b"console.log('first')"),
+        ("assets/style.css", b"body{}"),
+    ]);
+
+    // A version the backend has not ingested, and an engine no definition declares,
+    // are each refused with the reason.
+    let (status, body) = call(
+        &h.router,
+        put_build(
+            "/suites/nothing/versions/v1.0.0/reference-builds/none",
+            first.clone(),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("is not ingested")
+    );
+    let (status, body) = call(
+        &h.router,
+        put_build(&format!("{BASE}/simple-3d"), first.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(message.contains("`simple-3d` is not declared"), "{message}");
+    assert!(message.contains("`none`, `simple-2d`"), "{message}");
+
+    // A declared engine of an ingested version stores.
+    let (status, body) = call(&h.router, put_build(&format!("{BASE}/none"), first)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let url = format!("{BASE}/none/");
+    assert_eq!(body["url"], url);
+    assert_eq!(body["engine"], "none");
+
+    // The suite detail and the lowered definition's version detail list it.
+    let (status, suite) = call(&h.router, get("/test-suites/carom/v1.0.0")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(suite["slug"], "carom", "the record is still the body");
+    assert_eq!(suite["referenceBuilds"], serde_json::json!({ "none": url }));
+    let (status, detail) = call(
+        &h.router,
+        get("/test-cases/carom-end-to-end/versions/v1.0.0"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    for variant in detail["variants"].as_array().unwrap() {
+        assert_eq!(
+            variant["referenceBuilds"],
+            serde_json::json!({ "none": url })
+        );
+    }
+
+    // The build is served under that URL, bare root included, with its types.
+    for root in [url.as_str(), url.trim_end_matches('/')] {
+        let (status, content_type, html) = call_raw(&h.router, get(root)).await;
+        assert_eq!(status, StatusCode::OK, "{root}");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+        let html = String::from_utf8(html).unwrap();
+        assert!(html.contains(&format!("<base href=\"{url}\">")), "{html}");
+        assert!(html.contains("src=\"assets/app.js\""), "{html}");
+    }
+    let (status, content_type, _) = call_raw(&h.router, get(&format!("{url}assets/app.js"))).await;
+    assert_eq!(
+        (status, content_type.as_str()),
+        (StatusCode::OK, "text/javascript; charset=utf-8")
+    );
+    let (status, content_type, _) =
+        call_raw(&h.router, get(&format!("{url}assets/style.css"))).await;
+    assert_eq!(
+        (status, content_type.as_str()),
+        (StatusCode::OK, "text/css; charset=utf-8")
+    );
+
+    // A second upload replaces the first.
+    let second = gzipped_tar(&[
+        ("index.html", b"<html><head></head>second</html>"),
+        ("assets/next.js", b"console.log('second')"),
+    ]);
+    let (status, _) = call(&h.router, put_build(&format!("{BASE}/none"), second)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call_raw(&h.router, get(&format!("{url}assets/app.js"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, body) = call_raw(&h.router, get(&format!("{url}assets/next.js"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, b"console.log('second')");
+}
+
 // ---------------------------------------------------------------------------
 // A model's provider policy and candidate list
 // ---------------------------------------------------------------------------

@@ -1,0 +1,22 @@
+name = "Carom, end to end"
+type = "end-to-end"
+difficulty = "easy"
+engines = ["none", "simple-2d"]
+specifications = ["ball-physics", "ball-spin"]
+prompt = "prompts/end-to-end.hbs"
+max_runtime_hours = 1.5
+init = "npm ci && npx playwright install chromium"
+
+[workspaces]
+none = "workspaces/none"
+simple-2d = "workspaces/simple-2d-e2e"
+
+[build]
+install = "npm ci"
+build = "npm run build"
+
+[toolchain]
+typecheck = "npm run typecheck"
+lint = "npm run lint"
+format = "npm run format"
+test = "npm run test"

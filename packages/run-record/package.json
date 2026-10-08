@@ -71,6 +71,10 @@
       "types": "./dist/backend-api.d.ts",
       "default": "./dist/backend-api.js"
     },
+    "./test-suite": {
+      "types": "./dist/test-suite.d.ts",
+      "default": "./dist/test-suite.js"
+    },
     "./snapshot": {
       "types": "./dist/snapshot.d.ts",
       "default": "./dist/snapshot.js"

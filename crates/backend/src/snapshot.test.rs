@@ -92,6 +92,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             validation: ValidationSummary {
                 debug_scripts: Vec::new(),
                 loaded: true,
+                requirements: Vec::new(),
                 ..ValidationSummary::default()
             },
             links: RunLinks {
@@ -243,6 +244,7 @@ fn manifest() -> StoredManifest {
         }],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 
@@ -918,32 +920,6 @@ async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
     assert_eq!(media.len(), 1);
     assert_eq!(media[0]["file"], "banner.png");
     assert_eq!(media[0]["key"], key);
-}
-
-#[test]
-fn description_image_references_extracts_only_flat_relative_names() {
-    // Bare relative names come back (percent-escapes decoded, angle-bracketed
-    // and titled destinations handled, duplicates folded); everything the
-    // renderer would not resolve against the showcase — absolute, anchored,
-    // schemed — and every name the flat namespace refuses is skipped.
-    let description = "\
-# My Game\n\
-![Banner](banner.png)\n\
-![Same again](banner.png)\n\
-![Encoded](my%20shot.png)\n\
-![Bracketed](<two words.png> \"With a title\")\n\
-![Titled](titled.png \"The title\")\n\
-![Absolute](/logo.png)\n\
-![Anchor](#top)\n\
-![External](https://example.com/x.png)\n\
-![Data](data:image/png;base64,AAAA)\n\
-![Traversal](../escape.png)\n\
-![Dotted](shot..final.png)\n\
-![Manifest](showcase.toml)\n";
-    assert_eq!(
-        description_image_references(description),
-        vec!["banner.png", "my shot.png", "two words.png", "titled.png"],
-    );
 }
 
 #[tokio::test]
@@ -3805,4 +3781,60 @@ async fn a_legacy_run_summary_omits_the_aesthetic_channel() {
         .expect("case document");
     let case: serde_json::Value = serde_json::from_slice(&case_obj.bytes).unwrap();
     assert_eq!(case["engineFormat"], false);
+}
+
+#[tokio::test]
+async fn case_metadata_renders_a_suite_defined_prompt_as_its_runs_receive_it() {
+    use crate::prompt::fixture::{CASE, EXPORTED, IngestedSuite, engine};
+    use test_cabinet_core::test_suite::SUITE_VARIANT_SLUG;
+
+    let suite = IngestedSuite::new();
+    // What a run of the version was handed, engineless and on simple-2d, off the
+    // resolved checkout the run path reads.
+    let resolved = suite.resolve(EXPORTED);
+    let variant = resolved
+        .variant(SUITE_VARIANT_SLUG)
+        .expect("the implicit variant");
+    let simple = engine("simple-2d");
+    let run_prompt = |engine| {
+        test_cabinet_core::render_case_prompt(&resolved, variant, &[], engine)
+            .expect("the run renders the prompt")
+    };
+    let (engineless, on_simple) = (run_prompt(None), run_prompt(Some(&simple)));
+
+    let manifest = suite
+        .store
+        .read_manifest(CASE, EXPORTED)
+        .expect("the version is stored");
+    let mut run = stored_run("r1", "t");
+    run.record.subject.test_case_slug = CASE.to_string();
+    run.record.subject.test_case_version = EXPORTED.to_string();
+    run.record.subject.variant = SUITE_VARIANT_SLUG.to_string();
+    let IngestedSuite { dir: _dir, store } = suite;
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest], store)
+        .build(now())
+        .await
+        .expect("the snapshot builds");
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/{CASE}/{EXPORTED}.json"))
+        .expect("the suite-defined case is emitted");
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let variant = &parsed["variants"][0];
+
+    assert_eq!(variant["prompt"], engineless.as_str());
+    assert_eq!(
+        variant["engineRenderings"]["simple-2d"]["prompt"],
+        on_simple.as_str()
+    );
+    assert!(
+        engineless.starts_with("Build Carom in the workspace at `/work`."),
+        "unexpected prompt: {engineless}"
+    );
+    assert!(
+        engineless.contains("`/work/specs/ball-physics/spin.md`"),
+        "unexpected prompt: {engineless}"
+    );
 }

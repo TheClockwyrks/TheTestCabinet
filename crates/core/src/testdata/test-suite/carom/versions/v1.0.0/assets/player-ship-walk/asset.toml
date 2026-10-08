@@ -1,0 +1,5 @@
+id = "player-ship-walk"
+name = "Player Ship Walk"
+kind = "sprite-sheet"
+specification = "assets"
+files = ["player-ship-walk.png"]

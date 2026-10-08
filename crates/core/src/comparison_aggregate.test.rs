@@ -72,6 +72,7 @@ fn validation(debug_scripts: Vec<DebugScriptResult>) -> ValidationSummary {
     ValidationSummary {
         debug_scripts,
         loaded: true,
+        requirements: Vec::new(),
         detail: None,
         install: None,
         build: None,

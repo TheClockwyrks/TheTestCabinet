@@ -258,7 +258,7 @@ fn stored_manifest_carries_adversarial_specs() {
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let resolved = catalog.resolve("foray", "v1.0.0").unwrap();
 
-    let manifest = build_stored_manifest(&resolved).unwrap();
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
 
     let contract = manifest.contract.expect("contract survives ingest");
     assert_eq!(contract.entry, "tick");
@@ -294,7 +294,7 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let resolved = catalog.resolve("carom", "v2.0.0").unwrap();
 
-    let manifest = build_stored_manifest(&resolved).unwrap();
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
 
     let instrumentation = manifest
         .instrumentation
@@ -401,7 +401,8 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
     // Ingest tolerates the key: the stored manifest builds, and the variant carries
     // through (the reference-impl host path is intentionally dropped — it is not part
     // of the run-facing stored shape).
-    let manifest = build_stored_manifest(&resolved).expect("build tolerates the key");
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
+        .expect("build tolerates the key");
     assert_eq!(manifest.variants.len(), 1);
     assert_eq!(manifest.variants[0].slug, "base");
 }
@@ -442,7 +443,8 @@ fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
 
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path().join("test-cases"));
     let resolved = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    let manifest = build_stored_manifest(&resolved).expect("build the stored manifest");
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
+        .expect("build the stored manifest");
 
     let showcase = manifest.variants[0]
         .showcase
@@ -486,7 +488,7 @@ fn stored_manifest_carries_performance_specs() {
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let resolved = catalog.resolve("lattice", "v1.0.0").unwrap();
 
-    let manifest = build_stored_manifest(&resolved).unwrap();
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
 
     let contract = manifest.contract.expect("contract survives ingest");
     assert_eq!(contract.entry, "simulate");
@@ -563,7 +565,7 @@ fn stored_manifest_carries_voxel_specs() {
 
     // A static voxel-model case: the volume survives; there is no rig.
     let skyshard = catalog.resolve("skyshard", "v1.0.0").unwrap();
-    let manifest = build_stored_manifest(&skyshard).unwrap();
+    let manifest = build_stored_manifest(&skyshard, &Keys::rooted(&skyshard.root), None).unwrap();
     let voxel = manifest.voxel.expect("voxel volume survives ingest");
     assert_eq!((voxel.width, voxel.height, voxel.depth), (50, 20, 76));
     assert!(
@@ -573,7 +575,7 @@ fn stored_manifest_carries_voxel_specs() {
 
     // A rigged voxel-animation case: the volume and the required rig both survive.
     let ironward = catalog.resolve("ironward", "v1.0.0").unwrap();
-    let manifest = build_stored_manifest(&ironward).unwrap();
+    let manifest = build_stored_manifest(&ironward, &Keys::rooted(&ironward.root), None).unwrap();
     assert!(manifest.voxel.is_some(), "voxel volume survives ingest");
     let model = manifest.model.expect("required rig survives ingest");
     assert!(
@@ -597,7 +599,7 @@ fn stored_manifest_carries_the_engines_the_case_declares() {
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
 
     let carom = catalog.resolve("carom", "v3.0.0").unwrap();
-    let manifest = build_stored_manifest(&carom).unwrap();
+    let manifest = build_stored_manifest(&carom, &Keys::rooted(&carom.root), None).unwrap();
     let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
     assert_eq!(slugs, vec!["none", "simple-2d", "structured-2d"]);
     // A pinned engine keeps its floor through the store, or the gate would admit a
@@ -642,7 +644,7 @@ fn every_stored_manifest_preserves_its_asset_shape() {
             let resolved = catalog
                 .resolve(&case.slug, version)
                 .unwrap_or_else(|err| panic!("resolve {}@{}: {err:?}", case.slug, version));
-            let manifest = build_stored_manifest(&resolved)
+            let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
                 .unwrap_or_else(|err| panic!("build manifest {}@{}: {err:?}", case.slug, version));
             let id = format!("{}@{}", case.slug, version);
 

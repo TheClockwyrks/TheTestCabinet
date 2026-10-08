@@ -54,6 +54,7 @@ fn sample_record() -> RunRecord {
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: Some(StepResult {
                 command: "npm ci".to_string(),

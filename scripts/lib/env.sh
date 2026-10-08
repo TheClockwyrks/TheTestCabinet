@@ -2,8 +2,8 @@
 # Shared per-environment target resolver for the REMOTE cluster/vault scripts.
 #
 # The scripts that act on a deployed environment — upload-subscription-creds.sh,
-# enable-secret-rotation.sh, reingest-cluster.sh, backfill-run-media.sh,
-# recover-run-media-from-snapshot.sh — take a
+# enable-secret-rotation.sh, backfill-run-media.sh, recover-run-media-from-snapshot.sh,
+# deployments/k8s/secrets/upload-test-suites-credential.sh — take a
 # REQUIRED `--env <prod|staging>` and source this file to turn that name into the
 # concrete Azure resources they operate on. Keeping the mapping here means the
 # per-environment facts (Key Vault, AKS cluster, resource group, namespace) live in
@@ -15,10 +15,11 @@
 # guard (the old `${VAULT:-testcabinet-clockwyrks}` / `${CLUSTER:-…-prod-…}` defaults)
 # was the footgun this convention removes.
 #
-# NOTE: scripts/reingest.sh is intentionally NOT one of these — it targets a plain
-# BACKEND_URL (a local, or port-forwarded, backend) over HTTP, not a cluster, so it
-# keeps its safe localhost default and takes no --env. Use reingest-cluster.sh for a
-# deployed environment.
+# The Rust tools that act on a deployed environment — `tcab ingest --env` and The Spec
+# Cabinet's staging and prod publish targets — cannot source this file, so they read
+# crates/core/publish-targets.toml, which scripts/generate-publish-targets.sh renders
+# from it. Re-run that script after editing a cluster, resource group, namespace, or
+# ingest branch here; a test in crates/core fails while the two differ.
 #
 # Usage (from a script that has computed its own $script_dir):
 #   source "${script_dir}/lib/env.sh"
@@ -41,7 +42,8 @@ tcab_env_resolve() {
       # reference-build lockfile) from. A stable branch — NOT a per-release tag — so
       # reingest picks up pushed catalog/reference changes on demand without a roll;
       # the service CODE version is the commit the pipeline last deployed.
-      # Kept == the branch each overlay's patch-backend-ingest.yaml clones.
+      # Kept == the branch each overlay's patch-backend-ingest.yaml clones, and the
+      # branch a publish to this environment pushes.
       TCAB_INGEST_BRANCH="master"
       # The artifact service's PUBLIC (internal-ingress) read URL for this env.
       TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.tcab.testcabinet.ai"

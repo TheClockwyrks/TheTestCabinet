@@ -8,6 +8,15 @@
 // in the same pass.
 
 import type { AssetKind, HarnessFamily, MediaKind, TestType } from "./index";
+import type {
+  AssetManifest,
+  DemoManifest,
+  ShowcaseManifest,
+  SpecificationManifest,
+  SuiteManifest,
+  SuiteTestCaseDefinition,
+  VersionManifest,
+} from "./test-suite";
 
 /**
  * The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
@@ -104,6 +113,13 @@ export type CatalogCase = {
    * `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
    */
   showcase: CatalogShowcaseOut | null;
+  /**
+   * The [test suite](crate::suite_store) coordinate this case was lowered from,
+   * read from its latest visible version. Absent for an authored case, which is
+   * how a listing tells the two apart and groups the suite-derived ones under
+   * the suite that offers them.
+   */
+  suite?: StoredSuiteCoordinate;
 };
 
 export type CatalogResponse = { testCases: Array<CatalogCase> };
@@ -1121,4 +1137,329 @@ export type CabinetWeekOut = {
    * Runs whose `started_at` falls in that ISO week.
    */
   runs: number;
+};
+
+/**
+ * Where a suite-defined test-case version came from: the
+ * [suite](crate::suite_store::StoredSuite) that offers it, the suite version that
+ * declares it, and the definition file it was lowered from.
+ *
+ * A version carrying one is served out of the same key space an authored version
+ * is, so this is the only thing that distinguishes the two on the wire — which is
+ * what lets a console group suite-derived cases under their suite.
+ */
+export type StoredSuiteCoordinate = {
+  /**
+   * The suite's slug, which is its directory in the suites checkout.
+   */
+  suite: string;
+  /**
+   * The suite version folder name, carrying its leading `v`.
+   */
+  suiteVersion: string;
+  /**
+   * The definition's slug, which is its file stem under `test-cases/`.
+   */
+  definition: string;
+};
+
+/**
+ * One version's identity as a listing presents it.
+ */
+export type SuiteVersionIdentity = {
+  /**
+   * The version folder name, carrying its leading `v`.
+   */
+  version: string;
+  /**
+   * The suite's display name at this version.
+   */
+  name: string;
+  /**
+   * The one-line abstract a row shows.
+   */
+  summary: string;
+  /**
+   * Classification tags.
+   */
+  tags: Array<string>;
+  /**
+   * Whether the version is still being iterated on. A deployment that has not
+   * opted in is never served one, so a client shows what it is served.
+   */
+  experimental: boolean;
+};
+
+/**
+ * One suite in the listing.
+ */
+export type SuiteOut = {
+  /**
+   * The suite's slug, which is its directory in the suites checkout.
+   */
+  slug: string;
+  /**
+   * Every visible version, oldest first — so the newest, which is the one a row
+   * describes, is last.
+   */
+  versions: Array<SuiteVersionIdentity>;
+};
+
+/**
+ * `GET /test-suites` — every ingested suite the deployment offers.
+ */
+export type SuitesResponse = {
+  /**
+   * The suites, by slug.
+   */
+  testSuites: Array<SuiteOut>;
+};
+
+/**
+ * One specification of a stored suite version: its manifest, the folder that
+ * declares it, and its prose inlined.
+ */
+export type StoredSuiteSpecification = {
+  /**
+   * The specification folder, relative to the version folder. Specification
+   * folders nest freely, so this is what records where a nested one sits.
+   */
+  dir: string;
+  /**
+   * `specification.toml`: the identity, the seeded path, and the requirements
+   * in declaration order, each carrying the validator modules it claims.
+   */
+  manifest: SpecificationManifest;
+  /**
+   * The body of the `specification.md` beside it, inlined.
+   */
+  prose: string;
+};
+
+/**
+ * One test case definition of a stored suite version.
+ */
+export type StoredSuiteDefinition = {
+  /**
+   * The definition's slug, which is its file stem under `test-cases/`.
+   */
+  slug: string;
+  /**
+   * The catalog identity the definition is ingested under — what a reader
+   * follows to reach the test case this definition became.
+   */
+  id: string;
+  /**
+   * The definition itself.
+   */
+  definition: SuiteTestCaseDefinition;
+};
+
+/**
+ * One bundled asset of a stored suite version.
+ */
+export type StoredSuiteAsset = {
+  /**
+   * The asset folder, relative to the version folder. Its last segment is the
+   * asset's id, and it is the prefix the asset byte route serves its files
+   * under.
+   */
+  dir: string;
+  /**
+   * `asset.toml`.
+   */
+  manifest: AssetManifest;
+};
+
+/**
+ * One demonstration of a stored suite version.
+ */
+export type StoredSuiteDemo = {
+  /**
+   * The demonstration folder, relative to the version folder.
+   */
+  dir: string;
+  /**
+   * `demo.toml`.
+   */
+  manifest: DemoManifest;
+};
+
+/**
+ * The showcase of a stored suite version: the carousel, and the prose above it.
+ */
+export type StoredSuiteShowcase = {
+  /**
+   * `showcase/showcase.toml`: the carousel, in declared order.
+   */
+  manifest: ShowcaseManifest;
+  /**
+   * The body of `showcase/showcase.md`, inlined.
+   */
+  description: string;
+  /**
+   * The media files the showcase directory holds, by their name inside it —
+   * exactly the path the showcase byte route takes.
+   */
+  media: Array<string>;
+};
+
+/**
+ * One ingested suite version, resolved: every entity the version folder declares,
+ * with the prose it references inlined.
+ *
+ * This is both the stored record and the body
+ * `GET /test-suites/{slug}/{version}` serves. The bytes the record points at —
+ * the showcase media and the asset files — are copied into the same stored
+ * version and served by the byte routes, addressed by the paths carried here.
+ */
+export type StoredSuite = {
+  /**
+   * The suite's slug, which is its directory in the suites checkout and what
+   * `suite.toml` declares.
+   */
+  slug: string;
+  /**
+   * The version folder name, carrying its leading `v`.
+   */
+  version: string;
+  /**
+   * `suite.toml`: the identity of the suite this version belongs to, read from the
+   * suite folder at ingest, so a renamed suite presents its new name on every
+   * version the next ingest writes.
+   */
+  suite: SuiteManifest;
+  /**
+   * `version.toml`: the version's identity and the paths of the prose describing
+   * it.
+   */
+  manifest: VersionManifest;
+  /**
+   * The body of the manifest's `description.md`, inlined — the prose the
+   * manifest names by path, read once at ingest so a reader needs no second
+   * fetch.
+   */
+  description: string;
+  /**
+   * The body of the manifest's `changelog.md`, inlined for the same reason.
+   */
+  changelog: string;
+  /**
+   * Every specification the version declares, flattened out of the folder tree
+   * in walk order (a folder before the folders nested inside it).
+   */
+  specifications: Array<StoredSuiteSpecification>;
+  /**
+   * The definitions the version offers, in file-stem order.
+   */
+  testCases: Array<StoredSuiteDefinition>;
+  /**
+   * The bundled assets, one per folder under `assets/`.
+   */
+  assets: Array<StoredSuiteAsset>;
+  /**
+   * The demonstrations, one per folder under `demos/`.
+   */
+  demos: Array<StoredSuiteDemo>;
+  /**
+   * The engines the version ships a reference implementation for, in folder
+   * order. The projects themselves stay in the checkout; the static builds of
+   * them are uploaded separately (see [`reference_builds`]).
+   */
+  referenceImplementations: Array<string>;
+  /**
+   * The showcase, when the version holds one.
+   */
+  showcase?: StoredSuiteShowcase;
+};
+
+/**
+ * `GET /test-suites/{slug}/{version}` — one suite version's resolved record, with
+ * the reference builds uploaded for it.
+ */
+export type SuiteVersionResponse = {
+  /**
+   * The engines with an uploaded reference build, each with the URL its build is
+   * played at, relative to the backend. An engine the version ships a reference
+   * implementation for but holds no upload of is absent.
+   */
+  referenceBuilds: { [key in string]: string };
+  /**
+   * The content digest the stored version was ingested from, as lowercase hex
+   * SHA-256, so a client holding the checkout can tell whether the store still
+   * matches it. Absent for a record written before digests were recorded.
+   */
+  digest: string | null;
+  /**
+   * The suite's slug, which is its directory in the suites checkout and what
+   * `suite.toml` declares.
+   */
+  slug: string;
+  /**
+   * The version folder name, carrying its leading `v`.
+   */
+  version: string;
+  /**
+   * `suite.toml`: the identity of the suite this version belongs to, read from the
+   * suite folder at ingest, so a renamed suite presents its new name on every
+   * version the next ingest writes.
+   */
+  suite: SuiteManifest;
+  /**
+   * `version.toml`: the version's identity and the paths of the prose describing
+   * it.
+   */
+  manifest: VersionManifest;
+  /**
+   * The body of the manifest's `description.md`, inlined — the prose the
+   * manifest names by path, read once at ingest so a reader needs no second
+   * fetch.
+   */
+  description: string;
+  /**
+   * The body of the manifest's `changelog.md`, inlined for the same reason.
+   */
+  changelog: string;
+  /**
+   * Every specification the version declares, flattened out of the folder tree
+   * in walk order (a folder before the folders nested inside it).
+   */
+  specifications: Array<StoredSuiteSpecification>;
+  /**
+   * The definitions the version offers, in file-stem order.
+   */
+  testCases: Array<StoredSuiteDefinition>;
+  /**
+   * The bundled assets, one per folder under `assets/`.
+   */
+  assets: Array<StoredSuiteAsset>;
+  /**
+   * The demonstrations, one per folder under `demos/`.
+   */
+  demos: Array<StoredSuiteDemo>;
+  /**
+   * The engines the version ships a reference implementation for, in folder
+   * order. The projects themselves stay in the checkout; the static builds of
+   * them are uploaded separately (see [`reference_builds`]).
+   */
+  referenceImplementations: Array<string>;
+  /**
+   * The showcase, when the version holds one.
+   */
+  showcase?: StoredSuiteShowcase;
+};
+
+/**
+ * `PUT /suites/{slug}/versions/{version}/reference-builds/{engine}` — the stored
+ * build.
+ */
+export type ReferenceBuildOut = {
+  /**
+   * The engine the build was uploaded for.
+   */
+  engine: string;
+  /**
+   * The URL the build is played at, relative to the backend.
+   */
+  url: string;
 };

@@ -32,6 +32,7 @@ pub mod logo;
 pub mod metrics;
 pub mod model_seed;
 pub mod probe;
+pub mod prompt;
 pub mod publish_relay;
 pub mod publisher;
 pub mod readiness;
@@ -40,6 +41,7 @@ pub mod render;
 pub mod snapshot;
 pub mod stats;
 pub mod store;
+pub mod suite_store;
 
 use std::sync::Arc;
 

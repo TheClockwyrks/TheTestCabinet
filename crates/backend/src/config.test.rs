@@ -132,3 +132,24 @@ fn the_artifact_sweep_timings_are_read_as_hours() {
         Duration::ZERO
     );
 }
+
+/// `TCAB_BACKEND_INGEST_PREVIEWS` is off unless set truthy, so a deployment that
+/// does not name it never reads a suites checkout's `.previews/`.
+#[test]
+fn ingesting_previews_is_off_unless_the_variable_is_truthy() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_BACKEND_INGEST_PREVIEWS");
+    }
+    assert!(!super::Config::from_env().unwrap().ingest_previews);
+
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_BACKEND_INGEST_PREVIEWS", "true") };
+    assert!(super::Config::from_env().unwrap().ingest_previews);
+
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_BACKEND_INGEST_PREVIEWS", "false") };
+    assert!(!super::Config::from_env().unwrap().ingest_previews);
+}

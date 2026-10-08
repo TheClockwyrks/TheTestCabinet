@@ -1620,6 +1620,90 @@
       "required": ["id", "name", "kind", "dest", "present"],
       "type": "object"
     },
+    "RequirementAssertion": {
+      "description": "One assertion a validator returned, as the validator stated it.\n\nRetaining each assertion rather than a single verdict is what lets a console show\nthe conditions that ran: an implementation satisfying two of a validator's three\nconditions is visibly different from one satisfying none.",
+      "properties": {
+        "detail": {
+          "description": "The explanation the validator supplied for a failure, when it supplied one.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "What the assertion checks, phrased so it reads true when it passes.",
+          "type": "string"
+        },
+        "passed": {
+          "description": "Whether the condition held.",
+          "type": "boolean"
+        }
+      },
+      "required": ["name", "passed"],
+      "type": "object"
+    },
+    "RequirementOutcome": {
+      "description": "What one requirement of the specifications a test case covers came to for one\nrun.\n\nKeyed by the requirement's suite-wide identity, `<specification id>/<requirement\nid>` — the same form the seeded specification document writes each requirement\nunder, so a reader of the document and a reader of a result name the same thing.",
+      "properties": {
+        "assertions": {
+          "description": "Every assertion the claimed validators returned, in validator order. Empty\nwhen nothing ran.",
+          "items": {
+            "$ref": "#/$defs/RequirementAssertion"
+          },
+          "type": "array"
+        },
+        "detail": {
+          "description": "Why the requirement is not decided by its assertions alone: a validator that\nraised, a validator the project reported nothing for, the reason the project\ncould not be run, or the note that review decides this one.",
+          "type": ["string", "null"]
+        },
+        "id": {
+          "description": "The requirement's suite-wide identity: `<specification id>/<requirement id>`.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/test-suite.schema.json#/$defs/SuiteRequirementKind",
+          "description": "Whether the requirement is decided by validators or by review."
+        },
+        "requirement": {
+          "description": "The requirement's own id, unique within its specification.",
+          "type": "string"
+        },
+        "specification": {
+          "description": "The id of the specification declaring the requirement.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RequirementStatus",
+          "description": "What the validators decided, or that nothing did."
+        },
+        "validators": {
+          "description": "The validator module paths the requirement claims, relative to `validators/`,\nin the order it lists them. Empty for a non-functional requirement, which\nclaims none.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["id", "specification", "requirement", "kind", "status"],
+      "type": "object"
+    },
+    "RequirementStatus": {
+      "description": "How a requirement was decided for one run.",
+      "oneOf": [
+        {
+          "const": "passed",
+          "description": "Every validator the requirement claims ran, and every assertion they\nreturned passed.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "A validator the requirement claims returned a failed assertion, raised, or\nreported no assertion at all.",
+          "type": "string"
+        },
+        {
+          "const": "undecided",
+          "description": "Nothing decided the requirement. Either the runner could not execute the\nvalidator project — including a run stopped at its cap, which is a fact about\nthe host rather than about the build — or the requirement is non-functional\nand is judged by review.",
+          "type": "string"
+        }
+      ]
+    },
     "RunEnvironment": {
       "description": "The container environment a run executed in.\n\nThese values are captured from inside the run container — not the host — so\nthey describe the environment the harness actually built in. The harness\nversion is not duplicated here; it lives in [`RunSubject::harness_version`].",
       "properties": {
@@ -1983,6 +2067,13 @@
           "description": "Per-proof presence results for the proof-of-implementation artifacts the\ntest case requests. Empty when the case declares none. Informational: a\nmissing proof does not change [`Self::loaded`].",
           "items": {
             "$ref": "#/$defs/ProofResult"
+          },
+          "type": "array"
+        },
+        "requirements": {
+          "description": "One outcome per requirement of the specifications a\n[suite-defined](crate::test_suite) test case covers, decided by running the\nsuite version's `validators/` project against the produced build. Empty for\nan authored test case, whose checklist points are decided by\n[`Self::debug_scripts`] instead, so an unchanged case serializes with no new\nfield at all.\n\nA requirement the runner could not decide is recorded\n[undecided](crate::test_suite::RequirementStatus::Undecided) rather than\nfailed, and never changes [`Self::loaded`].",
+          "items": {
+            "$ref": "#/$defs/RequirementOutcome"
           },
           "type": "array"
         },

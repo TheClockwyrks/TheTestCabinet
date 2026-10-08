@@ -9,6 +9,7 @@ pub mod capture_baselines;
 pub mod engines;
 pub mod event_printer;
 pub mod harnesses;
+pub mod ingest;
 pub mod orchestrators;
 pub mod prompt;
 pub mod publish;

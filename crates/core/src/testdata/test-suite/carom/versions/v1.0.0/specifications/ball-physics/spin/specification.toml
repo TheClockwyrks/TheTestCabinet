@@ -1,0 +1,10 @@
+id = "ball-spin"
+name = "Ball Spin"
+summary = "How spin is imparted, carried and spent."
+path = "ball-physics/spin.md"
+
+[[requirement]]
+id = "spin-decay"
+kind = "functional"
+text = "Spin MUST decay to zero over time while the ball is in motion."
+validators = ["ball/spin-decay.ts"]

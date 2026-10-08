@@ -381,6 +381,105 @@ fn engine_docs_dir(engine: Option<&ResolvedEngine>) -> String {
     }
 }
 
+/// The Handlebars context exposed to a [test suite](crate::test_suite) test case
+/// definition's prompt template.
+///
+/// A suite definition declares no variants, no bounding volume and no time budget,
+/// so it shares none of [`PromptContext`]'s context beyond the workspace and the
+/// engine. What it exposes instead is the specifications the definition covers,
+/// each with the identity and prose a template introduces it by. These are exactly
+/// the variables the
+/// [definition page](https://docs.testcabinet.ai/test-suites/test-case-definition/)
+/// documents, and rendering runs through the same strict, no-escape registry, so a
+/// reference to anything outside this set is a render error rather than a blank.
+#[derive(Debug, Serialize)]
+struct SuitePromptContext<'a> {
+    /// Absolute in-container path of the run workspace, where the starter
+    /// workspace is seeded and the harness builds.
+    workspace: &'a str,
+    /// The engine this run selected, always present — the sentinel `none` engine
+    /// when the run selected none, exactly as for an authored case.
+    engine: TemplateEngine<'a>,
+    /// The specifications this test case covers, in the order the definition lists
+    /// them.
+    specifications: Vec<SuitePromptSpec>,
+}
+
+/// One covered specification, as exposed to a suite definition's prompt template.
+#[derive(Debug, Serialize)]
+struct SuitePromptSpec {
+    /// The specification's suite-wide id (for example `ball-physics`).
+    id: String,
+    /// The specification's display name.
+    name: String,
+    /// The specification's one-line abstract.
+    summary: String,
+    /// The absolute in-container path of the seeded specification document (for
+    /// example `/work/specs/ball-physics.md`).
+    path: String,
+}
+
+/// One covered specification as the caller hands it to [`render_suite_prompt`].
+///
+/// The seeded destination is passed rather than the in-container path so this
+/// module stays the single place a workspace-relative dest becomes an absolute
+/// container path, exactly as it is for an authored case's specs.
+#[derive(Debug, Clone)]
+pub struct SuiteSpecification {
+    /// The specification's suite-wide id.
+    pub id: String,
+    /// The specification's display name.
+    pub name: String,
+    /// The specification's one-line abstract.
+    pub summary: String,
+    /// The seeded document's destination relative to the workspace root (for
+    /// example `specs/ball-physics.md`).
+    pub dest: String,
+}
+
+/// Render a [test suite](crate::test_suite) test case definition's prompt template
+/// into the instruction handed to the harness.
+///
+/// `suite` and `version` name the suite coordinate a failure is reported against.
+/// `engine` is the run's resolved engine, or `None` for a run that selected none —
+/// either way the template sees an `engine`, because strict mode makes an absent
+/// field a hard error rather than a blank.
+///
+/// No standing preamble is prepended: the preambles above are authored against the
+/// authored test case types, and a suite definition's template is handed over
+/// exactly as it renders.
+pub fn render_suite_prompt(
+    suite: &str,
+    version: &str,
+    template: &str,
+    specifications: &[SuiteSpecification],
+    engine: Option<&ResolvedEngine>,
+) -> Result<String> {
+    // Built before the context so the borrow outlives it, exactly as in
+    // `render_prompt_from_template`.
+    let engine_docs = engine_docs_path(engine);
+    let context = SuitePromptContext {
+        workspace: WORKSPACE_DIR,
+        engine: TemplateEngine::new(engine, &engine_docs),
+        specifications: specifications
+            .iter()
+            .map(|spec| SuitePromptSpec {
+                id: spec.id.clone(),
+                name: spec.name.clone(),
+                summary: spec.summary.clone(),
+                path: prompt_spec(&spec.dest).path,
+            })
+            .collect(),
+    };
+    handlebars_registry()
+        .render_template(template, &context)
+        .map_err(|err| Error::PromptRender {
+            slug: suite.to_string(),
+            version: version.to_string(),
+            detail: err.to_string(),
+        })
+}
+
 /// A single seeded spec, as exposed to a prompt template.
 #[derive(Debug, Serialize)]
 struct PromptSpec {
@@ -392,6 +491,27 @@ struct PromptSpec {
     path: String,
     /// The destination file stem (for example `overview`), handy for labeling.
     name: String,
+}
+
+/// Render the prompt a run hands the harness for any resolved test case version,
+/// authored or suite-defined.
+///
+/// The two shapes of test case expose different contexts to their templates — an
+/// authored case's variant, bounding volume and time budget against a suite
+/// definition's covered specifications — so the context a template is rendered
+/// against follows the case it came from. This is the one entry point a caller
+/// that merely holds a resolved version reaches for; the arguments a suite
+/// definition has no counterpart for are simply unused for one.
+pub fn render_case_prompt(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    prior_game_jam_entries: &[PriorGameJamEntry],
+    engine: Option<&ResolvedEngine>,
+) -> Result<String> {
+    if crate::test_suite::is_suite_defined(test_case) {
+        return crate::test_suite::render_definition_prompt(test_case, engine);
+    }
+    render_prompt(test_case, variant, prior_game_jam_entries, engine)
 }
 
 /// Render a test case's prompt template for the selected variant into the

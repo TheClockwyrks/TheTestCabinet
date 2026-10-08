@@ -1,0 +1,8 @@
+name = "Carom, player ship"
+type = "sprite"
+difficulty = "easy"
+specifications = ["assets"]
+prompt = "prompts/sprite.hbs"
+
+[sprite]
+id = "player-ship"

@@ -1,0 +1,5 @@
+id = "sparks"
+name = "Sparks"
+kind = "particle"
+specification = "assets"
+files = ["system.json"]

@@ -37,6 +37,12 @@ build/
 # formatting.
 .copier-answers.yml
 
+# The committed test suite fixture is written by the suite model's canonical TOML
+# emitter, and `the_committed_fixture_round_trips_byte_for_byte` asserts that
+# loading and saving it reproduces these bytes exactly. Formatting anything in it
+# fails that test.
+crates/core/src/testdata/test-suite/
+
 # --- Owned by another gate -------------------------------------------------
 
 # The design documentation. markdownlint (`.markdownlint-cli2.yaml`) and cspell

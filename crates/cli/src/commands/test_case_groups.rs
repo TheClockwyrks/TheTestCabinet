@@ -32,9 +32,7 @@ pub async fn execute(args: TestCaseGroupsArgs) -> Result<()> {
 /// so honoring `TCAB_TEST_CASES_DIR` like the other local commands relocates
 /// this catalogue along with the cases it names.
 fn groups_root() -> std::path::PathBuf {
-    let cases_root = std::env::var_os("TCAB_TEST_CASES_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("test-cases"));
+    let cases_root = crate::catalog::root();
     match cases_root.parent() {
         // A bare relative `test-cases` has the empty path as its parent, which
         // joins back to a bare relative `test-case-groups` — the default.

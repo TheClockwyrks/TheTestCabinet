@@ -1,0 +1,8 @@
+name = "Carom, theme"
+type = "music"
+difficulty = "hard"
+specifications = ["assets"]
+prompt = "prompts/music.hbs"
+
+[music]
+id = "theme"

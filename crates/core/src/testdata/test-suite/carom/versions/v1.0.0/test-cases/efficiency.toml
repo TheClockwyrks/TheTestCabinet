@@ -1,0 +1,7 @@
+name = "Carom, efficiency"
+type = "performance"
+difficulty = "hard"
+specifications = ["ball-physics"]
+prompt = "prompts/performance.hbs"
+max_runtime_hours = 2.0
+experimental = true

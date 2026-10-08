@@ -4868,6 +4868,20 @@ impl TestCaseCatalog {
         self.read_slug(&folder, version)
     }
 
+    /// The folder one version of a case (looked up by slug or folder name) is
+    /// authored in, without reading or validating anything inside it.
+    pub fn version_root(&self, id: &str, version: &str) -> Result<PathBuf> {
+        let folder = self.folder_for(id)?;
+        let root = self.root.join(&folder).join(version);
+        if !root.is_dir() {
+            return Err(Error::TestCaseVersionNotFound {
+                slug: id.to_string(),
+                version: version.to_string(),
+            });
+        }
+        Ok(root)
+    }
+
     /// Resolve an exact case `<id>@<version>` into a [`TestCaseVersion`], reading
     /// its manifest and validating that it is self-contained. `id` may be the case's
     /// slug or its folder name; the resolved [`TestCaseVersion::slug`] is always the
@@ -8385,7 +8399,7 @@ pub fn is_valid_slug(slug: &str) -> bool {
 
 /// Read the immediate subdirectory names of a directory, ignoring files and
 /// hidden entries.
-fn read_dir_names(dir: &Path) -> Result<Vec<String>> {
+pub(crate) fn read_dir_names(dir: &Path) -> Result<Vec<String>> {
     let mut names = Vec::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -9261,7 +9275,7 @@ fn humanize(slug: &str) -> String {
 ///
 /// A path escapes if it is absolute, or if its `..` components ever rise above
 /// its starting point. `.` components are ignored.
-fn escapes_folder(rel: &Path) -> bool {
+pub(crate) fn escapes_folder(rel: &Path) -> bool {
     use std::path::Component;
 
     let mut depth: i32 = 0;

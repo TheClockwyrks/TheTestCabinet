@@ -64,6 +64,26 @@ pub enum Error {
         detail: String,
     },
 
+    /// A [test suite](crate::test_suite) version could not be resolved into a
+    /// runnable test case: a file it declares is missing, disagrees with the folder
+    /// that holds it, or carries something resolution cannot lower.
+    ///
+    /// The suite counterpart of [`Self::InvalidTestCase`]. A suite is many files, so
+    /// this names the one that caused the failure alongside the suite coordinate —
+    /// "the suite is invalid" is not something an author can act on.
+    #[error("test suite `{suite}@{version}` is invalid: {file}: {detail}")]
+    InvalidTestSuite {
+        /// The suite slug.
+        suite: String,
+        /// The suite version, as the version folder names it (carrying its
+        /// leading `v`).
+        version: String,
+        /// The file that caused the failure, relative to the version folder.
+        file: String,
+        /// Human-readable explanation of what was wrong.
+        detail: String,
+    },
+
     /// A requested variant did not exist for a resolved test case version.
     #[error("variant `{variant}` of test case `{slug}@{version}` not found")]
     VariantNotFound {
@@ -277,6 +297,12 @@ pub enum Error {
     /// Publishing the run failed.
     #[error("publishing the run: {0}")]
     Publish(String),
+
+    /// Ingesting a checkout into a backend's definition store failed: the backend
+    /// could not be reached, refused the request, or reported the scan aborted on
+    /// the progress feed it had already answered 200 on.
+    #[error("ingesting the checkout: {0}")]
+    Ingest(String),
 
     /// An R2 request failed: the object store could not be reached, or it
     /// rejected a signed `PutObject`/`ListObjectsV2`. Carries the key or prefix

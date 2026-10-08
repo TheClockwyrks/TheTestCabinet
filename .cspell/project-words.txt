@@ -166,6 +166,7 @@ boardable
 Bombard
 bondsnap
 bottombar
+boxel
 bpanel
 bpy
 Bresenham

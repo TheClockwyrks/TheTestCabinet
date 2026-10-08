@@ -22,12 +22,13 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 
 use test_cabinet_backend::{
     api as bapi, coverage::gate, coverage::schedule, error as berr, relay, snapshot as snap,
+    store as bstore, suite_store as bsuite,
 };
 use test_cabinet_core::{
     accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
     event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_session_record as ggr,
     match_play as mp, metrics as m, review as rv, run_record as rr, test_case as tc,
-    toolchain as tch, validation as val,
+    test_suite as suite, toolchain as tch, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -75,6 +76,9 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "AutoVerdict",
     "Assertion",
     "DebugScriptOutput",
+    "RequirementOutcome",
+    "RequirementStatus",
+    "RequirementAssertion",
     "AssetGenResult",
     "AssetFrameResult",
     "AssetSheet",
@@ -146,6 +150,41 @@ const CODE_ANALYSIS_DEFS: &[&str] = &[
     "CodeImportEdge",
     "CodeCloneGroup",
     "CodeCloneInstance",
+];
+
+/// The test suite schema's `$defs`: every type of the suite model except the
+/// version folder itself, which is the root.
+const TEST_SUITE_DEFS: &[&str] = &[
+    "SuiteManifest",
+    "VersionManifest",
+    "SpecificationFolder",
+    "SpecificationManifest",
+    "SuiteRequirement",
+    "SuiteRequirementKind",
+    "SuiteDebugApi",
+    "DebugApiModule",
+    "DebugApiModuleRef",
+    "DebugApiFunction",
+    "DebugApiFunctionKind",
+    "DebugApiParameter",
+    "SuiteTestCaseFile",
+    "SuiteTestCaseDefinition",
+    "SuiteTestCaseType",
+    "SuiteDifficulty",
+    "SpriteCase",
+    "VoxelCase",
+    "AssetCase",
+    "BuildCommands",
+    "ToolchainCommands",
+    "AssetFolder",
+    "AssetManifest",
+    "SuiteAssetKind",
+    "DemoFolder",
+    "DemoManifest",
+    "SuiteShowcase",
+    "ShowcaseManifest",
+    "ShowcaseMediaEntry",
+    "SuiteTrees",
 ];
 
 /// The tournament schema's `$defs`. `AdversarialOutcome` is *not* listed: it is
@@ -668,6 +707,19 @@ fn main() -> Result<()> {
                 bapi::ToolCallingAccuracyOut,
                 bapi::CabinetStatsResponse, bapi::CabinetTokensOut, bapi::CabinetCostOut,
                 bapi::CabinetWeekOut,
+                // The test suites the backend ingested: the coordinate a
+                // suite-defined test case carries on the catalog and version reads,
+                // then the suite listing and the resolved record one version's read
+                // serves. The entities the record holds are the format's own types,
+                // declared in `test-suite.ts` and imported from it.
+                bstore::StoredSuiteCoordinate,
+                bsuite::SuiteVersionIdentity, bapi::SuiteOut, bapi::SuitesResponse,
+                bsuite::StoredSuiteSpecification, bsuite::StoredSuiteDefinition,
+                bsuite::StoredSuiteAsset, bsuite::StoredSuiteDemo,
+                bsuite::StoredSuiteShowcase, bsuite::StoredSuite,
+                // A suite version's read beside the reference builds uploaded for
+                // it, and what an upload answers.
+                bapi::SuiteVersionResponse, bapi::ReferenceBuildOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what
@@ -750,6 +802,65 @@ fn main() -> Result<()> {
                 bapi::LadderClimber, bapi::LadderProgressRung, bapi::LadderProgress,
                 bapi::LadderSummary, bapi::LadderDispatchSummary,
                 bapi::LadderStopInput, bapi::LadderRetryInput, bapi::LadderRungOrderInput,
+            ],
+        },
+        // The test suite format: every entity a suite version folder declares, as the
+        // typed model `crates/core` reads and writes it. The Spec Cabinet's frontend
+        // edits these shapes and the docs site documents them, so both read the same
+        // declarations the two backends do.
+        //
+        // Ordered the way the format is: the manifests, the specifications, the debug
+        // API, the assets and demonstrations, the showcase, the test case definitions,
+        // and finally the suite tree that holds them all.
+        //
+        // The requirement outcomes a run records sit with the specifications that
+        // declare the requirements, because they are read together: a console showing
+        // what a suite run came to holds the requirement beside its outcome. They are
+        // part of the run record's document rather than the suite's, so the JSON
+        // schema that owns them is the run record's (see `RUN_RECORD_DEFS`).
+        TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
+            file: "test-suite.ts",
+            decls: ts_decls![&cfg;
+                suite::SuiteManifest, suite::VersionManifest,
+                suite::SuiteRequirementKind, suite::SuiteRequirement, suite::SpecificationManifest,
+                suite::RequirementStatus, suite::RequirementAssertion, suite::RequirementOutcome,
+                suite::DebugApiFunctionKind, suite::DebugApiParameter, suite::DebugApiFunction,
+                suite::DebugApiModuleRef, suite::DebugApiModule,
+                suite::SuiteAssetKind, suite::AssetManifest, suite::DemoManifest,
+                suite::ShowcaseMediaEntry, suite::ShowcaseManifest,
+                suite::SuiteTestCaseType, suite::SuiteDifficulty,
+                suite::SpriteCase, suite::VoxelCase, suite::AssetCase,
+                suite::BuildCommands, suite::ToolchainCommands, suite::SuiteTestCaseDefinition,
+                suite::SpecificationFolder, suite::SuiteDebugApi, suite::SuiteTestCaseFile,
+                suite::AssetFolder, suite::DemoFolder, suite::SuiteShowcase, suite::SuiteTrees,
+                suite::SuiteVersion,
+                // The partial model The Spec Cabinet reads a draft through: the same
+                // formats with every required key optional, and the tree holding them
+                // together with the files that do not parse. Its API serves these, so
+                // its frontend edits exactly the shapes an incomplete draft can take.
+                suite::PartialVersionManifest, suite::PartialRequirement,
+                suite::PartialSpecificationManifest,
+                suite::PartialDebugApiParameter, suite::PartialDebugApiFunction,
+                suite::PartialDebugApiModuleRef, suite::PartialDebugApiModule,
+                suite::PartialAssetManifest, suite::PartialDemoManifest,
+                suite::PartialShowcaseMediaEntry, suite::PartialShowcaseManifest,
+                suite::PartialSpriteCase, suite::PartialVoxelCase, suite::PartialAssetCase,
+                suite::PartialBuildCommands, suite::PartialToolchainCommands,
+                suite::PartialTestCaseDefinition,
+                suite::PartialSpecificationFolder, suite::PartialDebugApi,
+                suite::PartialTestCaseFile, suite::PartialAssetFolder, suite::PartialDemoFolder,
+                suite::PartialShowcase,
+                // Last, because they are about the model rather than part of it:
+                // the address a problem is written against, the rule class it
+                // belongs to, where in a file it sits, and the problem itself, with
+                // the file that does not parse the tree carries beside it. The Spec
+                // Cabinet's API returns these beside every read and save, and its
+                // frontend turns the address into the editor surface the message is
+                // rendered on.
+                suite::SuiteEntity, suite::SuiteRule, suite::SuiteLocation,
+                suite::SuiteDiagnostic, suite::UnparsedFile, suite::PartialSuiteTree,
             ],
         },
     ];
@@ -942,6 +1053,16 @@ fn main() -> Result<()> {
             root: Some("CodeAnalysisDocument"),
             owns: CODE_ANALYSIS_DEFS,
             schema: root_schema::<code::CodeAnalysisDocument>(),
+        },
+        // The test suite format, rooted at the version folder because that is the unit
+        // the format defines: a version folder is self-contained, and every entity in
+        // it is reachable from this one document. Nothing in it is shared with another
+        // contract document, so it owns its whole vocabulary.
+        SchemaDoc {
+            rel_path: "core/test-suite.schema.json",
+            root: Some("SuiteVersion"),
+            owns: TEST_SUITE_DEFS,
+            schema: root_schema::<suite::SuiteVersion>(),
         },
         // The compiled TCQ query — the single wire form of a gg analysis query. It owns
         // the whole language vocabulary (the filter tree, the aggregation functions,

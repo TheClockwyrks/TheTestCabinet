@@ -49,7 +49,7 @@ use crate::cli::CaptureBaselinesArgs;
 /// `tcab capture-baselines` — build the targeted variants' reference
 /// implementations and (re)write their committed baseline validation media.
 pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = crate::catalog::catalog();
     let cold = ColdStorage::for_catalog(catalog.root());
     let version = resolve_version(&catalog, &args.slug, args.version.as_deref())?;
     let test_case = catalog
@@ -555,13 +555,6 @@ pub(super) fn select_targets<'a>(
         }
     }
     Ok(targets)
-}
-
-/// Locate the test case catalog root (see `tcab run`/`tcab seed`).
-pub(super) fn catalog_root() -> PathBuf {
-    std::env::var_os("TCAB_TEST_CASES_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("test-cases"))
 }
 
 #[cfg(test)]

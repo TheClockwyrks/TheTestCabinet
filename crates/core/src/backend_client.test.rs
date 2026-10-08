@@ -107,7 +107,7 @@ impl BackendClient for StubBackend {
                 view: "title".to_string(),
                 kind: crate::test_case::ReferenceKind::Rendered,
                 source_path: std::path::PathBuf::from(
-                    "/test-cases/carom/v1.0.0/references/_common/title.png",
+                    "/test-cases/carom/versions/v1.0.0/references/_common/title.png",
                 ),
             }],
             common_proofs: vec![],
@@ -472,6 +472,7 @@ fn sample_record(id: &str) -> RunRecord {
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -1079,5 +1080,497 @@ async fn resolve_version_defaults_the_asset_dimension_when_the_backend_omits_it(
     assert_eq!(
         version.asset_dimension,
         crate::test_case::AssetDimension::TwoD
+    );
+}
+
+// --- Ingest -----------------------------------------------------------------
+
+/// Serve one NDJSON progress feed and hand back the bound base URL, alongside a
+/// handle the test reads the request body out of so it can prove what was sent.
+async fn serve_ingest_feed(lines: &[&str]) -> (String, std::sync::Arc<std::sync::Mutex<String>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let body = lines.join("\n") + "\n";
+    let request = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let seen = request.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut buf = [0u8; 4096];
+        let read = socket.read(&mut buf).await.unwrap_or(0);
+        *seen.lock().expect("the request is recorded") =
+            String::from_utf8_lossy(&buf[..read]).to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        let _ = socket.flush().await;
+    });
+    (format!("http://{addr}"), request)
+}
+
+#[tokio::test]
+async fn ingest_reports_every_line_and_closes_with_the_summary() {
+    let (base, request) = serve_ingest_feed(&[
+        r#"{"event":"start","total":2}"#,
+        r#"{"event":"version","index":1,"total":2,"slug":"carom-end-to-end","version":"v1.0.0","ingested":true,"renderedReferences":0}"#,
+        r#"{"event":"version","index":2,"total":2,"slug":"carom-ball","version":"v1.0.0","ingested":false,"renderedReferences":0}"#,
+        r#"{"event":"done","total":2,"ingested":1,"skipped":1}"#,
+    ])
+    .await;
+
+    let mut seen: Vec<IngestProgress> = Vec::new();
+    let mut on_progress = |progress: &IngestProgress| seen.push(progress.clone());
+    let summary = HttpBackendClient::new(base)
+        .ingest(
+            &["carom@v1.0.0".to_string()],
+            true,
+            IngestMode::Absent,
+            &mut on_progress,
+        )
+        .await
+        .expect("the scan completes");
+
+    assert_eq!(
+        summary,
+        IngestSummary {
+            total: 2,
+            ingested: 1,
+            skipped: 1
+        }
+    );
+    assert_eq!(seen.len(), 4);
+    assert!(matches!(seen[0], IngestProgress::Start { total: 2 }));
+    assert!(matches!(
+        &seen[1],
+        IngestProgress::Version { slug, ingested: true, .. } if slug == "carom-end-to-end"
+    ));
+
+    // The targets and the force flag reach the endpoint in the shape it accepts, and
+    // the streamed feed is asked for.
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(
+        request.contains("application/x-ndjson"),
+        "unexpected request: {request}"
+    );
+    assert!(
+        request.contains(r#""testCases":["carom@v1.0.0"]"#),
+        "unexpected request: {request}"
+    );
+    assert!(
+        request.contains(r#""force":true"#),
+        "unexpected request: {request}"
+    );
+}
+
+#[tokio::test]
+async fn a_whole_checkout_scan_names_no_targets() {
+    let (base, request) =
+        serve_ingest_feed(&[r#"{"event":"done","total":0,"ingested":0,"skipped":0}"#]).await;
+    let mut on_progress = |_: &IngestProgress| {};
+    HttpBackendClient::new(base)
+        .ingest(&[], false, IngestMode::Absent, &mut on_progress)
+        .await
+        .expect("the scan completes");
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(
+        !request.contains("testCases"),
+        "unexpected request: {request}"
+    );
+}
+
+#[tokio::test]
+async fn a_changed_scan_names_its_mode_and_reads_each_skip_reason() {
+    let (base, request) = serve_ingest_feed(&[
+        r#"{"event":"start","total":1}"#,
+        r#"{"event":"version","index":1,"total":1,"slug":"carom","version":"v1.0.0","ingested":false,"renderedReferences":0,"reason":"unchanged"}"#,
+        r#"{"event":"done","total":1,"ingested":0,"skipped":1}"#,
+    ])
+    .await;
+    let mut seen: Vec<IngestProgress> = Vec::new();
+    let mut on_progress = |progress: &IngestProgress| seen.push(progress.clone());
+    HttpBackendClient::new(base)
+        .ingest(&[], false, IngestMode::Changed, &mut on_progress)
+        .await
+        .expect("the scan completes");
+
+    assert!(matches!(
+        &seen[1],
+        IngestProgress::Version { ingested: false, reason: Some(reason), .. } if reason == "unchanged"
+    ));
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(
+        request.contains(r#""mode":"changed""#),
+        "unexpected request: {request}"
+    );
+}
+
+#[tokio::test]
+async fn a_scan_without_a_mode_sends_none() {
+    let (base, request) =
+        serve_ingest_feed(&[r#"{"event":"done","total":0,"ingested":0,"skipped":0}"#]).await;
+    let mut on_progress = |_: &IngestProgress| {};
+    HttpBackendClient::new(base)
+        .ingest(&[], true, IngestMode::Absent, &mut on_progress)
+        .await
+        .expect("the scan completes");
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(!request.contains("mode"), "unexpected request: {request}");
+}
+
+#[tokio::test]
+async fn a_streamed_error_line_fails_the_scan() {
+    let (base, _) = serve_ingest_feed(&[
+        r#"{"event":"start","total":1}"#,
+        r#"{"event":"error","message":"could not render reference `title`"}"#,
+    ])
+    .await;
+    let mut on_progress = |_: &IngestProgress| {};
+    let err = HttpBackendClient::new(base)
+        .ingest(&[], false, IngestMode::Absent, &mut on_progress)
+        .await
+        .expect_err("a streamed error fails the scan");
+    assert!(
+        format!("{err}").contains("could not render reference `title`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn a_stream_that_never_closes_is_a_failure() {
+    // A truncated feed says nothing about whether the scan finished, so it is a
+    // failure rather than a silent success.
+    let (base, _) = serve_ingest_feed(&[r#"{"event":"start","total":1}"#]).await;
+    let mut on_progress = |_: &IngestProgress| {};
+    let err = HttpBackendClient::new(base)
+        .ingest(&[], false, IngestMode::Absent, &mut on_progress)
+        .await
+        .expect_err("a truncated feed fails the scan");
+    assert!(
+        format!("{err}").contains("did not finish"),
+        "unexpected error: {err}"
+    );
+}
+
+// --- A suite-defined version -------------------------------------------------
+
+/// The fixture suites checkout: one complete suite, `carom/versions/v1.0.0/`.
+fn fixture_suites_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+}
+
+/// Every file of the fixture suite version the store would list on
+/// `suite-files`: `suite.toml`, `version.toml`, the specification folders, the definition files,
+/// the validator project and the debug API declaration.
+fn fixture_suite_files() -> Vec<std::path::PathBuf> {
+    let root = fixture_suites_root().join("carom/versions/v1.0.0");
+    let mut keys = vec![
+        std::path::PathBuf::from("suite.toml"),
+        std::path::PathBuf::from("version.toml"),
+        std::path::PathBuf::from("debug-api.toml"),
+    ];
+    for dir in ["specifications", "test-cases", "validators", "debug-api"] {
+        let mut stack = vec![root.join(dir)];
+        while let Some(next) = stack.pop() {
+            for entry in std::fs::read_dir(&next).expect("read the fixture suite") {
+                let path = entry.expect("entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    keys.push(
+                        path.strip_prefix(&root)
+                            .expect("inside the fixture")
+                            .to_path_buf(),
+                    );
+                }
+            }
+        }
+    }
+    keys.sort();
+    keys
+}
+
+/// A [`BackendClient`] serving one lowered suite definition the way the backend
+/// serves a stored suite-derived version: the resolved record carries
+/// store-relative keys, `artifact` serves the bytes standing at those keys, and
+/// `suite_files` lists the suite's own declaration.
+struct SuiteStubBackend {
+    /// Where the rendered specification documents were written by lowering; they
+    /// are the one input with no path inside the version folder.
+    materials: std::path::PathBuf,
+    /// A key the store refuses to serve, standing in for a definition referencing
+    /// a file the store does not hold.
+    withhold: Option<&'static str>,
+}
+
+impl SuiteStubBackend {
+    /// Lower the fixture definition, then rewrite its path fields to the
+    /// store-relative keys the backend serves — which is exactly what ingest
+    /// stores and what `VersionBody::into_version` hands back.
+    fn lowered(&self) -> TestCaseVersion {
+        let catalog = crate::test_suite::TestSuiteCatalog::with_materials(
+            fixture_suites_root(),
+            self.materials.clone(),
+        );
+        let mut resolved = catalog
+            .resolve("carom", "v1.0.0", "end-to-end")
+            .expect("the fixture definition lowers");
+        let root = fixture_suites_root().join("carom/versions/v1.0.0");
+        resolved.root = std::path::PathBuf::new();
+        resolved.prompt_path = std::path::PathBuf::from("prompt.hbs");
+        for spec in &mut resolved.common_specs {
+            spec.source_path = spec.dest.clone();
+        }
+        for file in resolved.common_workspace.files_mut() {
+            file.source_path = file
+                .source_path
+                .strip_prefix(&root)
+                .expect("a workspace file inside the version folder")
+                .to_path_buf();
+        }
+        resolved
+    }
+}
+
+#[async_trait::async_trait]
+impl BackendClient for SuiteStubBackend {
+    async fn catalog(&self) -> Result<Vec<crate::test_case::TestCase>> {
+        Ok(vec![])
+    }
+    async fn versions(&self, _slug: &str) -> Result<Vec<String>> {
+        Ok(vec!["v1.0.0".to_string()])
+    }
+    async fn resolve_version(&self, _slug: &str, _version: &str) -> Result<TestCaseVersion> {
+        Ok(self.lowered())
+    }
+    async fn artifact(
+        &self,
+        _slug: &str,
+        _version: &str,
+        source: &std::path::Path,
+    ) -> Result<ResolvedArtifact> {
+        // A rendered specification stands in the materials directory; everything
+        // else stands in the version folder, which is how the store holds them.
+        let base = if source.starts_with("specs") {
+            // Lowering writes a version's rendered documents under
+            // `<materials>/<suite>/<version>/`.
+            self.materials.join("carom").join("v1.0.0")
+        } else if source == std::path::Path::new("suite.toml") {
+            // The store holds a copy of the suite manifest beside the version's own,
+            // taken from the suite folder the version sits in.
+            fixture_suites_root().join("carom")
+        } else {
+            fixture_suites_root().join("carom/versions/v1.0.0")
+        };
+        if self.withhold == Some(source.to_string_lossy().as_ref()) {
+            return Err(Error::Publish("404 not found".to_string()));
+        }
+        let bytes = std::fs::read(base.join(source))
+            .map_err(|err| Error::Publish(format!("404 not found: {err}")))?;
+        Ok(ResolvedArtifact {
+            source: source.to_path_buf(),
+            bytes,
+        })
+    }
+    async fn suite_files(&self, _slug: &str, _version: &str) -> Result<Vec<std::path::PathBuf>> {
+        Ok(fixture_suite_files())
+    }
+    async fn references(
+        &self,
+        _slug: &str,
+        _version: &str,
+        _variant: &str,
+    ) -> Result<Vec<ResolvedReference>> {
+        Ok(vec![])
+    }
+    async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
+        Ok(std::fs::read_to_string(
+            fixture_suites_root().join("carom/versions/v1.0.0/prompts/end-to-end.hbs"),
+        )
+        .expect("the fixture prompt template"))
+    }
+    async fn submit_review(&self, run_id: &str, review: &crate::review::Writeup) -> Result<()> {
+        StubBackend.submit_review(run_id, review).await
+    }
+    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
+        StubBackend.publish_run(run_id).await
+    }
+    async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
+        StubBackend.list_runs(before, limit).await
+    }
+    async fn read_run(&self, id: &str) -> Result<PublishedRun> {
+        StubBackend.read_run(id).await
+    }
+}
+
+#[tokio::test]
+async fn materialize_rebuilds_the_suite_version_a_definition_was_lowered_from() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let materials = dir.path().join("materials");
+    let store = dir.path().join("carom-end-to-end-v1.0.0");
+    let client = SuiteStubBackend {
+        materials: materials.clone(),
+        withhold: None,
+    };
+    let (version, _references) = materialize_version(
+        &client,
+        "carom-end-to-end",
+        "v1.0.0",
+        crate::test_suite::SUITE_VARIANT_SLUG,
+        &store,
+    )
+    .await
+    .expect("materialize");
+
+    // Everything a run of a suite-defined case reads is on disk: the rendered
+    // prompt template, the rendered specification documents the definition
+    // selects, the starter workspace for each engine plus the bundled assets, and
+    // the validator project the requirement outcomes come from.
+    assert!(store.join("prompt.hbs").is_file());
+    assert!(store.join("specs/ball-physics.md").is_file());
+    assert!(store.join("specs/ball-physics/spin.md").is_file());
+    assert!(store.join("workspaces/none/package.json").is_file());
+    assert!(store.join("assets/player-ship/player-ship.png").is_file());
+    assert!(store.join("validators/vitest.config.ts").is_file());
+    assert!(store.join("validators/ball/constant-speed.ts").is_file());
+
+    // And the suite's own declaration, so the store directory reads back as the
+    // version folder it was lowered from.
+    assert!(store.join("suite.toml").is_file());
+    assert!(store.join("version.toml").is_file());
+    assert!(store.join("test-cases/end-to-end.toml").is_file());
+    assert!(
+        store
+            .join("specifications/ball-physics/specification.toml")
+            .is_file()
+    );
+    assert!(store.join("debug-api.toml").is_file());
+
+    // Which is exactly what the run path asks of it: the case reads as
+    // suite-defined, and the prompt handed to the harness is the one the
+    // definition renders — naming the specification documents seeding wrote.
+    assert!(crate::test_suite::is_suite_defined(&version));
+    let engine = crate::engine::EngineCatalog::default()
+        .resolve(&crate::engine::EngineSelection::new("none".to_string()))
+        .expect("the engineless run");
+    let variant = version
+        .variant(crate::test_suite::SUITE_VARIANT_SLUG)
+        .expect("the implicit variant");
+    let prompt = crate::render_case_prompt(&version, variant, &[], Some(&engine))
+        .expect("the definition's prompt renders");
+    assert!(prompt.contains("Build Carom"));
+}
+
+#[tokio::test]
+async fn materialize_names_the_key_the_store_cannot_serve() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let materials = dir.path().join("materials");
+    let store = dir.path().join("carom-end-to-end-v1.0.0");
+    // The validator project is part of what a suite-derived version references, so
+    // a store that cannot serve one of its files must fail the run naming it.
+    let client = SuiteStubBackend {
+        materials: materials.clone(),
+        withhold: Some("validators/ball/constant-speed.ts"),
+    };
+    let err = materialize_version(
+        &client,
+        "carom-end-to-end",
+        "v1.0.0",
+        crate::test_suite::SUITE_VARIANT_SLUG,
+        &store,
+    )
+    .await
+    .expect_err("a version referencing an unservable file fails");
+    let message = err.to_string();
+    assert!(
+        message.contains("validators/ball/constant-speed.ts"),
+        "the failure should name the missing key, got: {message}"
+    );
+}
+
+/// Serve one answer to a reference build upload on a fresh local port, handing
+/// back the base URL and the request line and headers it received.
+async fn serve_upload(
+    status: &'static str,
+    body: &'static str,
+) -> (String, tokio::sync::oneshot::Receiver<String>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !String::from_utf8_lossy(&raw).contains("\r\n\r\n") {
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+        }
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        let _ = tx.send(text.split("\r\n\r\n").next().unwrap_or_default().to_owned());
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        let _ = socket.flush().await;
+    });
+    (format!("http://{addr}"), rx)
+}
+
+#[tokio::test]
+async fn a_reference_build_is_put_as_a_gzip_and_its_url_read_back() {
+    let (base, head) = serve_upload(
+        "201 Created",
+        r#"{"engine":"none","url":"/suites/carom/versions/v1.0.0/reference-builds/none/"}"#,
+    )
+    .await;
+    let upload = HttpBackendClient::new(base)
+        .upload_suite_reference_build("carom", "v1.0.0", "none", vec![0x1f, 0x8b, 0, 0])
+        .await
+        .expect("the upload is stored");
+    assert_eq!(
+        upload,
+        ReferenceBuildUpload {
+            engine: "none".into(),
+            url: "/suites/carom/versions/v1.0.0/reference-builds/none/".into(),
+        }
+    );
+    let head = head
+        .await
+        .expect("the request arrived")
+        .to_ascii_lowercase();
+    assert!(
+        head.starts_with("put /suites/carom/versions/v1.0.0/reference-builds/none "),
+        "{head}"
+    );
+    assert!(head.contains("content-type: application/gzip"), "{head}");
+}
+
+#[tokio::test]
+async fn a_refused_reference_build_upload_names_the_backends_reason() {
+    let (base, _) = serve_upload(
+        "422 Unprocessable Entity",
+        r#"{"error":{"code":"unprocessable","message":"engine `phaser` is not declared"}}"#,
+    )
+    .await;
+    let error = HttpBackendClient::new(base)
+        .upload_suite_reference_build("carom", "v1.0.0", "phaser", vec![1, 2, 3])
+        .await
+        .expect_err("the upload is refused");
+    assert!(
+        error
+            .to_string()
+            .contains("engine `phaser` is not declared"),
+        "{error}"
     );
 }

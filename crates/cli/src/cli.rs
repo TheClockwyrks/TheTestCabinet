@@ -5,7 +5,17 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_core::test_suite::SUITE_VARIANT_SLUG;
 use test_cabinet_core::{CodeTreeBasis, NONE_SLUG};
+
+/// The variant `seed`, `prompt`, `validate` and `run` select when none is named.
+///
+/// Every authored case declares a `base` variant, and a
+/// [test suite](https://docs.testcabinet.ai/test-suites/test-case-definition/)
+/// definition declares no variants at all and carries exactly one implicit variant
+/// under that same slug — so one default serves both, and naming a variant is
+/// reserved for an authored case that offers more than one.
+const DEFAULT_VARIANT: &str = SUITE_VARIANT_SLUG;
 
 /// The Test Cabinet command line interface.
 ///
@@ -86,6 +96,10 @@ pub enum Command {
     #[command(name = "capture-baselines")]
     CaptureBaselines(CaptureBaselinesArgs),
 
+    /// Ingest a checkout into the configured backend's definition store, so edits
+    /// to test cases and test suites are picked up without restarting anything.
+    Ingest(IngestArgs),
+
     /// Run the static code analyzer over a directory and print what it found.
     ///
     /// The same analysis a run records about its produced tree, pointed at any tree on
@@ -149,9 +163,10 @@ pub struct RunArgs {
     #[arg(long, value_name = "VERSION")]
     pub version: String,
 
-    /// Variant of the test case to run (for example, `base`). Selects which specs
-    /// are seeded and is recorded in the run record.
-    #[arg(long, value_name = "VARIANT")]
+    /// Variant of the test case to run. Selects which specs are seeded and is
+    /// recorded in the run record. Defaults to `base`, which is the only variant a
+    /// suite-defined test case carries.
+    #[arg(long, value_name = "VARIANT", default_value = DEFAULT_VARIANT)]
     pub variant: String,
 
     /// Agent harness to drive the run.
@@ -223,10 +238,11 @@ pub struct ValidateArgs {
     #[arg(long, value_name = "VERSION")]
     pub version: String,
 
-    /// Variant the implementation was built for (for example, `base`). Selects
-    /// which reference baselines the declared checks compare against, since a
-    /// variant may declare its own variant-specific references.
-    #[arg(long, value_name = "VARIANT")]
+    /// Variant the implementation was built for. Selects which reference baselines
+    /// the declared checks compare against, since a variant may declare its own
+    /// variant-specific references. Defaults to `base`, which is the only variant a
+    /// suite-defined test case carries.
+    #[arg(long, value_name = "VARIANT", default_value = DEFAULT_VARIANT)]
     pub variant: String,
 
     /// The engine the implementation was built on, defaulting to `none`. A build
@@ -344,9 +360,9 @@ pub struct SeedArgs {
     #[arg(long, value_name = "VERSION")]
     pub version: String,
 
-    /// Variant of the test case to seed (for example, `base`). Selects which
-    /// specs are seeded.
-    #[arg(long, value_name = "VARIANT")]
+    /// Variant of the test case to seed. Selects which specs are seeded. Defaults
+    /// to `base`, which is the only variant a suite-defined test case carries.
+    #[arg(long, value_name = "VARIANT", default_value = DEFAULT_VARIANT)]
     pub variant: String,
 
     /// Engine to seed the run against, defaulting to `none` (nothing is
@@ -379,8 +395,9 @@ pub struct PromptArgs {
     #[arg(long, value_name = "VERSION")]
     pub version: String,
 
-    /// Variant of the test case to render the prompt for (for example, `base`).
-    #[arg(long, value_name = "VARIANT")]
+    /// Variant of the test case to render the prompt for. Defaults to `base`,
+    /// which is the only variant a suite-defined test case carries.
+    #[arg(long, value_name = "VARIANT", default_value = DEFAULT_VARIANT)]
     pub variant: String,
 
     /// Engine to render the prompt for, defaulting to `none`. A prompt template
@@ -534,6 +551,43 @@ pub struct CaptureBaselinesArgs {
     /// without building or writing anything.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Arguments for `tcab ingest`.
+///
+/// Targets are positional so a scan is scoped the way a shell user thinks of it —
+/// name the thing, or name nothing and scan everything.
+#[derive(Debug, Args)]
+pub struct IngestArgs {
+    /// What to ingest. Each target is a bare id — a test case slug or folder name,
+    /// or a suite slug, expanding to every version it declares — or an `id@version`
+    /// naming exactly one version (`carom@v1.2.0`, `carom-suite@v1.0.0`). With no
+    /// targets the backend scans the whole checkout, which is also the only form
+    /// that prunes what the checkout no longer declares.
+    #[arg(value_name = "TARGET")]
+    pub targets: Vec<String>,
+
+    /// Overwrite a version the store already holds. A stored version is immutable,
+    /// so iterating in place on one version string needs this; without it an
+    /// already-stored version is reported skipped.
+    #[arg(long, conflicts_with = "changed")]
+    pub force: bool,
+
+    /// Ingest only what differs from the store: a version it holds no record for,
+    /// or one whose content digest or catalog version differs from the checkout's.
+    /// Every other version is reported skipped as unchanged, so no local
+    /// change-detection state is needed.
+    #[arg(long)]
+    pub changed: bool,
+
+    /// Ingest into a deployed environment's backend instead of `TCAB_BACKEND_URL`.
+    ///
+    /// The backend pod's ingest sidecar refreshes its checkout, with the test suites
+    /// submodule, to the tip of the branch the environment ingests, then scans it.
+    /// Both run through `az aks command invoke`, so only an authenticated `az` is
+    /// needed; the progress feed is printed once the invoke returns.
+    #[arg(long, value_name = "ENV", value_parser = ["staging", "prod"])]
+    pub env: Option<String>,
 }
 
 /// Arguments for `tcab analyze`.

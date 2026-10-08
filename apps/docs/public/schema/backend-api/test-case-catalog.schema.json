@@ -149,6 +149,17 @@
         "slug": {
           "type": "string"
         },
+        "suite": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoredSuiteCoordinate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The [test suite](crate::suite_store) coordinate this case was lowered from,\nread from its latest visible version. Absent for an authored case, which is\nhow a listing tells the two apart and groups the suite-derived ones under\nthe suite that offers them."
+        },
         "summary": {
           "description": "The short plain-text abstract a card shows, when the case declares one.",
           "type": ["string", "null"]
@@ -221,6 +232,25 @@
         }
       },
       "required": ["file", "name", "kind"],
+      "type": "object"
+    },
+    "StoredSuiteCoordinate": {
+      "description": "Where a suite-defined test-case version came from: the\n[suite](crate::suite_store::StoredSuite) that offers it, the suite version that\ndeclares it, and the definition file it was lowered from.\n\nA version carrying one is served out of the same key space an authored version\nis, so this is the only thing that distinguishes the two on the wire — which is\nwhat lets a console group suite-derived cases under their suite.",
+      "properties": {
+        "definition": {
+          "description": "The definition's slug, which is its file stem under `test-cases/`.",
+          "type": "string"
+        },
+        "suite": {
+          "description": "The suite's slug, which is its directory in the suites checkout.",
+          "type": "string"
+        },
+        "suiteVersion": {
+          "description": "The suite version folder name, carrying its leading `v`.",
+          "type": "string"
+        }
+      },
+      "required": ["suite", "suiteVersion", "definition"],
       "type": "object"
     }
   },

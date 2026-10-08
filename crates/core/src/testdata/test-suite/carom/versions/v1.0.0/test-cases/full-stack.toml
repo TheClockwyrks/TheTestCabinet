@@ -1,0 +1,18 @@
+name = "Carom, full stack"
+type = "full-stack"
+difficulty = "hard"
+engines = ["none", "simple-2d"]
+prompt = "prompts/full-stack.hbs"
+max_runtime_hours = 8.0
+init = "npm ci && npx playwright install chromium"
+
+[workspaces]
+none = "workspaces/none"
+simple-2d = "workspaces/simple-2d-e2e"
+
+[build]
+install = "npm ci"
+build = "npm run build"
+
+[toolchain]
+typecheck = "npm run typecheck"

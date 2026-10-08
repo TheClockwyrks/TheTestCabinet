@@ -7,8 +7,7 @@
 //! (Cloudflare truncates long subdomains), so it is captured and **committed** here
 //! rather than pushed to the backend — the remote backends are private (VPN-only),
 //! so nothing off-cluster can reach them. The backend instead **ingests** this file
-//! from its own git checkout (the same pull path `scripts/reingest-cluster.sh`
-//! drives), reconciling its `case_reference_build` table to the entries for its
+//! from its own git checkout (the same pull path `tcab ingest --env` drives), reconciling its `case_reference_build` table to the entries for its
 //! environment.
 //!
 //! The file is keyed by **environment first** (`prod`/`staging`/…): prod and staging

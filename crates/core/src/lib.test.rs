@@ -47,6 +47,7 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
     };
     let broken_api = ValidationSummary {
         loaded: true,
+        requirements: Vec::new(),
         debug_scripts: vec![failed_script.clone()],
         ..Default::default()
     };
@@ -61,6 +62,7 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
     // review — even when the same script also failed to run against it.
     let never_loaded = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         debug_scripts: vec![failed_script],
         ..Default::default()
     };
@@ -73,6 +75,7 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
     // A clean load with no failing scripts completes normally.
     let clean = ValidationSummary {
         loaded: true,
+        requirements: Vec::new(),
         ..Default::default()
     };
     assert_eq!(
@@ -102,6 +105,7 @@ fn a_failed_install_ends_a_reviewed_run_as_infrastructure_with_the_installs_reas
                   node_modules/@rolldown/binding-linux-arm64-gnu";
     let install_failed = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some(detail.to_string()),
         install: Some(install_step(false, Some(detail))),
         ..Default::default()
@@ -129,6 +133,7 @@ fn a_failed_install_ends_a_reviewed_run_as_infrastructure_with_the_installs_reas
     // A failed install that reported no detail still names the step at fault.
     let undetailed = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         install: Some(install_step(false, None)),
         ..Default::default()
     };
@@ -144,6 +149,7 @@ fn a_failed_install_ends_a_reviewed_run_as_infrastructure_with_the_installs_reas
     // run list and a run's header show, so it takes the reason alone.
     let exited = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         install: Some(install_step(
             false,
             Some("`npm ci` exited 1:\nnpm ERR! code E503\nnpm ERR! 503 Service Unavailable"),
@@ -159,6 +165,7 @@ fn a_failed_install_ends_a_reviewed_run_as_infrastructure_with_the_installs_reas
     // A single attempt (a command that never started) reports no attempt count.
     let never_ran = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         install: Some(StepResult {
             attempts: Some(1),
             ..install_step(false, Some("timed out after 1200 seconds"))
@@ -180,6 +187,7 @@ fn a_failed_install_ends_a_reviewed_run_as_infrastructure_with_the_installs_reas
 fn a_model_output_that_never_loaded_after_its_install_succeeded_is_catastrophic() {
     let no_package_json = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some("no package.json found".to_string()),
         ..Default::default()
     };
@@ -189,6 +197,7 @@ fn a_model_output_that_never_loaded_after_its_install_succeeded_is_catastrophic(
 
     let build_failed = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some("`npm run build` exited 1".to_string()),
         install: Some(install_step(true, None)),
         build: Some(StepResult {
@@ -208,6 +217,7 @@ fn a_model_output_that_never_loaded_after_its_install_succeeded_is_catastrophic(
     // took to get there.
     let loaded = ValidationSummary {
         loaded: true,
+        requirements: Vec::new(),
         install: Some(install_step(true, None)),
         ..Default::default()
     };
@@ -223,6 +233,7 @@ fn a_model_output_that_never_loaded_after_its_install_succeeded_is_catastrophic(
 fn an_auto_scored_run_stays_completed_whatever_its_install_did() {
     let install_failed = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         install: Some(install_step(false, Some("`npm ci` exited 1"))),
         ..Default::default()
     };

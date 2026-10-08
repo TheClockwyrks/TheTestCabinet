@@ -82,6 +82,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
         metrics: RunMetrics::default(),
         validation: ValidationSummary {
             loaded: true,
+            requirements: Vec::new(),
             ..ValidationSummary::default()
         },
         links: RunLinks::default(),
@@ -244,6 +245,7 @@ fn manifest() -> StoredManifest {
         }],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 

@@ -124,6 +124,13 @@ pub struct Config {
     /// sets this truthy; production leaves it unset so experimental cases are never
     /// offered and thus never run or published.
     pub allow_experimental: bool,
+    /// Whether ingest also reads the test suite previews The Spec Cabinet writes to
+    /// the suites checkout's `.previews/` folder (`TCAB_BACKEND_INGEST_PREVIEWS`,
+    /// truthy to enable). Defaults to `false`, and then `.previews/` is never read.
+    /// A preview exists only in the checkout it was written to and is always
+    /// experimental, so the setting belongs to the local development stack alone:
+    /// the local k3d overlay sets it, and no other deployment does.
+    pub ingest_previews: bool,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -280,6 +287,7 @@ impl Config {
         let gg_reference = gg_reference_dir(nonempty("TCAB_GG_REFERENCE"), &checkout);
 
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
+        let ingest_previews = truthy("TCAB_BACKEND_INGEST_PREVIEWS");
 
         let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
         let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
@@ -325,6 +333,7 @@ impl Config {
             grafana_url,
             snapshot_url,
             allow_experimental,
+            ingest_previews,
         })
     }
 }

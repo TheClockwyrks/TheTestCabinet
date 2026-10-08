@@ -1,0 +1,5 @@
+id = "ball"
+name = "Ball"
+kind = "voxel"
+specification = "assets"
+files = ["ball.vox"]

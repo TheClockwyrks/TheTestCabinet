@@ -180,8 +180,11 @@ fn run_requires_a_harness() {
 }
 
 #[test]
-fn run_requires_a_variant() {
-    let err = Cli::try_parse_from([
+fn run_defaults_the_variant_to_base() {
+    // A suite-defined test case declares no variants and carries exactly one
+    // implicit `base`, and every authored case declares a `base` of its own, so
+    // omitting the flag selects it rather than failing the parse.
+    let cli = Cli::try_parse_from([
         "tcab",
         "run",
         "--test-case",
@@ -193,8 +196,104 @@ fn run_requires_a_variant() {
         "--model",
         "some-model-id",
     ])
-    .expect_err("omitting --variant should be a parse error");
-    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    .expect("omitting --variant parses");
+    match cli.command {
+        Command::Run(args) => assert_eq!(args.variant, "base"),
+        other => panic!("expected run, got {other:?}"),
+    }
+}
+
+#[test]
+fn seed_prompt_and_validate_default_the_variant_to_base() {
+    let seed = Cli::try_parse_from([
+        "tcab",
+        "seed",
+        "--test-case",
+        "carom-end-to-end",
+        "--version",
+        "v1.0.0",
+    ])
+    .expect("omitting --variant parses");
+    match seed.command {
+        Command::Seed(args) => assert_eq!(args.variant, "base"),
+        other => panic!("expected seed, got {other:?}"),
+    }
+
+    let prompt = Cli::try_parse_from([
+        "tcab",
+        "prompt",
+        "--test-case",
+        "carom-end-to-end",
+        "--version",
+        "v1.0.0",
+    ])
+    .expect("omitting --variant parses");
+    match prompt.command {
+        Command::Prompt(args) => assert_eq!(args.variant, "base"),
+        other => panic!("expected prompt, got {other:?}"),
+    }
+
+    let validate = Cli::try_parse_from([
+        "tcab",
+        "validate",
+        "--implementation",
+        "impl",
+        "--test-case",
+        "carom-end-to-end",
+        "--version",
+        "v1.0.0",
+    ])
+    .expect("omitting --variant parses");
+    match validate.command {
+        Command::Validate(args) => assert_eq!(args.variant, "base"),
+        other => panic!("expected validate, got {other:?}"),
+    }
+}
+
+#[test]
+fn ingest_takes_positional_targets_and_force() {
+    let cli = Cli::try_parse_from(["tcab", "ingest", "carom", "carom-suite@v1.0.0", "--force"])
+        .expect("targets and --force parse");
+    match cli.command {
+        Command::Ingest(args) => {
+            assert_eq!(args.targets, vec!["carom", "carom-suite@v1.0.0"]);
+            assert!(args.force);
+        }
+        other => panic!("expected ingest, got {other:?}"),
+    }
+}
+
+#[test]
+fn ingest_with_no_targets_is_a_whole_checkout_scan() {
+    let cli = Cli::try_parse_from(["tcab", "ingest"]).expect("a bare ingest parses");
+    match cli.command {
+        Command::Ingest(args) => {
+            assert!(args.targets.is_empty());
+            assert!(!args.force);
+            assert!(!args.changed);
+        }
+        other => panic!("expected ingest, got {other:?}"),
+    }
+}
+
+#[test]
+fn ingest_takes_changed() {
+    let cli = Cli::try_parse_from(["tcab", "ingest", "--changed"]).expect("--changed parses");
+    match cli.command {
+        Command::Ingest(args) => {
+            assert!(args.changed);
+            assert!(!args.force);
+        }
+        other => panic!("expected ingest, got {other:?}"),
+    }
+}
+
+#[test]
+fn ingest_refuses_changed_with_force() {
+    // `--force` rewrites every target, so asking for only the changed ones as well
+    // is a contradiction rather than a refinement.
+    Cli::try_parse_from(["tcab", "ingest", "--changed", "--force"])
+        .expect_err("--changed and --force conflict");
 }
 
 #[test]

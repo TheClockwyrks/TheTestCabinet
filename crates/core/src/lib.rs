@@ -24,6 +24,7 @@ pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
 pub mod container;
+pub mod content_digest;
 pub mod content_labels;
 pub mod engine;
 pub mod error;
@@ -59,12 +60,16 @@ pub mod r2;
 pub mod redact;
 pub mod reference;
 pub mod reference_lock;
+pub mod remote_backend;
+pub mod resolver;
 pub mod review;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
+pub mod showcase;
 pub mod test_case;
 pub mod test_case_group;
+pub mod test_suite;
 pub mod toolchain;
 pub mod toolchain_report;
 pub mod toolchain_stage;
@@ -107,8 +112,9 @@ pub use auth::{
     SubscriptionSpec, api_key_override_var, auth_readiness, resolve_auth, resolve_auth_with,
 };
 pub use backend_client::{
-    BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
-    PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
+    BackendClient, HttpBackendClient, IngestFeed, IngestMode, IngestProgress, IngestSummary,
+    PrerenderedReferenceRenderer, PublishAck, PublishedReview, PublishedRun, ReferenceBuildUpload,
+    ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use cancel::RunCancellation;
 pub use clock::{Clock, ManualClock, SystemClock};
@@ -168,7 +174,9 @@ pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{
     MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, ModelListing, OpenRouterPrices, ProviderRoute,
 };
-pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
+pub use prompt::{
+    render_case_prompt, render_prompt, render_prompt_from_template, render_spec_from_template,
+};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
     SystemCommandRunner, deploy_pages_build, implementation_dir, parse_wrangler_url, run_slug,
@@ -177,6 +185,7 @@ pub use publish_job_api::{
     PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
+pub use resolver::{SuiteDefinitionRef, TestCaseResolver};
 pub use review::{
     AestheticRating, DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup,
     effective_verdicts, missing_ratings, missing_verdicts, needs_aesthetic, parse_writeup, score,
@@ -1251,7 +1260,11 @@ where
         // runtime the build is written against and points at the documentation
         // seeded from its package, and a template branches on the slug — so the
         // engineless run renders the prompt it always did.
-        let base_prompt = render_prompt(
+        // `render_case_prompt` rather than `render_prompt`: a suite-defined case's
+        // template sees the specifications its definition covers rather than a
+        // variant, so which context the template renders against follows the case the
+        // run resolved. Everything else about the hand-off is identical.
+        let base_prompt = render_case_prompt(
             test_case,
             variant,
             &self.prior_game_jam_entries,
@@ -2153,13 +2166,18 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
 /// blurb; this cap keeps a pathological one from bloating every store downstream.
 /// The run-side capture truncates a longer one on a char boundary with a trailing
 /// marker; the case-side resolution (an authored, committed showcase — see
-/// `test_case::Variant::showcase`) hard-fails instead.
-pub(crate) const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
+/// `test_case::Variant::showcase`) hard-fails instead. Public because the bound is
+/// shared by all three showcases, the suite's
+/// [included](test_suite::ShowcaseManifest), and The Spec Cabinet enforces it on
+/// the one it authors.
+pub const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
 
 /// The most media entries a showcase carousel may hold. The run-side capture
 /// drops the excess with a warning — the carousel is a highlight reel, not an
-/// archive — while the case-side resolution hard-fails on it.
-pub(crate) const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
+/// archive — while the case-side resolution hard-fails on it. Public for the
+/// reason [`MAX_SHOWCASE_DESCRIPTION_BYTES`] is: the bound is shared by all three
+/// showcases, the suite's included.
+pub const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
 
 /// The largest media file a showcase carousel entry may name, in bytes. An entry
 /// naming a larger file is dropped with a warning, since the file travels the
@@ -2169,26 +2187,16 @@ pub(crate) const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
 pub const MAX_SHOWCASE_MEDIA_FILE_BYTES: u64 = 25 * 1024 * 1024;
 
 /// The shape of a `showcase.toml`: the ordered carousel, one `[[media]]` table
-/// per entry. Shared by the run-side capture (a model-written
-/// `showcase/showcase.toml` in the produced tree) and the case-side resolution
-/// (an authored showcase directory a variant declares — see
-/// `test_case::Variant::showcase`), so the two showcases stay one format.
-/// Deliberately lenient about unknown keys — the run-side manifest is
-/// model-written, and a stray extra key is not worth losing the whole showcase.
-#[derive(serde::Deserialize)]
-pub(crate) struct ShowcaseManifest {
-    #[serde(default)]
-    pub(crate) media: Vec<ShowcaseManifestEntry>,
-}
-
-/// One `[[media]]` table of a `showcase.toml`.
-#[derive(serde::Deserialize)]
-pub(crate) struct ShowcaseManifestEntry {
-    /// The media file's name in the showcase directory itself (no subdirectories).
-    pub(crate) file: String,
-    /// The short caption for the entry.
-    pub(crate) name: String,
-}
+/// per entry. One type for all three showcases — the run-side capture (a
+/// model-written `showcase/showcase.toml` in the produced tree), the case-side
+/// resolution (an authored showcase directory a variant declares — see
+/// `test_case::Variant::showcase`), and the suite-side
+/// [showcase](test_suite::SuiteShowcase) — so they cannot drift into three
+/// formats. It lives with the suite model because that is the one place the
+/// format is also *written*.
+/// Its entries are [`test_suite::ShowcaseMediaEntry`], one per `[[media]]`
+/// table.
+pub(crate) use test_suite::ShowcaseManifest;
 
 /// Capture a run's [showcase](RunShowcase) from the collected tree's `showcase/`
 /// directory, or `None` when none was produced or it could not be parsed.

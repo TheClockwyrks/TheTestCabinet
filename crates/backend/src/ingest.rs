@@ -17,25 +17,53 @@
 //! via a registry and pulled by digest by each runner from its own
 //! configuration. The backend is out of the container path entirely.
 //!
+//! It also reads `test-suites/`, the [test
+//! suite](https://docs.testcabinet.ai/test-suites/overview/) checkout beside it:
+//! every definition a suite version offers is lowered onto a `TestCaseVersion` and
+//! written into the same keyed tree an authored version is, and the suite's own
+//! entities are written into the sibling [suite key space](crate::suite_store).
+//! The suite half lives in `ingest.suites.rs`.
+//!
 //! Ingest is idempotent: an already-present, unchanged `(slug, version)` is a
 //! no-op. `force` re-ingests and re-renders even when unchanged.
+//!
+//! A backend configured to ingest previews also reads the suites checkout's
+//! `.previews/` folder, where The Spec Cabinet writes a draft's preview as a suite
+//! version at the prerelease `v0.0.0-preview.<draft>`. A preview is enumerated,
+//! targeted, digested and pruned exactly as an exported version is; a backend not
+//! configured for them never reads the folder.
+//!
+//! Every record ingest writes carries an [`IngestStamp`] naming the content digest
+//! it was built from (see [`test_cabinet_core::content_digest`]), so a
+//! [`IngestMode::Changed`] scan rewrites exactly the versions whose checkout content
+//! differs from the store.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use test_cabinet_core::ColdStorage;
 use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, is_seeded_dotfile};
 use test_cabinet_core::test_case_group::TestCaseGroupCatalog;
+use test_cabinet_core::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
+use test_cabinet_core::{ColdStorage, IngestMode};
 
 use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
-    DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
-    StoredContract, StoredDomain, StoredErratum, StoredInstrumentation, StoredManifest,
-    StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay, StoredReviewItem,
-    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredShowcase, StoredShowcaseMedia,
-    StoredSimulation, StoredSpec, StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspace,
-    StoredWorkspaceFile, reference_in, write_manifest_in,
+    DefinitionStore, IngestStamp, STORE_FORMAT, StoredAsset, StoredBuild, StoredCanvas, StoredCase,
+    StoredCheck, StoredContract, StoredDomain, StoredErratum, StoredInstrumentation,
+    StoredManifest, StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay,
+    StoredReviewItem, StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredShowcase,
+    StoredShowcaseMedia, StoredSimulation, StoredSpec, StoredSubReviewItem, StoredSuiteCoordinate,
+    StoredTool, StoredVariant, StoredWorkspace, StoredWorkspaceFile, reference_in,
+    write_ingest_stamp_in, write_manifest_in,
 };
+
+/// The content digests a stored version records, shared with every client that
+/// compares a checkout against the store.
+use test_cabinet_core::content_digest as digest;
+#[path = "ingest.suites.rs"]
+mod suites;
+
+pub use suites::IngestedSuite;
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
 #[derive(Debug, Clone, Default)]
@@ -44,10 +72,17 @@ pub struct IngestRequest {
     /// bare case `id` — its slug or folder name, expanding to every version the case
     /// declares — or a version-qualified `id@version`, targeting exactly that one
     /// version so a single edited version can be re-ingested without re-rendering the
-    /// case's other versions.
+    /// case's other versions. An entry the authored catalog does not know is offered
+    /// to the suites tree in the same two spellings: a suite slug expands to every
+    /// definition of every version it declares, and `<suite>@<version>` to every
+    /// definition of that one version.
     pub test_cases: Option<Vec<String>>,
     /// Re-ingest and re-render even when unchanged.
     pub force: bool,
+    /// Which already-stored targets a scan without `force` rewrites: none
+    /// ([`IngestMode::Absent`]), or those whose checkout content differs from the
+    /// store ([`IngestMode::Changed`]).
+    pub mode: IngestMode,
     /// An opaque version token identifying the catalog content of a whole-catalog
     /// ingest (the client's build commit). When supplied and unchanged from the
     /// store's recorded marker, the scan reuses the already-ingested versions
@@ -55,6 +90,43 @@ pub struct IngestRequest {
     /// re-ingest and records the new token. Ignored for a partial (`test_cases`)
     /// scan, which neither consults nor moves the whole-catalog marker.
     pub catalog_version: Option<String>,
+}
+
+/// What one scan touches, resolved out of the checkout's two trees.
+///
+/// The suite records are kept apart from the versions because they are keyed apart:
+/// a suite version's own entities live in the [suite key space](crate::suite_store)
+/// while the definitions it offers become ordinary test-case versions.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Targets {
+    /// The suite versions whose own record the scan (re)writes, as
+    /// `(suite slug, version folder)`.
+    suites: Vec<(String, String)>,
+    /// The test-case versions the scan (re)writes, authored and suite-defined
+    /// alike.
+    versions: Vec<Target>,
+}
+
+/// One test-case version a scan touches.
+#[derive(Debug, Clone, PartialEq)]
+enum Target {
+    /// An authored case version, by the id the entry named (a slug or a folder
+    /// name) and the version string.
+    Case {
+        /// The slug or folder name the entry named.
+        id: String,
+        /// The version folder name.
+        version: String,
+    },
+    /// One definition of one suite version, lowered onto a test-case version.
+    Definition {
+        /// The suite's slug.
+        suite: String,
+        /// The suite version folder name.
+        version: String,
+        /// The definition's file stem under `test-cases/`.
+        definition: String,
+    },
 }
 
 /// The outcome of ingesting one test-case version.
@@ -68,13 +140,131 @@ pub struct IngestedVersion {
     pub ingested: bool,
     /// How many reference screenshots were rendered (0 when skipped).
     pub rendered_references: usize,
+    /// Why a skipped version was skipped, when the scan names a reason. `None` for
+    /// an ingested version, and for one a scan in [`IngestMode::Absent`] skipped
+    /// because the store already held it.
+    pub reason: Option<SkipReason>,
+    /// Why the version could not be ingested, naming the file and the failure. Set
+    /// only on a version reported with `ingested: false` because it failed to
+    /// resolve, which a whole-catalog scan prunes like a version the checkout no
+    /// longer declares.
+    pub problem: Option<String>,
+}
+
+/// Why a scan skipped a target it was asked about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkipReason {
+    /// A [`IngestMode::Changed`] scan found the stored record's digest, record
+    /// format and catalog version all matching the checkout.
+    Unchanged,
+}
+
+impl SkipReason {
+    /// The wire spelling of the reason.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkipReason::Unchanged => "unchanged",
+        }
+    }
+}
+
+/// Whether one target is rewritten, decided the same way for every kind of record
+/// a scan writes.
+#[derive(Debug, Clone)]
+struct Decider {
+    /// Rewrite every target.
+    force: bool,
+    /// Which stored targets a scan without `force` rewrites.
+    mode: IngestMode,
+    /// The catalog version the store is at once this scan completes: the scan's own
+    /// token, or the store's recorded marker when the scan carries none.
+    catalog_version: Option<String>,
+}
+
+/// The outcome of [`Decider::decide`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Decision {
+    /// Build the target and write its record.
+    Ingest,
+    /// Leave the stored record in place, for the reason given.
+    Skip(Option<SkipReason>),
+}
+
+impl Decider {
+    /// Whether a target is skipped before its digest is worth computing: a scan in
+    /// [`IngestMode::Absent`] skips whatever the store already holds.
+    fn skips_as_stored(&self, has_record: bool) -> bool {
+        !self.force && self.mode == IngestMode::Absent && has_record
+    }
+
+    /// Decide one target from whether the store holds its record, the stamp that
+    /// record carries (read only when the mode needs it), and the checkout's
+    /// current digest.
+    fn decide(
+        &self,
+        has_record: bool,
+        stored: impl FnOnce() -> Option<IngestStamp>,
+        digest: &str,
+    ) -> Decision {
+        if self.force || !has_record {
+            return Decision::Ingest;
+        }
+        match self.mode {
+            IngestMode::Absent => Decision::Skip(None),
+            IngestMode::Changed => match stored() {
+                Some(stamp)
+                    if stamp.digest == digest
+                        && stamp.format == STORE_FORMAT
+                        && stamp.catalog_version == self.catalog_version =>
+                {
+                    Decision::Skip(Some(SkipReason::Unchanged))
+                }
+                _ => Decision::Ingest,
+            },
+        }
+    }
+
+    /// The stamp a record built from `digest` is written with.
+    fn stamp(&self, digest: String) -> IngestStamp {
+        IngestStamp {
+            digest,
+            format: STORE_FORMAT,
+            catalog_version: self.catalog_version.clone(),
+        }
+    }
+}
+
+/// The suite version digests one scan has computed, shared by a suite's own record
+/// and every definition lowered from it, since all of them are built from the same
+/// files. A digest is computed on first use, so a scan that skips everything a suite
+/// version produced as already stored never reads that version's files.
+#[derive(Debug, Default)]
+struct SuiteDigests(std::cell::RefCell<std::collections::HashMap<(String, String), String>>);
+
+impl SuiteDigests {
+    /// The digest of `slug@version`, computed through `ingestor` the first time it
+    /// is asked for.
+    fn get(&self, ingestor: &Ingestor<'_>, slug: &str, version: &str) -> Result<String> {
+        let key = (slug.to_string(), version.to_string());
+        if let Some(digest) = self.0.borrow().get(&key) {
+            return Ok(digest.clone());
+        }
+        let digest = ingestor.suite_digest(slug, version)?;
+        self.0.borrow_mut().insert(key, digest.clone());
+        Ok(digest)
+    }
 }
 
 /// The full result of an ingest scan.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct IngestReport {
-    /// One entry per scanned test-case version.
+    /// One entry per scanned test-case version, a suite-defined one included: a
+    /// definition is lowered into exactly the record an authored case produces, so
+    /// it is reported here under the catalog identity it was ingested as.
     pub test_case_versions: Vec<IngestedVersion>,
+    /// One entry per scanned suite version — the suite's *own* record, which is
+    /// keyed beside the definitions it offers rather than among them.
+    pub suite_versions: Vec<IngestedSuite>,
     /// Whether the scan changed the store's [test-case
     /// group](test_cabinet_core::TestCaseGroup) set. Only a whole-catalog scan
     /// reconciles the set (a partial scan leaves it untouched and reports
@@ -115,6 +305,10 @@ pub struct Ingestor<'a> {
     /// depend on. Empty by default (prune everything absent); set via
     /// [`with_protected_cases`](Self::with_protected_cases).
     protected: std::collections::HashSet<(String, String)>,
+    /// Whether the suites checkout's `.previews/` folder is read
+    /// (`TCAB_BACKEND_INGEST_PREVIEWS`). Off by default, and then no path into the
+    /// folder is ever composed.
+    previews: bool,
 }
 
 impl<'a> Ingestor<'a> {
@@ -126,12 +320,23 @@ impl<'a> Ingestor<'a> {
             store,
             cold: ColdStorage::for_checkout(checkout),
             protected: std::collections::HashSet::new(),
+            previews: false,
         }
     }
 
     /// Read baseline media from `cold` instead of the checkout's own cold storage.
     pub fn with_cold_storage(mut self, cold: ColdStorage) -> Self {
         self.cold = cold;
+        self
+    }
+
+    /// Also ingest the previews The Spec Cabinet writes to the suites checkout's
+    /// `.previews/` folder, when `previews` is set — the backend's
+    /// [`ingest_previews`](crate::config::Config::ingest_previews). A whole-catalog
+    /// scan then enumerates them beside the exported versions, so it also prunes a
+    /// preview the folder no longer holds.
+    pub fn with_previews(mut self, previews: bool) -> Self {
+        self.previews = previews;
         self
     }
 
@@ -193,16 +398,64 @@ impl<'a> Ingestor<'a> {
             .flatten();
         let unchanged = tagged.is_some() && self.store.catalog_version().as_deref() == tagged;
         let force = request.force || (tagged.is_some() && !unchanged);
+        let decider = Decider {
+            force,
+            mode: request.mode,
+            catalog_version: tagged
+                .map(str::to_string)
+                .or_else(|| self.store.catalog_version()),
+        };
 
-        let targets = self.version_targets(request)?;
-        let total = targets.len();
-        on_event(IngestEvent::Start { total });
+        let mut targets = self.version_targets(request)?;
 
         let mut report = IngestReport::default();
-        for (index, (slug, version)) in targets.into_iter().enumerate() {
-            let ingested = self.ingest_version(&slug, &version, force)?;
+        // The suite records first: a definition's stored version names the suite it
+        // came from, so the suite it names is in the store by the time any client
+        // can follow the coordinate. A suite version that cannot be ingested offers
+        // no cases either — a case whose suite is unservable is a case nothing can
+        // present — so its definitions are dropped from the scan with it, which
+        // leaves the prune to clear whatever they had left in the store.
+        let mut refused: Vec<IngestedVersion> = Vec::new();
+        // Each suite version's digest is computed at most once, and only when some
+        // record built from it is decided on content or written.
+        let suite_digests = SuiteDigests::default();
+        for (slug, version) in &targets.suites {
+            let ingested = self.ingest_suite(slug, version, &decider, &suite_digests)?;
+            if let Some(problem) = &ingested.problem {
+                refused.push(IngestedVersion {
+                    slug: slug.clone(),
+                    version: version.clone(),
+                    ingested: false,
+                    rendered_references: 0,
+                    reason: None,
+                    problem: Some(problem.clone()),
+                });
+            }
+            report.suite_versions.push(ingested);
+        }
+        targets.versions.retain(|target| match target {
+            Target::Case { .. } => true,
+            Target::Definition { suite, version, .. } => !refused
+                .iter()
+                .any(|failed| failed.slug == *suite && failed.version == *version),
+        });
+
+        // A refused suite version is reported in the feed as the one version it is,
+        // ahead of the definitions that did get scanned, so a client sees why every
+        // case it offers is absent.
+        let total = refused.len() + targets.versions.len();
+        on_event(IngestEvent::Start { total });
+        for (index, failed) in refused.iter().enumerate() {
             on_event(IngestEvent::Version {
                 index: index + 1,
+                total,
+                version: failed,
+            });
+        }
+        for (index, target) in targets.versions.into_iter().enumerate() {
+            let ingested = self.ingest_target(&target, &decider, &suite_digests)?;
+            on_event(IngestEvent::Version {
+                index: refused.len() + index + 1,
                 total,
                 version: &ingested,
             });
@@ -217,6 +470,7 @@ impl<'a> Ingestor<'a> {
         // referenced definitions are spared regardless (see `prune_absent`).
         if whole_catalog {
             self.prune_absent(&report)?;
+            self.prune_absent_suites(&report)?;
             // A whole-catalog scan also owns the global test-case-group set: it has
             // the complete catalog in view, so it can both cross-validate every
             // member slug and reconcile the stored set to exactly what the checkout
@@ -247,9 +501,12 @@ impl<'a> Ingestor<'a> {
     /// checkout (each keyed by its resolved slug), so anything in the store outside
     /// that set and outside `protected` is stale and removed.
     fn prune_absent(&self, report: &IngestReport) -> Result<()> {
+        // A version that failed to resolve is reported but not present: whatever the
+        // store holds for it is no longer something the checkout can reproduce.
         let present: std::collections::HashSet<(&str, &str)> = report
             .test_case_versions
             .iter()
+            .filter(|v| v.problem.is_none())
             .map(|v| (v.slug.as_str(), v.version.as_str()))
             .collect();
         for (slug, versions) in self.store.list_cases()? {
@@ -342,44 +599,156 @@ impl<'a> Ingestor<'a> {
         Ok(true)
     }
 
-    /// Resolve the set of `(slug, version)` pairs to scan from the checkout.
+    /// Resolve what a scan touches, from the checkout's two trees.
     ///
-    /// A whole-catalog scan (no restriction) enumerates every declared case as a bare
-    /// entry; a partial scan takes the request's entries verbatim. Each entry is then
-    /// resolved to targets: a bare `id` (slug or folder name) expands to every version
-    /// the case declares, while a version-qualified `id@version` targets exactly that
-    /// one version — so an edit to a single version re-renders only it, not every
-    /// version of the case. `@` cannot occur in a slug/folder name or a version string,
-    /// so it is an unambiguous separator.
-    fn version_targets(&self, request: &IngestRequest) -> Result<Vec<(String, String)>> {
-        let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
-        let entries: Vec<String> = match &request.test_cases {
-            Some(entries) => entries.clone(),
-            None => catalog
-                .list()
-                .map_err(BackendError::Core)?
-                .into_iter()
-                .map(|case| case.slug)
-                .collect(),
+    /// A whole-catalog scan (no restriction) enumerates every declared case and
+    /// every suite version; a partial scan takes the request's entries verbatim.
+    /// Each entry is then resolved to targets: a bare `id` (slug or folder name)
+    /// expands to every version the case declares, while a version-qualified
+    /// `id@version` targets exactly that one version — so an edit to a single
+    /// version re-renders only it, not every version of the case. `@` cannot occur
+    /// in a slug/folder name or a version string, so it is an unambiguous
+    /// separator.
+    ///
+    /// An entry the authored catalog does not know is offered to the suites tree in
+    /// the same two spellings: a bare suite slug expands to every definition of
+    /// every version it declares, and `<suite>@<version>` to every definition of
+    /// that one version. An entry neither tree knows stays an authored target, so it
+    /// resolves to the error it resolves to today.
+    fn version_targets(&self, request: &IngestRequest) -> Result<Targets> {
+        let catalog = self.case_catalog();
+        let suites = self.suite_catalog();
+        let mut targets = Targets::default();
+        let Some(entries) = &request.test_cases else {
+            // A whole-catalog scan enumerates both trees, so its prune sees every
+            // declared version of either kind.
+            for case in catalog.list().map_err(BackendError::Core)? {
+                for version in catalog.versions(&case.slug).map_err(BackendError::Core)? {
+                    targets.versions.push(Target::Case {
+                        id: case.slug.clone(),
+                        version,
+                    });
+                }
+            }
+            for suite in suites.list().map_err(BackendError::Core)? {
+                for version in suite.versions {
+                    self.expand_suite_version(&suites, &suite.slug, &version, &mut targets)?;
+                }
+            }
+            return Ok(targets);
         };
-        let mut targets = Vec::new();
         for entry in entries {
-            if let Some((id, version)) = entry.split_once('@') {
-                targets.push((id.to_string(), version.to_string()));
-            } else {
-                for version in catalog.versions(&entry).map_err(BackendError::Core)? {
-                    targets.push((entry.clone(), version));
+            match entry.split_once('@') {
+                Some((id, version)) => {
+                    // Offered to the suites tree on presence alone, so a version whose
+                    // manifests do not resolve is reported with its problem rather than
+                    // as an unknown case.
+                    if catalog.versions(id).is_err() && suites.has_version(id, version) {
+                        self.expand_suite_version(&suites, id, version, &mut targets)?;
+                        continue;
+                    }
+                    targets.versions.push(Target::Case {
+                        id: id.to_string(),
+                        version: version.to_string(),
+                    });
+                }
+                None => {
+                    let known = catalog.versions(entry);
+                    if known.is_err()
+                        && let Ok(versions) = suites.versions(entry)
+                        && !versions.is_empty()
+                    {
+                        for version in versions {
+                            self.expand_suite_version(&suites, entry, &version, &mut targets)?;
+                        }
+                        continue;
+                    }
+                    for version in known.map_err(BackendError::Core)? {
+                        targets.versions.push(Target::Case {
+                            id: entry.clone(),
+                            version,
+                        });
+                    }
                 }
             }
         }
         Ok(targets)
     }
 
+    /// Add one suite version — the suite record itself, and one target per
+    /// definition it offers — to the scan.
+    fn expand_suite_version(
+        &self,
+        suites: &TestSuiteCatalog,
+        slug: &str,
+        version: &str,
+        targets: &mut Targets,
+    ) -> Result<()> {
+        targets.suites.push((slug.to_string(), version.to_string()));
+        // A version whose definitions cannot be listed is a version whose manifest
+        // does not read back; the suite ingest reports that against the suite rather
+        // than aborting the scan, so nothing is expanded here.
+        let Ok(definitions) = suites.definitions(slug, version) else {
+            return Ok(());
+        };
+        for definition in definitions {
+            targets.versions.push(Target::Definition {
+                suite: slug.to_string(),
+                version: version.to_string(),
+                definition,
+            });
+        }
+        Ok(())
+    }
+
+    /// The authored test-case catalog over this checkout.
+    fn case_catalog(&self) -> TestCaseCatalog {
+        TestCaseCatalog::new(self.checkout.join("test-cases"))
+    }
+
+    /// The suite catalog over this checkout. Its rendered specifications are
+    /// written per definition into the staging tree that definition is built in
+    /// (see `ingest.suites.rs`), so the catalog itself is handed a placeholder
+    /// materials directory it never writes to.
+    fn suite_catalog(&self) -> TestSuiteCatalog {
+        self.reading_previews(TestSuiteCatalog::new(self.checkout.join(TEST_SUITES_DIR)))
+    }
+
+    /// `catalog`, reading the checkout's `.previews/` folder when this ingestor is
+    /// configured to.
+    fn reading_previews(&self, catalog: TestSuiteCatalog) -> TestSuiteCatalog {
+        match self.previews {
+            true => {
+                let previews = catalog.root().join(PREVIEWS_DIR);
+                catalog.with_previews(previews)
+            }
+            false => catalog,
+        }
+    }
+
+    /// Ingest one resolved target.
+    fn ingest_target(
+        &self,
+        target: &Target,
+        decider: &Decider,
+        suite_digests: &SuiteDigests,
+    ) -> Result<IngestedVersion> {
+        match target {
+            Target::Case { id, version } => self.ingest_version(id, version, decider),
+            Target::Definition {
+                suite,
+                version,
+                definition,
+            } => self.ingest_definition(suite, version, definition, decider, suite_digests),
+        }
+    }
+
     // --- Test-case versions -------------------------------------------------
 
     /// Ingest one test-case version: resolve it (which validates structure), copy
     /// the version folder verbatim, render its references, and write the resolved
-    /// store-relative manifest. Idempotent unless `force`.
+    /// store-relative manifest, stamped with the digest it was built from. Whether
+    /// an already-stored version is rewritten is the `decider`'s call.
     ///
     /// The build happens in a staging directory that is then swapped into place
     /// atomically (see [`DefinitionStore::publish_staged_version`]). A re-ingest
@@ -388,8 +757,13 @@ impl<'a> Ingestor<'a> {
     /// destructive in-place rebuild opened, which a run resolving its version during
     /// a force re-ingest saw as a spurious 404 "is not ingested". Building fresh also
     /// guarantees a file removed in the checkout does not linger in the store.
-    fn ingest_version(&self, id: &str, version: &str, force: bool) -> Result<IngestedVersion> {
-        let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
+    fn ingest_version(
+        &self,
+        id: &str,
+        version: &str,
+        decider: &Decider,
+    ) -> Result<IngestedVersion> {
+        let catalog = self.case_catalog();
 
         // The store is keyed by the case's resolved slug (its manifest identity),
         // which can differ from `id` — the folder name a targeted scan named, or the
@@ -399,19 +773,41 @@ impl<'a> Ingestor<'a> {
         // in agreement.
         let slug = catalog.slug_of(id, version).map_err(BackendError::Core)?;
 
-        if !force && self.store.has_version(&slug, version) {
-            return Ok(IngestedVersion {
-                slug,
-                version: version.to_string(),
-                ingested: false,
-                rendered_references: 0,
-            });
+        let has_record = self.store.has_version(&slug, version);
+        let skipped = |slug: String, reason| IngestedVersion {
+            slug,
+            version: version.to_string(),
+            ingested: false,
+            rendered_references: 0,
+            reason,
+            problem: None,
+        };
+        if decider.skips_as_stored(has_record) {
+            return Ok(skipped(slug, None));
+        }
+        let root = catalog
+            .version_root(id, version)
+            .map_err(BackendError::Core)?;
+        let digest = digest::authored_version_digest(&root, self.checkout)?;
+        let decision = decider.decide(
+            has_record,
+            || self.store.version_stamp(&slug, version),
+            &digest,
+        );
+        if let Decision::Skip(reason) = decision {
+            return Ok(skipped(slug, reason));
         }
 
         let resolved = catalog.resolve(id, version).map_err(BackendError::Core)?;
 
         let staged = self.store.new_staging_dir(&slug, version)?;
-        let rendered = match self.build_version(&staged, &resolved) {
+        let built = self
+            .build_version(&staged, &resolved, None)
+            .and_then(|rendered| {
+                write_ingest_stamp_in(&staged, &decider.stamp(digest))?;
+                Ok(rendered)
+            });
+        let rendered = match built {
             Ok(rendered) => rendered,
             Err(err) => {
                 // Discard the partial build so a failed ingest leaves no debris and
@@ -427,6 +823,8 @@ impl<'a> Ingestor<'a> {
             version: version.to_string(),
             ingested: true,
             rendered_references: rendered,
+            reason: None,
+            problem: None,
         })
     }
 
@@ -434,11 +832,28 @@ impl<'a> Ingestor<'a> {
     /// resolved manifest — into `dest`, returning the number of references stored.
     /// `dest` is a staging directory the caller swaps into place; on any error the
     /// caller discards it, so a partial build is never served.
-    fn build_version(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<usize> {
-        copy_tree(&resolved.root, dest)?;
-        self.copy_baselines(dest, resolved)?;
+    /// A suite-defined version is built through this same path: `suite` carries
+    /// the coordinate it was lowered from, and its files reach `dest` through
+    /// [`copy_suite_version`](suites::copy_suite_version) rather than a verbatim
+    /// folder copy, because a suite version folder holds the whole suite rather
+    /// than one case. An authored version also gets its baseline validation media
+    /// from cold storage, which holds none for a suite version.
+    fn build_version(
+        &self,
+        dest: &Path,
+        resolved: &TestCaseVersion,
+        suite: Option<&StoredSuiteCoordinate>,
+    ) -> Result<usize> {
+        let keys = match suite {
+            None => {
+                copy_tree(&resolved.root, dest)?;
+                self.copy_baselines(dest, resolved)?;
+                Keys::rooted(&resolved.root)
+            }
+            Some(_) => suites::copy_suite_version(dest, resolved)?,
+        };
         let rendered = self.render_references(dest, resolved)?;
-        let manifest = build_stored_manifest(resolved)?;
+        let manifest = build_stored_manifest(resolved, &keys, suite.cloned())?;
         write_manifest_in(dest, &manifest)?;
         Ok(rendered)
     }
@@ -515,11 +930,17 @@ impl<'a> Ingestor<'a> {
 }
 
 /// Build the store-relative resolved manifest from a resolved version. Paths are
-/// rewritten from host-absolute to version-root-relative keys, the prompt and
+/// rewritten from host-absolute to store keys (see [`Keys`]), the prompt and
 /// description are inlined, and `.hbs` specs are flagged as templates.
-fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
-    let root = &resolved.root;
-
+///
+/// `suite` is the coordinate a suite-defined version was lowered from, and `None`
+/// for an authored case — the one field of the stored record that tells the two
+/// apart.
+fn build_stored_manifest(
+    resolved: &TestCaseVersion,
+    keys: &Keys<'_>,
+    suite: Option<StoredSuiteCoordinate>,
+) -> Result<StoredManifest> {
     let prompt_template = std::fs::read_to_string(&resolved.prompt_path)?;
     let description = match &resolved.description_path {
         Some(path) => Some(std::fs::read_to_string(path)?),
@@ -531,20 +952,20 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
     let common_specs = resolved
         .common_specs
         .iter()
-        .map(|spec| stored_spec(root, spec))
+        .map(|spec| stored_spec(keys, spec))
         .collect::<Result<Vec<_>>>()?;
 
     // The starter workspace files (common + each variant's override) are keyed by
     // their store-relative source path; the runner fetches each like an asset and
     // seeds it at the file's run-relative `dest`.
-    let workspace = stored_workspaces(root, &resolved.common_workspace)?;
+    let workspace = stored_workspaces(keys, &resolved.common_workspace)?;
 
     // Asset *paths* in a resolved version may be files or directories; the
     // contract expands directories to individual files. Each becomes an artifact
     // keyed by its store-relative path, with `dest` mirroring the source layout.
     let mut assets = Vec::new();
     for asset_path in &resolved.asset_paths {
-        expand_asset(root, asset_path, &mut assets)?;
+        expand_asset(keys, asset_path, &mut assets)?;
     }
 
     let variants = resolved
@@ -554,12 +975,12 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             let specs = variant
                 .specs
                 .iter()
-                .map(|spec| stored_spec(root, spec))
+                .map(|spec| stored_spec(keys, spec))
                 .collect::<Result<Vec<_>>>()?;
             let workspace = variant
                 .workspace
                 .as_ref()
-                .map(|workspaces| stored_workspaces(root, workspaces))
+                .map(|workspaces| stored_workspaces(keys, workspaces))
                 .transpose()?;
             Ok(StoredVariant {
                 slug: variant.slug.clone(),
@@ -579,7 +1000,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 showcase: variant
                     .showcase
                     .as_ref()
-                    .map(|showcase| stored_showcase(root, showcase))
+                    .map(|showcase| stored_showcase(keys, showcase))
                     .transpose()?,
             })
         })
@@ -646,7 +1067,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         cases: resolved
             .cases
             .iter()
-            .map(|case| stored_case(root, case))
+            .map(|case| stored_case(keys, case))
             .collect::<Result<Vec<_>>>()?,
         simulation: resolved
             .simulation
@@ -714,6 +1135,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         // Post-hoc known-issue errata (the version's `errata.toml`), site-facing and
         // never seeded. Carried through so the API and snapshot can surface them.
         errata: resolved.errata.iter().map(stored_erratum).collect(),
+        suite,
     })
 }
 
@@ -827,8 +1249,8 @@ fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
 
 /// Build a `StoredSpec` from a resolved [`SpecFile`](test_cabinet_core::SpecFile), deriving the store-relative
 /// `source` key and the `template` flag (a `.hbs` source) and carrying its `kind`.
-fn stored_spec(root: &Path, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
-    let source = relative_key(root, &spec.source_path)?;
+fn stored_spec(keys: &Keys<'_>, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
+    let source = keys.of(&spec.source_path)?;
     let template = spec
         .source_path
         .extension()
@@ -847,11 +1269,11 @@ fn stored_spec(root: &Path, spec: &test_cabinet_core::SpecFile) -> Result<Stored
 /// store-relative `source` key plus the run-relative `dest` (already computed at
 /// resolution as the file's path within the workspace directory).
 fn stored_workspace(
-    root: &Path,
+    keys: &Keys<'_>,
     file: &test_cabinet_core::WorkspaceFile,
 ) -> Result<StoredWorkspaceFile> {
     Ok(StoredWorkspaceFile {
-        source: relative_key(root, &file.source_path)?,
+        source: keys.of(&file.source_path)?,
         dest: to_forward_slash(&file.dest),
     })
 }
@@ -862,7 +1284,7 @@ fn stored_workspace(
 /// as a spec or a workspace file is — the bytes themselves ride the copied
 /// version tree (`copy_tree`), so keying is all the upload there is.
 fn stored_showcase(
-    root: &Path,
+    keys: &Keys<'_>,
     showcase: &test_cabinet_core::test_case::CaseShowcase,
 ) -> Result<StoredShowcase> {
     let media = showcase
@@ -873,7 +1295,7 @@ fn stored_showcase(
                 file: media.file.clone(),
                 name: media.name.clone(),
                 kind: media.kind,
-                key: relative_key(root, &media.source_path)?,
+                key: keys.of(&media.source_path)?,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -887,7 +1309,7 @@ fn stored_showcase(
 /// entry per [engine](test_cabinet_core::engine) the case ships a project for, each
 /// keyed by its store-relative source exactly as a spec or an asset is.
 fn stored_workspaces(
-    root: &Path,
+    keys: &Keys<'_>,
     workspaces: &test_cabinet_core::test_case::EngineWorkspaces,
 ) -> Result<StoredWorkspace> {
     let mut by_engine = std::collections::BTreeMap::new();
@@ -895,7 +1317,7 @@ fn stored_workspaces(
         let files = workspaces
             .get(engine)
             .iter()
-            .map(|file| stored_workspace(root, file))
+            .map(|file| stored_workspace(keys, file))
             .collect::<Result<Vec<_>>>()?;
         by_engine.insert(engine.to_string(), files);
     }
@@ -910,12 +1332,12 @@ fn stored_workspaces(
 /// leaves the driver's [`materialize_version`](test_cabinet_core::backend_client::materialize_version) unable to fetch or locate them, so
 /// every backend-driven performance run resolves an empty scored set and aborts.
 fn stored_case(
-    root: &Path,
+    keys: &Keys<'_>,
     case: &test_cabinet_core::test_case::PerformanceCase,
 ) -> Result<StoredCase> {
     Ok(StoredCase {
-        input: relative_key(root, &case.input)?,
-        expected: relative_key(root, &case.expected)?,
+        input: keys.of(&case.input)?,
+        expected: keys.of(&case.expected)?,
         fuel_ceiling: case.fuel_ceiling,
         kind: case.kind,
     })
@@ -924,13 +1346,13 @@ fn stored_case(
 /// Expand an asset path (file or directory) into one `StoredAsset` per file. A
 /// directory is walked recursively; the `dest` mirrors each file's path relative
 /// to the version root, matching how the runner seeds assets.
-fn expand_asset(root: &Path, asset_path: &Path, out: &mut Vec<StoredAsset>) -> Result<()> {
+fn expand_asset(keys: &Keys<'_>, asset_path: &Path, out: &mut Vec<StoredAsset>) -> Result<()> {
     if asset_path.is_dir() {
         for entry in std::fs::read_dir(asset_path)? {
-            expand_asset(root, &entry?.path(), out)?;
+            expand_asset(keys, &entry?.path(), out)?;
         }
     } else {
-        let key = relative_key(root, asset_path)?;
+        let key = keys.of(asset_path)?;
         out.push(StoredAsset {
             dest: key.clone(),
             source: key,
@@ -939,19 +1361,55 @@ fn expand_asset(root: &Path, asset_path: &Path, out: &mut Vec<StoredAsset>) -> R
     Ok(())
 }
 
-/// The forward-slash path of `path` relative to `root`, used as a store key.
-fn relative_key(root: &Path, path: &Path) -> Result<String> {
-    let rel = path.strip_prefix(root).map_err(|_| {
-        BackendError::BadRequest(format!(
-            "path `{}` is not inside the version folder",
-            path.display()
-        ))
-    })?;
-    Ok(to_forward_slash(rel))
+/// How a resolved file's host path becomes the key it is stored and served under.
+///
+/// A file copied out of the version folder keeps its layout, so its key is its path
+/// relative to that folder. A suite's *rendered* specification has no such path —
+/// it is written into the resolution's materials directory rather than into the
+/// suites checkout, which The Spec Cabinet owns and ingest never writes to — so it
+/// is copied into the store under the path it seeds at and recorded here.
+pub(crate) struct Keys<'a> {
+    /// The version folder the copied tree came from.
+    root: &'a Path,
+    /// Files resolved outside that folder, by host path, each carrying the store
+    /// key it was copied in under.
+    relocated: std::collections::BTreeMap<PathBuf, String>,
+}
+
+impl<'a> Keys<'a> {
+    /// Keys for a version whose every file came out of its own folder.
+    fn rooted(root: &'a Path) -> Self {
+        Self {
+            root,
+            relocated: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// Keys for a version some of whose files were copied in from elsewhere.
+    pub(crate) fn relocated(
+        root: &'a Path,
+        relocated: std::collections::BTreeMap<PathBuf, String>,
+    ) -> Self {
+        Self { root, relocated }
+    }
+
+    /// The store key of one resolved file.
+    pub(crate) fn of(&self, path: &Path) -> Result<String> {
+        if let Some(key) = self.relocated.get(path) {
+            return Ok(key.clone());
+        }
+        let rel = path.strip_prefix(self.root).map_err(|_| {
+            BackendError::BadRequest(format!(
+                "path `{}` is not inside the version folder",
+                path.display()
+            ))
+        })?;
+        Ok(to_forward_slash(rel))
+    }
 }
 
 /// Render a path with forward-slash separators (the store key convention).
-fn to_forward_slash(path: &Path) -> String {
+pub(crate) fn to_forward_slash(path: &Path) -> String {
     path.components()
         .filter_map(|c| match c {
             std::path::Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
@@ -968,7 +1426,7 @@ fn to_forward_slash(path: &Path) -> String {
 /// `.cargo`): they are preserved so a backend-driven run seeds the same set a
 /// local run does. The allowlist is shared with `core`'s `collect_workspace_files`
 /// via [`is_seeded_dotfile`], which keeps the two in lockstep.
-fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
+pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
@@ -1017,3 +1475,11 @@ fn copy_symlink(from: &Path, to: &Path) -> Result<()> {
 #[cfg(test)]
 #[path = "ingest.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ingest.changed.test.rs"]
+mod changed_tests;
+
+#[cfg(test)]
+#[path = "ingest.previews.test.rs"]
+mod preview_tests;

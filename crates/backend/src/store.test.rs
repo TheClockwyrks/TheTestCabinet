@@ -163,6 +163,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             variant: None,
             review: None,
         }],
+        suite: None,
     }
 }
 

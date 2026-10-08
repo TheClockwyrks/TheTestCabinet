@@ -1,0 +1,17 @@
+description = "Ball spin."
+
+[[function]]
+name = "state"
+kind = "query"
+signature = "state(): SpinState"
+description = "Reports the ball's current spin."
+
+[[function]]
+name = "set"
+kind = "command"
+signature = "set(spin: Vector2): void"
+description = "Sets the ball's spin."
+
+[[function.parameter]]
+name = "spin"
+description = "The spin to apply, in revolutions per second."
