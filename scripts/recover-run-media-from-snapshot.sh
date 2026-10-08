@@ -16,7 +16,7 @@
 # the Node script is base64-encoded and passed as a positional arg, decoded, and piped
 # to `node -` inside the backend container, which reaches the backend over localhost and
 # the public snapshot read URL over its normal internet egress. This is the same robust
-# "arg, not stdin redirect" shape reingest-cluster.sh / backfill-run-media.sh use.
+# "arg, not stdin redirect" shape backfill-run-media.sh uses.
 #
 # Usage (the target environment and source prefix are REQUIRED):
 #   scripts/recover-run-media-from-snapshot.sh --env prod --source-prefix snapshots/2026-07-10T1901Z-c921bb6b            # DRY RUN

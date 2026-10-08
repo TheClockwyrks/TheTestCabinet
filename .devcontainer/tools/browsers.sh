@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Installs the browser engines the web app's tests are driven against.
+# Installs the browser engines the workspace's Playwright launches: the web
+# app's browser tests run against all three, and Chromium is also what the
+# case-harness suite, the validator's browser driver and the served
+# validator-project tests in the Rust suite launch.
 #
 # The set is named once, in ENGINES below, and system/browser-deps.sh installs
 # the libraries for the same three. WebKit stands in for Safari. Apple
@@ -18,6 +21,11 @@
 # libraries they link against are apt's, installed as root beforehand by
 # system/browser-deps.sh. The architecture is Playwright's to resolve, the way
 # it resolves the package list — see "Architecture" in README.md.
+#
+# PLAYWRIGHT_VERSION (docker-compose.yml) has to match the `playwright` the
+# workspace installs (packages/case-harness, packages/browser-driver), because
+# Playwright resolves a browser build per client version: a mismatch installs a
+# Chromium the tests never ask for.
 #
 # This runs at container build time, and is also what picks up a moved pin in a
 # container built before it moved, without waiting for a rebuild:

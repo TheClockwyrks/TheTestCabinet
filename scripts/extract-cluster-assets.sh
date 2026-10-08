@@ -13,7 +13,7 @@
 # Why it can't just `kubectl cp` like the local script does: the deployed clusters
 # have a PRIVATE API server and the artifact service is behind the INTERNAL ingress,
 # so from a dev box there is neither a usable kubeconfig nor a reachable artifact URL.
-# Like the other remote scripts (reingest-cluster.sh, backfill-run-media.sh) this
+# Like the other remote tools (tcab ingest --env, backfill-run-media.sh) this
 # drives the cluster with `az aks command invoke`, which needs only an authenticated
 # `az`. That gives us a command channel but no file channel — an invoke returns its
 # command's stdout and nothing else — so the tree comes back as base64 over stdout:

@@ -35,8 +35,10 @@ passes in the pipeline exactly when it passes here.
   [Static builds](#static-builds).
 - Node and npm, which the web app, the documentation site, the prose gates and
   Prettier run on.
-- Three browser engines, which the web app's browser tests are driven against.
-  See [Browsers](#browsers).
+- Three browser engines, which the web app's browser tests are driven against,
+  and whose Chromium the case-harness suite, the validator's browser driver and
+  the Rust suite's served validator-project tests launch. See
+  [Browsers](#browsers).
 - `make`, `python3`, `shellcheck`, `uv` and a pinned `pre-commit`, which is
   what runs the gates.
 - The Claude Code and Codex CLIs, because a harness session runs inside the
@@ -84,9 +86,11 @@ images and this image all install from, with the Rust arm's deferring to
 command that installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
-`post-create.sh` installs the git hook through `scripts/setup-hooks.sh`, places
-cargo's target directory (see [Where cargo builds](#where-cargo-builds)) and
-installs the npm workspace's locked dependencies when the container is created.
+`post-create.sh` populates the `test-suites/` submodule, the suites checkout the
+local backend ingests (not `cold-storage/`, which is optional and about 2 GB),
+installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
+directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
+workspace's locked dependencies when the container is created.
 A folder that `git init` has not been run in yet takes the rest and says the
 hook was skipped. Nothing runs in the background afterwards: when it returns,
 the container builds the whole workspace.
@@ -195,6 +199,10 @@ client version. A bump therefore moves both, and
 `ci/gates/web-browser-test.py` reads the two and fails with both values
 when they disagree, rather than leaving the mismatch to surface inside the
 browser provider.
+
+The `playwright` in `packages/case-harness` and `packages/browser-driver`
+follows the same pin, for the same reason: those launch the Chromium the image
+holds, and a different client version asks for a build that is not there.
 
 Both scripts run at build time, so a machine opening the container downloads
 nothing. The engines occupy a little over a gigabyte in `~/.cache/ms-playwright`,

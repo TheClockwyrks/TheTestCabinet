@@ -315,7 +315,6 @@ tcab-backend.sqlite*
 /.tcab-driver/
 /tcab-artifacts/
 .vendor/
-/.reingest-timestamp
 *.pyo
 *.pyd
 .pytest_cache/
