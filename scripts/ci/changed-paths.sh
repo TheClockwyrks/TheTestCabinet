@@ -117,6 +117,7 @@ reaches_rust() { # path
 			scripts/ci/seeded-contract-check.sh | scripts/ci/service-image.sh | \
 			scripts/ci/service-images.sh | scripts/ci/settle-workloads.sh | \
 			scripts/ci/spec-vocabulary-check.mjs | scripts/ci/submodule-pins.sh | \
+			scripts/ci/submodules.sh | \
 			scripts/ci/tcab-image-pin.sh) return 1 ;;
 	esac
 	local pin

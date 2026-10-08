@@ -27,6 +27,18 @@
 # file in the list below busts the `COPY . .` cache, which is the whole point: those
 # edits genuinely shouldn't trigger an image rebuild.
 
+# SUBMODULES. A path in a submodule is re-included like any other, by naming it (the
+# submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
+# every submodule this file does not name out of the context, cold-storage's ~2 GB
+# of baseline media included. None is named today. What a submodule path adds is a
+# precondition: the build reads what the checkout it runs in holds, and a checkout
+# leaves every submodule empty until it is initialized. So the image jobs run
+# `scripts/ci/submodules.sh init --build-context`, which initializes exactly the
+# submodules this file admits any part of (`scripts/ci/build-context.sh
+# --submodules` prints them), and a local image build needs the same first. The
+# build-context gate checks a re-included path inside a submodule against that
+# submodule's checkout, and names it as unverified where the checkout has none.
+
 # Ignore everything by default…
 *
 

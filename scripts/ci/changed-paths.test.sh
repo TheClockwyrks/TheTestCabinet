@@ -89,6 +89,8 @@ table "a documentation page reaches nothing" "rust=false gg=false submodules=fal
 	apps/docs/src/content/docs/development/building.md
 table "a CI script the Rust jobs never run reaches nothing" "rust=false gg=false submodules=false" \
 	scripts/ci/registry-purge.sh scripts/ci/registry-purge.test.sh scripts/ci/README.md
+table "the submodule init helper reaches nothing" "rust=false gg=false submodules=false" \
+	scripts/ci/submodules.sh scripts/ci/submodules.test.sh
 table "the web app reaches nothing" "rust=false gg=false submodules=false" \
 	apps/web/src/main.tsx apps/site/src/index.ts
 table "the board, manifests and dotfiles reach nothing" "rust=false gg=false submodules=false" \

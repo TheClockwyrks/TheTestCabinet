@@ -73,28 +73,62 @@ superproject's name may differ.
 ### Mirrors and pins
 
 Each submodule repository carries its own Azure pipeline,
-`.azure-pipelines/mirror.yml`, whose one job force-pushes `master` to the GitHub
-repository of the same name. That job is the only writer of the mirror.
+`.azure-pipelines/mirror.yml`, whose one job pushes to the GitHub repository of
+the same name. That job is the only writer of the mirror. cold-storage's pushes
+`master` alone today.
 
-A submodule commit may be pinned once it is on that submodule's `master`. Push
-the submodule commit to `master` first, then commit the moved pointer here.
+A pin on superproject branch B must be on the submodule's branch B or on its
+`master`. On `master` that is the submodule's `master` alone, and a submodule
+with no branch B is held to its `master`. Push the submodule commit to one of
+those branches first, then commit the moved pointer here.
 `scripts/ci/submodule-pins.sh` checks this, and the pipeline's `submodule_pins`
-job runs it on every push: it fails when a pinned commit is not an ancestor of
-the submodule's `master` on the host the superproject was cloned from. A
-superproject commit that reaches the GitHub mirror therefore names only
-submodule commits the mirror already holds. The check
-fetches commits without trees or blobs, so it finishes in seconds, and
-`scripts/ci/submodule-pins.test.sh` is its offline table test.
+job runs it on every push. It fails when a pinned commit is not an ancestor of
+either branch on the host the superproject was cloned from.
+
+The script decides B for itself. A pull request is checked against the branch
+it merges into, because that is where its pins land, and any other pipeline run
+against the branch it built. Off an agent, B is the branch checked out, and
+`--branch <b>` names another. A tag or a detached HEAD is held to `master`.
+
+The rule keeps a clone of the GitHub mirror able to fetch its submodules: a
+superproject commit on branch B names only submodule commits the mirror's B or
+`master` holds, provided each submodule's mirror pushes B. Until a submodule's
+mirror job pushes `staging` and `nightly` as well as `master`, pin it to
+`master` there. The check fetches commits without trees or blobs, so it
+finishes in seconds, and `scripts/ci/submodule-pins.test.sh` is its offline
+table test.
 
 ### Submodules in CI
 
 No gate reads a submodule, so the template's gate jobs check out none, which
-also keeps the baseline media out of every devcontainer start. The one job that
-reads `cold-storage` is
-`submodule_pins`. It checks this repository out without submodules and adds an
-inline checkout of `cold-storage`, which is what puts that repository in the
-scope of the job's access token, then runs `scripts/ci/submodule-pins.sh` with
-the token in `SYSTEM_ACCESSTOKEN`.
+also keeps the baseline media out of every devcontainer start. Nothing in the
+pipeline initializes submodules recursively. A job that needs a submodule's
+files names it and runs `scripts/ci/submodules.sh init <path>...`, which
+initializes exactly those submodules at their pinned commits, one commit deep,
+without their own submodules. `submodules.sh list` prints what `init` would
+initialize and touches nothing.
+
+`submodules.sh init --build-context` also initializes every submodule the root
+`.dockerignore` re-includes any part of, as `scripts/ci/build-context.sh
+--submodules` prints them. The image jobs (`audiostore_<arch>`,
+`runimages_<arch>`, `services_<arch>`) run it after their checkout. No submodule
+is in the build context today, so it says so and does nothing. A path in a
+submodule enters the context the way any path does, by a re-inclusion that
+names it, and the `build-context` gate checks it against that submodule's
+checkout. When the checkout has not initialized the submodule, the gate lists
+the path as unverified rather than failing.
+
+The project scopes the job's access token to the repositories a job names. So
+a job that fetches a submodule also checks the submodule's repository out,
+which puts the repository in the token's scope. `submodule_pins` does this for
+every submodule: `.azure/project/jobs.yml` lists them in its `submodules`
+parameter, with each one's path and repository, and the job checks each
+repository out beside this one before it runs `scripts/ci/submodule-pins.sh`
+with the token in `SYSTEM_ACCESSTOKEN`. `scripts/ci/submodules.sh check` holds
+that list to `.gitmodules`, and `scripts/ci/submodules.test.sh` runs the check
+against the repository, so the `shell-tests` gate fails on a submodule added to
+one and not the other. An image job that comes to build from a context
+admitting a submodule needs the same checkout of its repository.
 
 ## Layout
 
@@ -950,7 +984,7 @@ passing anything else, and on a file under `.azure/` naming an image at all.
 | `rust_build` | every push; a pull request that reaches the Rust workspace | `rust-build.sh`, the link of every target. When no seed exists for this `Cargo.lock`, it also runs the template gates' clippy, doc and test builds and saves `target/` under a key the template `rust` job restores |
 | `binary_linux` | every push; a pull request that reaches the Rust workspace | The release build and tests of `tcab`, its doctests, and the binary smoke |
 | `binary_windows` | every push; a pull request that reaches the Rust workspace | The same on `windows-2022` |
-| `submodule_pins` | every push; a pull request that touches a submodule pin | `submodule-pins.sh`; see [Submodules in CI](#submodules-in-ci) |
+| `submodule_pins` | every push; a pull request that touches a submodule pin | `submodule-pins.sh`: every pin is on the submodule's branch of the same name or on its `master`; see [Mirrors and pins](#mirrors-and-pins) and [Submodules in CI](#submodules-in-ci) |
 | `gg_amd64`, `gg_arm64` | `master`, `staging` | The static gg binary per architecture (`gg-dist.sh`) |
 | `audiostore_<arch>`, `runimages_<arch>`, `services_<arch>` and their manifests | `master`, `staging` | Every image, built natively per architecture and fused by `manifest.sh`; the eight service images of an architecture on one builder, so their Rust compile happens once |
 | `mirror` | `master`, `staging`, `nightly` | Pushes the branch to GitHub, after every check job; see [The GitHub mirror](#the-github-mirror) |

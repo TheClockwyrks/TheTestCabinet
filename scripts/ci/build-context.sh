@@ -73,8 +73,21 @@
 # Needs no toolchain and no history — it reads the checked-out tree — so the
 # `build-context` gate (ci/gates/build-context.py) runs it as a commit hook and in CI.
 #
+# SUBMODULES. A path the allowlist re-includes may lie in a submodule (the plan is
+# for contracts' crates and the engines to arrive that way), and a submodule's
+# files are not the superproject's: `git ls-files` lists the gitlink alone, and a
+# checkout that has not initialized the submodule holds an empty directory there.
+# So a source, a re-included tree or a baked-in path inside a submodule is
+# checked against that submodule's own checkout, and one inside a submodule this
+# checkout has not initialized cannot be checked at all: it is counted and named
+# as unverified rather than failed, since no gate job initializes a submodule.
+# `--submodules` prints the submodules the root allowlist admits any part of, one
+# path per line, which is the set scripts/ci/submodules.sh initializes for a job
+# that builds from this context (`init --build-context`). See "part four" below.
+#
 # Usage:
 #   scripts/ci/build-context.sh
+#   scripts/ci/build-context.sh --submodules
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
@@ -180,9 +193,102 @@ context_includes_dir() {
 	context_includes "$dir" && return 0
 	while IFS= read -r file; do
 		context_includes "$file" && return 0
-	done < <(git -C "$REPO_ROOT" ls-files -- "$dir")
+	done < <(tracked_files_under "$dir")
 	return 1
 }
+
+# --- submodules -------------------------------------------------------------
+
+# The path of every submodule .gitmodules declares, one per line.
+submodule_paths() {
+	[[ -f "$REPO_ROOT/.gitmodules" ]] || return 0
+	git config -f "$REPO_ROOT/.gitmodules" --get-regexp '^submodule\..*\.path$' 2>/dev/null | awk '{ print $2 }'
+}
+mapfile -t SUBMODULES < <(submodule_paths)
+
+# True when the submodule at `$1` is initialized here: its directory holds a
+# checkout, which a `.git` file or directory at its root marks.
+submodule_checked_out() {
+	[[ -e "$REPO_ROOT/$1/.git" ]]
+}
+
+# The submodule `$1` lies in (the submodule's own path, or a path under it),
+# printed; returns 1 when it lies in none.
+submodule_of() {
+	local path="$1" sub
+	for sub in "${SUBMODULES[@]}"; do
+		if [[ "$path" == "$sub" || "$path" == "$sub/"* ]]; then
+			printf '%s\n' "$sub"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The submodule `$1` lies in when that submodule is NOT checked out here, so
+# nothing about the path can be verified; returns 1 otherwise.
+absent_submodule_of() {
+	local sub
+	sub="$(submodule_of "$1")" || return 1
+	submodule_checked_out "$sub" && return 1
+	printf '%s\n' "$sub"
+}
+
+# Every tracked file under `$1`, repository-relative, the files of a checked-out
+# submodule at or under it included. `git ls-files` lists a submodule as its
+# gitlink alone, so each submodule's own index is read for it; one that is not
+# checked out contributes nothing, which its callers report as unverified.
+tracked_files_under() {
+	local dir="$1" sub
+	git -C "$REPO_ROOT" ls-files -- "$dir"
+	for sub in "${SUBMODULES[@]}"; do
+		submodule_checked_out "$sub" || continue
+		if [[ "$dir" == "$sub" ]]; then
+			git -C "$REPO_ROOT/$sub" ls-files | sed "s#^#$sub/#"
+		elif [[ "$dir" == "$sub/"* ]]; then
+			git -C "$REPO_ROOT/$sub" ls-files -- "${dir#"$sub/"}" | sed "s#^#$sub/#"
+		elif [[ "$sub" == "$dir/"* ]]; then
+			git -C "$REPO_ROOT/$sub" ls-files | sed "s#^#$sub/#"
+		fi
+	done
+}
+
+# The submodules the loaded allowlist admits any part of: the submodule itself
+# (named, or under a re-included ancestor), or a path a re-inclusion names inside
+# it. A re-inclusion carries no wildcard (the shape check below enforces it), so
+# a prefix test of its text is exact.
+context_submodules() {
+	local sub index raw
+	for sub in "${SUBMODULES[@]}"; do
+		if context_includes "$sub"; then
+			printf '%s\n' "$sub"
+			continue
+		fi
+		for index in "${!DI_RAW[@]}"; do
+			((DI_NEGATED[index] == 1)) || continue
+			raw="${DI_RAW[$index]#/}"
+			raw="${raw%/}"
+			if [[ "$raw" == "$sub/"* ]]; then
+				printf '%s\n' "$sub"
+				break
+			fi
+		done
+	done
+}
+
+if [[ "${1:-}" == "--submodules" ]]; then
+	load_dockerignore "$REPO_ROOT/.dockerignore"
+	context_submodules
+	exit 0
+fi
+[[ $# -eq 0 ]] || {
+	echo "usage: scripts/ci/build-context.sh [--submodules]" >&2
+	exit 2
+}
+
+# Paths inside a submodule this checkout has not initialized, which a check met
+# and could not verify, as "<submodule> <path>".
+UNVERIFIED=()
 
 # --- the matcher's teeth ----------------------------------------------------
 
@@ -360,6 +466,10 @@ check_dockerfile() {
 			[[ "$source" == *'*'* || "$source" == *'?'* || "$source" == *'['* ]] && continue
 			normalized="${source#./}"
 			checked=$((checked + 1))
+			if absent="$(absent_submodule_of "$normalized")"; then
+				UNVERIFIED+=("$absent $dockerfile:$lineno copies '$source'")
+				continue
+			fi
 			if [[ ! -e "$REPO_ROOT/$normalized" ]]; then
 				echo "error: $dockerfile:$lineno copies '$source', which does not exist in the repository." >&2
 				problems=$((problems + 1))
@@ -561,6 +671,10 @@ while IFS= read -r hit; do
 	if ! baked_resolved="$(normalize_path "$(dirname "$baked_file")/$baked_path")"; then
 		echo "error: $baked_file:$baked_line includes '$baked_path', which climbs above the repository root." >&2
 		problems=$((problems + 1))
+		continue
+	fi
+	if absent="$(absent_submodule_of "$baked_resolved")"; then
+		UNVERIFIED+=("$absent $baked_file:$baked_line bakes in '$baked_resolved'")
 		continue
 	fi
 	if [[ ! -e "$REPO_ROOT/$baked_resolved" ]]; then
@@ -891,6 +1005,24 @@ for pathspec in "${enumerated_families_root[@]}"; do
 	check_family ".dockerignore" "$pathspec"
 done
 
+# --- part four: submodules in the build context ------------------------------
+
+# A submodule enters the context the way any path does, by a re-inclusion that
+# names it or a path inside it; `*` at the top keeps every other submodule out,
+# cold-storage's media included. What changes is who must provide its files: a
+# build sees what the checkout it runs in has, and a fresh checkout leaves every
+# submodule empty. So every job that builds an image from this context runs
+# `scripts/ci/submodules.sh init --build-context`, which initializes exactly the
+# set printed by `--submodules`, and a developer runs the same before a local
+# image build. Here each admitted submodule is listed, and one this checkout has
+# not initialized is named with every check that could not be made inside it.
+load_dockerignore "$REPO_ROOT/.dockerignore"
+mapfile -t context_subs < <(context_submodules)
+for sub in "${context_subs[@]}"; do
+	submodule_checked_out "$sub" && continue
+	UNVERIFIED+=("$sub the root allowlist re-includes it or a path in it")
+done
+
 # --- the Rust the case images pin, against the Rust the template decides -------
 
 # See THE RUST PIN in the header. `rust-toolchain.toml` is template-owned, so this
@@ -945,3 +1077,15 @@ echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tr
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
 echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."
 echo "$rust_pins_checked Rust pin(s) under containers/ name rust-toolchain.toml's channel, $rust_channel."
+if ((${#context_subs[@]} == 0)); then
+	echo "No submodule is in the build context."
+else
+	echo "${#context_subs[@]} submodule(s) in the build context: ${context_subs[*]}."
+fi
+if ((${#UNVERIFIED[@]} > 0)); then
+	echo "${#UNVERIFIED[@]} check(s) inside a submodule this checkout has not initialized were NOT made:"
+	for entry in "${UNVERIFIED[@]}"; do
+		echo "  ${entry%% *}: ${entry#* }"
+	done
+	echo "  Initialize them to check them: scripts/ci/submodules.sh init --build-context"
+fi

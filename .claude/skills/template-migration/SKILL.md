@@ -63,3 +63,22 @@ copier update --trust --conflict inline
 
 `--vcs-ref <tag>` names a version other than the newest, and `--defaults` keeps
 every recorded answer rather than asking again.
+
+## This project's edits of rendered files
+
+Some files the template renders carry project edits that an update will meet
+as a conflict, or merge silently into a shape the project no longer holds.
+Each is listed here with what to keep, so a conflict in it is resolved by
+keeping the project's side of these regions and taking the template's
+everywhere else.
+
+- `.dockerignore`: the template renders a short allowlist; the project's is a
+  much longer one, with a comment per re-inclusion, and the template's lines
+  are a subset of it. Keep the project's file and fold in any new template
+  line. Its `SUBMODULES` paragraph, above `*`, says how a path in a submodule
+  enters the build context and that the image jobs initialize it with
+  `scripts/ci/submodules.sh init --build-context`; keep it, and keep any
+  re-inclusion of a submodule path below it. `scripts/ci/build-context.sh`
+  reads the file for that set (`--submodules`), so a re-inclusion lost in a
+  merge drops the submodule from the image jobs' init as well as from the
+  context.
