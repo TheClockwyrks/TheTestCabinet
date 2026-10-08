@@ -884,7 +884,7 @@ not trigger it; a `v*` tag runs the release pipeline instead (see
 | `docs` | `master`, `staging` | The project's: deploys this site |
 
 Every stage after `gates` depends on it, so a red job in the gates stage (a
-gate, a project job, or a template job past its 60 minutes) stops every image
+gate, a project job, or a template job past its timeout) stops every image
 job, the mirror, the publish and deploy, `prod`, `gg_release` and `docs`.
 
 ### The gate jobs
@@ -895,7 +895,12 @@ the rest, every project gate but `contract-drift` included. Each step runs
 `uv run --quiet --project ci gate run <id>`, the command a commit hook and
 `make gate` run it with, so a failing check is one red step named for it.
 Each upstream hook runs as `pre-commit run <id> --all-files` in a step of its
-own in the `web` job. Each job is capped at 60 minutes.
+own in the `web` job. The `web` job is capped at 60 minutes and `rust` at 120:
+a warm `rust` job takes about 45 minutes and a cold one about 65, and a
+pipeline cache is scoped to the branch that saved it, so a branch that has not
+run in a week (`master` between releases) starts cold. The free tier's
+60-minute cap on a Microsoft-hosted agent does not apply, because the
+organisation's purchased parallel jobs lift it to 360.
 
 The project adds steps to both through `.azure/project/setup-steps.yml` and
 `.azure/project/steps.yml`:
@@ -979,11 +984,12 @@ merge commit, sets every variable to `true`. The `checks` job accepts a skipped
 check job only when `paths` itself succeeded, so a failed `paths` job fails the
 run rather than waving it through.
 
-`rust_build` exists because the template's `rust` job is one job capped at 60
-minutes, and a pipeline cache is saved only after every step of a job
-succeeded: a cold `rust` job that times out never warms its own cache. The
-first run after a template update that moves the compiler, or after the cache
-expires, may still time out once; queue a second run.
+`rust_build` exists because the template's `rust` job is one job with a
+timeout, and a pipeline cache is saved only after every step of a job
+succeeded: a cold `rust` job that times out never warms its own cache. Its
+seed is what keeps a cold run well inside the `rust` job's 120 minutes; a run
+that still times out, after a template update that moves the compiler, is
+queued a second time, warm from this job's seed.
 
 The image jobs sit in the gates stage on purpose: the template's publish stage
 retags `tcab-backend:<commit>`, which they build, and the staging deploy pins
