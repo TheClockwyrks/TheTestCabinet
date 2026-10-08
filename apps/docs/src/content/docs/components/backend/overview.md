@@ -38,6 +38,21 @@ screenshots as it goes. The repository is the editing source and the store is
 the distribution source a runner resolves at run time. Ingest caches a version
 rather than transforming it.
 
+The scan also reads the [test suites](/test-suites/overview/) tree. Every
+definition a suite version offers is lowered into the same store as an ordinary
+test case version, recording the suite coordinate it came from, so a runner
+resolves a suite-defined case through the routes it resolves an authored one
+through. The suite's own entities are stored beside them and served by the suite
+read endpoints, which is what lets a console present a suite and the cases it
+defines.
+
+The scan reads each suite's exported versions and skips its drafts. A backend
+with `TCAB_BACKEND_INGEST_PREVIEWS` set also reads the
+[previews](/test-suites/overview/#previews) The Spec Cabinet writes to
+the suites tree's `.previews/` folder. Previews are experimental and exist only
+in the checkout they were written to, so the setting is enabled for the local
+development stack alone.
+
 A version's baseline validation media lives in the checkout's `cold-storage`
 submodule rather than in its folder. Ingest copies it into the stored version's
 `validation-baseline/`, where the API serves it and the snapshot publishes it
@@ -238,6 +253,7 @@ regenerates the snapshot, skipping the upload and the rebuild.
 | `TCAB_BACKEND_AUTH_URL`              | The auth service bearer tokens are verified against.                                                                                                                                                               | `http://127.0.0.1:8789`                   |
 | `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                  | —                                         |
 | `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                        | `false`                                   |
+| `TCAB_BACKEND_INGEST_PREVIEWS`       | Also ingest the test suite previews The Spec Cabinet writes. Enabled for the local development stack.                                                                                                              | `false`                                   |
 | `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                    | `local`                                   |
 | `TCAB_SNAPSHOT_COALESCE_MS`          | Sliding debounce a burst of publishes is coalesced over.                                                                                                                                                           | `60000`                                   |
 | `TCAB_SNAPSHOT_RETENTION_HOURS`      | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                             | `24`                                      |

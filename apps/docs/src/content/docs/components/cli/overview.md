@@ -57,6 +57,31 @@ only a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 
 These listings accept `--json`.
 
+`run`, `seed`, `prompt` and `validate` each name a test case by its slug and
+version, resolving it against the local checkout or the backend. A
+[test suite](/test-suites/overview/)'s test case is named the same way, by the
+catalog identity its definition was ingested under. `--variant` defaults to
+`base`, which is the only variant a suite-defined test case carries; naming a
+variant the case does not declare is refused.
+
+### Definitions
+
+- `ingest` scans the backend's checkout and copies what it finds into the
+  [definition store](/components/backend/overview/), so edits to test cases and
+  test suites reach a running backend. Targets are positional, each a bare id
+  expanding to every version it declares or an `id@version` naming exactly one,
+  and naming none scans the whole checkout. `--force` overwrites a version the
+  store already holds, which is what iterating in place on one version string
+  needs. The command prints a line per version as it lands and closes with the
+  ingested and skipped counts. Requires `TCAB_BACKEND_URL`; the endpoint is open,
+  so no account is needed. See
+  [Running](/development/running/) for the local loop this sits in.
+  `--env <staging|prod>` targets a deployed environment instead, through
+  `az aks command invoke`: the backend pod's ingest sidecar refreshes its
+  checkout, with the test suites submodule, to the tip of the branch the
+  environment ingests, then scans it. It needs only an authenticated `az`, and
+  the feed is printed once the invoke returns.
+
 ### Accounts
 
 - `register` creates an account on the [auth
@@ -110,7 +135,7 @@ subdomains.
 
 The command contacts no backend, so it requires only `wrangler`. The private
 backends ingest the lockfile from their own checkout on the next
-`scripts/reingest-cluster.sh`, which upserts the `case_reference_build` table the
+`tcab ingest --env <env>`, which upserts the `case_reference_build` table the
 version response and public snapshot read. The command also refreshes each
 variant's committed baseline validation media from the build it deploys.
 `--skip-baselines` deploys without re-capturing when that media is current.
@@ -214,6 +239,9 @@ of these is a fault the tree earned:
 - An [adversarial](/testing/adversarial/overview/) submission forfeited its
   match, which is a failure to present a playable controller. A loss or a draw
   is a result rather than a fault.
+- A requirement of a [test suite](/test-suites/overview/)'s test case failed, or
+  a functional one was left undecided by validators that could not be run. A
+  non-functional requirement is judged by review and decides nothing here.
 
 `capture-baselines` exits non-zero when any targeted reference build failed to
 build or left a unit that did not run clean. The sweep finishes every target

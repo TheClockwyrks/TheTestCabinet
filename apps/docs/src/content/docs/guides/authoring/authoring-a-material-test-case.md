@@ -224,7 +224,7 @@ Editing an already-ingested case needs a forced re-ingest, because the backend's
 def store is immutable per case version:
 
 ```sh
-scripts/reingest.sh --force caldera-basalt
+tcab ingest caldera-basalt --force
 ```
 
 ## Next steps

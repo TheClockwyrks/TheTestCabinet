@@ -51,7 +51,7 @@ recovery is about refilling those volumes before the next publish regenerates th
 snapshot from them.
 
 1. Definition store. Re-ingested by the in-pod ingest sidecar on backend start,
-   or on demand with `scripts/reingest-cluster.sh --env <env>`. This restores
+   or on demand with `tcab ingest --env <env>`. This restores
    case metadata, reference baselines, and seeded specs.
 2. Run media. The proof and asset bytes are gone from both wiped volumes, and
    the previous snapshot still holds them in R2. Re-seed them with

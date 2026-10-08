@@ -99,7 +99,7 @@ The roll also publishes the catalog. Every deploy changes the backend's image
 tag, so the backend pod restarts, and its ingest sidecar force-ingests the
 `master` tip from the GitHub mirror, which the pipeline pushed before it
 deployed. The catalog the backend serves is therefore the one that shipped with
-the commit. `scripts/reingest-cluster.sh --env prod` refreshes it between
+the commit. `tcab ingest --env prod` refreshes it between
 deploys.
 
 ## Rolling back

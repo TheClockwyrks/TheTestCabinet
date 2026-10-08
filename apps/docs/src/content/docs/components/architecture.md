@@ -89,6 +89,21 @@ The [public site](/components/site/overview/) is a fully static, backend-less
 deployment. Publishing exports a public snapshot of the published runs that the
 site builds from, so the gallery has no live dependency on the private backend.
 
+## Test cases and test suites
+
+The backend's catalog has two sources in the checkout it ingests: the authored
+test cases under `test-cases/`, and the [test suites](/test-suites/overview/)
+in the `test-suites/` submodule, a separate repository. A suite is one authored
+project holding specifications, validators, assets and reference
+implementations, and each of its exported versions offers one or more test case
+definitions. The core's suite model reads and validates a suite version, and the
+backend's ingest lowers every definition it offers into an ordinary test case
+version that records the suite coordinate it came from. A runner therefore
+resolves a suite-defined case exactly as it resolves an authored one. The suite's
+own entities are stored beside the lowered versions, and the console's Test
+Suites tab presents them. The Test Cabinet reads the suites tree and never
+writes it.
+
 ## A run
 
 At a high level, launching a run must:

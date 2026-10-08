@@ -40,8 +40,9 @@ own machine is covered by [Running](/development/running/).
 ## Cloning
 
 The repository lives on Azure Repos and is mirrored to GitHub, and a clone from
-either host works the same way. Each submodule is a separate repository, such as
-[`cold-storage`](#cold-storage).
+either host works the same way. Each submodule is a separate repository:
+[`cold-storage`](#cold-storage) and `test-suites`, the
+[test suites](/test-suites/overview/) checkout.
 
 A plain clone downloads the superproject alone and leaves each submodule
 directory empty. It builds and passes every gate, because nothing in the build,
@@ -51,7 +52,13 @@ when a task needs one:
 ```sh
 git clone <superproject-url>
 git submodule update --init --depth 1 cold-storage
+git submodule update --init test-suites
 ```
+
+The devcontainer populates `test-suites/` when it creates a container, because
+a local backend ingests its suites from that checkout. `.gitmodules` sets the
+submodule's tracked branch to `master`, so `git submodule update --remote
+test-suites` moves the checkout to that branch's tip.
 
 A recursive clone also downloads every submodule at the commit the superproject
 pins, which for `cold-storage` is about 2 GB of media. `--shallow-submodules`
@@ -393,13 +400,21 @@ The project's own gates, wired the same way:
 | `site-build` | The gallery's build; no hook |
 | `contract-drift` | The generated data contract is current; no hook |
 
-`.pre-commit-config.yaml` runs each gate on every commit as one hook, triggered
-by the files it judges, except the ones marked "no hook", which build the
-workspace packages or the Rust workspace before they check anything and so run
-in `make gate` and the pipeline only; `HOOKLESS` in `ci/tests/test_wiring.py`
-names them, and a gate added without a hook fails there until it is either
-given one or named too slow for a commit. `scripts/setup-hooks.sh` installs the
-hook, and the dev container runs it when the container is created.
+`.pre-commit-config.yaml` runs each gate as one hook, triggered by the files it
+judges, except the ones marked "no hook", which build the workspace packages or
+the Rust workspace before they check anything and so run in `make gate` and the
+pipeline only; `HOOKLESS` in `ci/tests/test_wiring.py` names them, and a gate
+added without a hook fails there until it is either given one or named too slow
+for a commit.
+
+Every hook runs on each commit except `rust-clippy` and `rust-doc`, which compile
+the whole workspace and so run on each push (`stages: [pre-push]`). A pre-push
+hook judges the files that differ across the pushed range, so a change to any
+Rust source in the push runs both. `scripts/setup-hooks.sh` installs both hook
+types, and the dev container runs it when the container is created. Re-run it on
+a clone set up before the pre-push hook existed, or the clippy and doc gates
+never run locally. `git commit --no-verify` and `git push --no-verify` bypass the
+respective stage.
 
 The same file carries the checks the hook framework brings from its pinned
 upstream repositories, the file checks of `pre-commit-hooks` and `shellcheck`;
@@ -562,7 +577,7 @@ exactly those five and ignores everything else in that directory.
 
 Anything that compiles `crates/gg` needs those toolchains present. That is
 `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`,
-`scripts/build-gg-static.sh`, and
+the pre-push clippy and doc hooks, `scripts/build-gg-static.sh`, and
 `scripts/gg-reference.sh`. Nothing else in the workspace depends on
 `test-cabinet-gg`, so a package-scoped build such as `-p test-cabinet-cli` and the
 release binaries need none of it.

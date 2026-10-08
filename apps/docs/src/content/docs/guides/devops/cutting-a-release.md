@@ -65,7 +65,7 @@ Each backend ingests its catalog from a stable **branch**, never a tag —
 `scripts/lib/env.sh`). Every merge to either branch deploys its commit's images,
 which restarts the backend, and the backend's ingest sidecar force-ingests the
 branch tip on start, so code and catalog ship together.
-`scripts/reingest-cluster.sh` republishes the catalog between deploys.
+`tcab ingest --env <env> --changed` republishes the catalog between deploys.
 
 ## Phase 1 — Prepare the release on `nightly`
 

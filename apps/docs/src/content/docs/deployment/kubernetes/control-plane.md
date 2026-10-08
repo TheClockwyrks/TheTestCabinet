@@ -89,18 +89,22 @@ overlay uses one of them.
   patch in (`patch-backend-ingest.yaml`).
   It shares the backend's `state` volume, writes the checkout the backend
   reads, and calls `POST /ingest` over localhost, so intra-pod traffic bypasses
-  the `NetworkPolicy` and no service token is needed. It runs one forced ingest
-  of the branch tip on backend start, then idles. Those overlays suspend the
-  base `CronJob`.
+  the `NetworkPolicy` and no service token is needed. Each refresh of the
+  checkout then updates its two submodules to the commits the branch names:
+  `cold-storage` shallowly, and `test-suites` authenticated with the read-only
+  credential in the
+  [`tcab-test-suites-credential` Secret](/deployment/overview/#secrets). It runs
+  one forced ingest of the branch tip on backend start, then idles. Those
+  overlays suspend the base `CronJob`.
 
 Every pipeline deploy changes the backend's image tag, so every deploy restarts
 the backend pod, and the sidecar re-ingests the catalog that shipped with the
 commit. It ingests once rather than on a schedule: a periodic forced re-ingest
 rewrites every version and briefly leaves each one without a manifest, which
 fails any run resolving that version mid-cycle. Publish catalog changes between
-deploys with `scripts/reingest-cluster.sh --env <env>`, which fetches the branch
-tip into the live checkout and forces one re-ingest. The backend swaps each
-version into place atomically, so it is safe to run while runs execute.
+deploys with `tcab ingest --env <env>`, which refreshes the live checkout to the
+branch tip through `az aks command invoke` and ingests it. The backend swaps
+each version into place atomically, so it is safe to run while runs execute.
 
 ## Auth service
 

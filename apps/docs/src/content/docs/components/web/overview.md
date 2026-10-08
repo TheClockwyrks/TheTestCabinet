@@ -91,6 +91,12 @@ variant and engine, reads the anchored version's own description, reads the
 case's changelog, and reads how runs of the case are scored. While an older
 version is anchored, the page names the latest version and links to it.
 
+A test suite's detail page and the version page of a test case a suite defines
+show one Reference entry per engine with an [uploaded reference
+build](/components/backend/api/#put-suitesslugversionsversionreference-buildsengine),
+played inline exactly as a legacy reference build is. An engine with no uploaded
+build is listed without a play action.
+
 A case, a run, and a game jam each show everything a run of that coordinate is
 seeded with, a jam's prior-entry READMEs included. A workspace file's body is
 fetched on demand, because a starter project can be large.

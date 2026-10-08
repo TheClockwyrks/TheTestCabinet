@@ -221,8 +221,9 @@ Before the first start, copy the host's file to `.devcontainer/.env`
 [`.devcontainer/README.md`](.devcontainer/README.md#host-files)). The container
 user is `dev`. The image carries everything a build needs, gg's eleven
 program-language toolchains included, so the first image build is long and the
-container's creation is short: `post-create.sh` installs the git hook and runs
-`npm ci`, and nothing runs in the background afterwards. cargo builds into
+container's creation is short: `post-create.sh` initializes the `test-suites`
+submodule, installs the git hook and runs `npm ci`, and nothing runs in the
+background afterwards. cargo builds into
 `target/` in the checkout, which `make clean` removes. See [`development/running.md`](apps/docs/src/content/docs/development/running.md#the-dev-container).
 
 ## Doing things (guides & quickstarts)
@@ -239,6 +240,25 @@ Task-oriented walkthroughs:
   image, credentials).
 - All commits must use the Conventional Commits format and use imperative form
   for the subject.
+
+## Test suites
+
+Test suites are the authored projects test cases are drawn from. The docs
+site's [`test-suites/`](apps/docs/src/content/docs/test-suites/) section is
+authoritative over their on-disk format: the layout, drafts, exported versions
+and previews, plus a page per file format (the suite and version manifests,
+specifications, validators, debug APIs, test case definitions, demonstrations,
+assets, reference implementations, and the showcase). The suite model lives in
+`crates/core/src/test_suite/`, the backend's suite ingest and API in
+`crates/backend/`, and the console's Test Suites tab and detail pages in
+`packages/ui/`.
+
+Authored suites live in a separate test suites repository, included here as a
+git submodule at [`test-suites/`](test-suites/), one folder per suite holding
+its editable drafts and the immutable versions exported from them. The Test
+Cabinet ingests only exported versions (and the previews beside them); it
+never writes that tree. The authoring app, The Spec Cabinet, is developed
+outside this branch.
 
 ## Working in this repo (skills)
 

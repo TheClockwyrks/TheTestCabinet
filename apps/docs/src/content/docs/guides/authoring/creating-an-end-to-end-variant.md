@@ -210,7 +210,7 @@ The backend's definition store is immutable per case version, so force a
 re-ingest before running:
 
 ```sh
-scripts/reingest.sh --force <slug>
+tcab ingest <slug> --force
 ```
 
 Then exercise the variant with
