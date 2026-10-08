@@ -19,6 +19,15 @@
 # intra-doc links resolve, which no other gate sees, and rust-doctest runs the
 # examples in those comments, which nextest cannot.
 #
+# The hooks run at one of two moments, and which one a hook gets is decided by
+# its cost. Everything else runs on every `git commit`; rust-clippy and rust-doc
+# run on `git push` instead (`stages: [pre-push]`), so the commit stays
+# interactive and the lint verdict still arrives before anything leaves the
+# machine. A pre-push hook sees the files that differ across the range being
+# pushed, not the ones in the last commit, so a `files:` pattern keeps its
+# meaning: touch any Rust source anywhere in the push and the Rust gates run.
+# rust-test and rust-doctest have no hook at all (see below).
+#
 # The web and documentation hooks (web-lint, web-typecheck, web-test,
 # web-browser-test, web-build, markdownlint, cspell, format, docs-typecheck,
 # docs-build) run the npm workspace's own locked tools, so they need `npm ci` to
@@ -29,14 +38,20 @@
 # build, which is what the server's image embeds.
 #
 # Setup is a single idempotent command: `scripts/setup-hooks.sh`, which the
-# devcontainer runs when it is created. If a hook ever blocks a commit you know
-# is fine, `git commit --no-verify` bypasses it.
+# devcontainer runs when it is created. It installs both hook types;
+# `default_install_hook_types` below is what makes a plain `pre-commit install`
+# wire up the pre-push hook too, so a clone that never gets the pre-push hook
+# installed silently loses the heavy gates entirely. If a hook ever blocks work
+# you know is fine, `git commit --no-verify` and `git push --no-verify` bypass
+# the respective stage.
 #
 # Revisions are pinned; refresh them with `pre-commit autoupdate`. The version
 # below is the framework's own, and .devcontainer/tools/uv.sh is where it is
 # decided: bump it there first and match this floor and scripts/setup-hooks.sh's
 # fallback install to it.
 minimum_pre_commit_version: "4.6.0"
+
+default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -154,6 +169,9 @@ repos:
         description: Run Clippy across the workspace with warnings denied.
         entry: uv run --quiet --project ci gate run rust-clippy
         language: system
+        # One of the two heavy gates: it compiles the workspace, so it runs on
+        # push rather than on every commit (see the header).
+        stages: [pre-push]
         # The manifests and the lockfile are here because a lint policy in
         # Cargo.toml or a `--locked` mismatch changes the verdict for every
         # source.
@@ -165,6 +183,9 @@ repos:
         description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
         entry: uv run --quiet --project ci gate run rust-doc
         language: system
+        # The other heavy gate, and it pairs with clippy: run on push, where it
+        # reuses the `cargo check` artifacts clippy just built.
+        stages: [pre-push]
         files: '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^ci/gates/rust-doc\.py$'
         pass_filenames: false
 
