@@ -3,9 +3,13 @@ use test_cabinet_entities::model;
 
 /// An [`AppState`] with an in-memory store and no network reach, for driving
 /// [`write_config`] directly. The `TempDir` is returned so the store outlives the
-/// test.
+/// test. Its price source is an unconnectable loopback port, so a price lookup
+/// fails fast instead of reaching OpenRouter's live catalog.
 async fn test_state() -> (tempfile::TempDir, AppState) {
-    test_state_with_prices(test_cabinet_core::OpenRouterPrices::new()).await
+    test_state_with_prices(test_cabinet_core::OpenRouterPrices::with_endpoint(
+        "http://127.0.0.1:0/models",
+    ))
+    .await
 }
 
 /// [`test_state`] with its OpenRouter price source pointed at `prices`, for a path that

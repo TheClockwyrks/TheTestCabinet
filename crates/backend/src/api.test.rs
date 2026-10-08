@@ -121,8 +121,15 @@ struct Harness {
 
 /// Build the harness: two stub artifact services, a stub auth service, the
 /// environment a deployment sets, and the router `build` would assemble from it.
+///
+/// Its price source is an unconnectable loopback port, so a test that reaches a
+/// price path fails fast instead of reaching OpenRouter's live catalog; a test
+/// that needs prices passes a fake listing to [`harness_with_prices`].
 async fn harness() -> Harness {
-    harness_with_prices(test_cabinet_core::OpenRouterPrices::new()).await
+    harness_with_prices(test_cabinet_core::OpenRouterPrices::with_endpoint(
+        "http://127.0.0.1:0/models",
+    ))
+    .await
 }
 
 /// [`harness`], with the OpenRouter price source pointed at `prices`.
