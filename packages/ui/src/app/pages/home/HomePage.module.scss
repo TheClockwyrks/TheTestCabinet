@@ -25,11 +25,6 @@
   @include h.halo;
 }
 
-.empty {
-  color: t.$color-text-muted;
-  @include h.halo;
-}
-
 .sep {
   color: t.$color-text-muted;
 }
