@@ -957,7 +957,7 @@ JSON Schemas under `apps/docs/public/schema/`:
   references it at the contract document's URL. Nothing in the data contract
   refers back to the backend API.
 
-Every schema keeps its published URL whichever generator writes it, so four of
+Every schema keeps its published URL whichever generator writes it, so five of
 the backend's documents still sit in the contract's directories:
 `core/tournament.schema.json`, the two `gg/query-batch-*` documents,
 `gg/saved-query.schema.json` and `gg/dashboard.schema.json`. After changing any
