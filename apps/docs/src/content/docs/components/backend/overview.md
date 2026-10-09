@@ -105,7 +105,7 @@ authenticates with the per-job token minted when its job was enqueued.
 
 ## Review and publish
 
-A produced run reaches the gallery through two steps the backend mediates.
+A produced run reaches the gallery through steps the backend mediates.
 
 A run's record is stored privately the moment the run finishes: the driver
 reports it when it posts the job's terminal status, and the produced build and
@@ -116,7 +116,15 @@ to the run.
 Publish releases the run: its generated source to its own public repository and
 its build to Cloudflare Pages. The endpoint gates the run, refusing a legacy run
 with no review, and enqueues a per-publish `tcab-publisher` Job that the
-[dispatcher](/components/dispatcher/overview/) claims. When that Job reports a
+[dispatcher](/components/dispatcher/overview/) claims. A run with a publish
+already under way is attached to that job, so a run never has two releases in
+flight.
+
+A completed validator-rated run is published by the backend itself, with no
+operator action, as described under
+[automatic publishing](/components/core/results/#automatic-publishing).
+`TCAB_BACKEND_AUTO_PUBLISH` turns that off. Publishing is irreversible, so a
+deployment that must keep its runs private sets it to `false`. When that Job reports a
 terminal success the backend marks the run published, regenerates the public
 snapshot from the full set of published runs, uploads it, and triggers a site
 rebuild.
@@ -238,6 +246,7 @@ regenerates the snapshot, skipping the upload and the rebuild.
 | `TCAB_BACKEND_AUTH_URL`              | The auth service bearer tokens are verified against.                                                                                                                                                               | `http://127.0.0.1:8789`                   |
 | `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                  | —                                         |
 | `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                        | `false`                                   |
+| `TCAB_BACKEND_AUTO_PUBLISH`          | [Publish](/components/core/results/#automatic-publishing) every completed validator-rated run automatically. `0`, `false`, `no` or `off` turns it off. Off for the local development stack.                        | `true`                                    |
 | `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                    | `local`                                   |
 | `TCAB_SNAPSHOT_COALESCE_MS`          | Sliding debounce a burst of publishes is coalesced over.                                                                                                                                                           | `60000`                                   |
 | `TCAB_SNAPSHOT_RETENTION_HOURS`      | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                             | `24`                                      |

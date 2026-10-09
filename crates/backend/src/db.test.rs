@@ -9,6 +9,104 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::validation::ValidationSummary;
 
+/// A run publishes itself only when it completed and its validators rated it:
+/// every other state stays a person's decision, rated or not.
+#[test]
+fn only_a_completed_validator_rated_run_publishes_itself() {
+    for state in RunState::ALL {
+        let wire = run_state_str(state);
+        assert_eq!(
+            auto_publishes(wire, true),
+            state == RunState::Completed,
+            "{wire}, validator-rated"
+        );
+        assert!(!auto_publishes(wire, false), "{wire}, not validator-rated");
+    }
+}
+
+/// The candidates of automatic publishing: unpublished runs the rule admits that
+/// have never had a publish job, in the order asked for and named once.
+#[tokio::test]
+async fn auto_publishable_among_names_each_qualifying_run_once() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    for id in ["rated", "queued", "failed", "public"] {
+        db.push(
+            &validator_record(id, &[("serve", true)]),
+            &links(),
+            None,
+            Some(&manifest),
+        )
+        .await
+        .unwrap();
+    }
+    // Stored with no manifest, so it is a legacy run.
+    db.push(&record("legacy"), &links(), None, None)
+        .await
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "queued", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("p2", "failed", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_publish_job_state("p2", "failed", "2026-06-27T00:01:00Z", Some("boom"))
+        .await
+        .unwrap();
+    db.publish("public", "2026-06-27T00:00:00Z").await.unwrap();
+
+    let asked: Vec<String> = [
+        "missing", "rated", "legacy", "queued", "rated", "failed", "public",
+    ]
+    .iter()
+    .map(|id| id.to_string())
+    .collect();
+    assert_eq!(db.auto_publishable_among(&asked).await.unwrap(), ["rated"]);
+    assert!(db.auto_publishable_among(&[]).await.unwrap().is_empty());
+}
+
+/// The attempt an automatic retry replaced is not the run that stands, so it never
+/// publishes itself, whatever state it was stored in.
+#[tokio::test]
+async fn auto_publishable_among_passes_over_a_retried_attempt() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    for id in ["first", "second"] {
+        db.push(
+            &validator_record(id, &[("serve", true)]),
+            &links(),
+            None,
+            Some(&manifest),
+        )
+        .await
+        .unwrap();
+    }
+    db.enqueue_job(new_job("attempt", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("retry", "2026-06-27T00:00:01Z"))
+        .await
+        .unwrap();
+    db.set_job_state(
+        "attempt",
+        "succeeded",
+        "2026-06-27T00:01:00Z",
+        None,
+        Some("first"),
+    )
+    .await
+    .unwrap();
+    job::Entity::update_many()
+        .col_expr(job::Column::RetriedBy, Expr::value("retry"))
+        .filter(job::Column::Id.eq("attempt"))
+        .exec(&db.connection())
+        .await
+        .unwrap();
+
+    let asked = vec!["first".to_string(), "second".to_string()];
+    assert_eq!(db.auto_publishable_among(&asked).await.unwrap(), ["second"]);
+}
+
 #[test]
 fn publishable_failure_states_match_the_contract() {
     // The backend filters failures-only queries on wire strings, while

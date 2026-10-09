@@ -2150,6 +2150,37 @@ async fn gate_publishable<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Whether a run in `run_state` **publishes itself**: it completed and its
+/// validators rated it. This is the automatic-publishing rule, and it is stricter
+/// than [`gate_publishable`], which also admits the publishable failure tiers and
+/// a reviewed legacy run. Those stay a person's decision, since a failure needs
+/// telling apart from a harness fault and a legacy run's rating is a reviewer's.
+///
+/// `validator_rated` is the run row's flag, so a run whose validators left it
+/// unranked still qualifies: its checklist verdicts are the machine's either way.
+pub(crate) fn auto_publishes(run_state: &str, validator_rated: bool) -> bool {
+    validator_rated
+        && run_state == run_state_str(test_cabinet_core::run_record::RunState::Completed)
+}
+
+/// What [`Db::enqueue_publish_job_once`] did for a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublishEnqueue {
+    /// A new publish job was inserted; its id.
+    Enqueued(String),
+    /// A release was already under way; the id of the job running it.
+    Attached(String),
+}
+
+impl PublishEnqueue {
+    /// The id of the publish job releasing the run, new or already under way.
+    pub fn job_id(&self) -> &str {
+        match self {
+            Self::Enqueued(id) | Self::Attached(id) => id,
+        }
+    }
+}
+
 /// Whether a run carries at least one automated validation verdict — the signal
 /// that it was scored by a machine and can stand in for the human review the
 /// comparison publish path waives. Reads the run's stored record and looks for any
@@ -7021,6 +7052,107 @@ impl Db {
         .exec(&self.conn())
         .await?;
         Ok(())
+    }
+
+    /// Enqueue a publish job for `run_id` unless its release is already under way:
+    /// the one enqueue path every publish goes through, a person's and an automatic
+    /// one alike. Answers with the job [`Self::active_publish_job_for_run`] finds
+    /// when there is one, and otherwise inserts a new job and answers with that.
+    ///
+    /// It is safe to call concurrently. Two callers that both find no live job both
+    /// insert, the partial unique index on a queued `run_id` refuses the second, and
+    /// the loser then finds the winner's job and attaches to it, so the run ends
+    /// with one job. An insert that fails with no live job to attach to is a real
+    /// error and is returned.
+    ///
+    /// The caller applies its own gate first; this checks only for a live job.
+    /// `now` is the RFC 3339 enqueue instant, also what staleness is measured
+    /// against.
+    pub async fn enqueue_publish_job_once(
+        &self,
+        run_id: &str,
+        now: &str,
+    ) -> Result<PublishEnqueue> {
+        if let Some(existing) = self.active_publish_job_for_run(run_id, now).await? {
+            return Ok(PublishEnqueue::Attached(existing.id));
+        }
+        let id = cuid2::create_id();
+        let inserted = self
+            .enqueue_publish_job(NewPublishJob {
+                id: id.clone(),
+                run_id: run_id.to_string(),
+                job_token: cuid2::create_id(),
+                created_at: now.to_string(),
+            })
+            .await;
+        match inserted {
+            Ok(()) => Ok(PublishEnqueue::Enqueued(id)),
+            Err(error) => match self.active_publish_job_for_run(run_id, now).await? {
+                Some(existing) => Ok(PublishEnqueue::Attached(existing.id)),
+                None => Err(error),
+            },
+        }
+    }
+
+    /// Whether `run_id` is already published. A missing run is not.
+    pub async fn is_run_published(&self, run_id: &str) -> Result<bool> {
+        let published: Option<bool> = run::Entity::find_by_id(run_id.to_string())
+            .select_only()
+            .column(run::Column::Published)
+            .into_tuple()
+            .one(&self.conn())
+            .await?;
+        Ok(published.unwrap_or(false))
+    }
+
+    /// The runs among `run_ids` that publish themselves now, in the order given.
+    ///
+    /// A run qualifies when `auto_publishes` holds for it, it is unpublished, it
+    /// is the attempt that stands rather than one a retry replaced, and **no
+    /// publish job has ever been enqueued for it**, in any state. The last clause
+    /// is what bounds automatic publishing to one attempt per run: a release that
+    /// is queued or running is left alone, and one that failed is left for a
+    /// person to retry, so a caller that asks on every pass never loops on a run
+    /// whose publish keeps failing.
+    pub async fn auto_publishable_among(&self, run_ids: &[String]) -> Result<Vec<String>> {
+        if run_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows: Vec<(String, String, bool)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::RunState)
+            .column(run::Column::ValidatorRated)
+            .filter(run::Column::Id.is_in(run_ids.iter().cloned()))
+            .filter(run::Column::Published.eq(false))
+            .filter(not_a_retried_attempt())
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut candidates: std::collections::HashSet<String> = rows
+            .into_iter()
+            .filter(|(_, run_state, validator_rated)| auto_publishes(run_state, *validator_rated))
+            .map(|(id, _, _)| id)
+            .collect();
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        let attempted: Vec<String> = publish_job::Entity::find()
+            .select_only()
+            .column(publish_job::Column::RunId)
+            .filter(publish_job::Column::RunId.is_in(candidates.iter().cloned()))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        for run_id in attempted {
+            candidates.remove(&run_id);
+        }
+        let mut seen = std::collections::HashSet::new();
+        Ok(run_ids
+            .iter()
+            .filter(|id| candidates.contains(*id) && seen.insert(id.as_str()))
+            .cloned()
+            .collect())
     }
 
     /// Atomically claim the oldest `queued` publish job, flipping it to

@@ -1412,6 +1412,7 @@ async fn apply_status(
                 ),
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
+            auto_publish_reported_run(state, record_id.as_deref(), retried).await;
             if feeds_coverage(already_terminal, retried) {
                 spawn_coverage_feed(state, &job);
             }
@@ -1482,6 +1483,7 @@ async fn apply_status(
                     );
                 }
             }
+            auto_publish_reported_run(state, Some(&record_id), retried).await;
             if feeds_coverage(already_terminal, retried) {
                 spawn_coverage_feed(state, &job);
             }
@@ -1514,6 +1516,34 @@ async fn apply_status(
             Ok(StatusCode::NO_CONTENT)
         }
     }
+}
+
+/// Apply [automatic publishing](super::auto_publish) to the run a terminal status
+/// report just stored: every run reaches the store through such a report, however
+/// it was launched, so this is where a run publishes itself.
+///
+/// It runs on every terminal report, a repeated one included. A report stores its
+/// record again, which is the only place a run's validator rating is decided, so a
+/// run that was stored unrated and is rated by a later report publishes then. A
+/// run that already has a publish job is passed over, so a repeated report never
+/// enqueues a second.
+///
+/// The attempt a retry replaced is skipped: only the attempt that stands
+/// publishes. Nothing here can fail the report (see
+/// [`auto_publish_runs`](super::auto_publish::auto_publish_runs)).
+async fn auto_publish_reported_run(state: &AppState, record_id: Option<&str>, retried: bool) {
+    let Some(record_id) = record_id else {
+        return;
+    };
+    if retried {
+        return;
+    }
+    super::auto_publish::auto_publish_runs(
+        state,
+        &[record_id.to_string()],
+        super::auto_publish::AutoPublishCause::RunFinished,
+    )
+    .await;
 }
 
 /// Whether a job that just reached a terminal state through the driver's report feeds

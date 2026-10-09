@@ -517,6 +517,13 @@ fails), then enqueues a per-publish `tcab-publisher` Job and answers
 `202 Accepted` with the publish-job id and the live URL to observe the release
 on. The run flips public when that Job reports a terminal success.
 
+A run whose release is already under way answers with that publish job rather
+than a second one, whether an operator or the backend's
+[automatic publishing](/components/core/results/#automatic-publishing) enqueued
+it. A completed validator-rated run is enqueued by the backend when it finishes,
+so this endpoint is how every other publishable run is released and how a failed
+release is retried. `TCAB_BACKEND_AUTO_PUBLISH` leaves this endpoint unchanged.
+
 The gate refuses a run that can never be published, an infrastructure failure or
 a canceled run, and it refuses a completed legacy run carrying no review. A
 completed validator-rated run is admitted with or without a review, since its

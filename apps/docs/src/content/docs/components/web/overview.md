@@ -111,7 +111,10 @@ unmounted.
   validator-rated runs included, since a review can be added to those at any
   time.
 - Unpublished: runs that have cleared the publish gate but have not been
-  released (`state=publishable`), which is the publish backlog.
+  released (`state=publishable`), which is the publish backlog. A completed
+  validator-rated run
+  [publishes itself](/components/core/results/#automatic-publishing), so it is
+  here only while its release is in flight or after its release failed.
 - Unreadable: runs whose stored record this build can no longer read
   ([`GET /runs/unreadable`](/components/backend/api/#get-runsunreadable)). The
   worklist is present only while the cabinet holds at least one such run, and it
