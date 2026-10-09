@@ -98,12 +98,12 @@ impl TestCaseResolver {
         }
         let matches = self.suite_definitions(id)?;
         if let Some(found) = matches.iter().find(|found| found.version == version) {
-            return self.suites.resolve_beside(
+            return Ok(self.suites.resolve_beside(
                 &found.suite,
                 &found.version,
                 &found.definition,
                 &self.cases,
-            );
+            )?);
         }
         if let Some(found) = matches.first() {
             // The identity is a real one, at some other version of its suite. That is

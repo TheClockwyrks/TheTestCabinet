@@ -5,11 +5,11 @@
 // because that is what makes a relative `now-30d` re-resolve on every run rather than
 // freezing the window it was written in. A test that only checked "the row appeared" would
 // pass against an implementation that saved the compiled form.
+import type { GgSavedQueryInput } from "@clockwyrks/backend-api/gg-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgSavedQueryInput } from "@clockwyrks/run-record/gg-query";
 import {
   BackendProvider,
   type BackendContextValue,

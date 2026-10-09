@@ -6,13 +6,13 @@
 # release-doctest.sh) and the smoke check (scripts/ci/binary-smoke.sh) follow.
 #
 # `--all-targets` builds the test binaries nextest will run, so the test step
-# finds them up to date. The scope is the CLI and the core it links, not the
-# workspace: only `tcab` ships as a binary.
+# finds them up to date. The scope is the CLI and the core, suites and contracts
+# crates it links, not the workspace: only `tcab` ships as a binary.
 #
 # `bash` runs Git Bash on the Windows agent, so this one script drives both.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
-log "cargo build --release --all-targets (core + CLI)"
-cargo build --release --locked -p test-cabinet-core -p test-cabinet-cli --all-targets
+log "cargo build --release --all-targets (contracts + suites + core + CLI)"
+cargo build --release --locked -p test-cabinet-contracts -p test-cabinet-suites -p test-cabinet-core -p test-cabinet-cli --all-targets

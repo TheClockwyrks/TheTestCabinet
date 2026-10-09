@@ -192,7 +192,7 @@ below.
    release and described by another. A real toolchain goes in
    `containers/gg-toolchains/Dockerfile` instead, because gg is copied into a
    run container as a single file.
-8. Add the enum variant in `crates/core/src/gg.rs`, list it in
+8. Add the enum variant in `crates/contracts/src/gg.rs`, list it in
    `GgProgramLanguage::ALL`, and give it an `ordinal()` arm. Neither can be
    forgotten: the `match` is exhaustive and each arm checks its own position
    against `ALL` in a `const` block.

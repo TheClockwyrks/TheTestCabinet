@@ -92,7 +92,7 @@ repo="$(fresh_repo release-build.sh)"
 out="$(run "$repo" release-build.sh)"
 check_equal "a passing cargo passes" "0" "$?"
 check_equal "runs exactly one cargo, from the repository root" \
-	"cargo build --release --locked -p test-cabinet-core -p test-cabinet-cli --all-targets [cwd=$repo]" "$(cat "$tmp/cargo.log")"
+	"cargo build --release --locked -p test-cabinet-contracts -p test-cabinet-suites -p test-cabinet-core -p test-cabinet-cli --all-targets [cwd=$repo]" "$(cat "$tmp/cargo.log")"
 check_contains "and logs the step" "==> " "$out"
 
 out="$(STUB_CARGO_EXIT_1=101 run "$repo" release-build.sh)"

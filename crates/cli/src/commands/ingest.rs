@@ -124,9 +124,11 @@ fn print_options(args: &IngestArgs) -> IngestMode {
 
 /// Print one line of the progress feed.
 ///
-/// The closing `done` line is not printed here: the command's own summary below the
-/// feed says the same thing, and saying it twice in two wordings reads as two
-/// different answers.
+/// The closing `done` line's counts are not printed here: the command's own summary
+/// below the feed says the same thing, and saying it twice in two wordings reads as
+/// two different answers. A prune the scan refused is printed, because nothing else
+/// says it: it means a tree the backend read was empty, which is usually a
+/// misconfigured root rather than a catalog anyone emptied.
 fn print_progress(progress: &IngestProgress) {
     match progress {
         IngestProgress::Start { total } => println!("scanning {total} test case version(s)…"),
@@ -148,7 +150,11 @@ fn print_progress(progress: &IngestProgress) {
             );
             println!("  [{index}/{total}] {slug} {version} — {state}");
         }
-        IngestProgress::Done { .. } => {}
+        IngestProgress::Done { refused_prunes, .. } => {
+            for refusal in refused_prunes {
+                eprintln!("  prune refused: {refusal}");
+            }
+        }
         // Reported as it arrives so the feed reads in order; the scan's failure is
         // carried out of the call as the command's error.
         IngestProgress::Error { message } => eprintln!("  ingest error: {message}"),

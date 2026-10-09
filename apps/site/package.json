@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "predev": "tsc -b ../../packages/run-record",
+    "predev": "tsc -b ../../packages/run-record ../../packages/backend-api",
     "dev": "vite --host",
     "build": "tsc -b tsconfig.json tsconfig.node.json && vite build",
     "preview": "vite preview",
@@ -16,6 +16,7 @@
   "dependencies": {
     "@observablehq/plot": "^0.6.16",
     "@react-three/fiber": "^9.6.1",
+    "@clockwyrks/backend-api": "*",
     "@clockwyrks/run-record": "*",
     "@clockwyrks/ui": "*",
     "react": "^19.1.0",

@@ -55,8 +55,8 @@ import { MEDIA_DIR_ENV } from "../media";
 /**
  * What every file of the store is named with.
  *
- * MIRRORED IN RUST as `VALIDATION_IMAGE_PREFIX` in `crates/core/src/validator.rs`,
- * beside `validation_media_name`, which is what the driver's mirror and the
+ * MIRRORED IN RUST as `VALIDATION_IMAGE_PREFIX` in `crates/contracts/src/layout.rs`,
+ * beside `is_validation_image_name`, which is what the driver's mirror and the
  * backend's snapshot enumerate the store by. The two must agree; there is no
  * shared declaration to derive one from because the producer is TypeScript
  * running inside a validator and the consumers are Rust running outside one.

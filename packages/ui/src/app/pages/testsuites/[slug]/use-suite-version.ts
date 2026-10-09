@@ -1,4 +1,4 @@
-import type { SuiteVersionIdentity } from "@clockwyrks/run-record/backend-api";
+import type { SuiteVersionIdentity } from "@clockwyrks/backend-api";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router";
 

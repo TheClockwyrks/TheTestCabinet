@@ -103,6 +103,17 @@ reads](#test-suites). A whole-catalog scan enumerates both trees, so it prunes a
 suite version the checkout no longer declares along with the versions it
 defined.
 
+A whole-catalog scan refuses a prune that an empty tree would cause: it keeps
+the stored authored test-case versions when it finds no version under
+`test-cases/`, the stored game jams when it finds none under `game-jams/`, the
+stored suite versions and the case versions they defined when it finds no suite
+version, and the stored [test-case groups](#test-case-groups) when it accepts no
+group. Each tree answers for its own kind only, so a populated `game-jams/` does
+not let an empty `test-cases/` prune. A refused prune is logged and reported
+under `refusedPrunes`, one sentence per refusal naming what was kept. A refusal
+is reported only when the store held something the prune would have removed.
+`force` does not lift the refusal.
+
 The request body is optional JSON:
 
 ```jsonc
@@ -149,7 +160,9 @@ either mode.
 
 A scan against a store stamped with another record format is promoted to a
 forced whole-catalog scan, whatever the request asked for. This repairs a store
-after a backend upgrade that changed the record shapes.
+after a backend upgrade that changed the record shapes. Its prune of versions
+and suite versions is exempt from the empty-tree refusal, since this build can
+read nothing the store holds.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it
@@ -158,7 +171,8 @@ versions instead of re-rendering them. A changed or first-seen token forces a
 full re-ingest and advances the recorded marker, so content that changed under
 an unchanged version string is still picked up. The marker lives in the store,
 so a fresh store re-ingests unconditionally. A partial scan ignores
-`catalogVersion` and leaves the marker untouched.
+`catalogVersion` and leaves the marker untouched, and so does a scan that
+refused a prune, so the next scan carrying the same token is forced.
 
 A full re-render can take a minute or more, so the response shape is content
 negotiated. By default the call answers once with the full JSON report. A client
@@ -180,12 +194,18 @@ discriminated by an `event` tag:
   "ingested": false, "renderedReferences": 0,
   "problem": "test suite `carom@v1.0.0` is invalid: test-cases/efficiency.toml: …" }
 { "event": "done", "total": 31, "ingested": 25, "skipped": 6 } // closing summary
+{ "event": "done", "total": 2, "ingested": 0, "skipped": 2,      // a summary with a
+  "refusedPrunes": ["kept 189 stored authored version(s): …"] } // refused prune
 { "event": "error", "message": "…" }               // closing line if the scan aborts
 ```
 
 A suite version or definition that fails to resolve is a `version` line carrying
 `ingested: false` and a `problem` naming the file and the failure, and it counts
 toward `skipped`.
+
+The default JSON report carries `testCaseVersions`, `testSuites` and, when a
+prune was refused, `refusedPrunes`. The closing `done` line carries
+`refusedPrunes` the same way, and both omit it when nothing was refused.
 
 The stream has already sent a `200` by the time it knows the outcome, so a late
 failure arrives as a closing `error` line rather than an HTTP error status.

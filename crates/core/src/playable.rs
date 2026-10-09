@@ -25,12 +25,9 @@
 use crate::content_labels::{self, ContentLabels};
 use std::path::{Path, PathBuf};
 
-/// Candidate static build-output directory names a run's implementation may
-/// produce, in priority order. The validator builds into whichever a project's
-/// tooling is configured for; `dist` is Vite's default. Shared so the publish
-/// path (which deploys the build) and the local-serving path agree on what a
-/// build output is.
-pub const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
+// One list of build-output names, shared with the validator and the code
+// analyzer; it is run-tree layout, so it lives in `test_cabinet_contracts::layout`.
+pub use test_cabinet_contracts::layout::BUILD_OUTPUTS;
 
 /// Find a deployable static build output beside a run's implementation, if one
 /// was produced. Returns the first of [`BUILD_OUTPUTS`] that exists as a

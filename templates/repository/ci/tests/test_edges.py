@@ -29,7 +29,7 @@ def test_every_repository_the_design_names_is_in_the_table() -> None:
         "contracts",
         "engines",
         "gg",
-        "tcab",
+        "platform",
         "web",
         "the-spec-cabinet",
         "gg.rocks",
@@ -43,15 +43,15 @@ def test_every_repository_the_design_names_is_in_the_table() -> None:
     [
         ("contracts", "engines", False),
         ("engines", "contracts", True),
-        ("engines", "tcab", False),
+        ("engines", "platform", False),
         ("gg", "contracts", True),
-        ("gg", "tcab", False),
-        ("tcab", "contracts", True),
-        ("tcab", "engines", True),
-        ("tcab", "gg", False),
-        ("tcab", "web", False),
-        ("web", "tcab", False),
-        ("the-spec-cabinet", "tcab", False),
+        ("gg", "platform", False),
+        ("platform", "contracts", True),
+        ("platform", "engines", True),
+        ("platform", "gg", False),
+        ("platform", "web", False),
+        ("web", "platform", False),
+        ("the-spec-cabinet", "platform", False),
         ("the-spec-cabinet", "gg", False),
         ("the-spec-cabinet", "web", False),
         ("test-suites", "engines", False),
@@ -70,7 +70,7 @@ def test_no_repository_depends_on_gg_at_build_time() -> None:
 def test_the_closure_is_what_a_build_may_fetch() -> None:
     assert edges.closure("contracts") == []
     assert edges.closure("engines") == ["contracts"]
-    assert edges.closure("tcab") == ["contracts", "engines"]
+    assert edges.closure("platform") == ["contracts", "engines"]
     assert edges.closure("web") == ["contracts", "engines"]
     assert edges.closure("test-suites") == []
 
@@ -82,7 +82,7 @@ def test_the_closure_is_what_a_build_may_fetch() -> None:
         ("https://github.com/TheClockwyrks/contracts.git", "contracts"),
         ("https://github.com/TheClockwyrks/TheTestCabinet", "the-test-cabinet"),
         ("https://dev.azure.com/genyume/the-test-cabinet/_git/engines", "engines"),
-        ("git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/tcab", "tcab"),
+        ("git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/platform", "platform"),
         ("https://github.com/rust-lang/regex", None),
         ("https://github.com/TheClockwyrks/SomeOtherProject", "SomeOtherProject"),
     ],
@@ -106,11 +106,11 @@ def test_a_git_source_off_the_edges_is_refused(tmp_path: Path) -> None:
         tmp_path,
         "crates/x/Cargo.toml",
         '[package]\nname = "x"\n[dependencies]\n'
-        'test-cabinet-core = { git = "https://github.com/TheClockwyrks/tcab" }\n',
+        'test-cabinet-core = { git = "https://github.com/TheClockwyrks/platform" }\n',
     )
     assert edges.violations(tmp_path, "the-spec-cabinet") == [
         (
-            "crates/x/Cargo.toml: [dependencies] test-cabinet-core comes from tcab,"
+            "crates/x/Cargo.toml: [dependencies] test-cabinet-core comes from platform,"
             " whose crates the-spec-cabinet may not name"
         )
     ]
@@ -123,8 +123,8 @@ def test_a_renamed_dependency_is_judged_by_its_source(tmp_path: Path) -> None:
         "[package]\nname = \"x\"\n[target.'cfg(unix)'.dev-dependencies]\n"
         'gg = { package = "test-cabinet-gg", git = "https://github.com/TheClockwyrks/gg" }\n',
     )
-    assert edges.violations(tmp_path, "tcab") == [
-        "Cargo.toml: [dev-dependencies] test-cabinet-gg comes from gg, whose crates tcab may not name"
+    assert edges.violations(tmp_path, "platform") == [
+        "Cargo.toml: [dev-dependencies] test-cabinet-gg comes from gg, whose crates platform may not name"
     ]
 
 
@@ -134,7 +134,7 @@ def test_a_crate_of_an_unknown_project_mirror_is_refused(tmp_path: Path) -> None
         "Cargo.toml",
         '[package]\nname = "x"\n[dependencies]\nv = { git = "https://github.com/TheClockwyrks/elsewhere" }\n',
     )
-    assert edges.violations(tmp_path, "tcab") == [
+    assert edges.violations(tmp_path, "platform") == [
         (
             "Cargo.toml: [dependencies] v comes from https://github.com/TheClockwyrks/elsewhere,"
             " which is no repository of the project"
@@ -147,7 +147,7 @@ def test_a_path_dependency_leaving_the_repository_is_refused(tmp_path: Path) -> 
     _write(
         repo,
         "crates/a/Cargo.toml",
-        '[package]\nname = "a"\n[dependencies]\nb = { path = "../b" }\nc = { path = "../../../tcab/crates/c" }\n',
+        '[package]\nname = "a"\n[dependencies]\nb = { path = "../b" }\nc = { path = "../../../platform/crates/c" }\n',
     )
     _write(repo, "crates/b/Cargo.toml", '[package]\nname = "b"\n')
     assert edges.violations(repo, "web") == [
@@ -159,9 +159,10 @@ def test_registry_crates_and_own_sources_pass(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "Cargo.toml",
-        '[package]\nname = "x"\n[dependencies]\nserde = "1"\nown = { git = "https://github.com/TheClockwyrks/tcab" }\n',
+        '[package]\nname = "x"\n[dependencies]\nserde = "1"\n'
+        'own = { git = "https://github.com/TheClockwyrks/platform" }\n',
     )
-    assert edges.violations(tmp_path, "tcab") == []
+    assert edges.violations(tmp_path, "platform") == []
 
 
 def test_a_package_on_a_permitted_edge_passes(tmp_path: Path) -> None:
@@ -178,7 +179,7 @@ def test_a_narrowed_edge_admits_its_package_alone(tmp_path: Path) -> None:
     )
     assert edges.violations(tmp_path, "web") == [
         (
-            "packages/a/package.json: [dependencies] @clockwyrks/browser-driver comes from tcab,"
+            "packages/a/package.json: [dependencies] @clockwyrks/browser-driver comes from platform,"
             " which web may not depend on"
         )
     ]
@@ -202,7 +203,7 @@ def test_engines_never_takes_run_record(tmp_path: Path) -> None:
 
 def test_an_unknown_project_package_is_refused(tmp_path: Path) -> None:
     _package(tmp_path, "package.json", "root", peerDependencies={"@clockwyrks/nowhere": "1.0.0"})
-    assert edges.violations(tmp_path, "tcab") == [
+    assert edges.violations(tmp_path, "platform") == [
         "package.json: [peerDependencies] @clockwyrks/nowhere is produced by no repository of the project"
     ]
 
@@ -215,7 +216,9 @@ def test_a_workspace_member_is_its_own_package(tmp_path: Path) -> None:
 
 def test_a_file_dependency_leaving_the_repository_is_refused(tmp_path: Path) -> None:
     repo = tmp_path / "web"
-    _package(repo, "package.json", "root", dependencies={"@clockwyrks/ui": "file:packages/ui", "x": "file:../tcab/x"})
+    _package(
+        repo, "package.json", "root", dependencies={"@clockwyrks/ui": "file:packages/ui", "x": "file:../platform/x"}
+    )
     _package(repo, "packages/ui/package.json", "@clockwyrks/ui")
     assert edges.violations(repo, "web") == [
         "package.json: [dependencies] x is a path dependency outside the repository"
@@ -236,6 +239,6 @@ def test_an_unknown_repository_is_refused() -> None:
 def test_describe_names_each_edge() -> None:
     assert edges.describe("contracts") == "no other repository of the project"
     assert edges.describe("web") == (
-        "contracts (crates and packages); engines (crates and packages); tcab (@clockwyrks/backend-api)"
+        "contracts (crates and packages); engines (crates and packages); platform (@clockwyrks/backend-api)"
     )
     assert edges.describe("engines") == "contracts (crates and @clockwyrks/asset-contract)"

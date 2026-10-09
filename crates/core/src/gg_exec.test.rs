@@ -13,7 +13,7 @@ use super::*;
 use crate::event::EventKind;
 use crate::execution::OutputStream;
 use crate::gg::{GgCallFailure, GgCapabilitySet, GgUndocumentedCalls, ROOT_PROFILE_ID};
-use crate::run_record::HarnessSlug;
+use crate::run_record::{HarnessSlug, RunStateExt};
 
 /// A real mock-session telemetry stream captured from the `gg` binary (mock provider,
 /// no credentials), used to verify the ingest bridge end to end.

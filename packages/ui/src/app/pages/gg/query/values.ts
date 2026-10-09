@@ -1,5 +1,5 @@
 // The **value semantics** of TCQ — the TypeScript twin of the behaviour that lives on
-// `GgValue`, `GgInterval` and `GgAgg` in `crates/core/src/gg_query.rs`.
+// `GgValue`, `GgInterval` and `GgAgg` in `crates/contracts/src/gg_query.rs`.
 //
 // Everything here is mirrored: the console evaluates a query on the backend (Rust) and
 // the public static site evaluates the *same* query in the browser (this file), so a
@@ -7,8 +7,8 @@
 // the reference implementation; where the two languages differ by default — string
 // ordering above all — this file is the one that has to bend.
 //
-// The shared `gg_query.conformance.json` fixture beside the Rust test is what holds the
-// pair together. A change to any rule here must arrive with a fixture case that would
+// The shared `crates/contracts/fixtures/gg_query.conformance.json` fixture, which the
+// Rust test executes too, is what holds the pair together. A change to any rule here must arrive with a fixture case that would
 // have caught the drift.
 import type {
   GgAgg,

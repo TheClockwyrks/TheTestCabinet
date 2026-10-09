@@ -1,6 +1,6 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useMemo, type ReactNode } from "react";
 import type { TestType } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   AestheticBadge,
   GradeBadge,
@@ -416,7 +416,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   // of the two the phone card is actually showing. A third-party-harness run is its
   // model. A gg run has no single harness model to name: it binds a model per agent,
   // and the `modelId` on its card is only a representative primary-slot value (see
-  // `RunSubject::model_id` in crates/core/src/run_record.rs), so what actually
+  // `RunSubject::model_id` in crates/contracts/src/run_record.rs), so what actually
   // distinguishes one gg run from another is the configuration it was launched from.
   // A gg run that records no configuration name — assembled by hand, or produced
   // before the name was carried on the summary card — falls back to its model rather

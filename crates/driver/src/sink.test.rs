@@ -12,7 +12,7 @@ use std::sync::Mutex;
 
 use test_cabinet_core::EventSink;
 use test_cabinet_core::PreviewSink;
-use test_cabinet_core::event::{HarnessEvent, SystemStage, SystemStatus};
+use test_cabinet_core::event::{HarnessEvent, HarnessEventExt, SystemStage, SystemStatus};
 use test_cabinet_core::preview::AssetPreview;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;

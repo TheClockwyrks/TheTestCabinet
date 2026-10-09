@@ -394,6 +394,7 @@ glissandos
 gloamfin
 gloamfins
 gltf
+goldens
 granularities
 grayscale
 greebles
@@ -940,6 +941,7 @@ terraforming
 teslaprime
 testcabinet
 testcabinetartifacts
+testdata
 testpaths
 tfsgit
 thiserror

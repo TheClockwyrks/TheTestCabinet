@@ -497,6 +497,42 @@ pub enum Error {
     Io(#[from] io::Error),
 }
 
+/// The suite runtime's errors are a subset of this crate's, variant for variant: the
+/// same fields and the same message, so a failure raised in `test_cabinet_suites`
+/// reads exactly as it did when that code was core's, and `?` in core converts it.
+/// The match is exhaustive, so a variant the suite runtime gains does not compile
+/// until it is mapped here.
+impl From<test_cabinet_suites::Error> for Error {
+    fn from(err: test_cabinet_suites::Error) -> Self {
+        use test_cabinet_suites::Error as Suites;
+        match err {
+            Suites::InvalidTestSuite {
+                suite,
+                version,
+                file,
+                detail,
+            } => Self::InvalidTestSuite {
+                suite,
+                version,
+                file,
+                detail,
+            },
+            Suites::PromptRender {
+                slug,
+                version,
+                detail,
+            } => Self::PromptRender {
+                slug,
+                version,
+                detail,
+            },
+            Suites::Engine(detail) => Self::Engine(detail),
+            Suites::Seeding(detail) => Self::Seeding(detail),
+            Suites::Io(err) => Self::Io(err),
+        }
+    }
+}
+
 /// Render a supporting detail as a trailing parenthetical, or nothing at all when there
 /// is none.
 ///
@@ -512,3 +548,7 @@ fn parenthesized(detail: &str) -> String {
         format!(" ({detail})")
     }
 }
+
+#[cfg(test)]
+#[path = "error.test.rs"]
+mod tests;

@@ -1,6 +1,6 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { describe, expect, it } from "vitest";
 import type { RunState } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { Rating } from "@clockwyrks/run-record/review";
 import { rollupRuns } from "./rollup";
 

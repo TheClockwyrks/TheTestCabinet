@@ -18,11 +18,23 @@ the kit and the gates over the whole set.
 | `contracts` | library | The data contracts: the run record, the asset contract and the shapes the components exchange |
 | `engines` | library | The authored engines, the voxel and particle runtimes and the case harness |
 | `gg` | application | The in-container coding harness |
-| `tcab` | application | The CLI and the services: backend, dispatcher, driver, artifacts and arena |
+| `platform` | application | The CLI and the services: backend, dispatcher, driver, artifacts and arena |
 | `web` | application | The web console, the gallery, the UI library and the run statistics |
 | `the-spec-cabinet` | application | The authoring tool for test suites |
 | `gg.rocks` | site | gg's public site |
 | `test-suites` | content | The test cases and game jams |
+
+Inside this checkout the cut between `contracts` and `platform` is drawn ahead
+of the move. What `contracts` will hold already builds on its own:
+`crates/contracts` (`test-cabinet-contracts`, with its fixtures),
+`crates/suites` (`test-cabinet-suites`, the test suite runtime, which depends
+on `test-cabinet-contracts` and on no `platform` crate, so `platform` and The Spec
+Cabinet run the same suite logic), `crates/contract-codegen`, which generates
+from the contracts crate alone, and the two packages it generates,
+`packages/run-record` and `packages/asset-contract`. `platform`'s side of the cut
+is `crates/api-codegen` and the package it generates, `packages/backend-api`
+(`@clockwyrks/backend-api`), which is the one package `web` takes from
+`platform`.
 
 The kind decides a repository's shape. A library carries a Rust workspace and
 commits no `Cargo.lock`; an application carries one and commits its lock. A
@@ -40,15 +52,15 @@ dependency on a package another repository produces.
 contracts        -> nothing of this project
 engines          -> contracts (crates, and of the packages @clockwyrks/asset-contract alone)
 gg               -> contracts
-tcab             -> contracts, engines
-web              -> contracts, engines, tcab (@clockwyrks/backend-api alone)
+platform         -> contracts, engines
+web              -> contracts, engines, platform (@clockwyrks/backend-api alone)
 the-spec-cabinet -> contracts, engines, web (@clockwyrks/ui alone)
 test-suites      -> engines (packages alone)
 gg.rocks         -> nothing of this project
 ```
 
-No repository depends on gg at build time: `tcab` runs a pinned release of its
-binary. The table is `edges.py` in the kit's `ci` library
+No repository depends on gg at build time: `platform` runs a pinned release of
+its binary. The table is `edges.py` in the kit's `ci` library
 (`templates/repository/ci/src/the_test_cabinet_ci/edges.py`), with the kind of
 every repository and the package each `@clockwyrks/` name is produced by.
 
@@ -57,9 +69,9 @@ CLI pinning gg's released binary. The table records them beside the build
 edges, and the superrepo's `dependency-graph` gate reports them.
 
 ```text
-tcab -> test-suites              ingest, and the files the performance image copies
-tcab -> gg                       the pinned released binary
-test-suites -> tcab              the sample packs the audio declarations resolve against
+platform -> test-suites          ingest, and the files the performance image copies
+platform -> gg                   the pinned released binary
+test-suites -> platform          the sample packs the audio declarations resolve against
 web -> test-suites               the replay assets the console vendors
 the-spec-cabinet -> test-suites  the suite being authored
 ```
@@ -103,7 +115,7 @@ feed as the registry of the `@clockwyrks` scope.
 Cargo reads `.cargo/config.toml` from every parent of the directory it runs in,
 so a build inside a submodule inherits the superrepo's. Its `[patch]` tables
 redirect each repository's public source to the sibling checkout, so a change
-to `contracts` is seen by a build of `tcab` the moment it is saved. The tables
+to `contracts` is seen by a build of `platform` the moment it is saved. The tables
 sit between two marker lines of the superrepo's configuration, which also holds
 the monorepo's own aliases and build settings, and
 `scripts/repos/sources.py patch-table --write` writes them.
@@ -159,7 +171,7 @@ the template's context extension, from the tables `scripts/repos/render.py`
 and the kit's `edges.py` hold:
 
 - the scaffolded crate, `crates/<directory>` with the package name the
-  monorepo gives it (`crates/cli` and `test-cabinet-cli` for `tcab`);
+  monorepo gives it (`crates/cli` and `test-cabinet-cli` for `platform`);
 - the workspace's dependencies along the repository's Rust edges;
 - the pipeline's repository resources, the closure of those edges;
 - the CI images, at the commit `ci/images/tags.yml` pins as `ciImageTag`, with

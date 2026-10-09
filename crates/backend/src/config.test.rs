@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{base_url, gg_reference_dir, truthy};
+use super::{base_url, gg_reference_dir, ingest_roots, truthy};
 
 /// A throwaway env var read by no other code, so setting it here cannot race with
 /// another test's configuration read.
@@ -152,4 +152,117 @@ fn ingesting_previews_is_off_unless_the_variable_is_truthy() {
     // SAFETY: as above.
     unsafe { std::env::set_var("TCAB_BACKEND_INGEST_PREVIEWS", "false") };
     assert!(!super::Config::from_env().unwrap().ingest_previews);
+}
+
+/// Each ingest root defaults to its place in the checkout, and each override moves
+/// its own tree alone: the suites default stays under the checkout when the
+/// definitions root is moved, so naming one variable never relocates another tree.
+#[test]
+fn each_ingest_root_defaults_into_the_checkout_and_moves_alone() {
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe { std::env::remove_var("TCAB_COLD_STORAGE_DIR") };
+    let checkout = Path::new("/state/checkout");
+
+    let defaults = ingest_roots(checkout, None, None, None);
+    assert_eq!(defaults.definitions, PathBuf::from("/state/checkout"));
+    assert_eq!(
+        defaults.suites,
+        PathBuf::from("/state/checkout/test-suites")
+    );
+    assert_eq!(
+        defaults.cold_storage,
+        PathBuf::from("/state/checkout/cold-storage")
+    );
+
+    let moved = ingest_roots(checkout, Some("/state/test-suites".to_string()), None, None);
+    assert_eq!(moved.definitions, PathBuf::from("/state/test-suites"));
+    assert_eq!(moved.suites, PathBuf::from("/state/checkout/test-suites"));
+    assert_eq!(
+        moved.cold_storage,
+        PathBuf::from("/state/checkout/cold-storage")
+    );
+
+    let all = ingest_roots(
+        checkout,
+        Some("/a".to_string()),
+        Some("/b".to_string()),
+        Some("/c".to_string()),
+    );
+    assert_eq!(
+        (all.definitions, all.suites, all.cold_storage),
+        (
+            PathBuf::from("/a"),
+            PathBuf::from("/b"),
+            PathBuf::from("/c")
+        )
+    );
+}
+
+/// The roots are read from the environment, and `TCAB_COLD_STORAGE_ROOT` wins over
+/// the capture commands' `TCAB_COLD_STORAGE_DIR`, which is still honoured as the
+/// default when the backend's own variable is unset.
+#[test]
+fn the_ingest_roots_are_read_from_the_environment() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_DEFINITIONS_ROOT");
+        std::env::remove_var("TCAB_SUITES_ROOT");
+        std::env::remove_var("TCAB_COLD_STORAGE_ROOT");
+        std::env::remove_var("TCAB_COLD_STORAGE_DIR");
+    }
+    let defaults = super::Config::from_env().unwrap().ingest_roots();
+    assert_eq!(
+        defaults,
+        crate::ingest::IngestRoots {
+            definitions: dir.path().to_path_buf(),
+            suites: dir.path().join("test-suites"),
+            cold_storage: dir.path().join("cold-storage"),
+        }
+    );
+
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_COLD_STORAGE_DIR", "/mnt/media") };
+    assert_eq!(
+        super::Config::from_env().unwrap().cold_storage_root,
+        PathBuf::from("/mnt/media")
+    );
+
+    // SAFETY: as above.
+    unsafe {
+        std::env::set_var("TCAB_DEFINITIONS_ROOT", "/state/test-suites");
+        std::env::set_var("TCAB_SUITES_ROOT", "/state/test-suites/suites");
+        std::env::set_var("TCAB_COLD_STORAGE_ROOT", "/state/cold-storage");
+    }
+    let config = super::Config::from_env().unwrap();
+    assert_eq!(config.definitions_root, PathBuf::from("/state/test-suites"));
+    assert_eq!(
+        config.suites_root,
+        PathBuf::from("/state/test-suites/suites")
+    );
+    assert_eq!(
+        config.cold_storage_root,
+        PathBuf::from("/state/cold-storage")
+    );
+    assert_eq!(config.checkout, dir.path());
+
+    // An empty value is no value, as for every other variable.
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_DEFINITIONS_ROOT", "") };
+    assert_eq!(
+        super::Config::from_env().unwrap().definitions_root,
+        dir.path()
+    );
+
+    // Other tests in this binary read these (the committed catalog under
+    // `TCAB_DEFINITIONS_ROOT`, cold storage under `TCAB_COLD_STORAGE_DIR`), so none
+    // is left set for a runner that shares one process between tests.
+    // SAFETY: as above.
+    unsafe {
+        std::env::remove_var("TCAB_DEFINITIONS_ROOT");
+        std::env::remove_var("TCAB_SUITES_ROOT");
+        std::env::remove_var("TCAB_COLD_STORAGE_ROOT");
+        std::env::remove_var("TCAB_COLD_STORAGE_DIR");
+    }
 }

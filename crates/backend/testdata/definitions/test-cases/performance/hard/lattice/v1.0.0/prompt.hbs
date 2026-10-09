@@ -1,0 +1,116 @@
+Write the **engine** for **Lattice**, a deterministic Factorio-style factory
+simulation. You are not building an application and you are not writing a per-tick
+callback — you are writing a function that takes a whole factory *scenario* (a
+fixed tile layout plus a tick count and a snapshot schedule) and simulates it end
+to end, emitting the factory's exact state at each scheduled snapshot. Compiled to
+WebAssembly, your engine is run once per scenario and scored two ways, in order:
+**first correctness, then fuel**.
+
+Your project root is `{{workspace}}`. A complete starter is already in place
+there; build your engine on top of it.
+
+## How it works
+
+A scenario is a static blueprint — belts, splitters, inserters, assemblers, and
+the source/sink test fixtures — placed once on a tile grid, run for *N* ticks from
+an empty start. Everything is integer / fixed-point: item positions, belt speeds,
+swing and craft timers, all integers, so the state after *N* ticks is a single
+well-defined value every correct engine must agree on to the bit.
+
+Your engine is invoked **once per scenario**. It receives the `scenario` JSON and
+must return the canonical `state` at each scheduled snapshot tick. Correctness is
+checked bit-for-bit by **checksum** (Factorio's own desync-detection model): your
+state must match the reference engine's at every snapshot or the scenario fails
+outright — there is no partial credit on correctness. Only once your engine is
+correct does its **fuel** — how much work it did — become its result. **Lower fuel
+is better.**
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## Your starting point
+
+The workspace at `{{workspace}}` is a small Cargo project — just the engine crate.
+Everything you build *against* and run *with* is provided by the run environment,
+not vendored here:
+
+- `engine/src/lib.rs` — the engine you fill in. It builds and runs as-is and
+  produces *correct* output, but it is the FLOOR: a straightforward
+  move-every-item-every-tick loop that spends far more fuel than it needs to.
+  Replace its `run` with an efficient engine. You write a single
+  `fn run(scenario: &Scenario) -> Vec<Snapshot>` and the `simulate!` macro wires
+  it to the wasm ABI — see `specs/contract.md`.
+- The contract types and the canonical state/checksum (`lattice-core` — the
+  `Scenario`/`Snapshot` types, identical to what the harness scores you against)
+  and the SDK (`lattice-sdk` — the ABI plumbing plus the re-exported types) are
+  provided under `$LATTICE_HOME/buildkit` and are already wired up as your
+  engine's path dependencies. You build against them; do not edit them. Note: the
+  buildkit gives you the *types and the checksum*, not the rules engine — the
+  simulation logic is yours to write from the specs.
+- The `lattice` CLI is **preinstalled** on your `PATH`. It is both the **oracle**
+  (`lattice solve` produces the expected `state` for any scenario) and the
+  **local scorer** (`lattice run` builds/loads your module, checks it against the
+  reference, and reports correct/incorrect + fuel using the same host the
+  validator uses). `lattice gen` makes fresh scenarios; `lattice schema` dumps the
+  schemas. See `specs/cli.md`.
+- A set of **training scenarios** with their expected outputs lives under
+  `$LATTICE_HOME/training/` — each a `scenario.json` paired with the reference's
+  `expected.json`. They span the entity set and the tricky behaviors (a single
+  side-loaded lane, a backed-up inserter, a saturated splitter, a starved-then-
+  flooded assembler) so you can confirm your engine bit-for-bit. They are
+  **practice, not the scored set**: the scenarios you are graded on are held out
+  and unseen, deliberately larger and longer — there is no shortcut around
+  actually simulating. (`$LATTICE_HOME` is `/opt/lattice`.)
+
+## How to build
+
+Your engine compiles to a `wasm32-unknown-unknown` **core module**:
+
+```bash
+cargo build --release --target wasm32-unknown-unknown -p engine
+```
+
+This emits `target/wasm32-unknown-unknown/release/engine.wasm` — the exact
+artifact the harness loads and scores. Keep the crate named `engine` with
+crate-type `cdylib` so that path is stable. The wasm target is already installed.
+
+## What to deliver
+
+A **correct** engine that spends **as little fuel as possible**. Correctness comes
+first and is absolute — match the reference's checksums on every snapshot — but
+correctness is the gate, not the goal: between two correct engines, the one that
+does less work wins. The decisive move is the representation. A naive engine
+re-walks every item on every belt every tick, most of that work re-confirming that
+a long, already-compressed run did not change; the efficient engine Factorio
+itself uses stores the **gaps between items** in each maximal straight run of belt
+as a single transport line, advances a packed run in constant time, caches where
+the last open gap is, and drives inserters/assemblers/sources/sinks by event
+rather than polling. Same checksums, a fraction of the fuel — the transport-line
+representation is the win.
+
+Iterate locally with the preinstalled `lattice` CLI: `lattice run --module
+target/wasm32-unknown-unknown/release/engine.wasm --scenario <s>` against the
+training scenarios (and `lattice gen` larger ones) to confirm you are bit-exact and
+to watch your fuel number, refining until it is both correct and lean. The CLI
+prints `correct`/`INCORRECT at snapshot tick N (…)` so a divergence is easy to
+locate, and the fuel it reports is the same number the scored run will record.
+Stay inside the per-scenario fuel and memory limits in `specs/sandbox` (the
+`[sandbox]` table; see `specs/contract.md`) — exceeding either fails that
+scenario. When `cargo build --release --target wasm32-unknown-unknown -p engine`
+produces an `engine.wasm` that is correct on the training set for a low fuel
+number, you are done; the module is your submission.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you
+started, with the starter crate in its first commit. The wasm module is your
+scored submission, but the **source you wrote is published as this run's public
+repository**, so work you leave uncommitted is not published. When your engine is
+correct and lean, commit everything: run `git add -A` then `git commit`, and
+confirm `git status` reports a clean working tree with nothing uncommitted or
+untracked. The `.gitignore` already excludes `/target/` (the harness rebuilds the
+engine from source), so a clean tree does not mean committing build output — but
+it does mean committing your `engine/` sources, `Cargo.toml`, and `Cargo.lock`.

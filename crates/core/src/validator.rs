@@ -23,7 +23,7 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    ReviewItem, ReviewOutput, ReviewValidation, TestCaseVersion, TestType, Variant,
+    TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
     Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
@@ -32,13 +32,18 @@ use crate::validation::{
     VoxelGenResult, VoxelPartResult,
 };
 
-/// Candidate output directories a static build may produce.
-///
-/// Public because the [code analyzer](crate::code_analysis) removes exactly these names
-/// from the tree it measures, and the two must agree: a directory this validator will
-/// serve a build out of is, by definition, build output rather than code the model wrote.
-/// One list, read from both sides, so adding a fourth cannot silently start counting it.
-pub const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
+// The build-output names, the validation media directories and the image-store
+// naming are run-tree layout every reader of a run agrees on, so they live in
+// `test_cabinet_contracts::layout` and are re-exported here at their old names.
+pub use test_cabinet_contracts::layout::{
+    BUILD_OUTPUTS, VALIDATION_BASELINE_DIR, VALIDATION_IMAGE_PREFIX, VALIDATION_SCRIPT_DIR,
+    is_validation_image_name, validation_media_name, validation_published_extension,
+};
+pub(crate) use test_cabinet_contracts::layout::{VALIDATION_MEDIA_DIR, media_kind_tag};
+// The checklist's verdict units and the media relocation are shared with the vitest
+// runners, so they live in `test_cabinet_suites::validator`.
+pub use test_cabinet_suites::validator::ScriptedOutput;
+pub(crate) use test_cabinet_suites::validator::{drive_units, relocate_outputs};
 
 /// A validator that builds the implementation and load-checks it in a browser.
 #[derive(Debug, Clone)]
@@ -585,88 +590,6 @@ pub struct ScriptedItemDrive {
     pub outputs: Vec<ScriptedOutput>,
 }
 
-/// One declared media output of a [`ScriptedItemDrive`], with whether the drive
-/// captured it into the media directory (at its [`validation_media_name`]).
-#[derive(Debug, Clone)]
-pub struct ScriptedOutput {
-    /// The output id — the media file's stem.
-    pub id: String,
-    /// Human-readable display name.
-    pub name: String,
-    /// Whether this output is an image or a video clip.
-    pub kind: MediaKind,
-    /// Whether the driven build produced this output (the file now exists under the
-    /// media directory at its [`validation_media_name`]).
-    pub present: bool,
-}
-
-/// One scripted verdict unit to drive: a whole review item (validated as a whole) or
-/// one of its sub-items, resolved to its verdict id, display title, and validation
-/// driver. Borrows the driver from the caller's `review_items_for` list.
-pub(crate) struct DriveUnit<'a> {
-    pub(crate) item_id: String,
-    pub(crate) sub_item_id: Option<String>,
-    /// The verdict id (`<item>` or `<item>.<sub>`) that keys the auto verdict and media.
-    pub(crate) verdict_id: String,
-    /// The unit's own display title (the sub-item's, or the item's), no category prefix.
-    pub(crate) title: String,
-    /// The backing category/item's title, for grouping under its category.
-    pub(crate) category_title: String,
-    /// Whether this unit is scored: `true` for an ordinary point, `false` when the
-    /// backing review point is excluded from scoring for the version (see
-    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`](crate::test_case::SubReviewItem::scored)). Carried onto the
-    /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
-    /// run because it is not scored at all.
-    pub(crate) gates: bool,
-    pub(crate) validation: &'a ReviewValidation,
-}
-
-/// Flatten `items` into the verdict units a case's automated validation decides.
-///
-/// An item validated as a whole contributes one unit keyed by its own id; an item
-/// with sub-items contributes one unit per validated sub-item keyed by
-/// `<item>.<sub>`. Item-level validation and sub-items are mutually exclusive, so at
-/// most one branch fires per item. Both validation paths — the browser drive and the
-/// [vitest runner](crate::vitest_validator) — read their work list from here, so one
-/// checklist flattens into the same units whichever path decides them.
-///
-/// `items` is already the run's own checklist
-/// ([`TestCaseVersion::review_items_for_engine`]): a point whose validator does not
-/// cover the run's engine is gone before this sees it, so every unit here belongs to
-/// the run and nothing filters twice.
-pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
-    items
-        .iter()
-        .flat_map(|item| {
-            let own = item.validation.as_ref().map(|validation| DriveUnit {
-                item_id: item.id.clone(),
-                sub_item_id: None,
-                verdict_id: item.id.clone(),
-                title: item.title.clone(),
-                category_title: item.title.clone(),
-                gates: item.scored,
-                validation,
-            });
-            let subs = item.sub_items.iter().filter_map(|sub| {
-                sub.validation.as_ref().map(|validation| DriveUnit {
-                    item_id: item.id.clone(),
-                    sub_item_id: Some(sub.id.clone()),
-                    verdict_id: ReviewItem::sub_item_verdict_id(&item.id, &sub.id),
-                    // The unit's own title is the sub-item's; the category (the item)
-                    // groups the sub-items in the reviewer UI, so no prefix here.
-                    title: sub.title.clone(),
-                    category_title: item.title.clone(),
-                    // A sub-item gates only if both it and its parent category are
-                    // scored — excluding the whole category also un-gates its points.
-                    gates: item.scored && sub.scored,
-                    validation,
-                })
-            });
-            own.into_iter().chain(subs)
-        })
-        .collect()
-}
-
 /// Drive every scripted verdict unit of `variant` against the served build at `url`,
 /// capturing each declared media output into `media_dir` under its flat, addressable
 /// `<verdict>__<output>.<ext>` name ([`validation_media_name`]).
@@ -891,195 +814,6 @@ fn capture_baseline_suites(
             })
             .collect(),
     )
-}
-
-/// The run-root-relative directory synthesized *actual* validation media is
-/// collected under, so it travels with the published implementation and is served
-/// by [`crate::playable::serve_validation_file`].
-pub(crate) const VALIDATION_MEDIA_DIR: &str = ".vendor/validation";
-
-/// The directory a case version's **baseline** validation media lives under, one
-/// sub-directory per engine and variant: `validation-baseline/<engine>/<variant>/`.
-/// Synthesized once at capture-baselines time from the reference implementation and
-/// committed to the cold-storage submodule beneath the version's mirrored path (see
-/// [`crate::ColdStorage::validation_baseline_dir`]). Ingest copies it into the stored
-/// version under this same name, and the backend serves it case-scoped from there —
-/// the invariant counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
-///
-/// The engine comes first because it is what makes two captures of the same variant
-/// different media: a variant has one reference implementation PER ENGINE, and the
-/// two draw the same game through different runtimes, so their recordings are not
-/// interchangeable. A reviewer comparing a `simple-2d` run against an engineless
-/// build's frames would be shown a difference between two runtimes and read it as a
-/// difference in the build.
-pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
-
-/// The version-folder-relative directory a case's reporter-side automated-validation
-/// debug scripts live under (`validation/<item>.mjs`, plus any shared modules those
-/// scripts import — e.g. `validation/_helpers.mjs`). Reporter-side and **never**
-/// seeded into the model's run container; the whole directory is materialized into a
-/// backend-driven run's definition store (see [`crate::materialize_version`]) so a
-/// script's sibling imports resolve when the validator runs it.
-pub const VALIDATION_SCRIPT_DIR: &str = "validation";
-
-/// The driver's `--outputs` kind tag for a media kind.
-fn media_kind_tag(kind: MediaKind) -> &'static str {
-    match kind {
-        MediaKind::Image => "image",
-        MediaKind::Video => "video",
-        MediaKind::Replay => "replay",
-    }
-}
-
-/// The file extension a synthesized output is captured under, by kind: a still is a
-/// PNG, a clip is the `.webm` Playwright records natively, and a draw-command
-/// recording is the gzipped JSON document the engine's recorder hands back.
-///
-/// A recording is stored compressed because its format is deliberately repetitive.
-/// Every frame restates the drawing state it inherited so that any frame can be
-/// drawn without drawing the frames before it, and consecutive frames of a game
-/// issue very nearly the same operations as each other. That redundancy is what
-/// makes seeking and side-by-side scrubbing work at all, and it is also exactly
-/// what gzip removes: a real capture stores tens of times smaller, which is the
-/// difference between a run whose recordings are tens of megabytes and one whose
-/// recordings are a few. The name carries both extensions, so what the bytes
-/// are and how they are framed are each readable off the file.
-pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
-    match kind {
-        MediaKind::Image => "png",
-        MediaKind::Video => "webm",
-        MediaKind::Replay => "json.gz",
-    }
-}
-
-/// The file extension a synthesized validation output is published under **in the
-/// public snapshot** — the counterpart to `validation_output_extension`, which is
-/// how it is captured on disk and served live.
-///
-/// They differ for video only. A clip is captured as the `.webm` Playwright records
-/// natively (the on-disk name both the run-scoped *actual* and case-scoped *baseline*
-/// media use, and what the live console/artifact service serve verbatim); but the
-/// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
-/// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
-/// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
-/// unchanged, and so does a recording: a `.json.gz` document is inflated by the
-/// browser and drawn by the console's own player, so there is no format the gallery
-/// would need it converted into and no reason to publish it any larger than it is
-/// stored.
-pub fn validation_published_extension(kind: MediaKind) -> &'static str {
-    match kind {
-        MediaKind::Image => "png",
-        MediaKind::Video => "mp4",
-        MediaKind::Replay => "json.gz",
-    }
-}
-
-/// The flat, addressable file name a synthesized output is stored and served under:
-/// `<verdict>__<output>.<ext>`. Kept flat (one path segment) so it routes through the
-/// one-segment `/validation/{file}` endpoints unchanged, and shared with
-/// [`crate::playable::serve_validation_file`] and the gallery URL resolver.
-///
-/// `verdict_id` is the id of the verdict unit the output backs — a whole item's own id
-/// (`<item>`, for an item validated as a whole) or a sub-item's composite id
-/// (`<item>.<sub>`, since validation and its proof media attach per sub-item once an
-/// item is sub-divided). It contains no `/` (ids are plain slugs joined by a single
-/// `.`), so the name stays a single path segment and cannot escape the media directory.
-///
-/// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
-/// case's *baseline* media (under the version's [`VALIDATION_BASELINE_DIR`]`/
-/// <engine>/<variant>/`) use this same name; the directory, not the name, tells them
-/// apart.
-pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
-    let ext = validation_output_extension(kind);
-    format!("{verdict_id}__{output_id}.{ext}")
-}
-
-/// The prefix every file of a recording's **shared image store** carries:
-/// `img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer, where
-/// `<id>` is derived from the bytes themselves. Only the first is written today —
-/// see [`is_validation_image_name`].
-///
-/// A draw-command recording's images are the bulk of its weight — PNG payloads that
-/// gzip cannot compress — and the same sprite is drawn by dozens of a run's
-/// recordings. So the harness writes each *unique* image once as a flat file beside
-/// the recordings and the entry inside the document names that file instead of
-/// carrying base64 of it. The producer is `@clockwyrks/case-harness`'s
-/// `replay/store.ts`, which mirrors this constant as `IMAGE_STORE_PREFIX`; the two
-/// spellings must agree, and there is no negotiation between them — a name that does
-/// not match here simply does not travel.
-///
-/// A store file deliberately shares the flat namespace of
-/// [`validation_media_name`]'s `<verdict>__<output>.<ext>`, and can never collide
-/// with one: a declared output's name always carries `__`, and a store file's never
-/// does. That is what lets it route through the one-segment `/validation/{file}`
-/// endpoints, publish through the media paths, and resolve in every console through
-/// the very resolver the recording it belongs to came from — with no new route, key
-/// shape, or lookup anywhere.
-pub const VALIDATION_IMAGE_PREFIX: &str = "img.";
-
-/// Whether `file` names a file of a recording's shared image store rather than a
-/// declared output.
-///
-/// Both publish paths — the driver's mirror into the backend store and the snapshot
-/// builder's upload — are driven off the run record's *declared* outputs. A store
-/// file is on no record: it backs no verdict and is named by its own bytes, so it
-/// has to be recognized off the directory instead, and this is the one place that
-/// judgement is written down.
-///
-/// The extension is part of the check and not decoration. The namespace admits
-/// exactly two shapes of bytes — a PNG bitmap and a headerless RGBA buffer — so a
-/// name carrying neither extension is not something this side of the contract knows
-/// how to serve a content type for, and it is left where it is rather than published
-/// as an unlabelled blob. Today only the first is ever written: the harness leaves a
-/// pixel buffer inline, where the recording's own gzip compresses raw RGBA far
-/// better than a flat file could be served. `.bin` is recognized here because the
-/// recording format admits a stored buffer and a player resolves one, so the day
-/// that becomes worth writing it travels without this side changing.
-pub fn is_validation_image_name(file: &str) -> bool {
-    file.starts_with(VALIDATION_IMAGE_PREFIX) && (file.ends_with(".png") || file.ends_with(".bin"))
-}
-
-/// Move each declared output's produced file from `tmp` to its stable flat name
-/// under `media_dir`, returning the per-output presence record.
-///
-/// `tmp` is wherever the producer was told to write, named by output id and
-/// nothing else: the temp directory a browser drive captures into, or the
-/// per-suite directory a [vitest validator](crate::vitest_validator) writes its
-/// recordings to. Both arrive here because the destination is the same in both
-/// cases — a name keyed by the verdict the media backs, flat enough to route
-/// through the one-segment media endpoints.
-///
-/// A file that is not there is recorded absent rather than treated as a failure.
-/// Media is the evidence beside a verdict, not the verdict: what decides the point
-/// is the drive's own outcome, or the suite's assertions.
-pub(crate) fn relocate_outputs(
-    outputs: &[ReviewOutput],
-    verdict_id: &str,
-    media_dir: &Path,
-    tmp: &Path,
-) -> Vec<ScriptedOutput> {
-    outputs
-        .iter()
-        .map(|output| {
-            let ext = validation_output_extension(output.kind);
-            let captured = format!("{}.{ext}", output.id);
-            let present = relocate(
-                &tmp.join(&captured),
-                &media_dir.join(validation_media_name(verdict_id, &output.id, output.kind)),
-            );
-            ScriptedOutput {
-                id: output.id.clone(),
-                name: output.name.clone(),
-                kind: output.kind,
-                present,
-            }
-        })
-        .collect()
-}
-
-/// Move `from` to `to`, returning whether the source existed and was relocated.
-fn relocate(from: &Path, to: &Path) -> bool {
-    from.is_file() && std::fs::rename(from, to).is_ok()
 }
 
 /// A validator for asset-generation runs.

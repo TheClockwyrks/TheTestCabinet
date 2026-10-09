@@ -110,7 +110,11 @@ impl Ingestor<'_> {
             return Ok(outcome(false, reason, None));
         }
         let root = catalog.version_tree(slug, version);
-        let location = to_forward_slash(root.strip_prefix(self.checkout).unwrap_or(&root));
+        // Named from the suites root's parent, so the location reads
+        // `<root's name>/<slug>/…` (`test-suites/<slug>/…` for the default root)
+        // rather than an absolute path.
+        let base = self.roots.suites.parent().unwrap_or(&self.roots.suites);
+        let location = to_forward_slash(root.strip_prefix(base).unwrap_or(&root));
         let (loaded, diagnostics) = match load_and_validate(&identity.suite, &root) {
             Ok(loaded) => loaded,
             Err(error) => return refuse(format!("`{location}` does not read back: {error}")),
@@ -206,7 +210,7 @@ impl Ingestor<'_> {
             .store
             .new_staging_dir(&format!("materials-{slug}"), version)?;
         let catalog = self.reading_previews(TestSuiteCatalog::with_materials(
-            self.checkout.join(TEST_SUITES_DIR),
+            self.roots.suites.clone(),
             materials.clone(),
         ));
         let stamp = decider.stamp(digest.to_string());
@@ -290,7 +294,12 @@ impl Ingestor<'_> {
     /// lowered from. The protected set is read through those manifests rather than
     /// guessed from the identity, because the identity is a name and the coordinate
     /// is the fact.
-    pub(super) fn prune_absent_suites(&self, report: &IngestReport) -> Result<()> {
+    ///
+    /// `keep` is the prune guard, set when the scan found no suite version: every
+    /// absent suite version is then kept, and the answer is how many the prune would
+    /// otherwise have removed.
+    pub(super) fn prune_absent_suites(&self, report: &IngestReport, keep: bool) -> Result<usize> {
+        let mut kept = 0;
         let present: HashSet<(&str, &str)> = report
             .suite_versions
             .iter()
@@ -316,10 +325,14 @@ impl Ingestor<'_> {
                 if protected.contains(&(slug.clone(), version.clone())) {
                     continue;
                 }
+                if keep {
+                    kept += 1;
+                    continue;
+                }
                 self.store.remove_suite_version(&slug, &version)?;
             }
         }
-        Ok(())
+        Ok(kept)
     }
 
     /// The `suite.toml` one suite version is read against, declaring the suite's

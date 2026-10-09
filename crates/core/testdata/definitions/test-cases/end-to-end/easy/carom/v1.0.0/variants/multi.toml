@@ -1,0 +1,20 @@
+# Standard plus a three-ball mode with ball-to-ball collisions. Multi-ball is a
+# separate mode, so it is rated on its own scoring domain.
+slug = "multi"
+name = "Multi-ball"
+description = "Standard plus a three-ball mode with ball-to-ball collisions."
+
+spec = [{ source = "specs/modes/multi.md" }]
+reference = [{ view = "title", path = "reference/menu-multi.html" }]
+
+[[domain]]
+id = "multi"
+name = "Multi-ball"
+description = "The three-ball mode: three balls in play at once, each with its own velocity and spin, colliding with one another."
+
+[[review_item]]
+id = "multi-three-balls"
+title = "Three balls in play"
+text = "A Multi-ball match keeps three balls in play at once, each carrying its own velocity and spin; all three spawn at center and serve together after every point."
+weight = 1
+domain = "multi"

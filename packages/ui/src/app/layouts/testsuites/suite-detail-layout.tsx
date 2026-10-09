@@ -1,4 +1,4 @@
-import type { SuiteVersionResponse } from "@clockwyrks/run-record/backend-api";
+import type { SuiteVersionResponse } from "@clockwyrks/backend-api";
 import type { ReactNode } from "react";
 import { NavLink, useLocation, useParams } from "react-router";
 

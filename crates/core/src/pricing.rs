@@ -14,6 +14,10 @@ use time::format_description::well_known::Rfc3339;
 use crate::error::{Error, Result};
 use crate::metrics::TokenPrices;
 
+// The provider-spelling comparison is part of the contract: gg and the run record
+// agree on it, so it lives in `test-cabinet-contracts` and is re-exported here.
+pub use test_cabinet_contracts::pricing::{provider_key, same_provider};
+
 /// The OpenRouter models endpoint listing every model and its pricing.
 const MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
 
@@ -326,25 +330,6 @@ pub struct ProviderRoute {
     pub name: String,
     /// The route's context window in tokens, when reported.
     pub context_length: Option<u64>,
-}
-
-/// Whether `a` and `b` name the same OpenRouter provider.
-///
-/// OpenRouter spells one provider several ways: `Z.AI` in the endpoints listing and on a
-/// response, `z-ai` in the model id and the route tag, and it accepts either in a request's
-/// `provider` object. Two spellings agree when they are equal after lowercasing and dropping
-/// everything but letters and digits. A blank spelling agrees with nothing.
-pub fn same_provider(a: &str, b: &str) -> bool {
-    let a = provider_key(a);
-    !a.is_empty() && a == provider_key(b)
-}
-
-/// A provider spelling reduced to the characters [`same_provider`] compares.
-pub fn provider_key(name: &str) -> String {
-    name.chars()
-        .filter(|ch| ch.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
 }
 
 /// The provider, of those named in `providers`, that is the developer of `model_id`: the first

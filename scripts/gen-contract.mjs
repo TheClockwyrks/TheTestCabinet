@@ -1,13 +1,16 @@
 // Generate the Test Cabinet data contract — the TypeScript bindings and the JSON
 // Schemas — from the Rust types that are its single source of truth.
 //
-// The work happens in three steps. The `contract-codegen` crate (see
-// `crates/contract-codegen`) emits the TypeScript (`packages/run-record/src/`) and
-// the JSON Schemas (`apps/docs/public/schema/`) from the Rust contract types, which
-// derive `ts_rs::TS` + `schemars::JsonSchema` behind their `contract` feature. The
-// Rust generator is correct but not pretty (ts_rs emits ragged whitespace), so the
-// second step runs Prettier to make the committed output deterministic and
-// conventional. CI regenerates and fails on any diff, so the committed artifacts
+// The work happens in three steps. Two generators emit the TypeScript and the JSON
+// Schemas (`apps/docs/public/schema/`) from the Rust types, which derive
+// `ts_rs::TS` + `schemars::JsonSchema` behind their crate's `contract` feature:
+// `contract-codegen` (`crates/contract-codegen`) writes the data contract
+// (`packages/run-record/src/`, `packages/asset-contract/src/`) from
+// `crates/contracts`, and `api-codegen` (`crates/api-codegen`) writes the backend's
+// API package (`packages/backend-api/src/`) from `crates/backend` and `crates/core`,
+// reading the data contract's modules only to import from them. The Rust generators
+// are correct but not pretty (ts_rs emits ragged whitespace), so the second step
+// runs Prettier to make the committed output deterministic and conventional. CI regenerates and fails on any diff, so the committed artifacts
 // always match the Rust source — hand-edits never survive. The last step compiles
 // the regenerated TypeScript, because `dist/` — not `src/` — is what every consumer
 // of the package actually imports.
@@ -23,7 +26,8 @@
 //
 // The practical consequence is that this script no longer BUILDS gg — so it no longer
 // needs gg's eleven program-language toolchains, and neither does the CI job that runs
-// it. What is left compiles `test-cabinet-core` and `test-cabinet-backend` only.
+// it. What is left compiles `test-cabinet-contracts` for the first generator, and
+// `test-cabinet-core` and `test-cabinet-backend` for the second.
 //
 // Usage: `npm run gen:contract` (from the repository root).
 
@@ -34,8 +38,10 @@ function run(cmd, args) {
   execFileSync(cmd, args, { stdio: "inherit" });
 }
 
-// 1. Emit raw TS + JSON from the Rust source of truth.
+// 1. Emit raw TS + JSON from the Rust source of truth: the data contract first, then
+//    the backend API that imports from it.
 run("cargo", ["run", "--quiet", "-p", "contract-codegen"]);
+run("cargo", ["run", "--quiet", "-p", "api-codegen"]);
 
 // 1b. Mirror gg's built-in system-prompt templates into the TS contract, so the
 //     console can seed its per-agent "System Prompt" editor with the exact default
@@ -94,14 +100,16 @@ run("npx", [
   "warn",
   "packages/run-record/src/**/*.ts",
   "packages/asset-contract/src/**/*.ts",
+  "packages/backend-api/src/**/*.ts",
   "apps/docs/public/schema/**/*.json",
 ]);
 
 // 3. Compile the TypeScript that was just regenerated. Nothing in the browser reads
-//    `packages/run-record/src/` — the package's `exports` map points at `dist/`, so
+//    `packages/run-record/src/` or `packages/backend-api/src/` — each package's
+//    `exports` map points at `dist/`, so
 //    a Vite dev server serves whatever was last compiled. Emitting only the source
 //    therefore leaves every console running against the *previous* contract until
 //    someone happens to run a production build, and the failure is a module-level
 //    `SyntaxError` naming an export that plainly exists in the source. Regenerating
 //    and compiling are one act; do not split them.
-run("npx", ["tsc", "-b", "packages/run-record"]);
+run("npx", ["tsc", "-b", "packages/run-record", "packages/backend-api"]);

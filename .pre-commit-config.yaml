@@ -63,8 +63,9 @@ repos:
         # several megabytes, a performance case's oracle output over one, and
         # a full spec over the 500 kB default. None of those is a mistake this
         # hook should stop, and a new version is a copy of the last, so every
-        # version directory is left out, as it is for end-of-file-fixer below.
-        exclude: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
+        # version directory is left out, as it is for end-of-file-fixer below,
+        # and so are the copies of versions the Rust tests read.
+        exclude: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^crates/[^/]+/testdata/definitions/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -81,8 +82,9 @@ repos:
         # `frozen-paths` gate refuses a change to it), and some of them hold
         # files that end without a newline, which this hook would rewrite.
         # ESLint writes the lint ratchet's baseline, `eslint-suppressions.json`,
-        # without one and rewrites it on every prune, so it is left alone too.
-        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^eslint-suppressions\.json$'
+        # without one and rewrites it on every prune, so it is left alone too. The
+        # copies of versions the Rust tests read keep their source's bytes.
+        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^crates/[^/]+/testdata/definitions/|^eslint-suppressions\.json$'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.

@@ -1,6 +1,6 @@
+import type { GgConfigInput } from "@clockwyrks/backend-api/gg";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import type { GgConfigInput } from "@clockwyrks/run-record/gg";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";

@@ -18,6 +18,18 @@ name = "test_cabinet_core"
 path = "src/lib.rs"
 
 [dependencies]
+# The shapes: the contract modules this crate re-exports at their old paths
+# (`gg`, `metrics`, `toolchain`, `code_analysis`, ...) and the contract halves of the
+# ones it splits (`run_record`, `event`, `review`, `validation`, `test_case`,
+# `test_suite`, `gg_query`, `engine`, `pricing`, `orchestrator`, `execution`, the
+# ingest feed and the layout constants).
+test-cabinet-contracts = { path = "../contracts" }
+# The test-suite runtime: the suite catalog and its lowering, previews, the definition
+# prompt, the validator runners and the browser plumbing they use, the engine catalog
+# and the content digests. Re-exported at the old paths (`test_suite`, `engine`,
+# `browser`, `vitest_validator`, `content_digest`, `content_labels`, and the halves of
+# `execution`, `validator`, `prompt` and `seeding` that moved).
+test-cabinet-suites = { path = "../suites" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -26,14 +38,9 @@ async-trait = { workspace = true }
 cuid2 = { workspace = true }
 time = { workspace = true }
 toml = { workspace = true }
-# The canonical TOML emitter of the test suite model (`test_suite::canonical`).
-# Reads go through `toml`/`serde`; writes go through a `toml_edit` `DocumentMut`,
-# which is what gives the emitter control over table order and array layout.
-toml_edit = { workspace = true }
 # Semantic-version ordering for the engine version ranges a test case declares
 # (`[[engine]]`) and the run gate enforces (`resolve_engine`).
 semver = { workspace = true }
-handlebars = { workspace = true }
 tempfile = { workspace = true }
 # Gzip framing for the run-tree analysis artifacts core assembles on the host
 # (`gg_session_assembly` writes `replay.json.gz`); the same workspace codec the
@@ -44,10 +51,6 @@ reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
 base64 = { workspace = true }
-# Percent-decoding for the showcase description's Markdown image references
-# (`crate::showcase`), so an extracted name is the plain file name the author
-# wrote rather than the encoded destination a renderer was handed.
-percent-encoding = { workspace = true }
 # SigV4 signing for the shared R2 client (`crate::r2`), which the backend's
 # snapshot refresh and `tcab publish-reference` both use. Signing the handful of
 # requests directly is far cheaper than vendoring the AWS SDK for two verbs.
@@ -106,21 +109,24 @@ tracing = { workspace = true }
 # global propagator a binary may have installed.
 test-cabinet-telemetry = { path = "../telemetry", default-features = false }
 
-# Contract codegen (TS bindings + JSON Schema) for the run-record and arena data
-# contract. Both are derived on the same types behind the `contract` feature and
-# driven by the `contract-codegen` generator; off by default so normal/CLI/wasm
-# builds never compile them.
+# Contract codegen (TS bindings + JSON Schema) for the core's API types (accounts,
+# comparisons, the tournament record, the job API). Both are derived on the same
+# types behind the `contract` feature and driven by the `api-codegen` generator; off
+# by default so normal/CLI/wasm builds never compile them.
 ts-rs = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 
 [features]
-# Derive `ts_rs::TS` + `schemars::JsonSchema` on the public data-contract types so
-# the `contract-codegen` generator can emit the TypeScript bindings and JSON
-# Schemas from them. Never enabled by a normal build.
-contract = ["dep:ts-rs", "dep:schemars"]
+# Derive `ts_rs::TS` + `schemars::JsonSchema` on the public API types so the
+# `api-codegen` generator can emit the TypeScript bindings and JSON Schemas from
+# them, and turn on the contracts crate's feature for the contract types they
+# refer to. Never enabled by a normal build.
+contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-contracts/contract"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# `test_browser`, what a test driving a real browser needs (`crate::test_browser`).
+test-cabinet-suites = { path = "../suites", features = ["test-support"] }
 # The same audio contract crate the library links, with its `cli` feature: the audio
 # staging test reads the tree core wrote back through the exact reader the
 # in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the

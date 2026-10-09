@@ -1,0 +1,65 @@
+[package]
+name = "test-cabinet-contracts"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The shapes more than one party must agree on: the run record and its parts (the
+# events, the validation summary, the review shapes), a resolved test case version,
+# the test suite format and its rules, gg's configuration, telemetry and session
+# record, the TCQ query contract, the code analysis contract, and the layout
+# constants of a run tree and a case version. Data structures, their pure methods
+# and well-formedness checks, and nothing that reaches a container, a process, the
+# network or a clock. `test-cabinet-core` depends
+# on this crate and re-exports every module at its old path, so
+# `test_cabinet_core::gg::GgRunLimits` and the rest keep naming the same items.
+#
+# Keep it that way: a dependency added here is one every party that reads a run
+# record, a harness included, compiles. Runtime belongs in core.
+[lib]
+name = "test_cabinet_contracts"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# The engine version a resolved engine reports (`engine::ResolvedEngine::version`),
+# and the version ranges a test case's engine support declares
+# (`test_case::EngineSupport`).
+semver = { workspace = true }
+# The test suite format: its files are TOML, read through `toml`/`serde` and written
+# back in canonical form through a `toml_edit` `DocumentMut`, which is what gives the
+# emitter control over table order and array layout (`test_suite::canonical`).
+toml = { workspace = true }
+toml_edit = { workspace = true }
+# The errors of a suite read or write (`test_suite::TestSuiteError`) and of a variant
+# lookup (`test_case::VariantNotFound`).
+thiserror = { workspace = true }
+# The content digest of a gg session record (`gg_session_record`).
+sha2 = { workspace = true }
+hex = { workspace = true }
+# Percent-decoding for the showcase description's Markdown image references
+# (`showcase`), so an extracted name is the plain file name the author wrote
+# rather than the encoded destination a renderer was handed.
+percent-encoding = { workspace = true }
+
+# Contract codegen (TS bindings + JSON Schema), derived on the same types behind the
+# `contract` feature and driven by the `contract-codegen` generator (and, through
+# core's feature of the same name, read by `api-codegen`); off by default so normal
+# builds never compile them.
+ts-rs = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The suite format's tests copy the committed fixture suite into a scratch directory
+# before breaking it.
+tempfile = { workspace = true }
+
+[features]
+# Derive `ts_rs::TS` + `schemars::JsonSchema` on the public data-contract types.
+# Never enabled by a normal build; `test-cabinet-core/contract` turns it on.
+contract = ["dep:ts-rs", "dep:schemars"]
+
+[lints]
+workspace = true

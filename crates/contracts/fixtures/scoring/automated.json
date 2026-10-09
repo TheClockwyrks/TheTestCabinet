@@ -1,0 +1,414 @@
+{
+  "$comment": "Shared scoring goldens: executed by crates/core/src/review.goldens.test.rs and packages/run-stats/src/scoring.goldens.test.ts, which both reject unknown keys. Expectations are the Rust core's output. comparison::{automated_verdicts, automated_only_score, covered_score} and their mirrors: automatedVerdicts reads input.debugScripts, automatedOnlyScore scores input.items against them, and coveredScore scores input.items against input.verdicts.",
+  "cases": [
+    {
+      "name": "a contract failure fails and an inconclusive or silent script is skipped",
+      "why": "The failure semantics every validator-decided figure shares.",
+      "input": {
+        "items": [],
+        "debugScripts": [
+          {
+            "itemId": "a",
+            "verdicts": [
+              {
+                "id": "a",
+                "pass": true
+              }
+            ]
+          },
+          {
+            "itemId": "b",
+            "subItemId": "x",
+            "ran": false
+          },
+          {
+            "itemId": "c",
+            "ran": false,
+            "preconditionUnmet": true
+          },
+          {
+            "itemId": "d"
+          }
+        ],
+        "verdicts": []
+      },
+      "expect": {
+        "automatedVerdicts": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "b.x",
+            "status": "fail"
+          }
+        ],
+        "automatedOnlyScore": {
+          "earned": 0,
+          "total": 0
+        },
+        "coveredScore": {
+          "earned": 0,
+          "total": 0
+        }
+      }
+    },
+    {
+      "name": "both sides are restricted to the covered points",
+      "why": "A human-only point is excluded rather than failed.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 3
+          },
+          {
+            "id": "b",
+            "weight": 2
+          },
+          {
+            "id": "human",
+            "weight": 5
+          }
+        ],
+        "debugScripts": [
+          {
+            "itemId": "a",
+            "verdicts": [
+              {
+                "id": "a",
+                "pass": true
+              }
+            ]
+          },
+          {
+            "itemId": "b",
+            "verdicts": [
+              {
+                "id": "b",
+                "pass": false
+              }
+            ]
+          }
+        ],
+        "verdicts": [
+          {
+            "id": "human",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "automatedVerdicts": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "b",
+            "status": "fail"
+          }
+        ],
+        "automatedOnlyScore": {
+          "earned": 3,
+          "total": 5
+        },
+        "coveredScore": {
+          "earned": 5,
+          "total": 5
+        }
+      }
+    },
+    {
+      "name": "a category keeps only its covered points",
+      "why": "An uncovered point drops out of the denominator.",
+      "input": {
+        "items": [
+          {
+            "id": "cat",
+            "weight": 3,
+            "subItems": [
+              {
+                "id": "x"
+              },
+              {
+                "id": "y"
+              },
+              {
+                "id": "z"
+              }
+            ]
+          }
+        ],
+        "debugScripts": [
+          {
+            "itemId": "cat",
+            "subItemId": "x",
+            "verdicts": [
+              {
+                "id": "cat.x",
+                "pass": true
+              }
+            ]
+          },
+          {
+            "itemId": "cat",
+            "subItemId": "y",
+            "verdicts": [
+              {
+                "id": "cat.y",
+                "pass": false
+              }
+            ]
+          }
+        ],
+        "verdicts": [
+          {
+            "id": "cat.z",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "automatedVerdicts": [
+          {
+            "id": "cat.x",
+            "status": "pass"
+          },
+          {
+            "id": "cat.y",
+            "status": "fail"
+          }
+        ],
+        "automatedOnlyScore": {
+          "earned": 1,
+          "total": 2
+        },
+        "coveredScore": {
+          "earned": 1,
+          "total": 1
+        }
+      }
+    },
+    {
+      "name": "an excluded point counts toward neither side even when covered",
+      "why": "Erratum exclusion survives the coverage restriction.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 1,
+            "scored": false
+          },
+          {
+            "id": "b",
+            "weight": 1
+          }
+        ],
+        "debugScripts": [
+          {
+            "itemId": "a",
+            "verdicts": [
+              {
+                "id": "a",
+                "pass": true
+              }
+            ]
+          },
+          {
+            "itemId": "b",
+            "verdicts": [
+              {
+                "id": "b",
+                "pass": true
+              }
+            ]
+          }
+        ],
+        "verdicts": [
+          {
+            "id": "a",
+            "status": "fail"
+          }
+        ]
+      },
+      "expect": {
+        "automatedVerdicts": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "b",
+            "status": "pass"
+          }
+        ],
+        "automatedOnlyScore": {
+          "earned": 1,
+          "total": 1
+        },
+        "coveredScore": {
+          "earned": 0,
+          "total": 0
+        }
+      }
+    },
+    {
+      "name": "a script may decide several verdicts",
+      "why": "Every id a script emits is kept, in order.",
+      "input": {
+        "items": [
+          {
+            "id": "cat",
+            "weight": 2,
+            "subItems": [
+              {
+                "id": "x"
+              },
+              {
+                "id": "y"
+              }
+            ]
+          }
+        ],
+        "debugScripts": [
+          {
+            "itemId": "cat",
+            "verdicts": [
+              {
+                "id": "cat.x",
+                "pass": true
+              },
+              {
+                "id": "cat.y",
+                "pass": false
+              }
+            ]
+          }
+        ],
+        "verdicts": []
+      },
+      "expect": {
+        "automatedVerdicts": [
+          {
+            "id": "cat.x",
+            "status": "pass"
+          },
+          {
+            "id": "cat.y",
+            "status": "fail"
+          }
+        ],
+        "automatedOnlyScore": {
+          "earned": 1,
+          "total": 2
+        },
+        "coveredScore": {
+          "earned": 0,
+          "total": 0
+        }
+      }
+    },
+    {
+      "name": "decided verdicts stand even when the script did not run",
+      "why": "Only an inconclusive result discards what a script decided.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 1
+          },
+          {
+            "id": "b",
+            "weight": 1
+          }
+        ],
+        "debugScripts": [
+          {
+            "itemId": "a",
+            "ran": false,
+            "verdicts": [
+              {
+                "id": "a",
+                "pass": true
+              }
+            ]
+          },
+          {
+            "itemId": "b",
+            "ran": false,
+            "preconditionUnmet": true,
+            "verdicts": [
+              {
+                "id": "b",
+                "pass": true
+              }
+            ]
+          }
+        ],
+        "verdicts": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "b",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "automatedVerdicts": [
+          {
+            "id": "a",
+            "status": "pass"
+          }
+        ],
+        "automatedOnlyScore": {
+          "earned": 1,
+          "total": 1
+        },
+        "coveredScore": {
+          "earned": 2,
+          "total": 2
+        }
+      }
+    },
+    {
+      "name": "a covered graded item is scored on the graded scale",
+      "why": "The restriction keeps a graded item by its own id.",
+      "input": {
+        "items": [
+          {
+            "id": "gfx",
+            "weight": 1,
+            "graded": true
+          },
+          {
+            "id": "fun",
+            "weight": 1,
+            "graded": true
+          }
+        ],
+        "debugScripts": [],
+        "verdicts": [
+          {
+            "id": "gfx",
+            "status": "great"
+          }
+        ]
+      },
+      "expect": {
+        "automatedVerdicts": [],
+        "automatedOnlyScore": {
+          "earned": 0,
+          "total": 0
+        },
+        "coveredScore": {
+          "earned": 8,
+          "total": 10
+        }
+      }
+    }
+  ]
+}

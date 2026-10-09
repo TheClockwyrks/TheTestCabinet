@@ -805,7 +805,7 @@ export interface DistributionPoint {
  * One group's (an arm's) full distribution for a {@link distributionChart}: the
  * summary statistics a box plot draws, plus the raw points behind them when the
  * caller has them (see {@link DistributionPoint}). Mirrors `MetricSummary`
- * (`@clockwyrks/run-record/comparison`) field-for-field so a caller can spread
+ * (`@clockwyrks/backend-api/comparison`) field-for-field so a caller can spread
  * an arm's summary straight in.
  */
 export interface DistributionGroup {

@@ -134,6 +134,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "api-codegen"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "contract-codegen",
+ "test-cabinet-backend",
+ "test-cabinet-core",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -699,8 +709,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "test-cabinet-backend",
- "test-cabinet-core",
+ "test-cabinet-contracts",
  "ts-rs",
 ]
 
@@ -5140,6 +5149,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-contracts"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "percent-encoding",
+ "schemars",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml",
+ "toml_edit 0.25.16+spec-1.1.0",
+ "ts-rs",
+]
+
+[[package]]
 name = "test-cabinet-core"
 version = "0.7.0"
 dependencies = [
@@ -5149,14 +5176,12 @@ dependencies = [
  "flate2",
  "foray-core",
  "foray-host",
- "handlebars",
  "hex",
  "hmac",
  "http",
  "lattice-core",
  "lattice-host",
  "md-5",
- "percent-encoding",
  "png",
  "reqwest 0.12.28",
  "schemars",
@@ -5166,8 +5191,10 @@ dependencies = [
  "sha2",
  "tempfile",
  "test-cabinet-audio-core",
+ "test-cabinet-contracts",
  "test-cabinet-draw",
  "test-cabinet-model-core",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
  "test-cabinet-voxel",
  "test-cabinet-voxel-mesh",
@@ -5175,7 +5202,6 @@ dependencies = [
  "time",
  "tokio",
  "toml",
- "toml_edit 0.25.16+spec-1.1.0",
  "tracing",
  "ts-rs",
  "wat",
@@ -5474,6 +5500,25 @@ name = "test-cabinet-sn-skin"
 version = "0.0.0"
 dependencies = [
  "test-cabinet-model-skin",
+]
+
+[[package]]
+name = "test-cabinet-suites"
+version = "0.0.0"
+dependencies = [
+ "cuid2",
+ "handlebars",
+ "hex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "test-cabinet-contracts",
+ "thiserror 2.0.18",
+ "toml",
+ "tracing",
+ "which",
 ]
 
 [[package]]

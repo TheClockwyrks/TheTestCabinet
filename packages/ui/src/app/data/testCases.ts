@@ -1,10 +1,10 @@
+import type { StoredSuiteCoordinate } from "@clockwyrks/backend-api";
 import type {
   AssetSheet,
   MediaKind,
   ModelSpec,
   TestType,
 } from "@clockwyrks/run-record";
-import type { StoredSuiteCoordinate } from "@clockwyrks/run-record/backend-api";
 
 import type {
   AssetKind,

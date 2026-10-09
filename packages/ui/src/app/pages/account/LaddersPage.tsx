@@ -1,23 +1,24 @@
+import type {
+  LadderSummary,
+  DispatchStatus,
+} from "@clockwyrks/backend-api/ladders";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type {
-  DispatchStatus,
-  LadderSummary,
-} from "@clockwyrks/run-record/ladders";
+
+import { AccountTabs } from "./AccountTabs";
+import styles from "./Coverage.module.scss";
 import { dispatchBadgeClass } from "./ladder-dispatch";
+import ladderStyles from "./Ladder.module.scss";
 import { dispatchStatusLabel } from "./LadderPage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useConfirm } from "../../components/ConfirmDialog";
-import { routes } from "../../routes";
-import { AccountTabs } from "./AccountTabs";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { routes } from "../../routes";
 import exec from "../runs/RunExec.module.scss";
-import styles from "./Coverage.module.scss";
-import ladderStyles from "./Ladder.module.scss";
 
 /** Everything one ladder card shows, read off its summary. */
 export interface LadderCardView {
@@ -138,9 +139,9 @@ export function LaddersPage() {
         setLadders(list);
         setLoading(false);
       })
-      .catch((e) => {
+      .catch((error_) => {
         if (!active) return;
-        setError(String(e));
+        setError(String(error_));
         setLoading(false);
       });
     return () => {
@@ -150,8 +151,9 @@ export function LaddersPage() {
 
   const deleteLadder = useCallback(
     async (id: string, name: string) => {
-      if (!backend?.deleteLadder || !token) return;
       if (
+        !backend?.deleteLadder ||
+        !token ||
         !(await confirm({
           title: "Delete ladder",
           message:
@@ -168,8 +170,8 @@ export function LaddersPage() {
       try {
         await backend.deleteLadder(id, token);
         await reload();
-      } catch (e) {
-        setError(String(e));
+      } catch (error_) {
+        setError(String(error_));
       } finally {
         setBusy(false);
       }
@@ -177,20 +179,7 @@ export function LaddersPage() {
     [backend, token, reload, confirm],
   );
 
-  if (!token) {
-    return (
-      <PageLayout>
-        <PromptHeader command="--ladders" comment={<>// your ladders</>} />
-        <AccountTabs active="ladders" />
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use ladders. They are saved to your account. Use the
-          account control in the top bar to register or log in.
-        </p>
-      </PageLayout>
-    );
-  }
-
-  return (
+  return token ? (
     <PageLayout>
       <PromptHeader
         command="--ladders"
@@ -303,6 +292,15 @@ export function LaddersPage() {
           })}
         </div>
       )}
+    </PageLayout>
+  ) : (
+    <PageLayout>
+      <PromptHeader command="--ladders" comment={<>// your ladders</>} />
+      <AccountTabs active="ladders" />
+      <p className={`${exec.notice} ${exec.warn}`}>
+        Sign in to use ladders. They are saved to your account. Use the account
+        control in the top bar to register or log in.
+      </p>
     </PageLayout>
   );
 }

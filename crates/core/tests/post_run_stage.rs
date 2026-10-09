@@ -38,10 +38,11 @@ use test_cabinet_core::{
     TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
-/// The repository's `test-cases/` directory — the real catalog, so the run is
-/// seeded from a real case exactly as a `tcab run` would be.
+/// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
+/// run is seeded from a real case exactly as a `tcab run` would be, without depending on
+/// where the repository's catalog lives.
 fn catalog_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases")
 }
 
 /// How long the post-run stage takes. Deliberately longer than [`RUNTIME_CAP`]:
@@ -301,7 +302,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         // version built against an engine refuses `EngineSelection::default()`
         // before any of the ordering below happens.
         .resolve("carom", "v2.1.0")
-        .expect("resolve the bundled carom case");
+        .expect("the fixture copy of carom v2.1.0 resolves");
     let variant = test_case.variant("base").expect("carom's base variant");
 
     // The "produced" tree the collector hands back, standing in for what the

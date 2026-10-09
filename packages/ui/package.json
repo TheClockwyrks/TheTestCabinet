@@ -30,6 +30,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@clockwyrks/particle-runtime": "*",
+    "@clockwyrks/backend-api": "*",
     "@clockwyrks/run-record": "*",
     "@clockwyrks/run-stats": "*",
     "@clockwyrks/voxel-runtime": "*",

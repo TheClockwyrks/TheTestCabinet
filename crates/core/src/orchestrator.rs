@@ -41,8 +41,9 @@ use crate::run_record::HarnessSlug;
 /// The manifest file name for an orchestrator directory (built-in or external).
 const MANIFEST_FILE: &str = "orchestrator.toml";
 
-/// The slug of the default, single-session orchestrator.
-pub const ONE_SHOT_SLUG: &str = "one-shot";
+// The default orchestrator's slug is a run-record serde default, so it lives in
+// `test-cabinet-contracts` and is re-exported here.
+pub use test_cabinet_contracts::orchestrator::ONE_SHOT_SLUG;
 
 /// The token the `tcab-session` wrapper carries in place of the prompt argument.
 /// It is rendered into the wrapper as an ordinary argv element, then the quoted

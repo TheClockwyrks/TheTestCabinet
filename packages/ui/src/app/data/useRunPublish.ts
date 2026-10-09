@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useCallback } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { useOptionalWorkers } from "../../client/context";
 import { useAuth } from "../../client/auth";
 import { describeRunState } from "./runState";

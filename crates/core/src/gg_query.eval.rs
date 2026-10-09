@@ -3,8 +3,8 @@
 //! Everything here has a TypeScript twin that must produce identical output for the
 //! same corpus, because the console evaluates on the backend and the public static
 //! site evaluates in the browser with no backend at all. The
-//! `gg_query.conformance.json` fixture beside this module's test is what holds the two
-//! together; **a change to any rule below must arrive with a fixture case that would
+//! `crates/contracts/fixtures/gg_query.conformance.json` fixture this module's test
+//! executes is what holds the two together; **a change to any rule below must arrive with a fixture case that would
 //! have caught the drift.**
 
 use std::borrow::Borrow;
@@ -181,12 +181,12 @@ fn truncate<T>(rows: &mut Vec<T>, limit: Option<u32>) -> bool {
 /// Whether `doc` passes `filter`.
 ///
 /// The one rule worth restating at every call site:
-/// [**absent means absent**](crate::gg_query#the-seven-semantic-rules). A missing key
-/// fails `Compare` (all six operators, `!=` included), `OneOf` and `Range`; `Not` is
-/// the only way to ask about absence. That bluntness is deliberate — the alternative,
-/// which an earlier draft carried, was to let a boolean compared against `false` also
-/// match an absent field, and it conflated "configured and off", "never mentioned" and
-/// "the block is missing entirely" while quietly changing every average's denominator.
+/// [**absent means absent**](test_cabinet_contracts::gg_query#the-seven-semantic-rules). A
+/// missing key fails `Compare` (all six operators, `!=` included), `OneOf` and `Range`; `Not`
+/// is the only way to ask about absence. That bluntness is deliberate — the alternative, which
+/// an earlier draft carried, was to let a boolean compared against `false` also match an absent
+/// field, and it conflated "configured and off", "never mentioned" and "the block is missing
+/// entirely" while quietly changing every average's denominator.
 fn matches(doc: &GgRunDoc, filter: &GgFilter) -> bool {
     match filter {
         GgFilter::And { clauses } => clauses.iter().all(|c| matches(doc, c)),
@@ -668,7 +668,8 @@ impl FieldStats {
     /// The field's kind. Derived from the observed values, except that a
     /// [known date field](GG_DATE_FIELDS) carrying numbers is a
     /// [`Date`](GgFieldKind::Date) — date-ness cannot be observed, because
-    /// [rule 6](crate::gg_query#the-seven-semantic-rules) makes a date *be* a number.
+    /// [rule 6](test_cabinet_contracts::gg_query#the-seven-semantic-rules) makes a date *be* a
+    /// number.
     fn kind(&self, name: &str) -> GgFieldKind {
         match (self.strings, self.numbers, self.booleans) {
             (true, false, false) => GgFieldKind::String,

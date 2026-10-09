@@ -14,8 +14,8 @@
 // already hold (the console's backend listing, the static site's snapshot index),
 // so the Overview costs no per-run document fetches.
 
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type { TestType } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../../modelId";
 import { formatSlug } from "../format";
 

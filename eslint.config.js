@@ -152,6 +152,7 @@ const CONFIG = defineConfig([
     "crates/foray-core/schemas/*.json",
     "crates/lattice-core/schemas/*.json",
     "test-cases/performance/hard/lattice/*/cases/*.json",
+    "crates/*/testdata/definitions/**",
     "**/*.hbs",
     "**/.build/**",
     "**/.spago/**",

@@ -269,6 +269,8 @@ TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
 # TCAB_BACKEND_BIND defaults to 127.0.0.1:8787.
 # TCAB_BACKEND_DATABASE_URL unset uses the default local SQLite file.
 # TCAB_BACKEND_AUTH_URL defaults to http://127.0.0.1:8789, the local auth service.
+# TCAB_DEFINITIONS_ROOT, TCAB_SUITES_ROOT and TCAB_COLD_STORAGE_ROOT default to
+# the checkout's own test-cases/, test-suites/ and cold-storage/ trees.
 # With the R2 and deploy-hook variables blank, the backend still records to its
 # database and regenerates the snapshot on disk.
 ```
@@ -316,9 +318,10 @@ git submodule update --init --depth 1 cold-storage
 ```
 
 Without it every version ingests with no baseline media, and a review shows only
-the build's half of each side-by-side. `TCAB_COLD_STORAGE_DIR` in `.env.backend`
-points the backend at a copy kept elsewhere. The same applies to the k3d stack,
-which ingests the checkout it mounts.
+the build's half of each side-by-side. `TCAB_COLD_STORAGE_ROOT` in `.env.backend`
+points the backend at a copy kept elsewhere; when it is unset the backend reads
+`TCAB_COLD_STORAGE_DIR`, the override the capture commands also read. The same
+applies to the k3d stack, which ingests the checkout it mounts.
 
 Re-ingest after editing a test case, so the backend serves the change. A plain
 scan skips any version it already holds, because the store is immutable per

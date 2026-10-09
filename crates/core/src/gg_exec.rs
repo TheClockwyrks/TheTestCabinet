@@ -36,7 +36,9 @@ use std::path::{Path, PathBuf};
 use crate::RunRequest;
 use crate::cancel::RunCancellation;
 use crate::error::{Error, Result};
-use crate::event::{EventKind, EventSink, HarnessEvent, SystemStage, SystemStatus};
+use crate::event::{
+    EventKind, EventSink, HarnessEvent, HarnessEventExt, SystemStage, SystemStatus,
+};
 use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
 use crate::execution::{
     ContainerHandle, ContainerRuntime, OutputSink, OutputStream, RawOutputLine,

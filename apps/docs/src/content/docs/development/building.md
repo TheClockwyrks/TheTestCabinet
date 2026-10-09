@@ -160,6 +160,25 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 
 ### Rust (Cargo workspace)
 
+- `crates/contracts`: `test-cabinet-contracts` (lib `test_cabinet_contracts`).
+  The [contract](/components/core/overview/#the-contracts-crate) shapes more than
+  one party agrees on: the run record and its parts (events, validation summary,
+  metrics, toolchain and code analysis), the review shapes, a resolved test case
+  version, the test suite format and its rules, gg's configuration, telemetry and
+  session record, the TCQ query shapes, the engine identity a run names, the
+  ingest feed, and the layout of a run tree. Data and pure functions only; core
+  re-exports every module at its old path. The test suite fixture the format's
+  tests and the suite runtime's tests read is `crates/contracts/fixtures/test-suite/`,
+  the TCQ conformance fixture the Rust and TypeScript evaluators both execute is
+  `crates/contracts/fixtures/gg_query.conformance.json`, and the
+  [scoring goldens](#the-scoring-goldens) both scoring implementations execute are
+  `crates/contracts/fixtures/scoring/`.
+- `crates/suites`: `test-cabinet-suites` (lib `test_cabinet_suites`). The
+  [test-suite runtime](/components/core/overview/#the-suites-crate): the suite
+  catalog and lowering, previews, a definition's prompt and the validator runners,
+  with the engine catalog, the vitest runner, the browser driver and the content
+  digests they share with the core. Core re-exports every module at its old path.
+  The `test-support` feature exposes `test_browser` to another crate's tests.
 - `crates/core`: `test-cabinet-core` (lib `test_cabinet_core`). The headless
   [core](/components/core/overview/) that owns all orchestration: resolving a
   test case version, seeding a run's repository, executing the run in a
@@ -191,6 +210,10 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/telemetry`: `test-cabinet-telemetry`. The shared
   [OpenTelemetry](/development/observability/) wiring every long-lived binary
   initializes at startup.
+- `crates/contract-codegen` and `crates/api-codegen`: the two
+  [generators](#generating-the-data-contract) of the committed TypeScript
+  bindings and JSON Schemas, one for the data contract and one for the backend's
+  API.
 
 The remaining members are the asset-generation tools (`draw`, `voxel`, `mc`,
 `sn`, `dc`, `paint`, `particle-*`, `sfx-*`, `music` and the libraries they
@@ -213,11 +236,20 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   from there. The `seeded-contract` gate (`ci/gates/seeded-contract.py`, which
   runs `scripts/ci/seeded-contract-check.sh`) keeps the evaluation half out of
   a run.
+- `packages/backend-api`: `@clockwyrks/backend-api`. The TypeScript types of the
+  [backend's API](/components/backend/api/): its request and response shapes,
+  the run queue, coverage plans and ladders, accounts, comparisons, the
+  published snapshot documents, the saved gg configurations, agents, queries and
+  dashboards, the persisted tournament, and the `Review` document. Generated
+  from `crates/backend` and `crates/core`, and built on `run-record`, whose types
+  it imports.
 - `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
-  frozen at one moment comparable with the same figure recomputed later. It has
-  no runtime dependencies and imports only types from `run-record`, so it runs in
+  frozen at one moment comparable with the same figure recomputed later. The
+  [scoring goldens](#the-scoring-goldens) hold each mirror to its counterpart. It has
+  no runtime dependencies and imports only types from `run-record` and
+  `backend-api`, so it runs in
   a bundle, a build script, or a worker alike. `packages/ui`'s `ratings` module
   re-exports the scoring half alongside its display metadata.
 - `packages/browser-driver`: `@clockwyrks/browser-driver`. The Playwright
@@ -469,16 +501,61 @@ scripts/ci/gg-test.sh [k/N]   # gg's unit tests, whole or one hash partition
 gg's unit tests are the one part of the suite no gate runs; see
 [Testing gg](#testing-gg).
 
+### The scoring goldens
+
+A run's score and rating are computed twice: by the core in Rust, where the backend
+scores a stored review, and by `@clockwyrks/run-stats` in TypeScript, where the
+consoles, the gallery and the public read edge score the same run. The goldens under
+`crates/contracts/fixtures/scoring/` are the cases both must agree on, one file per
+pair of functions that exists on both sides: `score_checklist`, the toolchain gate
+(`gated`), the review aggregations (`aggregate`), the validator-decided domain ratings
+(`validator_domain`), `merge_review_items`, the errata's `score_exclusions`, and the
+automated-only score with the verdicts and the covered score it is built on
+(`automated`). Each case gives its `name`, `why` it exists, the `input` and what to
+`expect`.
+
+`crates/core/src/review.goldens.test.rs` executes them in the `rust-test` gate and
+`packages/run-stats/src/scoring.goldens.test.ts` in `workspace-test`, both reading the
+files off the contracts crate, so a case added on either side runs on both, and each
+fails when the directory holds a file it executes no test for. Each rejects a key it
+does not know, since a misspelled key would otherwise fall back to its default and
+assert less than it reads as asserting. The expectations are the Rust
+output: a change to a scoring rule changes the goldens, and the other side then has
+to follow. The writeup-based `review::score` has no golden, being a thin wrapper over
+`score_checklist` with no TypeScript counterpart.
+
+### Tests that read case versions
+
+A Rust test that resolves a named case version reads a copy of it under its
+crate's `testdata/definitions/`, laid out like the repository root
+(`test-cases/<type>/<difficulty>/<slug>/<version>/`, `game-jams/`,
+`test-case-groups/`). A copy holds the version's tracked files without its
+`.frozen` marker, so the [frozen-paths](/development/frozen-versions/) gate
+guards the original alone. The tests read no other tree, so they pass wherever
+the catalog itself lives, and a missing copy fails the test that resolves it.
+The format, prose and lint gates and the image build context leave the
+copies out.
+
+The tests that hold every committed version to a rule read the catalog itself:
+`crates/core/tests/committed_catalog.rs`, the group membership check in
+`crates/core/tests/manifests_are_valid.rs`, and the backend's
+`every_stored_manifest_preserves_its_asset_shape`. They read it from
+`TCAB_DEFINITIONS_ROOT`, the directory holding `test-cases/`, `game-jams/` and
+`test-case-groups/`, which defaults to the repository root, and they fail where
+it holds no catalog.
+
 ### Tests that need a browser
 
-A few of core's tests run a real toolchain rather than a stand-in for one: the
+A few of the core's and the suites crate's tests run a real toolchain rather than a
+stand-in for one: the
 lockfile check's script under the host's `node`, and Playwright's Chromium
 launched through the npm workspace, which is how a validator project runs under
 Vitest's browser mode. A machine without that toolchain prints `skipped:` and
 what is missing, and the test passes, so the rest of the suite still runs on a
-laptop with no browser. `crates/core/src/test_browser.rs` holds the helpers such
-a test uses, and `test_browser::tests::the_repository_workspace_launches_chromium`
-checks the toolchain on its own.
+laptop with no browser. `crates/suites/src/test_browser.rs` holds the helpers such
+a test uses, which the suites crate's `test-support` feature exposes to the core's
+tests, and `test_browser::tests::the_repository_workspace_launches_chromium` in the
+suites crate checks the toolchain on its own.
 
 Where the toolchain is meant to be present, a skip is a pass nobody earned.
 `TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
@@ -491,7 +568,7 @@ To hold a local run to the same standard:
 ```sh
 npm ci                                   # the workspace: Vitest, Playwright
 scripts/ci/install-playwright-chromium.sh  # Chromium and its libraries (as root)
-TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-core
+TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-suites -p test-cabinet-core
 ```
 
 The dev container already carries Chromium. A test finds the npm workspace from
@@ -883,26 +960,42 @@ gate.
 
 ## Generating the data contract
 
-The run-record (and arena, job-API, backend) data contract has a single source of
-truth: the Rust types that derive `ts_rs::TS` and `schemars::JsonSchema` behind
-their `contract` feature, in `crates/core` and `crates/backend`. The TypeScript
-bindings under `packages/run-record/src/` and `packages/asset-contract/src/` —
-one generator, two packages, because only the latter may be seeded into a run —
-and the JSON Schemas under `apps/docs/public/schema/` are generated from those
-types by `crates/contract-codegen`. After changing any contract type, regenerate
-and commit:
+The run-record data contract and the backend API built on it have a single
+source of truth: the Rust types that derive `ts_rs::TS` and
+`schemars::JsonSchema` behind their `contract` feature, in `crates/contracts`,
+`crates/core` and `crates/backend` (core's feature turns on the contracts
+crate's). Two generators turn them into the committed TypeScript bindings and the
+JSON Schemas under `apps/docs/public/schema/`:
+
+- `crates/contract-codegen` writes the data contract from `crates/contracts`:
+  `packages/run-record/src/` and `packages/asset-contract/src/` (two packages,
+  because only the latter may be seeded into a run) and their schemas.
+- `crates/api-codegen` writes the backend's API from `crates/backend` and
+  `crates/core`: `packages/backend-api/src/` and its schemas. It reads the first
+  generator's modules and documents without writing them, so a backend type that
+  refers to a contract type imports it from `@clockwyrks/run-record` and
+  references it at the contract document's URL. Nothing in the data contract
+  refers back to the backend API.
+
+Every schema keeps its published URL whichever generator writes it, so five of
+the backend's documents still sit in the contract's directories:
+`core/tournament.schema.json`, the two `gg/query-batch-*` documents,
+`gg/saved-query.schema.json` and `gg/dashboard.schema.json`. After changing any
+contract type, regenerate and commit:
 
 ```sh
 npm run gen:contract
 ```
 
-It runs the generator, formats the output with Prettier, mirrors gg's built-in
-system-prompt templates into the TypeScript contract, and compiles the
-regenerated package. The `contract-drift` gate regenerates and fails on any
-diff, so the Rust, TypeScript, and JSON Schema representations stay in step.
+It runs both generators, mirrors gg's built-in system-prompt templates into the
+TypeScript contract, formats the output with Prettier, and compiles the two
+regenerated packages. The `contract-drift` gate regenerates and fails on any
+diff, or on a generated file that was never committed, so the Rust, TypeScript,
+and JSON Schema representations stay in step.
 
-It compiles `test-cabinet-core` and `test-cabinet-backend` only, so it needs none
-of gg's program-language toolchains.
+`contract-codegen` compiles `test-cabinet-contracts` only, and `api-codegen`
+compiles `test-cabinet-core` and `test-cabinet-backend`, so neither needs any of
+gg's program-language toolchains.
 
 ## Projecting gg's reference
 
@@ -1232,9 +1325,10 @@ fail rather than skip when it is missing (see
 Rust jobs need no browser and stay on the Rust image.
 
 The repository split plans an `android` track, which the template renders only
-once the `tauri_desktop` and `tauri_android` answers are both true, a `base`
-track, and tags computed from each track's inputs rather than from a commit.
-None is here yet; `ci/images/README.md` says what each waits on.
+once the `tauri_desktop` and `tauri_android` answers are both true, and a
+`base` track. Neither is here yet; `ci/images/README.md` says what each waits
+on. The split keeps the commit tag: every repository's images are tagged by the
+commit of the image run that built them.
 
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
 image is built from and on nothing else, and every run builds every track and

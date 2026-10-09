@@ -1,7 +1,7 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import type { ShowcaseMedia } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   AestheticBadge,
   ChartWidget,

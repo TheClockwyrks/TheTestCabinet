@@ -1,6 +1,6 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   canonicalModelId,
   ChartSortControl,

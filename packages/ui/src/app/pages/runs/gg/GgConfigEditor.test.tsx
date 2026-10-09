@@ -21,10 +21,10 @@
 //    shows that both of them stay separately addressable while it lasts, and that a
 //    rename moves the one name and nothing else.
 
+import type { GgSavedAgent } from "@clockwyrks/backend-api/gg";
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import { GgConfigEditor } from "./GgConfigEditor";
 import {
   BUILT_IN_SKILL_OPTIONS,

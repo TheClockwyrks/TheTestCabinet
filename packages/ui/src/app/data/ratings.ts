@@ -1,5 +1,5 @@
 // The rating model now lives in `@clockwyrks/ui` (the single source of truth,
-// mirroring the `Rating` enum in the Rust core, crates/core/src/review.rs) so the
+// mirroring the `Rating` enum in the Rust contracts crate, crates/contracts/src/review.rs) so the
 // gallery and the web console share one definition. This
 // module re-exports it and keeps the site-only writeup frontmatter parser, which
 // splits a writeup's per-domain ratings + checklist verdicts from its prose body.

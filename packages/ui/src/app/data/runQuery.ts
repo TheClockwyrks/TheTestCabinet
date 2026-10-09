@@ -1,3 +1,4 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 // A host-agnostic paged summary query. Both galleries expose the same
 // `queryRunSummaries(query)` capability (see {@link GalleryDataInput}): the
 // console forwards it to the backend's offset endpoint
@@ -6,7 +7,6 @@
 // pure, filter/sort/window logic in this module, matched to the backend's
 // semantics so a page behaves identically on either host.
 
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { RunSort, SortDir } from "../../client/clients";
 import { RATINGS, type AestheticRating } from "../../ratings";
 import { totalTokens } from "../format";

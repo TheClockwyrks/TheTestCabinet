@@ -20,7 +20,7 @@
 
 /**
  * The summary statistics behind an aggregated figure. A field-for-field subset
- * of `MetricSummary` (`@clockwyrks/run-record/comparison`) minus the bootstrap
+ * of `MetricSummary` (`@clockwyrks/backend-api/comparison`) minus the bootstrap
  * interval, so one of these spreads straight into a
  * {@link ./charts!DistributionGroup}.
  */

@@ -1,0 +1,114 @@
+{
+  "$comment": "Shared scoring goldens: executed by crates/core/src/review.goldens.test.rs and packages/run-stats/src/scoring.goldens.test.ts, which both reject unknown keys. Expectations are the Rust core's output. gated_rating / gated_score / gated_overall_grade and their gated* mirrors: each case applies all three to input.gated and the matching input.reviewed figure.",
+  "cases": [
+    {
+      "name": "a passing typecheck changes nothing",
+      "why": "The ungated gate is a pass-through for every figure.",
+      "input": {
+        "gated": false,
+        "reviewed": {
+          "rating": "great",
+          "score": {
+            "earned": 7,
+            "total": 10,
+            "reviews": 1
+          },
+          "overallGrade": "neutral"
+        }
+      },
+      "expect": {
+        "rating": "great",
+        "score": {
+          "earned": 7,
+          "total": 10,
+          "reviews": 1
+        },
+        "overallGrade": "neutral"
+      }
+    },
+    {
+      "name": "a failing typecheck forces broken and zeroes the score",
+      "why": "The score keeps its denominator and review count, reading 0 / total.",
+      "input": {
+        "gated": true,
+        "reviewed": {
+          "rating": "flawless",
+          "score": {
+            "earned": 8,
+            "total": 10,
+            "reviews": 2
+          },
+          "overallGrade": "incredible"
+        }
+      },
+      "expect": {
+        "rating": "broken",
+        "score": {
+          "earned": 0,
+          "total": 10,
+          "reviews": 2
+        },
+        "overallGrade": "broken"
+      }
+    },
+    {
+      "name": "a gated run nobody reviewed is broken but unscored",
+      "why": "There is no denominator to report a zero against.",
+      "input": {
+        "gated": true,
+        "reviewed": {
+          "rating": null,
+          "score": null,
+          "overallGrade": null
+        }
+      },
+      "expect": {
+        "rating": "broken",
+        "score": null,
+        "overallGrade": "broken"
+      }
+    },
+    {
+      "name": "an ungated run nobody reviewed stays unrated",
+      "why": "Nothing invents a figure the reviews did not produce.",
+      "input": {
+        "gated": false,
+        "reviewed": {
+          "rating": null,
+          "score": null,
+          "overallGrade": null
+        }
+      },
+      "expect": {
+        "rating": null,
+        "score": null,
+        "overallGrade": null
+      }
+    },
+    {
+      "name": "a gated score with a fractional mean still reads zero",
+      "why": "Only earned is withdrawn.",
+      "input": {
+        "gated": true,
+        "reviewed": {
+          "rating": "scuffed",
+          "score": {
+            "earned": 2.5,
+            "total": 4,
+            "reviews": 2
+          },
+          "overallGrade": null
+        }
+      },
+      "expect": {
+        "rating": "broken",
+        "score": {
+          "earned": 0,
+          "total": 4,
+          "reviews": 2
+        },
+        "overallGrade": "broken"
+      }
+    }
+  ]
+}

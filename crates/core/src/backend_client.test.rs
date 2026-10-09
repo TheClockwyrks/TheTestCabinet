@@ -1260,7 +1260,7 @@ async fn a_stream_that_never_closes_is_a_failure() {
 
 /// The fixture suites checkout: one complete suite, `carom/versions/v1.0.0/`.
 fn fixture_suites_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// Every file of the fixture suite version the store would list on
@@ -1366,7 +1366,8 @@ impl BackendClient for SuiteStubBackend {
         } else {
             fixture_suites_root().join("carom/versions/v1.0.0")
         };
-        if self.withhold == Some(source.to_string_lossy().as_ref()) {
+        // The key as the HTTP client sends it, '/'-separated on every host.
+        if self.withhold == Some(forward_slash(source).as_str()) {
             return Err(Error::Publish("404 not found".to_string()));
         }
         let bytes = std::fs::read(base.join(source))

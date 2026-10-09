@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
 import type {
   CoverageCell,
   CoverageMatrix,
-} from "@clockwyrks/run-record/coverage";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+} from "@clockwyrks/backend-api/coverage";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import { useEffect, useMemo, useState } from "react";
 import type { RatingCounts } from "@clockwyrks/ui";
 import { RATINGS, type Rating } from "../../data/ratings";
 import { countsAsModelResult } from "../../data/runState";

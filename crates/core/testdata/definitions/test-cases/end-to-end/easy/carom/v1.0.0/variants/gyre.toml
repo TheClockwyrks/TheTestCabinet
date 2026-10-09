@@ -1,0 +1,21 @@
+# Standard plus a mode whose obstacles oscillate and rotate, forcing collision
+# against tilted, oriented faces. Gyre is a separate mode, so it is rated on its
+# own scoring domain rather than folded into the common domains.
+slug = "gyre"
+name = "Gyre"
+description = "Standard plus a mode whose obstacles oscillate and rotate, forcing collision against tilted, oriented faces."
+
+spec = [{ source = "specs/modes/gyre.md" }]
+reference = [{ view = "title", path = "reference/menu-gyre.html" }]
+
+[[domain]]
+id = "gyre"
+name = "Gyre"
+description = "The Gyre mode: swaying, rotating obstacles the ball bounces off at oriented angles."
+
+[[review_item]]
+id = "gyre-oriented-bounce"
+title = "Oriented bounces"
+text = "In Gyre the two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles — not the axis-aligned reflections the other modes use."
+weight = 1
+domain = "gyre"

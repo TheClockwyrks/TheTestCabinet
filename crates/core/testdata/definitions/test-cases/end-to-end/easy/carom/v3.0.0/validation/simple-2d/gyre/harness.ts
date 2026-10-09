@@ -1,0 +1,149 @@
+// Carom (Gyre) — the variant-only slice of the harness. CASE-PROVIDED.
+//
+// `validation/harness.ts` is shared by every variant, so it can only know the
+// surface every variant has. Gyre's workspace adds three things to that surface —
+// the `setObstacleClock` and `setObstacleClockRunning` operations, and a `theta`
+// on every entry of a snapshot's `obstacles` array — and this module is where the
+// checks below reach them.
+//
+// `surface.ts` declares all three as optional, because the shared harness serves
+// every variant and only this one's specification names them. What this module
+// adds is the requirement: a gyre check reaches them through the helpers below,
+// which fail with the member named when a build left it out, rather than throwing
+// a `TypeError` several frames later.
+//
+// THE CLOCK IS ITS OWN FACULTY NOW. Posing the clock and freezing it are two
+// operations rather than one side effect of seizing the paddles, so
+// {@link poseObstacles} states both: it stops the clock and then sets it, which
+// is what makes the pose read back afterwards the pose at exactly `t` rather than
+// at `t` plus however long the read took. That is posing the SUBJECT of an
+// obstacle check — an obstacle a check is not about is REMOVED from the field by
+// the shared `poseWorld`, never held still.
+
+import { OBSTACLE_SWAY_PERIOD } from "../constants";
+import { assertEqual, assertTruthy } from "../assert";
+import type { Harness } from "../harness";
+import type { ObstacleSnapshot } from "../surface";
+
+/** One obstacle's live pose, as `snapshot().obstacles` reports it. */
+export type ObstaclePose = ObstacleSnapshot;
+
+/** The two operations gyre's specification adds to the common surface. */
+interface GyreDebugOps {
+  setObstacleClock(t: number): void;
+  setObstacleClockRunning(running: boolean): void;
+}
+
+/** The obstacle clock time where the sway is at its peak: a quarter period. */
+export const PEAK_SWAY_T = OBSTACLE_SWAY_PERIOD / 4;
+
+/**
+ * Stop the obstacle clock, pose it at `t`, and return every obstacle's resulting
+ * pose.
+ *
+ * One frame is advanced between the pose and the read, deliberately: the clock is
+ * all `setObstacleClock` sets, and the POSES are the build's own, recomputed from
+ * that clock on its next frame (specs/state.md). Reading without advancing would
+ * report the previous frame's field and grade nothing.
+ *
+ * The clock is stopped first, with `setObstacleClockRunning(false)`, because that
+ * advancing frame would otherwise carry the clock past `t` before the pose was
+ * read — and because a check that fires a shot at a posed face needs the face to
+ * still be there when the ball arrives.
+ */
+export async function poseObstacles(
+  h: Harness,
+  t: number,
+): Promise<ObstaclePose[]> {
+  const ops = gyreOps(h);
+  ops.setObstacleClockRunning(false);
+  ops.setObstacleClock(t);
+  await h.advance(1);
+  return readObstacles(h);
+}
+
+/** The operations this variant adds, over a harness for a gyre tree. */
+export function gyreOps(h: Harness): GyreDebugOps {
+  const ops = h.debug;
+  // A named, actionable failure beats `ops.setObstacleClock is not a function`
+  // three frames later: this variant's specification requires both operations.
+  assertEqual(
+    typeof ops.setObstacleClock,
+    "function",
+    "gyre requires setObstacleClock on the debug surface the build returns " +
+      "beside its state (specs/instrumentation.md)",
+  );
+  assertEqual(
+    typeof ops.setObstacleClockRunning,
+    "function",
+    "gyre requires setObstacleClockRunning on the debug surface the build " +
+      "returns beside its state (specs/instrumentation.md)",
+  );
+  return ops as GyreDebugOps;
+}
+
+/**
+ * Every obstacle the field currently holds, checked for shape before a check
+ * reads it.
+ *
+ * No count is asserted here, because how many obstacles stand on the field is the
+ * CHECK's own arrangement: a check about the anti-phase sway spawns both, and one
+ * about a single tilted face spawns that one alone. {@link obstaclePose} is what
+ * addresses one of them.
+ */
+export function readObstacles(h: Harness): ObstaclePose[] {
+  const obstacles = h.snapshot().obstacles;
+  assertEqual(
+    Array.isArray(obstacles),
+    true,
+    "gyre requires snapshot().obstacles (specs/instrumentation.md)",
+  );
+  return obstacles as ObstaclePose[];
+}
+
+/**
+ * The pose of obstacle `index`, found by the `index` it reports rather than by
+ * where it sits in the array.
+ *
+ * The array carries only the obstacles present, each under its own index
+ * (specs/instrumentation.md), so a check that spawned obstacle B alone reads one
+ * entry whose index is `1`.
+ */
+export function obstaclePose(
+  poses: readonly ObstaclePose[],
+  index: number,
+): ObstaclePose {
+  const found = poses.find((pose) => pose.index === index);
+  assertTruthy(
+    found,
+    `snapshot().obstacles must carry obstacle ${index} under its own index ` +
+      `while it stands on the field; see specs/instrumentation.md`,
+  );
+  return found as ObstaclePose;
+}
+
+/**
+ * One obstacle's rotation, in radians.
+ *
+ * `theta` is gyre's alone, so `surface.ts` declares it optional for the two
+ * variants that stand their obstacles upright and report none. A gyre check
+ * requires it, and a build that reports a pose without one fails here with the
+ * field named rather than on `NaN` arithmetic further down.
+ */
+export function thetaOf(pose: ObstaclePose): number {
+  assertEqual(
+    typeof pose.theta,
+    "number",
+    "gyre requires each obstacle's rotation as `theta`, in radians " +
+      "(specs/instrumentation.md)",
+  );
+  return pose.theta as number;
+}
+
+/** The smallest signed difference between two angles, in radians. */
+export function angleDelta(a: number, b: number): number {
+  let d = (a - b) % (2 * Math.PI);
+  if (d > Math.PI) d -= 2 * Math.PI;
+  if (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}

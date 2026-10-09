@@ -1,0 +1,27 @@
+// The tsconfig every validator project of this version extends. CHECKOUT-ONLY.
+//
+// A validator project ships at `validation/<engine>/` and is STAGED into the
+// collected tree at `validation/`, so the `../tsconfig.json` each project's own
+// config extends is the BUILD's root tsconfig at run time. Nothing stages this
+// file and nothing seeds it: it stands in for that root tsconfig so the same
+// projects type-check where they are authored, and it is a copy of the seeded
+// workspace's `tsconfig.json` so a validator is checked under the options it
+// runs under.
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": [],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src"]
+}

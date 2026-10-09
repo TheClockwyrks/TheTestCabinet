@@ -1,10 +1,13 @@
 //! Unit tests for the ingest handler's snapshot-refresh trigger decision.
 
-use super::{StreamEvent, promote_for_store_readiness, scan_changed_store};
+use super::{
+    done_line, ingest_response, progress_line, promote_for_store_readiness, scan_changed_store,
+};
 use crate::ingest::{
     IngestEvent, IngestReport, IngestRequest, IngestedSuite, IngestedVersion, SkipReason,
 };
 use test_cabinet_core::IngestMode;
+use test_cabinet_core::backend_client::{IngestBody, IngestBodyMode};
 
 fn version(slug: &str, ingested: bool) -> IngestedVersion {
     IngestedVersion {
@@ -22,6 +25,7 @@ fn report(versions: Vec<IngestedVersion>) -> IngestReport {
         test_case_versions: versions,
         suite_versions: Vec::new(),
         test_case_groups_changed: false,
+        refused_prunes: Vec::new(),
     }
 }
 
@@ -59,6 +63,7 @@ fn a_changed_group_set_changes_store() {
         test_case_versions: vec![version("fathom", false)],
         suite_versions: Vec::new(),
         test_case_groups_changed: true,
+        refused_prunes: Vec::new(),
     };
     assert!(scan_changed_store(&r));
 }
@@ -84,12 +89,11 @@ fn a_default_scan_is_not_forced_by_readiness() {
 
 #[test]
 fn the_body_accepts_changed_and_nothing_else_for_mode() {
-    let body: super::IngestBody =
-        serde_json::from_str(r#"{"mode":"changed"}"#).expect("changed parses");
-    assert_eq!(body.mode, Some(super::WireMode::Changed));
-    let body: super::IngestBody = serde_json::from_str("{}").expect("an empty body parses");
+    let body: IngestBody = serde_json::from_str(r#"{"mode":"changed"}"#).expect("changed parses");
+    assert_eq!(body.mode, Some(IngestBodyMode::Changed));
+    let body: IngestBody = serde_json::from_str("{}").expect("an empty body parses");
     assert_eq!(body.mode, None);
-    assert!(serde_json::from_str::<super::IngestBody>(r#"{"mode":"sometimes"}"#).is_err());
+    assert!(serde_json::from_str::<IngestBody>(r#"{"mode":"sometimes"}"#).is_err());
 }
 
 // A skipped version's line names why it was skipped; an ingested one carries no
@@ -98,7 +102,7 @@ fn the_body_accepts_changed_and_nothing_else_for_mode() {
 fn a_version_line_names_its_skip_reason() {
     let mut skipped = version("carom", false);
     skipped.reason = Some(SkipReason::Unchanged);
-    let line = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let line = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 1,
         total: 2,
         version: &skipped,
@@ -109,7 +113,7 @@ fn a_version_line_names_its_skip_reason() {
     assert_eq!(line["reason"], "unchanged");
 
     let ingested = version("fathom", true);
-    let line = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let line = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 2,
         total: 2,
         version: &ingested,
@@ -129,7 +133,7 @@ fn a_version_that_failed_to_resolve_streams_its_problem() {
         ),
         ..version("carom-efficiency", false)
     };
-    let line = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let line = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 1,
         total: 1,
         version: &failed,
@@ -143,7 +147,7 @@ fn a_version_that_failed_to_resolve_streams_its_problem() {
     );
 
     // A version without one carries no `problem` key at all.
-    let clean = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let clean = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 1,
         total: 1,
         version: &version("carom-ball", true),
@@ -172,9 +176,27 @@ fn a_problem_counts_toward_skipped() {
             problem: Some("broken".to_string()),
         }],
         test_case_groups_changed: false,
+        refused_prunes: Vec::new(),
     };
-    let done = serde_json::to_value(StreamEvent::done(&report)).expect("the event serializes");
+    let done = serde_json::to_value(done_line(&report)).expect("the event serializes");
     assert_eq!(done["total"], 3);
     assert_eq!(done["ingested"], 1);
     assert_eq!(done["skipped"], 2);
+    assert!(done.get("refusedPrunes").is_none(), "{done}");
+}
+
+// A refused prune reaches both framings: the closing feed line and the default
+// report carry the sentences the scan reported, so neither a streaming client nor
+// a blocking one ingests past a refusal without being told.
+#[test]
+fn a_refused_prune_reaches_the_feed_and_the_report() {
+    let refusal = "kept 3 stored authored test-case version(s): `x` declares no version";
+    let report = IngestReport {
+        refused_prunes: vec![refusal.to_string()],
+        ..report(vec![])
+    };
+    let done = serde_json::to_value(done_line(&report)).expect("the event serializes");
+    assert_eq!(done["refusedPrunes"], serde_json::json!([refusal]));
+    let response = serde_json::to_value(ingest_response(report)).expect("the report serializes");
+    assert_eq!(response["refusedPrunes"], serde_json::json!([refusal]));
 }

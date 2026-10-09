@@ -50,13 +50,13 @@
 !/rust-toolchain.toml
 !/.cargo
 !/crates
-# crates/core bakes these three trees into the binary verbatim via include_str!
-# (the built-in orchestrator runner scripts, the harness manifests, and the
-# built-in engine manifests), so they must be present in the context even though
-# they are not Rust sources. A tree that is baked in but not re-included here does
-# not fail at COPY like a missing Dockerfile source does — it fails much later, as
-# `error: couldn't read ...: No such file or directory` from the compiler, which is
-# how engines/ was missed when engines landed.
+# crates/core and crates/suites bake these three trees into the binary verbatim via
+# include_str! (core the built-in orchestrator runner scripts and the harness
+# manifests, suites the built-in engine manifests), so they must be present in the
+# context even though they are not Rust sources. A tree that is baked in but not
+# re-included here does not fail at COPY like a missing Dockerfile source does — it
+# fails much later, as `error: couldn't read ...: No such file or directory` from the
+# compiler, which is how engines/ was missed when engines landed.
 !/orchestrators
 !/harnesses
 !/engines
@@ -162,8 +162,9 @@
 #   - EVERY workspace member's package.json (npm ci validates the whole workspace
 #     against the lockfile, so a missing member's manifest aborts the install), and
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
-#     plus its workspace deps @clockwyrks/ui and @clockwyrks/run-record, which
-#     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
+#     plus its workspace deps @clockwyrks/ui, @clockwyrks/run-record and
+#     @clockwyrks/backend-api, which Vite resolves to their TypeScript sources
+#     (packages/ui exports ./src/*), and
 #     @clockwyrks/run-stats, @clockwyrks/voxel-runtime and
 #     @clockwyrks/particle-runtime, whose compiled subpaths the ui library
 #     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
@@ -178,6 +179,7 @@
 !/apps/site/package.json
 !/apps/web
 !/packages/run-record
+!/packages/backend-api
 !/packages/run-stats
 !/packages/ui
 !/packages/voxel-runtime
@@ -199,7 +201,7 @@
 !/packages/structured-3d
 # The shared engineless (`none`) validator harness and canvas recorder. Nothing
 # bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
-# package store beside the engine runtimes, and crates/core's vitest validator
+# package store beside the engine runtimes, and crates/suites' vitest validator
 # (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
 # store into a case's staged validator project. So the driver image must carry its
 # sources, and a build context missing them fails inside the staging script
@@ -370,6 +372,9 @@
 **/node_modules/
 **/dist/
 **/.astro/
+# The copies of committed case versions the Rust tests read. No image builds a test,
+# and the copies weigh tens of megabytes.
+/crates/*/testdata/
 # The guest packages' own scratch, which the block above would otherwise admit and
 # which dwarfs everything else in this context: measured on a developer machine that
 # has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of

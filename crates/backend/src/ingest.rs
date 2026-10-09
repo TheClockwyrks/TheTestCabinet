@@ -33,6 +33,21 @@
 //! targeted, digested and pruned exactly as an exported version is; a backend not
 //! configured for them never reads the folder.
 //!
+//! The three trees are read from the [`IngestRoots`] the ingestor is given, each
+//! defaulting to its place in the checkout: the definitions root (`test-cases/`,
+//! `game-jams/`, `test-case-groups/` and the reference-builds lockfile), the suites
+//! root, and the cold-storage root.
+//!
+//! A whole-catalog scan prunes what the trees no longer declare, and refuses a prune
+//! an empty tree would cause: finding no version under `test-cases/`, none under
+//! `game-jams/`, no suite version, or no acceptable test-case group keeps what the
+//! store holds of that kind, and the refusal is logged and reported in
+//! [`IngestReport::refused_prunes`]. Each tree answers for its own kind only. An
+//! emptied tree is far more often a root pointed at the wrong directory than a
+//! catalog anyone meant to delete, and the prune cannot be undone. A scan that
+//! refused a prune does not record its catalog token, so the next scan carrying
+//! the same token is forced.
+//!
 //! Every record ingest writes carries an [`IngestStamp`] naming the content digest
 //! it was built from (see [`test_cabinet_core::content_digest`]), so a
 //! [`IngestMode::Changed`] scan rewrites exactly the versions whose checkout content
@@ -40,7 +55,7 @@
 
 use std::path::{Path, PathBuf};
 
-use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, is_seeded_dotfile};
+use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, TestType, is_seeded_dotfile};
 use test_cabinet_core::test_case_group::TestCaseGroupCatalog;
 use test_cabinet_core::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
 use test_cabinet_core::{ColdStorage, IngestMode};
@@ -64,6 +79,75 @@ use test_cabinet_core::content_digest as digest;
 mod suites;
 
 pub use suites::IngestedSuite;
+
+/// Where an ingest scan reads each of its trees from.
+///
+/// Every root defaults to its place in the repository checkout
+/// ([`IngestRoots::for_checkout`]), which is the layout a backend given only
+/// `TCAB_BACKEND_CHECKOUT` reads; the backend's configuration overrides each one
+/// (`TCAB_DEFINITIONS_ROOT`, `TCAB_SUITES_ROOT`, `TCAB_COLD_STORAGE_ROOT`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IngestRoots {
+    /// The directory holding `test-cases/` (with `reference-builds.lock.json`
+    /// inside it), `game-jams/` and `test-case-groups/`.
+    pub definitions: PathBuf,
+    /// The test suites tree: `<slug>/suite.toml` and `<slug>/versions/…`.
+    pub suites: PathBuf,
+    /// The cold-storage tree, which mirrors [`definitions`](Self::definitions):
+    /// a version at `<definitions>/test-cases/…/<version>` keeps its baselines at
+    /// `<cold_storage>/test-cases/…/<version>/validation-baseline/`.
+    pub cold_storage: PathBuf,
+}
+
+impl IngestRoots {
+    /// The roots of the repository checkout at `checkout`: the checkout itself,
+    /// its `test-suites/`, and its cold storage ([`ColdStorage::for_checkout`],
+    /// which honours `TCAB_COLD_STORAGE_DIR`).
+    pub fn for_checkout(checkout: &Path) -> Self {
+        Self {
+            definitions: checkout.to_path_buf(),
+            suites: checkout.join(TEST_SUITES_DIR),
+            cold_storage: ColdStorage::for_checkout(checkout).root().to_path_buf(),
+        }
+    }
+
+    /// The authored catalog root, `<definitions>/test-cases`.
+    pub fn test_cases(&self) -> PathBuf {
+        self.definitions.join(TEST_CASES_DIR)
+    }
+
+    /// The game-jam tree, `<definitions>/game-jams`, which the authored catalog
+    /// reads as the sibling of `test-cases/`.
+    pub fn game_jams(&self) -> PathBuf {
+        self.definitions.join(GAME_JAMS_DIR)
+    }
+
+    /// The test-case group catalogue root, `<definitions>/test-case-groups`.
+    pub fn test_case_groups(&self) -> PathBuf {
+        self.definitions.join(TEST_CASE_GROUPS_DIR)
+    }
+
+    /// The committed reference-builds lockfile,
+    /// `<definitions>/test-cases/reference-builds.lock.json`.
+    pub fn reference_lock(&self) -> PathBuf {
+        self.test_cases()
+            .join(test_cabinet_core::reference_lock::REFERENCE_LOCK_FILENAME)
+    }
+
+    /// The cold storage baselines are read from, resolved against the definitions
+    /// root it mirrors.
+    fn cold(&self) -> ColdStorage {
+        ColdStorage::at(&self.definitions, &self.cold_storage)
+    }
+}
+
+/// The authored catalog's directory under the definitions root.
+const TEST_CASES_DIR: &str = "test-cases";
+/// The game-jam tree's directory under the definitions root, which the authored
+/// catalog reads as the sibling of [`TEST_CASES_DIR`].
+const GAME_JAMS_DIR: &str = "game-jams";
+/// The test-case group catalogue's directory under the definitions root.
+const TEST_CASE_GROUPS_DIR: &str = "test-case-groups";
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
 #[derive(Debug, Clone, Default)]
@@ -166,6 +250,48 @@ impl SkipReason {
             SkipReason::Unchanged => "unchanged",
         }
     }
+}
+
+/// How many absent stored case versions [`Ingestor::prune_absent`] kept because
+/// the prune guard held their kind.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Kept {
+    /// Authored test-case versions kept because the scan found no version under
+    /// `test-cases/`.
+    test_cases: usize,
+    /// Game-jam versions kept because the scan found no version under
+    /// `game-jams/`.
+    game_jams: usize,
+    /// Suite-defined versions kept because the scan found no suite version.
+    suite_defined: usize,
+}
+
+/// Which kinds of stored case version [`Ingestor::prune_absent`] keeps whatever the
+/// scan found: each is set when the tree that declares that kind read empty.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct KeepKinds {
+    /// Keep authored test-case versions (the `test-cases/` tree read empty).
+    test_cases: bool,
+    /// Keep game-jam versions (the `game-jams/` tree read empty).
+    game_jams: bool,
+    /// Keep suite-defined versions (the suites tree read empty).
+    suite_defined: bool,
+}
+
+/// What [`Ingestor::ingest_test_case_groups`] did with the stored group set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Groups {
+    /// The stored set now matches what the scan accepted; `changed` when it was
+    /// rewritten.
+    Reconciled {
+        /// Whether the stored set was rewritten.
+        changed: bool,
+    },
+    /// The scan accepted no group, so the `stored` groups the store held were kept.
+    Kept {
+        /// How many groups the stored set holds.
+        stored: usize,
+    },
 }
 
 /// Whether one target is rewritten, decided the same way for every kind of record
@@ -271,6 +397,10 @@ pub struct IngestReport {
     /// `false`), and the flag is what lets a group-only edit trigger the public
     /// snapshot refresh even though no version was re-ingested.
     pub test_case_groups_changed: bool,
+    /// One sentence per prune the scan refused because a tree it read was empty,
+    /// naming what it kept. Empty when nothing was refused, and always empty for a
+    /// partial scan, which prunes nothing.
+    pub refused_prunes: Vec<String>,
 }
 
 /// A progress event emitted as a [`Ingestor::scan_with_progress`] scan advances, so
@@ -296,7 +426,8 @@ pub enum IngestEvent<'a> {
 
 /// Ingests definitions from a checkout into a definition store.
 pub struct Ingestor<'a> {
-    checkout: &'a Path,
+    /// Where each tree is read from.
+    roots: IngestRoots,
     store: &'a DefinitionStore,
     /// Where each version's baseline validation media is read from.
     cold: ColdStorage,
@@ -312,19 +443,24 @@ pub struct Ingestor<'a> {
 }
 
 impl<'a> Ingestor<'a> {
-    /// Create an ingestor over a checkout path and a target store. Baseline media is
-    /// read from the checkout's cold storage ([`ColdStorage::for_checkout`]).
-    pub fn new(checkout: &'a Path, store: &'a DefinitionStore) -> Self {
+    /// Create an ingestor over a checkout path and a target store, reading the
+    /// checkout's own trees ([`IngestRoots::for_checkout`]).
+    pub fn new(checkout: &Path, store: &'a DefinitionStore) -> Self {
+        Self::with_roots(IngestRoots::for_checkout(checkout), store)
+    }
+
+    /// Create an ingestor reading each tree from its own root.
+    pub fn with_roots(roots: IngestRoots, store: &'a DefinitionStore) -> Self {
         Self {
-            checkout,
+            cold: roots.cold(),
+            roots,
             store,
-            cold: ColdStorage::for_checkout(checkout),
             protected: std::collections::HashSet::new(),
             previews: false,
         }
     }
 
-    /// Read baseline media from `cold` instead of the checkout's own cold storage.
+    /// Read baseline media from `cold` instead of the cold-storage root.
     pub fn with_cold_storage(mut self, cold: ColdStorage) -> Self {
         self.cold = cold;
         self
@@ -407,6 +543,28 @@ impl<'a> Ingestor<'a> {
         };
 
         let mut targets = self.version_targets(request)?;
+        // What each tree declared, counted before a refused suite version's
+        // definitions are dropped: the prune guard asks whether a tree was empty,
+        // not whether everything in it ingested. `test-cases/` and `game-jams/` are
+        // asked apart, although one catalog reads both, so a populated jam folder
+        // cannot vouch for an emptied case tree (or the reverse). A store in another
+        // record format is exempt: nothing in it is readable by this build, so there
+        // is nothing for the guard to keep, and the repair has to leave the store
+        // holding only records this build wrote. Only a whole-catalog scan prunes,
+        // so only one reads the trees for the guard.
+        let keep = if whole_catalog && !stale {
+            let declared = self
+                .case_catalog()
+                .declared_trees()
+                .map_err(BackendError::Core)?;
+            KeepKinds {
+                test_cases: !declared.test_cases,
+                game_jams: !declared.game_jams,
+                suite_defined: targets.suites.is_empty(),
+            }
+        } else {
+            KeepKinds::default()
+        };
 
         let mut report = IngestReport::default();
         // The suite records first: a definition's stored version names the suite it
@@ -468,30 +626,78 @@ impl<'a> Ingestor<'a> {
         // alongside the new one. A partial (`test_cases`) scan cannot: it has not seen
         // the whole catalog, so it must not conclude anything is absent. Run-
         // referenced definitions are spared regardless (see `prune_absent`).
+        //
+        // A tree the scan found empty prunes nothing of its kind (see the module
+        // docs): the scan still ingested whatever the other trees declared, and the
+        // refusal is reported beside it.
         if whole_catalog {
-            self.prune_absent(&report)?;
-            self.prune_absent_suites(&report)?;
+            let kept = self.prune_absent(&report, keep)?;
+            if kept.test_cases > 0 {
+                report.refused_prunes.push(self.refuse(format!(
+                    "kept {} stored authored test-case version(s): `{}` declares no \
+                     version",
+                    kept.test_cases,
+                    self.roots.test_cases().display()
+                )));
+            }
+            if kept.game_jams > 0 {
+                report.refused_prunes.push(self.refuse(format!(
+                    "kept {} stored game-jam version(s): `{}` declares no version",
+                    kept.game_jams,
+                    self.roots.game_jams().display()
+                )));
+            }
+            let kept_suites = self.prune_absent_suites(&report, keep.suite_defined)?;
+            if kept_suites > 0 || kept.suite_defined > 0 {
+                report.refused_prunes.push(self.refuse(format!(
+                    "kept {kept_suites} stored suite version(s) and {} case version(s) \
+                     they defined: `{}` declares no suite version",
+                    kept.suite_defined,
+                    self.roots.suites.display()
+                )));
+            }
             // A whole-catalog scan also owns the global test-case-group set: it has
             // the complete catalog in view, so it can both cross-validate every
             // member slug and reconcile the stored set to exactly what the checkout
             // declares (a deleted group folder prunes the group). A partial scan
             // must not touch the set for the same reason it must not prune.
-            report.test_case_groups_changed = self.ingest_test_case_groups()?;
+            match self.ingest_test_case_groups()? {
+                Groups::Reconciled { changed } => report.test_case_groups_changed = changed,
+                Groups::Kept { stored } => {
+                    report.refused_prunes.push(self.refuse(format!(
+                        "kept the {stored} stored test-case group(s): `{}` declares no \
+                         group the catalog accepts",
+                        self.roots.test_case_groups().display()
+                    )));
+                }
+            }
         }
 
         // Stamp the marker only after a clean full scan, so a fresh store (no marker)
-        // and a changed catalog both end at the token they were just ingested to.
-        if let Some(version) = tagged {
+        // and a changed catalog both end at the token they were just ingested to. A
+        // scan that refused a prune is not clean: the store still holds versions the
+        // token's catalog was not read for, so the next scan with the same token
+        // must force the rewrite rather than skip what it finds already stored.
+        if let Some(version) = tagged
+            && report.refused_prunes.is_empty()
+        {
             self.store.set_catalog_version(version)?;
         }
 
         // Every version the store now holds was written by this build: it was either
         // already in this build's record format, empty before the scan, or just
-        // rewritten whole by the promotion above. Stamp the format so a later build
+        // rewritten whole by the promotion above (which the prune guard is exempt
+        // from, so a promoted scan has refused nothing). Stamp the format so a later build
         // that reads the store differently knows to rebuild it.
         self.store.set_store_format()?;
 
         Ok(report)
+    }
+
+    /// Log a refused prune, answering with the sentence the report carries.
+    fn refuse(&self, refusal: String) -> String {
+        tracing::warn!(%refusal, "refusing a whole-catalog prune: a tree the scan read was empty");
+        refusal
     }
 
     /// Drop every stored `(slug, version)` the just-completed whole-catalog scan did
@@ -500,7 +706,16 @@ impl<'a> Ingestor<'a> {
     /// keeps its case metadata. `report` lists exactly the versions present in the
     /// checkout (each keyed by its resolved slug), so anything in the store outside
     /// that set and outside `protected` is stale and removed.
-    fn prune_absent(&self, report: &IngestReport) -> Result<()> {
+    ///
+    /// `keep` is the prune guard: each kind it names, set when the tree declaring
+    /// that kind read empty, keeps every absent version of the kind. The kind is
+    /// told from the stored manifest: suite-defined when it names the suite it was
+    /// lowered from, a game jam when its type is one, and an authored test case
+    /// otherwise. A version whose manifest does not read counts as an authored test
+    /// case. The answer is how many versions of each kind were kept that the prune
+    /// would otherwise have removed.
+    fn prune_absent(&self, report: &IngestReport, keep: KeepKinds) -> Result<Kept> {
+        let mut kept = Kept::default();
         // A version that failed to resolve is reported but not present: whatever the
         // store holds for it is no longer something the checkout can reproduce.
         let present: std::collections::HashSet<(&str, &str)> = report
@@ -517,10 +732,26 @@ impl<'a> Ingestor<'a> {
                 if self.protected.contains(&(slug.clone(), version.clone())) {
                     continue;
                 }
+                if keep != KeepKinds::default() {
+                    let manifest = self.store.read_manifest(&slug, &version).ok();
+                    let counter = match manifest {
+                        Some(manifest) if manifest.suite.is_some() => {
+                            keep.suite_defined.then_some(&mut kept.suite_defined)
+                        }
+                        Some(manifest) if manifest.test_type == TestType::GameJam => {
+                            keep.game_jams.then_some(&mut kept.game_jams)
+                        }
+                        _ => keep.test_cases.then_some(&mut kept.test_cases),
+                    };
+                    if let Some(counter) = counter {
+                        *counter += 1;
+                        continue;
+                    }
+                }
                 self.store.remove_version(&slug, &version)?;
             }
         }
-        Ok(())
+        Ok(kept)
     }
 
     /// Reconcile the store's global [test-case group](test_cabinet_core::TestCaseGroup)
@@ -534,11 +765,14 @@ impl<'a> Ingestor<'a> {
     /// with a logged error while the valid groups still ingest — the repo's
     /// `manifests_are_valid` test catches the mistake pre-commit, so meeting one
     /// here means this backend's checkout is simply behind or ahead of the case it
-    /// names, which must not blank the rest of the home page. A checkout without
-    /// the folder declares no groups (the folder postdates most checkouts), which
-    /// reconciles the stored set to empty like any other deletion.
-    fn ingest_test_case_groups(&self) -> Result<bool> {
-        let root = self.checkout.join("test-case-groups");
+    /// names, which must not blank the rest of the home page.
+    ///
+    /// A scan that accepts no group — the folder is absent or empty, or the catalog
+    /// it is checked against resolves none of their members — leaves a non-empty
+    /// stored set in place ([`Groups::Kept`]), the prune guard's rule for the
+    /// groups. An empty stored set stays empty.
+    fn ingest_test_case_groups(&self) -> Result<Groups> {
+        let root = self.roots.test_case_groups();
         let declared = if root.is_dir() {
             TestCaseGroupCatalog::new(&root)
                 .list()
@@ -546,13 +780,13 @@ impl<'a> Ingestor<'a> {
         } else {
             Vec::new()
         };
-        let known: std::collections::HashSet<String> =
-            TestCaseCatalog::new(self.checkout.join("test-cases"))
-                .list()
-                .map_err(BackendError::Core)?
-                .into_iter()
-                .map(|case| case.slug)
-                .collect();
+        let known: std::collections::HashSet<String> = self
+            .case_catalog()
+            .list()
+            .map_err(BackendError::Core)?
+            .into_iter()
+            .map(|case| case.slug)
+            .collect();
         let groups: Vec<_> = declared
             .into_iter()
             .filter(|group| {
@@ -593,10 +827,17 @@ impl<'a> Ingestor<'a> {
             Err(err) => return Err(err),
         };
         if stored.as_deref() == Some(groups.as_slice()) {
-            return Ok(false);
+            return Ok(Groups::Reconciled { changed: false });
+        }
+        if groups.is_empty()
+            && let Some(stored) = &stored
+        {
+            return Ok(Groups::Kept {
+                stored: stored.len(),
+            });
         }
         self.store.write_test_case_groups(&groups)?;
-        Ok(true)
+        Ok(Groups::Reconciled { changed: true })
     }
 
     /// Resolve what a scan touches, from the checkout's two trees.
@@ -630,7 +871,10 @@ impl<'a> Ingestor<'a> {
                     });
                 }
             }
-            for suite in suites.list().map_err(BackendError::Core)? {
+            for suite in suites
+                .list()
+                .map_err(|err| BackendError::Core(err.into()))?
+            {
                 for version in suite.versions {
                     self.expand_suite_version(&suites, &suite.slug, &version, &mut targets)?;
                 }
@@ -701,17 +945,17 @@ impl<'a> Ingestor<'a> {
         Ok(())
     }
 
-    /// The authored test-case catalog over this checkout.
+    /// The authored test-case catalog under the definitions root.
     fn case_catalog(&self) -> TestCaseCatalog {
-        TestCaseCatalog::new(self.checkout.join("test-cases"))
+        TestCaseCatalog::new(self.roots.test_cases())
     }
 
-    /// The suite catalog over this checkout. Its rendered specifications are
+    /// The suite catalog over the suites root. Its rendered specifications are
     /// written per definition into the staging tree that definition is built in
     /// (see `ingest.suites.rs`), so the catalog itself is handed a placeholder
     /// materials directory it never writes to.
     fn suite_catalog(&self) -> TestSuiteCatalog {
-        self.reading_previews(TestSuiteCatalog::new(self.checkout.join(TEST_SUITES_DIR)))
+        self.reading_previews(TestSuiteCatalog::new(&self.roots.suites))
     }
 
     /// `catalog`, reading the checkout's `.previews/` folder when this ingestor is
@@ -788,7 +1032,7 @@ impl<'a> Ingestor<'a> {
         let root = catalog
             .version_root(id, version)
             .map_err(BackendError::Core)?;
-        let digest = digest::authored_version_digest(&root, self.checkout)?;
+        let digest = digest::authored_version_digest(&root, &self.roots.definitions)?;
         let decision = decider.decide(
             has_record,
             || self.store.version_stamp(&slug, version),
@@ -1483,3 +1727,7 @@ mod changed_tests;
 #[cfg(test)]
 #[path = "ingest.previews.test.rs"]
 mod preview_tests;
+
+#[cfg(test)]
+#[path = "ingest.roots.test.rs"]
+mod roots_tests;

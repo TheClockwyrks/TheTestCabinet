@@ -7,8 +7,8 @@
 // Plot builds outside React. A test that asserted on the spec object would pass
 // on a widget that drew none of it.
 
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import { MetricChartWidget } from "./MetricChartWidget";
 
