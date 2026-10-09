@@ -36,7 +36,7 @@
 // average ~450) an unmodified reference lost four points to that allowance at
 // 66-76 s apiece against quiet times of 6-14 s — and it is a NINTH of the
 // forty-five-minute cap the runner puts on the WHOLE suite run (`VITEST_TIMEOUT`,
-// `crates/core/src/vitest_validator.rs`), so a single file can only cross it on a
+// `crates/suites/src/vitest_validator.rs`), so a single file can only cross it on a
 // host where the run was already lost. Its hook allowance matches, because a page
 // is built in a `beforeEach` and a hook that expires fails the check just as a
 // timeout does; it also has to stay wider than every ceiling the harness itself

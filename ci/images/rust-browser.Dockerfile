@@ -1,13 +1,13 @@
 # The Rust gate job's CI image: the Rust CI image of the same commit, plus Node
 # and Playwright's Chromium.
 #
-# Some of core's tests drive a real browser through the npm workspace's
-# Playwright, in the Chromium it launches (a validator project under Vitest's
-# browser mode, for one), and they skip on a machine that has no browser. The
-# Rust image has none by design, so in it those tests would skip on every run
-# and the gate would pass without proving them. The `rust` job is to run here
-# instead and set TCAB_REQUIRE_BROWSER=1, which turns a missing browser into a
-# failed test (see crates/core/src/test_browser.rs); it moves in the commit that
+# Some of the core's and the suite runtime's tests drive a real browser through
+# the npm workspace's Playwright, in the Chromium it launches (a validator project
+# under Vitest's browser mode, for one), and they skip on a machine that has no
+# browser. The Rust image has none by design, so in it those tests would skip on
+# every run and the gate would pass without proving them. The `rust` job is to
+# run here instead and set TCAB_REQUIRE_BROWSER=1, which turns a missing browser
+# into a failed test (see crates/suites/src/test_browser.rs); it moves in the commit that
 # pins ci/images/tags.yml to an image run that built this track, and until then
 # runs in the Rust image, where those tests skip. The project's other Rust jobs stay
 # on the Rust image, where those tests skip: the `rust` job is the one that holds
