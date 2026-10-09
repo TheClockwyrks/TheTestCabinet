@@ -57,6 +57,45 @@
   white-space: nowrap;
 }
 
+// The plan and ladder dashboards' title row. A dashboard's name is the only thing
+// that says which plan or ladder this is, so there it wraps instead of being cut
+// short (see `.dashTitle`). The row takes the header's free width, which keeps Edit
+// on the title's line at the right edge; once less than the basis is left beside the
+// button, the button wraps beneath the title instead of squeezing it. The chevron and
+// the status badge stay on the title's first line rather than centering on all of it.
+.dashTitleRow {
+  flex: 1 1 16rem;
+  align-items: flex-start;
+
+  // The chevron is shorter than a line of the title, so top-aligned it rides high;
+  // this drops it to about the middle of the first line.
+  > :first-child {
+    margin-top: t.$space-xs;
+  }
+}
+
+// A dashboard's title: `.detailTitle`, wrapping. A name with no spaces breaks where
+// it must rather than pushing the page sideways.
+.dashTitle {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+// On a phone the ladder's status badge drops beneath a title it does not fit beside,
+// rather than taking a third of the line and wrapping the title a word at a time. The
+// title's width is capped just short of the row's so that it, and not the back chevron
+// before it, is what stays on the first line.
+@include bp.below(t.$bp-sm) {
+  .dashTitleRow {
+    flex-wrap: wrap;
+  }
+
+  .dashTitle {
+    max-width: calc(100% - #{t.$space-xl});
+  }
+}
+
 // The empty-plan call to action: the explanatory line stacked over a single
 // primary action, so the "set up your plan" affordance reads as its own button
 // rather than a link buried mid-sentence.
@@ -81,6 +120,12 @@
   align-items: center;
   gap: t.$space-lg;
   margin-bottom: t.$space-xl;
+
+  // On a narrow viewport the strip always wraps, so its lines sit closer than its
+  // figures do: with one gap for both, three lines read as three separate strips.
+  @include bp.below(t.$bp-md) {
+    gap: t.$space-sm t.$space-lg;
+  }
 }
 
 .summaryStat {
@@ -109,6 +154,11 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   margin-bottom: t.$space-lg;
+
+  // A phone has no width to spend on the strip's side padding.
+  @include bp.below(t.$bp-sm) {
+    padding: t.$space-md;
+  }
 }
 
 // The "runs in this order: One case at a time" line — a statement, not a control;
@@ -139,6 +189,22 @@
   flex-wrap: wrap;
   align-items: center;
   gap: t.$space-sm;
+
+  // On a phone the three buttons do not fit one line, and left to wrap at their own
+  // widths the last is orphaned at the left under the other two. So the cluster takes
+  // the strip's whole width: the primary action fills a line of its own, and the two
+  // that stop things share the next (or take one each when their labels are long).
+  @include bp.below(t.$bp-sm) {
+    flex: 1 1 100%;
+
+    > * {
+      flex: 1 1 auto;
+    }
+
+    > :first-child {
+      flex-basis: 100%;
+    }
+  }
 }
 
 // A plan card's title row.
@@ -162,8 +228,10 @@
 }
 
 // The plan's own review queue, in the plan's emission order: a column of identical
-// rows, each one the press that opens its run.
+// rows, each one the press that opens its run. A row lays itself out by the list's
+// width (the `@container review-queue` block below).
 .queueList {
+  container: review-queue / inline-size;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -234,6 +302,20 @@
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   white-space: nowrap;
+}
+
+// In a phone-width list the identity takes the row's whole width, and when the run
+// finished and the affordance drop to a line of their own beneath it, at either end.
+// Sharing one line, they left the identity a column so narrow that a gg
+// configuration's name ran to a word per line.
+@container review-queue (max-width: 26rem) {
+  .queueIdentity {
+    flex-basis: 100%;
+  }
+
+  .queueGo {
+    margin-left: auto;
+  }
 }
 
 // The explanatory line under a field inside a member-entry stack, where there is no
@@ -310,19 +392,30 @@
   margin-bottom: t.$space-xl;
 }
 
-// One test case's block of cells.
+// One test case's block of cells. A block lays its cells out by its own width rather
+// than the viewport's (the `@container coverage-group` blocks below), so a cell's row
+// regroups at the width where its columns stop fitting, wherever the block is put.
 .group {
+  container: coverage-group / inline-size;
   background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   padding: t.$space-md t.$space-lg;
+
+  // A phone has no width to spend on the block's side padding.
+  @include bp.below(t.$bp-sm) {
+    padding: t.$space-md;
+  }
 }
 
+// Wraps: when the title and the rollup do not fit one line, the rollup drops beneath
+// the title (and stays at the right edge) rather than being pushed off the block.
 .groupHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: t.$space-md;
+  gap: t.$space-sm t.$space-md;
   margin-bottom: t.$space-sm;
 }
 
@@ -362,9 +455,14 @@
   flex: none;
 }
 
+// Wraps, so a long case or combination name, or its qualifier, continues on the next
+// line instead of running under the rollup beside it.
 .groupTitle {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
+  min-width: 0;
+  overflow-wrap: anywhere;
   // 50% wider than the standard row gap, to separate the (orange) case name from
   // its muted variant/version.
   gap: calc(#{t.$space-sm} * 1.5);
@@ -384,8 +482,21 @@
 // header's space-between.
 .groupRight {
   display: flex;
+  // Wraps within itself too: on a phone the pills and the progress bar are together
+  // wider than the block, and the bar then takes a line of its own under the pills.
+  flex-wrap: wrap;
   align-items: center;
-  gap: t.$space-md;
+  justify-content: flex-end;
+  gap: t.$space-sm t.$space-md;
+  // Holds the right edge once the header has wrapped it onto a line of its own,
+  // where space-between has nothing left to push against.
+  margin-left: auto;
+
+  // A pill is one unit: squeezed, "v1.0.0 → v2.0.0 ↑" otherwise breaks at each space
+  // into a four-line block.
+  .staleBadge {
+    white-space: nowrap;
+  }
 }
 
 // The case-wide progress: a bar over every combination's runs, plus its
@@ -485,9 +596,16 @@
   color: t.$color-text;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  // Wraps rather than being cut short: the label is the only thing that says which
+  // combination (or case) the row is, and two gg configurations can share a long
+  // prefix. A model id with no spaces breaks where it must.
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+
+  .staleBadge {
+    flex: none;
+    white-space: nowrap;
+  }
 }
 
 // The muted qualifiers trailing a cell's count ("2 pending", "1 to review"). They
@@ -597,6 +715,74 @@
   text-align: center;
 }
 
+// A block too narrow for a cell's five columns (their minimum is about 46rem with the
+// longest count) regroups the row instead of pushing the triggers off the block: the
+// label, the runs link and the triggers on one line, the bar and its count beneath.
+// The label keeps the whole of the first column, so it wraps in a readable measure.
+@container coverage-group (max-width: 47rem) {
+  .cell {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "label link triggers"
+      "bar count count";
+    gap: t.$space-xs t.$space-md;
+    padding: t.$space-sm 0;
+  }
+
+  // A two-line cell needs a rule to say where one ends and the next begins.
+  .cell + .cell {
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  .cellLabel {
+    grid-area: label;
+  }
+
+  .cellLink {
+    grid-area: link;
+  }
+
+  .cellTriggers {
+    grid-area: triggers;
+  }
+
+  .cellBar {
+    grid-area: bar;
+  }
+
+  .cellCount {
+    grid-area: count;
+    text-align: right;
+  }
+}
+
+// A phone-width block cannot hold the triggers beside the label either, so they take
+// a line of their own and share it equally, which also makes them a full-size tap
+// target. The count's notes may wrap under it; each note stays whole.
+//
+// Three columns although each line holds two things: the label spans the first two
+// and the count the last two, so the count's width is not also the width the runs
+// link's column takes from the label.
+@container coverage-group (max-width: 34rem) {
+  .cell {
+    grid-template-columns: minmax(3rem, 1fr) auto auto;
+    grid-template-areas:
+      "label label link"
+      "bar count count"
+      "triggers triggers triggers";
+    gap: t.$space-sm t.$space-md;
+  }
+
+  .cellCount {
+    white-space: normal;
+  }
+
+  .cellTriggers > * {
+    flex: 1 1 0;
+    min-height: t.$space-xl;
+  }
+}
+
 // The in-page plan editor.
 .editor {
   background: s.$panel-bg;
@@ -604,6 +790,14 @@
   border-radius: t.$radius-md;
   padding: t.$space-lg;
   margin-bottom: t.$space-xl;
+
+  // A help tip's bubble is laid out even while hidden, centred on its "?" and up to
+  // 20rem wide, so on a narrow page one near the editor's edge reaches past the
+  // viewport and makes the whole page scroll sideways. Clipped at the editor there,
+  // which spans the page; wider, the bubble has the page margin to open into.
+  @include bp.below(t.$bp-md) {
+    overflow-x: clip;
+  }
 }
 
 // A top-level section label in the ladder editor (The climb, The gate, Feeding the
@@ -668,6 +862,10 @@
 // The group's "Clear all": a bare text control (no border or fill) that brightens
 // to the negative cue on hover, matching the per-tag remove glyph's affordance.
 .chipGroupClear {
+  // Kept whole: on a phone a long section title wraps beside it, and the action must
+  // not break into two lines with it.
+  flex: none;
+  white-space: nowrap;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   color: t.$color-text-muted;
@@ -772,16 +970,28 @@
 // The clickable summary — twisty, configuration, models — grown to fill the row so a
 // press anywhere left of the remove control opens the member. Same reset treatment as
 // `.groupToggle`, the matrix's case header, since both are a whole line that toggles.
+//
+// The name and the models wrap: when the two do not fit one line the models drop to a
+// line of their own under the name. The twisty is taken out of that flow and hung in
+// the left padding, so a wrapped line starts under the name rather than under the
+// glyph.
 .ggMemberOpen {
+  position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: t.$space-sm;
+  gap: 0 t.$space-sm;
   flex: 1 1 auto;
   min-width: 0;
   background: none;
   border: 0;
-  padding: 0;
+  padding: 0 0 0 t.$space-md;
   cursor: pointer;
+
+  .twisty {
+    position: absolute;
+    left: 0;
+  }
   text-align: left;
   color: inherit;
   font: inherit;
@@ -796,16 +1006,22 @@
   }
 }
 
+// The configuration's name, which an operator wrote and may be longer than the row:
+// it wraps rather than running out of the editor.
 .ggMemberName {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   color: t.$color-text;
   font-size: t.$font-sm;
+  overflow-wrap: anywhere;
 }
 
 // The models on one line, truncated rather than wrapped: the row exists to be scanned,
 // and the full answer is one press away in the bindings beneath it.
 .ggMemberModels {
   min-width: 0;
+  max-width: 100%;
   color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -945,6 +1161,13 @@
   margin-bottom: t.$space-xl;
 }
 
+// The list as the container its cards lay themselves out by, so a card stacks when the
+// list is narrow whatever the viewport is. A class of its own rather than a property of
+// `.list`, because the ladders list wears `.list` too and names its own container.
+.rowList {
+  container: rows / inline-size;
+}
+
 // One plan or group as a card: the name + a muted subtitle on the left, roll-up
 // stats and row actions on the right.
 .rowCard {
@@ -966,9 +1189,12 @@
   min-width: 0;
 }
 
+// A name longer than its column wraps, mid-word when it has no break of its own (an
+// agent's slug), rather than pushing the actions off the card.
 .rowTitle {
   color: t.$color-accent;
   font-size: t.$font-lg;
+  overflow-wrap: anywhere;
 }
 
 // A whole-card link that carries the accent title without underlining it until
@@ -976,6 +1202,7 @@
 .rowTitleLink {
   color: t.$color-accent;
   font-size: t.$font-lg;
+  overflow-wrap: anywhere;
 
   &:hover {
     text-decoration: underline;
@@ -1008,6 +1235,59 @@
   display: flex;
   align-items: center;
   gap: t.$space-md;
+}
+
+// Below the width a one-line card needs, the fixed right side would squeeze the name
+// to a word per line. The right column dissolves into the card's grid instead: the
+// name keeps the actions beside it, and the progress takes a full-width row beneath,
+// its bar stretching over whatever the count leaves.
+//
+//   | name / subtitle | actions |
+//   | [bar ..................] n/m cells |
+@container rows (max-width: 48rem) {
+  .rowCard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: t.$space-sm t.$space-md;
+  }
+
+  .rowRight {
+    display: contents;
+  }
+
+  .rowProgress {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  .rowProgress .groupBar {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+}
+
+// A phone has no room for the actions beside the name either: they take the last row,
+// splitting it evenly so each is a full-size target, and wrap when three do not fit.
+@container rows (max-width: 34rem) {
+  .rowCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rowProgress {
+    grid-row: auto;
+  }
+
+  .rowActions {
+    flex-wrap: wrap;
+    margin-top: t.$space-xs;
+
+    > * {
+      flex: 1 1 0;
+      text-align: center;
+    }
+  }
 }
 
 // The pick-a-group toggle tags on the plan and ladder editors: a wrapping row of
@@ -1177,12 +1457,26 @@
   font-size: t.$font-sm;
 }
 
-// A responsive row of labelled figures, collapsing from a full row to one column as
-// the viewport narrows.
+// A responsive row of labelled figures, collapsing from a full row to fewer columns
+// as the viewport narrows.
 .metricTiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: t.$space-md;
+
+  // A phone keeps two tiles to a row rather than one: seven tiles one above the other
+  // put the controls a screen and a half below the figures they act on.
+  // The narrowest phones still drop to one column, where half the panel is too little
+  // for a tile whose value is a phrase ("One case at a time").
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: t.$space-sm;
+
+    // An odd tile left over at the end takes the whole row rather than half of it.
+    > :last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
+  }
 }
 
 // The breakdown rings sharing the metrics panel. `align-items: start` lets each ring

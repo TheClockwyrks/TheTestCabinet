@@ -818,9 +818,11 @@ export function LadderPage() {
   return (
     <PageLayout>
       <header className={styles.detailHeader}>
-        <div className={styles.detailTitleRow}>
+        <div className={[styles.detailTitleRow, styles.dashTitleRow].join(" ")}>
           <BackChevron to={routes.accountLadders()} label="All ladders" />
-          <h1 className={styles.detailTitle}>{ladder?.name ?? ladderId}</h1>
+          <h1 className={[styles.detailTitle, styles.dashTitle].join(" ")}>
+            {ladder?.name ?? ladderId}
+          </h1>
           {!loading && progress && (
             <span
               className={`${ladderStyles.cardBadge} ${ladderStyles.detailBadge} ${

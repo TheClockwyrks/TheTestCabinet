@@ -162,7 +162,7 @@ export function CoveragePlansPage() {
           </Link>
         </div>
       ) : (
-        <div className={styles.list}>
+        <div className={[styles.list, styles.rowList].join(" ")}>
           {plans.map((plan) => {
             const { donePct, title } = planProgress(plan);
             return (
