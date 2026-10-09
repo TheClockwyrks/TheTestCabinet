@@ -742,6 +742,8 @@ fn excerpt(logs: &str) -> String {
     lines[start..].join("\n")
 }
 
-#[cfg(test)]
+// The tests stand in for `az`, `kubectl`, `git` and `curl` with executable shell
+// scripts, which only a Unix host runs.
+#[cfg(all(test, unix))]
 #[path = "remote_backend.test.rs"]
 mod tests;
