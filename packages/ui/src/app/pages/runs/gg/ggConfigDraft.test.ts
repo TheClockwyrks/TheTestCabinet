@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
+} from "@clockwyrks/backend-api/gg-system-prompt";
 import type {
   GgAgentConfig,
   GgCapabilityConfig,
@@ -6,10 +10,6 @@ import type {
   GgModelSlot,
   GgModuleKind,
 } from "@clockwyrks/run-record/gg";
-import {
-  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
-  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
-} from "@clockwyrks/run-record/gg-system-prompt";
 import {
   agentSaveError,
   agentStates,

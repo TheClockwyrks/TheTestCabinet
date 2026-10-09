@@ -993,11 +993,13 @@ reads. After changing any contract type, regenerate and commit:
 npm run gen:contract
 ```
 
-It runs both generators, mirrors gg's built-in system-prompt templates into the
-TypeScript contract, formats the output with Prettier, and compiles the two
-regenerated packages. The `contract-drift` gate regenerates and fails on any
-diff, or on a generated file that was never committed, so the Rust, TypeScript,
-and JSON Schema representations stay in step.
+It runs both generators, mirrors gg's built-in system-prompt templates into
+`packages/backend-api/src/gg-system-prompt.ts` (the backend API's package, not the
+data contract's, because the data contract depends on nothing of gg's), formats
+the output with Prettier, and compiles the two regenerated packages. The
+`contract-drift` gate regenerates and fails on any diff, or on a generated file
+that was never committed, so the Rust, TypeScript, and JSON Schema
+representations stay in step.
 
 `contract-codegen` compiles `test-cabinet-contracts` only, and `api-codegen`
 compiles `test-cabinet-core` and `test-cabinet-backend`, so neither needs any of

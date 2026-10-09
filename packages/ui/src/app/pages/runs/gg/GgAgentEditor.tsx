@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
-} from "@clockwyrks/run-record/gg-system-prompt";
+} from "@clockwyrks/backend-api/gg-system-prompt";
 import type {
   GgReasoningEffort,
   GgSubagentScope,

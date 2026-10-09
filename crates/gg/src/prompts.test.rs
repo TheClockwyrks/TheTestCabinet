@@ -2673,7 +2673,7 @@ fn an_override_that_does_not_parse_is_refused_at_launch() {
 /// staleness is a *suite* failure as well, for the reason it went unnoticed once: the drift script
 /// is reached for when somebody thinks a contract **type** moved, and a template is not a type.
 const COMMITTED_TEMPLATES: &str =
-    include_str!("../../../packages/run-record/src/gg-system-prompt.ts");
+    include_str!("../../../packages/backend-api/src/gg-system-prompt.ts");
 
 /// The string literal `name` is assigned in [`COMMITTED_TEMPLATES`], unescaped.
 ///
@@ -2687,7 +2687,7 @@ fn committed_template(name: &str) -> String {
     let tail = COMMITTED_TEMPLATES
         .split_once(&assignment)
         .unwrap_or_else(|| {
-            panic!("{name} is exported by packages/run-record/src/gg-system-prompt.ts")
+            panic!("{name} is exported by packages/backend-api/src/gg-system-prompt.ts")
         })
         .1;
     let opened = tail
@@ -2755,7 +2755,7 @@ fn the_committed_copy_of_each_template_is_the_one_gg_embeds() {
             });
         assert!(
             committed == embedded,
-            "{name} in packages/run-record/src/gg-system-prompt.ts is not the template gg embeds \
+            "{name} in packages/backend-api/src/gg-system-prompt.ts is not the template gg embeds \
              — {differing}\n\nRun `npm run gen:contract` and commit the result."
         );
     }

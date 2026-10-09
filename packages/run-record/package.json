@@ -31,10 +31,6 @@
       "types": "./dist/gg-session-record.d.ts",
       "default": "./dist/gg-session-record.js"
     },
-    "./gg-system-prompt": {
-      "types": "./dist/gg-system-prompt.d.ts",
-      "default": "./dist/gg-system-prompt.js"
-    },
     "./code-analysis": {
       "types": "./dist/code-analysis.d.ts",
       "default": "./dist/code-analysis.js"
