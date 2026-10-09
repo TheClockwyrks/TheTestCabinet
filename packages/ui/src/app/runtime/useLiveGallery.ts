@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { RunSubject } from "@clockwyrks/run-record";
 import {
   NotSupportedError,

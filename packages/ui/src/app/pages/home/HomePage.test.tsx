@@ -1,7 +1,7 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { CabinetStats } from "../../data/cabinetStats";
 import {
   GalleryDataProvider,

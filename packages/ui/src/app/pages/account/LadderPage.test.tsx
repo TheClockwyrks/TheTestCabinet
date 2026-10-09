@@ -1,7 +1,3 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   Ladder,
   LadderClimber,
@@ -11,8 +7,12 @@ import type {
   LadderSlot,
   RungTally,
   SlotCounts,
-} from "@clockwyrks/run-record/ladders";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+} from "@clockwyrks/backend-api/ladders";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendClient } from "../../../client/clients";
 import {
   BackendProvider,

@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
 import type {
   CoverageCell,
   CoverageMatrix,
-} from "@clockwyrks/run-record/coverage";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+} from "@clockwyrks/backend-api/coverage";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import { describe, expect, it } from "vitest";
 import { planRunScope, summarizeCoverageRuns } from "./coverageMetrics";
 
 function cell(over: Partial<CoverageCell> = {}): CoverageCell {

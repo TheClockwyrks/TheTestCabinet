@@ -18,12 +18,12 @@
 //! - [`LaunchAck`] / [`JobState`] / [`ActiveJobOut`] / [`JobStatusOut`] /
 //!   [`JobSummary`] / [`Notification`] — the backend's run-queue **output**
 //!   shapes. The backend constructs them on its server side (re-exporting them
-//!   from here so its handlers and the `contract-codegen` generator keep naming
+//!   from here so its handlers and the `api-codegen` generator keep naming
 //!   them under `backend::api` / `backend::relay`); a Rust client of the queue
 //!   (the CLI and the driver, mirroring the web console's TypeScript transport)
 //!   deserializes them. They live here so both sides share one definition.
 //!
-//! The contract `cfg_attr` derives are preserved so the `contract-codegen`
+//! The contract `cfg_attr` derives are preserved so the `api-codegen`
 //! generator still emits these types' TypeScript bindings and JSON Schemas from
 //! here once the console is rewired (the bindings are deferred to that pass).
 

@@ -1,6 +1,6 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   ChartWidget,
   SectionWidget,

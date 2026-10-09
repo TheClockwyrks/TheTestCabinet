@@ -66,7 +66,7 @@ schemars = { workspace = true, optional = true }
 
 [features]
 # Derive `ts_rs::TS` + `schemars::JsonSchema` on the backend API + snapshot wire
-# types for the `contract-codegen` generator. Never enabled by a normal build.
+# types for the `api-codegen` generator. Never enabled by a normal build.
 contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
 
 [dev-dependencies]

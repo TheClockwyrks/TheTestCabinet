@@ -45,8 +45,9 @@ hex = { workspace = true }
 percent-encoding = { workspace = true }
 
 # Contract codegen (TS bindings + JSON Schema), derived on the same types behind the
-# `contract` feature and driven by the `contract-codegen` generator through core's
-# feature of the same name; off by default so normal builds never compile them.
+# `contract` feature and driven by the `contract-codegen` generator (and, through
+# core's feature of the same name, read by `api-codegen`); off by default so normal
+# builds never compile them.
 ts-rs = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 

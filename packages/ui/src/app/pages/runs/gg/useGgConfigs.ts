@@ -1,5 +1,6 @@
+import type { GgConfig } from "@clockwyrks/backend-api/gg";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { GgCapabilitySet, GgConfig } from "@clockwyrks/run-record/gg";
+import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import { useAuth } from "../../../../client/auth";
 import { useOptionalBackend } from "../../../../client/context";
 import { attachAgentSources, resolveCapabilitySet } from "./ggAgentLibrary";

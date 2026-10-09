@@ -4,7 +4,7 @@
 // backend's public R2 snapshot. Inlined into the bundle at build time; empty in
 // dev and when no snapshot URL is configured.
 declare module "virtual:tcab-snapshot" {
-  import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+  import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
   import type { StoredReview, WorkspaceFileRef } from "@clockwyrks/ui/client";
   import type {
     SeededInput,
@@ -13,7 +13,7 @@ declare module "virtual:tcab-snapshot" {
     VariantSummary,
   } from "@clockwyrks/ui/app";
   import type { Model } from "@clockwyrks/ui/client";
-  import type { Comparison } from "@clockwyrks/run-record/comparison";
+  import type { Comparison } from "@clockwyrks/backend-api/comparison";
   import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 
   /**

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import { Panel } from "@clockwyrks/ui";
 import type {
   CoverageSettings,
   InFlightLimit,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
+import { useCallback, useEffect, useState } from "react";
+import { Panel } from "@clockwyrks/ui";
 import { Switch } from "../../components/Switch";
 import {
   IN_FLIGHT_LIMIT_CEILING,

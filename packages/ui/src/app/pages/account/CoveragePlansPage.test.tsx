@@ -1,8 +1,8 @@
+import type { CoveragePlanSummary } from "@clockwyrks/backend-api/coverage";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { CoveragePlanSummary } from "@clockwyrks/run-record/coverage";
 import {
   BackendProvider,
   type BackendContextValue,

@@ -162,8 +162,9 @@
 #   - EVERY workspace member's package.json (npm ci validates the whole workspace
 #     against the lockfile, so a missing member's manifest aborts the install), and
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
-#     plus its workspace deps @clockwyrks/ui and @clockwyrks/run-record, which
-#     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
+#     plus its workspace deps @clockwyrks/ui, @clockwyrks/run-record and
+#     @clockwyrks/backend-api, which Vite resolves to their TypeScript sources
+#     (packages/ui exports ./src/*), and
 #     @clockwyrks/run-stats, @clockwyrks/voxel-runtime and
 #     @clockwyrks/particle-runtime, whose compiled subpaths the ui library
 #     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
@@ -178,6 +179,7 @@
 !/apps/site/package.json
 !/apps/web
 !/packages/run-record
+!/packages/backend-api
 !/packages/run-stats
 !/packages/ui
 !/packages/voxel-runtime

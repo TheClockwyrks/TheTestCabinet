@@ -18,12 +18,10 @@
 // fetched, and runs through this page unchanged — same compiler, same batch, same panel
 // component. A hardcoded overview keeps rendering after a field is renamed, just wrong;
 // this one breaks visibly, in the panel that owns the stale field.
+import type { GgDashboard } from "@clockwyrks/backend-api/gg-query";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
-import type {
-  GgDashboard,
-  GgQueryResponse,
-} from "@clockwyrks/run-record/gg-query";
+import type { GgQueryResponse } from "@clockwyrks/run-record/gg-query";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { PageLayout } from "../../components/PageLayout";

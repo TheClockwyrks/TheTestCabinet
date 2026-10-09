@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useEffect, useMemo, useState } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { Pagination } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";

@@ -24,6 +24,16 @@ the kit and the gates over the whole set.
 | `gg.rocks` | site | gg's public site |
 | `test-suites` | content | The test cases and game jams |
 
+Inside this checkout the cut between `contracts` and `tcab` is drawn ahead of
+the move. What `contracts` will hold already builds on its own:
+`crates/contracts` (`test-cabinet-contracts`, with its fixtures),
+`crates/contract-codegen`, which generates from that crate alone, and the two
+packages it generates, `packages/run-record` and `packages/asset-contract`.
+`tcab`'s side of the cut is `crates/suites` (`test-cabinet-suites`, the test
+suite runtime), `crates/api-codegen` and the package it generates,
+`packages/backend-api` (`@clockwyrks/backend-api`), which is the one package
+`web` takes from `tcab`.
+
 The kind decides a repository's shape. A library carries a Rust workspace and
 commits no `Cargo.lock`; an application carries one and commits its lock. A
 site carries an npm workspace and no Rust, and a content repository carries

@@ -1,3 +1,4 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 // Fuel-based ranking for PERFORMANCE test cases. A performance run is graded by
 // the harness alone — correctness first, then the deterministic fuel a *correct*
 // engine burned (lower is better) — so it carries no reviewer score the ordinary
@@ -12,7 +13,6 @@
 // against that field (see `placeRunFuel`), so a worse duplicate can see where it
 // stands — even relative to its own model's recorded best.
 
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../../modelId";
 
 /** One model's best (lowest) total fuel on a single case + version + variant. */

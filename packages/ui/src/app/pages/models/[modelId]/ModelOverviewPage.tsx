@@ -1,3 +1,4 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useCallback, useId, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import {
@@ -8,7 +9,6 @@ import {
   type ReliabilitySegment,
 } from "@clockwyrks/ui";
 import { rollupRuns } from "@clockwyrks/run-stats/rollup";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   useVersionScope,

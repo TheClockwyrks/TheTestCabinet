@@ -98,8 +98,11 @@ The suite export rules take the engines a declared slug is checked against
 `validate`, `validate_tree`, `validate_preview_tree` and `load_and_validate` pass the
 built-in engine catalog.
 
-The TypeScript bindings and JSON Schemas are generated from both crates through
-the core's `contract` feature, which turns on the contracts crate's. See
+The data contract's TypeScript bindings (`@clockwyrks/run-record` and
+`@clockwyrks/asset-contract`) and their JSON Schemas are generated from the
+contracts crate alone, through its `contract` feature. The backend API's
+(`@clockwyrks/backend-api`) are generated from the core and the backend, through
+the core's feature of the same name, which turns on the contracts crate's. See
 [Generating the data contract](/development/building/#generating-the-data-contract).
 
 ## Wrapping the core

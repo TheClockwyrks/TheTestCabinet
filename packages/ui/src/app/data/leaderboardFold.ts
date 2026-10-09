@@ -1,3 +1,4 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 // The review-score leaderboard fold, shared by the case-detail Leaderboard tab
 // (one case + variant, ranked by mean points) and the home page's per-group
 // boards (a test-case group's member cases in one fold, ranked by mean score
@@ -6,7 +7,6 @@
 // runs are in scope (case, variant, version scope, engine scope) is the
 // caller's filter, applied before folding.
 
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../../modelId";
 import { isGgRun } from "./runLinks";
 import {

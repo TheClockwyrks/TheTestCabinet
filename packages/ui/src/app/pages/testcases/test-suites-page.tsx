@@ -1,7 +1,4 @@
-import type {
-  SuiteOut,
-  SuiteVersionIdentity,
-} from "@clockwyrks/run-record/backend-api";
+import type { SuiteOut, SuiteVersionIdentity } from "@clockwyrks/backend-api";
 import { Link } from "react-router";
 
 import { CatalogTabs } from "./catalog-tabs";

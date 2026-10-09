@@ -1,7 +1,4 @@
-import type {
-  SuiteOut,
-  SuiteVersionResponse,
-} from "@clockwyrks/run-record/backend-api";
+import type { SuiteOut, SuiteVersionResponse } from "@clockwyrks/backend-api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { createResolverAssetCaches, useCachedAsset } from "./assetCache";

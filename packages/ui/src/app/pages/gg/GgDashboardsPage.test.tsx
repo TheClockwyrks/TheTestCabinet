@@ -14,11 +14,11 @@
 // - **The account's boards are asked for with the account's token.** The corpus is
 //   deployment-wide and the view over it is not; here the token is an owner filter, not
 //   merely a gate.
+import type { GgDashboardInput } from "@clockwyrks/backend-api/gg-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgDashboardInput } from "@clockwyrks/run-record/gg-query";
 import {
   BackendProvider,
   type BackendContextValue,

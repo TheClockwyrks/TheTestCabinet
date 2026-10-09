@@ -3,18 +3,20 @@
 # truth and fails if a committed copy is stale.
 #
 # ONE artifact is checked here: the data contract. The TS bindings
-# (packages/run-record/src/ and packages/asset-contract/src/ — one generator, two
-# packages, because only the latter may be seeded into a run) and the JSON Schemas
+# (packages/run-record/src/ and packages/asset-contract/src/ from contract-codegen —
+# two packages, because only the latter may be seeded into a run — and
+# packages/backend-api/src/ from api-codegen) and the JSON Schemas
 # (apps/docs/public/schema/) are
 # generated from the Rust types that derive `ts_rs::TS` + `schemars::JsonSchema` (see
-# crates/contract-codegen and scripts/gen-contract.mjs). Any change to one of those
+# crates/contract-codegen, crates/api-codegen and scripts/gen-contract.mjs). Any change to one of those
 # types — including the rustdoc, which is emitted into the schemas as descriptions —
 # that is not regenerated and committed turns this check red, so the three
 # representations can never silently drift apart.
 #
 # It is committed, and stays committed, for the one reason that survives everything the
 # rest of this header describes being deleted: its READERS cannot run the generator.
-# They are TypeScript builds (`tsc -b packages/run-record`, Vite, the site build) and a
+# They are TypeScript builds (`tsc -b packages/run-record packages/backend-api`, Vite,
+# the site build) and a
 # static docs site serving the schemas as files, none of which can invoke a Rust binary.
 # Committing is what you do when the reader cannot run the generator.
 #
@@ -61,8 +63,8 @@
 # `cargo run -p test-cabinet-gg -- reference`, and building gg reaches every arm twice over — eleven
 # documentation tools to reflect the catalogues, and every arm's artifact crate to compile what a
 # program is judged against. Two installer calls and ~3.3 GB stood here for exactly that one step.
-# What is left links test-cabinet-core and test-cabinet-backend, and the backend links neither gg nor
-# anything gg pulls. If you find yourself adding an installer back, check first whether something
+# What is left links test-cabinet-contracts (contract-codegen) and test-cabinet-core and
+# test-cabinet-backend (api-codegen), and none of them links gg or anything gg pulls. If you find yourself adding an installer back, check first whether something
 # taught this script to build gg again — that is the regression, not the missing toolchain.
 #
 # So: this script gates GENERATED-AND-COMMITTED files, and there is exactly one kind left, at the top.
@@ -78,11 +80,26 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
-log "regenerate the contract (cargo run -p contract-codegen + prettier)"
+readonly GENERATED=(packages/run-record/src packages/asset-contract/src packages/backend-api/src apps/docs/public/schema)
+
+log "regenerate the contract (cargo run -p contract-codegen and -p api-codegen + prettier)"
 npm run gen:contract
 
 log "check for drift"
-if ! git diff --exit-code -- packages/run-record/src packages/asset-contract/src apps/docs/public/schema; then
+# `git diff` sees a committed file that changed, but not a file the generators emit
+# that was never committed: a module or schema added to a generator and not to the
+# tree. That is drift too, so an untracked file under the generated directories fails.
+untracked="$(git ls-files --others --exclude-standard -- "${GENERATED[@]}")"
+if [[ -n "$untracked" ]]; then
+	printf '%s\n' "$untracked" >&2
+	cat >&2 <<'EOF'
+
+error: the generators emitted files that are not committed (listed above).
+Run `npm run gen:contract` and commit the result.
+EOF
+	exit 1
+fi
+if ! git diff --exit-code -- "${GENERATED[@]}"; then
 	cat >&2 <<'EOF'
 
 error: the generated contract artifacts are out of date.

@@ -1,6 +1,6 @@
+import type { GgConfig } from "@clockwyrks/backend-api/gg";
 import { useCallback, useState } from "react";
 import { Link } from "react-router";
-import type { GgConfig } from "@clockwyrks/run-record/gg";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";

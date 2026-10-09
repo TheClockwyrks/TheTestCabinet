@@ -1,4 +1,4 @@
-import type { ControllerRef } from "@clockwyrks/run-record";
+import type { ControllerRef } from "@clockwyrks/backend-api/tournament";
 import { canonicalModelId } from "../../modelId";
 import { useFindModel } from "./useModels";
 

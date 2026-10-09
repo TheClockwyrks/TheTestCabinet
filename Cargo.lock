@@ -134,6 +134,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "api-codegen"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "contract-codegen",
+ "test-cabinet-backend",
+ "test-cabinet-core",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -699,8 +709,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "test-cabinet-backend",
- "test-cabinet-core",
+ "test-cabinet-contracts",
  "ts-rs",
 ]
 

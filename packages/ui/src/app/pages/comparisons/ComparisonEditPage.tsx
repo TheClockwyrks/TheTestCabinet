@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import type { HarnessSlug } from "@clockwyrks/run-record";
 import type {
   Comparison,
   ComparisonArm,
   ComparisonControls,
   ComparisonInput,
-} from "@clockwyrks/run-record/comparison";
+} from "@clockwyrks/backend-api/comparison";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import type { HarnessSlug } from "@clockwyrks/run-record";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";

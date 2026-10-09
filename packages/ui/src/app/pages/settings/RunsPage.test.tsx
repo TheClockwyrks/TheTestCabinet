@@ -1,10 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
 import type {
   CoverageSettings,
   CoverageSettingsInput,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { describe, expect, it, vi } from "vitest";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import { RunsPage } from "./RunsPage";

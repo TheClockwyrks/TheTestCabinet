@@ -1,3 +1,4 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type { Plugin } from "vite";
 import type {
   AssetKind,
@@ -5,7 +6,6 @@ import type {
   MediaKind,
   TestType,
 } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -80,14 +80,14 @@ interface SnapshotModelsFile {
 
 interface SnapshotComparisonsFile {
   schemaVersion: number;
-  // Wire `Comparison` shape (`@clockwyrks/run-record/comparison`); consumed as-is.
+  // Wire `Comparison` shape (`@clockwyrks/backend-api/comparison`); consumed as-is.
   comparisons: unknown[];
 }
 
 interface SnapshotTestCaseGroupsFile {
   schemaVersion: number;
   // Wire `TestCaseGroupOut` shape (`TestCaseGroupsFile` in
-  // `@clockwyrks/run-record/snapshot`), already in display order; the app
+  // `@clockwyrks/backend-api/snapshot`), already in display order; the app
   // consumes it as its `TestCaseGroupSummary`.
   groups: unknown[];
 }

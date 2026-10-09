@@ -1,7 +1,4 @@
-import type {
-  SuiteOut,
-  SuiteVersionResponse,
-} from "@clockwyrks/run-record/backend-api";
+import type { SuiteOut, SuiteVersionResponse } from "@clockwyrks/backend-api";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";

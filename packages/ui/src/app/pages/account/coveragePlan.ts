@@ -5,7 +5,7 @@ import type {
   BlockedCell,
   HaltResult,
   LaunchPassResult,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
 import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type { WorkerClient } from "../../../client/clients";
 import type { InProgressRun } from "../../../client/types";

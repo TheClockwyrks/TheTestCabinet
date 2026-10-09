@@ -1,3 +1,10 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import type {
+  ControllerRef,
+  MatchSummary,
+  TournamentRecord,
+} from "@clockwyrks/backend-api/tournament";
 import {
   createContext,
   useCallback,
@@ -10,8 +17,6 @@ import {
 import type {
   AdversarialResult,
   AssetSheet,
-  ControllerRef,
-  MatchSummary,
   MediaKind,
   ModelSpec,
   NineSlice,
@@ -19,11 +24,8 @@ import type {
   RunRecord,
   RunShowcase,
   RunSubject,
-  TournamentRecord,
 } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import {
   parseGlb,

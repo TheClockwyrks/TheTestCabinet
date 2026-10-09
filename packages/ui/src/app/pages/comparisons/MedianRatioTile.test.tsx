@@ -1,4 +1,4 @@
-import type { ComparisonArmResult } from "@clockwyrks/run-record/comparison";
+import type { ComparisonArmResult } from "@clockwyrks/backend-api/comparison";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { presentedRatio } from "./comparisonMath";

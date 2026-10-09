@@ -1,3 +1,9 @@
+import type {
+  Gate,
+  GateThreshold,
+  LadderAxis,
+  LadderRungInput,
+} from "@clockwyrks/backend-api/ladders";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
@@ -22,12 +28,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type {
-  Gate,
-  GateThreshold,
-  LadderAxis,
-  LadderRungInput,
-} from "@clockwyrks/run-record/ladders";
 import type { Rating } from "@clockwyrks/run-record/review";
 import { RATINGS, RATING_META } from "../../../ratings";
 import {

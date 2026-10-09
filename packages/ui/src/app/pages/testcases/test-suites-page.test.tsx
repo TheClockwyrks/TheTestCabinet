@@ -1,4 +1,4 @@
-import type { SuiteOut } from "@clockwyrks/run-record/backend-api";
+import type { SuiteOut } from "@clockwyrks/backend-api";
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";

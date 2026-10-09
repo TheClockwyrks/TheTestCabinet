@@ -1,4 +1,4 @@
-import type { StoredSuite } from "@clockwyrks/run-record/backend-api";
+import type { StoredSuite } from "@clockwyrks/backend-api";
 import type { SuiteTestCaseDefinition } from "@clockwyrks/run-record/test-suite";
 import { Link } from "react-router";
 

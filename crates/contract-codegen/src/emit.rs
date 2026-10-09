@@ -1,10 +1,16 @@
 //! Emission machinery shared by the TypeScript and JSON Schema generators.
 //!
-//! The contract types live in `crates/core` and `crates/backend`
-//! and derive both [`ts_rs::TS`] and [`schemars::JsonSchema`] behind their
-//! `contract` feature. This module turns those derives into the published
-//! artifacts: a TypeScript declaration per type ([`ts_decl`]) and a
-//! post-processed JSON Schema document per root type ([`finalize_schemas`]).
+//! The contract types live in `crates/contracts`, and the backend API's in
+//! `crates/core` and `crates/backend`; all of them derive both [`ts_rs::TS`] and
+//! [`schemars::JsonSchema`] behind their crate's `contract` feature. This module turns
+//! those derives into the published artifacts: a TypeScript declaration per type
+//! ([`ts_decl`]) and a post-processed JSON Schema document per root type
+//! ([`finalize_schemas`]).
+//!
+//! Two generators share it, each writing its own modules and documents. A generator
+//! that refers to the other's types passes the other's modules and documents as
+//! *external*: they are never written, but they say where each of their types is
+//! declared, so an import or a `$ref` reaches it there.
 
 use std::collections::HashMap;
 
@@ -84,15 +90,19 @@ struct Home {
 /// Finalize every TypeScript module: resolve cross-module imports and prepend the
 /// generated header. A type referenced by one module but defined in another is
 /// imported from it — by relative path within a package, and by the package's npm
-/// name across packages; references within the same module need no import. Returns
-/// `(package, file, content)` triples ready to write.
+/// name (and the module's stem, unless it is the package's `index.ts`) across
+/// packages; references within the same module need no import. `external` are
+/// modules another generator writes: they are only where some referenced types are
+/// declared, and are not returned. Returns `(package, file, content)` triples ready
+/// to write.
 pub fn finalize_ts(
     modules: Vec<TsModule>,
+    external: &[TsModule],
     header: &str,
 ) -> Vec<(&'static str, &'static str, String)> {
     // Global map: every contract type name → where it is defined.
     let mut home: HashMap<&str, Home> = HashMap::new();
-    for module in &modules {
+    for module in external.iter().chain(&modules) {
         for decl in &module.decls {
             home.insert(
                 decl.name.as_str(),
@@ -180,14 +190,17 @@ pub fn finalize_ts(
 }
 
 /// The import specifier `from_package` uses to reach a type declared at `source`:
-/// a relative module path inside the same package, and the owning package's npm
-/// name across packages.
+/// a relative module path inside the same package, and across packages the owning
+/// package's npm name — bare for its `index.ts`, and with the module's stem as a
+/// subpath (`@clockwyrks/run-record/gg`) for any other module.
 fn specifier(source: Home, from_package: &str) -> String {
+    let stem = source.file.strip_suffix(".ts").unwrap_or(source.file);
     if source.package == from_package {
-        let stem = source.file.strip_suffix(".ts").unwrap_or(source.file);
         format!("./{stem}")
-    } else {
+    } else if stem == "index" {
         source.package.to_string()
+    } else {
+        format!("{}/{stem}", source.package)
     }
 }
 
@@ -250,13 +263,17 @@ fn ref_url(owner: &Owner, name: &str) -> String {
 /// Finalize every schema document: build the global type-ownership map, then for
 /// each document stamp `$id`, drop the `$defs` entries owned by *other* documents,
 /// and rewrite every `$ref` to point at its owning document (a cross-document URL
-/// when foreign, `#/$defs/...` when local). Returns `(rel_path, value)` pairs
-/// ready to serialize.
-pub fn finalize_schemas(docs: Vec<SchemaDoc>) -> Result<Vec<(&'static str, Value)>> {
+/// when foreign, `#/$defs/...` when local). `external` are documents another
+/// generator writes: they claim the types they own, and are not returned. Returns
+/// `(rel_path, value)` pairs ready to serialize.
+pub fn finalize_schemas(
+    docs: Vec<SchemaDoc>,
+    external: &[SchemaDoc],
+) -> Result<Vec<(&'static str, Value)>> {
     // Build the global ownership map and reject any type claimed by two documents
     // — that would make its canonical `$ref` ambiguous.
     let mut owner: HashMap<&'static str, Owner> = HashMap::new();
-    for doc in &docs {
+    for doc in external.iter().chain(&docs) {
         let mut claim = |name: &'static str, is_root: bool| -> Result<()> {
             if let Some(prev) = owner.insert(
                 name,

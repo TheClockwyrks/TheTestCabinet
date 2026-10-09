@@ -208,6 +208,10 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/telemetry`: `test-cabinet-telemetry`. The shared
   [OpenTelemetry](/development/observability/) wiring every long-lived binary
   initializes at startup.
+- `crates/contract-codegen` and `crates/api-codegen`: the two
+  [generators](#generating-the-data-contract) of the committed TypeScript
+  bindings and JSON Schemas, one for the data contract and one for the backend's
+  API.
 
 The remaining members are the asset-generation tools (`draw`, `voxel`, `mc`,
 `sn`, `dc`, `paint`, `particle-*`, `sfx-*`, `music` and the libraries they
@@ -230,11 +234,19 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   from there. The `seeded-contract` gate (`ci/gates/seeded-contract.py`, which
   runs `scripts/ci/seeded-contract-check.sh`) keeps the evaluation half out of
   a run.
+- `packages/backend-api`: `@clockwyrks/backend-api`. The TypeScript types of the
+  [backend's API](/components/backend/api/): its request and response shapes,
+  the run queue, coverage plans and ladders, accounts, comparisons, the
+  published snapshot documents, the saved gg configurations, agents, queries and
+  dashboards, the persisted tournament, and the `Review` document. Generated
+  from `crates/backend` and `crates/core`, and built on `run-record`, whose types
+  it imports.
 - `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
   frozen at one moment comparable with the same figure recomputed later. It has
-  no runtime dependencies and imports only types from `run-record`, so it runs in
+  no runtime dependencies and imports only types from `run-record` and
+  `backend-api`, so it runs in
   a bundle, a build script, or a worker alike. `packages/ui`'s `ratings` module
   re-exports the scoring half alongside its display metadata.
 - `packages/browser-driver`: `@clockwyrks/browser-driver`. The Playwright
@@ -902,27 +914,42 @@ gate.
 
 ## Generating the data contract
 
-The run-record (and arena, job-API, backend) data contract has a single source of
-truth: the Rust types that derive `ts_rs::TS` and `schemars::JsonSchema` behind
-their `contract` feature, in `crates/contracts`, `crates/core` and
-`crates/backend` (core's feature turns on the contracts crate's). The TypeScript
-bindings under `packages/run-record/src/` and `packages/asset-contract/src/` —
-one generator, two packages, because only the latter may be seeded into a run —
-and the JSON Schemas under `apps/docs/public/schema/` are generated from those
-types by `crates/contract-codegen`. After changing any contract type, regenerate
-and commit:
+The run-record data contract and the backend API built on it have a single
+source of truth: the Rust types that derive `ts_rs::TS` and
+`schemars::JsonSchema` behind their `contract` feature, in `crates/contracts`,
+`crates/core` and `crates/backend` (core's feature turns on the contracts
+crate's). Two generators turn them into the committed TypeScript bindings and the
+JSON Schemas under `apps/docs/public/schema/`:
+
+- `crates/contract-codegen` writes the data contract from `crates/contracts`:
+  `packages/run-record/src/` and `packages/asset-contract/src/` (two packages,
+  because only the latter may be seeded into a run) and their schemas.
+- `crates/api-codegen` writes the backend's API from `crates/backend` and
+  `crates/core`: `packages/backend-api/src/` and its schemas. It reads the first
+  generator's modules and documents without writing them, so a backend type that
+  refers to a contract type imports it from `@clockwyrks/run-record` and
+  references it at the contract document's URL. Nothing in the data contract
+  refers back to the backend API.
+
+Every schema keeps its published URL whichever generator writes it, so four of
+the backend's documents still sit in the contract's directories:
+`core/tournament.schema.json`, the two `gg/query-batch-*` documents,
+`gg/saved-query.schema.json` and `gg/dashboard.schema.json`. After changing any
+contract type, regenerate and commit:
 
 ```sh
 npm run gen:contract
 ```
 
-It runs the generator, formats the output with Prettier, mirrors gg's built-in
-system-prompt templates into the TypeScript contract, and compiles the
-regenerated package. The `contract-drift` gate regenerates and fails on any
-diff, so the Rust, TypeScript, and JSON Schema representations stay in step.
+It runs both generators, mirrors gg's built-in system-prompt templates into the
+TypeScript contract, formats the output with Prettier, and compiles the two
+regenerated packages. The `contract-drift` gate regenerates and fails on any
+diff, or on a generated file that was never committed, so the Rust, TypeScript,
+and JSON Schema representations stay in step.
 
-It compiles `test-cabinet-core` and `test-cabinet-backend` only, so it needs none
-of gg's program-language toolchains.
+`contract-codegen` compiles `test-cabinet-contracts` only, and `api-codegen`
+compiles `test-cabinet-core` and `test-cabinet-backend`, so neither needs any of
+gg's program-language toolchains.
 
 ## Projecting gg's reference
 

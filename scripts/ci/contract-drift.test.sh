@@ -5,8 +5,9 @@
 # A copy of the script runs in a throwaway git repository holding committed
 # stand-ins for the generated contract artifacts, with `npm` stubbed first on
 # PATH: its `run gen:contract` rewrites whichever file the case names, or
-# nothing. The subject is which differences fail the gate: the generated
-# TypeScript and JSON Schema, and nothing else in the tree.
+# nothing, and creates whichever new file the case names. The subject is which
+# differences fail the gate: the generated TypeScript and JSON Schema, changed or
+# newly emitted, and nothing else in the tree.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,7 +70,7 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
-readonly GENERATED="packages/run-record/src/index.ts packages/asset-contract/src/index.ts apps/docs/public/schema/run-record.json"
+readonly GENERATED="packages/run-record/src/index.ts packages/asset-contract/src/index.ts packages/backend-api/src/index.ts apps/docs/public/schema/run-record.json"
 fresh_repo() {
 	local repo file
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
@@ -83,6 +84,7 @@ fresh_repo() {
 #!/usr/bin/env bash
 echo "npm $* [cwd=$PWD]" >>"$STUB_LOG"
 [[ -n "${STUB_DRIFT:-}" ]] && echo "regenerated" >"$STUB_DRIFT"
+[[ -n "${STUB_NEW:-}" ]] && mkdir -p "$(dirname "$STUB_NEW")" && echo "emitted" >"$STUB_NEW"
 exit "${STUB_NPM_EXIT:-0}"
 STUB
 	chmod +x "$repo/bin/npm"
@@ -114,6 +116,18 @@ done
 repo="$(fresh_repo)"
 out="$(run "$repo" STUB_DRIFT="$repo/README.md")"
 check_equal "a change outside the generated artifacts passes" "0" "$?"
+
+for file in packages/run-record/src/new.ts packages/backend-api/src/new.ts apps/docs/public/schema/new/new.schema.json; do
+	repo="$(fresh_repo)"
+	out="$(run "$repo" STUB_NEW="$repo/$file")"
+	check_equal "a newly emitted, uncommitted $file fails" "1" "$?"
+	check_contains "naming the file ($file)" "$file" "$out"
+	check_contains "and how to fix it (new $file)" "Run \`npm run gen:contract\` and commit the result." "$out"
+done
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_NEW="$repo/notes/new.txt")"
+check_equal "a new file outside the generated artifacts passes" "0" "$?"
 
 repo="$(fresh_repo)"
 out="$(run "$repo" STUB_NPM_EXIT=1)"

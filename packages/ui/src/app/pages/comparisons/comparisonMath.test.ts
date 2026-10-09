@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
 import type {
   ComparisonArm,
   ComparisonArmResult,
   ComparisonConfig,
   MetricSummary,
-} from "@clockwyrks/run-record/comparison";
+} from "@clockwyrks/backend-api/comparison";
+import { describe, expect, it } from "vitest";
 import {
   armDistributionGroups,
   appendRunIds,

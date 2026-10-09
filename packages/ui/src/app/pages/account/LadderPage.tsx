@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
 import type {
   CoverageQueue,
   HaltResult,
   ReviewPlanCombo,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
 import type {
   ClimberBlock,
   DispatchStatus,
@@ -16,7 +14,9 @@ import type {
   LadderSlot,
   RungTally,
   SlotStatus,
-} from "@clockwyrks/run-record/ladders";
+} from "@clockwyrks/backend-api/ladders";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";

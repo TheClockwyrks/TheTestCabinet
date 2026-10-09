@@ -1,4 +1,4 @@
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type { StoredRun } from "../../client/types";
 import {
   aggregateAestheticRating,

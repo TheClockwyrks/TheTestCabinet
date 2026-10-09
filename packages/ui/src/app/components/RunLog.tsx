@@ -1,4 +1,4 @@
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { Fragment, useMemo, useRef, type MouseEvent } from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";

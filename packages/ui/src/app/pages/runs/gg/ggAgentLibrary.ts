@@ -1,10 +1,12 @@
 import type {
-  GgAgentConfig,
   GgAgentSource,
-  GgCapabilityConfig,
-  GgCapabilitySet,
   GgConfig,
   GgSavedAgent,
+} from "@clockwyrks/backend-api/gg";
+import type {
+  GgAgentConfig,
+  GgCapabilityConfig,
+  GgCapabilitySet,
   GgSubagentRef,
 } from "@clockwyrks/run-record/gg";
 import {

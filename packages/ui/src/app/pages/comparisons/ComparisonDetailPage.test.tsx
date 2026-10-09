@@ -1,3 +1,4 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import {
   fireEvent,
   render,
@@ -8,7 +9,6 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   BackendProvider,
   WorkersProvider,

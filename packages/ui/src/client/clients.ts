@@ -47,41 +47,16 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "./types";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
   SuiteVersionResponse,
   SuiteOut,
   TestCaseGroupOut,
-} from "@clockwyrks/run-record/backend-api";
+} from "@clockwyrks/backend-api";
 import type {
-  BulkCancelOut,
-  GgRunRequest,
-  LaunchAck,
-} from "@clockwyrks/run-record/jobs-api";
-import type {
-  GgConfig,
-  GgConfigInput,
-  GgSavedAgent,
-  GgSavedAgentInput,
-  GgProgramLanguage,
-} from "@clockwyrks/run-record/gg";
-import type {
-  GgReference,
-  GgReferenceApi,
-} from "@clockwyrks/run-record/gg-reference";
-import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type {
-  GgDashboard,
-  GgDashboardInput,
-  GgFieldCatalog,
-  GgQuery,
-  GgQueryBatch,
-  GgQueryBatchResponse,
-  GgQueryResponse,
-  GgSavedQuery,
-  GgSavedQueryInput,
-} from "@clockwyrks/run-record/gg-query";
+  Comparison,
+  ComparisonInput,
+} from "@clockwyrks/backend-api/comparison";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -96,11 +71,26 @@ import type {
   HaltResult,
   LaunchPassResult,
   PlanCellRetryInput,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
 import type {
-  Comparison,
-  ComparisonInput,
-} from "@clockwyrks/run-record/comparison";
+  GgConfig,
+  GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
+} from "@clockwyrks/backend-api/gg";
+import type {
+  GgDashboard,
+  GgDashboardInput,
+  GgQueryBatch,
+  GgQueryBatchResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
+} from "@clockwyrks/backend-api/gg-query";
+import type {
+  BulkCancelOut,
+  GgRunRequest,
+  LaunchAck,
+} from "@clockwyrks/backend-api/jobs-api";
 import type {
   Ladder,
   LadderInput,
@@ -110,7 +100,19 @@ import type {
   LadderRungOrderInput,
   LadderStopInput,
   LadderSummary,
-} from "@clockwyrks/run-record/ladders";
+} from "@clockwyrks/backend-api/ladders";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type {
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryResponse,
+} from "@clockwyrks/run-record/gg-query";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of

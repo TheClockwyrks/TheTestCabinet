@@ -57,8 +57,8 @@ mod test_cases;
 mod test_suites;
 mod tournaments;
 
-// Re-export the HTTP response contract types so the `contract-codegen` generator
-// can name them (the handler modules themselves stay private).
+// Re-export the HTTP response contract types so the `api-codegen` generator can
+// name them (the handler modules themselves stay private).
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.

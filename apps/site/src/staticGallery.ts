@@ -1,7 +1,7 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { useCallback, useEffect, useState } from "react";
 import type { RunRecord, RunSubject } from "@clockwyrks/run-record";
 import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import type { HarnessEvent, ProgressCallback } from "@clockwyrks/ui/client";
 import { readOutcome, readTextWithProgress } from "@clockwyrks/ui/client";
 import {

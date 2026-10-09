@@ -1,6 +1,6 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useMemo, type ReactNode } from "react";
 import type { TestType } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   AestheticBadge,
   GradeBadge,

@@ -1,12 +1,12 @@
-// Pure helpers behind the comparison detail page's "Trigger missing runs" action
-// and its charts — kept free of React/network so the top-up math and the
-// tool-call grouping are unit-tested directly (see comparisonMath.test.ts).
 import type {
   ArmRunPoint,
   ComparisonArm,
   ComparisonArmResult,
   ComparisonConfig,
-} from "@clockwyrks/run-record/comparison";
+} from "@clockwyrks/backend-api/comparison";
+// Pure helpers behind the comparison detail page's "Trigger missing runs" action
+// and its charts — kept free of React/network so the top-up math and the
+// tool-call grouping are unit-tested directly (see comparisonMath.test.ts).
 import type {
   DistributionGroup,
   StackedBarSegment,

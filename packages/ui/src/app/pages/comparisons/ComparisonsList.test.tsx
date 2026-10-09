@@ -1,7 +1,7 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   BackendProvider,
   type BackendContextValue,

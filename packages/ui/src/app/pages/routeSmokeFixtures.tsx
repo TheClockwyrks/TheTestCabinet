@@ -1,8 +1,5 @@
-import type {
-  SuiteOut,
-  SuiteVersionResponse,
-} from "@clockwyrks/run-record/backend-api";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { SuiteOut, SuiteVersionResponse } from "@clockwyrks/backend-api";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type { ReactNode } from "react";
 
 import { AuthProvider } from "../../client/auth";

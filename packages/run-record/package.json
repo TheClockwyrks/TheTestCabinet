@@ -19,14 +19,6 @@
       "types": "./dist/event.d.ts",
       "default": "./dist/event.js"
     },
-    "./account": {
-      "types": "./dist/account.d.ts",
-      "default": "./dist/account.js"
-    },
-    "./jobs-api": {
-      "types": "./dist/jobs-api.d.ts",
-      "default": "./dist/jobs-api.js"
-    },
     "./gg": {
       "types": "./dist/gg.d.ts",
       "default": "./dist/gg.js"
@@ -55,29 +47,9 @@
       "types": "./dist/gg-query.d.ts",
       "default": "./dist/gg-query.js"
     },
-    "./comparison": {
-      "types": "./dist/comparison.d.ts",
-      "default": "./dist/comparison.js"
-    },
-    "./coverage": {
-      "types": "./dist/coverage.d.ts",
-      "default": "./dist/coverage.js"
-    },
-    "./ladders": {
-      "types": "./dist/ladders.d.ts",
-      "default": "./dist/ladders.js"
-    },
-    "./backend-api": {
-      "types": "./dist/backend-api.d.ts",
-      "default": "./dist/backend-api.js"
-    },
     "./test-suite": {
       "types": "./dist/test-suite.d.ts",
       "default": "./dist/test-suite.js"
-    },
-    "./snapshot": {
-      "types": "./dist/snapshot.d.ts",
-      "default": "./dist/snapshot.js"
     }
   },
   "files": [
