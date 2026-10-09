@@ -552,9 +552,11 @@ export function CoveragePlanLayout() {
   return (
     <PageLayout>
       <header className={styles.detailHeader}>
-        <div className={styles.detailTitleRow}>
+        <div className={[styles.detailTitleRow, styles.dashTitleRow].join(" ")}>
           <BackChevron to={routes.accountCoverage()} label="All plans" />
-          <h1 className={styles.detailTitle}>{plan?.name ?? planId}</h1>
+          <h1 className={[styles.detailTitle, styles.dashTitle].join(" ")}>
+            {plan?.name ?? planId}
+          </h1>
         </div>
         <Link
           className={exec.secondary}
