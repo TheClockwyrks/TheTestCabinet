@@ -14,7 +14,7 @@
 //! | `TCAB_DISPATCHER_NAMESPACE` | no | The namespace the dispatcher creates driver `Job`s in. | the in-cluster namespace, else `default` |
 //! | `TCAB_DISPATCHER_DRIVER_SA` | no | The ServiceAccount assigned to each driver pod (the repurposed `tcab-worker` RBAC that can create/exec/delete sandbox pods). `None` uses the namespace default. | — |
 //! | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | The maximum number of non-terminal driver `Job`s the dispatcher keeps in flight (the run lane's admission cap). Publish `Job`s do not count against it. | `8` |
-//! | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | no | The maximum number of non-terminal publish `Job`s the dispatcher keeps in flight (the publish lane's admission cap). Driver `Job`s do not count against it, so a publish never waits behind runs. | `2` |
+//! | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | no | The maximum number of non-terminal publish `Job`s the dispatcher keeps in flight (the publish lane's admission cap). Driver `Job`s do not count against it, so a publish never waits behind runs. | `8` |
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after a tick that admitted nothing (both queues empty, or both lanes at their caps) before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
 //! | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` | no | CPU/memory **requests** on the driver container. These keep the driver pod out of the `BestEffort` QoS class, and the memory request is the node's reservation for the driver — see [`DEFAULT_DRIVER_CPU_REQUEST`] and [`DEFAULT_DRIVER_MEMORY_REQUEST`]. Set to a blank value to omit them (not advised). | `100m` / `2Gi` |
@@ -496,7 +496,7 @@ impl Config {
             non_empty("TCAB_K8S_NAMESPACE").unwrap_or_else(|| namespace.clone());
 
         let max_inflight = parse_or("TCAB_DISPATCHER_MAX_INFLIGHT", 8usize)?.max(1);
-        let max_publish_inflight = parse_or("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", 2usize)?.max(1);
+        let max_publish_inflight = parse_or("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", 8usize)?.max(1);
         let poll_seconds = parse_or("TCAB_DISPATCHER_POLL_INTERVAL_SECONDS", 2u64)?;
         let job_ttl_seconds = parse_or("TCAB_DISPATCHER_JOB_TTL_SECONDS", 300i32)?;
         let driver_resources = DriverResources::from_env();

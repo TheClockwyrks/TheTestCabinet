@@ -88,7 +88,7 @@ spec:
             # Publish admission: the most non-terminal publish Jobs kept in flight.
             # Counted apart from the driver Jobs, so a publish never waits behind runs.
             - name: TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT
-              value: "2"
+              value: "8"
             # Back-off after a tick that admits nothing, in seconds.
             - name: TCAB_DISPATCHER_POLL_INTERVAL_SECONDS
               value: "2"
