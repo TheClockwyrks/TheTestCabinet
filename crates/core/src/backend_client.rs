@@ -1656,9 +1656,10 @@ fn unknown_event(raw: &str) -> HarnessEvent {
     }
 }
 
-// The ingest feed's shapes and the request body are the ingest API's client-side
-// contract, so they live in `test_cabinet_contracts::ingest` and are re-exported here;
-// the HTTP client and the feed reader, which answers with core's `Error`, stay.
+// The ingest API's request body, report and feed lines are its contract, which the
+// backend serves with too, so they live in `test_cabinet_contracts::ingest` and are
+// re-exported here; the HTTP client and the feed reader, which answers with core's
+// `Error`, stay.
 pub use test_cabinet_contracts::ingest::*;
 
 impl HttpBackendClient {

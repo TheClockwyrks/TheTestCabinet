@@ -48,16 +48,19 @@ when more than one party reads or writes it: the run record and every part of it
 toolchain and code-analysis blocks), the review shapes, a resolved test case
 version, the test suite format and its export and save rules, gg's configuration,
 telemetry and session record, the TCQ query shapes, the engine identity a run
-names, the ingest feed, and the names of the files and directories a run tree is
-made of.
+names, the ingest API's request, report and feed, and the names of the files and
+directories a run tree is made of.
 
-The contracts crate holds data and the pure functions over it. Anything that
-reaches a container, a process, the network or a clock stays in the core, which
-splits a module along that line where it has to. The TCQ shapes are contracts and
-the document builder and evaluator are core. A resolved test case is contracts and
-the manifest formats and the catalog that resolves them are core. The event shapes
-are contracts and the per-harness parsers are core. The review shapes are contracts
-and the scoring rules are core. The scoring rules have a TypeScript mirror,
+The contracts crate holds data, the functions over it, and the reading and writing
+of the files that data is stored in: a suite version's export, a partial suite tree,
+the cold storage root a checkout names. Anything that reaches a container, a
+process, the network or a clock stays in the core, which splits a module along that
+line where it has to. The TCQ shapes are contracts and the document builder and
+evaluator are core. A resolved test case is contracts and the manifest formats and
+the catalog that resolves them are core. The event shapes are contracts and the
+per-harness parsers are core. The review shapes are contracts, and so is
+`merge_review_items`, which a resolved test case's checklist is built with; the
+scoring rules over them are core. The scoring rules have a TypeScript mirror,
 `@clockwyrks/run-stats`, and the
 [scoring goldens](/development/building/#the-scoring-goldens) in the contracts
 crate's `fixtures/scoring/` hold the two to the same cases.
@@ -103,15 +106,15 @@ The suite export rules take the engines a declared slug is checked against
 `validate`, `validate_tree`, `validate_preview_tree` and `load_and_validate` pass the
 built-in engine catalog.
 
-The data contract's TypeScript bindings (`@clockwyrks/run-record` and
-`@clockwyrks/asset-contract`) and their JSON Schemas are generated from the
-contracts crate alone, through its `contract` feature. The backend API's
 The suites crate links no OpenTelemetry. Its browser driver calls (`capture`,
 `drive_script` and `smoke_check`) take the function that names the current span's
 `traceparent`, and the core's `browser` module, which re-exports the rest of the
 suites crate's, keeps the three with their old signatures and passes the telemetry
 crate's propagation.
 
+The data contract's TypeScript bindings (`@clockwyrks/run-record` and
+`@clockwyrks/asset-contract`) and their JSON Schemas are generated from the
+contracts crate alone, through its `contract` feature. The backend API's
 (`@clockwyrks/backend-api`) are generated from the core and the backend, through
 the core's feature of the same name, which turns on the contracts crate's. See
 [Generating the data contract](/development/building/#generating-the-data-contract).

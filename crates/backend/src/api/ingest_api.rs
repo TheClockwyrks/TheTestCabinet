@@ -10,8 +10,11 @@ use axum::http::{HeaderMap, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
-use serde::{Deserialize, Serialize};
 use test_cabinet_core::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
+use test_cabinet_core::backend_client::{
+    IngestBody, IngestBodyMode, IngestProgress, IngestResponse, IngestResponseSuite,
+    IngestResponseVersion,
+};
 use test_cabinet_core::r2::R2Client;
 use test_cabinet_core::reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock};
 use time::OffsetDateTime;
@@ -52,10 +55,7 @@ pub async fn ingest(
         IngestRequest {
             test_cases: body.test_cases,
             force: body.force,
-            mode: match body.mode {
-                Some(WireMode::Changed) => IngestMode::Changed,
-                None => IngestMode::Absent,
-            },
+            mode: IngestBodyMode::scan_mode(body.mode),
             catalog_version: body.catalog_version,
         },
         state.ready.is_ready(),
@@ -119,7 +119,7 @@ pub async fn ingest(
         state.ready.mark_store_populated();
     }
 
-    Ok(Json(IngestResponse::from(report)).into_response())
+    Ok(Json(ingest_response(report)).into_response())
 }
 
 /// Force a `changed` scan against a backend whose store is not ready.
@@ -344,7 +344,7 @@ fn ingest_streaming(
     tokio::task::spawn_blocking(move || {
         let store = scan.store.clone();
         let result = scan.run(&request, |event| {
-            let _ = tx.send(encode_event(&StreamEvent::from(event)));
+            let _ = tx.send(encode_event(&progress_line(event)));
         });
         // A single closing line conveys the outcome in-band: the stream has already
         // sent a 200, so a late failure cannot become an HTTP error code.
@@ -369,9 +369,9 @@ fn ingest_streaming(
                 if store.is_servable() {
                     readiness.mark_store_populated();
                 }
-                StreamEvent::done(&report)
+                done_line(&report)
             }
-            Err(err) => StreamEvent::Error {
+            Err(err) => IngestProgress::Error {
                 message: err.to_string(),
             },
         };
@@ -397,7 +397,7 @@ fn ingest_streaming(
 /// Encode one progress event as a `\n`-terminated NDJSON line. The fields are
 /// JSON-safe scalars, so a defensive empty line stands in for the impossible
 /// serialization error rather than aborting the stream.
-fn encode_event(event: &StreamEvent) -> Bytes {
+fn encode_event(event: &IngestProgress) -> Bytes {
     match serde_json::to_string(event) {
         Ok(mut line) => {
             line.push('\n');
@@ -408,187 +408,81 @@ fn encode_event(event: &StreamEvent) -> Bytes {
 }
 
 // --- Wire shapes (§1.1) -----------------------------------------------------
+//
+// The request body, the report and the feed lines are the ingest API's contract,
+// `test_cabinet_contracts::ingest` (re-exported by `test_cabinet_core::backend_client`),
+// which the client writes and reads with too. What the scan's own report comes to on
+// the wire is decided here.
 
-#[derive(Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct IngestBody {
-    /// Restrict the scan to these entries. Each is a bare case `id` (slug or folder
-    /// name, expanding to all its versions), a version-qualified `id@version` (that
-    /// one version only), a suite slug (every definition of every version it
-    /// declares) or a suite version as `<suite>@<version>`. Omitted/empty means a
-    /// whole-catalog scan, which enumerates the authored catalog and the suites tree
-    /// together. See [`IngestRequest::test_cases`].
-    #[serde(default)]
-    test_cases: Option<Vec<String>>,
-    #[serde(default)]
-    force: bool,
-    /// `"changed"` ingests only targets whose stored record is absent or differs
-    /// from the checkout. See [`IngestRequest::mode`].
-    #[serde(default)]
-    mode: Option<WireMode>,
-    /// A version token (the client's build commit) tagging a whole-catalog ingest,
-    /// letting the backend skip the re-render when the catalog is unchanged. See
-    /// [`IngestRequest::catalog_version`].
-    #[serde(default)]
-    catalog_version: Option<String>,
-}
-
-/// The `mode` values the ingest body accepts. Omitting `mode` is the default scan,
-/// which skips every target the store already holds.
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum WireMode {
-    /// Ingest only targets whose content differs from the store.
-    Changed,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IngestResponse {
-    test_case_versions: Vec<VersionOut>,
-    /// The suite versions the scan touched. A suite-defined case is reported among
-    /// the versions above under the identity it was ingested as; this is the suite's
-    /// own record, which is keyed beside them.
-    test_suites: Vec<SuiteOut>,
-}
-
-impl From<IngestReport> for IngestResponse {
-    fn from(report: IngestReport) -> Self {
-        IngestResponse {
-            test_case_versions: report
-                .test_case_versions
-                .into_iter()
-                .map(|v| VersionOut {
-                    slug: v.slug,
-                    version: v.version,
-                    ingested: v.ingested,
-                    rendered_references: v.rendered_references,
-                    reason: v.reason.map(|reason| reason.as_str()),
-                    problem: v.problem,
-                })
-                .collect(),
-            test_suites: report
-                .suite_versions
-                .into_iter()
-                .map(|suite| SuiteOut {
-                    slug: suite.slug,
-                    version: suite.version,
-                    ingested: suite.ingested,
-                    reason: suite.reason.map(|reason| reason.as_str()),
-                    problem: suite.problem,
-                })
-                .collect(),
-        }
-    }
-}
-
-/// One scanned suite version in the (non-streamed) ingest report.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SuiteOut {
-    slug: String,
-    version: String,
-    ingested: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<&'static str>,
-    /// Why the suite version was refused, naming the file and the failure.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    problem: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct VersionOut {
-    slug: String,
-    version: String,
-    ingested: bool,
-    rendered_references: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<&'static str>,
-    /// Why the version could not be ingested, naming the file and the failure.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    problem: Option<String>,
-}
-
-/// One line of the streamed (`Accept: application/x-ndjson`) progress feed,
-/// discriminated by an `event` tag: `start` once up front, a `version` per
-/// completed version, then a single closing `done` (or `error`).
-#[derive(Debug, Serialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
-enum StreamEvent {
-    Start {
-        total: usize,
-    },
-    Version {
-        index: usize,
-        total: usize,
-        slug: String,
-        version: String,
-        ingested: bool,
-        #[serde(rename = "renderedReferences")]
-        rendered_references: usize,
-        /// Why a skipped version was skipped, when the scan names a reason.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reason: Option<&'static str>,
-        /// Why the version could not be ingested, naming the file and the failure.
-        /// Present only on a version reported with `ingested: false` because it
-        /// failed to resolve.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        problem: Option<String>,
-    },
-    Done {
-        total: usize,
-        ingested: usize,
-        skipped: usize,
-    },
-    Error {
-        message: String,
-    },
-}
-
-impl StreamEvent {
-    /// The closing summary for a successful scan: how many versions were (re)ingested
-    /// vs. skipped, as unchanged or for a problem. A refused suite version is one
-    /// `version` line of the feed, so it counts here too.
-    fn done(report: &IngestReport) -> Self {
-        let refused = report
-            .suite_versions
-            .iter()
-            .filter(|suite| suite.problem.is_some())
-            .count();
-        let total = report.test_case_versions.len() + refused;
-        let ingested = report
+/// The report a finished scan answers with when the feed was not asked for.
+fn ingest_response(report: IngestReport) -> IngestResponse {
+    IngestResponse {
+        test_case_versions: report
             .test_case_versions
-            .iter()
-            .filter(|v| v.ingested)
-            .count();
-        StreamEvent::Done {
-            total,
-            ingested,
-            skipped: total - ingested,
-        }
+            .into_iter()
+            .map(|v| IngestResponseVersion {
+                slug: v.slug,
+                version: v.version,
+                ingested: v.ingested,
+                rendered_references: v.rendered_references,
+                reason: v.reason.map(|reason| reason.as_str().to_owned()),
+                problem: v.problem,
+            })
+            .collect(),
+        test_suites: report
+            .suite_versions
+            .into_iter()
+            .map(|suite| IngestResponseSuite {
+                slug: suite.slug,
+                version: suite.version,
+                ingested: suite.ingested,
+                reason: suite.reason.map(|reason| reason.as_str().to_owned()),
+                problem: suite.problem,
+            })
+            .collect(),
     }
 }
 
-impl From<IngestEvent<'_>> for StreamEvent {
-    fn from(event: IngestEvent<'_>) -> Self {
-        match event {
-            IngestEvent::Start { total } => StreamEvent::Start { total },
-            IngestEvent::Version {
-                index,
-                total,
-                version,
-            } => StreamEvent::Version {
-                index,
-                total,
-                slug: version.slug.clone(),
-                version: version.version.clone(),
-                ingested: version.ingested,
-                rendered_references: version.rendered_references,
-                reason: version.reason.map(|reason| reason.as_str()),
-                problem: version.problem.clone(),
-            },
-        }
+/// The closing summary for a successful scan: how many versions were (re)ingested
+/// vs. skipped, as unchanged or for a problem. A refused suite version is one
+/// `version` line of the feed, so it counts here too.
+fn done_line(report: &IngestReport) -> IngestProgress {
+    let refused = report
+        .suite_versions
+        .iter()
+        .filter(|suite| suite.problem.is_some())
+        .count();
+    let total = report.test_case_versions.len() + refused;
+    let ingested = report
+        .test_case_versions
+        .iter()
+        .filter(|v| v.ingested)
+        .count();
+    IngestProgress::Done {
+        total,
+        ingested,
+        skipped: total - ingested,
+    }
+}
+
+/// The feed line one scan event is reported as.
+fn progress_line(event: IngestEvent<'_>) -> IngestProgress {
+    match event {
+        IngestEvent::Start { total } => IngestProgress::Start { total },
+        IngestEvent::Version {
+            index,
+            total,
+            version,
+        } => IngestProgress::Version {
+            index,
+            total,
+            slug: version.slug.clone(),
+            version: version.version.clone(),
+            ingested: version.ingested,
+            rendered_references: version.rendered_references,
+            reason: version.reason.map(|reason| reason.as_str().to_owned()),
+            problem: version.problem.clone(),
+        },
     }
 }
 

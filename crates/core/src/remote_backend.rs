@@ -360,7 +360,12 @@ impl RemoteBackend {
         on_log: &mut (dyn FnMut(&str) + Send),
         on_progress: &mut (dyn FnMut(&IngestProgress) + Send),
     ) -> Result<IngestSummary, RemoteError> {
-        let body = ingest_body(targets, force, mode).to_string();
+        let body = serde_json::to_string(&ingest_body(targets, force, mode)).map_err(|error| {
+            RemoteError::Ingest {
+                cluster: self.target.cluster.clone(),
+                message: format!("encoding the request body: {error}"),
+            }
+        })?;
         let script = self.ingest_script(&body);
         let result = self.invoke(&script, None).await?;
         let mut feed = IngestFeed::default();

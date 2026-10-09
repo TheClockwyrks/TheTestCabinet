@@ -1,10 +1,11 @@
 //! Unit tests for the ingest handler's snapshot-refresh trigger decision.
 
-use super::{StreamEvent, promote_for_store_readiness, scan_changed_store};
+use super::{done_line, progress_line, promote_for_store_readiness, scan_changed_store};
 use crate::ingest::{
     IngestEvent, IngestReport, IngestRequest, IngestedSuite, IngestedVersion, SkipReason,
 };
 use test_cabinet_core::IngestMode;
+use test_cabinet_core::backend_client::{IngestBody, IngestBodyMode};
 
 fn version(slug: &str, ingested: bool) -> IngestedVersion {
     IngestedVersion {
@@ -84,12 +85,11 @@ fn a_default_scan_is_not_forced_by_readiness() {
 
 #[test]
 fn the_body_accepts_changed_and_nothing_else_for_mode() {
-    let body: super::IngestBody =
-        serde_json::from_str(r#"{"mode":"changed"}"#).expect("changed parses");
-    assert_eq!(body.mode, Some(super::WireMode::Changed));
-    let body: super::IngestBody = serde_json::from_str("{}").expect("an empty body parses");
+    let body: IngestBody = serde_json::from_str(r#"{"mode":"changed"}"#).expect("changed parses");
+    assert_eq!(body.mode, Some(IngestBodyMode::Changed));
+    let body: IngestBody = serde_json::from_str("{}").expect("an empty body parses");
     assert_eq!(body.mode, None);
-    assert!(serde_json::from_str::<super::IngestBody>(r#"{"mode":"sometimes"}"#).is_err());
+    assert!(serde_json::from_str::<IngestBody>(r#"{"mode":"sometimes"}"#).is_err());
 }
 
 // A skipped version's line names why it was skipped; an ingested one carries no
@@ -98,7 +98,7 @@ fn the_body_accepts_changed_and_nothing_else_for_mode() {
 fn a_version_line_names_its_skip_reason() {
     let mut skipped = version("carom", false);
     skipped.reason = Some(SkipReason::Unchanged);
-    let line = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let line = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 1,
         total: 2,
         version: &skipped,
@@ -109,7 +109,7 @@ fn a_version_line_names_its_skip_reason() {
     assert_eq!(line["reason"], "unchanged");
 
     let ingested = version("fathom", true);
-    let line = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let line = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 2,
         total: 2,
         version: &ingested,
@@ -129,7 +129,7 @@ fn a_version_that_failed_to_resolve_streams_its_problem() {
         ),
         ..version("carom-efficiency", false)
     };
-    let line = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let line = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 1,
         total: 1,
         version: &failed,
@@ -143,7 +143,7 @@ fn a_version_that_failed_to_resolve_streams_its_problem() {
     );
 
     // A version without one carries no `problem` key at all.
-    let clean = serde_json::to_value(StreamEvent::from(IngestEvent::Version {
+    let clean = serde_json::to_value(progress_line(IngestEvent::Version {
         index: 1,
         total: 1,
         version: &version("carom-ball", true),
@@ -173,7 +173,7 @@ fn a_problem_counts_toward_skipped() {
         }],
         test_case_groups_changed: false,
     };
-    let done = serde_json::to_value(StreamEvent::done(&report)).expect("the event serializes");
+    let done = serde_json::to_value(done_line(&report)).expect("the event serializes");
     assert_eq!(done["total"], 3);
     assert_eq!(done["ingested"], 1);
     assert_eq!(done["skipped"], 2);
