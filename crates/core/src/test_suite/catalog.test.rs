@@ -1,6 +1,6 @@
 //! Tests for the suite catalog and the lowering onto a runnable
 //! [`TestCaseVersion`], driven by the committed fixture suite at
-//! `src/testdata/test-suite/carom/versions/v1.0.0/`.
+//! `crates/contracts/fixtures/test-suite/carom/versions/v1.0.0/`.
 //!
 //! The fixture offers one definition of every fully specified type plus one of a
 //! type the format leaves TBD, so a pass over its `test-cases/` folder is a pass
@@ -11,11 +11,11 @@ use crate::engine::NONE_SLUG;
 use crate::prompt::{SuiteSpecification, render_suite_prompt};
 use crate::test_case::{AssetKind, TestType};
 use crate::test_suite::SUITE_VARIANT_SLUG;
-use crate::test_suite::model::SuiteManifest;
+use crate::test_suite::{SuiteManifest, suite_dir_of};
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn checkout() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// A catalog over the fixture checkout, rendering its specifications into `dir`.

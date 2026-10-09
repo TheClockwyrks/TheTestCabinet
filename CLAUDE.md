@@ -249,10 +249,11 @@ site's [`test-suites/`](apps/docs/src/content/docs/test-suites/) section is
 authoritative over their on-disk format: the layout, drafts, exported versions
 and previews, plus a page per file format (the suite and version manifests,
 specifications, validators, debug APIs, test case definitions, demonstrations,
-assets, reference implementations, and the showcase). The suite model lives in
-`crates/core/src/test_suite/`, the backend's suite ingest and API in
-`crates/backend/`, and the console's Test Suites tab and detail pages in
-`packages/ui/`.
+assets, reference implementations, and the showcase). The suite model and its
+rules live in `crates/contracts/src/test_suite/`, the catalog, lowering, previews
+and validator runner in `crates/core/src/test_suite/`, the backend's suite ingest
+and API in `crates/backend/`, and the console's Test Suites tab and detail pages
+in `packages/ui/`.
 
 Authored suites live in a separate test suites repository, included here as a
 git submodule at [`test-suites/`](test-suites/), one folder per suite holding

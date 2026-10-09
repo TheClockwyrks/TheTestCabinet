@@ -22,7 +22,7 @@
 //!   ([`preview_completeness`]);
 //! - the tree a preview of some definitions is, restricted to those definitions and
 //!   what they reference ([`preview_tree`]), which converts to the complete model
-//!   through [`PartialSuiteTree::complete_preview`];
+//!   through [`PartialSuiteTree::complete_preview`](super::PartialSuiteTreeExt::complete_preview);
 //! - the files beside that model's TOML that the preview copies from the draft
 //!   ([`preview_files`]).
 //!
@@ -36,16 +36,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use super::catalog::PREVIEW_VERSION_PREFIX;
-use super::model::SuiteTestCaseType;
-use super::partial::{
+use super::PREVIEW_VERSION_PREFIX;
+use super::SuiteTestCaseType;
+use super::{
     ASSET_MANIFEST_FILE, PartialAssetFolder, PartialSpecificationFolder, PartialSuiteTree,
     PartialVersionManifest, SPECIFICATION_MANIFEST_FILE,
 };
-use super::validation::{
+use super::{DEBUG_API_DECLARATION_FILE, SuiteTrees, VALIDATORS_DIR, WORKSPACES_DIR};
+use super::{
     SuiteDiagnostic, SuiteEntity, VITEST_CONFIG_FILE, targeted_asset, validate_preview_tree,
 };
-use super::version::{DEBUG_API_DECLARATION_FILE, SuiteTrees, VALIDATORS_DIR, WORKSPACES_DIR};
 
 /// The directory no preview copies: what a package manager installed is not
 /// authored, and it is reinstalled wherever the preview is built.

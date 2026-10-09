@@ -10,8 +10,8 @@ use crate::test_suite::{
 
 /// The fixture version, read through the partial model.
 fn fixture() -> PartialSuiteTree {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("src/testdata/test-suite/carom/versions/v1.0.0");
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/test-suite/carom/versions/v1.0.0");
     let suite = load_suite_manifest_of(&root).expect("the suite manifest loads");
     PartialSuiteTree::from(SuiteVersion::load(&suite, &root).expect("the fixture loads"))
 }

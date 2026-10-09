@@ -22,11 +22,11 @@ use crate::test_case::{
 };
 
 use super::defaults::{SUITE_ASSET_DIMENSION, asset_defaults, default_audio_packs, default_domain};
-use super::model::{
+use super::{AssetFolder, SpecificationFolder, SuiteVersion};
+use super::{
     SuiteAssetKind, SuiteDifficulty, SuiteManifest, SuiteRequirement, SuiteTestCaseDefinition,
     SuiteTestCaseType, VersionManifest,
 };
-use super::version::{AssetFolder, SpecificationFolder, SuiteVersion};
 
 /// The slug of the single implicit variant every suite-defined test case runs.
 ///

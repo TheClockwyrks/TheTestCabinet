@@ -348,7 +348,7 @@ export function verdictIdsForItem(item: {
  * item with a fresh id is appended, preserving "common first, then the variant's
  * own". Because resolution forbids two items resolving to the same verdict id, a
  * merge only ever unions disjoint sub-items under a shared category id. Mirrors
- * `merge_review_items` in the Rust core (crates/core/src/test_case.rs).
+ * `merge_review_items` in the Rust contracts crate (crates/contracts/src/test_case.rs).
  */
 export function mergeReviewItems<
   T extends {
@@ -381,8 +381,8 @@ export function mergeReviewItems<
  * parent, and an item that declared sub-items and has none left is dropped with
  * them. A point with no validator, or one whose validator names no engines, is
  * carried on every engine. Non-mutating. Mirrors
- * `TestCaseVersion::review_items_for_engine` in the Rust core
- * (crates/core/src/test_case.rs).
+ * `TestCaseVersion::review_items_for_engine` in the Rust contracts crate
+ * (crates/contracts/src/test_case.rs).
  */
 export function reviewItemsForEngine<
   T extends {

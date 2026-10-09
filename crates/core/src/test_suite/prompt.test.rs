@@ -1,5 +1,5 @@
 //! Tests for rendering a suite-defined case's prompt, driven by the committed
-//! fixture suite at `src/testdata/test-suite/carom/versions/v1.0.0/`.
+//! fixture suite at `crates/contracts/fixtures/test-suite/carom/versions/v1.0.0/`.
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,7 @@ use crate::test_suite::TestSuiteCatalog;
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn checkout() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// Resolve one fixture definition, rendering its specifications into `dir`.

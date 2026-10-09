@@ -1260,7 +1260,7 @@ async fn a_stream_that_never_closes_is_a_failure() {
 
 /// The fixture suites checkout: one complete suite, `carom/versions/v1.0.0/`.
 fn fixture_suites_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// Every file of the fixture suite version the store would list on

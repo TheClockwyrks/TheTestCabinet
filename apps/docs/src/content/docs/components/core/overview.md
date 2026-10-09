@@ -43,19 +43,37 @@ contracts the rest of the system is built around.
 
 The data contracts the core defines live in their own crate, `crates/contracts`
 (`test-cabinet-contracts`), beside the core in `crates/core`. A shape belongs there
-when more than one party reads or writes it: gg's configuration, telemetry and
-session record, the TCQ query shapes, the metrics, toolchain and code-analysis
-blocks of a run record, the engine identity a run names, the ingest feed, and the
-names of the files and directories a run tree is made of.
+when more than one party reads or writes it: the run record and every part of it
+(the subject and state, the normalized events, the validation summary, the metrics,
+toolchain and code-analysis blocks), the review shapes, a resolved test case
+version, the test suite format and its export and save rules, gg's configuration,
+telemetry and session record, the TCQ query shapes, the engine identity a run
+names, the ingest feed, and the names of the files and directories a run tree is
+made of.
 
 The contracts crate holds data and the pure functions over it. Anything that
 reaches a container, a process, the network or a clock stays in the core, which
-splits a module along that line where it has to: the TCQ shapes are contracts and
-the document builder and evaluator are core, and the engine shapes are contracts
-and the engine catalog is core. The core depends on the contracts crate and
-re-exports every moved module and item at its previous path, so
-`test_cabinet_core::gg::GgConfig` and `test_cabinet_contracts::gg::GgConfig` name
-the same type.
+splits a module along that line where it has to. The TCQ shapes are contracts and
+the document builder and evaluator are core. The engine shapes are contracts and
+the engine catalog is core. A resolved test case is contracts and the manifest
+formats and the catalog that resolves them are core. The event shapes are
+contracts and the per-harness parsers are core. The review shapes are contracts
+and the scoring rules are core. The suite format is contracts and the suite catalog,
+lowering, previews and validator runner are core.
+
+The core depends on the contracts crate and re-exports every moved module and item
+at its previous path, so `test_cabinet_core::gg::GgConfig` and
+`test_cabinet_contracts::gg::GgConfig` name the same type. A method that needs the
+core's runtime cannot stay on a contract type, so it is a trait in the core with
+the same name and signature: `RunToolingExt::current` (the build's commit),
+`RunStateExt::classify_failure` (over the core's error), `HarnessEventExt::system`
+(stamped with the clock) and `PartialSuiteTreeExt::complete` and
+`complete_preview`. Each is re-exported beside its type, so a caller that imports
+the module or the crate root calls `RunTooling::current()` as before. The suite
+export rules take the engines a declared slug is checked against
+(`validate_tree_with` and the rest, over an `EngineLookup`). The core's `validate`,
+`validate_tree`, `validate_preview_tree` and `load_and_validate` pass the built-in
+engine catalog.
 
 The TypeScript bindings and JSON Schemas are generated from both crates through
 the core's `contract` feature, which turns on the contracts crate's. See

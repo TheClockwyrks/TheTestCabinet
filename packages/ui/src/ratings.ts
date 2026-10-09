@@ -5,7 +5,7 @@
 // over the total declared weight.
 //
 // The review *types* (Rating, VerdictStatus, DomainRating, ReviewVerdict) are
-// generated from the Rust core (crates/core/src/review.rs) and imported here.
+// generated from the Rust contracts crate (crates/contracts/src/review.rs) and imported here.
 //
 // The scoring and aggregation *rules* used to live here too, but they are shared
 // with consumers that must not depend on React — anything computing the same

@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::test_suite::{
-    SuiteDiagnostic, SuiteEntity, SuiteRule, SuiteVersion, VERSION_MANIFEST_FILE,
-    load_suite_manifest_of, to_canonical_toml, validate, validate_tree,
+    BuiltInEngines, SuiteDiagnostic, SuiteEntity, SuiteRule, SuiteVersion, VERSION_MANIFEST_FILE,
+    load_suite_manifest_of, to_canonical_toml, validate_tree_with, validate_with,
 };
 
 /// The committed fixture suite folder.
 fn fixture_suite() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite/carom")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/test-suite/carom")
 }
 
 /// Copy a directory tree, so no test writes into the committed fixture.
@@ -84,7 +84,7 @@ fn a_draft_holding_only_its_draft_manifest_loads_and_reports_what_it_lacks() {
     assert!(tree.test_cases.is_empty());
     assert!(tree.unparsed.is_empty(), "{:?}", tree.unparsed);
 
-    let found = validate_tree(&draft, &tree);
+    let found = validate_tree_with(&draft, &tree, &BuiltInEngines);
     assert_eq!(
         found,
         [
@@ -100,7 +100,7 @@ fn a_draft_holding_only_its_draft_manifest_loads_and_reports_what_it_lacks() {
             .iter()
             .all(|problem| problem.rule == SuiteRule::Export)
     );
-    assert!(tree.complete(&draft).is_err());
+    assert!(tree.complete_with(&draft, &BuiltInEngines).is_err());
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn each_missing_required_key_is_an_export_problem_on_its_entity() {
     write(&draft, "showcase/showcase.md", "");
 
     let tree = load(&draft);
-    let found = validate_tree(&draft, &tree);
+    let found = validate_tree_with(&draft, &tree, &BuiltInEngines);
 
     for key in ["summary", "description", "changelog"] {
         assert_reports(
@@ -308,7 +308,7 @@ fn an_unparseable_version_manifest_is_carried_as_its_text_while_the_rest_loads()
     assert_eq!(tree.test_cases.len(), 10);
     assert_eq!(tree.flat_specifications().len(), 3);
 
-    let found = validate_tree(&draft, &tree);
+    let found = validate_tree_with(&draft, &tree, &BuiltInEngines);
     let parse = found
         .iter()
         .find(|problem| problem.location.is_some())
@@ -452,14 +452,18 @@ fn a_tree_converts_to_the_complete_model_exactly_when_the_export_rules_find_noth
         let (_temporary, draft) = fixture_draft();
         break_it(&draft);
         let tree = load(&draft);
-        let problems = validate_tree(&draft, &tree);
+        let problems = validate_tree_with(&draft, &tree, &BuiltInEngines);
 
-        match tree.complete(&draft) {
+        match tree.complete_with(&draft, &BuiltInEngines) {
             Ok(complete) => {
                 assert!(problems.is_empty(), "{name}: converted with {problems:#?}");
                 // Core's validator agrees with the conversion: the complete model it
                 // produced breaks no invariant.
-                assert_eq!(validate(&draft, &complete), [], "{name}");
+                assert_eq!(
+                    validate_with(&draft, &complete, &BuiltInEngines),
+                    [],
+                    "{name}"
+                );
                 let suite = load_suite_manifest_of(&draft).expect("the suite loads");
                 let read = SuiteVersion::load(&suite, &draft).expect("the complete read loads");
                 assert_eq!(
@@ -482,7 +486,10 @@ fn only_the_complete_fixture_converts() {
         .filter_map(|(name, break_it)| {
             let (_temporary, draft) = fixture_draft();
             break_it(&draft);
-            load(&draft).complete(&draft).is_ok().then_some(name)
+            load(&draft)
+                .complete_with(&draft, &BuiltInEngines)
+                .is_ok()
+                .then_some(name)
         })
         .collect();
     assert_eq!(converted, ["the complete fixture"]);

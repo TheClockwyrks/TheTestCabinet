@@ -4325,3 +4325,24 @@ fn a_sub_divided_legacy_item_rates_per_sub_item_on_a_validator_rated_version() {
     assert_eq!(sub.failure_cap, Some(FailureCap::Passable));
     assert_eq!(sub.domains, vec!["gameplay".to_string()]);
 }
+
+/// A variant lookup fails with the shapes' own error, and `?` turns it into the
+/// core's: same variant, same fields, same message, so every caller reads it as it
+/// always did.
+#[test]
+fn a_missing_variant_reads_the_same_through_the_core_error() {
+    let err = crate::Error::from(super::VariantNotFound {
+        slug: "breakout".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "hard".to_string(),
+    });
+    assert!(matches!(
+        &err,
+        crate::Error::VariantNotFound { slug, version, variant }
+            if slug == "breakout" && version == "v1.0.0" && variant == "hard"
+    ));
+    assert_eq!(
+        err.to_string(),
+        "variant `hard` of test case `breakout@v1.0.0` not found"
+    );
+}

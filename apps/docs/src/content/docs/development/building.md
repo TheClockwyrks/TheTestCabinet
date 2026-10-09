@@ -162,10 +162,13 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 
 - `crates/contracts`: `test-cabinet-contracts` (lib `test_cabinet_contracts`).
   The [contract](/components/core/overview/#the-contracts-crate) shapes more than
-  one party agrees on: gg's configuration, telemetry and session record, the TCQ
-  query shapes, the metrics, toolchain and code-analysis blocks of a run record,
-  the engine identity a run names, the ingest feed, and the layout of a run tree.
-  Data and pure functions only; core re-exports every module at its old path.
+  one party agrees on: the run record and its parts (events, validation summary,
+  metrics, toolchain and code analysis), the review shapes, a resolved test case
+  version, the test suite format and its rules, gg's configuration, telemetry and
+  session record, the TCQ query shapes, the engine identity a run names, the
+  ingest feed, and the layout of a run tree. Data and pure functions only; core
+  re-exports every module at its old path. The test suite fixture the format's
+  tests and the suite runtime's tests read is `crates/contracts/fixtures/test-suite/`.
 - `crates/core`: `test-cabinet-core` (lib `test_cabinet_core`). The headless
   [core](/components/core/overview/) that owns all orchestration: resolving a
   test case version, seeding a run's repository, executing the run in a

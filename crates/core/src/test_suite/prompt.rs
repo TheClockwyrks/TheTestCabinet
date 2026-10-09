@@ -20,11 +20,11 @@ use crate::error::{Error, Result};
 use crate::prompt::{SuiteSpecification, render_suite_prompt};
 use crate::test_case::TestCaseVersion;
 
-use super::catalog::load_suite_manifest_of;
+use super::load_suite_manifest_of;
 use super::lowering::{SPECS_DIR, catalog_identity, flatten_specifications, select_by_id};
-use super::model::{SpecificationManifest, SuiteTestCaseDefinition};
+use super::{SpecificationManifest, SuiteTestCaseDefinition};
 
-use super::version::{SuiteVersion, VERSION_MANIFEST_FILE};
+use super::{SuiteVersion, VERSION_MANIFEST_FILE};
 
 /// Whether a resolved test case was lowered from a suite definition.
 ///

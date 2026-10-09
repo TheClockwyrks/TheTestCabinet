@@ -26,7 +26,7 @@
 // Usage: node scripts/stage-tcab-packages.mjs [outDir]   (default /opt/tcab-packages)
 //
 // The SHIPPABLE list below is the superset of the SHIPPABLE_PACKAGES allowlist in
-// crates/core/src/test_case.rs. That allowlist is what a case's manifest `packages`
+// crates/contracts/src/test_case.rs. That allowlist is what a case's manifest `packages`
 // names are validated against, so every name a case may request must appear in both
 // lists. The extra entries here are ENGINE runtimes (@clockwyrks/simple-2d,
 // @clockwyrks/structured-2d, @clockwyrks/simple-3d, @clockwyrks/structured-3d) and the shared validator harness
@@ -59,7 +59,7 @@ import { fileURLToPath } from "node:url";
 /**
  * Everything staged into the package store. The first two are the packages a test
  * case may request via its manifest `packages` key, and those two MUST also appear
- * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The rest are engine
+ * in SHIPPABLE_PACKAGES in crates/contracts/src/test_case.rs. The rest are engine
  * runtimes and the shared validator harness: never nameable by a case — so they are
  * staged from here and are deliberately absent from that Rust allowlist.
  *

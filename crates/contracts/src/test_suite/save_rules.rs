@@ -17,7 +17,7 @@
 //! other edit to the draft, and repairing it is still a save like any other.
 //!
 //! Everything else the format states is an export rule, reported by
-//! [`validate_tree`](super::validate_tree) and never refusing a save.
+//! [`validate_tree_with`](super::validate_tree_with) and never refusing a save.
 
 use std::collections::BTreeSet;
 

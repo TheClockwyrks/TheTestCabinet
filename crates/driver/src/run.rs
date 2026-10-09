@@ -26,7 +26,7 @@ use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, Error, FsRepoSeeder,
     HttpBackendClient, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
-    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState,
+    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState, RunStateExt,
     TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;

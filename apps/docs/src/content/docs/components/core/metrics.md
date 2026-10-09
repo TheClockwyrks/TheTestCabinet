@@ -10,6 +10,11 @@ quality score and rating, which come from its
 [review](/components/core/results/#reviews), and take no part in ranking a
 run.
 
+The metrics block of a run record is defined in the
+[contracts crate](/components/core/overview/#the-contracts-crate)
+(`test_cabinet_contracts::metrics`); the price tables and the cost computation over
+them live in the core.
+
 ## Durations
 
 Every run records its end-to-end wall-clock time in seconds as the run time, and

@@ -1,5 +1,5 @@
 //! Tests for the single resolution entry point, driven by a minimal authored
-//! catalog and the committed fixture suite at `src/testdata/test-suite/`.
+//! catalog and the committed fixture suite at `crates/contracts/fixtures/test-suite/`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use crate::test_suite::SUITE_VARIANT_SLUG;
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn suites_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// A temporary authored catalog holding one resolvable `demo` case.

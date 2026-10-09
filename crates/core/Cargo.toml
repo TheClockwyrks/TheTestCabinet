@@ -20,8 +20,9 @@ path = "src/lib.rs"
 [dependencies]
 # The shapes: the contract modules this crate re-exports at their old paths
 # (`gg`, `metrics`, `toolchain`, `code_analysis`, ...) and the contract halves of the
-# ones it splits (`gg_query`, `engine`, `pricing`, `orchestrator`, the ingest feed and
-# the layout constants).
+# ones it splits (`run_record`, `event`, `review`, `validation`, `test_case`,
+# `test_suite`, `gg_query`, `engine`, `pricing`, `orchestrator`, `execution`, the
+# ingest feed and the layout constants).
 test-cabinet-contracts = { path = "../contracts" }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -31,10 +32,6 @@ async-trait = { workspace = true }
 cuid2 = { workspace = true }
 time = { workspace = true }
 toml = { workspace = true }
-# The canonical TOML emitter of the test suite model (`test_suite::canonical`).
-# Reads go through `toml`/`serde`; writes go through a `toml_edit` `DocumentMut`,
-# which is what gives the emitter control over table order and array layout.
-toml_edit = { workspace = true }
 # Semantic-version ordering for the engine version ranges a test case declares
 # (`[[engine]]`) and the run gate enforces (`resolve_engine`).
 semver = { workspace = true }

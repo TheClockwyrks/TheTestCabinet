@@ -13,10 +13,15 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::test_suite::*;
+use crate::{
+    MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
+};
 
 /// The committed fixture suite version folder.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite/carom/versions/v1.0.0")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../contracts/fixtures/test-suite/carom/versions/v1.0.0")
 }
 
 /// Copy a directory tree, so no test writes into the committed fixture.

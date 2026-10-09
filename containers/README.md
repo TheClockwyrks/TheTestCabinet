@@ -383,7 +383,7 @@ package format must match what `crates/core` and the review UI expect, so **buil
 the base image from the same commit as the orchestrator**. The two lists differ by
 design: the script's shippable list is everything staged into the store, while the
 `SHIPPABLE_PACKAGES` allowlist in
-[`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) is the smaller
+[`crates/contracts/src/test_case.rs`](../crates/contracts/src/test_case.rs) is the smaller
 set a case may declare with `packages`. An engine package appears in the staging
 list alone, because a run selects it. So does `@clockwyrks/case-harness`, the
 shared harness a case's engineless validators are written over: nothing seeds it
@@ -410,7 +410,7 @@ To add one:
    `@clockwyrks/*` package it depends on is staged and rewritten automatically;
    it need not be listed separately unless a case imports it directly.
 3. **Add its name to the `SHIPPABLE_PACKAGES` allowlist** in
-   [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) so a case may
+   [`crates/contracts/src/test_case.rs`](../crates/contracts/src/test_case.rs) so a case may
    declare it. Keep this in lockstep with step 2.
 4. **Rebuild the base image** (`./build.sh base`; for the local cluster,
    `make -C deployments/local run-images-e2e` to rebuild and re-import just the

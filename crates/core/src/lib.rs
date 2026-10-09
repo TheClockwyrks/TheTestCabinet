@@ -133,7 +133,7 @@ pub use engine::{
 };
 pub use error::{Error, Result};
 pub use event::{
-    EventFormat, EventKind, EventParser, EventSink, HarnessEvent, NoopEventSink,
+    EventFormat, EventKind, EventParser, EventSink, HarnessEvent, HarnessEventExt, NoopEventSink,
     OrchestrationAction, SystemStage, SystemStatus,
 };
 pub use execution::{
@@ -193,7 +193,7 @@ pub use review::{
 };
 pub use run_record::{
     AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunShowcase,
-    RunState, RunStatus, RunSubject, RunTooling, ShowcaseMedia,
+    RunState, RunStateExt, RunStatus, RunSubject, RunTooling, RunToolingExt, ShowcaseMedia,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_cabinet_contracts::layout::{
@@ -205,7 +205,7 @@ pub use test_case::{
     ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
     SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
     TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
-    WorkspaceFile, shippable_package_description,
+    WorkspaceFile, runtime_hours_to_seconds, shippable_package_description,
 };
 pub use test_case_group::{TestCaseGroup, TestCaseGroupCatalog};
 pub use toolchain::{
@@ -563,16 +563,6 @@ pub fn ensure_engine_supported(test_case: &TestCaseVersion, engine: &ResolvedEng
             range: support.range_display(),
         }),
     }
-}
-
-/// Convert a runtime cap expressed in **hours** — the unit test-case manifests
-/// (`max_runtime_hours`) and the `--max-runtime` CLI flag are authored in — into
-/// whole seconds, the unit the run pipeline (job API, backend, timeouts) carries
-/// internally. Callers author durations in fractional hours (for example `0.5`)
-/// because every cap is long enough that seconds add no useful precision; this
-/// rounds to the nearest second at the single edge where the two units meet.
-pub fn runtime_hours_to_seconds(hours: f64) -> u64 {
-    (hours * 3600.0).round() as u64
 }
 
 /// Drives a single run through its full lifecycle.

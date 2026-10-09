@@ -41,7 +41,7 @@ build/
 # emitter, and `the_committed_fixture_round_trips_byte_for_byte` asserts that
 # loading and saving it reproduces these bytes exactly. Formatting anything in it
 # fails that test.
-crates/core/src/testdata/test-suite/
+crates/contracts/fixtures/test-suite/
 
 # --- Owned by another gate -------------------------------------------------
 

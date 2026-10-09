@@ -6,13 +6,14 @@
 //! exported tree carrying the preview version and `experimental = true`.
 
 use super::*;
+use crate::test_suite::PREVIEWS_DIR;
 
 /// The version a preview of the draft `main` carries.
 const PREVIEW: &str = "v0.0.0-preview.main";
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// Copy a directory tree, so a test never writes into the committed fixture.

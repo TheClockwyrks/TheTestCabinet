@@ -1,5 +1,5 @@
 //! Tests for the suite validator runner, driven by the committed fixture suite at
-//! `src/testdata/test-suite/carom/versions/v1.0.0/`.
+//! `crates/contracts/fixtures/test-suite/carom/versions/v1.0.0/`.
 //!
 //! The fixture's `end-to-end` definition covers `ball-physics` (a requirement
 //! claiming three validators, one claiming a single validator, and one
@@ -22,7 +22,7 @@ use crate::test_suite::TestSuiteCatalog;
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn checkout() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// Resolve the fixture's `end-to-end` definition, which is the suite-defined case

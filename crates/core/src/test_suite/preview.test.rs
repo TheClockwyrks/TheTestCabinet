@@ -8,12 +8,13 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::test_suite::{
-    SUITE_MANIFEST_FILE, SuiteVersion, load_and_validate, load_suite_manifest_of, validate_tree,
+    PartialSuiteTreeExt, SUITE_MANIFEST_FILE, SuiteVersion, load_and_validate,
+    load_suite_manifest_of, validate_tree,
 };
 
 /// The committed fixture suite folder.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite/carom")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite/carom")
 }
 
 /// Copy a directory tree.

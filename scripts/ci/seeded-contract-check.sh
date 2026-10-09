@@ -21,7 +21,7 @@
 #
 # To fix a failure, reword the Rust doc comment so it describes the shape rather
 # than the machinery around it, and move any maintainer-facing note to a plain `//`
-# comment beneath it, which is not copied. `crates/core/src/test_case.rs`'s
+# comment beneath it, which is not copied. `crates/contracts/src/test_case.rs`'s
 # `ModelSpec` is the worked example.
 set -euo pipefail
 
@@ -69,8 +69,8 @@ if [ -n "$hits" ]; then
 	echo "$hits" >&2
 	echo >&2
 	echo >&2 "These types are vendored into a model's workspace. Reword the Rust doc"
-	echo >&2 "comment they are generated from (crates/core, crates/backend) and rerun"
-	echo >&2 "\`npm run gen:contract\`. See the header of this script."
+	echo >&2 "comment they are generated from (crates/contracts, crates/core, crates/backend)"
+	echo >&2 "and rerun \`npm run gen:contract\`. See the header of this script."
 	exit 1
 fi
 

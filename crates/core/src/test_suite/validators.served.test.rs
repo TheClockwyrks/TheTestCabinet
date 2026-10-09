@@ -73,7 +73,7 @@ fn the_generated_project_decides_requirements_against_a_served_build() {
 
     let checkout = scratch.path().join("test-suites");
     copy_tree(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite"),
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite"),
         &checkout,
     );
     let validators = checkout.join("carom/versions/v1.0.0/validators");

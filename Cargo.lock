@@ -5150,6 +5150,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml",
+ "toml_edit 0.25.16+spec-1.1.0",
  "ts-rs",
 ]
 
@@ -5189,7 +5193,6 @@ dependencies = [
  "time",
  "tokio",
  "toml",
- "toml_edit 0.25.16+spec-1.1.0",
  "tracing",
  "ts-rs",
  "wat",

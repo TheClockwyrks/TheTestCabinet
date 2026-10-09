@@ -8,8 +8,8 @@
 //! the tree loads around it. Nothing about a tree's contents fails a read.
 //!
 //! A tree converts to the complete model through
-//! [`complete`](PartialSuiteTree::complete) exactly when the
-//! [export rules](super::super::validate_tree) find no problem with it, which is what an
+//! [`complete_with`](PartialSuiteTree::complete_with) exactly when the
+//! [export rules](super::super::validate_tree_with) find no problem with it, which is what an
 //! export and a preview produce their trees from.
 
 use std::collections::BTreeMap;
@@ -17,10 +17,12 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::EngineLookup;
+
 use super::super::canonical::to_canonical_toml;
 use super::super::model::SuiteManifest;
 use super::super::validation::{
-    SuiteDiagnostic, SuiteEntity, declaring_entity, validate_preview_tree, validate_tree,
+    SuiteDiagnostic, SuiteEntity, declaring_entity, validate_preview_tree_with, validate_tree_with,
 };
 use super::super::version::{
     AssetFolder, DEBUG_API_DIR, DEBUG_API_FILE, DemoFolder, PROMPTS_DIR,
@@ -239,7 +241,7 @@ impl PartialSuiteTree {
     /// Nothing fails the read: a file that does not parse is recorded in
     /// [`unparsed`](Self::unparsed), a required file or key that is absent is simply
     /// absent, and a folder that is not there holds nothing. What the result lacks is
-    /// the [export rules](super::super::validate_tree)' to report.
+    /// the [export rules](super::super::validate_tree_with)' to report.
     pub fn load(suite: &SuiteManifest, root: &Path) -> Self {
         Self::load_overlaid(suite, root, &BTreeMap::new())
     }
@@ -400,13 +402,18 @@ impl PartialSuiteTree {
     /// The complete model of this tree, or every problem standing between the tree
     /// and it.
     ///
-    /// The conversion succeeds exactly when the [export rules](validate_tree) find
-    /// nothing, because the export rules are the definition of a complete suite:
+    /// The conversion succeeds exactly when the [export rules](validate_tree_with)
+    /// find nothing, because the export rules are the definition of a complete suite:
     /// every required file and key is there, every reference resolves, and every
     /// invariant holds. `root` is the tree the model was read from, which the rules
-    /// read to check the paths it declares.
-    pub fn complete(&self, root: &Path) -> Result<SuiteVersion, Vec<SuiteDiagnostic>> {
-        let problems = validate_tree(root, self);
+    /// read to check the paths it declares, and `engines` is what a declared engine
+    /// slug is checked against.
+    pub fn complete_with(
+        &self,
+        root: &Path,
+        engines: &dyn EngineLookup,
+    ) -> Result<SuiteVersion, Vec<SuiteDiagnostic>> {
+        let problems = validate_tree_with(root, self, engines);
         if !problems.is_empty() {
             return Err(problems);
         }
@@ -416,12 +423,16 @@ impl PartialSuiteTree {
     /// The complete model of this tree as a preview, or every problem standing
     /// between the tree and it.
     ///
-    /// [`complete`](Self::complete), under the rules a preview is held to
-    /// ([`validate_preview_tree`]) rather than an exported version's. The tree is
-    /// the one [`preview_tree`](super::super::preview_tree) restricted a draft to, and
-    /// `root` is that draft's folder.
-    pub fn complete_preview(&self, root: &Path) -> Result<SuiteVersion, Vec<SuiteDiagnostic>> {
-        let problems = validate_preview_tree(root, self);
+    /// [`complete_with`](Self::complete_with), under the rules a preview is held to
+    /// ([`validate_preview_tree_with`]) rather than an exported version's. The tree is
+    /// the one `test_cabinet_core::test_suite::preview_tree` restricted a draft to,
+    /// and `root` is that draft's folder.
+    pub fn complete_preview_with(
+        &self,
+        root: &Path,
+        engines: &dyn EngineLookup,
+    ) -> Result<SuiteVersion, Vec<SuiteDiagnostic>> {
+        let problems = validate_preview_tree_with(root, self, engines);
         if !problems.is_empty() {
             return Err(problems);
         }

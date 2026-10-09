@@ -1,5 +1,5 @@
 //! Suite ingest, driven by the committed fixture suite at
-//! `crates/core/src/testdata/test-suite/carom/`: a `suite.toml`, one exported version
+//! `crates/contracts/fixtures/test-suite/carom/`: a `suite.toml`, one exported version
 //! at `versions/v1.0.0/`, and a `drafts/main/` tree ingest never reads.
 //!
 //! The fixture offers one definition of every fully specified type plus one of a
@@ -14,7 +14,7 @@ use crate::store::DefinitionStore;
 
 /// The committed fixture suites checkout — the directory holding `carom/`.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../core/src/testdata/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
 }
 
 /// A checkout holding an empty `test-cases/` tree and the fixture suite, so a

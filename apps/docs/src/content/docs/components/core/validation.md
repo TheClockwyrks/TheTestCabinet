@@ -501,3 +501,10 @@ implementation loaded. It also carries:
   end-to-end checks. An [asset-generation](/testing/asset-generation/overview/)
   run records the produced media, the recorded action log, and the operation
   count for its [asset kind](/testing/asset-generation/overview/#asset-kinds).
+
+The summary's types are defined in the
+[contracts crate](/components/core/overview/#the-contracts-crate)
+(`test_cabinet_contracts::validation`), because the run record carries it. The
+validators that produce it, and the `Validator` seam they implement, live in the
+core. A suite-defined case's per-requirement outcomes are part of the
+[test suite format](/test-suites/overview/), which is defined in the same crate.

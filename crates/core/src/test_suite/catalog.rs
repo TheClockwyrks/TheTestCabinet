@@ -17,7 +17,7 @@
 //! This module is the one place a suite tree path is composed. Ingest, lowering,
 //! prompt rendering and the validator runner reach a tree through
 //! [`TestSuiteCatalog::version_tree`], or find the suite a tree they were handed
-//! belongs to through [`load_suite_manifest_of`].
+//! belongs to through [`load_suite_manifest_of`](super::load_suite_manifest_of).
 //!
 //! # Identity
 //!
@@ -58,36 +58,11 @@ use crate::error::{Error, Result};
 use crate::test_case::{TestCaseCatalog, TestCaseVersion, read_dir_names, version_key};
 
 use super::lowering::{SuiteContext, catalog_identity, lower};
-use super::model::{SuiteManifest, VersionManifest};
-use super::version::{
+use super::{
     SUITE_MANIFEST_FILE, SuiteVersion, TEST_CASES_DIR, VERSION_MANIFEST_FILE, load_suite_manifest,
 };
-use super::{TestSuiteError, TestSuiteResult};
-
-/// The directory name of the suites checkout inside a repository or a worker's
-/// working copy, beside `test-cases/`.
-pub const TEST_SUITES_DIR: &str = "test-suites";
-
-/// The folder inside a suite that holds one folder per exported version.
-pub const VERSIONS_DIR: &str = "versions";
-
-/// The folder inside a suite that holds one folder per draft.
-pub const DRAFTS_DIR: &str = "drafts";
-
-/// The folder of the suites checkout The Spec Cabinet writes previews to.
-pub const PREVIEWS_DIR: &str = ".previews";
-
-/// The version folder name every preview carries before its draft's name:
-/// `v0.0.0-preview.<draft>`.
-pub const PREVIEW_VERSION_PREFIX: &str = "v0.0.0-preview.";
-
-/// Whether a version folder name names a preview: the preview prerelease followed by
-/// a non-empty draft name.
-pub fn is_preview_version(version: &str) -> bool {
-    version
-        .strip_prefix(PREVIEW_VERSION_PREFIX)
-        .is_some_and(|draft| !draft.is_empty())
-}
+use super::{SuiteManifest, VersionManifest};
+use super::{VERSIONS_DIR, is_preview_version};
 
 /// The name of the directory rendered specifications are written into when a
 /// caller names none.
@@ -113,51 +88,6 @@ pub struct VersionIdentity {
     pub suite: SuiteManifest,
     /// `<slug>/versions/v<version>/version.toml`.
     pub manifest: VersionManifest,
-}
-
-/// The suite folder a suite tree belongs to, by where the layout places the tree.
-///
-/// An exported version at `<slug>/versions/<version>/` and a draft at
-/// `<slug>/drafts/<draft>/` belong to `<slug>/`, and any other tree belongs to the
-/// folder directly holding it. `None` for a path with too few ancestors to hold a
-/// suite folder at all.
-pub fn suite_dir_of(tree: &Path) -> Option<PathBuf> {
-    let parent = tree.parent()?;
-    let grouped = parent
-        .file_name()
-        .is_some_and(|name| name == VERSIONS_DIR || name == DRAFTS_DIR);
-    match grouped {
-        true => parent.parent().map(Path::to_path_buf),
-        false => Some(parent.to_path_buf()),
-    }
-}
-
-/// The `suite.toml` a suite tree belongs to.
-///
-/// A tree that carries its own copy of `suite.toml` beside `version.toml` — a
-/// stored suite-defined version, or the definition store a driver rebuilds one in —
-/// belongs to that copy, because it has left the suite folder behind. Every other
-/// tree belongs to the `suite.toml` of the suite folder [`suite_dir_of`] places it
-/// in. `None` for a path with too few ancestors to hold a suite folder.
-pub fn suite_manifest_path_of(tree: &Path) -> Option<PathBuf> {
-    let carried = tree.join(SUITE_MANIFEST_FILE);
-    if carried.is_file() {
-        return Some(carried);
-    }
-    suite_dir_of(tree).map(|dir| dir.join(SUITE_MANIFEST_FILE))
-}
-
-/// Read the suite manifest a suite tree belongs to, as [`suite_manifest_path_of`]
-/// locates it.
-pub fn load_suite_manifest_of(tree: &Path) -> TestSuiteResult<SuiteManifest> {
-    let path = suite_manifest_path_of(tree).ok_or_else(|| TestSuiteError::Io {
-        path: tree.display().to_string(),
-        source: std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "the suite tree sits in no suite folder",
-        ),
-    })?;
-    load_suite_manifest(path.parent().unwrap_or(tree))
 }
 
 /// Resolves suites, versions and offered definitions against an on-disk checkout.
@@ -201,7 +131,7 @@ impl TestSuiteCatalog {
     }
 
     /// Also read the previews held in `previews` — conventionally the checkout's
-    /// [`PREVIEWS_DIR`] — listing each beside its suite's exported versions.
+    /// [`PREVIEWS_DIR`](super::PREVIEWS_DIR) — listing each beside its suite's exported versions.
     pub fn with_previews(mut self, previews: impl Into<PathBuf>) -> Self {
         self.previews = Some(previews.into());
         self
@@ -401,7 +331,7 @@ impl TestSuiteCatalog {
             .suite_in(slug, &self.version_suite_dir(slug, version))
             .map_err(|err| self.relocate(err, version))?;
         let tree = self.version_tree(slug, version);
-        let manifest = super::version::load_version_manifest(&tree).map_err(|err| {
+        let manifest = super::load_version_manifest(&tree).map_err(|err| {
             self.invalid(
                 slug,
                 version,

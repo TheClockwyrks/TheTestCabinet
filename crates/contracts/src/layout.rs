@@ -9,6 +9,8 @@
 //! bounds, `playable` and `validator` for the build outputs, `validator` for the
 //! validation names, `reference_lock` for the lock file).
 
+use crate::test_case::MediaKind;
+
 // --- showcase bounds ---------------------------------------------------------
 
 /// The largest showcase description, in bytes. The description is a store-page
@@ -87,6 +89,78 @@ pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 /// backend-driven run's definition store (see `test_cabinet_core::materialize_version`) so a
 /// script's sibling imports resolve when the validator runs it.
 pub const VALIDATION_SCRIPT_DIR: &str = "validation";
+
+/// The driver's `--outputs` kind tag for a media kind.
+pub fn media_kind_tag(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "image",
+        MediaKind::Video => "video",
+        MediaKind::Replay => "replay",
+    }
+}
+
+/// The file extension a synthesized output is captured under, by kind: a still is a
+/// PNG, a clip is the `.webm` Playwright records natively, and a draw-command
+/// recording is the gzipped JSON document the engine's recorder hands back.
+///
+/// A recording is stored compressed because its format is deliberately repetitive.
+/// Every frame restates the drawing state it inherited so that any frame can be
+/// drawn without drawing the frames before it, and consecutive frames of a game
+/// issue very nearly the same operations as each other. That redundancy is what
+/// makes seeking and side-by-side scrubbing work at all, and it is also exactly
+/// what gzip removes: a real capture stores tens of times smaller, which is the
+/// difference between a run whose recordings are tens of megabytes and one whose
+/// recordings are a few. The name carries both extensions, so what the bytes
+/// are and how they are framed are each readable off the file.
+pub fn validation_output_extension(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "png",
+        MediaKind::Video => "webm",
+        MediaKind::Replay => "json.gz",
+    }
+}
+
+/// The file extension a synthesized validation output is published under **in the
+/// public snapshot** — the counterpart to [`validation_output_extension`], which is
+/// how it is captured on disk and served live.
+///
+/// They differ for video only. A clip is captured as the `.webm` Playwright records
+/// natively (the on-disk name both the run-scoped *actual* and case-scoped *baseline*
+/// media use, and what the live console/artifact service serve verbatim); but the
+/// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
+/// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
+/// (see `test_cabinet_core::proof_published_extension`). A still publishes as its captured PNG
+/// unchanged, and so does a recording: a `.json.gz` document is inflated by the
+/// browser and drawn by the console's own player, so there is no format the gallery
+/// would need it converted into and no reason to publish it any larger than it is
+/// stored.
+pub fn validation_published_extension(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "png",
+        MediaKind::Video => "mp4",
+        MediaKind::Replay => "json.gz",
+    }
+}
+
+/// The flat, addressable file name a synthesized output is stored and served under:
+/// `<verdict>__<output>.<ext>`. Kept flat (one path segment) so it routes through the
+/// one-segment `/validation/{file}` endpoints unchanged, and shared with
+/// `test_cabinet_core::playable::serve_validation_file` and the gallery URL resolver.
+///
+/// `verdict_id` is the id of the verdict unit the output backs — a whole item's own id
+/// (`<item>`, for an item validated as a whole) or a sub-item's composite id
+/// (`<item>.<sub>`, since validation and its proof media attach per sub-item once an
+/// item is sub-divided). It contains no `/` (ids are plain slugs joined by a single
+/// `.`), so the name stays a single path segment and cannot escape the media directory.
+///
+/// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
+/// case's *baseline* media (under the version's [`VALIDATION_BASELINE_DIR`]`/
+/// <engine>/<variant>/`) use this same name; the directory, not the name, tells them
+/// apart.
+pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
+    let ext = validation_output_extension(kind);
+    format!("{verdict_id}__{output_id}.{ext}")
+}
 
 /// The prefix every file of a recording's **shared image store** carries:
 /// `img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer, where

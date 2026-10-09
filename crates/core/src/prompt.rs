@@ -38,7 +38,7 @@ use serde::Serialize;
 
 use crate::engine::{NONE_SLUG, ResolvedEngine};
 use crate::error::{Error, Result};
-use crate::execution::{GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
+use crate::execution::{ENGINE_DOCS_DIR, GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
 use crate::run_record::PriorGameJamEntry;
 use crate::test_case::{AssetDimension, TestCaseVersion, TestType, Variant, VoxelSpec};
 
@@ -150,18 +150,6 @@ const fn full_stack_preamble(asset_dimension: AssetDimension) -> &'static str {
         AssetDimension::ThreeD => FULL_STACK_3D_PREAMBLE,
     }
 }
-
-/// The workspace-relative directory the selected engine's own documentation is
-/// seeded into, and so the tail of the `{{engine.docs}}` path a prompt points the
-/// model at.
-///
-/// The engine's manifest names the documentation directory *inside its package*
-/// (`docs`, for `@clockwyrks/simple-2d`), but seeding flattens it to this one
-/// fixed place in the run workspace, so every engine's documentation is found at
-/// the same path and a template never has to know the package's internal layout.
-/// The path a template sees therefore depends only on *whether* the engine
-/// declares documentation, never on what it called the directory.
-pub(crate) const ENGINE_DOCS_DIR: &str = "engine";
 
 /// The display name of the sentinel [`NONE_SLUG`] engine, mirroring the `name` in
 /// `engines/none/engine.toml`.

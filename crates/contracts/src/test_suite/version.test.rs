@@ -1,5 +1,5 @@
 //! Tests for the version-folder read and save, driven by the committed fixture
-//! suite at `src/testdata/test-suite/carom/versions/v1.0.0/`.
+//! suite at `fixtures/test-suite/carom/versions/v1.0.0/`.
 //!
 //! The fixture exercises every entity the format defines: a nested specification
 //! folder, a definition of each fully specified test case type plus one of a type
@@ -14,7 +14,7 @@ use crate::test_suite::model::{
 
 /// The committed fixture suite version folder.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/testdata/test-suite/carom/versions/v1.0.0")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/test-suite/carom/versions/v1.0.0")
 }
 
 /// The fixture suite's own manifest, from the suite folder the version sits in.
