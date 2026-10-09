@@ -10,7 +10,7 @@
 // The two halves agree on strictness. The Rust structs are `deny_unknown_fields`, and
 // this file rejects unknown keys for the same reason: a misspelled key would fall back
 // to its default and leave a case asserting less than it reads as asserting.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -135,11 +135,16 @@ interface Case<I, E> {
   expect: E;
 }
 
+/** The golden files `load` has read, which the last test compares with the
+ *  directory so a file added there and wired to no suite here fails it. */
+const loaded = new Set<string>();
+
 /** Read a golden file, check every level's keys with `check`, and return its cases. */
 function load<I, E>(
   file: string,
   check: (input: unknown, expected: unknown, where: string) => void,
 ): Case<I, E>[] {
+  loaded.add(file);
   const raw = JSON.parse(
     readFileSync(resolve(GOLDENS, `${file}.json`), "utf8"),
   ) as unknown;
@@ -385,5 +390,14 @@ describe("the scoring goldens", () => {
         coveredScore: coveredScore(input.items, input.verdicts),
       }).toEqual(expected);
     });
+  });
+
+  // Collection runs every `load` above before any test, so the set is complete here.
+  it("executes every golden file", () => {
+    const present = readdirSync(GOLDENS)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -".json".length))
+      .sort();
+    expect([...loaded].sort()).toEqual(present);
   });
 });

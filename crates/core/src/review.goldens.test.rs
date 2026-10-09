@@ -527,3 +527,40 @@ fn the_automated_scores_match_the_goldens() {
         },
     );
 }
+
+/// Every file in the goldens directory is one a test above executes, and every file a
+/// test names is in it: a golden file added there and wired to no test here fails
+/// this rather than going unasserted. The names are read off this file's `golden!`
+/// calls, so the list cannot drift from the tests.
+#[test]
+fn every_golden_file_is_executed() {
+    let source = include_str!("review.goldens.test.rs");
+    let marker = "golden!(\"";
+    let executed: std::collections::BTreeSet<String> = source
+        .match_indices(marker)
+        .map(|(at, _)| {
+            let rest = &source[at + marker.len()..];
+            rest[..rest.find('"').expect("a closed golden name")].to_owned()
+        })
+        .collect();
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/scoring");
+    let present: std::collections::BTreeSet<String> = std::fs::read_dir(&dir)
+        .expect("the goldens directory")
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .map(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .expect("a UTF-8 golden name")
+                .to_owned()
+        })
+        .collect();
+    assert!(!executed.is_empty());
+    assert_eq!(
+        executed,
+        present,
+        "the golden files the tests execute and the files in {}",
+        dir.display()
+    );
+}

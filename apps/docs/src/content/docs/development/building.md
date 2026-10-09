@@ -516,9 +516,10 @@ automated-only score with the verdicts and the covered score it is built on
 
 `crates/core/src/review.goldens.test.rs` executes them in the `rust-test` gate and
 `packages/run-stats/src/scoring.goldens.test.ts` in `workspace-test`, both reading the
-files off the contracts crate, so a case added on either side runs on both. Each
-rejects a key it does not know, since a misspelled key would otherwise fall back to
-its default and assert less than it reads as asserting. The expectations are the Rust
+files off the contracts crate, so a case added on either side runs on both, and each
+fails when the directory holds a file it executes no test for. Each rejects a key it
+does not know, since a misspelled key would otherwise fall back to its default and
+assert less than it reads as asserting. The expectations are the Rust
 output: a change to a scoring rule changes the goldens, and the other side then has
 to follow. The writeup-based `review::score` has no golden, being a thin wrapper over
 `score_checklist` with no TypeScript counterpart.
