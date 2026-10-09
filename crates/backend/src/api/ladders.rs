@@ -60,9 +60,10 @@ use crate::auth::AuthUser;
 use crate::coverage::gate::{self, Gate, GateTally, GateThreshold, RungRun};
 use crate::coverage::schedule::{CellDemand, InFlightLimit, launch_pass};
 use crate::db::{
-    CANCELABLE_WAITING_STATES, CellCounts, CellKey, CellRun, CellRuns, DispatchEvidence,
-    JobCancelFilter, JobOrigin, LadderOutcomeKind, OriginScope, SlotKey, StoredDispatch,
-    StoredDispatchClimber, StoredLadder, StoredLadderRung, TerminalJob, combination_key,
+    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellCounts, CellKey, CellRun, CellRuns,
+    DispatchEvidence, JobCancelFilter, JobOrigin, LadderOutcomeKind, OriginScope, SlotKey,
+    StoredDispatch, StoredDispatchClimber, StoredLadder, StoredLadderRung, TerminalJob,
+    combination_key,
 };
 use crate::error::ApiError;
 
@@ -1022,9 +1023,11 @@ pub async fn run(
 /// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting` and `running`
 /// ones too. `409` when no dispatch is running.
 ///
-/// The end is a conditional update, and the cancel reaches only the jobs whose origin
-/// names this dispatch. A launch pass that was enqueuing meanwhile checks the dispatch
-/// after it enqueues and cancels what it just enqueued.
+/// The end is a conditional update. The cancel reaches the jobs whose origin names this
+/// dispatch, and the jobs an earlier dispatch of this ladder left in flight, which this
+/// dispatch was waiting on as its slots' own ([`cancel_earlier_dispatches`]). A launch
+/// pass that was enqueuing meanwhile checks the dispatch after it enqueues and cancels
+/// what it just enqueued.
 pub async fn stop(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1033,25 +1036,99 @@ pub async fn stop(
 ) -> Result<Json<HaltResult>, ApiError> {
     let input = input.map(|Json(input)| input).unwrap_or_default();
     load_ladder(&state, &user.0.id, &id).await?;
+    let stopped_at = now()?;
     let Some(dispatch_id) = state
         .db
-        .end_ladder_dispatch(&id, None, DispatchStatus::Stopped.as_str(), &now()?)
+        .end_ladder_dispatch(&id, None, DispatchStatus::Stopped.as_str(), &stopped_at)
         .await
         .map_err(ApiError::from)?
     else {
         return Err(ApiError::conflict("no dispatch of this ladder is running"));
     };
+    let detail = "canceled by stopping the ladder";
     let canceled = halt_jobs(
         &state,
         &OriginScope::Prefix(dispatch_prefix(&id, &dispatch_id)),
         input.cancel_running,
-        "canceled by stopping the ladder",
+        detail,
     )
-    .await?;
+    .await?
+        + cancel_earlier_dispatches(
+            &state,
+            &id,
+            &dispatch_id,
+            &stopped_at,
+            input.cancel_running,
+            detail,
+        )
+        .await?;
     Ok(Json(HaltResult {
         canceled,
         included_active: input.cancel_running,
     }))
+}
+
+/// Cancel the jobs earlier dispatches of a ladder left in flight, for the Stop of the
+/// dispatch `stopped` that ended at `stopped_at`, returning how many moved.
+///
+/// A plain Stop leaves a dispatch's started jobs running, and the next Run counts them
+/// as its slots' jobs in flight without owning them, so the Stop of that dispatch has to
+/// reach them or it cancels nothing the ladder is seen to be running. Only this ladder's
+/// jobs are reached, by their origin: a job a plan, another ladder or a hand launch
+/// enqueued for the same cell is left alone.
+///
+/// The jobs are named one by one, those created no later than `stopped_at`, and not
+/// swept by the ladder's prefix: a Run is allowed again the moment the dispatch has
+/// ended, and its dispatch's jobs must not be cancelled by the Stop before it.
+async fn cancel_earlier_dispatches(
+    state: &AppState,
+    ladder_id: &str,
+    stopped: &str,
+    stopped_at: &str,
+    cancel_running: bool,
+    detail: &str,
+) -> Result<u32, ApiError> {
+    use time::format_description::well_known::Rfc3339;
+    let Ok(stopped_at) = time::OffsetDateTime::parse(stopped_at, &Rfc3339) else {
+        return Ok(0);
+    };
+    let ladder = format!("ladder:{ladder_id}/");
+    let own = format!("{}/", dispatch_prefix(ladder_id, stopped));
+    let mut states: Vec<&str> = CANCELABLE_WAITING_STATES.to_vec();
+    if cancel_running {
+        states.extend_from_slice(&CANCELABLE_ACTIVE_STATES);
+    }
+    let earlier: Vec<String> = state
+        .db
+        .active_jobs()
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .filter(|job| {
+            job.origin
+                .as_deref()
+                .is_some_and(|origin| origin.starts_with(&ladder) && !origin.starts_with(&own))
+                && time::OffsetDateTime::parse(&job.created_at, &Rfc3339)
+                    .is_ok_and(|created| created <= stopped_at)
+        })
+        .map(|job| job.id)
+        .collect();
+    if earlier.is_empty() {
+        return Ok(0);
+    }
+    super::jobs::sweep_cancel(
+        state,
+        &JobCancelFilter {
+            states: &states,
+            origin: None,
+            user_id: None,
+            cell: None,
+            ids: Some(&earlier),
+        },
+        detail,
+        super::jobs::CancelFeed::Feed,
+    )
+    .await
 }
 
 /// `GET /ladders/summary` — one entry per ladder for the ladders list: the

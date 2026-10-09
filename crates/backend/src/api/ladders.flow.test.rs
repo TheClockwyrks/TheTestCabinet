@@ -930,6 +930,47 @@ async fn stopping_with_cancel_running_also_cancels_the_started_jobs() {
     );
 }
 
+/// A plain Stop leaves started jobs running and the next Run waits on them without
+/// owning them, so that dispatch's Stop and cancel running reaches them too. A job
+/// nothing of this ladder launched is left alone, though the dispatch waits on it as well.
+#[tokio::test]
+async fn stopping_with_cancel_running_reaches_the_jobs_an_earlier_dispatch_left_running() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong"], 2, &[SONNET])).await;
+    run_ladder(&state, &id).await.unwrap();
+    let first = in_flight(&state, "pong").await;
+    assert_eq!(first.len(), 2);
+    for job in &first {
+        set_state(&state, &job.id, "running").await;
+    }
+    let halted = stop_ladder(&state, &id, false).await.unwrap();
+    assert_eq!(halted.canceled, 0, "a plain Stop leaves started jobs");
+
+    // The next dispatch waits on the two jobs and launches none of its own.
+    run_ladder(&state, &id).await.unwrap();
+    assert_eq!(in_flight(&state, "pong").await.len(), 2);
+    assert!(launched_by_ladder(&state, &id).await.len() == 2);
+
+    let halted = stop_ladder(&state, &id, true).await.unwrap();
+    assert_eq!(halted.canceled, 2);
+    assert!(in_flight(&state, "pong").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_stop_leaves_a_job_the_ladder_did_not_launch() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong"], 1, &[SONNET])).await;
+    // A hand launch of the rung's cell, already running when the ladder is run.
+    enqueue_now(&state, "by-hand", "pong").await;
+    set_state(&state, "by-hand", "running").await;
+
+    run_ladder(&state, &id).await.unwrap();
+    assert!(launched_by_ladder(&state, &id).await.is_empty());
+    let halted = stop_ladder(&state, &id, true).await.unwrap();
+    assert_eq!(halted.canceled, 0);
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+}
+
 #[tokio::test]
 async fn a_pass_that_finds_the_dispatch_stopped_enqueues_nothing() {
     let (_dir, state) = test_state().await;

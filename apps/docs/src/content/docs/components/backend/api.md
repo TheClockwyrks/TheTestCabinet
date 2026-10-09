@@ -1165,7 +1165,9 @@ starts a dispatch of it.
 - `POST /ladders/{id}/stop` — end the running dispatch and cancel the `queued` and
   `pending` jobs it launched. With `{ "cancelRunning": true }` it also cancels
   the `dispatched`, `starting`, and `running` jobs it launched, which a client
-  must confirm first.
+  must confirm first. Both reach the jobs an
+  [earlier dispatch](/components/backend/ladders/#stopping-a-dispatch) of the
+  ladder left in flight as well.
   Answers `{ "canceled": n, "includedActive": bool }`; `409` when no dispatch is
   running.
 - `GET /ladders/{id}/progress` — the board: the rungs, the latest dispatch (its
