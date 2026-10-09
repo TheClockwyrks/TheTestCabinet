@@ -103,6 +103,14 @@ reads](#test-suites). A whole-catalog scan enumerates both trees, so it prunes a
 suite version the checkout no longer declares along with the versions it
 defined.
 
+A whole-catalog scan refuses a prune that an empty tree would cause: it keeps
+the stored authored versions when it finds no authored version, the stored suite
+versions and the case versions they defined when it finds no suite version, and
+the stored [test-case groups](#test-case-groups) when it accepts no group. A
+refused prune is logged and reported under `refusedPrunes`, one sentence per
+refusal naming what was kept. A refusal is reported only when the store held
+something the prune would have removed.
+
 The request body is optional JSON:
 
 ```jsonc
@@ -149,7 +157,9 @@ either mode.
 
 A scan against a store stamped with another record format is promoted to a
 forced whole-catalog scan, whatever the request asked for. This repairs a store
-after a backend upgrade that changed the record shapes.
+after a backend upgrade that changed the record shapes. Its prune of versions
+and suite versions is exempt from the empty-tree refusal, since this build can
+read nothing the store holds.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it
@@ -180,12 +190,18 @@ discriminated by an `event` tag:
   "ingested": false, "renderedReferences": 0,
   "problem": "test suite `carom@v1.0.0` is invalid: test-cases/efficiency.toml: …" }
 { "event": "done", "total": 31, "ingested": 25, "skipped": 6 } // closing summary
+{ "event": "done", "total": 2, "ingested": 0, "skipped": 2,      // a summary with a
+  "refusedPrunes": ["kept 189 stored authored version(s): …"] } // refused prune
 { "event": "error", "message": "…" }               // closing line if the scan aborts
 ```
 
 A suite version or definition that fails to resolve is a `version` line carrying
 `ingested: false` and a `problem` naming the file and the failure, and it counts
 toward `skipped`.
+
+The default JSON report carries `testCaseVersions`, `testSuites` and, when a
+prune was refused, `refusedPrunes`. The closing `done` line carries
+`refusedPrunes` the same way, and both omit it when nothing was refused.
 
 The stream has already sent a `200` by the time it knows the outcome, so a late
 failure arrives as a closing `error` line rather than an HTTP error status.

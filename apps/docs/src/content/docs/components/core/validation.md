@@ -281,7 +281,10 @@ cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline
 Core's `ColdStorage::validation_baseline_dir` is the one resolver from a version
 folder to that directory. The cold-storage root defaults to
 `<checkout>/cold-storage`, and `TCAB_COLD_STORAGE_DIR` replaces it. The capture
-commands write through the resolver and backend ingest reads through it.
+commands write through the resolver and backend ingest reads through it. The
+backend's `TCAB_COLD_STORAGE_ROOT` takes precedence over `TCAB_COLD_STORAGE_DIR`
+for ingest, and the root mirrors the backend's definitions root rather than the
+checkout (see [backend configuration](/components/backend/overview/#configuration)).
 
 Ingest copies each version's baselines into the stored version under
 `validation-baseline/`, and the backend serves and snapshots them from the store.

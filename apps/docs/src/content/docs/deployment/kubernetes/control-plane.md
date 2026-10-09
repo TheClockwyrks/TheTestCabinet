@@ -81,6 +81,14 @@ The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`,
 populated by `POST /ingest`. There are two shapes for driving that, and an
 overlay uses one of them.
 
+Ingest reads the definitions, the test suites and the cold-storage media from
+`TCAB_DEFINITIONS_ROOT`, `TCAB_SUITES_ROOT` and `TCAB_COLD_STORAGE_ROOT`. The
+overlays leave all three unset, so each resolves to its place in the checkout.
+An overlay that clones those trees as separate checkouts sets each one to the
+directory its clone is written to, and the [prune
+guard](/components/backend/overview/#test-case-definitions) keeps the store
+intact when a variable names a directory the clone has not filled.
+
 - A `CronJob` (`deployments/k8s/base/ingest-cronjob.yaml`) that clones the
   repository and calls `POST /ingest` over the cluster network. It fits a
   deployment whose backend serves its checkout from a shared volume the job can
