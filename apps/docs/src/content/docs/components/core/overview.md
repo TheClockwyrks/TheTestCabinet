@@ -65,14 +65,16 @@ crate's `fixtures/scoring/` hold the two to the same cases.
 ## The suites crate
 
 The test-suite runtime lives in `crates/suites` (`test-cabinet-suites`), between the
-contracts crate and the core: it depends on the contracts crate, and the core depends
-on it. It holds what reads a `test-suites/` checkout and turns an offered definition
-into something a run executes: the suite catalog and the lowering of a definition onto
-a test case version, previews, a definition's prompt, and the runner for a suite's
-validator project. It also holds what that runtime shares with the core's validators:
-the built-in [engine catalog](/components/core/engines/), the vitest runner a case's
-validator project runs through, the static server and browser driver, and the content
-digests and labels an ingest keys a version by.
+contracts crate and the core: it depends on the contracts crate and on no other crate
+of this project, and the core depends on it. It sits on the contracts side of the
+[repository cut](/development/repositories/), so The Spec Cabinet runs the same
+suite logic the core does. It holds what reads a `test-suites/` checkout and turns an
+offered definition into something a run executes: the suite catalog and the lowering
+of a definition onto a test case version, previews, a definition's prompt, and the
+runner for a suite's validator project. It also holds what that runtime shares with
+the core's validators: the built-in [engine catalog](/components/core/engines/), the
+vitest runner a case's validator project runs through, the static server and browser
+driver, and the content digests and labels an ingest keys a version by.
 
 The suite format is contracts and its runtime is the suites crate. The engine shapes
 are contracts and the engine catalog is the suites crate. The authored catalog a suite
@@ -104,6 +106,12 @@ built-in engine catalog.
 The data contract's TypeScript bindings (`@clockwyrks/run-record` and
 `@clockwyrks/asset-contract`) and their JSON Schemas are generated from the
 contracts crate alone, through its `contract` feature. The backend API's
+The suites crate links no OpenTelemetry. Its browser driver calls (`capture`,
+`drive_script` and `smoke_check`) take the function that names the current span's
+`traceparent`, and the core's `browser` module, which re-exports the rest of the
+suites crate's, keeps the three with their old signatures and passes the telemetry
+crate's propagation.
+
 (`@clockwyrks/backend-api`) are generated from the core and the backend, through
 the core's feature of the same name, which turns on the contracts crate's. See
 [Generating the data contract](/development/building/#generating-the-data-contract).

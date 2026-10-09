@@ -21,6 +21,22 @@ use tracing::instrument;
 
 use crate::test_case::CheckAction;
 
+/// Where a driver process's `TRACEPARENT` comes from: the W3C `traceparent` of the
+/// current span, or `None` when there is nothing to propagate.
+///
+/// [`capture`], [`drive_script`] and [`smoke_check`] call it inside their own span
+/// and hand a value it returns to the driver as `TRACEPARENT`, so a browser capture
+/// can be correlated back to its run. This crate links no OpenTelemetry: the caller
+/// that does passes its propagation function (`test_cabinet_core::browser` passes
+/// `test_cabinet_telemetry::propagation::current_traceparent`), and one that does
+/// not passes [`no_traceparent`].
+pub type Traceparent = fn() -> Option<String>;
+
+/// The [`Traceparent`] of a caller with no trace context to propagate.
+pub fn no_traceparent() -> Option<String> {
+    None
+}
+
 /// The viewport every reference and capture is rendered at.
 pub const VIEWPORT: (u32, u32) = (1280, 720);
 
@@ -53,8 +69,13 @@ pub fn driver_path() -> Option<PathBuf> {
 /// `url` may be a `file://` mockup or an `http://` served build. Returns a
 /// human-readable error when the driver is missing or the capture fails, so the
 /// caller can record a degraded signal instead of failing the run.
-#[instrument(name = "browser.capture", skip(actions), fields(url = %url, action_count = actions.len()), err)]
-pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::Result<(), String> {
+#[instrument(name = "browser.capture", skip(actions, traceparent), fields(url = %url, action_count = actions.len()), err)]
+pub fn capture(
+    url: &str,
+    actions: &[CheckAction],
+    out: &Path,
+    traceparent: Traceparent,
+) -> std::result::Result<(), String> {
     let driver = driver_path().ok_or_else(|| {
         format!("browser driver not found (set {DRIVER_ENV} or run from the repository root)")
     })?;
@@ -94,8 +115,9 @@ pub fn capture(url: &str, actions: &[CheckAction], out: &Path) -> std::result::R
     ]);
     // Propagate the current trace context to the driver process so a browser
     // capture can be correlated back to its run; a no-op when nothing is in
-    // scope to propagate.
-    if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+    // scope to propagate. Asked inside this function's span, so the driver's
+    // spans are its children.
+    if let Some(traceparent) = traceparent() {
         command.env("TRACEPARENT", traceparent);
     }
     let output = command
@@ -211,7 +233,7 @@ pub struct ScriptDriveResult {
 /// `Err` only when the driver itself could not run (no Node, no Playwright, no
 /// Chromium), which the caller treats as "no browser available" and degrades —
 /// exactly as [`capture`] does — so a host without a browser never trips the gate.
-#[instrument(name = "browser.drive_script", skip(outputs), fields(url = %url, handle = %handle), err)]
+#[instrument(name = "browser.drive_script", skip(outputs, traceparent), fields(url = %url, handle = %handle), err)]
 pub fn drive_script(
     url: &str,
     script: &Path,
@@ -219,6 +241,7 @@ pub fn drive_script(
     tick_hz: Option<u32>,
     out_dir: &Path,
     outputs: &[ScriptOutputSpec],
+    traceparent: Traceparent,
 ) -> std::result::Result<ScriptDriveResult, String> {
     let driver = driver_path().ok_or_else(|| {
         format!("browser driver not found (set {DRIVER_ENV} or run from the repository root)")
@@ -256,7 +279,7 @@ pub fn drive_script(
     if let Some(tick_hz) = tick_hz {
         command.args(["--tick-hz", &tick_hz.to_string()]);
     }
-    if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+    if let Some(traceparent) = traceparent() {
         command.env("TRACEPARENT", traceparent);
     }
     let output = command
@@ -315,8 +338,11 @@ pub struct SmokeDriveResult {
 /// [`capture`] and [`drive_script`] do. A build that fails to boot comes back as an
 /// `Ok` result with `booted: false`, which is a fact about the build rather than
 /// about the host.
-#[instrument(name = "browser.smoke_check", fields(url = %url), err)]
-pub fn smoke_check(url: &str) -> std::result::Result<SmokeDriveResult, String> {
+#[instrument(name = "browser.smoke_check", skip(traceparent), fields(url = %url), err)]
+pub fn smoke_check(
+    url: &str,
+    traceparent: Traceparent,
+) -> std::result::Result<SmokeDriveResult, String> {
     let driver = driver_path().ok_or_else(|| {
         format!("browser driver not found (set {DRIVER_ENV} or run from the repository root)")
     })?;
@@ -340,7 +366,7 @@ pub fn smoke_check(url: &str) -> std::result::Result<SmokeDriveResult, String> {
         "--height",
         &VIEWPORT.1.to_string(),
     ]);
-    if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
+    if let Some(traceparent) = traceparent() {
         command.env("TRACEPARENT", traceparent);
     }
     let output = command

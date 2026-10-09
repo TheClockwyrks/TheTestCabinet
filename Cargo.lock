@@ -5515,7 +5515,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "test-cabinet-contracts",
- "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "toml",
  "tracing",

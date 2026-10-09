@@ -15,6 +15,7 @@ pub mod asset_reference;
 pub mod audio_stage;
 pub mod auth;
 pub mod backend_client;
+pub mod browser;
 pub mod cancel;
 pub mod clock;
 pub mod comparison;
@@ -73,7 +74,9 @@ pub use test_cabinet_contracts::{
 
 // The suite runtime's modules that moved whole into `test-cabinet-suites`, re-exported
 // at their old paths in the same way.
-pub use test_cabinet_suites::{browser, content_digest, content_labels, engine, vitest_validator};
+// `browser` is the exception: a module of the core's own that re-exports the suites
+// crate's and supplies the trace context its driver calls take.
+pub use test_cabinet_suites::{content_digest, content_labels, engine, vitest_validator};
 
 #[cfg(test)]
 #[path = "lib.test.rs"]

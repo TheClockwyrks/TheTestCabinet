@@ -38,9 +38,6 @@ tempfile = { workspace = true }
 tracing = { workspace = true }
 # A unique name for each capture's private temp file (`browser`).
 cuid2 = { workspace = true }
-# Trace-context propagation into the browser driver (`browser`); propagation only,
-# never the exporters, exactly as core links it.
-test-cabinet-telemetry = { path = "../telemetry", default-features = false }
 # `test_browser` asks whether `node` is on `PATH`.
 which = { workspace = true, optional = true }
 
