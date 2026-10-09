@@ -545,7 +545,8 @@ function byFractionThenRatingThenRecency(a: GroupRow, b: GroupRow): number {
   return b.entry.latestStartedAt.localeCompare(a.entry.latestStartedAt);
 }
 
-// One leaderboard per repo-defined test-case group, two across. A host that
+// One leaderboard per repo-defined test-case group, each a full-width panel so
+// a row holds its model, harness and engine on one line. A host that
 // supplies no groups (the set is optional gallery data) renders no section at
 // all — there is nothing to head it with.
 function GroupBoards() {

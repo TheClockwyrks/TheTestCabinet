@@ -275,15 +275,13 @@
 
 // ---- Group leaderboards ------------------------------------------------------
 
+// One board per row at every width: half the page is too narrow for a row to
+// hold its model, harness and engine on one line.
 .boards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: t.$space-lg;
   margin-bottom: t.$space-xl;
-
-  @include bp.below(t.$bp-md) {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .board {
@@ -319,17 +317,21 @@
 }
 
 // A dense, column-aligned board mirroring the case leaderboard's treatment:
-// rank, model, mean score fraction, mean cost, badge.
+// rank, model, mean score fraction, mean cost, badge. The board owns the
+// column tracks and every row is a subgrid of them, so each content-sized
+// column (rank, score, cost, badge) is as wide in every row as its widest cell
+// and the columns line up down the board. The model column takes what is left.
 .boardRows {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  column-gap: t.$space-lg;
 }
 
 .boardRow {
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) 3.5rem 4.5rem auto;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: t.$space-sm;
   padding: t.$space-xs 0;
   border-bottom: 1px solid t.$color-border;
 
@@ -343,11 +345,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+// On a viewport too narrow for the line, the cell wraps rather than cutting
+// the name off: the row grows, and the columns beside it stay where they are.
 .model {
   color: t.$color-text;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 // The harness slug (and, on a mixed board, the engine) after the model name,
