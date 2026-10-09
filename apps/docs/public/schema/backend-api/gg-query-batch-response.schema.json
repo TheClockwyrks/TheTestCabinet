@@ -1,5 +1,5 @@
 {
-  "$id": "https://docs.testcabinet.ai/schema/gg/query-batch-response.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/gg-query-batch-response.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The response to `POST /gg/query/batch`.",
   "properties": {

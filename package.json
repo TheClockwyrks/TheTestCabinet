@@ -27,7 +27,7 @@
     "lint:specs": "uv run --quiet --project ci gate run spec-prose",
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
-    "test:scripts": "node --test scripts/lib/*.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs scripts/lib/*.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:validators": "node scripts/typecheck-validators.mjs"
   },

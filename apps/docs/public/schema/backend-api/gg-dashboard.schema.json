@@ -22,7 +22,7 @@
       "type": "object"
     }
   },
-  "$id": "https://docs.testcabinet.ai/schema/gg/dashboard.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/gg-dashboard.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "An operator's saved dashboard: panels of TCQ over one board-level range.",
   "properties": {

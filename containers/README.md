@@ -355,7 +355,13 @@ stage of the shared services Dockerfile (the build context is the repository roo
 stage can see `packages/`). The script builds the npm workspace, then for each package in
 its **shippable list** copies the package's `package.json` and the files its `files` field
 publishes into `/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting
-transitive `@clockwyrks/*` dependencies. The runtime stage `COPY --from`s that tree in.
+transitive `@clockwyrks/*` dependencies. The staged `package.json` drops the dev-only
+fields (`private`, `scripts`, `devDependencies`) and the registry ones
+(`publishConfig`, `repository`, `homepage`, `bugs`): it is vendored into a model's
+workspace, where a feed URL or the project's repository would name the project, and
+`scripts/stage-tcab-packages.test.mjs` stages the real set and holds every seeded
+manifest to the seeded-contract gate's strict list. The runtime stage `COPY --from`s
+that tree in.
 
 **How a case uses them, end to end.** A case declares
 `packages = ["@clockwyrks/particle-runtime"]` **and** ships a workspace whose

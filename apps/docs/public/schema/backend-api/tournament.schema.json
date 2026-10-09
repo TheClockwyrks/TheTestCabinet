@@ -40,7 +40,7 @@
       "type": "object"
     },
     "MatchSummary": {
-      "description": "One match's result, summarized so a tournament list can show the outcome\nwithout loading (and replaying) the match. Serializes `camelCase` to mirror the\n`@clockwyrks/run-record` TypeScript contract.",
+      "description": "One match's result, summarized so a tournament list can show the outcome\nwithout loading (and replaying) the match. Serializes `camelCase` to mirror the\n`@clockwyrks/backend-api` TypeScript contract.",
       "properties": {
         "blueFuel": {
           "description": "Blue's total fuel consumed over the match.",
@@ -169,7 +169,7 @@
       "type": "object"
     }
   },
-  "$id": "https://docs.testcabinet.ai/schema/core/tournament.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/tournament.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A persisted tournament: the field, the ranked standings, and every match's\nsummary. The per-match replays are stored alongside (keyed by\n[`MatchSummary::replay_key`]); this record carries only the summaries so it\nloads cheaply. Serializes `camelCase` to mirror the TypeScript contract.",
   "properties": {

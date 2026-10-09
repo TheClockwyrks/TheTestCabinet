@@ -2,10 +2,9 @@
 //
 // Regenerate with `npm run gen:contract` (which runs `cargo run -p api-codegen`
 // and formats the output). The source of truth is the Rust API types in
-// `crates/backend`, `crates/core` and `crates/contracts`, which derive
-// `ts_rs::TS` + `schemars::JsonSchema` behind their `contract` feature. The JSON
-// Schemas under `apps/docs/public/schema/` are generated from the same types in
-// the same pass.
+// `crates/backend` and `crates/core`, which derive `ts_rs::TS` +
+// `schemars::JsonSchema` behind their `contract` feature. The JSON Schemas under
+// `apps/docs/public/schema/` are generated from the same types in the same pass.
 
 import type { AdversarialOutcome } from "@clockwyrks/run-record";
 
@@ -36,7 +35,7 @@ export type ControllerRef = {
 /**
  * One match's result, summarized so a tournament list can show the outcome
  * without loading (and replaying) the match. Serializes `camelCase` to mirror the
- * `@clockwyrks/run-record` TypeScript contract.
+ * `@clockwyrks/backend-api` TypeScript contract.
  */
 export type MatchSummary = {
   /**

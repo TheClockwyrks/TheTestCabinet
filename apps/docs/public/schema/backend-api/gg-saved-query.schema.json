@@ -1,5 +1,5 @@
 {
-  "$id": "https://docs.testcabinet.ai/schema/gg/saved-query.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/backend-api/gg-saved-query.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "An operator's saved TCQ query: a question worth keeping, with the range it was\nasked over.",
   "properties": {

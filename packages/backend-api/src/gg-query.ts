@@ -2,10 +2,9 @@
 //
 // Regenerate with `npm run gen:contract` (which runs `cargo run -p api-codegen`
 // and formats the output). The source of truth is the Rust API types in
-// `crates/backend`, `crates/core` and `crates/contracts`, which derive
-// `ts_rs::TS` + `schemars::JsonSchema` behind their `contract` feature. The JSON
-// Schemas under `apps/docs/public/schema/` are generated from the same types in
-// the same pass.
+// `crates/backend` and `crates/core`, which derive `ts_rs::TS` +
+// `schemars::JsonSchema` behind their `contract` feature. The JSON Schemas under
+// `apps/docs/public/schema/` are generated from the same types in the same pass.
 
 import type { GgQuery, GgQueryResponse } from "@clockwyrks/run-record/gg-query";
 

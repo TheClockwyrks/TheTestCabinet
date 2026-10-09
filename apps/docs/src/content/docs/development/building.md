@@ -426,7 +426,7 @@ The project's own gates, wired the same way:
 | `k8s-deploy-sets` | The staging and prod deploy sets, pinned to a commit |
 | `ci-image-pins` | The root pipelines name every CI image as `<repository>:${{ variables.ciImageTag }}` and include `ci/images/tags.yml`, `azure-pipelines.yml` passes the Rust one to `.azure/project/jobs.yml` as `rustImage`, and no file under `.azure/` names one |
 | `dependency-graph` | The submodules, the patch table and the package links against the repositories' [edges](/development/repositories/#the-edges) |
-| `scripts-test` | `node --test` over `scripts/lib` |
+| `scripts-test` | `node --test` over `scripts/lib` and `scripts/*.test.mjs` |
 | `workspace-test` | Every npm workspace's Vitest run but the console's and this site's; no hook |
 | `validators-typecheck` | `tsc` over every test case's validator projects; no hook |
 | `site-build` | The gallery's build; no hook |
@@ -977,11 +977,17 @@ JSON Schemas under `apps/docs/public/schema/`:
   references it at the contract document's URL. Nothing in the data contract
   refers back to the backend API.
 
-Every schema keeps its published URL whichever generator writes it, so five of
-the backend's documents still sit in the contract's directories:
-`core/tournament.schema.json`, the two `gg/query-batch-*` documents,
-`gg/saved-query.schema.json` and `gg/dashboard.schema.json`. After changing any
-contract type, regenerate and commit:
+Each generator owns its directories under `apps/docs/public/schema/`. The data
+contract's are `core/` and `gg/`; the backend's are `backend-api/`, `coverage/`,
+`jobs-api/` and `snapshot/`. Each generator resolves the workspace root from its
+own crate, so each writes where its own workspace keeps its outputs. Five of the
+backend's documents once sat in the contract's directories and moved to
+`backend-api/`: `tournament.schema.json`, `gg-query-batch-request.schema.json`,
+`gg-query-batch-response.schema.json`, `gg-saved-query.schema.json` and
+`gg-dashboard.schema.json`. Their old URLs under `/schema/core/` and
+`/schema/gg/` redirect to the new ones with a 301, from
+`apps/docs/public/_redirects`, which the docs site's Cloudflare Pages project
+reads. After changing any contract type, regenerate and commit:
 
 ```sh
 npm run gen:contract

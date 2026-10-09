@@ -2,7 +2,7 @@
 //!
 //! It emits **both** the TypeScript bindings (`packages/run-record/src/*.ts` and
 //! `packages/asset-contract/src/index.ts`, via [`ts_rs`]) and their JSON Schemas
-//! (under `apps/docs/public/schema/`, via [`schemars`]) from one set of Rust types —
+//! (under [`contract_codegen::SCHEMA_DIR`], via [`schemars`]) from one set of Rust types —
 //! the types in `crates/contracts` that derive `TS` + `JsonSchema` behind its
 //! `contract` feature. Because both artifacts come from the same source in one pass,
 //! the TS bindings and the JSON Schemas can never drift from each other or from Rust.

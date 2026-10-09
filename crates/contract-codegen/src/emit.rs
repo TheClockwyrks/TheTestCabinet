@@ -220,7 +220,9 @@ fn mentions(text: &str, name: &str) -> bool {
 /// repository-relative path it is written to, and the set of type names this
 /// document is the canonical home of.
 pub struct SchemaDoc {
-    /// Path under `apps/docs/public/schema/`, e.g. `core/run-record.schema.json`.
+    /// Path under the published schema directory, e.g. `core/run-record.schema.json`:
+    /// the document is written there by the generator that owns it and published
+    /// at that path under [`SCHEMA_BASE_URL`].
     pub rel_path: &'static str,
     /// The root type's name, when the document's top-level schema is a single named
     /// type other documents may `$ref` (e.g. `RunRecord`). `None` for a document
