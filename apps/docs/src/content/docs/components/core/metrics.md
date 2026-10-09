@@ -98,6 +98,19 @@ stays as written until the operator edits it. A launch naming a model
 the catalog has no entry for, or one OpenRouter lists no rate for, is refused
 with the reason named.
 
+A list price filled before Flex endpoints were ignored can hold a Flex rate, so
+the backend rewrites the stored list prices once per database. The first time
+it starts on a database, in the background, it reads the standard rate of every
+catalog entry that carries a list price and writes it over the stored one,
+dated that day and marked as sourced from OpenRouter, whoever entered the
+figure it replaces. It leaves an entry as it is when the entry has no list
+price, has no OpenRouter slug, is not listed by OpenRouter, has no priced
+official endpoint, or already holds the standard rate. Runs keep the cost they
+were scored at. The backend reads every rate before it writes any: if OpenRouter
+cannot be read it writes nothing and tries again the next time it starts, and
+once the rewrite has happened it is recorded on the database and never runs
+again. A rewrite regenerates the public snapshot.
+
 Comparable cost is derived from the recorded token classes and the list price's
 rates for uncached input, cached input, and output, with reasoning tokens priced
 at the output rate. A class that carries tokens but whose rate is unknown makes

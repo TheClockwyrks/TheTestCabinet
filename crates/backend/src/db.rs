@@ -436,6 +436,10 @@ const RUN_GG_CONFIG_ID_BACKFILL: &str = "run.gg_config_id";
 /// The `backfill_state` key of [`Db::backfill_in_flight_gg_config_ids`].
 const JOB_GG_CONFIG_ID_BACKFILL: &str = "job.gg_config_id";
 
+/// The `backfill_state` key of the one-time
+/// [list price rewrite](crate::bootstrap::rewrite_list_prices).
+const LIST_PRICE_REWRITE_BACKFILL: &str = "model.list_price_standard_rate";
+
 /// The SeaORM-backed store.
 pub struct Db {
     handle: ConnHandle,
@@ -8447,6 +8451,19 @@ impl Db {
         active.update(&self.conn()).await?;
         touch_run(&self.conn(), run_id).await?;
         Ok(true)
+    }
+
+    /// Whether the one-time [list price rewrite](crate::bootstrap::rewrite_list_prices)
+    /// has completed on this database.
+    pub async fn list_price_rewrite_completed(&self) -> Result<bool> {
+        self.backfill_completed(LIST_PRICE_REWRITE_BACKFILL).await
+    }
+
+    /// Record the one-time [list price rewrite](crate::bootstrap::rewrite_list_prices)
+    /// as complete, so no later start runs it.
+    pub async fn mark_list_price_rewrite_complete(&self) -> Result<()> {
+        self.mark_backfill_complete(LIST_PRICE_REWRITE_BACKFILL)
+            .await
     }
 
     /// Whether the named startup backfill has already run to completion.

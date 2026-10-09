@@ -315,6 +315,15 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping startup model-price seeding"),
     }
     let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
+    // Once per database, rewrite the stored list prices to their standard endpoint's
+    // rate. In the background, since the one pass that does the work reads an endpoints
+    // listing per priced model; a rewrite changes the catalog the public snapshot shows.
+    {
+        let publisher = publisher.clone();
+        crate::bootstrap::spawn_list_price_rewrite(Arc::clone(&db), prices.clone(), move || {
+            publisher.queue_refresh();
+        });
+    }
 
     // A deployment that advertises an artifact service to consoles but gives this
     // backend no address of its own for it silently loses three things, none of which
