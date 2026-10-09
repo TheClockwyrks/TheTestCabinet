@@ -15,6 +15,17 @@
 # (CARGO_PROFILE_DEV_DEBUG on every Rust job), which takes `target/` to
 # ~14 GB. Both are needed: keep this script when touching that setting.
 #
+# The contracts and suites crates (October 2026) took the pruned `target/` to
+# ~17 GB, and both Rust jobs' cache saves ran the disk out again (95-97% used,
+# "No space left on device"): the tree plus a tar of it no longer fit beside
+# what the reclaim left. So the reclaim also takes the whole tool cache (every
+# Python, PyPy, Ruby, Go and Node the image preinstalls, not just CodeQL), Swift,
+# the Google Cloud and AWS CLIs, vcpkg, and the Edge and Chrome installs. No job
+# that runs this uses any of them on the host: the checks run inside the CI
+# images, gg's Node is downloaded by gg-ci-toolchains.sh, and the host's own
+# tasks are Cache, Docker, AzureCLI (az lives in /opt/az, which stays) and the
+# test-result publish, which run on the agent's bundled Node.
+#
 # Azure-only and Linux-only. The Windows `binary` leg skips this (its step is gated on
 # Agent.OS). The GitHub workflows have not hit this and are left alone.
 #
@@ -68,10 +79,17 @@ else
 		/usr/local/lib/android \
 		/opt/ghc \
 		/usr/local/.ghcup \
-		/opt/hostedtoolcache/CodeQL \
+		/opt/hostedtoolcache \
 		/usr/local/share/powershell \
 		/usr/local/share/chromium \
 		/usr/local/share/boost \
+		/usr/share/swift \
+		/usr/lib/google-cloud-sdk \
+		/usr/local/share/vcpkg \
+		/opt/microsoft \
+		/opt/google \
+		/usr/local/aws-cli \
+		/usr/local/aws-sam-cli \
 		|| true
 
 	# Preloaded container images: no build here starts from any of them, so they are
