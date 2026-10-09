@@ -254,4 +254,15 @@ fn the_ingest_roots_are_read_from_the_environment() {
         super::Config::from_env().unwrap().definitions_root,
         dir.path()
     );
+
+    // Other tests in this binary read these (the committed catalog under
+    // `TCAB_DEFINITIONS_ROOT`, cold storage under `TCAB_COLD_STORAGE_DIR`), so none
+    // is left set for a runner that shares one process between tests.
+    // SAFETY: as above.
+    unsafe {
+        std::env::remove_var("TCAB_DEFINITIONS_ROOT");
+        std::env::remove_var("TCAB_SUITES_ROOT");
+        std::env::remove_var("TCAB_COLD_STORAGE_ROOT");
+        std::env::remove_var("TCAB_COLD_STORAGE_DIR");
+    }
 }
