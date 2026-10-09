@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { CoveragePlanSummary } from "@clockwyrks/run-record/coverage";
+import { PLAN_ATTENTION_LABEL, PLAN_ATTENTION_TITLE } from "./coveragePlan";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -35,6 +36,7 @@ export function planProgress(plan: CoveragePlanSummary): PlanProgress {
     `${runsDone} of ${runsTotal} runs done · ${plan.runsInFlight} launched and in flight · ` +
     `${plan.runsMissing} to launch`;
   if (plan.cellsBlocked > 0) title += ` · ${plan.cellsBlocked} blocked`;
+  if (plan.needsAttention) title += ` · ${PLAN_ATTENTION_TITLE}`;
   return {
     runsDone,
     runsTotal,
@@ -175,6 +177,14 @@ export function CoveragePlansPage() {
                     >
                       {plan.name}
                     </Link>
+                    {plan.needsAttention && (
+                      <span
+                        className={styles.attentionBadge}
+                        title={`${PLAN_ATTENTION_TITLE} Open the plan's Tests tab to retry them.`}
+                      >
+                        {PLAN_ATTENTION_LABEL}
+                      </span>
+                    )}
                   </span>
                   <span className={styles.rowSub}>
                     {`${plan.runsPerCell} run${plan.runsPerCell === 1 ? "" : "s"}/cell`}

@@ -19,7 +19,7 @@
       "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target.",
       "properties": {
         "blocked": {
-          "description": "Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):\nits last three finished jobs failed on infrastructure, and a launch pass skips it\nuntil its owner retries it.",
+          "description": "Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):\nit is missing a run and one of its jobs used up its automatic retries without a\ncounted run with no later launch in its place, so a launch pass skips it until its\nowner retries it. A blocked cell can still have jobs in flight.",
           "type": "boolean"
         },
         "counted": {
@@ -217,6 +217,10 @@
       "$ref": "#/$defs/InFlightLimit",
       "description": "The runs-in-flight limit in force for this plan (its own override, else the\naccount's setting, else the backend default)."
     },
+    "needsAttention": {
+      "description": "Whether the filling plan is waiting on its owner: none of its own jobs is in\nflight, nothing a launch pass could launch is left, and a cell is blocked.",
+      "type": "boolean"
+    },
     "outerAxis": {
       "$ref": "#/$defs/CoverageAxis",
       "description": "The axis the cells above are ordered on."
@@ -271,7 +275,8 @@
     "runsPending",
     "runsUnreviewed",
     "inFlightLimit",
-    "filling"
+    "filling",
+    "needsAttention"
   ],
   "title": "CoverageMatrix",
   "type": "object"

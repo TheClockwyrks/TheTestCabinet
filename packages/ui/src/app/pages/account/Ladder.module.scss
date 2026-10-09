@@ -61,14 +61,14 @@
   gap: t.$space-md;
 }
 
-// One width for every status, room for the longest ("Not run yet") with a margin
+// One width for every status, room for the longest ("Needs attention") with a margin
 // either side, and one height: every badge carries a hairline border, transparent
 // unless its tone outlines it. The width is fixed rather than a minimum, so a status
 // change never moves the bar beside it.
 .cardBadge {
   flex: none;
   box-sizing: border-box;
-  width: 13ch;
+  width: 17ch;
   text-align: center;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -88,6 +88,11 @@
 
 .badgeRunning {
   background: t.$color-accent;
+}
+
+// Waiting on its owner: nothing is in flight and a blocked climber needs a retry.
+.badgeAttention {
+  background: t.$color-warning;
 }
 
 .badgeFinished {
@@ -369,7 +374,7 @@
 }
 
 // Blocked: the rung is undecided and nothing the dispatch does by itself will move it
-// (a combination that cannot launch, runs that keep failing on infrastructure, runs
+// (a combination that cannot launch, a launch that used up its automatic retries, runs
 // with no rating). Also the "cannot launch" pill a climber in
 // another state carries when its combination is broken. Outlined rather than filled
 // so it cannot be mistaken for a verdict of the gate: the fault is in the ladder or
@@ -486,7 +491,7 @@
 // the track and the count beneath it. Every element still keeps its own area.
 //
 // The status is not cut short here. Squeezed beside the track and the count it turned
-// "Blocked at rung 3: runs keep failing" into "Blocked at rung 3…" and left the reason
+// "Blocked at rung 3: retries used up" into "Blocked at rung 3…" and left the reason
 // behind a tooltip a touch screen cannot open. So the pill has the whole line and
 // wraps when even that is too little. A status changing can therefore add a line to
 // the card on a phone, the price of it being readable at all.

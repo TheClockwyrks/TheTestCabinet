@@ -118,25 +118,44 @@ One rule decides which finished runs count toward a cell, on a plan and on a
 ladder alike. A run that counts fills one of its cell's target runs, and on a
 ladder it is evidence for the rung's gate.
 
-| run state                                             | class          | counts | on a ladder's gate   |
-| ----------------------------------------------------- | -------------- | ------ | -------------------- |
-| `completed`                                           | model result   | yes    | its validator rating |
-| `catastrophic`, `timed_out`, `limit_exceeded`, `hung` | model result   | yes    | a `broken` run       |
-| `harness_error`, `infrastructure`                     | infrastructure | no     | never read           |
-| `canceled`                                            | stopped        | no     | never read           |
+| run state                                                              | class          | counts | on a ladder's gate   |
+| ---------------------------------------------------------------------- | -------------- | ------ | -------------------- |
+| `completed`                                                            | model result   | yes    | its validator rating |
+| `catastrophic`, `timed_out`, `harness_error`, `limit_exceeded`, `hung` | model result   | yes    | a `broken` run       |
+| `infrastructure`                                                       | infrastructure | no     | never read           |
+| `canceled`                                                             | stopped        | no     | never read           |
 
 A run of the model's own failure counts because the model had its attempt and
 produced nothing that works. Leaving it out would have the cell relaunched for as
-long as the model keeps failing it. A harness error is the harness's or the
-provider's fault rather than the model's, so it counts no more than an
-infrastructure failure does.
+long as the model keeps failing it. A harness error is one of them: once its
+automatic retries are used up, the last attempt is the model's result, it fills
+one of the cell's runs, and nothing launches the cell again for it.
 
 The backend retries a run that ends `infrastructure`, `catastrophic`,
-`harness_error`, or `hung` automatically, up to the launch's `retryCount`. The
-job records its retry in `job.retried_by`, and the run of a retried attempt never
-counts: the attempt and its retry count once, as whatever the last attempt
-became. The retry is enqueued, and the attempt stamped, before the attempt's run
-is stored, so no launch pass ever sees that run without the stamp.
+`harness_error`, or `hung` automatically, up to the launch's
+[`retryCount`](#the-retry-limit). The job records its retry in `job.retried_by`,
+and the run of a retried attempt never counts: the attempt and its retry count
+once, as whatever the last attempt became. The retry is enqueued, and the attempt
+stamped, before the attempt's run is stored and before the attempt becomes
+terminal, so no launch pass ever sees that run without the stamp, and none sees
+a failed attempt whose retry is still to be enqueued.
+
+### The retry limit
+
+A plan and a ladder each carry a `retryCount`: the number of automatic retries
+every run their launch passes enqueue gets. It defaults to `1`, ranges from `0`
+to `10`, and a value above the range is clamped to `10`. Every job a launch pass
+or a blocked cell's Retry enqueues carries it as its launch request's
+`retryCount`, and an automatic retry repeats its attempt's launch request, so it
+inherits the same count. A ladder snapshots the value at Run, and a plan reads
+its own at each pass.
+
+A launch by hand from the plan's Tests tab is a launch request the console
+sends, and the console puts the plan's `retryCount` on it.
+
+The retry limit is the whole allowance of a cell or a rung slot. A launch that
+uses it up without a counted run [blocks](#a-blocked-cell) the cell, and the
+plan or the ladder launches no replacement by itself.
 
 ### A cell's runs
 
@@ -176,17 +195,37 @@ rule, under the rung's target.
 
 ### A blocked cell
 
-A cell whose runs keep failing on infrastructure would otherwise be relaunched by
-every failure. When a cell's three most recent terminal jobs all failed with no
-run that counts, the cell is **blocked**: every launch pass skips it and reports
-it, and the console shows it blocked with a Retry action. A canceled job breaks
-the streak.
+A cell is **blocked** as soon as one of its jobs ends without a counted run and
+with its automatic retries used up. Every launch pass skips a blocked cell and
+reports it, and the console shows it blocked with a Retry action. With a
+`retryCount` of `1`, an infrastructure failure costs two attempts and then
+blocks the cell.
 
-Retrying a blocked cell records the retry. Only jobs that ended after it count
-toward the streak, so the cell is launched again, and three more failures block
-it again. On a plan the streak is read over every job of the cell, matching the
-global counts. On a ladder it is read over the jobs the dispatch launched for
-that rung and climber (see
+The block is read off the cell's jobs. A job is an **exhausted failure** when all
+three of the following hold:
+
+- it ended, and was not canceled, so a run cancelled by hand is launched again;
+- it has no counted run;
+- the backend did not retry it, so `job.retried_by` is null.
+
+An exhausted failure is **replaced** once a launch of the cell is created after
+it ended: a launch pass after a Retry, a launch by hand, or another plan's
+launch. A job created before the failure ended does not replace it, whatever
+that job goes on to do, and neither does a job created at the same instant. An
+automatic retry belongs to the launch it retries, so it replaces nothing.
+
+A cell is blocked while it is missing a run, counting its jobs in flight toward
+its target, and holds an exhausted failure that is not replaced. With five runs
+launched together, one that uses up its retries blocks the cell while the other
+four are still running and after they complete, and nothing is launched in its
+place. A blocked cell whose missing run arrives from elsewhere is filled, and a
+filled cell is not blocked.
+
+Retrying a blocked cell records the retry. Only jobs that ended after it are
+read as exhausted failures, so the cell is launched again, and the next launch
+to use up its retries blocks it again. On a plan the jobs read are every job of
+the cell, matching the global counts. On a ladder they are the jobs the dispatch
+launched for that rung and climber (see
 [a blocked climber](/components/backend/ladders/#a-blocked-climber)).
 
 ## The matrix
@@ -227,7 +266,8 @@ moving the target. A run recorded with no engine counts as a `none` run.
 
 The matrix also reports the plan's roll-ups: cells filled, cells total, runs
 done (the sum of every cell's `counted`), runs total, runs in flight against the
-plan's limit, runs pending, runs unreviewed, and cells blocked. Runs in flight
+plan's limit, runs pending, runs unreviewed, cells blocked, and whether the plan
+[needs attention](#needs-attention). Runs in flight
 against the limit are the plan's own jobs, which the limit counts until they
 finish. It is the one figure that can include runs beyond the plan's: a job
 whose cell other runs filled in the meantime is still in flight against the
@@ -298,13 +338,28 @@ the plan that survives a backend restart:
    to the plan's limit. Pressing it again while the plan fills runs another pass.
 2. Each of the plan's runs finishes. The backend runs another launch pass, which
    launches more missing runs into the room the finished run left.
-3. A cell whose runs keep failing on infrastructure becomes
+3. A cell whose launch used up its retries without a counted run becomes
    [blocked](#a-blocked-cell). Launch passes skip it until its owner retries it.
 4. Filling ends by itself once every launchable cell is filled. Halt and halt all
    end it at once.
 
 A plan that is filling stays filling while a blocked cell remains, so a Retry
 relaunches that cell under the limit.
+
+### Needs attention
+
+A filling plan reports `needsAttention` while all of the following hold:
+
+- none of the plan's own jobs is in flight;
+- every cell is filled, blocked, unlaunchable, or has the jobs in flight it
+  still needs;
+- at least one cell is blocked.
+
+Nothing a launch pass can launch is left, so the plan is waiting on its owner.
+It is a reading of a filling plan and changes nothing else about it: the plan
+stays filling, Halt ends the fill, and a cell's Retry or a run arriving for one
+of its cells resumes it. The backend derives it on the matrix and on
+`GET /coverage-plans/summary`, the two reads that resolve the plan's cells.
 
 A write to a filling plan's declaration or limit runs a launch pass, so a cell
 the edit added is filled too. Raising runs per cell is how a plan gathers more
@@ -332,7 +387,8 @@ compared against each other, so the check happens at the boundary between cells
 rather than inside one.
 
 Every run a launch pass enqueues carries its cell's whole pin: the slug, the
-version, the variant, and the engine. Both combination shapes carry it, so a gg
+version, the variant, and the engine, and the plan's or the dispatch's
+[`retryCount`](#the-retry-limit). Both combination shapes carry it, so a gg
 cell's runs are built on the cell's engine exactly as a harness cell's are.
 
 A launch pass reports the limit in force, the jobs in flight it observed, the
@@ -481,7 +537,7 @@ by hand, from the run form or a plan's Tests tab, retries as always.
 
 Coverage counting ignores both columns, on a plan and on a ladder alike. A
 ladder dispatch reads its own origin only for its limit, its Stop and its
-failing streak.
+failing block.
 
 ## Endpoints
 

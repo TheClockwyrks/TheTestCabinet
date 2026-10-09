@@ -39,6 +39,7 @@ fn ladder_input(rungs: &[&str], runs_per_cell: u32, climbers: &[&str]) -> Ladder
         rungs: rungs.iter().map(|slug| rung(slug)).collect(),
         outer_axis: LadderAxis::Rung,
         in_flight_limit: None,
+        retry_count: None,
     }
 }
 
@@ -81,6 +82,25 @@ async fn stop_ladder(
 /// One launch pass of the ladder, as a finished run, a retry or the startup prompt runs.
 async fn pass(state: &AppState, id: &str) -> LaunchPassResult {
     launch_ladder(state, OWNER, id).await.unwrap()
+}
+
+/// A launch pass that ran to its end. A driver's report runs the dispatch's pass on a
+/// task of its own, which can hold the claim when this one asks for it; a pass that
+/// completes after it reads everything that pass did, and a pass that runs later finds
+/// nothing left to do.
+async fn settled_pass(state: &AppState, id: &str) -> LaunchPassResult {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let result = pass(state, id).await;
+        if result.skipped != Some(LaunchSkipped::Busy) {
+            return result;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the ladder's launch claim was never released"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
 }
 
 /// The board, as `GET /ladders/{id}/progress` answers it.
@@ -691,7 +711,8 @@ async fn an_existing_run_nothing_can_rate_blocks_the_rung_as_unrated() {
     let standing = climber(&progress, SONNET);
     assert_eq!(standing.status, ClimberStatus::Blocked);
     assert_eq!(standing.blocked, Some(ClimberBlock::Unrated { runs: 1 }));
-    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+    // Its only climber is blocked with nothing in flight: it waits on its owner.
+    assert_eq!(dispatch(&progress).status, DispatchStatus::NeedsAttention);
 }
 
 #[tokio::test]
@@ -1252,47 +1273,186 @@ async fn a_catastrophic_run_is_broken_even_when_unloaded_builds_are_not() {
     assert_eq!(climber(&progress, SONNET).status, ClimberStatus::Failed);
 }
 
+/// A harness error is retried like any retryable failure, and the attempt that stands is
+/// the model's result: it fills the slot, the gate reads it as broken whatever the
+/// unloaded rule says, and nothing launches the rung again.
+#[tokio::test]
+async fn a_harness_error_fills_its_slot_and_reads_as_broken_once_its_retries_are_used_up() {
+    let (_dir, state) = test_state().await;
+    let mut input = ladder_input(&["pong", "carom"], 1, &[SONNET]);
+    input.gate = Some(Gate {
+        unloaded_counts_as_broken: false,
+        ..Gate::default()
+    });
+    let id = ladder_id(&state, input).await;
+    run_ladder(&state, &id).await.unwrap();
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
+
+    // The first attempt is retried, and a retried attempt never counts.
+    report(
+        &state,
+        &attempt,
+        ended_run("run-attempt", "pong", RunState::HarnessError),
+    )
+    .await;
+    let retry_id = state
+        .db
+        .get_job(&attempt)
+        .await
+        .unwrap()
+        .unwrap()
+        .retried_by
+        .expect("a harness error is retried");
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    let progress = board(&state, &id).await;
+    let standing = climber(&progress, SONNET);
+    assert_eq!(standing.status, ClimberStatus::Running);
+    let tally = standing.slots[0].tally.unwrap();
+    assert_eq!((tally.counted, tally.in_flight), (0, 1));
+
+    // The retry ends the same way with no retries left: it is the slot's run.
+    report(
+        &state,
+        &retry_id,
+        ended_run("run-retry", "pong", RunState::HarnessError),
+    )
+    .await;
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    let progress = board(&state, &id).await;
+    let standing = climber(&progress, SONNET);
+    assert_eq!(standing.slots[0].run_ids, vec!["run-retry".to_string()]);
+    let tally = standing.slots[0].tally.unwrap();
+    assert_eq!((tally.counted, tally.rated, tally.passing), (1, 1, 0));
+    assert_eq!(standing.slots[0].status, SlotStatus::Failed);
+    assert_eq!(standing.status, ClimberStatus::Failed);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Finished);
+    assert_eq!(jobs(&state).await.len(), 2, "the rung was never relaunched");
+    // A harness error is published only by an operator.
+    assert!(publishing(&state).await.is_empty());
+}
+
+// ---- The retry limit ------------------------------------------------------------
+
+#[tokio::test]
+async fn a_dispatch_launches_every_run_with_the_retry_limit_it_snapshotted() {
+    let (_dir, state) = test_state().await;
+    // A ladder saved without a retry limit gets one retry.
+    let saved = create_ladder(&state, ladder_input(&["pong"], 2, &[SONNET]))
+        .await
+        .unwrap();
+    assert_eq!(saved.retry_count, 1);
+    let progress = run_ladder(&state, &saved.id).await.unwrap();
+    assert_eq!(dispatch(&progress).retry_count, 1);
+    let launched = in_flight(&state, "pong").await;
+    assert_eq!(launched.len(), 2);
+    assert!(launched.iter().all(|job| retry_count_of(job) == Some(1)));
+
+    // A configured limit rides on every launch request, and an automatic retry inherits
+    // it with the request.
+    let mut input = ladder_input(&["carom"], 1, &[SONNET]);
+    input.retry_count = Some(3);
+    let saved = create_ladder(&state, input).await.unwrap();
+    assert_eq!(saved.retry_count, 3);
+    let progress = run_ladder(&state, &saved.id).await.unwrap();
+    assert_eq!(dispatch(&progress).retry_count, 3);
+    let attempt = in_flight(&state, "carom").await[0].clone();
+    assert_eq!(retry_count_of(&attempt), Some(3));
+    let retry_id = report_failed(&state, &attempt.id)
+        .await
+        .expect("the attempt has retries left");
+    let retry_job = state.db.get_job(&retry_id).await.unwrap().unwrap();
+    assert_eq!(retry_count_of(&retry_job), Some(3));
+
+    // A limit above the range is clamped into it.
+    let mut input = ladder_input(&["volley"], 1, &[SONNET]);
+    input.retry_count = Some(99);
+    assert_eq!(create_ladder(&state, input).await.unwrap().retry_count, 10);
+}
+
+#[tokio::test]
+async fn an_edit_of_the_retry_limit_applies_to_the_next_run() {
+    let (_dir, state) = test_state().await;
+    let mut input = ladder_input(&["pong"], 1, &[SONNET]);
+    input.retry_count = Some(0);
+    let id = ladder_id(&state, input.clone()).await;
+    run_ladder(&state, &id).await.unwrap();
+    input.retry_count = Some(2);
+    let Json(edited) = update(State(state.clone()), owner(), Path(id.clone()), Json(input))
+        .await
+        .unwrap();
+    assert_eq!(edited.retry_count, 2);
+    assert_eq!(dispatch(&board(&state, &id).await).retry_count, 0);
+
+    stop_ladder(&state, &id, false).await.unwrap();
+    let progress = run_ladder(&state, &id).await.unwrap();
+    assert_eq!(dispatch(&progress).retry_count, 2);
+    assert_eq!(retry_count_of(&in_flight(&state, "pong").await[0]), Some(2));
+}
+
 // ---- Blocked climbers ----------------------------------------------------------
 
 #[tokio::test]
-async fn harness_errors_block_a_rung_as_failing_and_never_fail_it_until_a_retry() {
+async fn with_no_retries_one_infrastructure_failure_blocks_the_climber_and_nothing_relaunches() {
     let (_dir, state) = test_state().await;
-    let id = ladder_id(&state, ladder_input(&["pong"], 1, &[SONNET])).await;
+    let mut input = ladder_input(&["pong"], 1, &[SONNET]);
+    input.retry_count = Some(0);
+    let id = ladder_id(&state, input).await;
     run_ladder(&state, &id).await.unwrap();
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
 
-    // Three attempts end harness_error (retries exhausted): each is relaunched until the
-    // third, which marks the slot failing.
-    for n in 0..3 {
-        let pong = in_flight(&state, "pong").await;
-        assert_eq!(pong.len(), 1, "attempt {n}");
-        let job = finish(
-            &state,
-            &pong[0].id,
-            ended_run(&format!("run-{n}"), "pong", RunState::HarnessError),
-        )
-        .await;
-        feed(&state, &job).await;
-    }
-    assert!(in_flight(&state, "pong").await.is_empty());
-    let progress = board(&state, &id).await;
-    let standing = climber(&progress, SONNET);
-    assert_eq!(standing.status, ClimberStatus::Blocked);
-    assert_eq!(
-        standing.blocked,
-        Some(ClimberBlock::Failing { attempts: 3 })
-    );
-    assert_eq!(standing.slots[0].status, SlotStatus::Blocked);
-    assert_eq!(standing.slots[0].tally.unwrap().counted, 0);
-    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
-    let result = pass(&state, &id).await;
+    assert_eq!(report_failed(&state, &attempt).await, None);
+    let result = settled_pass(&state, &id).await;
     assert_eq!(result.enqueued, 0);
     assert!(
         result.unlaunchable[0].reason.contains("retry"),
         "{:?}",
         result.unlaunchable
     );
+    assert!(in_flight(&state, "pong").await.is_empty());
+    assert_eq!(jobs(&state).await.len(), 1, "no replacement was launched");
+    let progress = board(&state, &id).await;
+    let standing = climber(&progress, SONNET);
+    assert_eq!(standing.status, ClimberStatus::Blocked);
+    assert_eq!(
+        standing.blocked,
+        Some(ClimberBlock::Failing { attempts: 1 })
+    );
+    assert_eq!(standing.slots[0].status, SlotStatus::Blocked);
+    assert_eq!(standing.slots[0].tally.unwrap().counted, 0);
+}
 
-    // A retry starts the streak afresh and relaunches the rung.
+#[tokio::test]
+async fn with_one_retry_an_infrastructure_failure_is_retried_once_and_then_blocks_the_climber() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong"], 1, &[SONNET])).await;
+    run_ladder(&state, &id).await.unwrap();
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
+
+    // The first failure is retried: the retry holds the slot, and no pass launches
+    // another run beside it.
+    let retry_id = report_failed(&state, &attempt)
+        .await
+        .expect("the attempt has one retry");
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    let progress = board(&state, &id).await;
+    assert_eq!(climber(&progress, SONNET).status, ClimberStatus::Running);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+    let now = in_flight(&state, "pong").await;
+    assert_eq!(now.len(), 1);
+    assert_eq!(now[0].id, retry_id);
+
+    // The retry fails too: the allowance is spent, and the climber blocks.
+    assert_eq!(report_failed(&state, &retry_id).await, None);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    assert!(in_flight(&state, "pong").await.is_empty());
+    assert_eq!(jobs(&state).await.len(), 2, "two attempts and no more");
+    let progress = board(&state, &id).await;
+    assert_eq!(
+        climber(&progress, SONNET).blocked,
+        Some(ClimberBlock::Failing { attempts: 2 })
+    );
+
+    // A retry reads only the jobs that end after it, and relaunches the rung.
     assert_eq!(
         retry(&state, &id, SONNET).await.unwrap(),
         StatusCode::NO_CONTENT
@@ -1303,12 +1463,87 @@ async fn harness_errors_block_a_rung_as_failing_and_never_fail_it_until_a_retry(
     // A running climber has nothing to retry.
     let err = retry(&state, &id, SONNET).await.unwrap_err();
     assert_eq!(err.status, StatusCode::CONFLICT);
+
+    // The relaunched run has the same allowance, and using it up blocks the climber again.
+    let relaunched = in_flight(&state, "pong").await[0].id.clone();
+    let retry_id = report_failed(&state, &relaunched)
+        .await
+        .expect("a relaunched run has its own retry");
+    assert_eq!(report_failed(&state, &retry_id).await, None);
+    settled_pass(&state, &id).await;
+    assert_eq!(
+        climber(&board(&state, &id).await, SONNET).status,
+        ClimberStatus::Blocked
+    );
+    assert_eq!(jobs(&state).await.len(), 4);
 }
 
 #[tokio::test]
-async fn a_canceled_job_is_not_an_infrastructure_failure() {
+async fn a_run_that_uses_up_its_retries_among_runs_launched_together_blocks_the_climber() {
     let (_dir, state) = test_state().await;
-    let id = ladder_id(&state, ladder_input(&["pong"], 1, &[SONNET])).await;
+    let mut input = ladder_input(&["pong"], 5, &[SONNET]);
+    input.retry_count = Some(0);
+    let id = ladder_id(&state, input).await;
+    run_ladder(&state, &id).await.unwrap();
+    let launched: Vec<String> = in_flight(&state, "pong")
+        .await
+        .into_iter()
+        .map(|job| job.id)
+        .collect();
+    assert_eq!(launched.len(), 5);
+
+    // One of the five fails with no retry left. No pass launches a run in its place,
+    // and the climber reads as running while the other four are in flight.
+    assert_eq!(report_failed(&state, &launched[0]).await, None);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    let progress = board(&state, &id).await;
+    assert_eq!(climber(&progress, SONNET).status, ClimberStatus::Running);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+
+    // Three complete, one at a time, and still nothing is launched.
+    for job_id in &launched[1..4] {
+        finish_and_feed(&state, job_id, "pong", GREAT).await;
+        assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    }
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+
+    // The last one completes: the rung holds four of its five runs, and the climber is
+    // blocked rather than relaunched.
+    finish_and_feed(&state, &launched[4], "pong", GREAT).await;
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    assert_eq!(jobs(&state).await.len(), 5, "no replacement was launched");
+    let progress = board(&state, &id).await;
+    let standing = climber(&progress, SONNET);
+    assert_eq!(standing.status, ClimberStatus::Blocked);
+    assert_eq!(
+        standing.blocked,
+        Some(ClimberBlock::Failing { attempts: 1 })
+    );
+    assert_eq!(standing.slots[0].tally.unwrap().counted, 4);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::NeedsAttention);
+
+    // A retry launches the one run that is missing, and a failure of it blocks again.
+    assert_eq!(
+        retry(&state, &id, SONNET).await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    wait_for_in_flight(&state, "pong", 1).await;
+    let relaunched = in_flight(&state, "pong").await[0].id.clone();
+    assert_eq!(report_failed(&state, &relaunched).await, None);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    assert_eq!(jobs(&state).await.len(), 6);
+    assert_eq!(
+        climber(&board(&state, &id).await, SONNET).blocked,
+        Some(ClimberBlock::Failing { attempts: 1 })
+    );
+}
+
+#[tokio::test]
+async fn a_canceled_job_does_not_block_its_climber() {
+    let (_dir, state) = test_state().await;
+    let mut input = ladder_input(&["pong"], 1, &[SONNET]);
+    input.retry_count = Some(0);
+    let id = ladder_id(&state, input).await;
     run_ladder(&state, &id).await.unwrap();
     for _ in 0..3 {
         let pong = in_flight(&state, "pong").await;
@@ -1316,9 +1551,117 @@ async fn a_canceled_job_is_not_an_infrastructure_failure() {
         pass(&state, &id).await;
     }
     assert_eq!(in_flight(&state, "pong").await.len(), 1);
+    let progress = board(&state, &id).await;
+    assert_eq!(climber(&progress, SONNET).status, ClimberStatus::Running);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+}
+
+// ---- Needs attention -------------------------------------------------------------
+
+#[tokio::test]
+async fn a_dispatch_left_with_only_blocked_climbers_needs_attention_until_one_is_retried() {
+    let (_dir, state) = test_state().await;
+    price_opus(&state).await;
+    let mut input = ladder_input(&["pong"], 1, &[SONNET, OPUS]);
+    input.retry_count = Some(0);
+    let id = ladder_id(&state, input).await;
+    run_ladder(&state, &id).await.unwrap();
+    let pong = in_flight(&state, "pong").await;
+    let sonnet = pong.iter().find(|job| job.model_id == SONNET).unwrap();
+    let opus = pong.iter().find(|job| job.model_id == OPUS).unwrap();
+
+    // One climber blocks while the other is still running: the dispatch is running.
+    report_failed(&state, &sonnet.id).await;
+    settled_pass(&state, &id).await;
+    let progress = board(&state, &id).await;
+    assert_eq!(climber(&progress, SONNET).status, ClimberStatus::Blocked);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+
+    // The other climber completes: nothing is in flight and only the blocked one is left.
+    let mut great = run_of("run-opus", "pong", GREAT);
+    great.subject.model_id = OPUS.to_string();
+    let job = finish(&state, &opus.id, great).await;
+    feed(&state, &job).await;
+    let progress = board(&state, &id).await;
+    assert_eq!(climber(&progress, OPUS).status, ClimberStatus::Completed);
+    assert_eq!(dispatch(&progress).status, DispatchStatus::NeedsAttention);
+    assert_eq!(dispatch(&progress).ended_at, None);
+    let Json(listed) = summary(State(state.clone()), owner()).await.unwrap();
     assert_eq!(
-        climber(&board(&state, &id).await, SONNET).status,
-        ClimberStatus::Running
+        listed[0].dispatch.as_ref().unwrap().status,
+        DispatchStatus::NeedsAttention
+    );
+    assert_eq!(
+        serde_json::to_value(DispatchStatus::NeedsAttention).unwrap(),
+        serde_json::json!("needsAttention")
+    );
+
+    // It is a running dispatch in every other respect: Run is refused, and a pass leaves
+    // it as it is.
+    let err = run_ladder(&state, &id).await.unwrap_err();
+    assert_eq!(err.status, StatusCode::CONFLICT);
+    assert_eq!(pass(&state, &id).await.enqueued, 0);
+    assert_eq!(
+        dispatch(&board(&state, &id).await).status,
+        DispatchStatus::NeedsAttention
+    );
+
+    // A retry resumes the climb, and the status reads Running again.
+    assert_eq!(
+        retry(&state, &id, SONNET).await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    wait_for_in_flight(&state, "pong", 1).await;
+    let progress = board(&state, &id).await;
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+
+    // The relaunched run passes, and the dispatch finishes.
+    let relaunched = in_flight(&state, "pong").await[0].id.clone();
+    finish_and_feed(&state, &relaunched, "pong", GREAT).await;
+    assert_eq!(
+        dispatch(&board(&state, &id).await).status,
+        DispatchStatus::Finished
+    );
+}
+
+#[tokio::test]
+async fn a_dispatch_that_needs_attention_is_resumed_by_an_arriving_run_and_can_be_stopped() {
+    let (_dir, state) = test_state().await;
+    let mut input = ladder_input(&["pong", "carom"], 1, &[SONNET]);
+    input.retry_count = Some(0);
+    let id = ladder_id(&state, input).await;
+    run_ladder(&state, &id).await.unwrap();
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
+    report_failed(&state, &attempt).await;
+    settled_pass(&state, &id).await;
+    assert_eq!(
+        dispatch(&board(&state, &id).await).status,
+        DispatchStatus::NeedsAttention
+    );
+
+    // A run of the slot's cell someone else launched lands: the rung passes, the climber
+    // moves on, and the dispatch is running again.
+    enqueue_other(&state, "by-hand", "pong", None).await;
+    finish_and_feed(&state, "by-hand", "pong", GREAT).await;
+    let progress = board(&state, &id).await;
+    assert_eq!(
+        climber(&progress, SONNET).slots[0].status,
+        SlotStatus::Passed
+    );
+    assert_eq!(dispatch(&progress).status, DispatchStatus::Running);
+
+    // The next rung blocks the same way, and Stop ends the dispatch from there.
+    let attempt = in_flight(&state, "carom").await[0].id.clone();
+    report_failed(&state, &attempt).await;
+    settled_pass(&state, &id).await;
+    assert_eq!(
+        dispatch(&board(&state, &id).await).status,
+        DispatchStatus::NeedsAttention
+    );
+    stop_ladder(&state, &id, false).await.unwrap();
+    assert_eq!(
+        dispatch(&board(&state, &id).await).status,
+        DispatchStatus::Stopped
     );
 }
 
@@ -1381,13 +1724,13 @@ async fn a_climber_that_cannot_launch_is_blocked_and_the_dispatch_keeps_running(
     .unwrap();
     assert_eq!(status, StatusCode::NO_CONTENT);
 
-    // The harness climber finishing does not finish a dispatch with a blocked climber;
-    // a stop ends it.
+    // The harness climber finishing does not finish a dispatch with a blocked climber:
+    // it is still running, waiting on its owner, and a stop ends it.
     let pong = in_flight(&state, "pong").await;
     finish_and_feed(&state, &pong[0].id, "pong", GREAT).await;
     assert_eq!(
         dispatch(&board(&state, "gone").await).status,
-        DispatchStatus::Running
+        DispatchStatus::NeedsAttention
     );
     stop_ladder(&state, "gone", false).await.unwrap();
     let progress = board(&state, "gone").await;

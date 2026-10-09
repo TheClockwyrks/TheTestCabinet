@@ -226,6 +226,13 @@
       "$ref": "#/$defs/LadderAxis",
       "description": "Which axis a dispatch's launch order nests on."
     },
+    "retryCount": {
+      "default": 1,
+      "description": "How many automatic retries each run a dispatch launches gets, `0..=10`. A launch\nthat uses them up without a counted run blocks its climber. A dispatch takes it\nwhen it starts and keeps it.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
     "rungs": {
       "description": "The rungs, low to high. The order **is** the climb.",
       "items": {

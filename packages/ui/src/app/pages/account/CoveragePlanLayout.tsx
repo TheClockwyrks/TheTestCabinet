@@ -32,6 +32,8 @@ import { launchBatch } from "../runs/launchBatch";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
 import { comboLabel } from "./comboLabels";
 import {
+  PLAN_ATTENTION_LABEL,
+  PLAN_ATTENTION_TITLE,
   buildGroups,
   describeHalt,
   describeFill,
@@ -84,7 +86,12 @@ export interface CoveragePlanState {
   fill: () => Promise<void>;
   /** Launch a set of cells by hand, `remaining` runs each. */
   triggerCells: (cells: CoverageCell[]) => Promise<void>;
-  /** Retry a cell blocked by repeated infrastructure failures. */
+  /**
+   * Whether the filling plan is waiting on its owner: nothing of it is in flight,
+   * nothing a launch pass could launch is left, and a cell is blocked.
+   */
+  needsAttention: boolean;
+  /** Retry a cell blocked on a run that used up its automatic retries. */
   retryCell: (cell: CoverageCell) => Promise<void>;
   /** Stop filling and cancel this plan's jobs; `all` sweeps running ones too. */
   halt: (all: boolean) => Promise<void>;
@@ -316,8 +323,8 @@ export function CoveragePlanLayout() {
     }
   }, [backend, token, planId, refresh]);
 
-  // Retry a cell blocked by repeated infrastructure failures, once its owner has fixed
-  // the cause: the backend forgets the failures so far and launches the cell's
+  // Retry a cell blocked on a run that used up its automatic retries, once its owner
+  // has fixed the cause: the backend forgets that failure and launches the cell's
   // shortfall (under the limit while filling, at once otherwise).
   const retryCell = useCallback(
     async (cell: CoverageCell) => {
@@ -361,7 +368,10 @@ export function CoveragePlanLayout() {
   const triggerCells = useCallback(
     async (cells: CoverageCell[]) => {
       if (!worker || !canTrigger) return;
-      const items = itemsForCells(cells);
+      // A launch by hand is a launch request the console sends, so the plan's retry
+      // limit rides on it here, as the backend puts it on the jobs it launches itself.
+      const retryCount = plan?.retryCount;
+      const items = itemsForCells(cells, retryCount);
       const { launches, unresolved } = planGgLaunches(cells, ggOptions);
       if (
         items.length === 0 &&
@@ -388,6 +398,7 @@ export function CoveragePlanLayout() {
           token,
           runtime.track,
           launches,
+          retryCount,
         );
         // Said rather than swallowed: a trigger that enqueued four of six runs and
         // returned silently is indistinguishable from one that worked. Both endpoints
@@ -423,6 +434,7 @@ export function CoveragePlanLayout() {
       runtime.track,
       refresh,
       planId,
+      plan?.retryCount,
       ggOptions,
       ggError,
     ],
@@ -479,7 +491,7 @@ export function CoveragePlanLayout() {
   );
 
   // What filling could actually launch. A cell nothing can launch, or one blocked on
-  // infrastructure failures, is excluded, so All missing disables itself on a plan
+  // used-up retries, is excluded, so All missing disables itself on a plan
   // whose whole shortfall is broken rather than offering a press that could only fail.
   const deficientCells = useMemo(
     () =>
@@ -492,6 +504,8 @@ export function CoveragePlanLayout() {
   // The matrix is the fresher read (it is re-read on every run event); the plan's own
   // flag covers the moment before the first matrix lands.
   const filling = coverage?.filling ?? plan?.filling ?? false;
+  // Only the matrix says this: it is derived from the board the matrix is read off.
+  const needsAttention = filling && (coverage?.needsAttention ?? false);
 
   const state = useMemo<CoveragePlanState | null>(
     () =>
@@ -507,6 +521,7 @@ export function CoveragePlanLayout() {
             canTrigger,
             hasWorker,
             filling,
+            needsAttention,
             refresh,
             fill,
             triggerCells,
@@ -525,6 +540,7 @@ export function CoveragePlanLayout() {
       canTrigger,
       hasWorker,
       filling,
+      needsAttention,
       refresh,
       fill,
       triggerCells,
@@ -557,6 +573,14 @@ export function CoveragePlanLayout() {
           <h1 className={[styles.detailTitle, styles.dashTitle].join(" ")}>
             {plan?.name ?? planId}
           </h1>
+          {needsAttention && (
+            <span
+              className={styles.attentionBadge}
+              title={`${PLAN_ATTENTION_TITLE} Open the Tests tab to retry them.`}
+            >
+              {PLAN_ATTENTION_LABEL}
+            </span>
+          )}
         </div>
         <Link
           className={exec.secondary}

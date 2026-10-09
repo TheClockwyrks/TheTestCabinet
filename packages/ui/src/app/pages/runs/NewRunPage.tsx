@@ -87,8 +87,8 @@ const RUN_COUNT_MAX = 20;
 
 // Default number of automatic retries applied to every launched run, and the upper
 // bound the field clamps to — mirroring the backend's `DEFAULT_RETRY_COUNT` /
-// `MAX_RETRY_COUNT`. A retry fires only on an infra error or a catastrophic build,
-// never on a timeout or a completed run.
+// `MAX_RETRY_COUNT`. A retry fires on an infrastructure failure, a harness error, a
+// hang, or a catastrophic build, never on a timeout or a completed run.
 const DEFAULT_RETRY_COUNT = 1;
 const RETRY_COUNT_MAX = 10;
 
@@ -194,8 +194,9 @@ export function NewRunPage() {
   });
   const runCount = runCountField.value ?? 1;
   // Automatic retries applied to every launched run (a run-level setting, threaded
-  // into each fan-out launch). Defaults to 1 so a run auto-retries once on an infra
-  // error or catastrophic build; 0 disables retries.
+  // into each fan-out launch). Defaults to 1 so a run auto-retries once on an
+  // infrastructure failure, a harness error, a hang, or a catastrophic build; 0
+  // disables retries.
   const retryCountField = useNumberFieldState(DEFAULT_RETRY_COUNT, {
     label: "Retry count",
     min: 0,
@@ -723,7 +724,7 @@ export function NewRunPage() {
         </label>
         <label
           className={styles.field}
-          title="Auto-retries on infra error or catastrophic failure (not on a timeout or a completed run)."
+          title="How many times a run that fails on infrastructure, a harness error, a hang, or a build that will not load is retried automatically (not on a timeout or a completed run). 0 turns retries off."
         >
           <span className={styles.fieldLabel}>Retry count</span>
           <NumberField

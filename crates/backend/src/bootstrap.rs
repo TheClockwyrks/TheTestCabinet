@@ -317,6 +317,7 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
             // migrated plan is not filling; its owner fills it from the console.
             outer_axis: crate::api::CoverageAxis::Case,
             in_flight_limit: None,
+            retry_count: crate::api::default_retry_count(),
             updated_at: now.clone(),
         };
         db.insert_coverage_plan(&plan.user_id, &coverage).await?;

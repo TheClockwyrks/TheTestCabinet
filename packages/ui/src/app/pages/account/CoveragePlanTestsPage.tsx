@@ -8,7 +8,7 @@ import styles from "./Coverage.module.scss";
 // Each block expands to its cells, and each cell carries the two presses that launch it
 // by hand: one more run, or the whole shortfall. A hand launch ignores the plan's
 // runs-in-flight limit (it is a deliberate press) but counts toward it. A cell blocked
-// by repeated infrastructure failures offers Retry.
+// on a run that used up its automatic retries offers Retry.
 export function CoveragePlanTestsPage() {
   const { groups, coverage, busy, canTrigger, triggerCells, retryCell } =
     useCoveragePlan();

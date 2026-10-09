@@ -143,7 +143,7 @@ const LAUNCH_LEASE: time::Duration = time::Duration::minutes(2);
 
 /// The `detail` an earlier backend failed an orphaned job with when it restarted. The
 /// backend no longer reaps anything, but rows written then still carry it, and a failure
-/// that was the restart's rather than the cell's must not count toward a failing streak
+/// that was the restart's rather than the cell's must not block the cell
 /// ([`Db::recent_terminal_jobs`]). Legacy rows only.
 pub const REAPED_DETAIL: &str = "interrupted: the backend restarted while this run was in flight";
 
@@ -2685,6 +2685,7 @@ impl Db {
             cases_json: Set(serde_json::to_string(&plan.cases)?),
             outer_axis: Set(plan.outer_axis.as_str().to_string()),
             in_flight_limit: Set(plan.in_flight_limit.map(in_flight_limit_to_column)),
+            retry_count: Set(plan.retry_count as i32),
             launch_claimed_at: Set(None),
             launch_requested: Set(false),
             fill_id: Set(None),
@@ -2735,6 +2736,10 @@ impl Db {
             .col_expr(
                 coverage_plan::Column::InFlightLimit,
                 Expr::value(plan.in_flight_limit.map(in_flight_limit_to_column)),
+            )
+            .col_expr(
+                coverage_plan::Column::RetryCount,
+                Expr::value(plan.retry_count as i32),
             )
             .col_expr(
                 coverage_plan::Column::UpdatedAt,
@@ -3128,7 +3133,7 @@ impl Db {
     }
 
     /// Record that the owner retried one cell of a plan at `now`. Only jobs that ended
-    /// after it count toward the cell's failing streak from here on.
+    /// after it are read for the cell's block from here on.
     pub async fn record_coverage_plan_cell_retry(
         &self,
         plan_id: &str,
@@ -3550,10 +3555,10 @@ impl Db {
     /// are one run), and that attempt along `record_id` to the run it stored. An id no
     /// job carries is read as a run id directly.
     ///
-    /// The run then [counts](test_cabinet_core::run_record::RunState::counts_as_model_result)
-    /// or it does not, by the rule a coverage cell counts by: a model's own failure
-    /// counts, a harness or infrastructure failure, a cancel, a deleted run and a job
-    /// that stored none do not, and nor does a run whose record this build cannot read.
+    /// The run then counts or it does not: a completed run and a catastrophic, timed-out,
+    /// limit-exceeded or hung one count, and a harness or infrastructure failure, a
+    /// cancel, a deleted run and a job that stored none do not, nor does a run whose
+    /// record this build cannot read.
     pub async fn resolve_arm_runs(
         &self,
         ids: &[String],
@@ -3649,7 +3654,7 @@ impl Db {
                 .into_iter()
                 .collect()
         };
-        let counted = counted_run_states();
+        let counted = arm_counted_run_states();
 
         Ok(resolved
             .into_iter()
@@ -3705,10 +3710,10 @@ impl Db {
     /// landed: by when each finished, then by run id. A cell with none is simply absent.
     ///
     /// A run counts when it ended `completed`, `catastrophic`, `timed_out`,
-    /// `limit_exceeded` or `hung` ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)): each is the model's result
-    /// and uses one of the cell's runs. An infrastructure-class failure
-    /// (`infrastructure`, `harness_error`) or a cancel says nothing about the model and
-    /// never counts. Nor does the run of a job that was automatically retried
+    /// `harness_error`, `limit_exceeded` or `hung`
+    /// ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)):
+    /// each is the model's result and uses one of the cell's runs. An `infrastructure`
+    /// failure or a cancel says nothing about the model and never counts. Nor does the run of a job that was automatically retried
     /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
     ///
     /// The order is what a plan takes its [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
@@ -3899,13 +3904,12 @@ impl Db {
             .collect())
     }
 
-    /// One cell's most recent **terminal** jobs (`succeeded`, `failed`, `canceled`),
-    /// newest first, at most `limit` of them, whoever launched them, each read as a
-    /// [`TerminalJob`].
+    /// One cell's **terminal** jobs (`succeeded`, `failed`, `canceled`), newest first,
+    /// whoever launched them, each read as a [`TerminalJob`].
     ///
-    /// What a plan reads to tell a cell whose runs keep failing on infrastructure from one
-    /// still filling: a job's terminal transition stamps its `updated_at`, so ordering on
-    /// it is ordering on when each job ended. The cell is matched through the same
+    /// What a plan reads to tell a blocked cell from one still filling: a job's terminal
+    /// transition stamps its `updated_at`, so ordering on it is ordering on when each job
+    /// ended. The cell is matched through the same
     /// collapses [`Self::count_in_flight_jobs_by_cell`] groups by.
     ///
     /// A job an earlier backend failed because it restarted while the job was executing
@@ -3913,58 +3917,86 @@ impl Db {
     /// the cell's fault.
     ///
     /// With `since`, only jobs that ended strictly after that RFC 3339 instant are read:
-    /// what a retried cell's streak counts from.
+    /// what a retried cell's block is read from.
     pub async fn recent_terminal_jobs(
         &self,
         cell: &CellKey,
-        limit: u64,
         since: Option<&str>,
     ) -> Result<Vec<TerminalJob>> {
-        let rows: Vec<(String, Option<String>, String)> = cell_job_query(cell)
+        let rows: Vec<TerminalTuple> = cell_job_query(cell)
             .select_only()
             .column(job::Column::State)
             .column(job::Column::RecordId)
             .column(job::Column::UpdatedAt)
+            .column(job::Column::RetriedBy)
+            .column(job::Column::Attempt)
+            .column(job::Column::QueueSeq)
             .filter(job::Column::State.is_in(["succeeded", "failed", "canceled"]))
             .filter(
                 Condition::any()
                     .add(job::Column::Detail.is_null())
                     .add(job::Column::Detail.ne(REAPED_DETAIL)),
             )
-            .order_by_desc(job::Column::UpdatedAt)
-            .order_by_desc(job::Column::QueueSeq)
-            .limit(limit)
             .into_tuple()
             .all(&self.conn())
             .await?;
-        // Compared as instants rather than as text, since RFC 3339 text with and without
-        // a fractional second does not sort as time. The rows are newest first, so the
-        // ones that ended after `since` are a prefix of the newest `limit`, and cutting
-        // after the limit reads the same jobs as cutting before it.
+        // Compared and ordered as instants rather than as text, since RFC 3339 text with
+        // and without a fractional second does not sort as time.
         let since = since
-            .map(|since| time::OffsetDateTime::parse(since, &Rfc3339))
+            .map(|since| OffsetDateTime::parse(since, &Rfc3339))
             .transpose()
             .map_err(|e| BackendError::Internal(format!("parsing a retry time: {e}")))?;
-        let rows: Vec<(String, Option<String>, String)> = rows
+        let mut rows: Vec<(Option<OffsetDateTime>, i64, TerminalRow)> = rows
             .into_iter()
-            .filter(|(_, _, ended)| {
-                since.is_none_or(|since| {
-                    time::OffsetDateTime::parse(ended, &Rfc3339).is_ok_and(|ended| ended > since)
-                })
+            .map(|(state, record_id, ended_at, retried_by, attempt, seq)| {
+                (
+                    OffsetDateTime::parse(&ended_at, &Rfc3339).ok(),
+                    seq,
+                    TerminalRow {
+                        state,
+                        record_id,
+                        ended_at,
+                        retried: retried_by.is_some(),
+                        attempt,
+                    },
+                )
+            })
+            .filter(|(ended, _, _)| {
+                since.is_none_or(|since| ended.is_some_and(|ended| ended > since))
             })
             .collect();
-        self.terminal_jobs(rows).await
+        rows.sort_by(|(a, a_seq, _), (b, b_seq, _)| b.cmp(a).then(b_seq.cmp(a_seq)));
+        self.terminal_jobs(rows.into_iter().map(|(_, _, row)| row).collect())
+            .await
     }
 
-    /// Read `(state, record id, ended at)` rows as [`TerminalJob`]s, looking up which
-    /// records are counted runs in one query.
-    async fn terminal_jobs(
-        &self,
-        rows: Vec<(String, Option<String>, String)>,
-    ) -> Result<Vec<TerminalJob>> {
+    /// When the newest launch of a cell was created, whoever launched it and whatever
+    /// became of it: the latest `created_at` among the cell's first attempts. An
+    /// automatic retry is left out, since it belongs to the launch it retries. `None`
+    /// when the cell was never launched.
+    ///
+    /// What tells a [`TerminalJob`] that still blocks its cell from one a later launch
+    /// replaced.
+    pub async fn latest_cell_launch(&self, cell: &CellKey) -> Result<Option<OffsetDateTime>> {
+        let created: Vec<String> = cell_job_query(cell)
+            .select_only()
+            .column(job::Column::CreatedAt)
+            .filter(job::Column::Attempt.eq(0))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(created
+            .iter()
+            .filter_map(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+            .max())
+    }
+
+    /// Read terminal job rows as [`TerminalJob`]s, looking up which records are counted
+    /// runs in one query.
+    async fn terminal_jobs(&self, rows: Vec<TerminalRow>) -> Result<Vec<TerminalJob>> {
         let record_ids: Vec<&str> = rows
             .iter()
-            .filter_map(|(_, record, _)| record.as_deref())
+            .filter_map(|row| row.record_id.as_deref())
             .collect();
         let counted: std::collections::HashSet<String> = if record_ids.is_empty() {
             std::collections::HashSet::new()
@@ -3982,10 +4014,12 @@ impl Db {
         };
         Ok(rows
             .into_iter()
-            .map(|(state, record, ended_at)| TerminalJob {
-                counted: record.is_some_and(|id| counted.contains(&id)),
-                state,
-                ended_at,
+            .map(|row| TerminalJob {
+                counted: row.record_id.is_some_and(|id| counted.contains(&id)),
+                state: row.state,
+                retried: row.retried,
+                attempt: row.attempt.max(0) as u32,
+                ended_at: row.ended_at,
             })
             .collect())
     }
@@ -4007,28 +4041,33 @@ fn cell_job_query(cell: &CellKey) -> sea_orm::Select<job::Entity> {
         .filter(Expr::expr(cell_gg_segment(job::Column::GgModels)).eq(gg_models.as_str()))
 }
 
-/// One terminal job of a coverage cell or rung slot, as read to tell one whose runs keep
-/// failing on infrastructure ([`Db::recent_terminal_jobs`], [`DispatchEvidence`]).
+/// One terminal job of a coverage cell or rung slot, as read to tell whether its launch
+/// used up its automatic retries without a result ([`Db::recent_terminal_jobs`],
+/// [`DispatchEvidence`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalJob {
     /// The job's terminal state: `succeeded`, `failed` or `canceled`.
     pub state: String,
     /// Whether the job's run is a counted run — the model's own result — as opposed to an
-    /// infrastructure-class failure or no run at all. A failed job with a counted run
-    /// failed on the model, which is a result rather than a fault of the cell.
+    /// infrastructure failure or no run at all. A failed job with a counted run failed on
+    /// the model, which is a result rather than a fault of the cell.
     pub counted: bool,
+    /// Whether the backend retried the job automatically (its `retried_by` is set): its
+    /// retry stands for it.
+    pub retried: bool,
+    /// Which attempt of its launch the job was, from `0` for the first.
+    pub attempt: u32,
     /// RFC 3339 of when the job ended (its `updated_at`).
     pub ended_at: String,
 }
 
 impl TerminalJob {
-    /// Whether this job failed on infrastructure: it ended without a counted run, and
-    /// was not canceled. That is a job that ended `failed` with no run (or an
-    /// `infrastructure` one), and also one that ended `succeeded` with a `harness_error`
-    /// run — a harness error is infrastructure-class, but its run is still delivered, so
-    /// its job succeeds. A canceled job breaks the streak.
-    pub fn failed_on_infrastructure(&self) -> bool {
-        self.state != "canceled" && !self.counted
+    /// Whether this job ended its launch with nothing to count: it was not canceled, it
+    /// has no counted run, and the backend did not retry it, so its automatic retries are
+    /// used up. A cell or rung slot holding one of these that no later launch replaced is
+    /// [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell).
+    pub fn exhausted_without_a_result(&self) -> bool {
+        self.state != "canceled" && !self.counted && !self.retried
     }
 }
 
@@ -4238,6 +4277,11 @@ fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
     counts
 }
 
+/// One terminal job as [`Db::recent_terminal_jobs`] selects it: its state, the id of the
+/// record it stored, when it ended, the job that retried it, its attempt, and its place
+/// in the queue.
+type TerminalTuple = (String, Option<String>, String, Option<String>, i32, i64);
+
 /// One row of a grouped coverage count: a [`CellKey`]'s eight segments (the engine one and
 /// the two gg ones still nullable, as the columns are) followed by the tally.
 type CellCountRow = (
@@ -4350,6 +4394,7 @@ fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::Cover
             cases: serde_json::from_str(&row.cases_json)?,
             outer_axis: crate::api::CoverageAxis::parse(&row.outer_axis),
             in_flight_limit: row.in_flight_limit.map(in_flight_limit_from_column),
+            retry_count: row.retry_count.max(0) as u32,
             updated_at: row.updated_at,
         },
         filling: row.fill_id.is_some(),
@@ -4539,6 +4584,8 @@ pub struct StoredLadder {
     /// This ladder's override of the account's runs-in-flight limit, or `None` to
     /// inherit [`Db::coverage_in_flight_limit`].
     pub in_flight_limit: Option<InFlightLimit>,
+    /// How many automatic retries each run a dispatch of this ladder launches gets.
+    pub retry_count: u32,
     /// RFC 3339 of when the ladder was last saved.
     pub updated_at: String,
 }
@@ -4669,13 +4716,24 @@ pub struct StoredDispatchOutcome {
 /// A rung slot of a dispatch: the rung's id and the climber's [`CellKey`] on that rung.
 pub type SlotKey = (String, CellKey);
 
-/// One terminal job as read for a failing streak: its state, its record id, and when it
-/// ended.
-type TerminalRow = (String, Option<String>, String);
+/// One terminal job as read off the job table, before its record is looked up
+/// ([`TerminalJob`]).
+struct TerminalRow {
+    /// The job's terminal state.
+    state: String,
+    /// The id of the record it stored, if any.
+    record_id: Option<String>,
+    /// RFC 3339 of when it ended.
+    ended_at: String,
+    /// Whether the backend retried it automatically.
+    retried: bool,
+    /// Which attempt of its launch it was, from `0`.
+    attempt: i32,
+}
 
 /// Everything the jobs a dispatch launched say about its rung slots, read in one pass
 /// over the jobs whose origin names the dispatch ([`Db::dispatch_evidence`]): what its
-/// limit, its Stop, its early stop and its failing streak act on. A slot's runs are no
+/// limit, its Stop, its early stop and its failing block act on. A slot's runs are no
 /// part of it. They are its cell's, whoever launched them
 /// ([`Db::counted_runs_by_cell`]).
 #[derive(Debug, Clone, Default)]
@@ -4684,8 +4742,12 @@ pub struct DispatchEvidence {
     pub in_flight: HashMap<SlotKey, Vec<String>>,
     /// How many of each slot's jobs are still waiting (`queued` or `pending`).
     pub waiting: HashMap<SlotKey, u32>,
-    /// Each slot's terminal jobs, newest first, for the failing streak.
+    /// Each slot's terminal jobs, newest first, for the failing block.
     pub terminal: HashMap<SlotKey, Vec<TerminalJob>>,
+    /// When each slot's newest launch was created: the latest `created_at` among its
+    /// first attempts, in flight or ended. A terminal job that ended before it has been
+    /// replaced.
+    pub launched: HashMap<SlotKey, OffsetDateTime>,
 }
 
 /// Ladders: the ordered, gated sibling of a coverage plan, and their dispatches.
@@ -4782,6 +4844,7 @@ impl Db {
             early_stop: Set(stored.gate.early_stop),
             count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
             in_flight_limit: Set(stored.in_flight_limit.map(in_flight_limit_to_column)),
+            retry_count: Set(stored.retry_count as i32),
             // A fresh ladder is nobody's claim; only a launch pass ever sets this.
             launch_claimed_at: Set(None),
             launch_requested: Set(false),
@@ -4836,6 +4899,10 @@ impl Db {
             .col_expr(
                 ladder::Column::InFlightLimit,
                 Expr::value(stored.in_flight_limit.map(in_flight_limit_to_column)),
+            )
+            .col_expr(
+                ladder::Column::RetryCount,
+                Expr::value(stored.retry_count as i32),
             )
             .col_expr(
                 ladder::Column::ComboGroupIdsJson,
@@ -5127,7 +5194,7 @@ impl Db {
     }
 
     /// Record that the owner retried one climber of a dispatch at `now`. Only jobs that
-    /// ended after it count toward its failing streak from here on. Answers whether the
+    /// ended after it are read for its failing block from here on. Answers whether the
     /// climber is one of the dispatch's.
     pub async fn record_dispatch_climber_retry(
         &self,
@@ -5236,6 +5303,12 @@ impl Db {
                     job.gg_models.clone().unwrap_or_default(),
                 ),
             );
+            if job.attempt == 0
+                && let Ok(created) = OffsetDateTime::parse(&job.created_at, &Rfc3339)
+            {
+                let latest = evidence.launched.entry(slot.clone()).or_insert(created);
+                *latest = (*latest).max(created);
+            }
             if IN_FLIGHT_STATES.contains(&job.state.as_str()) {
                 if CANCELABLE_WAITING_STATES.contains(&job.state.as_str()) {
                     *evidence.waiting.entry(slot.clone()).or_insert(0) += 1;
@@ -5247,16 +5320,22 @@ impl Db {
             if !reaped {
                 terminal_rows.push((
                     slot,
-                    (job.state, job.record_id, job.updated_at),
+                    TerminalRow {
+                        state: job.state,
+                        record_id: job.record_id,
+                        ended_at: job.updated_at,
+                        retried: job.retried_by.is_some(),
+                        attempt: job.attempt,
+                    },
                     job.queue_seq,
                 ));
             }
         }
 
         // The terminal jobs, newest first per slot, read as `TerminalJob`s in one go.
-        terminal_rows.sort_by(|(_, (_, _, a_ended), a_seq), (_, (_, _, b_ended), b_seq)| {
-            let a = OffsetDateTime::parse(a_ended, &Rfc3339).ok();
-            let b = OffsetDateTime::parse(b_ended, &Rfc3339).ok();
+        terminal_rows.sort_by(|(_, a_row, a_seq), (_, b_row, b_seq)| {
+            let a = OffsetDateTime::parse(&a_row.ended_at, &Rfc3339).ok();
+            let b = OffsetDateTime::parse(&b_row.ended_at, &Rfc3339).ok();
             b.cmp(&a).then(b_seq.cmp(a_seq))
         });
         let slots: Vec<SlotKey> = terminal_rows
@@ -5451,6 +5530,7 @@ fn stored_ladder(row: ladder::Model, rungs: Vec<StoredLadderRung>) -> Result<Sto
         rungs,
         outer_axis: row.outer_axis,
         in_flight_limit: row.in_flight_limit.map(in_flight_limit_from_column),
+        retry_count: row.retry_count.max(0) as u32,
         updated_at: row.updated_at,
     })
 }
@@ -6025,9 +6105,9 @@ fn publishable_failure_states() -> Vec<&'static str> {
 }
 
 /// The wire strings of the **counted** run states — the model's own results: completed,
-/// catastrophic, timed out, limit exceeded and hung. Never the infrastructure-class
-/// failures (`infrastructure`, `harness_error`) or an operator's cancel. What a coverage
-/// cell and a rung slot count toward their targets and a rung's gate reads as evidence.
+/// catastrophic, timed out, harness error, limit exceeded and hung. Never an
+/// `infrastructure` failure or an operator's cancel. What a coverage cell and a rung slot
+/// count toward their targets and a rung's gate reads as evidence.
 ///
 /// Derived from
 /// [`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)
@@ -6036,6 +6116,18 @@ pub(crate) fn counted_run_states() -> Vec<&'static str> {
     test_cabinet_core::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.counts_as_model_result())
+        .map(run_state_str)
+        .collect()
+}
+
+/// The wire strings of the run states a comparison arm counts toward its `N`: the
+/// [counted](counted_run_states) states less `harness_error`, for which an arm launches a
+/// replacement (docs/comparisons/experiments.md, "Which runs an arm holds").
+fn arm_counted_run_states() -> Vec<&'static str> {
+    use test_cabinet_core::run_record::RunState;
+    RunState::ALL
+        .into_iter()
+        .filter(|state| state.counts_as_model_result() && *state != RunState::HarnessError)
         .map(run_state_str)
         .collect()
 }

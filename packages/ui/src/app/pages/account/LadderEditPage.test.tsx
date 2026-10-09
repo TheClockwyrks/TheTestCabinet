@@ -1,4 +1,10 @@
-import { act, render, screen, fireEvent } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +13,7 @@ import type {
   LadderInput,
   LadderProgress,
 } from "@clockwyrks/run-record/ladders";
+import { retryLimitHelp } from "./retry-limit";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import {
@@ -84,11 +91,18 @@ function ladder(over: Partial<Ladder> = {}): Ladder {
     updatedAt: "2026-01-01T00:00:00Z",
     outerAxis: "rung",
     inFlightLimit: null,
+    retryCount: 1,
     ...over,
   } as unknown as Ladder;
 }
 
 let saved: LadderInput | null = null;
+
+/** The latest dispatch the progress board reports, as far as the editor reads it. */
+function dispatchOf(running: boolean, attention: boolean) {
+  if (attention) return { status: "needsAttention" };
+  return running ? { status: "running" } : null;
+}
 
 // `legacy` names the case versions on the legacy manifest format, which a ladder cannot
 // climb; `refuse` is a message the save is rejected with, as the backend's 400 is.
@@ -98,6 +112,7 @@ function backendValue(
     legacy = [] as string[],
     refuse = null as string | null,
     running = false,
+    attention = false,
   } = {},
 ) {
   return {
@@ -107,7 +122,7 @@ function backendValue(
       getLadderProgress: async () =>
         ({
           ladderId: existing.id,
-          dispatch: running ? { status: "running" } : null,
+          dispatch: dispatchOf(running, attention),
           rungs: [],
           climbers: [],
           runsUnreviewed: 0,
@@ -271,6 +286,11 @@ describe("LadderEditPage launching", () => {
     expect(screen.getByText(/10 runs in flight/)).toBeTruthy();
   });
 
+  it("says so too while the dispatch reads Needs attention", async () => {
+    await renderEditor(ladder(), { attention: true });
+    expect(screen.getByText(/Edits apply to the next Run/)).toBeInTheDocument();
+  });
+
   it("says an edit applies to the next Run while a dispatch is running", async () => {
     await renderEditor(ladder(), { running: true });
     expect(screen.getByText(/Edits apply to the next Run/)).toBeTruthy();
@@ -304,5 +324,91 @@ describe("LadderEditPage unclimbable rungs", () => {
     await renderEditor(ladder(), { refuse: message });
     await save();
     expect(screen.getByText(new RegExp(message))).toBeTruthy();
+  });
+});
+
+function retryLimit() {
+  return screen.getByLabelText<HTMLInputElement>("Retry limit");
+}
+
+// The retry limit: how many automatic retries each run launched gets. A whole number
+// from 0 to 10 that a new ladder starts at 1 on, held as typed and refused out of range.
+describe("LadderEditPage retry limit", () => {
+  it("starts a new ladder at one retry", async () => {
+    render(
+      <MemoryRouter initialEntries={["/account/ladders/new"]}>
+        <BackendProvider value={backendValue(ladder())}>
+          <GalleryDataProvider value={galleryValue()}>
+            <Routes>
+              <Route path="/account/ladders/new" element={<LadderEditPage />} />
+            </Routes>
+          </GalleryDataProvider>
+        </BackendProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByLabelText("Retry limit")).toHaveValue(1);
+  });
+
+  it("loads the saved limit and saves it back", async () => {
+    await renderEditor(ladder({ retryCount: 4 }));
+    expect(retryLimit()).toHaveValue(4);
+    fireEvent.click(screen.getByRole("button", { name: "Save ladder" }));
+    await waitFor(() => {
+      expect(saved?.retryCount).toBe(4);
+    });
+  });
+
+  it("saves zero as zero: retries turned off, not the default", async () => {
+    await renderEditor();
+    expect(retryLimit()).toHaveValue(1);
+    fireEvent.change(retryLimit(), { target: { value: "0" } });
+    expect(retryLimit()).not.toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Save ladder" }));
+    await waitFor(() => {
+      expect(saved?.retryCount).toBe(0);
+    });
+  });
+
+  it("refuses a limit outside 0 to 10 rather than correcting it", async () => {
+    await renderEditor();
+    const saveButton = screen.getByRole("button", { name: "Save ladder" });
+
+    fireEvent.change(retryLimit(), { target: { value: "11" } });
+    expect(retryLimit()).toHaveValue(11);
+    expect(retryLimit()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Retry limit must be 10 or less.")).toBeVisible();
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(retryLimit(), { target: { value: "-1" } });
+    expect(screen.getByText("Retry limit must be 0 or more.")).toBeVisible();
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(retryLimit(), { target: { value: "1.5" } });
+    expect(retryLimit()).toHaveAttribute("aria-invalid", "true");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.click(saveButton);
+    expect(saved).toBeNull();
+
+    fireEvent.change(retryLimit(), { target: { value: "10" } });
+    expect(saveButton).toBeEnabled();
+  });
+
+  it("offers a reset once the limit moves off one, and says what blocks", async () => {
+    await renderEditor();
+    expect(
+      screen.queryByRole("button", { name: "Reset Retry limit" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(retryLimit(), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset Retry limit" }));
+    expect(retryLimit()).toHaveValue(1);
+    expect(
+      screen.getByText(
+        "How many times a failed run is retried automatically before its result stands.",
+      ),
+    ).toBeInTheDocument();
+    expect(retryLimitHelp("ladder")).toMatch(
+      /0 turns retries off\. A run that uses its retries up without a result that counts blocks its climber until it is retried by hand\./,
+    );
   });
 });

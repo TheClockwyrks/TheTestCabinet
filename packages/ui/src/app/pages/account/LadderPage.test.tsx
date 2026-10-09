@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  DispatchStatus,
   Ladder,
   LadderClimber,
   LadderDispatch,
@@ -13,6 +14,8 @@ import type {
   SlotCounts,
 } from "@clockwyrks/run-record/ladders";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import { dispatchLive } from "./ladder-dispatch";
+import ladderStyles from "./Ladder.module.scss";
 import type { BackendClient } from "../../../client/clients";
 import {
   BackendProvider,
@@ -28,6 +31,7 @@ import {
 } from "../../data/galleryContext";
 import {
   ClimberRow,
+  LADDER_ATTENTION_NOTE,
   LadderPage,
   climberCombo,
   climberStatusLabel,
@@ -37,6 +41,7 @@ import {
   dispatchStatusLabel,
   ladderStatusNote,
 } from "./LadderPage";
+import exec from "../runs/RunExec.module.scss";
 
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -208,6 +213,7 @@ function dispatch(over: Partial<LadderDispatch> = {}): LadderDispatch {
     },
     outerAxis: "rung",
     inFlightLimit: { kind: "bounded", runs: 10 },
+    retryCount: 1,
     slots: slotCounts(),
     runs: { total: 9, done: 4, inFlight: 1 },
     climbersRunning: 1,
@@ -254,7 +260,7 @@ describe("climberStatusLabel", () => {
         }),
         3,
       ),
-    ).toBe("Blocked at rung 2: runs keep failing");
+    ).toBe("Blocked at rung 2: retries used up");
     expect(
       climberStatusLabel(
         climber({ status: "blocked", blocked: { kind: "unrated", runs: 1 } }),
@@ -291,6 +297,7 @@ describe("dispatchStatusLabel", () => {
   it("reads a ladder never run as Not run yet", () => {
     expect(dispatchStatusLabel(null)).toBe("Not run yet");
     expect(dispatchStatusLabel("running")).toBe("Running");
+    expect(dispatchStatusLabel("needsAttention")).toBe("Needs attention");
     expect(dispatchStatusLabel("finished")).toBe("Finished");
     expect(dispatchStatusLabel("stopped")).toBe("Stopped");
   });
@@ -316,10 +323,35 @@ describe("describeTally", () => {
   });
 });
 
+describe("dispatchLive", () => {
+  it("holds a dispatch that needs attention to be the running one", () => {
+    expect(dispatchLive("running")).toBe(true);
+    expect(dispatchLive("needsAttention")).toBe(true);
+    expect(dispatchLive("finished")).toBe(false);
+    expect(dispatchLive("stopped")).toBe(false);
+    expect(dispatchLive(null)).toBe(false);
+  });
+});
+
 describe("describeClimberBlock", () => {
+  // The attempts are the ones the one blocking launch made: the first, and each
+  // automatic retry. Nothing is counted "in a row" any more.
+  it("counts the blocking launch's attempts, one or several", () => {
+    expect(describeClimberBlock({ kind: "failing", attempts: 1 })).toBe(
+      "A run launched for this rung used up its automatic retries without a run " +
+        "that counts (1 attempt) and was not launched again. Fix the cause, then " +
+        "retry this climber to launch it again.",
+    );
+    expect(describeClimberBlock({ kind: "failing", attempts: 2 })).toBe(
+      "A run launched for this rung used up its automatic retries without a run " +
+        "that counts (2 attempts) and was not launched again. Fix the cause, then " +
+        "retry this climber to launch it again.",
+    );
+  });
+
   it("names the fix for each reason", () => {
     expect(describeClimberBlock({ kind: "failing", attempts: 3 })).toMatch(
-      /last 3 runs on this rung failed on infrastructure.*retry/,
+      /used up its automatic retries without a run that counts \(3 attempts\).*retry/,
     );
     expect(
       describeClimberBlock({ kind: "unlaunchable", reason: "slot unbound" }),
@@ -409,7 +441,29 @@ describe("ladderStatusNote", () => {
     );
     expect(note).toMatch(/1 blocked climber cannot be launched/);
     expect(note).toMatch(
-      /2 blocked climbers stand on a rung whose runs keep failing/,
+      /2 blocked climbers stand on a rung where a launch used up its automatic retries/,
+    );
+  });
+
+  it("says first that nothing is running when the dispatch needs attention", () => {
+    const note = ladderStatusNote(
+      progress({
+        dispatch: dispatch({ status: "needsAttention", climbersBlocked: 1 }),
+        climbers: [
+          climber({
+            status: "blocked",
+            blocked: { kind: "failing", attempts: 2 },
+          }),
+        ],
+      }),
+    );
+    expect(note).toBe(
+      `${LADDER_ATTENTION_NOTE} 1 blocked climber stands on a rung where a ` +
+        "launch used up its automatic retries without a run that counts: fix " +
+        "the cause, then retry it.",
+    );
+    expect(LADDER_ATTENTION_NOTE).toMatch(
+      /Nothing is running.*blocked climbers are waiting on you/,
     );
   });
 
@@ -432,7 +486,7 @@ describe("ClimberRow", () => {
     opts: {
       rungs?: LadderProgressRung[];
       query?: GalleryDataInput["queryRunSummaries"];
-      dispatch?: "running" | "finished" | "stopped";
+      dispatch?: DispatchStatus;
     } = {},
   ) {
     const onRetry = vi.fn();
@@ -518,10 +572,8 @@ describe("ClimberRow", () => {
       status: "blocked",
       blocked: { kind: "failing", attempts: 3 },
     });
-    expect(
-      screen.getByText("Blocked at rung 2: runs keep failing"),
-    ).toBeTruthy();
-    expect(screen.getByText(/failed on infrastructure/)).toBeTruthy();
+    expect(screen.getByText("Blocked at rung 2: retries used up")).toBeTruthy();
+    expect(screen.getByText(/used up its automatic retries/)).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Retry claude · opus" }),
     );
@@ -543,6 +595,20 @@ describe("ClimberRow", () => {
   it("offers no Retry for an unrated block", () => {
     renderRow({ status: "blocked", blocked: { kind: "unrated", runs: 2 } });
     expect(screen.queryByRole("button", { name: /^Retry / })).toBeNull();
+  });
+
+  it("keeps the reason and Retry under a dispatch that needs attention", () => {
+    const { onRetry } = renderRow(
+      { status: "blocked", blocked: { kind: "failing", attempts: 2 } },
+      { dispatch: "needsAttention" },
+    );
+    expect(
+      screen.getByText(/without a run that counts \(2 attempts\)/),
+    ).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "Retry claude · opus" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it("offers no Retry once the dispatch is no longer running", () => {
@@ -706,6 +772,7 @@ describe("LadderPage", () => {
     ],
     outerAxis: "rung",
     inFlightLimit: null,
+    retryCount: 1,
     updatedAt: "2026-10-02T00:00:00Z",
   };
 
@@ -822,6 +889,53 @@ describe("LadderPage", () => {
     const run = screen.getByRole("button", { name: "▶ Run ladder" });
     expect((run as HTMLButtonElement).disabled).toBe(true);
     expect(run.getAttribute("title")).toMatch(/Stop it to run again/);
+  });
+
+  // Needs attention is a reading of a running dispatch: nothing of it is in flight and
+  // its blocked climbers wait on their owner, so Run stays unavailable while Stop and
+  // the climber's Retry stay available.
+  it("reads a dispatch that needs attention, keeping Stop and Retry", async () => {
+    renderPage(
+      progress({
+        dispatch: dispatch({
+          status: "needsAttention",
+          retryCount: 2,
+          climbersRunning: 0,
+          climbersBlocked: 1,
+          runs: { total: 9, done: 3, inFlight: 0 },
+        }),
+        climbers: [
+          climber({
+            status: "blocked",
+            blocked: { kind: "failing", attempts: 3 },
+          }),
+        ],
+      }),
+    );
+    const badge = await screen.findByText("Needs attention");
+    expect(badge).toHaveClass(ladderStyles.badgeAttention ?? "missing");
+    expect(screen.getByText(/^Nothing is running: every climber/)).toHaveClass(
+      exec.warn ?? "missing",
+    );
+    const run = screen.getByRole("button", { name: "▶ Run ladder" });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute(
+      "title",
+      expect.stringMatching(/waiting on its blocked climbers/),
+    );
+    expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Stop and cancel running" }),
+    ).toBeEnabled();
+    // The retry limit the dispatch took at Run, beside the order it climbs in.
+    expect(screen.getByText(/^Retry limit:/)).toHaveTextContent(
+      "Retry limit: 2",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry claude · opus" }),
+    );
+    await screen.findByText("Retrying claude · opus.");
+    expect(calls).toEqual(["retry"]);
   });
 
   it("stops the dispatch and says what it cancelled", async () => {

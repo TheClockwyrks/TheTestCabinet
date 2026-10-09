@@ -19,10 +19,10 @@
           "type": "object"
         },
         {
-          "description": "The rung slot's most recent terminal jobs all failed on infrastructure, and\nnothing of it is in flight. Fix: fix the cause, then retry the climber\n(`POST /ladders/{id}/climbers/retry`), which relaunches it.",
+          "description": "A job the dispatch launched for the rung slot used up its automatic retries\nwithout a counted run, no later launch of the dispatch took its place, and\nnothing of the slot is in flight. Fix: fix the\ncause, then retry the climber (`POST /ladders/{id}/climbers/retry`), which\nrelaunches it.",
           "properties": {
             "attempts": {
-              "description": "How many failed jobs in a row marked it failing.",
+              "description": "How many attempts that launch made: the first, and each automatic retry.",
               "format": "uint32",
               "minimum": 0,
               "type": "integer"
@@ -110,6 +110,11 @@
         {
           "const": "running",
           "description": "Launch passes are still climbing it.",
+          "type": "string"
+        },
+        {
+          "const": "needsAttention",
+          "description": "It is running and waiting on its owner: none of its jobs is in flight, every\nclimber is completed, failed or blocked, and at least one is blocked. A reading of\na running dispatch, derived whenever its status is reported and never stored: a\nclimber's Retry or a run arriving for one of its slots makes it `running` again.",
           "type": "string"
         },
         {
@@ -352,6 +357,12 @@
           "$ref": "#/$defs/LadderAxis",
           "description": "The climb order, as it stood at Run."
         },
+        "retryCount": {
+          "description": "The retry limit, as it stood at Run: how many automatic retries each run the\ndispatch launches gets.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "runs": {
           "$ref": "#/$defs/DispatchRuns",
           "description": "The runs: total, done, in flight."
@@ -376,6 +387,7 @@
         "gate",
         "outerAxis",
         "inFlightLimit",
+        "retryCount",
         "slots",
         "runs",
         "climbersRunning",

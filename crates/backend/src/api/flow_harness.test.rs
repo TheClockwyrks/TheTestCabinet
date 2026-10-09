@@ -167,6 +167,22 @@ pub(crate) async fn enqueue_other(
         .unwrap();
 }
 
+/// Enqueue a job of `slug` on the shared climber now, as a launch by hand made at this
+/// moment would: a launch created after everything that has ended so far.
+pub(crate) async fn enqueue_now(state: &AppState, job_id: &str, slug: &str) {
+    let now = super::jobs::now_rfc3339().unwrap();
+    state
+        .db
+        .enqueue_job(crate::db::NewJob {
+            test_case_slug: slug.to_string(),
+            model_id: SONNET.to_string(),
+            user_id: Some(OWNER.to_string()),
+            ..crate::db::tests::new_job(job_id, &now)
+        })
+        .await
+        .unwrap();
+}
+
 /// Enqueue a second job carrying `of`'s cell and origin: the duplicate an automatic retry
 /// or a restart's reaping used to leave in flight beside the original.
 pub(crate) async fn duplicate(state: &AppState, of: &job::Model, job_id: &str) {
@@ -223,6 +239,42 @@ pub(crate) async fn report(state: &AppState, job_id: &str, record: RunRecord) {
     .await
     .unwrap();
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// Report `job_id` failed with no run, as a driver whose infrastructure broke does: the
+/// backend retries it while the launch has retries left. Returns the id of the retry it
+/// enqueued, if any.
+pub(crate) async fn report_failed(state: &AppState, job_id: &str) -> Option<String> {
+    let token = state.db.get_job(job_id).await.unwrap().unwrap().job_token;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::AUTHORIZATION,
+        format!("Bearer {token}").parse().unwrap(),
+    );
+    let status = super::jobs::update_status(
+        State(state.clone()),
+        Path(job_id.to_string()),
+        headers,
+        Json(StatusUpdate {
+            state: DriverState::Failed,
+            record: None,
+            detail: Some("harness unavailable".to_string()),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let job = state.db.get_job(job_id).await.unwrap().unwrap();
+    assert_eq!(job.state, "failed");
+    job.retried_by
+}
+
+/// The `retryCount` a job's launch request carries.
+pub(crate) fn retry_count_of(job: &job::Model) -> Option<u64> {
+    let request: serde_json::Value = serde_json::from_str(&job.request_json).unwrap();
+    request
+        .get("retryCount")
+        .and_then(serde_json::Value::as_u64)
 }
 
 /// A run of `slug` that ended on `run_state` rather than completing.

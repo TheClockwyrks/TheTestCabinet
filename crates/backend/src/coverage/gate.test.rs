@@ -431,7 +431,7 @@ fn early_stop_never_fails_a_rung_a_run_in_flight_could_still_pass() {
     let gate = all_broken();
     let broken = many(rated(Rating::Broken), 2);
     assert_eq!(evaluate(&broken, 2, 2, &gate), GateOutcome::Undecided);
-    // Once they are gone (canceled, or infrastructure-class) the rung has failed.
+    // Once they are gone (canceled, or failed on infrastructure) the rung has failed.
     assert_eq!(evaluate(&broken, 2, 0, &gate), GateOutcome::Failed);
 }
 

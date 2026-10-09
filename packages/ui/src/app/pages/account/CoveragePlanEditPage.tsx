@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import {
+  DEFAULT_RETRY_LIMIT,
+  RETRY_LIMIT_DESCRIPTION,
+  RETRY_LIMIT_LABEL,
+  retryLimitHelp,
+  useRetryLimitField,
+} from "./retry-limit";
 import { LoadingState } from "../../components/LoadingState";
 import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import type {
@@ -66,6 +73,8 @@ export function CoveragePlanEditPage() {
     integer: true,
   });
   const runsPerCell = runsPerCellField.value ?? DEFAULT_RUNS_PER_CELL;
+  // How many automatic retries each run the plan launches gets.
+  const retryLimitField = useRetryLimitField();
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [caseGroupIds, setCaseGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
@@ -112,6 +121,7 @@ export function CoveragePlanEditPage() {
             setCases(plan.cases);
             setOuterAxis(plan.outerAxis);
             setInFlightLimit(plan.inFlightLimit ?? null);
+            retryLimitField.set(plan.retryCount);
           }
         }
         setLoading(false);
@@ -140,8 +150,15 @@ export function CoveragePlanEditPage() {
     return () => {
       active = false;
     };
-    // `runsPerCellField.set` is referentially stable (see components/NumberField).
-  }, [backend, token, editing, planId, runsPerCellField.set]);
+    // Both fields' `set` are referentially stable (see components/NumberField).
+  }, [
+    backend,
+    token,
+    editing,
+    planId,
+    runsPerCellField.set,
+    retryLimitField.set,
+  ]);
 
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
@@ -166,7 +183,10 @@ export function CoveragePlanEditPage() {
     (caseGroupIds.length > 0 || cases.length > 0) &&
     // A plan with no run target fills nothing, so an emptied or out-of-range field
     // refuses the save rather than being corrected in place.
-    runsPerCellField.valid;
+    runsPerCellField.valid &&
+    // The backend would clamp a retry limit out of range; the save is refused
+    // instead, so what is saved is what the field says.
+    retryLimitField.valid;
 
   async function onSave() {
     if (!token || !savable) return;
@@ -182,6 +202,7 @@ export function CoveragePlanEditPage() {
       // default", a bound of 0 means "launch nothing", and no limit means
       // "everything at once".
       ...(inFlightLimit === null ? {} : { inFlightLimit }),
+      retryCount: retryLimitField.value ?? DEFAULT_RETRY_LIMIT,
     };
     setBusy(true);
     setError(null);
@@ -273,6 +294,26 @@ export function CoveragePlanEditPage() {
             accountDefault={accountLimit}
             onChange={setInFlightLimit}
           />
+          <SettingRow
+            label={RETRY_LIMIT_LABEL}
+            description={RETRY_LIMIT_DESCRIPTION}
+            help={retryLimitHelp("plan")}
+            modified={retryLimitField.raw !== String(DEFAULT_RETRY_LIMIT)}
+            onReset={() => {
+              retryLimitField.set(DEFAULT_RETRY_LIMIT);
+            }}
+          >
+            {(id) => (
+              <NumberField
+                id={id}
+                wrapperClassName={styles.settingNumber}
+                showProblem={false}
+                {...retryLimitField.bounds}
+                value={retryLimitField.raw}
+                onChange={retryLimitField.setRaw}
+              />
+            )}
+          </SettingRow>
 
           <p className={exec.sectionLabel}>Combination groups</p>
           {comboGroups.length === 0 ? (
@@ -345,6 +386,12 @@ export function CoveragePlanEditPage() {
           {runsPerCellField.message && (
             <p className={`${exec.notice} ${exec.warn}`}>
               {runsPerCellField.message}
+            </p>
+          )}
+
+          {retryLimitField.message && (
+            <p className={[exec.notice, exec.warn].join(" ")}>
+              {retryLimitField.message}
             </p>
           )}
 

@@ -524,12 +524,13 @@ fn only_the_models_own_results_count_toward_a_cell() {
             RunState::Completed,
             RunState::Catastrophic,
             RunState::TimedOut,
+            RunState::HarnessError,
             RunState::LimitExceeded,
             RunState::Hung,
         ]
     );
-    // A harness error is the harness's or the provider's fault: infrastructure-class.
-    assert!(!RunState::HarnessError.counts_as_model_result());
+    // A harness error that outlived its retries is the model's result like the rest.
+    assert!(RunState::HarnessError.counts_as_model_result());
     assert!(!RunState::Infrastructure.counts_as_model_result());
     assert!(!RunState::Canceled.counts_as_model_result());
 }
