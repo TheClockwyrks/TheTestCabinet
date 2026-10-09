@@ -285,18 +285,20 @@ fn a_code_producing_definition_carries_its_engines_workspaces_build_and_toolchai
 fn an_end_to_end_definition_seeds_the_suites_assets_so_the_model_writes_only_code() {
     let dir = materials();
     let resolved = resolve(dir.path(), "end-to-end");
-    let dests: Vec<String> = resolved
+    // A destination is a host path, so it is compared as one: on Windows it is
+    // joined with `\`, and `Path` equality reads either separator.
+    let dests: Vec<&Path> = resolved
         .common_workspace
         .get("none")
         .iter()
-        .map(|file| file.dest.display().to_string())
+        .map(|file| file.dest.as_path())
         .collect();
     assert!(
-        dests.contains(&"assets/ball/ball.vox".to_string()),
+        dests.contains(&Path::new("assets/ball/ball.vox")),
         "{dests:?}"
     );
     assert!(
-        dests.contains(&"assets/player-ship/player-ship.png".to_string()),
+        dests.contains(&Path::new("assets/player-ship/player-ship.png")),
         "{dests:?}"
     );
     // A full stack run produces its own assets, so none are seeded for it.
@@ -392,18 +394,19 @@ fn a_definition_is_experimental_when_either_side_declares_it() {
 fn a_seeded_specification_renders_its_prose_then_its_requirements_at_its_declared_path() {
     let dir = materials();
     let resolved = resolve(dir.path(), "end-to-end");
-    let dests: Vec<String> = resolved
+    // A destination is a host path, compared as one (see above).
+    let dests: Vec<&Path> = resolved
         .common_specs
         .iter()
-        .map(|spec| spec.dest.display().to_string())
+        .map(|spec| spec.dest.as_path())
         .collect();
     // The definition lists two specifications, in order, and the nested one is
     // seeded at the path it declares rather than at its folder path.
     assert_eq!(
         dests,
         vec![
-            "specs/ball-physics.md".to_string(),
-            "specs/ball-physics/spin.md".to_string()
+            Path::new("specs/ball-physics.md"),
+            Path::new("specs/ball-physics/spin.md")
         ]
     );
 
@@ -433,17 +436,18 @@ fn a_seeded_specification_renders_its_prose_then_its_requirements_at_its_declare
 fn omitting_the_specifications_key_covers_every_specification_the_suite_declares() {
     let dir = materials();
     let resolved = resolve(dir.path(), "full-stack");
-    let dests: Vec<String> = resolved
+    // A destination is a host path, compared as one (see above).
+    let dests: Vec<&Path> = resolved
         .common_specs
         .iter()
-        .map(|spec| spec.dest.display().to_string())
+        .map(|spec| spec.dest.as_path())
         .collect();
     assert_eq!(
         dests,
         vec![
-            "specs/assets.md".to_string(),
-            "specs/ball-physics.md".to_string(),
-            "specs/ball-physics/spin.md".to_string(),
+            Path::new("specs/assets.md"),
+            Path::new("specs/ball-physics.md"),
+            Path::new("specs/ball-physics/spin.md"),
         ]
     );
 }

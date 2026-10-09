@@ -1366,7 +1366,8 @@ impl BackendClient for SuiteStubBackend {
         } else {
             fixture_suites_root().join("carom/versions/v1.0.0")
         };
-        if self.withhold == Some(source.to_string_lossy().as_ref()) {
+        // The key as the HTTP client sends it, '/'-separated on every host.
+        if self.withhold == Some(forward_slash(source).as_str()) {
             return Err(Error::Publish("404 not found".to_string()));
         }
         let bytes = std::fs::read(base.join(source))

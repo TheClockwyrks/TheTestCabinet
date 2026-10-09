@@ -56,6 +56,7 @@ fn passed(title: &str) -> Reported<'_> {
 }
 
 /// A failing reported test carrying the detail the validator supplied.
+#[cfg(unix)]
 fn failed<'a>(title: &'a str, detail: &'a str) -> Reported<'a> {
     Reported {
         title,
@@ -198,6 +199,7 @@ impl Produced {
     }
 
     /// What the fake vitest recorded under `name`.
+    #[cfg(unix)]
     fn recorded(&self, name: &str) -> String {
         std::fs::read_to_string(self.repo.join(name))
             .unwrap_or_else(|err| panic!("the runner recorded `{name}`: {err}"))
@@ -220,6 +222,8 @@ fn outcome<'a>(outcomes: &'a [RequirementOutcome], id: &str) -> &'a RequirementO
 
 // --- What is recorded -------------------------------------------------------
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn a_conforming_implementation_passes_every_requirement_its_validators_decide() {
     let materials = scratch();
@@ -246,6 +250,8 @@ fn a_conforming_implementation_passes_every_requirement_its_validators_decide() 
     }
 }
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn an_outcome_is_keyed_by_its_identity_and_names_the_validators_that_decided_it() {
     let materials = scratch();
@@ -311,6 +317,8 @@ fn a_non_functional_requirement_records_no_validator_outcome() {
     assert_eq!(felt.detail.as_deref(), Some(REVIEWED_DETAIL));
 }
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn a_failing_validator_fails_exactly_the_requirement_claiming_it() {
     let materials = scratch();
@@ -368,6 +376,8 @@ fn a_failing_validator_fails_exactly_the_requirement_claiming_it() {
     );
 }
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn each_assertion_is_recorded_with_its_name_its_flag_and_its_detail() {
     let materials = scratch();
@@ -410,6 +420,8 @@ fn each_assertion_is_recorded_with_its_name_its_flag_and_its_detail() {
     );
 }
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn a_validator_that_raised_fails_its_requirement_and_leaves_the_run_standing() {
     let materials = scratch();
@@ -451,6 +463,8 @@ fn a_validator_that_raised_fails_its_requirement_and_leaves_the_run_standing() {
     );
 }
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn a_claimed_validator_the_project_reported_nothing_for_fails_its_requirement() {
     let materials = scratch();
@@ -482,6 +496,8 @@ fn a_claimed_validator_the_project_reported_nothing_for_fails_its_requirement() 
 
 // --- Reaching the served build ----------------------------------------------
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn the_base_url_and_the_debug_api_handle_are_named_to_the_project() {
     let materials = scratch();
@@ -523,6 +539,8 @@ fn the_project_is_run_with_the_json_reporter_against_its_own_config() {
     );
 }
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn only_the_claimed_validators_are_named_to_vitest() {
     let materials = scratch();
@@ -566,6 +584,8 @@ fn a_reported_test_file_maps_back_to_the_module_a_requirement_claims() {
 
 // --- The project is staged and taken back out -------------------------------
 
+// Needs the fake vitest to run, which is a `sh` script (see `Produced`).
+#[cfg(unix)]
 #[test]
 fn the_project_is_staged_for_the_run_and_removed_again() {
     let materials = scratch();
