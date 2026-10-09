@@ -13,6 +13,13 @@
 
 // ---- The ladders list ------------------------------------------------------
 
+// The list is the cards' query container: a card lays itself out by the width it
+// actually has, which the page caps well below a wide viewport, rather than by the
+// viewport's.
+.ladderList {
+  container: ladders / inline-size;
+}
+
 // A ladder card, as a grid of fixed slots in two rows, so the right side lines up
 // with the name row and with the description row:
 //
@@ -33,12 +40,11 @@
   row-gap: t.$space-xs;
 }
 
+// A name longer than its slot wraps onto a second line rather than being cut off.
 .cardName {
   grid-area: name;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .cardSub {
@@ -128,9 +134,46 @@
   align-self: center;
 }
 
-// A phone stacks the card: name, description, status and bar, counts, actions — each
-// still in its own slot, the bar taking whatever width the badge leaves.
-@include bp.below(t.$bp-sm) {
+// Below the width the two-row card needs, the fixed right side would squeeze the name
+// to nothing. The card stacks instead: the name and description keep the actions
+// beside them, and the status and the counts each take a full-width row beneath, the
+// bar stretching over whatever the badge leaves.
+//
+//   | name        | actions |
+//   | description | actions |
+//   | [status] [bar ............] |
+//   | N running · N passed · ...  |
+@container ladders (max-width: 56rem) {
+  .ladderCard {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name actions"
+      "sub actions"
+      "status status"
+      "counts counts";
+    row-gap: t.$space-sm;
+  }
+
+  .cardStatus {
+    justify-self: stretch;
+  }
+
+  .cardBar {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .cardCounts {
+    justify-self: start;
+  }
+}
+
+// A phone has no room for the actions beside the name either, nor for the four
+// counts on one line: everything takes a row of its own, the counts fall two by two
+// in equal columns, and the two actions split the last row so each is a full-size
+// target.
+@container ladders (max-width: 30rem) {
   .ladderCard {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -141,27 +184,30 @@
       "actions";
   }
 
-  .cardStatus,
-  .cardCounts,
-  .cardActions {
-    justify-self: stretch;
-  }
-
-  .cardBar {
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 0;
-  }
-
-  // Two by two, so no figure wraps alone onto a line of its own.
   .cardCounts {
+    justify-self: stretch;
     display: grid;
-    grid-template-columns: repeat(2, max-content);
-    column-gap: t.$space-lg;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: t.$space-xs t.$space-md;
   }
 
   .cardCountSep {
     display: none;
+  }
+
+  // The columns line the figures up here, so the fixed slot would only indent them.
+  .cardCountNum {
+    min-width: 0;
+  }
+
+  .cardActions {
+    justify-self: stretch;
+    margin-top: t.$space-xs;
+
+    > * {
+      flex: 1 1 0;
+      text-align: center;
+    }
   }
 }
 

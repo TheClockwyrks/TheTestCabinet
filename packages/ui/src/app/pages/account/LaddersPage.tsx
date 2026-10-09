@@ -109,7 +109,8 @@ function Count({ n, label }: { n: number; label: string }) {
 //
 // The whole list is one request (`GET /ladders/summary`), and every card is laid out
 // in fixed slots: the right side lines up with the name row and the description row,
-// and a number changing never moves anything.
+// and a number changing never moves anything. A card too narrow for that stacks its
+// slots instead, by its own width rather than the viewport's.
 export function LaddersPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
@@ -223,7 +224,7 @@ export function LaddersPage() {
           </Link>
         </div>
       ) : (
-        <div className={styles.list}>
+        <div className={[styles.list, ladderStyles.ladderList].join(" ")}>
           {ladders.map((entry) => {
             const view = ladderCardView(entry);
             return (
