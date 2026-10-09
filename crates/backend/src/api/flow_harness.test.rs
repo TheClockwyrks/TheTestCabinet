@@ -317,13 +317,6 @@ pub(crate) async fn publishing(state: &AppState) -> Vec<String> {
         .collect()
 }
 
-/// Turn automatic publishing on or off, as `TCAB_BACKEND_AUTO_PUBLISH` does.
-pub(crate) fn set_auto_publish(state: &mut AppState, on: bool) {
-    let mut config = (*state.config).clone();
-    config.auto_publish = on;
-    state.config = std::sync::Arc::new(config);
-}
-
 /// Every job, oldest first.
 pub(crate) async fn jobs(state: &AppState) -> Vec<job::Model> {
     use sea_orm::QueryOrder;

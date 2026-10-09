@@ -2031,15 +2031,3 @@ async fn a_run_a_dispatch_launched_is_published_once_by_its_report_and_the_pass_
     pass(&state, &id).await;
     assert_eq!(publishing(&state).await, ["run-a"]);
 }
-
-#[tokio::test]
-async fn with_automatic_publishing_off_a_dispatch_publishes_nothing() {
-    let (_dir, mut state) = test_state().await;
-    set_auto_publish(&mut state, false);
-    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
-    existing_run(&state, run_of("run-a", "pong", GREAT)).await;
-
-    run_ladder(&state, &id).await.unwrap();
-    pass(&state, &id).await;
-    assert!(publish_jobs(&state).await.is_empty());
-}

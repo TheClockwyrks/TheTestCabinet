@@ -40,15 +40,15 @@ impl AutoPublishCause {
 /// Enqueue a publish job for each of `run_ids` that publishes itself, and return
 /// the ids of the runs a job was newly enqueued for.
 ///
-/// Does nothing when `TCAB_BACKEND_AUTO_PUBLISH` is off. A run that does not
-/// qualify is passed over silently, and a failure to read the candidates or to
-/// enqueue one of them is logged and swallowed, the rest still being tried.
+/// A run that does not qualify is passed over silently, and a failure to read
+/// the candidates or to enqueue one of them is logged and swallowed, the rest
+/// still being tried.
 pub(crate) async fn auto_publish_runs(
     state: &AppState,
     run_ids: &[String],
     cause: AutoPublishCause,
 ) -> Vec<String> {
-    if !state.config.auto_publish || run_ids.is_empty() {
+    if run_ids.is_empty() {
         return Vec::new();
     }
     let candidates = match state.db.auto_publishable_among(run_ids).await {

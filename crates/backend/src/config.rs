@@ -124,15 +124,6 @@ pub struct Config {
     /// sets this truthy; production leaves it unset so experimental cases are never
     /// offered and thus never run or published.
     pub allow_experimental: bool,
-    /// Whether a run that qualifies publishes itself
-    /// (`TCAB_BACKEND_AUTO_PUBLISH`, falsy to disable). Defaults to `true`: a
-    /// completed validator-rated run enqueues its own publish job when its driver
-    /// reports it terminal, and a ladder pass enqueues one for each such run its
-    /// board counts. A publish is public and irreversible, so a deployment whose
-    /// dispatcher has no publisher (the local k3d cluster) turns this off rather
-    /// than accumulate jobs nothing claims. Off, neither trigger enqueues anything
-    /// and publishing a run by hand is unchanged.
-    pub auto_publish: bool,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -289,7 +280,6 @@ impl Config {
         let gg_reference = gg_reference_dir(nonempty("TCAB_GG_REFERENCE"), &checkout);
 
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
-        let auto_publish = on_unless_falsy("TCAB_BACKEND_AUTO_PUBLISH");
 
         let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
         let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
@@ -335,7 +325,6 @@ impl Config {
             grafana_url,
             snapshot_url,
             allow_experimental,
-            auto_publish,
         })
     }
 }
@@ -409,21 +398,4 @@ fn truthy(key: &str) -> bool {
             )
         })
         .unwrap_or(false)
-}
-
-/// Read a boolean environment variable that is **on by default**: only a falsy
-/// value turns it off, and unset, empty, or an unrecognized value leaves it on.
-/// The accepted falsy spellings (case-insensitive) are `0`, `false`, `no`, and
-/// `off`, the counterparts of the ones [`truthy`] accepts, so a typo never
-/// switches off a behavior the deployment relies on.
-fn on_unless_falsy(key: &str) -> bool {
-    std::env::var(key)
-        .ok()
-        .map(|v| {
-            !matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "0" | "false" | "no" | "off"
-            )
-        })
-        .unwrap_or(true)
 }

@@ -522,7 +522,7 @@ than a second one, whether an operator or the backend's
 [automatic publishing](/components/core/results/#automatic-publishing) enqueued
 it. A completed validator-rated run is enqueued by the backend when it finishes,
 so this endpoint is how every other publishable run is released and how a failed
-release is retried. `TCAB_BACKEND_AUTO_PUBLISH` leaves this endpoint unchanged.
+release is retried.
 
 The gate refuses a run that can never be published, an infrastructure failure or
 a canceled run, and it refuses a completed legacy run carrying no review. A

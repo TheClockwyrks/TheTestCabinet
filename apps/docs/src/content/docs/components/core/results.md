@@ -257,12 +257,6 @@ raises the publish-failed notification and waits in the Unpublished worklist for
 an operator. An automatic publish that cannot be enqueued is logged and never
 fails the report or the pass that prompted it.
 
-`TCAB_BACKEND_AUTO_PUBLISH` turns automatic publishing off for a deployment. It
-is on by default, and a deployment with no publisher sets it to `false`, since
-its publish jobs would wait in the queue until a publisher was configured and
-then all release at once. With it off the backend enqueues nothing by itself,
-and publishing a run by hand is unchanged.
-
 Only published runs appear in the public snapshot and therefore in the gallery. A
 published catastrophic or timeout failure shows its generated source and has no
 playable build, and its outcome is reported as a per-model statistic separate
