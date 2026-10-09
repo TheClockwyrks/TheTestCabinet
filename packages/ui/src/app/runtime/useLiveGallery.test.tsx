@@ -171,12 +171,48 @@ describe("useLiveGallery", () => {
         expect(result.current.gallery.modelsStatus).toBe("ready"),
       );
       expect(listModels).toHaveBeenCalledTimes(1);
+      // The first load has settled, so nothing is in flight.
+      expect(result.current.gallery.modelsRefreshing).toBe(false);
 
       act(() => result.current.runtime.requestRefresh());
 
+      // In flight from the very render the token changed in, which is what a
+      // page navigated to in the same step reads on its first commit.
       expect(result.current.gallery.modelsStatus).toBe("ready");
+      expect(result.current.gallery.modelsRefreshing).toBe(true);
       await waitFor(() => expect(listModels).toHaveBeenCalledTimes(2));
+      await waitFor(() => {
+        expect(result.current.gallery.modelsRefreshing).toBe(false);
+      });
       expect(result.current.gallery.modelsStatus).toBe("ready");
+    });
+
+    // The whole sequence a config save sets off, at the hook: the catalog is
+    // ready without the model, the refresh is requested, and the render that
+    // follows already says a read is in flight while the catalog still lacks the
+    // model. Only once the re-read lands does it stop, with the model present.
+    it("reads as refreshing until a created model arrives", async () => {
+      const { client, listModels } = backend([model("gpt")]);
+      const { result } = mount(client, null);
+      await waitFor(() => {
+        expect(result.current.gallery.modelsStatus).toBe("ready");
+      });
+
+      listModels.mockResolvedValueOnce([model("gpt"), model("claude")]);
+      act(() => {
+        result.current.runtime.requestRefresh();
+      });
+
+      expect(result.current.gallery.models.map((m) => m.slug)).toEqual(["gpt"]);
+      expect(result.current.gallery.modelsRefreshing).toBe(true);
+
+      await waitFor(() => {
+        expect(result.current.gallery.modelsRefreshing).toBe(false);
+      });
+      expect(result.current.gallery.models.map((m) => m.slug)).toEqual([
+        "gpt",
+        "claude",
+      ]);
     });
 
     // The reported defect, one layer down. The refresh token is bumped on every
@@ -194,10 +230,13 @@ describe("useLiveGallery", () => {
 
       listModels.mockRejectedValueOnce(new Error("network down"));
       act(() => result.current.runtime.requestRefresh());
+      expect(result.current.gallery.modelsRefreshing).toBe(true);
 
       await waitFor(() =>
         expect(result.current.gallery.modelsStatus).toBe("error"),
       );
+      // A failed refresh has settled: a page waiting on it stops waiting.
+      expect(result.current.gallery.modelsRefreshing).toBe(false);
       // The catalog on screen is untouched: a failed REFRESH is not an emptied
       // catalog, and a model page open on `claude` keeps resolving it.
       expect(result.current.gallery.models.map((m) => m.slug)).toEqual([
