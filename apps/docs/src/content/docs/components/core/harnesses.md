@@ -97,7 +97,7 @@ The backend's queue enforces the limit at claim time. It hands a dispatcher only
 a job whose harness has fewer runs already occupying a slot (`dispatched`,
 `starting`, or `running`) than its limit. A surplus run of that harness is held in
 the `pending` state until an in-flight run of the same harness frees a slot. This
-per-harness cap composes with the dispatcher's global in-flight cap
+per-harness cap composes with the dispatcher's run-lane cap
 (`TCAB_DISPATCHER_MAX_INFLIGHT`), and a run must clear both to start.
 
 The setting is served at `GET /harness-config`, an open read enumerating every

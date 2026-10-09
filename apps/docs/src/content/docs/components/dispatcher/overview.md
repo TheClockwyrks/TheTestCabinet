@@ -16,26 +16,49 @@ The dispatcher runs one loop forever. Each tick:
 
 1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
    (selected by their `app.kubernetes.io/managed-by` label), count the
-   non-terminal ones as the in-flight total, report any driver-pod death the
-   driver itself could not, report any job whose driver is
+   non-terminal ones of each kind as that kind's in-flight total, report any
+   driver-pod death the driver itself could not, report any job whose driver is
    [lost](#lost-drivers), and reap the sandbox pods a dead driver orphaned (see
    [Sandbox reaping](#sandbox-reaping)). Counting from the cluster rather
    than from an in-memory tally is what makes a restart safe.
-2. Admit while the in-flight total is under `TCAB_DISPATCHER_MAX_INFLIGHT`:
-   claim the oldest queued run job (`POST /jobs/next`) and create one driver
-   `Job` for it. The backend hands jobs back in enqueue order across harnesses,
-   skipping any it is holding back (see [Queue order](#queue-order)). When the
-   run queue is empty and a publisher image is configured, claim the oldest
-   queued publish job instead and create one publisher `Job`. Both kinds carry
-   the same `managed-by` label, so one in-flight cap covers both.
+2. Admit through the two [lanes](#admission-lanes), one driver `Job` and one
+   publisher `Job` at most.
 3. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
 
-A tick that admits a job loops straight back, so the queue keeps draining while
-capacity remains. An empty queue or a full cap backs off for the poll interval.
+A tick that admits a job loops straight back, so both queues keep draining while
+their lanes have room. A tick that admits nothing backs off for the poll
+interval.
 
 The dispatcher authenticates its claims with a shared service token
 (`TCAB_BACKEND_SERVICE_TOKEN`, which the backend also holds). The claim is
 atomic, so the backend hands each job to exactly one dispatcher.
+
+## Admission lanes
+
+Runs and publishes are admitted through two lanes. Each lane has its own queue
+at the backend, its own in-flight total, and its own cap.
+
+| Lane    | Claim                     | `Job`     | Cap                                    | Default |
+| ------- | ------------------------- | --------- | -------------------------------------- | ------- |
+| Run     | `POST /jobs/next`         | driver    | `TCAB_DISPATCHER_MAX_INFLIGHT`         | `8`     |
+| Publish | `POST /publish-jobs/next` | publisher | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | `2`     |
+
+A lane claims its oldest queued job and creates one `Job` for it while its
+in-flight total is under its cap. The run lane's backend claim hands jobs back
+in enqueue order across harnesses, skipping any the backend is holding back (see
+[Queue order](#queue-order)). The publish lane is open only when a publisher
+image is configured.
+
+The lanes are independent. Every tick considers both, and a `Job` counts against
+its own lane's cap only. A publish is never held behind queued or running runs:
+it starts as soon as the publish lane has room, whether the run queue is long or
+the run lane is full. A run likewise starts while the publish lane is full. A
+failed claim or a failed `Job` creation in one lane leaves the other lane's
+admission in the same tick unaffected.
+
+Each `Job` carries its kind in a `tcab.dev/job-kind` label, `run` or `publish`,
+and the reconcile counts by it. A `Job` without the label is a publish when its
+name starts with `tcab-publisher-` and a run otherwise.
 
 ## Backend-enforced admission rules
 
@@ -83,7 +106,7 @@ sweep. The limit is bounded by default; an unbounded limit enqueues every missin
 cell at once, and the queue then holds the whole sweep.
 
 Ordering governs when a run starts rather than when it finishes. Runs execute
-concurrently up to the in-flight cap and the per-harness limit, so a slow early
+concurrently up to the run lane's cap and the per-harness limit, so a slow early
 run can finish after a fast later one. The one queue the backend fully
 serializes is a game jam per model. An automatic retry is a fresh enqueue, so it
 goes to the back of the queue rather than jumping ahead of work queued while it
@@ -103,8 +126,9 @@ back to itself.
 
 The `Job` is one-and-done: `restartPolicy: Never` and `backoffLimit: 0`, because
 the driver owns reporting its own specific failure and a silent retry would race
-that. Every `Job` carries the `managed-by` label the reconcile selects on, and a
-`tcab.dev/job-id` label mapping it back to its backend job.
+that. Every `Job` carries the `managed-by` label the reconcile selects on, a
+`tcab.dev/job-id` label mapping it back to its backend job, and the
+`tcab.dev/job-kind` label naming its [lane](#admission-lanes).
 
 Configured driver `Secret`s reach the pod's environment through `envFrom`, which
 is how the harness provider API key arrives. When a subscription `Secret` is
