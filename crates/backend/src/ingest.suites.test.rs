@@ -26,6 +26,23 @@ fn checkout() -> TempDir {
     dir
 }
 
+/// A checkout holding the fixture suite and a sibling copy of it, `cushion`, so a
+/// scan that drops `carom` still finds a suite version and prunes rather than
+/// meeting the prune guard an empty suites tree trips.
+fn checkout_with_sibling() -> TempDir {
+    let dir = checkout();
+    let sibling = dir.path().join(TEST_SUITES_DIR).join("cushion");
+    copy_tree(&fixture().join("carom"), &sibling).expect("the sibling copies");
+    let manifest = sibling.join("suite.toml");
+    let text = std::fs::read_to_string(&manifest).expect("the suite manifest reads");
+    std::fs::write(
+        &manifest,
+        text.replace("slug = \"carom\"", "slug = \"cushion\""),
+    )
+    .expect("the suite manifest writes");
+    dir
+}
+
 /// A store in its own temporary directory.
 fn store(dir: &TempDir) -> DefinitionStore {
     DefinitionStore::open(dir.path().join("store")).expect("the store opens")
@@ -355,7 +372,7 @@ fn an_entry_naming_neither_tree_still_reports_the_authored_error() {
 
 #[test]
 fn a_whole_catalog_scan_prunes_a_suite_version_the_checkout_dropped() {
-    let dir = checkout();
+    let dir = checkout_with_sibling();
     let store = store(&dir);
     scan(&dir, &store, full());
     assert!(store.has_suite_version("carom", "v1.0.0"));
@@ -364,14 +381,26 @@ fn a_whole_catalog_scan_prunes_a_suite_version_the_checkout_dropped() {
         .expect("the suite is dropped from the checkout");
     let report = scan(&dir, &store, full());
 
-    assert!(report.suite_versions.is_empty());
+    assert!(
+        report
+            .suite_versions
+            .iter()
+            .all(|suite| suite.slug != "carom"),
+        "{:?}",
+        report.suite_versions
+    );
+    assert!(
+        report.refused_prunes.is_empty(),
+        "{:?}",
+        report.refused_prunes
+    );
     assert!(!store.has_suite_version("carom", "v1.0.0"));
     assert!(!store.has_version("carom-end-to-end", "v1.0.0"));
 }
 
 #[test]
 fn a_suite_versions_reference_builds_survive_a_re_ingest_and_go_with_its_prune() {
-    let dir = checkout();
+    let dir = checkout_with_sibling();
     let store = store(&dir);
     scan(&dir, &store, full());
     let archive = crate::suite_store::reference_builds::tests::gzipped_tar(&[(
@@ -414,7 +443,7 @@ fn a_suite_versions_reference_builds_survive_a_re_ingest_and_go_with_its_prune()
 
 #[test]
 fn a_suite_version_a_run_references_survives_the_prune() {
-    let dir = checkout();
+    let dir = checkout_with_sibling();
     let store = store(&dir);
     scan(&dir, &store, full());
 
@@ -706,7 +735,7 @@ fn a_folder_without_a_suite_manifest_is_not_ingested() {
 
 #[test]
 fn a_whole_catalog_scan_prunes_an_exported_version_the_checkout_dropped() {
-    let dir = checkout();
+    let dir = checkout_with_sibling();
     let store = store(&dir);
     scan(&dir, &store, full());
     assert!(store.has_suite_version("carom", "v1.0.0"));
@@ -721,7 +750,19 @@ fn a_whole_catalog_scan_prunes_an_exported_version_the_checkout_dropped() {
     .expect("the version manifest is removed");
     let report = scan(&dir, &store, full());
 
-    assert!(report.suite_versions.is_empty());
+    assert!(
+        report
+            .suite_versions
+            .iter()
+            .all(|suite| suite.slug != "carom"),
+        "{:?}",
+        report.suite_versions
+    );
+    assert!(
+        report.refused_prunes.is_empty(),
+        "{:?}",
+        report.refused_prunes
+    );
     assert!(!store.has_suite_version("carom", "v1.0.0"));
     assert!(!store.has_version("carom-end-to-end", "v1.0.0"));
 }

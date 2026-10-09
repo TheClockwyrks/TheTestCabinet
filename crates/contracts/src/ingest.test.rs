@@ -52,11 +52,34 @@ fn a_feed_line_round_trips() {
         total: 2,
         ingested: 1,
         skipped: 1,
+        refused_prunes: Vec::new(),
     };
     assert_eq!(
         serde_json::to_string(&done).expect("the line serializes"),
         r#"{"event":"done","total":2,"ingested":1,"skipped":1}"#
     );
+    assert_eq!(
+        parse_ingest_line(r#"{"event":"done","total":2,"ingested":1,"skipped":1}"#),
+        Some(done),
+        "a backend that refused nothing omits the list, and a summary without it reads"
+    );
+}
+
+// A refused prune rides the closing line under `refusedPrunes`.
+#[test]
+fn a_refused_prune_rides_the_closing_line() {
+    let done = IngestProgress::Done {
+        total: 0,
+        ingested: 0,
+        skipped: 0,
+        refused_prunes: vec!["kept 3 stored authored version(s)".to_owned()],
+    };
+    let text = serde_json::to_string(&done).expect("the line serializes");
+    assert_eq!(
+        text,
+        r#"{"event":"done","total":0,"ingested":0,"skipped":0,"refusedPrunes":["kept 3 stored authored version(s)"]}"#
+    );
+    assert_eq!(parse_ingest_line(&text), Some(done));
 }
 
 // The default report's keys and the omission of an absent reason or problem.
@@ -78,9 +101,28 @@ fn the_report_serializes_in_its_wire_shape() {
             reason: None,
             problem: None,
         }],
+        refused_prunes: Vec::new(),
     };
     assert_eq!(
         serde_json::to_string(&report).expect("the report serializes"),
         r#"{"testCaseVersions":[{"slug":"carom","version":"v1.0.0","ingested":false,"renderedReferences":0,"reason":"unchanged"}],"testSuites":[{"slug":"pinball","version":"v1.0.0","ingested":true}]}"#
+    );
+}
+
+// A refused prune rides the default report under `refusedPrunes`.
+#[test]
+fn a_refused_prune_rides_the_report() {
+    let report = IngestResponse {
+        refused_prunes: vec!["kept the 2 stored test-case group(s)".to_owned()],
+        ..IngestResponse::default()
+    };
+    let text = serde_json::to_string(&report).expect("the report serializes");
+    assert_eq!(
+        text,
+        r#"{"testCaseVersions":[],"testSuites":[],"refusedPrunes":["kept the 2 stored test-case group(s)"]}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<IngestResponse>(&text).expect("the report reads"),
+        report
     );
 }

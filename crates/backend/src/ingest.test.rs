@@ -1038,13 +1038,14 @@ fn a_partial_scan_leaves_the_group_set_alone() {
     assert!(!report.test_case_groups_changed);
     assert_eq!(stored_group_slugs(&store), ["solo"]);
 
-    // A whole-catalog scan of the same checkout reconciles the set to empty: the
-    // folder's absence declares no groups, like any other deletion.
+    // A whole-catalog scan of the same checkout accepts no group, which the prune
+    // guard refuses to reconcile the stored set to (see `ingest.roots.test.rs`).
     let report = Ingestor::new(checkout.path(), &store)
         .scan(&IngestRequest::default())
         .unwrap();
-    assert!(report.test_case_groups_changed);
-    assert_eq!(stored_group_slugs(&store), Vec::<String>::new());
+    assert!(!report.test_case_groups_changed);
+    assert_eq!(report.refused_prunes.len(), 1);
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
 }
 
 #[test]

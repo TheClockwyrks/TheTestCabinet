@@ -1,7 +1,6 @@
 //! The ingest trigger handler (§1.1's `POST /ingest`).
 
 use std::convert::Infallible;
-use std::path::PathBuf;
 
 use axum::Json;
 use axum::body::Body;
@@ -16,13 +15,13 @@ use test_cabinet_core::backend_client::{
     IngestResponseVersion,
 };
 use test_cabinet_core::r2::R2Client;
-use test_cabinet_core::reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock};
+use test_cabinet_core::reference_lock::ReferenceLock;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
-use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
+use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Ingestor};
 use crate::publisher::Publisher;
 use crate::readiness::Readiness;
 use crate::store::DefinitionStore;
@@ -73,7 +72,7 @@ pub async fn ingest(
     // the ingestor. Cheap and harmless on a partial scan, which does not prune.
     let protected = state.db.referenced_cases().await.map_err(ApiError::from)?;
     let scan = Scan {
-        checkout: state.config.checkout.clone(),
+        roots: state.config.ingest_roots(),
         store: state.store.clone(),
         previews: state.config.ingest_previews,
         protected,
@@ -162,7 +161,8 @@ fn scan_changed_store(report: &IngestReport) -> bool {
 /// than a client pushing a URL to a (private, VPN-only) backend, `tcab
 /// publish-reference` commits each deployed URL into
 /// `test-cases/reference-builds.lock.json`, and the backend — which git-fetches its
-/// checkout before ingesting — reads the entries for its own `TCAB_ENV` and makes
+/// checkout before ingesting — reads the entries for its own `TCAB_ENV` from the
+/// copy under its definitions root ([`IngestRoots::reference_lock`]) and makes
 /// the table match them. This runs on the same pull path
 /// (`tcab ingest --env`, or a publish from The Spec Cabinet) that refreshes
 /// definitions.
@@ -171,11 +171,7 @@ fn scan_changed_store(report: &IngestReport) -> bool {
 /// untouched (never wiped). An env **absent** from an existing lockfile likewise
 /// leaves the table alone; a present-but-empty env reconciles to empty.
 async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
-    let path = state
-        .config
-        .checkout
-        .join("test-cases")
-        .join(REFERENCE_LOCK_FILENAME);
+    let path = state.config.ingest_roots().reference_lock();
     let Some(lock) = ReferenceLock::load(&path)
         .map_err(|e| ApiError::internal(format!("reading {}: {e}", path.display())))?
     else {
@@ -293,8 +289,10 @@ async fn reconcile_reference_sheets(state: &AppState) {
 /// What one ingest scan runs against, taken from the backend's state before the
 /// scan moves onto a blocking thread.
 struct Scan {
-    /// The checkout the scan reads (`TCAB_BACKEND_CHECKOUT`).
-    checkout: PathBuf,
+    /// Where the scan reads each tree from (`TCAB_DEFINITIONS_ROOT`,
+    /// `TCAB_SUITES_ROOT`, `TCAB_COLD_STORAGE_ROOT`, each defaulting into
+    /// `TCAB_BACKEND_CHECKOUT`).
+    roots: IngestRoots,
     /// The definition store the scan writes.
     store: DefinitionStore,
     /// Whether the suites checkout's `.previews/` is read
@@ -312,7 +310,7 @@ impl Scan {
         request: &IngestRequest,
         on_event: impl FnMut(IngestEvent),
     ) -> crate::error::Result<IngestReport> {
-        Ingestor::new(&self.checkout, &self.store)
+        Ingestor::with_roots(self.roots, &self.store)
             .with_protected_cases(self.protected)
             .with_previews(self.previews)
             .scan_with_progress(request, on_event)
@@ -429,6 +427,7 @@ fn ingest_response(report: IngestReport) -> IngestResponse {
                 problem: v.problem,
             })
             .collect(),
+        refused_prunes: report.refused_prunes,
         test_suites: report
             .suite_versions
             .into_iter()
@@ -462,6 +461,7 @@ fn done_line(report: &IngestReport) -> IngestProgress {
         total,
         ingested,
         skipped: total - ingested,
+        refused_prunes: report.refused_prunes.clone(),
     }
 }
 

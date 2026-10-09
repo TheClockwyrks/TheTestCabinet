@@ -58,6 +58,7 @@ pub enum IngestProgress {
         problem: Option<String>,
     },
     /// The scan finished.
+    #[serde(rename_all = "camelCase")]
     Done {
         /// How many versions it touched.
         total: usize,
@@ -65,6 +66,10 @@ pub enum IngestProgress {
         ingested: usize,
         /// How many it skipped as unchanged.
         skipped: usize,
+        /// One sentence per prune the scan refused because a tree it read was
+        /// empty, naming what it kept. Omitted when nothing was refused.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        refused_prunes: Vec<String>,
     },
     /// The scan aborted, with the reason.
     Error {
@@ -173,6 +178,10 @@ pub struct IngestResponse {
     /// The suite versions the scan touched: each suite's own record, which is keyed
     /// beside its cases.
     pub test_suites: Vec<IngestResponseSuite>,
+    /// One sentence per prune the scan refused because a tree it read was empty,
+    /// naming what it kept. Omitted when nothing was refused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refused_prunes: Vec<String>,
 }
 
 /// One scanned test case version in the [`IngestResponse`].

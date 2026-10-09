@@ -1753,6 +1753,7 @@ impl IngestFeed {
                 total,
                 ingested,
                 skipped,
+                ..
             } => {
                 self.summary = Some(IngestSummary {
                     total: *total,

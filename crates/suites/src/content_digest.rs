@@ -32,8 +32,14 @@ const ABSENT: u8 = b'A';
 
 /// The digest of an authored test case or game jam version: its folder, plus the
 /// committed reference-builds lockfile the backend reconciles beside it.
-pub fn authored_version_digest(version_dir: &Path, checkout: &Path) -> Result<String> {
-    let lock = checkout.join("test-cases").join(REFERENCE_LOCK_FILENAME);
+///
+/// `definitions_root` is the directory holding `test-cases/`: the repository
+/// checkout by default, or the backend's `TCAB_DEFINITIONS_ROOT`. The lockfile is
+/// read from `<definitions_root>/test-cases/`.
+pub fn authored_version_digest(version_dir: &Path, definitions_root: &Path) -> Result<String> {
+    let lock = definitions_root
+        .join("test-cases")
+        .join(REFERENCE_LOCK_FILENAME);
     digest_version(version_dir, &[(REFERENCE_LOCK_FILENAME, &lock)])
 }
 

@@ -1,6 +1,8 @@
 //! Unit tests for the ingest handler's snapshot-refresh trigger decision.
 
-use super::{done_line, progress_line, promote_for_store_readiness, scan_changed_store};
+use super::{
+    done_line, ingest_response, progress_line, promote_for_store_readiness, scan_changed_store,
+};
 use crate::ingest::{
     IngestEvent, IngestReport, IngestRequest, IngestedSuite, IngestedVersion, SkipReason,
 };
@@ -23,6 +25,7 @@ fn report(versions: Vec<IngestedVersion>) -> IngestReport {
         test_case_versions: versions,
         suite_versions: Vec::new(),
         test_case_groups_changed: false,
+        refused_prunes: Vec::new(),
     }
 }
 
@@ -60,6 +63,7 @@ fn a_changed_group_set_changes_store() {
         test_case_versions: vec![version("fathom", false)],
         suite_versions: Vec::new(),
         test_case_groups_changed: true,
+        refused_prunes: Vec::new(),
     };
     assert!(scan_changed_store(&r));
 }
@@ -172,9 +176,27 @@ fn a_problem_counts_toward_skipped() {
             problem: Some("broken".to_string()),
         }],
         test_case_groups_changed: false,
+        refused_prunes: Vec::new(),
     };
     let done = serde_json::to_value(done_line(&report)).expect("the event serializes");
     assert_eq!(done["total"], 3);
     assert_eq!(done["ingested"], 1);
     assert_eq!(done["skipped"], 2);
+    assert!(done.get("refusedPrunes").is_none(), "{done}");
+}
+
+// A refused prune reaches both framings: the closing feed line and the default
+// report carry the sentences the scan reported, so neither a streaming client nor
+// a blocking one ingests past a refusal without being told.
+#[test]
+fn a_refused_prune_reaches_the_feed_and_the_report() {
+    let refusal = "kept 3 stored authored test-case version(s): `x` declares no version";
+    let report = IngestReport {
+        refused_prunes: vec![refusal.to_string()],
+        ..report(vec![])
+    };
+    let done = serde_json::to_value(done_line(&report)).expect("the event serializes");
+    assert_eq!(done["refusedPrunes"], serde_json::json!([refusal]));
+    let response = serde_json::to_value(ingest_response(report)).expect("the report serializes");
+    assert_eq!(response["refusedPrunes"], serde_json::json!([refusal]));
 }
