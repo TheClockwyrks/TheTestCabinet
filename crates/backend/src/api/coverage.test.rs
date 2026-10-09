@@ -102,6 +102,7 @@ fn plan(
         cases,
         outer_axis: CoverageAxis::Case,
         in_flight_limit: None,
+        retry_count: 1,
         updated_at: "2026-07-15T00:00:00Z".to_string(),
     }
 }
@@ -127,6 +128,10 @@ pub(super) fn landed(n: usize, unreviewed: usize) -> Vec<crate::db::CellRun> {
             id: format!("r{i}"),
             finished_at: format!("2026-09-01T00:00:{i:02}Z"),
             unreviewed: i < unreviewed,
+            model_failure: false,
+            loaded: true,
+            validator_rated: true,
+            rating: None,
         })
         .collect()
 }
@@ -252,6 +257,7 @@ fn a_launch_pass_launches_a_harness_cell_on_the_cases_pinned_engine() {
             case,
             member: &m,
             runs: 2,
+            retry_count: 1,
         })
     };
 
@@ -703,6 +709,7 @@ fn plan_input(
         cases: vec![],
         outer_axis: CoverageAxis::Combination,
         in_flight_limit,
+        retry_count: None,
     }
 }
 

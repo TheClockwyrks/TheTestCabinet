@@ -62,7 +62,7 @@ export function MatrixSection({
   busy: boolean;
   canTrigger: boolean;
   onTrigger: (cells: CoverageCell[]) => void;
-  /** Retry a cell blocked by repeated infrastructure failures. */
+  /** Retry a cell blocked on a run that used up its automatic retries. */
   onRetry: (cell: CoverageCell) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -100,7 +100,7 @@ export function MatrixSection({
           {group.blocked > 0 && (
             <span
               className={styles.blockedBadge}
-              title="Cells whose last 3 runs failed on infrastructure. Expand the block to retry them."
+              title="Cells where a launch used up its automatic retries without a run that counts. Expand the block to retry them."
             >
               {group.blocked} blocked
             </span>
@@ -269,21 +269,24 @@ export function MatrixSection({
                 {unlaunchable && (
                   <span className={styles.cellBlocked}>{unlaunchable}</span>
                 )}
-                {/* A cell whose last runs all failed on infrastructure is not
-                    relaunched by filling until its owner has fixed the cause and
-                    says so; the reason and the fix share the row of their own. */}
+                {/* A cell where a launch used up its automatic retries without a
+                    run that counts is not relaunched by filling until its owner has
+                    fixed the cause and says so; the reason and the fix share the row
+                    of their own. Runs launched beside that one may still be in
+                    flight, so the bar and the count above keep showing them. */}
                 {cell.blocked && !unlaunchable && (
                   <span className={`${styles.cellBlocked} ${styles.cellRetry}`}>
                     <span>
-                      Blocked: its last 3 runs failed on infrastructure. Fix the
-                      cause, then retry.
+                      Blocked: a launch used up its automatic retries without a
+                      run that counts, and the cell is not launched again by
+                      itself. Fix the cause, then retry.
                     </span>
                     <button
                       type="button"
                       className={`${exec.secondary} ${styles.cellButton}`}
                       disabled={busy}
                       aria-label={`Retry ${rowName}`}
-                      title="Forget the failures so far and launch this cell's missing runs again."
+                      title="Forget that failure and launch this cell's missing runs again."
                       onClick={() => onRetry(cell)}
                     >
                       Retry

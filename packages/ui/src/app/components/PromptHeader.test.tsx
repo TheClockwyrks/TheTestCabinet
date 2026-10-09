@@ -26,13 +26,17 @@ describe("PromptHeader", () => {
     });
     const header = comment.closest("header")!;
     const action = screen.getByRole("button", { name: "+ New run" });
-    // The prompt and the actions are one row, and that row is the header's own child —
-    // so the row runs the full width of the page rather than a column of it.
-    const titleRow = action.parentElement!.parentElement!;
-    expect(titleRow.parentElement).toBe(header);
-    expect(titleRow).toHaveTextContent("the-test-cabinet --runs");
-    // The comment is still a row of its own beneath it.
-    expect(comment.parentElement).toBe(header);
+    // The prompt and the actions are each the header's own child, laid out by the
+    // header's grid — so their row runs the full width of the page rather than a
+    // column of it, and the header can move the actions under the comment when the
+    // viewport is too narrow to hold them beside the prompt.
+    const [prompt, actions, last] = header.children;
+    expect(prompt).toHaveTextContent("the-test-cabinet --runs");
+    expect(action.parentElement).toBe(actions);
+    // The actions follow the prompt in source order, ahead of the comment, which is
+    // still a row of its own.
+    expect(last).toBe(comment);
+    expect(header.children).toHaveLength(3);
   });
 
   it("puts trailing controls on the comment line, beside the comment", () => {
@@ -52,12 +56,12 @@ describe("PromptHeader", () => {
       actions: <button type="button">Clear pending</button>,
     });
     const header = comment.closest("header")!;
-    expect(header.children).toHaveLength(2);
+    expect(header.children).toHaveLength(3);
     // The two clusters end on the same edge, which is the whole point of the header
     // owning both rows: they are laid out by the same element at the same width.
     const title = screen.getByRole("button", { name: "+ New run" });
     const stop = screen.getByRole("button", { name: "Clear pending" });
-    expect(title.parentElement!.parentElement!.parentElement).toBe(header);
+    expect(title.parentElement!.parentElement).toBe(header);
     expect(stop.parentElement!.parentElement!.parentElement).toBe(header);
   });
 

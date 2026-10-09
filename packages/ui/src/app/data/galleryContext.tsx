@@ -425,6 +425,16 @@ export interface GalleryDataInput {
   /** The model catalog's load state (see {@link CatalogStatus}). */
   modelsStatus: CatalogStatus;
   /**
+   * Whether a read of the model catalog is in flight that has yet to settle.
+   * A refresh leaves {@link modelsStatus} and the loaded {@link models} as they
+   * are, so this is what tells a surface whose model the loaded catalog does not
+   * hold that the answer is still on its way: it shows its loading state rather
+   * than naming the model unknown. A model the catalog already resolves renders
+   * regardless. Omitted (not refreshing) by a host whose catalog never re-reads,
+   * such as the static site.
+   */
+  modelsRefreshing?: boolean;
+  /**
    * The published harness comparisons this host can render **read-only**, each the
    * full read model the backend assembled. Provided only by the static site (from
    * the snapshot); the consoles leave it `undefined` and fetch the signed-in

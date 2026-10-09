@@ -230,6 +230,11 @@ export type CoveragePlan = {
    */
   inFlightLimit?: InFlightLimit;
   /**
+   * How many automatic retries each run the plan launches gets, `0..=10`. A launch
+   * that uses them up without a counted run blocks its cell.
+   */
+  retryCount: number;
+  /**
    * RFC 3339 of when the plan was last saved.
    */
   updatedAt: string;
@@ -283,6 +288,11 @@ export type CoveragePlanOut = {
    */
   inFlightLimit?: InFlightLimit;
   /**
+   * How many automatic retries each run the plan launches gets, `0..=10`. A launch
+   * that uses them up without a counted run blocks its cell.
+   */
+  retryCount: number;
+  /**
    * RFC 3339 of when the plan was last saved.
    */
   updatedAt: string;
@@ -328,6 +338,11 @@ export type CoveragePlanInput = {
    * bound is clamped to `MAX_IN_FLIGHT_LIMIT`.
    */
   inFlightLimit?: InFlightLimit;
+  /**
+   * How many automatic retries each run the plan launches gets, or null for the
+   * default of one. Clamped to `MAX_RETRY_COUNT`.
+   */
+  retryCount?: number;
 };
 
 /**
@@ -383,6 +398,11 @@ export type CoveragePlanSummary = {
    * Whether the plan is filling.
    */
   filling: boolean;
+  /**
+   * Whether the filling plan is waiting on its owner: none of its own jobs is in
+   * flight, nothing a launch pass could launch is left, and a cell is blocked.
+   */
+  needsAttention: boolean;
 };
 
 /**
@@ -466,8 +486,9 @@ export type CoverageCell = {
   filled: boolean;
   /**
    * Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):
-   * its last three finished jobs failed on infrastructure, and a launch pass skips it
-   * until its owner retries it.
+   * it is missing a run and one of its jobs used up its automatic retries without a
+   * counted run with no later launch in its place, so a launch pass skips it until its
+   * owner retries it. A blocked cell can still have jobs in flight.
    */
   blocked: boolean;
   /**
@@ -566,6 +587,11 @@ export type CoverageMatrix = {
    * Whether the plan is filling.
    */
   filling: boolean;
+  /**
+   * Whether the filling plan is waiting on its owner: none of its own jobs is in
+   * flight, nothing a launch pass could launch is left, and a cell is blocked.
+   */
+  needsAttention: boolean;
 };
 
 /**

@@ -31,6 +31,7 @@ mod tests;
 #[path = "api/flow_harness.test.rs"]
 mod flow_harness;
 
+mod auto_publish;
 mod comparisons;
 mod coverage;
 mod game_jams;
@@ -86,6 +87,7 @@ pub use jobs::{
 };
 // The backend's boot runs a launch pass of every running ladder dispatch and every filling
 // plan, so a restart never strands one.
+pub(crate) use coverage::default_retry_count;
 pub use ladders::{
     ClimberBlock, ClimberStatus, DispatchRuns, DispatchStatus, Ladder, LadderAxis, LadderClimber,
     LadderDispatch, LadderDispatchSummary, LadderInput, LadderProgress, LadderProgressRung,

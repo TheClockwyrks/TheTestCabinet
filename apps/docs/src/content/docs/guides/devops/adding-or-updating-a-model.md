@@ -68,7 +68,8 @@ A model record has these fields:
   endpoint. Blank takes the provider whose `provider_name` on the endpoints
   listing matches the author segment of the model id, ignoring case and
   punctuation. Set it where the two differ (`qwen/…` served by `Alibaba`). Its
-  endpoint's rates are the billed rate the catalog records.
+  standard endpoint's rates are the billed rate the catalog records; a Flex
+  endpoint the provider lists beside it is ignored.
 - Quantization filter, on by default. Off accepts every endpoint at whatever
   level it declares, `unknown` included, for a model every provider serves at
   one precision nobody discloses: a closed model's providers declare none, so
@@ -160,8 +161,10 @@ A run's comparable cost is computed from the list price curated on the model's
 catalog entry, entered from the developer's pricing page (see
 [Metrics](/components/core/metrics/#cost)). An entry saved without a list price
 has one filled the first time a run binding it is enqueued: the official
-endpoint's rate on OpenRouter, dated that day. Confirm or correct a filled list
-price against the developer's pricing page. A launch naming a model the catalog
+endpoint's rate on OpenRouter, dated that day. The official endpoint is the
+developer provider's standard one, and its Flex endpoint is ignored. Confirm or
+correct a filled list price against the developer's pricing page: a filled list
+price stays as written until you edit it. A launch naming a model the catalog
 has no entry for, or one OpenRouter lists no rate for, is refused at enqueue
 with the reason named.
 

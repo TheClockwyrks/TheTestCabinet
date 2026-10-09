@@ -8,7 +8,7 @@ import {
   inFlightStatTitle,
   limitLaunchesNothing,
 } from "./inFlightLimit";
-import { ZERO_LIMIT_NOTE } from "./coveragePlan";
+import { PLAN_ATTENTION_NOTE, ZERO_LIMIT_NOTE } from "./coveragePlan";
 import { useCoveragePlan } from "./CoveragePlanLayout";
 import { CoveragePlanMetrics } from "./CoveragePlanMetrics";
 import { useCoverageRunMetrics } from "./coverageMetrics";
@@ -25,14 +25,36 @@ import styles from "./Coverage.module.scss";
 // what a control already shows. All missing stays pressable while the plan fills: a
 // press runs another launch pass, which resumes a fill whose runs a global cancel
 // swept away.
+/** The control line: what the controls do now, for someone who has never pressed them. */
+function controlLine(plan: {
+  zeroLimit: boolean;
+  nothingLeft: boolean;
+  needsAttention: boolean;
+  filling: boolean;
+  blockedCells: number;
+  limit: string;
+}): string {
+  if (plan.zeroLimit && !plan.nothingLeft) return ZERO_LIMIT_NOTE;
+  if (plan.needsAttention) return PLAN_ATTENTION_NOTE;
+  if (plan.filling) {
+    return "Filling: the rest launch as this plan's runs finish. Halt stops filling.";
+  }
+  if (plan.nothingLeft && plan.blockedCells === 0) {
+    return "Every cell is at its target or has runs in flight. Raise runs per cell in the editor for more evidence.";
+  }
+  const reach =
+    plan.limit === "no limit" ? "all at once" : `up to ${plan.limit}`;
+  return `All missing launches the runs this plan still needs, ${reach}, and keeps launching as they finish.`;
+}
+
 export function CoveragePlanPage() {
   const state = useCoveragePlan();
   const { client: backend } = useBackend();
   const testCaseName = useTestCaseName();
-  const { coverage, plan, busy, filling } = state;
+  const { coverage, plan, busy, filling, needsAttention } = state;
   const runs = useCoverageRunMetrics(state.planId, coverage, testCaseName);
   // Cells that cannot be filled as things stand: an unlaunchable combination, or a
-  // cell blocked on repeated infrastructure failures (which offers Retry).
+  // cell blocked on a run that used up its automatic retries (which offers Retry).
   const blockedCells = coverage.cells.filter(
     (c) => c.unlaunchable || c.blocked,
   ).length;
@@ -48,7 +70,7 @@ export function CoveragePlanPage() {
           <MetricTile
             label="Cells filled"
             value={`${coverage.cellsFilled}/${coverage.cellsTotal}`}
-            title="Cells holding at least their target of runs that count: completed runs and the model's own failures (timed out, broken, over a limit, hung). Infrastructure failures and cancelled runs never count."
+            title="Cells holding at least their target of runs that count: completed runs and the model's own failures (timed out, broken, over a limit, hung, a harness error). Infrastructure failures and cancelled runs never count."
           />
           <MetricTile
             label="Runs"
@@ -72,7 +94,7 @@ export function CoveragePlanPage() {
             <MetricTile
               label="Blocked cells"
               value={String(blockedCells)}
-              title="Cells this plan cannot fill as things stand: a combination that cannot be launched, or a cell whose last 3 runs failed on infrastructure. Open the Tests tab for the reason on each; a blocked cell offers Retry."
+              title="Cells this plan cannot fill as things stand: a combination that cannot be launched, or a cell where a launch used up its automatic retries without a run that counts. Open the Tests tab for the reason on each; a blocked cell offers Retry."
             />
           )}
           <MetricTile
@@ -95,13 +117,14 @@ export function CoveragePlanPage() {
         <div className={`${styles.controls} ${styles.panelControls}`}>
           {/* What the controls do, for someone who has never pressed them. */}
           <span className={styles.controlOrder}>
-            {zeroLimit && !nothingLeft
-              ? ZERO_LIMIT_NOTE
-              : filling
-                ? "Filling: the rest launch as this plan's runs finish. Halt stops filling."
-                : nothingLeft && blockedCells === 0
-                  ? "Every cell is at its target or has runs in flight. Raise runs per cell in the editor for more evidence."
-                  : `All missing launches the runs this plan still needs, ${limit === "no limit" ? "all at once" : `up to ${limit}`}, and keeps launching as they finish.`}
+            {controlLine({
+              zeroLimit,
+              nothingLeft,
+              needsAttention,
+              filling,
+              blockedCells,
+              limit,
+            })}
           </span>
           <span className={`${styles.controlActions} ${styles.controlEnd}`}>
             <button

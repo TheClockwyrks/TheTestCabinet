@@ -1412,6 +1412,7 @@ async fn apply_status(
                 ),
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
+            auto_publish_reported_run(state, record_id.as_deref(), retried).await;
             if feeds_coverage(already_terminal, retried) {
                 spawn_coverage_feed(state, &job);
             }
@@ -1482,6 +1483,7 @@ async fn apply_status(
                     );
                 }
             }
+            auto_publish_reported_run(state, Some(&record_id), retried).await;
             if feeds_coverage(already_terminal, retried) {
                 spawn_coverage_feed(state, &job);
             }
@@ -1516,6 +1518,34 @@ async fn apply_status(
     }
 }
 
+/// Apply [automatic publishing](super::auto_publish) to the run a terminal status
+/// report just stored: every run reaches the store through such a report, however
+/// it was launched, so this is where a run publishes itself.
+///
+/// It runs on every terminal report, a repeated one included. A report stores its
+/// record again, which is the only place a run's validator rating is decided, so a
+/// run that was stored unrated and is rated by a later report publishes then. A
+/// run that already has a publish job is passed over, so a repeated report never
+/// enqueues a second.
+///
+/// The attempt a retry replaced is skipped: only the attempt that stands
+/// publishes. Nothing here can fail the report (see
+/// [`auto_publish_runs`](super::auto_publish::auto_publish_runs)).
+async fn auto_publish_reported_run(state: &AppState, record_id: Option<&str>, retried: bool) {
+    let Some(record_id) = record_id else {
+        return;
+    };
+    if retried {
+        return;
+    }
+    super::auto_publish::auto_publish_runs(
+        state,
+        &[record_id.to_string()],
+        super::auto_publish::AutoPublishCause::RunFinished,
+    )
+    .await;
+}
+
 /// Whether a job that just reached a terminal state through the driver's report feeds
 /// the dispatch and the filling plans it belongs to: the first time it goes terminal, and
 /// only when it did not enqueue an automatic retry — the retry takes its place in flight,
@@ -1544,11 +1574,11 @@ fn spawn_coverage_feed(state: &AppState, job: &job::Model) {
 
 /// The default `retryCount` when a launch request omits it: one retry after a
 /// failure, so the total attempts allowed is `1 + retry_count` = 2.
-const DEFAULT_RETRY_COUNT: u32 = 1;
+pub(super) const DEFAULT_RETRY_COUNT: u32 = 1;
 
 /// The largest `retryCount` honored, clamping an absurd request so a run cannot
 /// re-enqueue itself an unbounded number of times.
-const MAX_RETRY_COUNT: u32 = 10;
+pub(super) const MAX_RETRY_COUNT: u32 = 10;
 
 /// Read the terminal [`RunState`] a driver reported: the produced/partial record's
 /// own `status.state` when it built one, else `fallback` (the state that best

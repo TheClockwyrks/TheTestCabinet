@@ -8,6 +8,8 @@ import {
   type BackendContextValue,
 } from "../../../client/context";
 import { CoveragePlansPage, planProgress } from "./CoveragePlansPage";
+import styles from "./Coverage.module.scss";
+import { PLAN_ATTENTION_TITLE } from "./coveragePlan";
 
 // The page's app chrome reads contexts none of these tests are about; stub it as the
 // other account page tests do.
@@ -45,6 +47,7 @@ function summary(over: Partial<CoveragePlanSummary> = {}): CoveragePlanSummary {
     runsMissing: 0,
     runsUnreviewed: 0,
     filling: false,
+    needsAttention: false,
     ...over,
   };
 }
@@ -80,10 +83,35 @@ describe("planProgress", () => {
     );
   });
 
+  it("says in the hover text that a plan is waiting on its blocked cells", () => {
+    expect(planProgress({ ...WORKED, needsAttention: true }).title).toBe(
+      "17 of 24 runs done · 4 launched and in flight · 3 to launch · 1 blocked · " +
+        "Nothing is running: the blocked cells are waiting for a retry.",
+    );
+  });
+
   it("does not divide by zero on an empty plan", () => {
     expect(planProgress(summary()).donePct).toBe(0);
   });
 });
+
+function renderPlans(plans: CoveragePlanSummary[]) {
+  const value = {
+    client: { getCoveragePlansSummary: vi.fn().mockResolvedValue(plans) },
+    identity: null,
+    status: "ready",
+    error: null,
+    url: null,
+    setUrl: vi.fn(),
+  } as unknown as BackendContextValue;
+  return render(
+    <MemoryRouter>
+      <BackendProvider value={value}>
+        <CoveragePlansPage />
+      </BackendProvider>
+    </MemoryRouter>,
+  );
+}
 
 // This is the screen an operator arriving to schedule gg runs reads first, so the
 // empty state has to name what a plan actually crosses its cases with: combinations,
@@ -138,5 +166,21 @@ describe("CoveragePlansPage", () => {
       ),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/waiting on you|top-up|missing/i);
+  });
+
+  it("marks a filling plan that waits on its blocked cells as Needs attention", async () => {
+    renderPlans([
+      summary({ ...WORKED, runsInFlight: 0, needsAttention: true }),
+      summary({ ...WORKED, id: "p2", name: "still filling" }),
+    ]);
+    const badge = await screen.findByText("Needs attention");
+    expect(badge).toHaveClass(styles.attentionBadge ?? "missing");
+    expect(badge).toHaveAttribute(
+      "title",
+      `${PLAN_ATTENTION_TITLE} Open the plan's Tests tab to retry them.`,
+    );
+    // One plan needs attention; the one beside it, still filling, says nothing.
+    expect(screen.getAllByText("Needs attention")).toHaveLength(1);
+    expect(screen.getByText("still filling")).toBeInTheDocument();
   });
 });

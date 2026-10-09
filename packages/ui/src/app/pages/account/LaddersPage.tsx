@@ -1,28 +1,33 @@
-import type { LadderSummary } from "@clockwyrks/backend-api/ladders";
+import type {
+  LadderSummary,
+  DispatchStatus,
+} from "@clockwyrks/backend-api/ladders";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
+
+import { AccountTabs } from "./AccountTabs";
+import styles from "./Coverage.module.scss";
+import { dispatchBadgeClass } from "./ladder-dispatch";
+import ladderStyles from "./Ladder.module.scss";
+import { dispatchStatusLabel } from "./LadderPage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useConfirm } from "../../components/ConfirmDialog";
-import { routes } from "../../routes";
-import { AccountTabs } from "./AccountTabs";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { routes } from "../../routes";
 import exec from "../runs/RunExec.module.scss";
-import styles from "./Coverage.module.scss";
-import ladderStyles from "./Ladder.module.scss";
-
-/** How a ladder's latest dispatch reads on its card's status badge. */
-export type LadderBadge = "Not run yet" | "Running" | "Finished" | "Stopped";
 
 /** Everything one ladder card shows, read off its summary. */
 export interface LadderCardView {
   /** The configuration in one line: "4 rungs · 2 runs/rung · 3 climbers". */
   description: string;
+  /** Where the latest dispatch stands, or null for a ladder never run. */
+  status: DispatchStatus | null;
   /** The status badge's text. */
-  badge: LadderBadge;
+  badge: string;
   /** The bar's filled fraction: runs done of the dispatch's total. */
   donePct: number;
   /** The bar's hover text: the run detail. */
@@ -55,7 +60,8 @@ export function ladderCardView(summary: LadderSummary): LadderCardView {
   if (!dispatch) {
     return {
       description,
-      badge: "Not run yet",
+      status: null,
+      badge: dispatchStatusLabel(null),
       donePct: 0,
       title: "Not run yet. Open the ladder and press Run ladder to start it.",
       counts: { running: 0, passed: 0, failed: 0, skipped: 0 },
@@ -65,14 +71,13 @@ export function ladderCardView(summary: LadderSummary): LadderCardView {
   let title = `${runs.done} of ${runs.total} runs done · ${runs.inFlight} in flight`;
   if (slots.blocked > 0) title += ` · ${slots.blocked} blocked`;
   if (slots.pending > 0) title += ` · ${slots.pending} pending`;
+  if (dispatch.status === "needsAttention") {
+    title += " · nothing is running: the blocked climbers are waiting on you";
+  }
   return {
     description,
-    badge:
-      dispatch.status === "running"
-        ? "Running"
-        : dispatch.status === "finished"
-          ? "Finished"
-          : "Stopped",
+    status: dispatch.status,
+    badge: dispatchStatusLabel(dispatch.status),
     donePct: runs.total > 0 ? Math.min(100, (runs.done / runs.total) * 100) : 0,
     title,
     counts: {
@@ -83,13 +88,6 @@ export function ladderCardView(summary: LadderSummary): LadderCardView {
     },
   };
 }
-
-const BADGE_TONE: Record<LadderBadge, string | undefined> = {
-  "Not run yet": ladderStyles.badgeIdle,
-  Running: ladderStyles.badgeRunning,
-  Finished: ladderStyles.badgeFinished,
-  Stopped: ladderStyles.badgeStopped,
-};
 
 // One figure of the counts line, in a slot of fixed width so a number growing never
 // moves the words around it.
@@ -109,7 +107,8 @@ function Count({ n, label }: { n: number; label: string }) {
 //
 // The whole list is one request (`GET /ladders/summary`), and every card is laid out
 // in fixed slots: the right side lines up with the name row and the description row,
-// and a number changing never moves anything.
+// and a number changing never moves anything. A card too narrow for that stacks its
+// slots instead, by its own width rather than the viewport's.
 export function LaddersPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
@@ -140,9 +139,9 @@ export function LaddersPage() {
         setLadders(list);
         setLoading(false);
       })
-      .catch((e) => {
+      .catch((error_) => {
         if (!active) return;
-        setError(String(e));
+        setError(String(error_));
         setLoading(false);
       });
     return () => {
@@ -152,8 +151,9 @@ export function LaddersPage() {
 
   const deleteLadder = useCallback(
     async (id: string, name: string) => {
-      if (!backend?.deleteLadder || !token) return;
       if (
+        !backend?.deleteLadder ||
+        !token ||
         !(await confirm({
           title: "Delete ladder",
           message:
@@ -170,8 +170,8 @@ export function LaddersPage() {
       try {
         await backend.deleteLadder(id, token);
         await reload();
-      } catch (e) {
-        setError(String(e));
+      } catch (error_) {
+        setError(String(error_));
       } finally {
         setBusy(false);
       }
@@ -179,20 +179,7 @@ export function LaddersPage() {
     [backend, token, reload, confirm],
   );
 
-  if (!token) {
-    return (
-      <PageLayout>
-        <PromptHeader command="--ladders" comment={<>// your ladders</>} />
-        <AccountTabs active="ladders" />
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use ladders. They are saved to your account. Use the
-          account control in the top bar to register or log in.
-        </p>
-      </PageLayout>
-    );
-  }
-
-  return (
+  return token ? (
     <PageLayout>
       <PromptHeader
         command="--ladders"
@@ -223,7 +210,7 @@ export function LaddersPage() {
           </Link>
         </div>
       ) : (
-        <div className={styles.list}>
+        <div className={[styles.list, ladderStyles.ladderList].join(" ")}>
           {ladders.map((entry) => {
             const view = ladderCardView(entry);
             return (
@@ -242,7 +229,10 @@ export function LaddersPage() {
                 </span>
                 <span className={ladderStyles.cardStatus}>
                   <span
-                    className={`${ladderStyles.cardBadge} ${BADGE_TONE[view.badge] ?? ""}`}
+                    className={[
+                      ladderStyles.cardBadge,
+                      dispatchBadgeClass(view.status),
+                    ].join(" ")}
                   >
                     {view.badge}
                   </span>
@@ -302,6 +292,15 @@ export function LaddersPage() {
           })}
         </div>
       )}
+    </PageLayout>
+  ) : (
+    <PageLayout>
+      <PromptHeader command="--ladders" comment={<>// your ladders</>} />
+      <AccountTabs active="ladders" />
+      <p className={`${exec.notice} ${exec.warn}`}>
+        Sign in to use ladders. They are saved to your account. Use the account
+        control in the top bar to register or log in.
+      </p>
     </PageLayout>
   );
 }

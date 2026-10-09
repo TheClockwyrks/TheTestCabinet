@@ -3,7 +3,13 @@ import type {
   CoveragePlanInput,
   CoveragePlanOut,
 } from "@clockwyrks/backend-api/coverage";
-import { act, render, screen, fireEvent } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +20,7 @@ import {
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import { CoveragePlanEditPage } from "./CoveragePlanEditPage";
+import { retryLimitHelp } from "./retry-limit";
 
 // The page's app chrome reads contexts none of these tests are about; stub it as the
 // other account page tests do.
@@ -84,6 +91,7 @@ function plan(over: Partial<CoveragePlanOut> = {}): CoveragePlanOut {
     updatedAt: "2026-01-01T00:00:00Z",
     outerAxis: "case",
     filling: false,
+    retryCount: 1,
     ...over,
   };
 }
@@ -296,5 +304,94 @@ describe("CoveragePlanEditPage pinned cases", () => {
         engine: "simple-2d",
       },
     ]);
+  });
+});
+
+function retryLimit() {
+  return screen.getByLabelText<HTMLInputElement>("Retry limit");
+}
+
+// The retry limit: how many automatic retries each run launched gets. A whole number
+// from 0 to 10 that a new plan starts at 1 on, held as typed and refused out of range.
+describe("CoveragePlanEditPage retry limit", () => {
+  it("starts a new plan at one retry", async () => {
+    render(
+      <MemoryRouter initialEntries={["/account/coverage/new"]}>
+        <BackendProvider value={backendValue(plan())}>
+          <GalleryDataProvider value={galleryValue()}>
+            <Routes>
+              <Route
+                path="/account/coverage/new"
+                element={<CoveragePlanEditPage />}
+              />
+            </Routes>
+          </GalleryDataProvider>
+        </BackendProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByLabelText("Retry limit")).toHaveValue(1);
+  });
+
+  it("loads the saved limit and saves it back", async () => {
+    await renderEditor(plan({ retryCount: 4 }));
+    expect(retryLimit()).toHaveValue(4);
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    await waitFor(() => {
+      expect(saved?.retryCount).toBe(4);
+    });
+  });
+
+  it("saves zero as zero: retries turned off, not the default", async () => {
+    await renderEditor();
+    expect(retryLimit()).toHaveValue(1);
+    fireEvent.change(retryLimit(), { target: { value: "0" } });
+    expect(retryLimit()).not.toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    await waitFor(() => {
+      expect(saved?.retryCount).toBe(0);
+    });
+  });
+
+  it("refuses a limit outside 0 to 10 rather than correcting it", async () => {
+    await renderEditor();
+    const saveButton = screen.getByRole("button", { name: "Save plan" });
+
+    fireEvent.change(retryLimit(), { target: { value: "11" } });
+    expect(retryLimit()).toHaveValue(11);
+    expect(retryLimit()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Retry limit must be 10 or less.")).toBeVisible();
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(retryLimit(), { target: { value: "-1" } });
+    expect(screen.getByText("Retry limit must be 0 or more.")).toBeVisible();
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(retryLimit(), { target: { value: "1.5" } });
+    expect(retryLimit()).toHaveAttribute("aria-invalid", "true");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.click(saveButton);
+    expect(saved).toBeNull();
+
+    fireEvent.change(retryLimit(), { target: { value: "10" } });
+    expect(saveButton).toBeEnabled();
+  });
+
+  it("offers a reset once the limit moves off one, and says what blocks", async () => {
+    await renderEditor();
+    expect(
+      screen.queryByRole("button", { name: "Reset Retry limit" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(retryLimit(), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset Retry limit" }));
+    expect(retryLimit()).toHaveValue(1);
+    expect(
+      screen.getByText(
+        "How many times a failed run is retried automatically before its result stands.",
+      ),
+    ).toBeInTheDocument();
+    expect(retryLimitHelp("plan")).toMatch(
+      /0 turns retries off\. A run that uses its retries up without a result that counts blocks its cell until it is retried by hand\./,
+    );
   });
 });

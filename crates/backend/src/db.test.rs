@@ -9,6 +9,104 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::validation::ValidationSummary;
 
+/// A run publishes itself only when it completed and its validators rated it:
+/// every other state stays a person's decision, rated or not.
+#[test]
+fn only_a_completed_validator_rated_run_publishes_itself() {
+    for state in RunState::ALL {
+        let wire = run_state_str(state);
+        assert_eq!(
+            auto_publishes(wire, true),
+            state == RunState::Completed,
+            "{wire}, validator-rated"
+        );
+        assert!(!auto_publishes(wire, false), "{wire}, not validator-rated");
+    }
+}
+
+/// The candidates of automatic publishing: unpublished runs the rule admits that
+/// have never had a publish job, in the order asked for and named once.
+#[tokio::test]
+async fn auto_publishable_among_names_each_qualifying_run_once() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    for id in ["rated", "queued", "failed", "public"] {
+        db.push(
+            &validator_record(id, &[("serve", true)]),
+            &links(),
+            None,
+            Some(&manifest),
+        )
+        .await
+        .unwrap();
+    }
+    // Stored with no manifest, so it is a legacy run.
+    db.push(&record("legacy"), &links(), None, None)
+        .await
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "queued", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("p2", "failed", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_publish_job_state("p2", "failed", "2026-06-27T00:01:00Z", Some("boom"))
+        .await
+        .unwrap();
+    db.publish("public", "2026-06-27T00:00:00Z").await.unwrap();
+
+    let asked: Vec<String> = [
+        "missing", "rated", "legacy", "queued", "rated", "failed", "public",
+    ]
+    .iter()
+    .map(|id| id.to_string())
+    .collect();
+    assert_eq!(db.auto_publishable_among(&asked).await.unwrap(), ["rated"]);
+    assert!(db.auto_publishable_among(&[]).await.unwrap().is_empty());
+}
+
+/// The attempt an automatic retry replaced is not the run that stands, so it never
+/// publishes itself, whatever state it was stored in.
+#[tokio::test]
+async fn auto_publishable_among_passes_over_a_retried_attempt() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    for id in ["first", "second"] {
+        db.push(
+            &validator_record(id, &[("serve", true)]),
+            &links(),
+            None,
+            Some(&manifest),
+        )
+        .await
+        .unwrap();
+    }
+    db.enqueue_job(new_job("attempt", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("retry", "2026-06-27T00:00:01Z"))
+        .await
+        .unwrap();
+    db.set_job_state(
+        "attempt",
+        "succeeded",
+        "2026-06-27T00:01:00Z",
+        None,
+        Some("first"),
+    )
+    .await
+    .unwrap();
+    job::Entity::update_many()
+        .col_expr(job::Column::RetriedBy, Expr::value("retry"))
+        .filter(job::Column::Id.eq("attempt"))
+        .exec(&db.connection())
+        .await
+        .unwrap();
+
+    let asked = vec!["first".to_string(), "second".to_string()];
+    assert_eq!(db.auto_publishable_among(&asked).await.unwrap(), ["second"]);
+}
+
 #[test]
 fn publishable_failure_states_match_the_contract() {
     // The backend filters failures-only queries on wire strings, while
@@ -4973,6 +5071,7 @@ async fn coverage_plans_round_trip_and_scope_to_account() {
         cases: vec![sample_case()],
         outer_axis: crate::api::CoverageAxis::Combination,
         in_flight_limit: Some(InFlightLimit::Unbounded),
+        retry_count: 3,
         updated_at: "2026-07-15T00:00:00Z".to_string(),
     };
     db.insert_coverage_plan("u1", &plan).await.unwrap();
@@ -4983,6 +5082,7 @@ async fn coverage_plans_round_trip_and_scope_to_account() {
     assert_eq!(got.plan.cases.len(), 1);
     assert_eq!(got.plan.outer_axis, crate::api::CoverageAxis::Combination);
     assert_eq!(got.plan.in_flight_limit, Some(InFlightLimit::Unbounded));
+    assert_eq!(got.plan.retry_count, 3);
     // A new plan is not filling.
     assert!(!got.filling);
     // Scoped by account.
@@ -4991,17 +5091,11 @@ async fn coverage_plans_round_trip_and_scope_to_account() {
     // Update in place (owner only).
     let mut bumped = plan.clone();
     bumped.runs_per_cell = 5;
+    bumped.retry_count = 0;
     assert!(db.update_coverage_plan("u1", &bumped).await.unwrap());
     assert!(!db.update_coverage_plan("u2", &bumped).await.unwrap());
-    assert_eq!(
-        db.get_coverage_plan("u1", "p1")
-            .await
-            .unwrap()
-            .unwrap()
-            .plan
-            .runs_per_cell,
-        5
-    );
+    let got = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
+    assert_eq!((got.plan.runs_per_cell, got.plan.retry_count), (5, 0));
 
     // Delete (owner only).
     assert!(!db.delete_coverage_plan("u2", "p1").await.unwrap());
@@ -6134,7 +6228,7 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
 }
 
 #[tokio::test]
-async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
+async fn a_slots_runs_carry_the_validators_rating_and_never_a_review() {
     use test_cabinet_core::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
@@ -6147,9 +6241,9 @@ async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
         Some(&manifest),
     )
     .await;
-    let evidence = slot_runs(&db, "rung").await;
+    let evidence = slot_runs(&db).await;
     assert_eq!(evidence.len(), 1);
-    assert_eq!(evidence[0].run_id, "r1");
+    assert_eq!(evidence[0].id, "r1");
     assert!(evidence[0].validator_rated);
     assert_eq!(
         evidence[0].rating,
@@ -6181,7 +6275,7 @@ async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
         Some("great"),
         "a review never touches the validators' own rating",
     );
-    assert_eq!(slot_runs(&db, "rung").await[0].rating, Some(Rating::Great));
+    assert_eq!(slot_runs(&db).await[0].rating, Some(Rating::Great));
 }
 
 #[tokio::test]
@@ -6191,7 +6285,7 @@ async fn a_legacy_runs_reviews_never_rate_it_for_a_gate() {
     db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
-    let evidence = slot_runs(&db, "rung").await;
+    let evidence = slot_runs(&db).await;
     assert!(!evidence[0].validator_rated);
     assert_eq!(
         evidence[0].rating, None,
@@ -6352,24 +6446,28 @@ async fn a_dispatch_counts_the_models_outcomes_and_never_infrastructure() {
         finished_dispatch_job(&db, &format!("j-{id}"), "rung", &run, None).await;
     }
 
-    let mut runs = slot_runs(&db, "rung").await;
-    runs.sort_by(|a, b| a.run_id.cmp(&b.run_id));
-    // An infrastructure-class failure retries and a cancel was somebody's decision:
-    // neither is the model's result.
+    let mut runs = slot_runs(&db).await;
+    runs.sort_by(|a, b| a.id.cmp(&b.id));
+    // An infrastructure failure says nothing about the model and a cancel was
+    // somebody's decision: neither is the model's result.
     assert_eq!(
-        runs.iter().map(|r| r.run_id.as_str()).collect::<Vec<_>>(),
-        vec!["ok", "timed-out"],
+        runs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec!["harness", "ok", "timed-out"],
     );
-    // A run that ended on the model's own failure is evidence, as a broken run.
-    assert!(!runs[0].model_failure);
-    assert!(runs[1].model_failure);
-    assert_eq!(
-        runs[1].as_rung_run(),
-        RungRun {
-            rating: Some(Rating::Broken),
-            loaded: false,
-        }
-    );
+    // A run that ended on the model's own failure is evidence, as a broken run: a
+    // harness error like a timeout.
+    assert!(runs[0].model_failure);
+    assert!(!runs[1].model_failure);
+    assert!(runs[2].model_failure);
+    for failure in [&runs[0], &runs[2]] {
+        assert_eq!(
+            failure.as_rung_run(),
+            RungRun {
+                rating: Some(Rating::Broken),
+                loaded: false,
+            }
+        );
+    }
 
     // One counting rule: a plan counts exactly the same runs.
     let slugs = vec![sample_cell().0];
@@ -6378,38 +6476,38 @@ async fn a_dispatch_counts_the_models_outcomes_and_never_infrastructure() {
             .await
             .unwrap()
             .get(&sample_cell()),
-        Some(&2)
+        Some(&3)
     );
 
-    // A harness error's job succeeded, yet it delivered nothing that counts: it is a
-    // failure on infrastructure for the streak, as an infrastructure run's is. A
-    // canceled job is not.
+    // A job whose run does not count ended its launch with nothing: the infrastructure
+    // run's, and the canceled run's, whose job these fixtures leave `succeeded`.
     let terminal = db.dispatch_evidence("l1", "d1").await.unwrap().terminal
         [&("rung".to_string(), sample_cell())]
         .clone();
-    let failed: usize = terminal
+    let exhausted: usize = terminal
         .iter()
-        .filter(|job| job.failed_on_infrastructure())
+        .filter(|job| job.exhausted_without_a_result())
         .count();
     assert_eq!(terminal.len(), 5);
-    assert_eq!(
-        failed, 3,
-        "infra, harness error, and the canceled run's job"
-    );
+    assert_eq!(exhausted, 2, "infra, and the canceled run's job");
 }
 
 #[test]
-fn a_canceled_job_breaks_a_failing_streak() {
-    let job = |state: &str, counted: bool| TerminalJob {
+fn a_job_ends_its_launch_with_nothing_unless_it_counted_was_canceled_or_was_retried() {
+    let job = |state: &str, counted: bool, retried: bool| TerminalJob {
         state: state.to_string(),
         counted,
+        retried,
+        attempt: 0,
         ended_at: "t".to_string(),
     };
-    assert!(job("failed", false).failed_on_infrastructure());
-    assert!(job("succeeded", false).failed_on_infrastructure());
-    assert!(!job("succeeded", true).failed_on_infrastructure());
-    assert!(!job("failed", true).failed_on_infrastructure());
-    assert!(!job("canceled", false).failed_on_infrastructure());
+    assert!(job("failed", false, false).exhausted_without_a_result());
+    assert!(job("succeeded", false, false).exhausted_without_a_result());
+    assert!(!job("succeeded", true, false).exhausted_without_a_result());
+    assert!(!job("failed", true, false).exhausted_without_a_result());
+    assert!(!job("canceled", false, false).exhausted_without_a_result());
+    // Its retry stands for it.
+    assert!(!job("failed", false, true).exhausted_without_a_result());
 }
 
 /// A queued job attributed to `user_id` and launched by `origin`.
@@ -6655,6 +6753,7 @@ fn schedulable_plan(id: &str) -> crate::api::CoveragePlan {
         cases: vec![sample_case()],
         outer_axis: crate::api::CoverageAxis::Case,
         in_flight_limit: None,
+        retry_count: 1,
         updated_at: "2026-08-15T00:00:00Z".to_string(),
     }
 }
@@ -6812,6 +6911,7 @@ fn test_ladder(id: &str, name: &str, rungs: Vec<StoredLadderRung>) -> StoredLadd
         rungs,
         outer_axis: "rung".to_string(),
         in_flight_limit: None,
+        retry_count: 1,
         updated_at: "2026-08-15T00:00:00Z".to_string(),
     }
 }
@@ -6824,6 +6924,7 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
     let ladder = StoredLadder {
         outer_axis: "combination".to_string(),
         in_flight_limit: Some(InFlightLimit::Unbounded),
+        retry_count: 4,
         ..test_ladder(
             "l1",
             "E2E difficulty climb",
@@ -6851,6 +6952,7 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
     assert_eq!(got.rungs, ladder.rungs);
     assert_eq!(got.outer_axis, "combination");
     assert_eq!(got.in_flight_limit, Some(InFlightLimit::Unbounded));
+    assert_eq!(got.retry_count, 4);
     // Rungs come back in climb order, which is the order they were written in.
     assert_eq!(
         got.rungs
@@ -6863,10 +6965,12 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
     assert!(db.list_ladders("u2").await.unwrap().is_empty());
     assert_eq!(db.ladder_owner("l1").await.unwrap().as_deref(), Some("u1"));
 
-    // An edit writes the axis and the limit with the rest of the configuration.
+    // An edit writes the axis, the limit and the retry limit with the rest of the
+    // configuration.
     let edited = StoredLadder {
         outer_axis: "rung".to_string(),
         in_flight_limit: Some(InFlightLimit::Bounded { runs: 0 }),
+        retry_count: 0,
         ..ladder.clone()
     };
     assert!(db.update_ladder("u1", &edited).await.unwrap());
@@ -6877,6 +6981,7 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
         got.in_flight_limit,
         Some(InFlightLimit::Bounded { runs: 0 })
     );
+    assert_eq!(got.retry_count, 0);
 
     assert!(!db.delete_ladder("u2", "l1").await.unwrap());
     assert!(db.delete_ladder("u1", "l1").await.unwrap());
@@ -7067,23 +7172,23 @@ async fn finished_dispatch_job(
     .unwrap();
 }
 
-/// The dispatch's counted runs of one rung's [`sample_cell`] slot.
-async fn slot_runs(db: &Db, rung: &str) -> Vec<CellRunRating> {
-    db.dispatch_evidence("l1", "d1")
+/// The counted runs of the [`sample_cell`], in the order they landed: what a rung slot of
+/// that cell takes its runs from, whoever launched them.
+async fn slot_runs(db: &Db) -> Vec<CellRun> {
+    db.counted_runs_by_cell(&["pong".to_string()], None)
         .await
         .unwrap()
-        .runs
-        .remove(&(rung.to_string(), sample_cell()))
+        .remove(&sample_cell())
         .unwrap_or_default()
 }
 
 #[tokio::test]
-async fn dispatch_evidence_reads_only_the_dispatchs_own_jobs_grouped_by_rung() {
+async fn dispatch_evidence_reads_the_dispatchs_own_jobs_and_a_slots_runs_are_its_cells() {
     let db = Db::connect_in_memory().await.unwrap();
     finished_dispatch_job(&db, "j1", "r1", &record("run-1"), None).await;
     finished_dispatch_job(&db, "j2", "r2", &record("run-2"), None).await;
-    // The same cell launched by hand, by a plan, and by another dispatch: none of it is
-    // this dispatch's evidence.
+    // The same cell launched by hand, by a plan, and by another dispatch: their jobs are
+    // not this dispatch's, and the run is the cell's all the same.
     db.push(&record("by-hand"), &links(), None, None)
         .await
         .unwrap();
@@ -7102,21 +7207,20 @@ async fn dispatch_evidence_reads_only_the_dispatchs_own_jobs_grouped_by_rung() {
     let evidence = db.dispatch_evidence("l1", "d1").await.unwrap();
     let r1 = ("r1".to_string(), sample_cell());
     let r2 = ("r2".to_string(), sample_cell());
-    // One case pinned on two rungs is two slots that share nothing.
+    // The runs are read by cell, whatever rung or launcher produced them: one case pinned
+    // on two rungs is one cell, and the run nobody's job produced is in it.
+    let mut runs: Vec<String> = slot_runs(&db).await.into_iter().map(|run| run.id).collect();
+    runs.sort();
+    assert_eq!(runs, vec!["by-hand", "run-1", "run-2"]);
+    // In flight globally: this dispatch's two, the plan's and the other dispatch's.
     assert_eq!(
-        evidence.runs[&r1]
-            .iter()
-            .map(|run| run.run_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["run-1"]
+        db.count_in_flight_jobs_by_cell(&["pong".to_string()])
+            .await
+            .unwrap()
+            .get(&sample_cell()),
+        Some(&4)
     );
-    assert_eq!(
-        evidence.runs[&r2]
-            .iter()
-            .map(|run| run.run_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["run-2"]
-    );
+    // The dispatch's own jobs stay apart, by rung.
     assert_eq!(evidence.in_flight[&r1], vec!["waiting".to_string()]);
     assert_eq!(evidence.in_flight[&r2], vec!["running".to_string()]);
     assert_eq!(evidence.waiting.get(&r1).copied(), Some(1));
@@ -7195,10 +7299,10 @@ async fn a_retried_attempts_run_counts_once_through_its_retry() {
     .unwrap();
 
     assert_eq!(
-        slot_runs(&db, "r1")
+        slot_runs(&db)
             .await
             .iter()
-            .map(|run| run.run_id.as_str())
+            .map(|run| run.id.as_str())
             .collect::<Vec<_>>(),
         vec!["retry-run"]
     );
@@ -7258,8 +7362,17 @@ async fn the_dispatch_migration_round_trips_down_and_up() {
             .collect()
     };
 
+    // Counted from the registered list, so a migration added after this one does not
+    // move the test onto another.
+    let migrations = test_cabinet_migration::Migrator::migrations();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261002_000055_ladder_dispatch")
+        .expect("the dispatch migration is registered");
+    let steps = (migrations.len() - index) as u32;
+
     // Down: the old columns and tables come back, the limits under their old names.
-    test_cabinet_migration::Migrator::down(&conn, Some(1))
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
         .await
         .unwrap();
     let plan = columns("coverage_plan").await;
@@ -7286,7 +7399,7 @@ async fn the_dispatch_migration_round_trips_down_and_up() {
 
     // Up: the new shape, the limits kept, the dispatch state gone (it never existed
     // before), and nothing filling.
-    test_cabinet_migration::Migrator::up(&conn, Some(1))
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
         .await
         .unwrap();
     assert_eq!(
@@ -7318,6 +7431,51 @@ async fn the_dispatch_migration_round_trips_down_and_up() {
 }
 
 #[tokio::test]
+async fn the_retry_count_migration_gives_existing_plans_and_ladders_one_retry() {
+    use test_cabinet_migration::MigratorTrait;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_coverage_plan(
+        "u1",
+        &crate::api::CoveragePlan {
+            retry_count: 5,
+            ..schedulable_plan("p1")
+        },
+    )
+    .await
+    .unwrap();
+    db.insert_ladder(
+        "u1",
+        &StoredLadder {
+            retry_count: 5,
+            ..test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")])
+        },
+    )
+    .await
+    .unwrap();
+
+    // Rolled back and forward again, the rows are ones stored before the column existed.
+    let conn = db.connection();
+    let migrations = test_cabinet_migration::Migrator::migrations();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261009_000056_add_retry_count")
+        .expect("the retry-count migration is registered");
+    let steps = (migrations.len() - index) as u32;
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
+        .await
+        .unwrap();
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
+        .await
+        .unwrap();
+
+    let plan = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
+    assert_eq!(plan.plan.retry_count, 1);
+    let ladder = db.get_ladder("u1", "l1").await.unwrap().unwrap();
+    assert_eq!(ladder.retry_count, 1);
+}
+
+#[tokio::test]
 async fn recent_terminal_jobs_since_reads_only_jobs_that_ended_after_it() {
     let db = Db::connect_in_memory().await.unwrap();
     let cell: CellKey = (
@@ -7344,30 +7502,86 @@ async fn recent_terminal_jobs_since_reads_only_jobs_that_ended_after_it() {
             .await
             .unwrap();
     }
-    assert_eq!(
-        db.recent_terminal_jobs(&cell, 3, None).await.unwrap().len(),
-        3
-    );
+    assert_eq!(db.recent_terminal_jobs(&cell, None).await.unwrap().len(), 3);
     // A job that ended exactly at `since` is not after it.
     assert_eq!(
-        db.recent_terminal_jobs(&cell, 3, Some("2026-10-01T00:00:00.5Z"))
+        db.recent_terminal_jobs(&cell, Some("2026-10-01T00:00:00.5Z"))
             .await
             .unwrap()
             .len(),
         1
     );
     assert_eq!(
-        db.recent_terminal_jobs(&cell, 3, Some("2026-10-01T00:00:00.25Z"))
+        db.recent_terminal_jobs(&cell, Some("2026-10-01T00:00:00.25Z"))
             .await
             .unwrap()
             .len(),
         2
     );
     assert!(
-        db.recent_terminal_jobs(&cell, 3, Some("2026-10-01T00:00:02Z"))
+        db.recent_terminal_jobs(&cell, Some("2026-10-01T00:00:02Z"))
             .await
             .unwrap()
             .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn the_latest_launch_of_a_cell_is_its_newest_first_attempt_whatever_became_of_it() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let cell: CellKey = (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "none".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+        String::new(),
+        String::new(),
+    );
+    assert_eq!(db.latest_cell_launch(&cell).await.unwrap(), None);
+    let at = |text: &str| OffsetDateTime::parse(text, &Rfc3339).unwrap();
+
+    // Compared as time: the fraction past the second is the later of these two, though
+    // its text sorts first.
+    db.enqueue_job(new_job("a", "2026-10-01T00:00:00.5Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("b", "2026-10-01T00:00:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        db.latest_cell_launch(&cell).await.unwrap(),
+        Some(at("2026-10-01T00:00:00.5Z"))
+    );
+    // An ended launch still counts as one.
+    db.enqueue_job(new_job("c", "2026-10-01T00:00:02Z"))
+        .await
+        .unwrap();
+    db.set_job_state("c", "canceled", "2026-10-01T00:00:03Z", None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.latest_cell_launch(&cell).await.unwrap(),
+        Some(at("2026-10-01T00:00:02Z"))
+    );
+    // An automatic retry is part of the launch it retries, and a job of another cell is
+    // not this cell's.
+    db.enqueue_job(NewJob {
+        attempt: 1,
+        ..new_job("d", "2026-10-01T00:00:09Z")
+    })
+    .await
+    .unwrap();
+    db.enqueue_job(NewJob {
+        test_case_slug: "carom".to_string(),
+        ..new_job("e", "2026-10-01T00:00:09Z")
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        db.latest_cell_launch(&cell).await.unwrap(),
+        Some(at("2026-10-01T00:00:02Z"))
     );
 }
 

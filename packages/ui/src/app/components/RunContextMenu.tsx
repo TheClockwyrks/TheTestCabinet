@@ -147,7 +147,12 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
   const findModel = useFindModel();
   // The catalog's load state, so an unresolved model id is reported as what it
   // actually is: still loading, unreadable, or genuinely uncurated.
-  const { status: modelsStatus } = useModels();
+  // A re-read in flight reads as loading here: the catalog on hand predates it,
+  // so it has not answered for a model it does not hold.
+  const catalog = useModels();
+  const modelsStatus: CatalogStatus = catalog.refreshing
+    ? "loading"
+    : catalog.status;
   const { canDelete, deletionGate, deleteRun } = useRunDeletion();
   const { canKill, killRun } = useRunKill();
   const { canPublish, publishRun } = useRunPublish();

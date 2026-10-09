@@ -4,6 +4,7 @@
 //! launch make on its jobs.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use axum::Json;
@@ -166,6 +167,22 @@ pub(crate) async fn enqueue_other(
         .unwrap();
 }
 
+/// Enqueue a job of `slug` on the shared climber now, as a launch by hand made at this
+/// moment would: a launch created after everything that has ended so far.
+pub(crate) async fn enqueue_now(state: &AppState, job_id: &str, slug: &str) {
+    let now = super::jobs::now_rfc3339().unwrap();
+    state
+        .db
+        .enqueue_job(crate::db::NewJob {
+            test_case_slug: slug.to_string(),
+            model_id: SONNET.to_string(),
+            user_id: Some(OWNER.to_string()),
+            ..crate::db::tests::new_job(job_id, &now)
+        })
+        .await
+        .unwrap();
+}
+
 /// Enqueue a second job carrying `of`'s cell and origin: the duplicate an automatic retry
 /// or a restart's reaping used to leave in flight beside the original.
 pub(crate) async fn duplicate(state: &AppState, of: &job::Model, job_id: &str) {
@@ -222,6 +239,42 @@ pub(crate) async fn report(state: &AppState, job_id: &str, record: RunRecord) {
     .await
     .unwrap();
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// Report `job_id` failed with no run, as a driver whose infrastructure broke does: the
+/// backend retries it while the launch has retries left. Returns the id of the retry it
+/// enqueued, if any.
+pub(crate) async fn report_failed(state: &AppState, job_id: &str) -> Option<String> {
+    let token = state.db.get_job(job_id).await.unwrap().unwrap().job_token;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::AUTHORIZATION,
+        format!("Bearer {token}").parse().unwrap(),
+    );
+    let status = super::jobs::update_status(
+        State(state.clone()),
+        Path(job_id.to_string()),
+        headers,
+        Json(StatusUpdate {
+            state: DriverState::Failed,
+            record: None,
+            detail: Some("harness unavailable".to_string()),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let job = state.db.get_job(job_id).await.unwrap().unwrap();
+    assert_eq!(job.state, "failed");
+    job.retried_by
+}
+
+/// The `retryCount` a job's launch request carries.
+pub(crate) fn retry_count_of(job: &job::Model) -> Option<u64> {
+    let request: serde_json::Value = serde_json::from_str(&job.request_json).unwrap();
+    request
+        .get("retryCount")
+        .and_then(serde_json::Value::as_u64)
 }
 
 /// A run of `slug` that ended on `run_state` rather than completing.
@@ -282,13 +335,38 @@ pub(crate) async fn finish_and_feed(
     slug: &str,
     verdicts: &[(&str, bool)],
 ) {
-    let job = finish(
-        state,
-        job_id,
-        run_of(&format!("run-{job_id}"), slug, verdicts),
-    )
-    .await;
+    // Each run finishes a second after the one before it, as runs finished in turn do.
+    // Left on the fixture's one shared instant, two runs of a cell would be ordered by
+    // their ids, which are random, and a slot's first runs would differ from run to run.
+    static FINISHED: AtomicU32 = AtomicU32::new(0);
+    let nth = FINISHED.fetch_add(1, Ordering::Relaxed);
+    let mut record = run_of(&format!("run-{job_id}"), slug, verdicts);
+    record.finished_at = format!("2026-10-02T00:{:02}:{:02}Z", nth / 60, nth % 60);
+    let job = finish(state, job_id, record).await;
     feed(state, &job).await;
+}
+
+/// Every publish job, oldest first.
+pub(crate) async fn publish_jobs(
+    state: &AppState,
+) -> Vec<test_cabinet_entities::publish_job::Model> {
+    use sea_orm::QueryOrder;
+    use test_cabinet_entities::publish_job;
+    publish_job::Entity::find()
+        .order_by_asc(publish_job::Column::CreatedAt)
+        .order_by_asc(publish_job::Column::Id)
+        .all(&state.db.connection())
+        .await
+        .unwrap()
+}
+
+/// The ids of the runs that have a publish job, oldest job first.
+pub(crate) async fn publishing(state: &AppState) -> Vec<String> {
+    publish_jobs(state)
+        .await
+        .into_iter()
+        .map(|job| job.run_id)
+        .collect()
 }
 
 /// Every job, oldest first.

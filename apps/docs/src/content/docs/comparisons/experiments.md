@@ -94,12 +94,14 @@ the job's `record_id`, and by following `retried_by` to the retry when the
 backend retried the attempt, so an attempt and its retry are one run. An id
 that already names a stored run resolves to that run.
 
-A resolved run counts toward `N` by the rule that decides
-[which runs count](/components/backend/coverage/#which-runs-count) toward a
-coverage cell. A run that ends in the model's own failure counts, because the
-model had its attempt. A run that ends `harness_error` or `infrastructure`, is
-canceled, or was deleted does not count, and neither does a job that ended
-without storing a run. The next trigger launches a replacement for each of them.
+A resolved run counts toward `N` when it ended `completed`, `catastrophic`,
+`timed_out`, `limit_exceeded`, or `hung`. A run that ends in one of those
+failures counts because the model had its attempt. A run that ends
+`harness_error` or `infrastructure`, is canceled, or was deleted does not count,
+and neither does a job that ended without storing a run. The next trigger
+launches a replacement for each of them. An arm differs here from a
+[coverage cell](/components/backend/coverage/#which-runs-count), which counts a
+harness error.
 
 An arm's statistics, diagnostics and published runs are computed from its
 counted runs. An arm reports the ids it holds, in flight or counted, as

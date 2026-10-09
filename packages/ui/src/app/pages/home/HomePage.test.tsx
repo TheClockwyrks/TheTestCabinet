@@ -1,5 +1,10 @@
 import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
-import { render, screen, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  within,
+  waitForElementToBeRemoved,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { CabinetStats } from "../../data/cabinetStats";
@@ -136,6 +141,8 @@ function galleryValue(opts: {
   showcaseUrls?: Record<string, Record<string, string>>;
   testCaseGroups?: TestCaseGroupSummary[];
   getCabinetStats?: () => Promise<CabinetStats | null>;
+  /** Every run query rejects, as a host whose backend is unreachable would. */
+  queryFails?: boolean;
 }): GalleryDataInput {
   const { summaries = [], showcases = {}, showcaseUrls } = opts;
   return {
@@ -144,8 +151,10 @@ function galleryValue(opts: {
     writeups: {},
     reviews: {},
     runsLoading: false,
-    queryRunSummaries: async (query: RunQuery) =>
-      runSummaryPage(summaries, query),
+    queryRunSummaries: async (query: RunQuery) => {
+      if (opts.queryFails) throw new Error("unreachable");
+      return runSummaryPage(summaries, query);
+    },
     readRun: (id: string) =>
       Promise.resolve(
         (id in showcases
@@ -166,6 +175,15 @@ function galleryValue(opts: {
     testCaseGroups: opts.testCaseGroups,
     getCabinetStats: opts.getCabinetStats,
   } as unknown as GalleryDataInput;
+}
+
+// The showcase section is gone: its query answered with no legendary run (or
+// failed). The section stands, heading and all, while the query is in flight,
+// so its heading leaving is the signal that the page has settled without one.
+async function showcaseSettledEmpty() {
+  await waitForElementToBeRemoved(() =>
+    screen.queryByText("Legendary Showcase"),
+  );
 }
 
 function renderHome(opts: Parameters<typeof galleryValue>[0] = {}) {
@@ -293,12 +311,20 @@ describe("the legendary showcase", () => {
     expect(marks.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps the section with a muted line when nothing is legendary", async () => {
+  it("leaves the section out entirely when nothing is legendary", async () => {
     renderHome({ summaries: [run({ id: "plain" })] });
-    expect(
-      await screen.findByText("Nothing has been rated legendary yet."),
-    ).toBeTruthy();
-    expect(screen.getByText("Legendary Showcase")).toBeTruthy();
+    // The section holds its place while the query is in flight...
+    expect(screen.getByText("Legendary Showcase")).toBeInTheDocument();
+    // ...and goes, heading included, once it answers with no legendary run.
+    await showcaseSettledEmpty();
+    expect(screen.queryByText("Legendary Showcase")).not.toBeInTheDocument();
+    expect(screen.queryByText(/rated legendary/)).not.toBeInTheDocument();
+  });
+
+  it("leaves the section out when the showcase query fails", async () => {
+    renderHome({ queryFails: true });
+    await showcaseSettledEmpty();
+    expect(screen.queryByText("Legendary Showcase")).not.toBeInTheDocument();
   });
 
   it("tags an unpublished legendary run", async () => {
@@ -348,14 +374,14 @@ describe("the totals band and activity chart", () => {
 
   it("quietly holds the band back when the host lacks the figures", async () => {
     renderHome({});
-    await screen.findByText("Nothing has been rated legendary yet.");
+    await showcaseSettledEmpty();
     expect(screen.queryByText("Activity")).toBeNull();
     expect(screen.queryByText("Test cases")).toBeNull();
   });
 
   it("quietly holds the band back when the fetch resolves null", async () => {
     renderHome({ getCabinetStats: () => Promise.resolve(null) });
-    await screen.findByText("Nothing has been rated legendary yet.");
+    await showcaseSettledEmpty();
     expect(screen.queryByText("Activity")).toBeNull();
   });
 });
@@ -472,7 +498,7 @@ describe("the group leaderboards", () => {
 
   it("renders no boards section at all for a host without groups", async () => {
     renderHome({ summaries: [run({ id: "a" })] });
-    await screen.findByText("Nothing has been rated legendary yet.");
+    await showcaseSettledEmpty();
     expect(screen.queryByRole("table")).toBeNull();
   });
 });

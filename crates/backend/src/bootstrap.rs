@@ -15,6 +15,10 @@
 //! official endpoint's rate right then ([`list_price_for_launch`]), so the first
 //! run of a freshly added model is not refused over a figure OpenRouter publishes.
 //!
+//! Once per database, a start also rewrites every stored list price to its
+//! standard endpoint's rate ([`rewrite_list_prices`]), since a list price filled
+//! before Flex endpoints were ignored can hold a Flex rate.
+//!
 //! A model is also priced the moment it first *appears* — when it is curated in the
 //! app, when a launch binds it, and at startup for every known model still missing
 //! an observation — so the catalog never shows a blank billed rate for a model the
@@ -313,6 +317,7 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
             // migrated plan is not filling; its owner fills it from the console.
             outer_axis: crate::api::CoverageAxis::Case,
             in_flight_limit: None,
+            retry_count: crate::api::default_retry_count(),
             updated_at: now.clone(),
         };
         db.insert_coverage_plan(&plan.user_id, &coverage).await?;
@@ -758,6 +763,10 @@ fn parse_harness(slug: &str) -> HarnessSlug {
     // correct for a gg run rather than defaulting to Claude for an unknown slug.
     HarnessSlug::from_wire(slug).unwrap_or(HarnessSlug::Claude)
 }
+
+#[path = "bootstrap.list_price_rewrite.rs"]
+mod list_price_rewrite;
+pub use list_price_rewrite::{ListPriceRewrite, rewrite_list_prices, spawn_list_price_rewrite};
 
 #[cfg(test)]
 #[path = "bootstrap.test.rs"]

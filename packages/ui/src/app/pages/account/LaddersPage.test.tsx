@@ -12,6 +12,7 @@ import {
   type BackendContextValue,
 } from "../../../client/context";
 import { LaddersPage, ladderCardView } from "./LaddersPage";
+import ladderStyles from "./Ladder.module.scss";
 
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -75,6 +76,15 @@ const C = summary({
   endedAt: "2026-10-02T11:00:00Z",
   slots: slots({ passed: 2, failed: 1, skipped: 9 }),
   runs: { total: 27, done: 24, inFlight: 3 },
+});
+
+// A dispatch with nothing in flight whose one unfinished climber is blocked.
+const ATTENTION = summary({
+  id: "d1",
+  status: "needsAttention",
+  startedAt: "2026-10-02T10:00:00Z",
+  slots: slots({ blocked: 1, passed: 2, failed: 1, skipped: 3, pending: 2 }),
+  runs: { total: 27, done: 14, inFlight: 0 },
 });
 
 // The card is a configuration headline and the latest dispatch's totals: a bar of runs
@@ -142,6 +152,18 @@ describe("ladderCardView", () => {
     expect(view.donePct).toBe(100);
   });
 
+  it("reads a dispatch waiting on its owner as Needs attention", () => {
+    const view = ladderCardView(ATTENTION);
+    expect(view.status).toBe("needsAttention");
+    expect(view.badge).toBe("Needs attention");
+    // Still the dispatch's unfinished work, so the blocked slot counts as running.
+    expect(view.counts.running).toBe(1);
+    expect(view.title).toBe(
+      "14 of 27 runs done · 0 in flight · 1 blocked · 2 pending · nothing is " +
+        "running: the blocked climbers are waiting on you",
+    );
+  });
+
   it("folds blocked slots into running and calls them out on hover", () => {
     const view = ladderCardView(
       summary({
@@ -193,6 +215,15 @@ describe("LaddersPage", () => {
     const card = screen.getByText("Easy to hard").parentElement!;
     expect(card.textContent).not.toMatch(/review/i);
     expect(card.textContent).not.toMatch(/opus|claude/i);
+  });
+
+  it("badges a dispatch that needs attention in its own tone", async () => {
+    renderList([ATTENTION]);
+    const badge = await screen.findByText("Needs attention");
+    expect(badge).toHaveClass(ladderStyles.cardBadge ?? "missing");
+    expect(badge).toHaveClass(ladderStyles.badgeAttention ?? "missing");
+    expect(screen.queryByText("Stopped")).not.toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 
   it("keeps the same slots for a ladder never run", async () => {

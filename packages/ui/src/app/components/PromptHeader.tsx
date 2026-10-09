@@ -21,7 +21,9 @@ interface PromptHeaderProps {
    * Given to the header rather than laid out beside it, because a header that is one
    * column of somebody else's row is a header whose second line is that column wide.
    * Both rows are the header's, so both run the full width of the page and the two
-   * trailing edges line up.
+   * trailing edges line up. On a narrow viewport, where the prompt leaves no room
+   * beside it, the actions move to a row of their own under the comment, so the
+   * comment stays directly beneath the prompt it annotates.
    */
   titleActions?: ReactNode;
   /**
@@ -60,15 +62,17 @@ export function PromptHeader({
     </p>
   );
   return (
-    <header className={styles.hero}>
+    <header
+      className={
+        titleActions
+          ? [styles.hero, styles.withTitleActions].join(" ")
+          : styles.hero
+      }
+    >
+      {prompt}
       {titleActions ? (
-        <div className={styles.titleRow}>
-          {prompt}
-          <div className={styles.titleActions}>{titleActions}</div>
-        </div>
-      ) : (
-        prompt
-      )}
+        <div className={styles.titleActions}>{titleActions}</div>
+      ) : null}
       {actions ? (
         <div className={styles.commentRow}>
           <p className={styles.comment}>{comment}</p>

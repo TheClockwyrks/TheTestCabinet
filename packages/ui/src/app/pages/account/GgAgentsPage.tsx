@@ -133,7 +133,9 @@ export function GgAgentsPage() {
           </Link>
         </div>
       ) : (
-        <div className={styles.list}>{agents.map(renderAgent)}</div>
+        <div className={[styles.list, styles.rowList].join(" ")}>
+          {agents.map(renderAgent)}
+        </div>
       )}
     </PageLayout>
   );

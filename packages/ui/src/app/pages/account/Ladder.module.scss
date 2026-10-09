@@ -13,6 +13,13 @@
 
 // ---- The ladders list ------------------------------------------------------
 
+// The list is the cards' query container: a card lays itself out by the width it
+// actually has, which the page caps well below a wide viewport, rather than by the
+// viewport's.
+.ladderList {
+  container: ladders / inline-size;
+}
+
 // A ladder card, as a grid of fixed slots in two rows, so the right side lines up
 // with the name row and with the description row:
 //
@@ -33,12 +40,11 @@
   row-gap: t.$space-xs;
 }
 
+// A name longer than its slot wraps onto a second line rather than being cut off.
 .cardName {
   grid-area: name;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .cardSub {
@@ -55,14 +61,14 @@
   gap: t.$space-md;
 }
 
-// One width for every status, room for the longest ("Not run yet") with a margin
+// One width for every status, room for the longest ("Needs attention") with a margin
 // either side, and one height: every badge carries a hairline border, transparent
 // unless its tone outlines it. The width is fixed rather than a minimum, so a status
 // change never moves the bar beside it.
 .cardBadge {
   flex: none;
   box-sizing: border-box;
-  width: 13ch;
+  width: 17ch;
   text-align: center;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
@@ -82,6 +88,11 @@
 
 .badgeRunning {
   background: t.$color-accent;
+}
+
+// Waiting on its owner: nothing is in flight and a blocked climber needs a retry.
+.badgeAttention {
+  background: t.$color-warning;
 }
 
 .badgeFinished {
@@ -128,9 +139,46 @@
   align-self: center;
 }
 
-// A phone stacks the card: name, description, status and bar, counts, actions — each
-// still in its own slot, the bar taking whatever width the badge leaves.
-@include bp.below(t.$bp-sm) {
+// Below the width the two-row card needs, the fixed right side would squeeze the name
+// to nothing. The card stacks instead: the name and description keep the actions
+// beside them, and the status and the counts each take a full-width row beneath, the
+// bar stretching over whatever the badge leaves.
+//
+//   | name        | actions |
+//   | description | actions |
+//   | [status] [bar ............] |
+//   | N running · N passed · ...  |
+@container ladders (max-width: 56rem) {
+  .ladderCard {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name actions"
+      "sub actions"
+      "status status"
+      "counts counts";
+    row-gap: t.$space-sm;
+  }
+
+  .cardStatus {
+    justify-self: stretch;
+  }
+
+  .cardBar {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .cardCounts {
+    justify-self: start;
+  }
+}
+
+// A phone has no room for the actions beside the name either, nor for the four
+// counts on one line: everything takes a row of its own, the counts fall two by two
+// in equal columns, and the two actions split the last row so each is a full-size
+// target.
+@container ladders (max-width: 30rem) {
   .ladderCard {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -141,27 +189,30 @@
       "actions";
   }
 
-  .cardStatus,
-  .cardCounts,
-  .cardActions {
-    justify-self: stretch;
-  }
-
-  .cardBar {
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 0;
-  }
-
-  // Two by two, so no figure wraps alone onto a line of its own.
   .cardCounts {
+    justify-self: stretch;
     display: grid;
-    grid-template-columns: repeat(2, max-content);
-    column-gap: t.$space-lg;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: t.$space-xs t.$space-md;
   }
 
   .cardCountSep {
     display: none;
+  }
+
+  // The columns line the figures up here, so the fixed slot would only indent them.
+  .cardCountNum {
+    min-width: 0;
+  }
+
+  .cardActions {
+    justify-self: stretch;
+    margin-top: t.$space-xs;
+
+    > * {
+      flex: 1 1 0;
+      text-align: center;
+    }
   }
 }
 
@@ -177,11 +228,19 @@
   margin-bottom: t.$space-xl;
 }
 
+// A card lays out where its climber stands by its own width rather than the
+// viewport's (the `@container climber` block below).
 .climber {
+  container: climber / inline-size;
   background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   padding: t.$space-md t.$space-lg;
+
+  // A phone has no width to spend on the card's side padding.
+  @include bp.below(t.$bp-sm) {
+    padding: t.$space-md;
+  }
 }
 
 // A climber's header, as a grid of fixed slots: the identity on the first line, and
@@ -203,7 +262,8 @@
 .climberToggle {
   grid-area: toggle;
   display: flex;
-  align-items: center;
+  // On the name's first line, so the twisty stays at the top of a name that wraps.
+  align-items: baseline;
   gap: t.$space-sm;
   min-width: 0;
   background: none;
@@ -220,22 +280,26 @@
 }
 
 // The combination's name, its provider, and a "Cannot launch" pill when it applies.
-// Shrinks by cutting the name short, never by pushing the controls.
+// Wraps: the identity has the card's first line to itself (the status, the track and
+// the count are on the line beneath), so a long name costs a line and moves nothing
+// beside it, and the provider and the pill drop under a name that leaves them no room.
 .climberIdentity {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: t.$space-sm;
+  gap: t.$space-xs t.$space-sm;
   min-width: 0;
 }
 
 // The combination's name — the row's subject, in the accent like every other title.
+// Never cut short: two gg climbers can differ only in the models at the end of the
+// name, which is the part an ellipsis would hide. A model id with no spaces breaks
+// where it must.
 .climberTitle {
   color: t.$color-accent;
   font-size: t.$font-lg;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .climberMeta {
@@ -310,7 +374,7 @@
 }
 
 // Blocked: the rung is undecided and nothing the dispatch does by itself will move it
-// (a combination that cannot launch, runs that keep failing on infrastructure, runs
+// (a combination that cannot launch, a launch that used up its automatic retries, runs
 // with no rating). Also the "cannot launch" pill a climber in
 // another state carries when its combination is broken. Outlined rather than filled
 // so it cannot be mistaken for a verdict of the gate: the fault is in the ladder or
@@ -422,20 +486,30 @@
   white-space: nowrap;
 }
 
-// A narrow viewport stacks where the climber stands: the status and the count on one
-// line, the track on a full line of its own. Every element still keeps its own area,
-// so nothing moves when the status changes.
-@include bp.below(t.$bp-sm) {
+// A card narrower than the three columns need at full width (40rem, the indent
+// included) stacks where the climber stands: the status on a full line of its own,
+// the track and the count beneath it. Every element still keeps its own area.
+//
+// The status is not cut short here. Squeezed beside the track and the count it turned
+// "Blocked at rung 3: retries used up" into "Blocked at rung 3…" and left the reason
+// behind a tooltip a touch screen cannot open. So the pill has the whole line and
+// wraps when even that is too little. A status changing can therefore add a line to
+// the card on a phone, the price of it being readable at all.
+@container climber (max-width: 40rem) {
   .climberLine {
     grid-template-columns: minmax(0, 1fr) 6.5rem;
     grid-template-areas:
-      "status count"
-      "track track";
+      "status status"
+      "track count";
     gap: t.$space-sm t.$space-md;
   }
 
   .climberStatusSlot {
     grid-area: status;
+  }
+
+  .statusPill {
+    white-space: normal;
   }
 
   .rungTrack {
@@ -485,11 +559,17 @@
   font-size: t.$font-sm;
 }
 
+// Capped just short of the row's width, so the name always fits on the line its
+// position is on and wraps within itself when it is long. Left to its own width, a
+// name too long for the rest of that line moved to the next one whole, stranding the
+// position number alone above it.
 .rungName {
   color: t.$color-text;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   min-width: 0;
+  max-width: calc(100% - #{t.$space-xl});
+  overflow-wrap: anywhere;
 }
 
 // The rung's badge: the gate's verdict, or what the climber is doing on the rung.
@@ -580,6 +660,35 @@
   min-width: 0;
   margin: t.$space-xs 0 t.$space-sm;
   padding-left: t.$space-lg;
+}
+
+// The rung rows and the blocked line on a phone.
+@include bp.below(t.$bp-sm) {
+  // The evidence takes a line under the rung's name and shares it with the runs
+  // control: it is given the row's width less the control's and wraps within it. At
+  // its own width the sentence filled the line, which left the control alone on a
+  // line of its own under every decided rung.
+  .tally {
+    flex: 1 1 calc(100% - #{t.$space-2xl} - #{t.$space-lg});
+    min-width: 0;
+  }
+
+  // The two quiet controls are text-sized on a desktop; a finger needs more to hit.
+  // The negative margin gives the padding back to the layout, so the label stays where
+  // it was and the row grows no taller.
+  .rungLink {
+    padding: t.$space-sm;
+    margin: calc(-1 * #{t.$space-sm});
+  }
+
+  .retryButton {
+    padding: t.$space-xs t.$space-md;
+  }
+
+  // The run log needs the row's whole width more than it needs the indent.
+  .rungRuns {
+    padding-left: 0;
+  }
 }
 
 // A ladder never run: what Run would climb, under the sentence that says how.
@@ -684,15 +793,16 @@
   font-size: t.$font-sm;
 }
 
+// The rung's case, variant, version and engine. Wraps when it is longer than the row
+// rather than being cut off: the engine is the last part, and it is what tells two
+// rungs of one case apart.
 .rungEditName {
   flex: 1 1 12rem;
   min-width: 0;
   color: t.$color-text;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 // The per-rung runs override: empty inherits the ladder's target, which is why it

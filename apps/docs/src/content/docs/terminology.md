@@ -48,7 +48,8 @@ states:
 - **Running**: working its current [rung](#rung), which the dispatch can still
   launch.
 - **Blocked**: its current rung is undecided and cannot progress until something
-  is fixed, usually followed by a Retry.
+  is fixed, usually followed by a Retry. A dispatch with nothing in flight and
+  only blocked climbers left to wait for reads Needs attention.
 - **Failed**: it failed a rung and stopped there, so "failed at rung four" is a
   ladder's headline result for one model.
 - **Completed**: it passed every rung, and the ladder has no further question to
@@ -211,11 +212,12 @@ ladder asks how far a model gets and treats its steps as a sequence in which
 each is harder than the last.
 
 A ladder is a configuration and does nothing by itself. Running it starts a
-**dispatch**, which snapshots the configuration, launches every climber's first
-rung, and climbs automatically: a single gate, parameterised by a
-[rating](#rating) floor and a threshold, reads the ratings the validators decided
-for the dispatch's own runs, and the backend launches the next rung as soon as the
-gate clears. A ladder keeps only its latest dispatch. Every rung is a
+**dispatch**, which snapshots the configuration and climbs automatically: a
+single gate, parameterised by a [rating](#rating) floor and a threshold, reads
+the ratings the validators decided for the runs of each rung, and the backend
+moves a climber to the next rung as soon as the gate clears. A dispatch counts
+the runs that already exist for a rung, whoever launched them, and launches only
+the runs the rung is missing. A ladder keeps only its latest dispatch. Every rung is a
 [validator-rated](#validator-rated) case version, and reviews never move a climb.
 See [Ladders](/components/backend/ladders/).
 
@@ -373,9 +375,9 @@ reordered and every job a dispatch launches references that id.
 A climber passes or fails each rung it reaches. A failed rung is the result the
 gate computed from the validator ratings of that rung's runs, and the validators
 are assumed correct, so it stands as the climber's result for that version of
-the case. An infrastructure failure, a harness error, or a canceled run never
-fails a rung, because none of them says anything about the model. A run that
-ended on the model's own failure, such as a timeout, counts as a broken run.
+the case. An infrastructure failure or a canceled run never fails a rung,
+because neither says anything about the model. A run that ended on the model's
+own failure, such as a timeout or a harness error, counts as a broken run.
 
 One climber on one rung is a **rung slot**, the unit a ladder's rung counts are
 reported in: three climbers on four rungs are twelve rung slots.

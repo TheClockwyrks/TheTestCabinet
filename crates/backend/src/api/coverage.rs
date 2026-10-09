@@ -25,8 +25,9 @@
 //! shared scheduler ([`crate::coverage::schedule`]) launches whole missing cells, in the
 //! plan's order, while the plan's own jobs in flight stay under its runs-in-flight limit.
 //! Every finished run of a filling plan's cell runs another pass, and filling ends when
-//! every launchable cell is filled, or the plan is halted. A cell whose last three jobs
-//! failed on infrastructure is blocked until its owner retries it.
+//! every launchable cell is filled, or the plan is halted. Every run a pass launches gets
+//! the plan's retry limit, and a cell whose launch used it up without a counted run is
+//! blocked until its owner retries it.
 //!
 //! This is console-only tooling: the public static site never reaches it (it carries no
 //! bearer token and never mounts this transport).
@@ -80,10 +81,6 @@ const MAX_IN_FLIGHT_LIMIT: u32 = 500;
 /// order, not paged through, so it is capped rather than paginated, and reports
 /// `truncated` when it has more behind it.
 pub(super) const MAX_QUEUE_RUNS: usize = 600;
-
-/// How many consecutive infrastructure-class failures block a cell or a climber: its
-/// newest this-many finished jobs all failed with no counted run.
-pub(super) const FAILING_STREAK: u64 = 3;
 
 /// One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
 /// and the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted
@@ -380,8 +377,23 @@ pub struct CoveragePlan {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub in_flight_limit: Option<InFlightLimit>,
+    /// How many automatic retries each run the plan launches gets, `0..=10`. A launch
+    /// that uses them up without a counted run blocks its cell.
+    #[serde(default = "default_retry_count")]
+    pub retry_count: u32,
     /// RFC 3339 of when the plan was last saved.
     pub updated_at: String,
+}
+
+/// The retry limit a plan or ladder saved without one launches with: the count a launch
+/// request that names none gets.
+pub(crate) fn default_retry_count() -> u32 {
+    super::jobs::DEFAULT_RETRY_COUNT
+}
+
+/// Clamp a submitted retry limit to the most retries the backend honours for any launch.
+pub(super) fn clamp_retry_count(retries: u32) -> u32 {
+    retries.min(super::jobs::MAX_RETRY_COUNT)
 }
 
 /// One plan as a reader sees it: its configuration, and whether it is filling — which
@@ -430,6 +442,11 @@ pub struct CoveragePlanInput {
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub in_flight_limit: Option<InFlightLimit>,
+    /// How many automatic retries each run the plan launches gets, or null for the
+    /// default of one. Clamped to `MAX_RETRY_COUNT`.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub retry_count: Option<u32>,
 }
 
 /// One cell of the coverage matrix: a plan case (at its pinned version) crossed
@@ -492,8 +509,9 @@ pub struct CoverageCell {
     /// Whether the cell is filled: `counted >= desired`. Runs in flight do not fill it.
     pub filled: bool,
     /// Whether the cell is [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):
-    /// its last three finished jobs failed on infrastructure, and a launch pass skips it
-    /// until its owner retries it.
+    /// it is missing a run and one of its jobs used up its automatic retries without a
+    /// counted run with no later launch in its place, so a launch pass skips it until its
+    /// owner retries it. A blocked cell can still have jobs in flight.
     pub blocked: bool,
     /// In-flight jobs (queued / pending / dispatched / starting / running) for this
     /// cell, counted globally and read only up to what the cell still needs
@@ -554,6 +572,9 @@ pub struct CoverageMatrix {
     pub in_flight_limit: InFlightLimit,
     /// Whether the plan is filling.
     pub filling: bool,
+    /// Whether the filling plan is waiting on its owner: none of its own jobs is in
+    /// flight, nothing a launch pass could launch is left, and a cell is blocked.
+    pub needs_attention: bool,
 }
 
 /// One plan's coverage roll-up for the plans list and the Home widget: the cell
@@ -586,6 +607,9 @@ pub struct CoveragePlanSummary {
     pub runs_unreviewed: u32,
     /// Whether the plan is filling.
     pub filling: bool,
+    /// Whether the filling plan is waiting on its owner: none of its own jobs is in
+    /// flight, nothing a launch pass could launch is left, and a cell is blocked.
+    pub needs_attention: bool,
 }
 
 /// The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write: the
@@ -1121,6 +1145,7 @@ pub async fn plans_summary(
             .blocked_cells(&state, plan.runs_per_cell, combos, cases, &retries)
             .await?;
         let roll = ctx.tally(plan.runs_per_cell, combos, cases, &blocked);
+        let runs_in_flight = in_flight.get(&plan.id).copied().unwrap_or(0);
         summaries.push(CoveragePlanSummary {
             id: plan.id.clone(),
             name: plan.name.clone(),
@@ -1130,10 +1155,11 @@ pub async fn plans_summary(
             cells_blocked: roll.cells_blocked,
             runs_done: roll.runs_done,
             runs_total: roll.runs_total,
-            runs_in_flight: in_flight.get(&plan.id).copied().unwrap_or(0),
+            runs_in_flight,
             runs_missing: roll.runs_missing,
             runs_unreviewed: roll.runs_unreviewed,
             filling: out.filling,
+            needs_attention: roll.needs_attention(out.filling, runs_in_flight),
         });
     }
     Ok(Json(summaries))
@@ -1362,6 +1388,7 @@ pub(super) async fn plan_pass_locked(
                 case,
                 member,
                 runs: launch.runs,
+                retry_count: plan.retry_count,
             }
         })
         .collect();
@@ -1455,21 +1482,29 @@ pub(super) async fn cancel_just_enqueued(
 
 /// The reason a blocked cell or climber is reported with.
 pub(super) fn blocked_reason() -> String {
-    format!(
-        "its last {FAILING_STREAK} runs failed on infrastructure; retry it once the cause is \
-         fixed"
-    )
+    "a launch used up its automatic retries without a run that counts; retry it \
+     once the cause is fixed"
+        .to_string()
 }
 
-/// Whether a cell's or slot's newest terminal jobs, newest first, block it: the newest
-/// [`FAILING_STREAK`] of them all failed on infrastructure. A job whose run counts, and
-/// a canceled job, break the streak.
-pub(super) fn is_failing_streak(jobs: &[TerminalJob]) -> bool {
-    jobs.len() >= FAILING_STREAK as usize
-        && jobs
-            .iter()
-            .take(FAILING_STREAK as usize)
-            .all(TerminalJob::failed_on_infrastructure)
+/// The job that blocks a cell or slot, given its terminal jobs newest first and when its
+/// newest launch was created: the most recently ended one that
+/// [ended its launch with nothing to count](TerminalJob::exhausted_without_a_result) and
+/// that no launch created after it ended has replaced.
+///
+/// A launch created at the instant the job ended does not replace it, which also keeps a
+/// job from replacing itself. A job whose run counts, that was canceled, or that the
+/// backend retried blocks nothing.
+pub(super) fn blocking_job(
+    jobs: &[TerminalJob],
+    latest_launch: Option<OffsetDateTime>,
+) -> Option<&TerminalJob> {
+    jobs.iter().find(|job| {
+        job.exhausted_without_a_result()
+            && latest_launch.is_none_or(|launched| {
+                OffsetDateTime::parse(&job.ended_at, &Rfc3339).is_ok_and(|ended| ended >= launched)
+            })
+    })
 }
 
 /// The filling plans a job that just finished feeds, as `(plan id, owner)`: every filling
@@ -1487,18 +1522,7 @@ pub(super) async fn plans_fed_by(
             return Vec::new();
         }
     };
-    let job_cell: CellKey = (
-        job.test_case_slug.clone(),
-        job.test_case_version.clone(),
-        job.variant.clone(),
-        job.engine_slug
-            .clone()
-            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
-        job.harness_slug.clone(),
-        job.model_id.clone(),
-        job.gg_config_id.clone().unwrap_or_default(),
-        job.gg_models.clone().unwrap_or_default(),
-    );
+    let job_cell = job_cell(job);
     let mut fed = Vec::new();
     for (plan_id, owner) in plans {
         match plan_has_cell(state, &owner, &plan_id, &job_cell).await {
@@ -1544,8 +1568,8 @@ async fn plan_has_cell(
 
 /// `POST /coverage-plans/{id}/cells/retry` — retry one blocked cell.
 ///
-/// The retry is recorded, so only jobs that ended after it count toward the cell's
-/// streak, and the cell is launched again: by a launch pass while the plan is filling,
+/// The retry is recorded, so only jobs that ended after it are read for the cell's
+/// block, and the cell is launched again: by a launch pass while the plan is filling,
 /// and otherwise as a launch by hand of the cell's shortfall (origin `plan:<id>`). `204`;
 /// `404` when the cell is not one of the plan's (or the plan is not the caller's), `409`
 /// when it is not blocked.
@@ -1618,6 +1642,7 @@ pub async fn retry_plan_cell(
             case,
             member,
             runs,
+            retry_count: plan.retry_count,
         }];
         let enqueued = enqueue_launches(&state, &user.0.id, &cells).await?;
         if let Some(blocked) = enqueued.blocked.first() {
@@ -2485,6 +2510,22 @@ struct MatrixRollup {
     runs_total: u32,
     runs_missing: u32,
     runs_unreviewed: u32,
+    /// Runs a launch pass could still launch: the missing runs of the cells that are
+    /// neither blocked nor unlaunchable.
+    runs_launchable: u32,
+    /// Cells blocked by a launch that used up its retries, leaving the unlaunchable ones
+    /// out.
+    cells_failing: u32,
+}
+
+impl MatrixRollup {
+    /// Whether a plan with this roll-up
+    /// [needs attention](https://docs.testcabinet.ai/components/backend/coverage/#needs-attention):
+    /// it is filling, none of its own jobs is in flight, no launch pass could launch
+    /// anything, and a cell is blocked.
+    fn needs_attention(&self, filling: bool, runs_in_flight: u32) -> bool {
+        filling && runs_in_flight == 0 && self.runs_launchable == 0 && self.cells_failing > 0
+    }
 }
 
 /// What [`MatrixCtx::matrix`] builds one plan's matrix from.
@@ -2502,7 +2543,8 @@ struct MatrixInput<'a> {
 /// The run/job counts and latest-version resolution a coverage computation needs,
 /// loaded once so a plan (or every plan, for the summary) can be tallied without further
 /// DB round-trips. A ladder loads only the queue-wide parts ([`Self::load_for_ladder`]):
-/// its counts are its dispatch's own.
+/// its board reads the same global counts by each climber's pinned cells, through
+/// [`cell_runs`] and [`cell_in_flight`].
 pub(super) struct MatrixCtx {
     /// Every counted run per cell, globally, in the order the runs landed. A plan's
     /// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
@@ -2548,9 +2590,9 @@ impl MatrixCtx {
         Ok(ctx)
     }
 
-    /// Load only what does not depend on whose runs count: the harnesses' capacity, the
-    /// queue's `pending` jobs, and the latest version per slug. What a ladder's board
-    /// reads, since a dispatch counts only its own runs.
+    /// Load only the queue-wide parts: the harnesses' capacity, the queue's `pending`
+    /// jobs, and the latest version per slug. What a ladder's launch pass reads beside
+    /// the counts its board loads by each climber's pinned cells.
     pub(super) async fn load_for_ladder(
         state: &AppState,
         mut slugs: Vec<String>,
@@ -2579,10 +2621,11 @@ impl MatrixCtx {
     }
 
     /// The cells of a plan that are [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell):
-    /// short of their target with nothing in flight, and whose newest terminal jobs —
-    /// every job of the cell, matching the global counts, since the cell's last retry —
-    /// all failed on infrastructure. Only a short, idle cell can be blocked, which keeps
-    /// the streak reads to the cells that need one.
+    /// missing a run, and holding a job — among every job of the cell, matching the global
+    /// counts, that ended since the cell's last retry — that used up its automatic
+    /// retries without a counted run and that no later launch replaced
+    /// ([`blocking_job`]). Only a cell missing a run can be blocked, which keeps the reads
+    /// to the cells that need one.
     async fn blocked_cells(
         &self,
         state: &AppState,
@@ -2596,18 +2639,25 @@ impl MatrixCtx {
             if member.unlaunchable.is_some() {
                 continue;
             }
-            let demand = self.demand(runs_per_cell, case, member);
-            if demand.counted >= demand.target || demand.in_flight > 0 {
+            if self.demand(runs_per_cell, case, member).missing() == 0 {
                 continue;
             }
             let key = cell_key(case, member);
             let since = retries.get(&crate::db::cell_key_text(&key));
             let jobs = state
                 .db
-                .recent_terminal_jobs(&key, FAILING_STREAK, since.map(String::as_str))
+                .recent_terminal_jobs(&key, since.map(String::as_str))
                 .await
                 .map_err(ApiError::from)?;
-            if is_failing_streak(&jobs) {
+            if !jobs.iter().any(TerminalJob::exhausted_without_a_result) {
+                continue;
+            }
+            let latest_launch = state
+                .db
+                .latest_cell_launch(&key)
+                .await
+                .map_err(ApiError::from)?;
+            if blocking_job(&jobs, latest_launch).is_some() {
                 blocked.insert(key);
             }
         }
@@ -2645,6 +2695,7 @@ impl MatrixCtx {
             runs_unreviewed: roll.runs_unreviewed,
             in_flight_limit: input.in_flight_limit,
             filling: input.filling,
+            needs_attention: roll.needs_attention(input.filling, input.runs_in_flight),
         }
     }
 
@@ -2667,14 +2718,22 @@ impl MatrixCtx {
             runs_total: 0,
             runs_missing: 0,
             runs_unreviewed: 0,
+            runs_launchable: 0,
+            cells_failing: 0,
         };
         for (case, member) in &ordered {
             let demand = self.demand(runs_per_cell, case, member);
             if demand.counted >= demand.target {
                 roll.cells_filled += 1;
             }
-            if member.unlaunchable.is_some() || blocked.contains(&cell_key(case, member)) {
+            let failing = blocked.contains(&cell_key(case, member));
+            if member.unlaunchable.is_some() || failing {
                 roll.cells_blocked += 1;
+            } else {
+                roll.runs_launchable += demand.missing();
+            }
+            if failing {
+                roll.cells_failing += 1;
             }
             roll.runs_done += demand.counted;
             roll.runs_total += demand.target;
@@ -2755,11 +2814,10 @@ impl MatrixCtx {
     ) -> CellDemand {
         let key = cell_key(case, member);
         let counted = self.plan_runs(target, case, member).len() as u32;
-        let in_flight = self.in_flight.get(&key).copied().unwrap_or(0);
         CellDemand {
             target,
             counted,
-            in_flight: in_flight.min(target.saturating_sub(counted)),
+            in_flight: cell_in_flight(&self.in_flight, &key, target, counted),
             harness: harness_lane(member.combo.harness),
         }
     }
@@ -2773,12 +2831,7 @@ impl MatrixCtx {
         case: &ReviewPlanCase,
         member: &PlanMember,
     ) -> &[CellRun] {
-        let runs = self
-            .runs
-            .get(&cell_key(case, member))
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        &runs[..runs.len().min(target as usize)]
+        cell_runs(&self.runs, &cell_key(case, member), target)
     }
 
     /// How much room each harness has to start another run, in the lane order
@@ -2838,6 +2891,51 @@ pub(super) fn cell_key_of(case: &ReviewPlanCase, identity: MemberCellIdentity) -
         model,
         config_id,
         models,
+    )
+}
+
+/// The runs a target of `target` holds for one cell: the first `target` counted runs of
+/// the cell to land, out of the global lists [`crate::db::Db::counted_runs_by_cell`]
+/// reads. The one rule a plan's cell and a ladder's rung slot both take their runs by.
+pub(super) fn cell_runs<'a>(
+    runs: &'a crate::db::CellRuns,
+    cell: &CellKey,
+    target: u32,
+) -> &'a [CellRun] {
+    let runs = runs.get(cell).map(Vec::as_slice).unwrap_or_default();
+    &runs[..runs.len().min(target as usize)]
+}
+
+/// The jobs in flight a cell holding `counted` of its `target` runs reads: every job of
+/// the cell in flight, whoever launched it, up to what the cell still needs. A run that
+/// would land beyond the target is not the cell's, so a filled cell reads none.
+pub(super) fn cell_in_flight(
+    in_flight: &crate::db::CellCounts,
+    cell: &CellKey,
+    target: u32,
+    counted: u32,
+) -> u32 {
+    in_flight
+        .get(cell)
+        .copied()
+        .unwrap_or(0)
+        .min(target.saturating_sub(counted))
+}
+
+/// The cell a job belongs to, read off its lifted columns through the same collapses the
+/// grouped counts use.
+pub(super) fn job_cell(job: &test_cabinet_entities::job::Model) -> CellKey {
+    (
+        job.test_case_slug.clone(),
+        job.test_case_version.clone(),
+        job.variant.clone(),
+        job.engine_slug
+            .clone()
+            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
+        job.harness_slug.clone(),
+        job.model_id.clone(),
+        job.gg_config_id.clone().unwrap_or_default(),
+        job.gg_models.clone().unwrap_or_default(),
     )
 }
 
@@ -2956,6 +3054,9 @@ pub(super) struct LaunchCell<'a> {
     pub member: &'a PlanMember,
     /// How many runs to enqueue — the cell's whole shortfall.
     pub runs: u32,
+    /// How many automatic retries each of those runs gets: the plan's or the dispatch's
+    /// retry limit.
+    pub retry_count: u32,
 }
 
 /// What one call to [`enqueue_launches`] did: the cells it turned into jobs, and the cells
@@ -3012,8 +3113,10 @@ pub(super) fn blocked_cell(
 /// nothing sends no engine key at all — the `none` default, which is the engineless build
 /// every plan scheduled before the pin carried an engine got.
 ///
-/// A plan pins no orchestrator, runtime ceiling, auth mode, or retry policy, so everything
-/// else is the default a hand-launched run takes.
+/// The retry count is the plan's or the dispatch's
+/// [retry limit](https://docs.testcabinet.ai/components/backend/coverage/#the-retry-limit).
+/// A plan pins no orchestrator, runtime ceiling, or auth mode, so everything else is the
+/// default a hand-launched run takes.
 fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_core::LaunchBody {
     match &cell.member.gg {
         Some(gg) => super::gg::gg_launch_body(
@@ -3023,7 +3126,7 @@ fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_core::LaunchBody {
                 variant: cell.case.variant.clone(),
                 engine: cell.case.launch_engine(),
                 max_runtime_seconds: None,
-                retry_count: None,
+                retry_count: Some(cell.retry_count),
             },
             super::gg::GgLaunchIdentity {
                 capability_set: gg.capability_set.clone(),
@@ -3040,7 +3143,7 @@ fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_core::LaunchBody {
             engine: cell.case.launch_engine(),
             max_runtime_seconds: None,
             auth_mode: None,
-            retry_count: None,
+            retry_count: Some(cell.retry_count),
             // A harness member configures no capability set, and none of the per-model
             // catalog facts a set's bindings would need resolving.
             gg_capability_set: None,
@@ -3350,6 +3453,7 @@ fn plan_from_input(
         cases: input.cases,
         outer_axis: input.outer_axis,
         in_flight_limit: input.in_flight_limit.map(clamp_in_flight_limit),
+        retry_count: clamp_retry_count(input.retry_count.unwrap_or_else(default_retry_count)),
         updated_at: updated_at.to_string(),
     })
 }

@@ -98,9 +98,23 @@ the backend reads the model's official endpoint rate, by the same rule the
 [billed rate](#price-history) follows, and writes the three rates onto the entry
 dated that day and marked as sourced from OpenRouter. The operator confirms or
 corrects the filled rates against the developer's pricing page later; the runs
-already enqueued keep the rates they were stamped with. A launch naming a model
+already enqueued keep the rates they were stamped with. A filled list price
+stays as written until the operator edits it. A launch naming a model
 the catalog has no entry for, or one OpenRouter lists no rate for, is refused
 with the reason named.
+
+A list price filled before Flex endpoints were ignored can hold a Flex rate, so
+the backend rewrites the stored list prices once per database. The first time
+it starts on a database, in the background, it reads the standard rate of every
+catalog entry that carries a list price and writes it over the stored one,
+dated that day and marked as sourced from OpenRouter, whoever entered the
+figure it replaces. It leaves an entry as it is when the entry has no list
+price, has no OpenRouter slug, is not listed by OpenRouter, has no priced
+official endpoint, or already holds the standard rate. Runs keep the cost they
+were scored at. The backend reads every rate before it writes any: if OpenRouter
+cannot be read it writes nothing and tries again the next time it starts, and
+once the rewrite has happened it is recorded on the database and never runs
+again. A rewrite regenerates the public snapshot.
 
 Comparable cost is derived from the recorded token classes and the list price's
 rates for uncached input, cached input, and output, with reasoning tokens priced
@@ -122,6 +136,15 @@ listing's headline rate. An
 observation is recorded when a run completes, missing-only when a model is saved
 or first enqueued, and on a 24-hour periodic refresh, and is appended only when
 the observed facts changed.
+
+The official endpoint is the developer provider's standard endpoint: the first
+priced one the listing shows under that provider's name whose `tag` has no
+`flex` segment. OpenRouter lists a provider's Flex tier as a second endpoint
+under the same provider name, at a discount, with a `tag` such as `openai/flex`
+or `google-vertex/global/flex`. A Flex endpoint is ignored wherever a price is
+read from the listing, so a developer provider that lists only Flex endpoints
+has no priced official endpoint. An observation already in the history stays as
+recorded, and a later observation at a different rate is appended after it.
 
 The recorded history is what the model's Stats tab shows beside the list price,
 with the difference, so a discount, a price change, or a listing error is

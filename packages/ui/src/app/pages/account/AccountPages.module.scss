@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
 // The account section pages. Sign in and register are a single centered card over the
 // gallery backdrop with a vertical form; the account view (Profile tab) is a
@@ -13,6 +14,12 @@
   display: flex;
   justify-content: center;
   padding: t.$space-xl 0;
+
+  // On a phone the card already fills the column, so the deep top margin only
+  // pushes the form's last field toward the on-screen keyboard.
+  @include bp.below(t.$bp-sm) {
+    padding: t.$space-md 0;
+  }
 }
 
 .card {
@@ -59,6 +66,13 @@
 // the column.
 .submit {
   align-self: flex-start;
+
+  // On a phone the action spans the card like the fields above it: a full-width
+  // target under the thumb rather than a short button at one edge.
+  @include bp.below(t.$bp-sm) {
+    align-self: stretch;
+    min-height: t.$space-xl + t.$space-xs;
+  }
 }
 
 .error {
@@ -94,8 +108,11 @@
 }
 
 // The identity header card: the avatar and name/username/picture-controls on the
-// left, the sign-out button pushed to the right. Wraps on a narrow viewport.
+// left, the sign-out button pushed to the right. Wraps on a narrow viewport. A
+// query container, so the pieces lay out by the card's own width rather than the
+// viewport's (see the `@container identity` block below).
 .identityCard {
+  container: identity / inline-size;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -104,10 +121,13 @@
 }
 
 // The account view's identity block: the avatar beside the name and picture controls.
+// `min-width: 0` lets the block shrink below its text's natural width, so a long
+// name wraps inside the card instead of pushing it wider.
 .identity {
   display: flex;
   align-items: center;
   gap: t.$space-md;
+  min-width: 0;
 }
 
 // The name/username/picture-controls stack beside the avatar.
@@ -115,17 +135,22 @@
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+  min-width: 0;
 }
 
+// A display name or username is one unbroken token as often as not; let it break
+// anywhere rather than overflow the card.
 .displayName {
   font-size: t.$font-lg;
   font-weight: 700;
   color: t.$color-text;
+  overflow-wrap: anywhere;
 }
 
 .username {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
+  overflow-wrap: anywhere;
 }
 
 .pictureControls {
@@ -146,6 +171,17 @@
   &:hover:not(:disabled) {
     border-color: t.$color-negative;
     color: t.$color-negative;
+  }
+}
+
+// Once the card is too narrow to hold the identity block and the sign-out button
+// side by side, the button has wrapped onto a row of its own. Let it (and a
+// picture error above it) span that row, so it reads as the card's footer action
+// and is a full-width tap target instead of a short button stranded at one edge.
+@container identity (max-width: 28rem) {
+  .identityCard .signOut,
+  .identityCard .error {
+    flex: 1 1 100%;
   }
 }
 

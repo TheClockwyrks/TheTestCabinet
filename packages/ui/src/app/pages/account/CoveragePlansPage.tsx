@@ -12,6 +12,7 @@ import { AccountTabs } from "./AccountTabs";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
+import { PLAN_ATTENTION_LABEL, PLAN_ATTENTION_TITLE } from "./coveragePlan";
 
 /** One plan card's progress: run-level counts, the bar's filled fraction, and the
  *  bar's hover text. */
@@ -35,6 +36,7 @@ export function planProgress(plan: CoveragePlanSummary): PlanProgress {
     `${runsDone} of ${runsTotal} runs done · ${plan.runsInFlight} launched and in flight · ` +
     `${plan.runsMissing} to launch`;
   if (plan.cellsBlocked > 0) title += ` · ${plan.cellsBlocked} blocked`;
+  if (plan.needsAttention) title += ` · ${PLAN_ATTENTION_TITLE}`;
   return {
     runsDone,
     runsTotal,
@@ -162,7 +164,7 @@ export function CoveragePlansPage() {
           </Link>
         </div>
       ) : (
-        <div className={styles.list}>
+        <div className={[styles.list, styles.rowList].join(" ")}>
           {plans.map((plan) => {
             const { donePct, title } = planProgress(plan);
             return (
@@ -175,6 +177,14 @@ export function CoveragePlansPage() {
                     >
                       {plan.name}
                     </Link>
+                    {plan.needsAttention && (
+                      <span
+                        className={styles.attentionBadge}
+                        title={`${PLAN_ATTENTION_TITLE} Open the plan's Tests tab to retry them.`}
+                      >
+                        {PLAN_ATTENTION_LABEL}
+                      </span>
+                    )}
                   </span>
                   <span className={styles.rowSub}>
                     {`${plan.runsPerCell} run${plan.runsPerCell === 1 ? "" : "s"}/cell`}

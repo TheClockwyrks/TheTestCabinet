@@ -44,6 +44,7 @@ function matrix(cells: CoverageCell[]): CoverageMatrix {
     runsUnreviewed: 0,
     inFlightLimit: { kind: "bounded", runs: 10 },
     filling: false,
+    needsAttention: false,
   };
 }
 
@@ -117,6 +118,15 @@ describe("summarizeCoverageRuns", () => {
       nameOf,
     );
     // The model's own failure is one of its runs; an infrastructure failure is not.
+    expect(metrics.total).toBe(2);
+  });
+
+  it("reads a harness error as one of the model's runs", () => {
+    const metrics = summarizeCoverageRuns(
+      matrix([cell({ runIds: ["a", "b"] })]),
+      [run("a"), run("b", {}, { state: "harness_error" })],
+      nameOf,
+    );
     expect(metrics.total).toBe(2);
   });
 

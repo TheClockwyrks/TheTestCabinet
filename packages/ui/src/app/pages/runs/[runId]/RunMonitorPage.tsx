@@ -204,7 +204,7 @@ export function RunMonitorPage() {
           Run complete: state {status.outcome.record.status.state}, loaded{" "}
           {String(status.outcome.record.validation.loaded)}.{" "}
           <Link to={routes.runDetail(status.outcome.record.id)}>
-            Open the run to review and publish it.
+            Open the run to review it.
           </Link>
         </p>
       )}

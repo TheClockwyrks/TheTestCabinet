@@ -153,7 +153,7 @@ authenticates with the per-job token minted when its job was enqueued.
 
 ## Review and publish
 
-A produced run reaches the gallery through two steps the backend mediates.
+A produced run reaches the gallery through steps the backend mediates.
 
 A run's record is stored privately the moment the run finishes: the driver
 reports it when it posts the job's terminal status, and the produced build and
@@ -164,7 +164,14 @@ to the run.
 Publish releases the run: its generated source to its own public repository and
 its build to Cloudflare Pages. The endpoint gates the run, refusing a legacy run
 with no review, and enqueues a per-publish `tcab-publisher` Job that the
-[dispatcher](/components/dispatcher/overview/) claims. When that Job reports a
+[dispatcher](/components/dispatcher/overview/) claims. A run with a publish
+already under way is attached to that job, so a run never has two releases in
+flight.
+
+A completed validator-rated run is published by the backend itself, with no
+operator action, as described under
+[automatic publishing](/components/core/results/#automatic-publishing).
+When that Job reports a
 terminal success the backend marks the run published, regenerates the public
 snapshot from the full set of published runs, uploads it, and triggers a site
 rebuild.
@@ -214,14 +221,18 @@ stays out of the public snapshot.
   automatically until a gate over its runs' validator ratings stops it.
 
 The validation scripts are assumed correct, so reviews never gate, meter, or
-trigger the launching of runs. A plan counts runs globally, so a run someone else
-produced satisfies its target. A ladder dispatch counts only the runs it
-launched.
+trigger the launching of runs. A plan and a ladder dispatch both count runs
+globally, so a run someone else produced satisfies a cell's or a rung's target
+and is never launched again.
 
 Launching is limited and serialized. A plan or a ladder keeps at most its
 runs-in-flight limit of its own jobs in flight, so it shares the global queue
-fairly. There is no background daemon: the backend runs a launch pass of a
-filling plan or a running dispatch whenever one of its runs finishes. Each pass
+fairly. Each run it launches gets the plan's or the ladder's `retryCount` of
+automatic retries, and a launch that uses them up without a counted run blocks
+its cell or climber until the owner retries it. A filling plan or a running
+dispatch left with only blocked cells or climbers to wait for reports that it
+needs attention. There is no background daemon: the backend runs a launch pass of a
+filling plan or a running dispatch whenever a run of one of its cells finishes. Each pass
 claims its row first, so two concurrent passes cannot both enqueue for one
 shortfall.
 

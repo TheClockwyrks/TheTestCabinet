@@ -801,7 +801,26 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   // entirely, starts over from `loading`. `modelsBackend` records which backend
   // the catalog on screen came from, which is also what tells a failed FIRST
   // load (nothing to keep) apart from a failed REFRESH (keep what is loaded).
+  //
+  // What a refresh leaves untouched is the catalog ALREADY resolved. A page
+  // opened on a model the loaded catalog does not hold yet (the one a config
+  // save created a moment ago, then navigated to) has nothing on screen to keep,
+  // and `ready` alone would tell it the catalog settled without that model.
+  // `modelsSettled` records which read last settled, by the backend and the
+  // refresh token it was made for, and `modelsRefreshing` is derived from it
+  // during render: the read for the current backend and token has yet to settle.
+  // Derived, never set from the effect, because the save bumps the token and
+  // navigates in one batch — the destination's first commit happens before any
+  // effect of that render runs, and a flag set there would still read false.
   const modelsBackend = useRef<BackendClient | null>(null);
+  const [modelsSettled, setModelsSettled] = useState<{
+    backend: BackendClient;
+    token: number;
+  } | null>(null);
+  const modelsRefreshing =
+    backend !== null &&
+    (modelsSettled?.backend !== backend ||
+      modelsSettled.token !== refreshToken);
   useEffect(() => {
     if (!backend) {
       // A console with no backend has no catalog to show and no read to wait on.
@@ -822,9 +841,13 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
         modelsBackend.current = backend;
         setModels(ms.map(toModelSummary));
         setModelsStatus("ready");
+        setModelsSettled({ backend, token: refreshToken });
       })
       .catch(() => {
         if (!active) return;
+        // A failed read has settled all the same: a page waiting on it leaves
+        // its loading state for whatever the failure leaves it to show.
+        setModelsSettled({ backend, token: refreshToken });
         // A failed READ is never an empty catalog. Which of the two this is
         // depends on whether a catalog from this backend is already on screen:
         //
@@ -1057,6 +1080,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
       readCaseVariant,
       models,
       modelsStatus,
+      modelsRefreshing,
       canExecute: true,
       grafanaUrl,
       queryRunSummaries,
@@ -1089,6 +1113,7 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
       readCaseVariant,
       models,
       modelsStatus,
+      modelsRefreshing,
       grafanaUrl,
       queryRunSummaries,
       getCabinetStats,

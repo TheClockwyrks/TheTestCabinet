@@ -152,7 +152,9 @@ export function GgConfigsPage() {
           </Link>
         </div>
       ) : (
-        <div className={styles.list}>{saved.map(renderSaved)}</div>
+        <div className={[styles.list, styles.rowList].join(" ")}>
+          {saved.map(renderSaved)}
+        </div>
       )}
     </PageLayout>
   );
