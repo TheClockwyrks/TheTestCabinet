@@ -192,15 +192,17 @@ export function hasPlayableOutcome(state: RunState): boolean {
 
 /**
  * Whether a run of this state counts toward a coverage cell: the model's own result,
- * either completed or one of its own failures. An infrastructure-class failure
- * (`infrastructure`, `harness_error`) or a cancel says nothing about the model and
- * never counts. Mirrors `RunState::counts_as_model_result` in the Rust contract.
+ * either completed or one of its own failures. A harness error is one of them: once
+ * its automatic retries are used up, the last attempt stands as a broken run. Only an
+ * infrastructure failure or a cancel says nothing about the model and never counts.
+ * Mirrors `RunState::counts_as_model_result` in the Rust contract.
  */
 export function countsAsModelResult(state: RunState): boolean {
   return (
     state === "completed" ||
     state === "catastrophic" ||
     state === "timed_out" ||
+    state === "harness_error" ||
     state === "limit_exceeded" ||
     state === "hung"
   );

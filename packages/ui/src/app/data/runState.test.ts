@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunState } from "@clockwyrks/run-record";
 import {
+  countsAsModelResult,
   describeRunState,
   hasPlayableOutcome,
   runStateColor,
@@ -38,6 +39,27 @@ describe("hasPlayableOutcome", () => {
     expect(hasPlayableOutcome("hung")).toBe(false);
     expect(hasPlayableOutcome("infrastructure")).toBe(false);
     expect(hasPlayableOutcome("canceled")).toBe(false);
+  });
+});
+
+describe("countsAsModelResult", () => {
+  it("counts a completed run and every failure that is the model's own", () => {
+    expect(countsAsModelResult("completed")).toBe(true);
+    expect(countsAsModelResult("catastrophic")).toBe(true);
+    expect(countsAsModelResult("timed_out")).toBe(true);
+    expect(countsAsModelResult("limit_exceeded")).toBe(true);
+    expect(countsAsModelResult("hung")).toBe(true);
+  });
+
+  it("counts a harness error: once its retries are used up it stands as a broken run", () => {
+    expect(countsAsModelResult("harness_error")).toBe(true);
+  });
+
+  it("leaves out only an infrastructure failure and a cancelled run", () => {
+    expect(ALL_STATES.filter((state) => !countsAsModelResult(state))).toEqual([
+      "infrastructure",
+      "canceled",
+    ]);
   });
 });
 

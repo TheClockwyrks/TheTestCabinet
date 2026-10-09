@@ -30,6 +30,7 @@ holds:
   `earlyStop`;
 - the runs per rung, which a rung may override;
 - the runs-in-flight limit, or null to inherit the account's;
+- the [retry limit](#the-retry-limit), `retryCount`;
 - the climb order, `outerAxis`.
 
 Pressing Run starts a **dispatch** of the configuration as it stands at that
@@ -40,8 +41,8 @@ to the next Run.
 
 1. The owner presses Run. The backend snapshots the configuration: the rungs and
    their targets, the climbers resolved from the groups and one-offs, the gate,
-   the climb order, and the limit in force. It mints a dispatch id and runs a
-   launch pass.
+   the climb order, the retry limit, and the runs-in-flight limit in force. It
+   mints a dispatch id and runs a launch pass.
 2. A launch pass evaluates the gate on each climber's current rung over the runs
    that [already exist](#a-rung-slots-runs) for it, and launches only the runs
    the rung is still missing, up to the limit.
@@ -50,7 +51,10 @@ to the next Run.
    pass.
 5. A climber that passes its rung moves to the next one, which the same pass
    evaluates and launches. A climber that fails a rung stops there.
-6. The dispatch is **Finished** once every climber has completed or failed and
+6. A climber whose rung cannot progress is [blocked](#a-blocked-climber) until
+   its owner retries it. A dispatch left with only blocked climbers to wait for
+   reads [Needs attention](#needs-attention).
+7. The dispatch is **Finished** once every climber has completed or failed and
    none of its runs is in flight. The owner may stop it earlier.
 
 A ladder holds at most one running dispatch, so Run is unavailable while one is
@@ -87,7 +91,7 @@ same cell for a climber, so both read the same runs.
 A launch pass stamps every job it enqueues with the origin
 `ladder:<ladderId>/<dispatchId>/<rungId>`. The origin is what the dispatch's
 runs-in-flight limit, its Stop, and its
-[failing streak](#a-blocked-climber) act on, and it plays no part in which runs
+[failing block](#a-blocked-climber) act on, and it plays no part in which runs
 count.
 
 ### No history
@@ -214,11 +218,26 @@ A `blocked` climber carries a reason naming its fix:
 | reason         | cause                                    | fix                       |
 | -------------- | ---------------------------------------- | ------------------------- |
 | `unlaunchable` | the combination cannot be launched       | fix the cause, then Retry |
-| `failing`      | the rung's recent runs all failed        | fix the cause, then Retry |
+| `failing`      | a launch used up its retries with no run | fix the cause, then Retry |
 | `unrated`      | completed runs carry no validator rating | re-push the runs, or Stop |
 
 A blocked climber keeps its dispatch running, so a Retry resumes the climb
 within it. A dispatch whose blocked climbers cannot be helped is ended with Stop.
+
+### Needs attention
+
+A running dispatch reads **Needs attention** while all of the following hold:
+
+- none of the jobs it launched is in flight;
+- every climber is completed, failed, or blocked;
+- at least one climber is blocked.
+
+Nothing the dispatch does by itself moves it from there, so it is waiting on its
+owner. Needs attention is a reading of a running dispatch and changes nothing
+else about it: Run stays unavailable, Stop ends it, and a climber's Retry or a
+run arriving for one of its rung slots resumes the climb, after which it reads
+Running again. The backend derives the reading whenever it reports the
+dispatch's status.
 
 ### Rung slots
 
@@ -240,15 +259,30 @@ When a dispatch is stopped, every slot that was `running`, `blocked`, or
 
 ### A blocked climber
 
-A climber's current rung is blocked as `failing` when the three most recent
-terminal jobs this dispatch launched for it all failed with no run that counts, as described
-under [a blocked cell](/components/backend/coverage/#a-blocked-cell). A job whose
-run ended on the model's own failure counts toward the gate, so it breaks the
-streak.
+A climber's current rung is blocked as `failing` as soon as one job the dispatch
+launched for it ends without a counted run and with its automatic retries used
+up, as described under
+[a blocked cell](/components/backend/coverage/#a-blocked-cell). The
+[retry limit](#the-retry-limit) is therefore the whole allowance: with a
+`retryCount` of `1`, an infrastructure failure costs two attempts and the climber
+blocks, and the dispatch launches no replacement by itself.
+
+The block is read off the jobs the dispatch launched for that rung and climber.
+The rung is `failing` while one of them is an exhausted failure that no later
+launch of the dispatch for that rung and climber has replaced. A job launched
+together with the failure does not replace it, so the dispatch launches nothing
+in its place while those jobs run or after they complete. A canceled job leaves
+the rung launchable, so a run cancelled by hand is launched again. A job whose
+run counts decides nothing here, since its run goes to the gate.
+
+The climber reads as Running while a job of the rung is in flight and as Blocked
+once none is. The block reports `attempts`, the number of attempts the blocking
+launch made: the first and each automatic retry. A rung that receives the runs
+it is missing from elsewhere goes to the gate as any other.
 
 `POST /ladders/{id}/climbers/retry` retries a climber blocked as `failing` or
 `unlaunchable`. The retry is recorded on the dispatch's climber, only jobs that
-ended after it count toward the streak, and the launch pass that follows
+ended after it are read for the block, and the launch pass that follows
 relaunches the rung under the dispatch's limit. A retry of an `unlaunchable`
 climber resolves its combination again, which helps once its configuration or
 its model's catalog entry has been fixed.
@@ -281,8 +315,14 @@ The gate reads the [slot's runs](#a-rung-slots-runs). A completed run is read
 at its validator rating: the functional rating the
 [validators decide](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
 from the run record and the case version's checklist, with the toolchain gate on
-top. A run of the model's own failure is read as `broken`, whatever
-`unloadedCountsAsBroken` says.
+top. A run that ended on the model's own failure (catastrophic, timed out,
+harness error, limit exceeded, or hung) is read as `broken`, whatever
+`unloadedCountsAsBroken` says, and uses one of the rung's runs. The model had its
+attempt and produced nothing to rate.
+
+An infrastructure failure or a canceled run never reaches the gate, and the run
+of an attempt the backend retried is left out in favour of its retry (see
+[which runs count](/components/backend/coverage/#which-runs-count)).
 
 The run's stored `rating` folds in every reviewer's checklist overrides, so the
 gate never reads it, and it never reads a review. The backend lifts the validator
@@ -337,6 +377,22 @@ launch pass of a ladder is the plan's
 only a climber's current rung is ever launched. Running rung five for a model
 that failed rung two would answer a question the dispatch has already answered.
 
+### The retry limit
+
+`retryCount` is the number of automatic retries each run the dispatch launches
+gets. It defaults to `1`, ranges from `0` to `10`, and a value above the range is
+clamped to `10`. A Run snapshots it with the rest of the configuration, and every
+job a launch pass of that dispatch enqueues carries it as its launch request's
+`retryCount`. An automatic retry repeats its attempt's launch request, so it
+inherits the same count.
+
+The backend retries a run that ends `infrastructure`, `catastrophic`,
+`harness_error`, or `hung`. The last attempt is the one that stands: a model
+failure counts and goes to the gate, and an infrastructure failure
+[blocks the climber](#a-blocked-climber).
+
+### Launch order
+
 `outerAxis` selects which loop is outer, with the same
 emission-order-is-execution-order mechanism a plan uses:
 
@@ -356,16 +412,21 @@ reaches a terminal state, and once at startup. A job feeds every running
 dispatch that holds its cell, whoever launched the job, as it feeds every
 filling plan. A failed job that enqueued an automatic retry feeds nothing.
 
+No launch pass runs between an attempt failing and its retry being enqueued. The
+retry is enqueued, and the attempt stamped with it, before the attempt becomes
+terminal, including an attempt that failed with no run at all. A pass therefore
+sees either the attempt in flight or its retry in flight.
+
 A canceled job feeds a dispatch as it feeds a plan, as described under
 [when launch passes run](/components/backend/coverage/#when-launch-passes-run),
 so a run cancelled by hand is launched again. The pass runs as the ladder's
 owner after the job's status is stored, so a failed pass never fails the
 driver's report.
 
-Every pass launches under the limit in the snapshot of the dispatch it reads. A
-pass that serves a request left during another pass can be reading a newer
-dispatch than the one that took the claim, and launches it under that
-dispatch's own limit.
+Every pass launches under the limit and with the retry limit in the snapshot of
+the dispatch it reads. A pass that serves a request left during another pass can
+be reading a newer dispatch than the one that took the claim, and launches it
+under that dispatch's own limits.
 
 A launch pass that finds every climber completed or failed and none of the
 dispatch's own jobs in flight marks the dispatch Finished.
@@ -378,8 +439,9 @@ its current rung's cell and tally, and the status of each of its rung slots.
 Progress is a read. Verdicts the gate has resolved that no launch pass has
 written down yet are computed live and persisted by the next pass.
 
-A dispatch reports its status, its rung-slot counts in each slot status, and its
-runs:
+A dispatch reports its status, the gate, the climb order, the runs-in-flight
+limit and the `retryCount` it snapshotted, its rung-slot counts in each slot
+status, and its runs:
 
 - **total** is the sum over rung slots of the rung's target runs;
 - **done** is the runs that need no more executing, summed per slot as below;
@@ -398,7 +460,10 @@ or skipped slot needs no more runs, so its whole target is done once those
 finish. When done equals total, nothing is left to execute in the dispatch.
 
 A ladder with no dispatch reports its status as Not run yet. The ladder's status
-is one of Not run yet, Running, Finished, or Stopped.
+is one of Not run yet, Running, [Needs attention](#needs-attention), Finished, or
+Stopped. A dispatch's `status` carries the last four as `running`,
+`needsAttention`, `finished`, and `stopped`, on the progress board and on
+`GET /ladders/summary` alike.
 
 ### Reviewing a dispatch's runs
 

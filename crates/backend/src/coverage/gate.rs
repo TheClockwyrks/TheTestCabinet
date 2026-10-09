@@ -28,21 +28,20 @@
 //! `run.validator_rating`), and `None` when the run carries none. Never the run's
 //! stored `rating`, which folds in every reviewer's overrides, and never a review.
 //!
-//! Two more rules apply:
+//! Three more rules apply:
 //!
 //! - A run whose build never loaded ([`RungRun::loaded`] is false) counts as
 //!   [`Rating::Broken`] outright when [`Gate::unloaded_counts_as_broken`] is on
 //!   (the default). There was nothing to play.
-//! - A run that ended on the model's own failure — catastrophic, timed out, limit
-//!   exceeded, hung — is in `runs` as a [`Rating::Broken`] run whose build never
-//!   loaded. The model had its attempt at the rung and produced nothing
+//! - A run that ended on the model's own failure — catastrophic, timed out, harness
+//!   error, limit exceeded, hung — is in `runs` as a [`Rating::Broken`] run whose build
+//!   never loaded. The model had its attempt at the rung and produced nothing
 //!   that works, and no rating can ever arrive for it; leaving it out would have the
 //!   rung relaunched for as long as the model keeps failing it.
-//! - An **infrastructure-class** failure (`infrastructure` or `harness_error`) or a
-//!   canceled run never fails a rung and must not appear in `runs`. None says anything
-//!   about the model: infrastructure-class failures are retried (`job.attempt`), and a
-//!   cancel was somebody's decision. An automatically retried attempt is not in `runs`
-//!   either; its retry stands for it.
+//! - An `infrastructure` failure or a canceled run never fails a rung and must not
+//!   appear in `runs`. Neither says anything about the model: an infrastructure failure
+//!   is retried and then blocks the climber, and a cancel was somebody's decision. An
+//!   automatically retried attempt is not in `runs` either; its retry stands for it.
 //!
 //! ## Runs still in flight
 //!
@@ -175,9 +174,9 @@ impl Default for Gate {
 /// One run on a rung, as the gate sees it.
 ///
 /// Completed runs belong here, and so do the model's own failures, passed as a
-/// [`Rating::Broken`] run that never loaded. An infrastructure-class failure or a
-/// canceled run does not — the first is retried and the second was a person's
-/// decision, so neither ever fails a rung.
+/// [`Rating::Broken`] run that never loaded. An infrastructure failure or a
+/// canceled run does not — the first says nothing about the model and the second was a
+/// person's decision, so neither ever fails a rung.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RungRun {
     /// The run's **validator rating**: the functional rating its validators decided,

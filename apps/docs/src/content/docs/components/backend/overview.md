@@ -179,7 +179,11 @@ and is never launched again.
 
 Launching is limited and serialized. A plan or a ladder keeps at most its
 runs-in-flight limit of its own jobs in flight, so it shares the global queue
-fairly. There is no background daemon: the backend runs a launch pass of a
+fairly. Each run it launches gets the plan's or the ladder's `retryCount` of
+automatic retries, and a launch that uses them up without a counted run blocks
+its cell or climber until the owner retries it. A filling plan or a running
+dispatch left with only blocked cells or climbers to wait for reports that it
+needs attention. There is no background daemon: the backend runs a launch pass of a
 filling plan or a running dispatch whenever a run of one of its cells finishes. Each pass
 claims its row first, so two concurrent passes cannot both enqueue for one
 shortfall.

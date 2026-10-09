@@ -7,7 +7,6 @@
 //! the shared flow harness.
 
 use test_cabinet_core::run_record::RunState;
-use test_cabinet_entities::job;
 
 use super::*;
 use crate::api::flow_harness::*;
@@ -31,6 +30,7 @@ fn plan_input(cases: &[&str], runs_per_cell: u32, limit: InFlightLimit) -> Cover
         cases: cases.iter().map(|slug| case(slug)).collect(),
         outer_axis: CoverageAxis::Case,
         in_flight_limit: Some(limit),
+        retry_count: None,
     }
 }
 
@@ -67,22 +67,32 @@ fn cell<'a>(matrix: &'a CoverageMatrix, slug: &str) -> &'a CoverageCell {
         .expect("the cell is on the plan")
 }
 
-/// Fail a job on infrastructure, with no run, ended now, and feed it.
-async fn fail_on_infrastructure(state: &AppState, job_id: &str) -> job::Model {
-    let job = state
-        .db
-        .set_job_state(
-            job_id,
-            "failed",
-            &now().unwrap(),
-            Some("harness unavailable"),
-            None,
-        )
-        .await
-        .unwrap()
-        .expect("the job exists");
-    feed(state, &job).await;
-    job
+/// A launch pass of the plan that ran to its end. A driver's report runs the plan's pass
+/// on a task of its own, which can hold the claim when this one asks for it; a pass that
+/// completes after it reads everything that pass did, and a pass that runs later finds
+/// nothing left to do.
+async fn settled_pass(state: &AppState, id: &str) -> LaunchPassResult {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let result = launch_plan(state, OWNER, id).await.unwrap();
+        if result.skipped != Some(LaunchSkipped::Busy) {
+            return result;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the plan's launch claim was never released"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+/// The plan's entry on the plans summary.
+async fn summary_of(state: &AppState, id: &str) -> CoveragePlanSummary {
+    let Json(plans) = plans_summary(State(state.clone()), owner()).await.unwrap();
+    plans
+        .into_iter()
+        .find(|plan| plan.id == id)
+        .expect("the plan is on the summary")
 }
 
 async fn retry_cell(state: &AppState, id: &str, slug: &str) -> Result<StatusCode, ApiError> {
@@ -147,7 +157,7 @@ async fn a_fill_launches_under_its_limit_and_finishing_runs_launch_the_rest_unti
 }
 
 #[tokio::test]
-async fn an_unbounded_fill_launches_every_missing_cell_and_refills_only_infrastructure_failures() {
+async fn an_unbounded_fill_launches_every_missing_cell_once() {
     let (_dir, state) = test_state().await;
     let id = plan_id(
         &state,
@@ -157,15 +167,54 @@ async fn an_unbounded_fill_launches_every_missing_cell_and_refills_only_infrastr
     let first = fill(&state, &id).await;
     assert_eq!(first.enqueued, 3);
     assert_eq!(launch_plan(&state, OWNER, &id).await.unwrap().enqueued, 0);
+    assert_eq!(jobs(&state).await.len(), 3);
+}
 
-    let pong = in_flight(&state, "pong").await;
-    fail_on_infrastructure(&state, &pong[0].id).await;
-    assert_eq!(
-        in_flight(&state, "pong").await.len(),
-        1,
-        "the cell is relaunched"
-    );
-    assert_eq!(jobs(&state).await.len(), 4);
+#[tokio::test]
+async fn a_plan_launches_every_run_with_its_retry_limit() {
+    let (_dir, state) = test_state().await;
+    // A plan saved without a retry limit gets one retry.
+    let Json(saved) = create_plan(
+        State(state.clone()),
+        owner(),
+        Json(plan_input(&["pong"], 2, InFlightLimit::Unbounded)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(saved.plan.retry_count, 1);
+    fill(&state, &saved.plan.id).await;
+    let launched = in_flight(&state, "pong").await;
+    assert_eq!(launched.len(), 2);
+    assert!(launched.iter().all(|job| retry_count_of(job) == Some(1)));
+
+    // A configured limit rides on every launch request, and an automatic retry inherits
+    // it with the request.
+    let mut input = plan_input(&["carom"], 1, InFlightLimit::Unbounded);
+    input.retry_count = Some(3);
+    let Json(saved) = create_plan(State(state.clone()), owner(), Json(input.clone()))
+        .await
+        .unwrap();
+    assert_eq!(saved.plan.retry_count, 3);
+    fill(&state, &saved.plan.id).await;
+    let attempt = in_flight(&state, "carom").await[0].clone();
+    assert_eq!(retry_count_of(&attempt), Some(3));
+    let retry_id = report_failed(&state, &attempt.id)
+        .await
+        .expect("the attempt has retries left");
+    let retry_job = state.db.get_job(&retry_id).await.unwrap().unwrap();
+    assert_eq!(retry_count_of(&retry_job), Some(3));
+
+    // An edit is read by the next pass, and a limit above the range is clamped into it.
+    input.retry_count = Some(99);
+    let Json(edited) = update_plan(
+        State(state.clone()),
+        owner(),
+        Path(saved.plan.id.clone()),
+        Json(input),
+    )
+    .await
+    .unwrap();
+    assert_eq!(edited.plan.retry_count, 10);
 }
 
 #[tokio::test]
@@ -230,7 +279,7 @@ async fn a_halt_ends_the_fill_cancels_the_plans_waiting_jobs_and_withholds_its_f
 }
 
 #[tokio::test]
-async fn a_cell_counts_the_models_results_once_and_never_an_infrastructure_failure() {
+async fn a_cell_counts_the_models_results_once_a_harness_error_among_them() {
     let (_dir, state) = test_state().await;
     let id = plan_id(
         &state,
@@ -241,7 +290,7 @@ async fn a_cell_counts_the_models_results_once_and_never_an_infrastructure_failu
         ),
     )
     .await;
-    // A timed-out run is the model's result; a harness error is ours.
+    // A timed-out run is the model's result, and so is a harness error.
     enqueue_other(&state, "timed-out", "pong", None).await;
     finish(
         &state,
@@ -278,12 +327,16 @@ async fn a_cell_counts_the_models_results_once_and_never_an_infrastructure_failu
     let counts = matrix(&state, &id).await;
     assert_eq!(cell(&counts, "pong").counted, 1);
     assert!(cell(&counts, "pong").filled);
-    assert_eq!(cell(&counts, "carom").counted, 0);
+    assert_eq!(cell(&counts, "carom").counted, 1);
+    assert!(cell(&counts, "carom").filled);
     assert_eq!(cell(&counts, "volley").counted, 1);
+
+    // Nothing is short, so a fill launches nothing for the harness error.
+    assert_eq!(fill(&state, &id).await.enqueued, 0);
 }
 
 #[tokio::test]
-async fn a_cell_failing_on_infrastructure_is_blocked_until_it_is_retried() {
+async fn a_cell_whose_launch_uses_up_its_retries_is_blocked_until_it_is_retried() {
     let (_dir, state) = test_state().await;
     let id = plan_id(
         &state,
@@ -294,12 +347,30 @@ async fn a_cell_failing_on_infrastructure_is_blocked_until_it_is_retried() {
     let err = retry_cell(&state, &id, "pong").await.unwrap_err();
     assert_eq!(err.status, StatusCode::CONFLICT, "not blocked yet");
 
-    for _ in 0..3 {
-        let pong = in_flight(&state, "pong").await;
-        assert_eq!(pong.len(), 1);
-        fail_on_infrastructure(&state, &pong[0].id).await;
-    }
+    // The first failure is retried: the retry holds the cell, and no pass launches
+    // another run beside it.
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
+    let retry_id = report_failed(&state, &attempt)
+        .await
+        .expect("the attempt has one retry");
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+    assert!(!cell(&matrix(&state, &id).await, "pong").blocked);
+
+    // The retry fails too: the allowance is spent, and the cell blocks.
+    assert_eq!(report_failed(&state, &retry_id).await, None);
+    let result = settled_pass(&state, &id).await;
+    assert_eq!(result.enqueued, 0);
+    // Reported by every pass that skipped it, and a pass serving a request left by the
+    // report's own runs twice.
+    assert!(!result.unlaunchable.is_empty());
+    assert!(result.unlaunchable.iter().all(|cell| cell.slug == "pong"));
     assert!(in_flight(&state, "pong").await.is_empty());
+    assert_eq!(
+        jobs(&state).await.len(),
+        3,
+        "two attempts of pong, one of carom"
+    );
     let blocked = matrix(&state, &id).await;
     assert!(cell(&blocked, "pong").blocked);
     assert_eq!(blocked.cells_blocked, 1);
@@ -307,9 +378,6 @@ async fn a_cell_failing_on_infrastructure_is_blocked_until_it_is_retried() {
         blocked.filling,
         "a blocked cell waits on its retry, filling"
     );
-    let result = launch_plan(&state, OWNER, &id).await.unwrap();
-    assert_eq!(result.enqueued, 0);
-    assert_eq!(result.unlaunchable.len(), 1);
 
     // A retry relaunches it through a pass.
     assert_eq!(
@@ -319,15 +387,17 @@ async fn a_cell_failing_on_infrastructure_is_blocked_until_it_is_retried() {
     wait_for_in_flight(&state, "pong", 1).await;
     assert!(!cell(&matrix(&state, &id).await, "pong").blocked);
 
-    // Three more failures block it again.
-    for _ in 0..3 {
-        let pong = in_flight(&state, "pong").await;
-        assert_eq!(pong.len(), 1);
-        fail_on_infrastructure(&state, &pong[0].id).await;
-    }
+    // The relaunched run has the same allowance, and using it up blocks the cell again.
+    let relaunched = in_flight(&state, "pong").await[0].id.clone();
+    let retry_id = report_failed(&state, &relaunched)
+        .await
+        .expect("a relaunched run has its own retry");
+    assert_eq!(report_failed(&state, &retry_id).await, None);
+    settled_pass(&state, &id).await;
     assert!(cell(&matrix(&state, &id).await, "pong").blocked);
 
-    // Once the plan is no longer filling, a retry launches the shortfall by hand.
+    // Once the plan is no longer filling, a retry launches the shortfall by hand, with
+    // the plan's retry limit.
     let _ = halt_plan(State(state.clone()), owner(), Path(id.clone()))
         .await
         .unwrap();
@@ -341,6 +411,175 @@ async fn a_cell_failing_on_infrastructure_is_blocked_until_it_is_retried() {
         pong[0].origin.as_deref(),
         Some(format!("plan:{id}").as_str())
     );
+    assert_eq!(retry_count_of(&pong[0]), Some(1));
+}
+
+#[tokio::test]
+async fn with_no_retries_one_infrastructure_failure_blocks_the_cell_and_nothing_relaunches() {
+    let (_dir, state) = test_state().await;
+    let mut input = plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 });
+    input.retry_count = Some(0);
+    let id = plan_id(&state, input).await;
+    fill(&state, &id).await;
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
+
+    assert_eq!(report_failed(&state, &attempt).await, None);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    assert!(in_flight(&state, "pong").await.is_empty());
+    assert_eq!(jobs(&state).await.len(), 1, "no replacement was launched");
+    assert!(cell(&matrix(&state, &id).await, "pong").blocked);
+}
+
+#[tokio::test]
+async fn a_run_that_uses_up_its_retries_among_runs_launched_together_blocks_the_cell() {
+    let (_dir, state) = test_state().await;
+    let mut input = plan_input(&["pong"], 5, InFlightLimit::Bounded { runs: 10 });
+    input.retry_count = Some(0);
+    let id = plan_id(&state, input).await;
+    fill(&state, &id).await;
+    let launched: Vec<String> = in_flight(&state, "pong")
+        .await
+        .into_iter()
+        .map(|job| job.id)
+        .collect();
+    assert_eq!(launched.len(), 5);
+
+    // One of the five fails with no retry left. The cell is blocked with the other four
+    // still running, and no pass launches a run in the failed one's place.
+    assert_eq!(report_failed(&state, &launched[0]).await, None);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    let board = matrix(&state, &id).await;
+    assert!(cell(&board, "pong").blocked);
+    assert_eq!(cell(&board, "pong").in_flight, 4);
+    assert!(!board.needs_attention, "its own runs are still in flight");
+
+    // The four complete, one at a time. The cell stays blocked after each, and nothing is
+    // launched.
+    for job_id in &launched[1..] {
+        finish_and_feed(&state, job_id, "pong", GREAT).await;
+        assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+        assert!(cell(&matrix(&state, &id).await, "pong").blocked);
+    }
+    assert_eq!(jobs(&state).await.len(), 5, "no replacement was launched");
+    let board = matrix(&state, &id).await;
+    assert_eq!(cell(&board, "pong").counted, 4);
+    assert!(board.filling && board.needs_attention);
+
+    // A retry launches the one run that is missing, and a failure of it blocks again.
+    assert_eq!(
+        retry_cell(&state, &id, "pong").await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    wait_for_in_flight(&state, "pong", 1).await;
+    assert!(!cell(&matrix(&state, &id).await, "pong").blocked);
+    let relaunched = in_flight(&state, "pong").await[0].id.clone();
+    assert_eq!(report_failed(&state, &relaunched).await, None);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+    assert!(cell(&matrix(&state, &id).await, "pong").blocked);
+    assert_eq!(jobs(&state).await.len(), 6);
+}
+
+#[tokio::test]
+async fn a_launch_made_after_a_failure_ended_replaces_it() {
+    let (_dir, state) = test_state().await;
+    let mut input = plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 });
+    input.retry_count = Some(0);
+    let id = plan_id(&state, input.clone()).await;
+    fill(&state, &id).await;
+    let attempt = in_flight(&state, "pong").await[0].id.clone();
+    assert_eq!(report_failed(&state, &attempt).await, None);
+    settled_pass(&state, &id).await;
+    assert!(cell(&matrix(&state, &id).await, "pong").blocked);
+
+    // A launch by hand takes the failure's place: the cell is no longer blocked, and it
+    // waits on that run instead of launching one of its own.
+    enqueue_now(&state, "by-hand", "pong").await;
+    let board = matrix(&state, &id).await;
+    assert!(!cell(&board, "pong").blocked);
+    assert_eq!(cell(&board, "pong").in_flight, 1);
+    assert_eq!(settled_pass(&state, &id).await.enqueued, 0);
+
+    // Its run fills the cell, and the fill ends.
+    finish_and_feed(&state, "by-hand", "pong", GREAT).await;
+    let board = matrix(&state, &id).await;
+    assert!(cell(&board, "pong").filled);
+    assert!(!cell(&board, "pong").blocked);
+    assert!(!board.filling);
+
+    // The target is raised later. The old failure does not block the cell, and a fill
+    // launches the run it is now missing.
+    input.runs_per_cell = 2;
+    let _ = update_plan(State(state.clone()), owner(), Path(id.clone()), Json(input))
+        .await
+        .unwrap();
+    assert!(!cell(&matrix(&state, &id).await, "pong").blocked);
+    assert_eq!(fill(&state, &id).await.enqueued, 1);
+    assert!(!cell(&matrix(&state, &id).await, "pong").blocked);
+}
+
+#[tokio::test]
+async fn a_canceled_job_does_not_block_its_cell() {
+    let (_dir, state) = test_state().await;
+    let mut input = plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 });
+    input.retry_count = Some(0);
+    let id = plan_id(&state, input).await;
+    fill(&state, &id).await;
+    for _ in 0..3 {
+        let pong = in_flight(&state, "pong").await;
+        set_state(&state, &pong[0].id, "canceled").await;
+        launch_plan(&state, OWNER, &id).await.unwrap();
+    }
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+    assert!(!cell(&matrix(&state, &id).await, "pong").blocked);
+}
+
+#[tokio::test]
+async fn a_filling_plan_left_with_only_blocked_cells_needs_attention_until_one_is_retried() {
+    let (_dir, state) = test_state().await;
+    let mut input = plan_input(&["pong", "carom"], 1, InFlightLimit::Bounded { runs: 10 });
+    input.retry_count = Some(0);
+    let id = plan_id(&state, input).await;
+    assert!(!matrix(&state, &id).await.needs_attention, "not filling");
+    fill(&state, &id).await;
+
+    // One cell blocks while the other's run is still in flight: the plan is filling.
+    let pong = in_flight(&state, "pong").await[0].id.clone();
+    report_failed(&state, &pong).await;
+    settled_pass(&state, &id).await;
+    let board = matrix(&state, &id).await;
+    assert!(cell(&board, "pong").blocked);
+    assert!(!board.needs_attention);
+    assert!(!summary_of(&state, &id).await.needs_attention);
+
+    // The other cell fills: nothing is in flight and only the blocked cell is left.
+    let carom = in_flight(&state, "carom").await[0].id.clone();
+    finish_and_feed(&state, &carom, "carom", GREAT).await;
+    let board = matrix(&state, &id).await;
+    assert!(board.filling, "it is a filling plan all the same");
+    assert!(board.needs_attention);
+    let listed = summary_of(&state, &id).await;
+    assert!(listed.filling && listed.needs_attention);
+    assert_eq!(launch_plan(&state, OWNER, &id).await.unwrap().enqueued, 0);
+
+    // A retry relaunches the cell, and the plan no longer needs attention.
+    assert_eq!(
+        retry_cell(&state, &id, "pong").await.unwrap(),
+        StatusCode::NO_CONTENT
+    );
+    wait_for_in_flight(&state, "pong", 1).await;
+    assert!(!matrix(&state, &id).await.needs_attention);
+
+    // It blocks again, and a run of the cell someone else launched fills it: the fill
+    // ends with nothing waiting.
+    let relaunched = in_flight(&state, "pong").await[0].id.clone();
+    report_failed(&state, &relaunched).await;
+    settled_pass(&state, &id).await;
+    assert!(matrix(&state, &id).await.needs_attention);
+    enqueue_other(&state, "by-hand", "pong", None).await;
+    finish_and_feed(&state, "by-hand", "pong", GREAT).await;
+    let board = matrix(&state, &id).await;
+    assert!(!board.needs_attention);
+    assert!(!board.filling);
 }
 
 #[tokio::test]

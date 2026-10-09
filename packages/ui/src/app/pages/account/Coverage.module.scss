@@ -227,6 +227,23 @@
   white-space: nowrap;
 }
 
+// The "Needs attention" status of a filling plan that is waiting on its owner, beside
+// its name on the plans list and on its own pages. The ladder badge's attention tone
+// (`.badgeAttention` in `Ladder.module.scss`), in the shape of the pills here.
+.attentionBadge {
+  flex: none;
+  align-self: center;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1.4;
+  color: t.$color-bg;
+  background: t.$color-warning;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}
+
 // The plan's own review queue, in the plan's emission order: a column of identical
 // rows, each one the press that opens its run. A row lays itself out by the list's
 // width (the `@container review-queue` block below).

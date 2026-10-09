@@ -163,6 +163,13 @@
       "default": "case",
       "description": "Which axis the cell loop nests on, and therefore the order runs launch in."
     },
+    "retryCount": {
+      "default": 1,
+      "description": "How many automatic retries each run the plan launches gets, `0..=10`. A launch\nthat uses them up without a counted run blocks its cell.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
     "runsPerCell": {
       "description": "The target number of runs desired for each `case × combination` cell.",
       "format": "uint32",

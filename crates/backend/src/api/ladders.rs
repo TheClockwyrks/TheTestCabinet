@@ -24,7 +24,7 @@
 //! runs already fill is decided with nothing launched, and two rungs pinning one case read
 //! the same runs. Every job a dispatch launches carries the origin
 //! `ladder:<ladder>/<dispatch>/<rung>`, which is what its limit, its Stop and its failing
-//! streak act on ([`crate::db::Db::dispatch_evidence`]) and no part of what counts.
+//! block act on ([`crate::db::Db::dispatch_evidence`]) and no part of what counts.
 //!
 //! ## The gate
 //!
@@ -68,14 +68,14 @@ use crate::error::ApiError;
 
 use super::AppState;
 use super::coverage::{
-    BlockedCell, CoverageQueue, CoverageQueueEntry, FAILING_STREAK, GgLibrary, HaltResult,
-    LaunchCell, LaunchPassResult, LaunchSkipped, MAX_QUEUE_RUNS, MemberCellIdentity, PlanMember,
-    ReviewPlanCase, ReviewPlanCombo, blocked_cell, blocked_reason, cancel_just_enqueued,
-    cell_in_flight, cell_key_of, cell_runs, clamp_in_flight_limit, clamp_runs_per_cell,
-    enqueue_launches, for_read, for_storage, gg_library, group_index, halt_jobs, harness_lane,
-    is_failing_streak, job_cell, launchable_demand, new_id, now, read_gg_library,
-    reject_unstorable_members, resolve_combos, resolve_in_flight_limit, resolve_launch_facts,
-    resolve_member,
+    BlockedCell, CoverageQueue, CoverageQueueEntry, GgLibrary, HaltResult, LaunchCell,
+    LaunchPassResult, LaunchSkipped, MAX_QUEUE_RUNS, MemberCellIdentity, PlanMember,
+    ReviewPlanCase, ReviewPlanCombo, blocked_cell, blocked_reason, blocking_job,
+    cancel_just_enqueued, cell_in_flight, cell_key_of, cell_runs, clamp_in_flight_limit,
+    clamp_retry_count, clamp_runs_per_cell, default_retry_count, enqueue_launches, for_read,
+    for_storage, gg_library, group_index, halt_jobs, harness_lane, job_cell, launchable_demand,
+    new_id, now, read_gg_library, reject_unstorable_members, resolve_combos,
+    resolve_in_flight_limit, resolve_launch_facts, resolve_member,
 };
 use super::launch::{LaunchTarget, run_launch_passes, spawn_launch};
 
@@ -232,6 +232,11 @@ pub struct Ladder {
     /// it. A dispatch resolves it when it starts and keeps it.
     #[serde(default)]
     pub in_flight_limit: Option<InFlightLimit>,
+    /// How many automatic retries each run a dispatch launches gets, `0..=10`. A launch
+    /// that uses them up without a counted run blocks its climber. A dispatch takes it
+    /// when it starts and keeps it.
+    #[serde(default = "default_retry_count")]
+    pub retry_count: u32,
     /// RFC 3339 of when the ladder was last saved.
     pub updated_at: String,
 }
@@ -267,6 +272,11 @@ pub struct LadderInput {
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub in_flight_limit: Option<InFlightLimit>,
+    /// How many automatic retries each run a dispatch launches gets, or null for the
+    /// default of one. Clamped to the most the backend honours for any launch.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub retry_count: Option<u32>,
 }
 
 /// Where a ladder's latest dispatch stands. A ladder never run has no dispatch, which
@@ -277,6 +287,11 @@ pub struct LadderInput {
 pub enum DispatchStatus {
     /// Launch passes are still climbing it.
     Running,
+    /// It is running and waiting on its owner: none of its jobs is in flight, every
+    /// climber is completed, failed or blocked, and at least one is blocked. A reading of
+    /// a running dispatch, derived whenever its status is reported and never stored: a
+    /// climber's Retry or a run arriving for one of its slots makes it `running` again.
+    NeedsAttention,
     /// Every climber completed or failed and none of its runs is in flight.
     Finished,
     /// Its owner stopped it. It launches nothing more.
@@ -284,17 +299,19 @@ pub enum DispatchStatus {
 }
 
 impl DispatchStatus {
-    /// The stored token.
+    /// The stored token. A dispatch that needs attention is stored as the running
+    /// dispatch it is.
     fn as_str(self) -> &'static str {
         match self {
-            DispatchStatus::Running => "running",
+            DispatchStatus::Running | DispatchStatus::NeedsAttention => "running",
             DispatchStatus::Finished => "finished",
             DispatchStatus::Stopped => "stopped",
         }
     }
 
-    /// Parse a stored token. Anything unknown reads as ended: a dispatch nobody can
-    /// recognise as running must not keep launching.
+    /// Parse a stored token, which is never [`NeedsAttention`](Self::NeedsAttention).
+    /// Anything unknown reads as ended: a dispatch nobody can recognise as running must
+    /// not keep launching.
     fn parse(token: &str) -> Self {
         match token {
             "running" => DispatchStatus::Running,
@@ -355,11 +372,13 @@ pub enum ClimberBlock {
         /// Why, in the words the launch pass reports it with.
         reason: String,
     },
-    /// The rung slot's most recent terminal jobs all failed on infrastructure, and
-    /// nothing of it is in flight. Fix: fix the cause, then retry the climber
-    /// (`POST /ladders/{id}/climbers/retry`), which relaunches it.
+    /// A job the dispatch launched for the rung slot used up its automatic retries
+    /// without a counted run, no later launch of the dispatch took its place, and
+    /// nothing of the slot is in flight. Fix: fix the
+    /// cause, then retry the climber (`POST /ladders/{id}/climbers/retry`), which
+    /// relaunches it.
     Failing {
-        /// How many failed jobs in a row marked it failing.
+        /// How many attempts that launch made: the first, and each automatic retry.
         attempts: u32,
     },
     /// Every run the rung will get has completed and the rung is still undecided,
@@ -447,6 +466,9 @@ pub struct LadderDispatch {
     pub outer_axis: LadderAxis,
     /// The runs-in-flight limit resolved at Run.
     pub in_flight_limit: InFlightLimit,
+    /// The retry limit, as it stood at Run: how many automatic retries each run the
+    /// dispatch launches gets.
+    pub retry_count: u32,
     /// The rung-slot counts.
     pub slots: SlotCounts,
     /// The runs: total, done, in flight.
@@ -716,6 +738,10 @@ struct DispatchSnapshot {
     outer_axis: LadderAxis,
     /// The runs-in-flight limit in force at Run.
     in_flight_limit: InFlightLimit,
+    /// How many automatic retries each run the dispatch launches gets. A snapshot taken
+    /// before the configuration held one reads the default.
+    #[serde(default = "default_retry_count")]
+    retry_count: u32,
     /// The configuration's runs per rung slot (informational: targets are resolved).
     runs_per_cell: u32,
 }
@@ -1058,7 +1084,7 @@ pub async fn summary(
                 let (slots, runs) = board.totals();
                 Some(LadderDispatchSummary {
                     id: board.dispatch.id.clone(),
-                    status: DispatchStatus::parse(&board.dispatch.status),
+                    status: board.status(),
                     started_at: board.dispatch.started_at.clone(),
                     ended_at: board.dispatch.ended_at.clone(),
                     slots,
@@ -1164,7 +1190,7 @@ pub async fn queue(
 /// is blocked as `failing` or `unlaunchable`, once its owner has fixed the cause.
 ///
 /// The retry is recorded on the dispatch's climber, and only jobs that ended after it
-/// count toward its failing streak, so the launch pass that follows relaunches its rung
+/// are read for its failing block, so the launch pass that follows relaunches its rung
 /// under the dispatch's limit; a pass also resolves the combination again, which is what
 /// clears an `unlaunchable` one that has been fixed. Recording it rather than launching
 /// once is what keeps a retry from being lost to a busy claim or a full limit.
@@ -1343,9 +1369,9 @@ pub(super) async fn ladder_pass_locked(
             ));
         }
         let demand = launchable_demand(demand, slot.member);
-        // A pass does not relaunch a slot whose runs keep failing on infrastructure —
-        // that is how a slot that always fails would relaunch itself forever. Retrying
-        // the climber starts the streak afresh.
+        // A pass does not relaunch a slot whose launch used up its retries without a
+        // counted run: the retry limit is the slot's whole allowance. Retrying the climber
+        // is what launches it again.
         if slot.failing && slot.member.unlaunchable.is_none() {
             if demand.missing() > 0 {
                 unlaunchable.push(blocked_cell(
@@ -1374,6 +1400,7 @@ pub(super) async fn ladder_pass_locked(
                 case: &slot.case,
                 member: slot.member,
                 runs: launch.runs,
+                retry_count: board.snapshot.retry_count,
             }
         })
         .collect();
@@ -1515,9 +1542,10 @@ struct SlotEvidence {
     /// The slot's jobs in flight: its cell's, whoever launched them, up to what it still
     /// needs.
     in_flight: u32,
-    /// Whether the newest terminal jobs the dispatch launched for the slot since the
-    /// climber's last retry all failed on infrastructure.
-    failing: bool,
+    /// How many attempts the launch that blocks the slot made, when a job the dispatch
+    /// launched for it used up its retries without a counted run since the climber's
+    /// last retry, with no later launch in its place.
+    failing: Option<u32>,
     /// The verdict recorded on the slot, if any. It stands for the rest of the dispatch.
     recorded: Option<LadderOutcomeKind>,
 }
@@ -1638,13 +1666,13 @@ fn walk_climber(
 ///
 /// The order of the checks is the order of the fixes: a rung with nothing pending is
 /// waiting on nothing the dispatch can launch, so it is blocked as unrated; otherwise the
-/// dispatch can feed it — unless its climber cannot be launched or its runs keep failing,
-/// and nothing of it is still in flight to change that.
+/// dispatch can feed it — unless its climber cannot be launched or its launch used up its
+/// retries, and nothing of it is still in flight to change that.
 fn undecided_standing(
     tally: &GateTally,
     unlaunchable: Option<&str>,
     in_flight: u32,
-    failing: bool,
+    failing: Option<u32>,
 ) -> (ClimberStatus, Option<ClimberBlock>) {
     if tally.pending == 0 {
         return (
@@ -1663,12 +1691,10 @@ fn undecided_standing(
                 }),
             );
         }
-        if failing {
+        if let Some(attempts) = failing {
             return (
                 ClimberStatus::Blocked,
-                Some(ClimberBlock::Failing {
-                    attempts: FAILING_STREAK as u32,
-                }),
+                Some(ClimberBlock::Failing { attempts }),
             );
         }
     }
@@ -1726,7 +1752,7 @@ struct DispatchBoard {
     snapshot: DispatchSnapshot,
     /// Its climbers, in resolved order.
     climbers: Vec<BoardClimber>,
-    /// What the jobs it launched say: its limit and its failing streaks read these.
+    /// What the jobs it launched say: its limit and its failing blocks read these.
     evidence: DispatchEvidence,
     /// The recorded verdicts and when each was recorded, by `(rung id, climber key)`.
     decided: HashMap<(String, String), (LadderOutcomeKind, String)>,
@@ -1779,6 +1805,28 @@ impl DispatchBoard {
             .values()
             .map(|ids| ids.len() as u32)
             .sum()
+    }
+
+    /// Where the dispatch stands, as every read reports it: its stored status, with a
+    /// running dispatch that waits on its owner read as
+    /// [needing attention](https://docs.testcabinet.ai/components/backend/ladders/#needs-attention).
+    fn status(&self) -> DispatchStatus {
+        let stored = DispatchStatus::parse(&self.dispatch.status);
+        let waiting = stored == DispatchStatus::Running
+            && self.in_flight_total() == 0
+            && self
+                .climbers
+                .iter()
+                .all(|climber| climber.walk.status != ClimberStatus::Running)
+            && self
+                .climbers
+                .iter()
+                .any(|climber| climber.walk.status == ClimberStatus::Blocked);
+        if waiting {
+            DispatchStatus::NeedsAttention
+        } else {
+            stored
+        }
     }
 
     /// Whether every climber completed or failed.
@@ -1864,8 +1912,8 @@ impl DispatchBoard {
         active
     }
 
-    /// Whether a slot's newest terminal jobs since the climber's retry all failed on
-    /// infrastructure.
+    /// Whether a job the dispatch launched for a slot used up its retries without a
+    /// counted run since the climber's retry, with no later launch in its place.
     fn slot_failing(&self, climber: &BoardClimber, position: usize) -> bool {
         let rung = &self.snapshot.rungs[position];
         let key: SlotKey = (rung.id.clone(), climber.slots[position].cell.clone());
@@ -1876,13 +1924,21 @@ impl DispatchBoard {
                 .map(Vec::as_slice)
                 .unwrap_or(&[]),
             climber.stored.retried_at.as_deref(),
+            self.evidence.launched.get(&key).copied(),
         )
+        .is_some()
     }
 }
 
-/// Whether a slot's terminal jobs (newest first) that ended after `since` form a failing
-/// streak.
-fn slot_failing(terminal: &[TerminalJob], since: Option<&str>) -> bool {
+/// How many attempts the launch that blocks a slot made, given the slot's terminal jobs
+/// (newest first) and when its newest launch was created: `Some` when a job that ended
+/// after `since` blocks the slot ([`blocking_job`]), counted off the most recently ended
+/// such job.
+fn slot_failing(
+    terminal: &[TerminalJob],
+    since: Option<&str>,
+    latest_launch: Option<time::OffsetDateTime>,
+) -> Option<u32> {
     let since = since.and_then(|since| {
         time::OffsetDateTime::parse(since, &time::format_description::well_known::Rfc3339).ok()
     });
@@ -1899,7 +1955,7 @@ fn slot_failing(terminal: &[TerminalJob], since: Option<&str>) -> bool {
         })
         .cloned()
         .collect();
-    is_failing_streak(&after)
+    blocking_job(&after, latest_launch).map(|job| job.attempt + 1)
 }
 
 /// Read and walk one dispatch. `record` says whether verdicts that have become decidable
@@ -2126,11 +2182,6 @@ async fn read_evidence(
     snapshot: &DispatchSnapshot,
     identities: &[Option<MemberCellIdentity>],
 ) -> Result<BoardEvidence, ApiError> {
-    let jobs = state
-        .db
-        .dispatch_evidence(ladder_id, dispatch_id)
-        .await
-        .map_err(ApiError::from)?;
     let mut slugs: Vec<String> = snapshot
         .rungs
         .iter()
@@ -2138,14 +2189,25 @@ async fn read_evidence(
         .collect();
     slugs.sort();
     slugs.dedup();
-    let mut runs = state
-        .db
-        .counted_runs_by_cell(&slugs, None)
-        .await
-        .map_err(ApiError::from)?;
+    // The three reads are not one transaction, so their order is what keeps a job that
+    // ends between them from vanishing. A job only ever moves from in flight to terminal
+    // and its run is stored before it does, so reading the jobs in flight first, then the
+    // dispatch's terminal jobs, then the runs can count such a job twice but never not at
+    // all. Counted twice, the slot waits for the next pass. Counted nowhere, a run that
+    // had used up its retries would read as never launched and be launched again.
     let in_flight = state
         .db
         .count_in_flight_jobs_by_cell(&slugs)
+        .await
+        .map_err(ApiError::from)?;
+    let jobs = state
+        .db
+        .dispatch_evidence(ladder_id, dispatch_id)
+        .await
+        .map_err(ApiError::from)?;
+    let mut runs = state
+        .db
+        .counted_runs_by_cell(&slugs, None)
         .await
         .map_err(ApiError::from)?;
     let mut unrated: Vec<String> = Vec::new();
@@ -2258,6 +2320,7 @@ fn walk_board(
                     failing: slot_failing(
                         jobs.terminal.get(&key).map(Vec::as_slice).unwrap_or(&[]),
                         stored.retried_at.as_deref(),
+                        jobs.launched.get(&key).copied(),
                     ),
                     recorded,
                 });
@@ -2379,12 +2442,13 @@ fn dispatch_to_wire(board: &DispatchBoard) -> LadderDispatch {
     };
     LadderDispatch {
         id: board.dispatch.id.clone(),
-        status: DispatchStatus::parse(&board.dispatch.status),
+        status: board.status(),
         started_at: board.dispatch.started_at.clone(),
         ended_at: board.dispatch.ended_at.clone(),
         gate: board.snapshot.gate,
         outer_axis: board.snapshot.outer_axis,
         in_flight_limit: board.snapshot.in_flight_limit,
+        retry_count: board.snapshot.retry_count,
         slots,
         runs,
         climbers_running: count(ClimberStatus::Running),
@@ -2475,8 +2539,8 @@ fn parse_snapshot(dispatch: &StoredDispatch) -> Result<DispatchSnapshot, ApiErro
         .map_err(|e| ApiError::internal(format!("reading a dispatch snapshot: {e}")))
 }
 
-/// The snapshot a Run takes of a configuration, with every rung's target resolved and
-/// the limit in force.
+/// The snapshot a Run takes of a configuration, with every rung's target resolved, the
+/// limit in force and the retry limit.
 fn snapshot_of(ladder: &StoredLadder, in_flight_limit: InFlightLimit) -> DispatchSnapshot {
     DispatchSnapshot {
         rungs: ladder
@@ -2495,6 +2559,7 @@ fn snapshot_of(ladder: &StoredLadder, in_flight_limit: InFlightLimit) -> Dispatc
         gate: ladder.gate,
         outer_axis: LadderAxis::parse(&ladder.outer_axis),
         in_flight_limit,
+        retry_count: ladder.retry_count,
         runs_per_cell: ladder.runs_per_cell,
     }
 }
@@ -2616,12 +2681,13 @@ fn ladder_to_wire(stored: StoredLadder, library: &GgLibrary) -> Ladder {
         rungs: stored.rungs.iter().map(rung_to_wire).collect(),
         outer_axis: LadderAxis::parse(&stored.outer_axis),
         in_flight_limit: stored.in_flight_limit.map(clamp_in_flight_limit),
+        retry_count: clamp_retry_count(stored.retry_count),
         updated_at: stored.updated_at,
     }
 }
 
-/// Build a stored ladder from a create/update body: clamp the targets and the limit,
-/// sanitize the gate, and mint ids for new rungs.
+/// Build a stored ladder from a create/update body: clamp the targets, the limit and the
+/// retry limit, sanitize the gate, and mint ids for new rungs.
 ///
 /// Three things are rejected rather than accepted-and-broken, because every one of them
 /// fails *silently* later: an empty climb, a climb longer than the cap, and a duplicated
@@ -2680,6 +2746,7 @@ fn ladder_from_input(
         rungs,
         outer_axis: input.outer_axis.as_str().to_string(),
         in_flight_limit: input.in_flight_limit.map(clamp_in_flight_limit),
+        retry_count: clamp_retry_count(input.retry_count.unwrap_or_else(default_retry_count)),
         updated_at: updated_at.to_string(),
     })
 }

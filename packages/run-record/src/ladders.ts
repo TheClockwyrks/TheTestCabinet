@@ -193,6 +193,12 @@ export type Ladder = {
    */
   inFlightLimit: InFlightLimit | null;
   /**
+   * How many automatic retries each run a dispatch launches gets, `0..=10`. A launch
+   * that uses them up without a counted run blocks its climber. A dispatch takes it
+   * when it starts and keeps it.
+   */
+  retryCount: number;
+  /**
    * RFC 3339 of when the ladder was last saved.
    */
   updatedAt: string;
@@ -236,13 +242,22 @@ export type LadderInput = {
    * This ladder's override of the account's runs-in-flight limit, or null to inherit.
    */
   inFlightLimit?: InFlightLimit;
+  /**
+   * How many automatic retries each run a dispatch launches gets, or null for the
+   * default of one. Clamped to the most the backend honours for any launch.
+   */
+  retryCount?: number;
 };
 
 /**
  * Where a ladder's latest dispatch stands. A ladder never run has no dispatch, which
  * the console reads as "Not run yet".
  */
-export type DispatchStatus = "running" | "finished" | "stopped";
+export type DispatchStatus =
+  | "running"
+  | "needsAttention"
+  | "finished"
+  | "stopped";
 
 /**
  * Where one **rung slot** — one climber on one rung of a dispatch — stands.
@@ -278,7 +293,7 @@ export type ClimberBlock =
   | {
       kind: "failing";
       /**
-       * How many failed jobs in a row marked it failing.
+       * How many attempts that launch made: the first, and each automatic retry.
        */
       attempts: number;
     }
@@ -380,6 +395,11 @@ export type LadderDispatch = {
    * The runs-in-flight limit resolved at Run.
    */
   inFlightLimit: InFlightLimit;
+  /**
+   * The retry limit, as it stood at Run: how many automatic retries each run the
+   * dispatch launches gets.
+   */
+  retryCount: number;
   /**
    * The rung-slot counts.
    */

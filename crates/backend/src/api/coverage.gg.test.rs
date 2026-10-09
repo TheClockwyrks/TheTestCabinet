@@ -522,6 +522,7 @@ fn a_launch_pass_launches_a_gg_cell_on_the_cases_pinned_engine() {
             case,
             member: &m,
             runs: 1,
+            retry_count: 1,
         })
     };
 

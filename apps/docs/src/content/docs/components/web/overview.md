@@ -165,7 +165,9 @@ Each plan's card shows its name and, below it, its runs per cell. A progress bar
 measures runs: the runs that count, capped at each cell's target, out of every
 cell's target. The text beside the bar is the cells filled, for example
 "5/8 cells". The bar's hover text gives the run detail: runs done of the total,
-runs in flight, and runs still to launch.
+runs in flight, and runs still to launch. A filling plan that
+[needs attention](/components/backend/coverage/#needs-attention) carries a Needs
+attention status beside its name, and the bar's hover text says so.
 
 ### A plan
 
@@ -184,9 +186,13 @@ the total, runs in flight against the limit, runs to review, and blocked cells.
 To review is informational. Its controls are All missing, which starts
 [filling](/components/backend/coverage/#filling-a-plan) the plan, Halt, and Halt
 all, which is confirmed. While the plan is filling, the control line says so and
-Halt stops it. All missing stays available, and pressing it runs another launch
-pass, which resumes a fill left with nothing in flight. Under a runs-in-flight
-limit of 0 the plan says it launches nothing, and All missing is unavailable.
+Halt stops it. A filling plan that
+[needs attention](/components/backend/coverage/#needs-attention) says that
+instead, since only a blocked cell's Retry moves it, and the plan carries a Needs
+attention status beside its name on every tab. All missing stays available,
+and pressing it runs another launch pass, which resumes a fill left with nothing in
+flight. Under a runs-in-flight limit of 0 the plan says it launches nothing, and All
+missing is unavailable.
 
 The Dashboard also breaks the plan's runs down by model, by combination, by test
 case, and by rating, and charts the rating mix per combination. The board's
@@ -210,8 +216,9 @@ bought by hand counts against the cell it came from. A
 [blocked](/components/backend/coverage/#a-blocked-cell) cell shows as blocked
 with a Retry action.
 
-A plan's editor sets its members, runs per cell, the run order, and the
-runs-in-flight override. The pickers pin a case coordinate of test type, case,
+A plan's editor sets its members, runs per cell, the run order, the
+runs-in-flight override, and the retry limit. The pickers pin a case coordinate of
+test type, case,
 version, variant, and engine, held to what the resolved version declares. A
 combination takes either shape: a harness with its model, or a saved gg
 configuration with a model bound to each of its launch slots, so two members of
@@ -227,7 +234,9 @@ name and the description on its left:
 | 1   | the name                                        | the status, then the bar |
 | 2   | "N rungs · N runs/rung · N climbers"            | the rung-slot totals     |
 
-The status is one of Not run yet, Running, Finished, or Stopped. The bar measures
+The status is one of Not run yet, Running,
+[Needs attention](/components/backend/ladders/#needs-attention), Finished, or
+Stopped. The bar measures
 the latest dispatch's
 [runs done of its total](/components/backend/ladders/#progress), so a full bar
 means nothing is left to execute. Its hover text gives the run detail, and names
@@ -240,7 +249,10 @@ an empty bar and zero totals in the same slots, so a first Run moves nothing.
 ### A ladder
 
 A ladder's dashboard heads with its status, Run ladder, Stop, and Stop and cancel
-running, which is confirmed. Run is unavailable while a dispatch is running.
+running, which is confirmed. Run is unavailable while a dispatch is running,
+which includes one that reads Needs attention. Stop and a blocked climber's Retry
+stay available on it. Beside the order the dispatch climbs in, the control line
+gives the retry limit the dispatch took at Run.
 
 Its summary counts the climbers as Climbers, Running, Completed, and Failed, then
 the rung slots skipped, the runs in flight against the limit, and the runs to
@@ -262,10 +274,11 @@ as its tally, for example "2 of 3 runs passed (1 needed)".
 
 A ladder's status note states only what the summary figures cannot: the blocked
 climbers and the fix for each, or a dispatch that cannot climb because its
-runs-in-flight limit is zero.
+runs-in-flight limit is zero. On a dispatch that reads Needs attention it says
+first that nothing is running and the blocked climbers are waiting on the owner.
 
 A ladder's editor sets its rungs, its climbers, runs per rung, the gate, the run
-order, and the runs-in-flight override, and offers only validator-rated case
+order, the runs-in-flight override, and the retry limit, and offers only validator-rated case
 versions as rungs. It flags a rung whose pinned version is no longer the newest
 ingested one, and says that an edit applies to the next Run.
 

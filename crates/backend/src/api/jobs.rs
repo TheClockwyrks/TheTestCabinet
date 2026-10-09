@@ -1574,11 +1574,11 @@ fn spawn_coverage_feed(state: &AppState, job: &job::Model) {
 
 /// The default `retryCount` when a launch request omits it: one retry after a
 /// failure, so the total attempts allowed is `1 + retry_count` = 2.
-const DEFAULT_RETRY_COUNT: u32 = 1;
+pub(super) const DEFAULT_RETRY_COUNT: u32 = 1;
 
 /// The largest `retryCount` honored, clamping an absurd request so a run cannot
 /// re-enqueue itself an unbounded number of times.
-const MAX_RETRY_COUNT: u32 = 10;
+pub(super) const MAX_RETRY_COUNT: u32 = 10;
 
 /// Read the terminal [`RunState`] a driver reported: the produced/partial record's
 /// own `status.state` when it built one, else `fallback` (the state that best

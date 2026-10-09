@@ -1211,8 +1211,9 @@ export interface LaunchConfig {
   engine?: string;
   maxRuntimeOverride: number | null;
   // How many times the backend automatically retries this run after a terminal
-  // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to
-  // accept the backend default of 1; a timeout or completed run is never retried.
+  // infrastructure failure, harness error, hang, or catastrophic (won't-load) build.
+  // Omit (undefined) to accept the backend default of 1; a timeout or completed run
+  // is never retried.
   retryCount?: number;
 }
 

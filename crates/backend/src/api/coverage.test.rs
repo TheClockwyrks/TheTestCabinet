@@ -102,6 +102,7 @@ fn plan(
         cases,
         outer_axis: CoverageAxis::Case,
         in_flight_limit: None,
+        retry_count: 1,
         updated_at: "2026-07-15T00:00:00Z".to_string(),
     }
 }
@@ -256,6 +257,7 @@ fn a_launch_pass_launches_a_harness_cell_on_the_cases_pinned_engine() {
             case,
             member: &m,
             runs: 2,
+            retry_count: 1,
         })
     };
 
@@ -707,6 +709,7 @@ fn plan_input(
         cases: vec![],
         outer_axis: CoverageAxis::Combination,
         in_flight_limit,
+        retry_count: None,
     }
 }
 

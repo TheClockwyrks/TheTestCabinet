@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +16,7 @@ import type {
   LaunchPassResult,
 } from "@clockwyrks/run-record/coverage";
 import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
+import styles from "./Coverage.module.scss";
 import type { BackendClient, WorkerClient } from "../../../client/clients";
 import {
   BackendProvider,
@@ -28,6 +35,7 @@ import {
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import {
+  PLAN_ATTENTION_NOTE,
   buildGroups,
   cellKey,
   describeHalt,
@@ -135,6 +143,7 @@ function matrix(
     runsUnreviewed: cells.reduce((n, c) => n + c.unreviewed, 0),
     inFlightLimit: { kind: "bounded", runs: 10 },
     filling: false,
+    needsAttention: false,
     ...over,
   };
 }
@@ -426,7 +435,7 @@ describe("MatrixSection collapse", () => {
     expect(screen.getByText("filled")).toBeTruthy();
   });
 
-  // A cell whose last runs all failed on infrastructure is not relaunched by filling,
+  // A cell whose last run used up its automatic retries is not relaunched by filling,
   // so the reason and its fix have to be on the row, and the block has to say it holds
   // one without being expanded.
   it("shows a blocked cell with its reason and a Retry that names the cell", () => {
@@ -449,9 +458,46 @@ describe("MatrixSection collapse", () => {
     expect(screen.getByText("1 blocked")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(
-      screen.getByText(/last 3 runs failed on infrastructure/),
-    ).toBeTruthy();
+      screen.getByText(
+        /a launch used up its automatic retries without a run that counts/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/last 3 runs/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^Retry / }));
+    expect(onRetry).toHaveBeenCalledWith(blocked);
+  });
+
+  // A run of the cell can use up its retries while runs launched beside it are still
+  // in flight. The cell is blocked all the same, so the row says so, keeps Retry, and
+  // goes on counting what is in flight.
+  it("shows a cell blocked with runs still in flight as blocked, with Retry", () => {
+    const onRetry = vi.fn();
+    const blocked = cell({
+      blocked: true,
+      counted: 0,
+      inFlight: 2,
+      remaining: 1,
+    });
+    render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MatrixSection
+            group={group({ cells: [blocked], blocked: 1 })}
+            axis="case"
+            busy={false}
+            canTrigger
+            onTrigger={vi.fn()}
+            onRetry={onRetry}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText(/^Blocked: a launch used up/)).toBeInTheDocument();
+    expect(screen.getByText("2/3")).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: /^Retry / });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
     expect(onRetry).toHaveBeenCalledWith(blocked);
   });
 
@@ -685,6 +731,17 @@ describe("itemsForCells", () => {
     expect(item!.config.engine).toBe("none");
   });
 
+  it("puts the plan's retry limit on every launch, and leaves it off when unsaid", () => {
+    const items = itemsForCells([cell({ remaining: 2 })], 3);
+    expect(items.map((i) => i.config.retryCount)).toEqual([3, 3]);
+    // Zero is an instruction (no retries), not an absent value.
+    const off = itemsForCells([cell({ remaining: 1 })], 0);
+    expect(off.map((i) => i.config.retryCount)).toEqual([0]);
+    const unsaid = itemsForCells([cell({ remaining: 1 })]);
+    expect(unsaid).toHaveLength(1);
+    expect(unsaid[0]?.config).not.toHaveProperty("retryCount");
+  });
+
   it("skips a cell the matrix said cannot be launched", () => {
     expect(
       itemsForCells([
@@ -809,6 +866,20 @@ describe("launchGgCells", () => {
     );
     await launchGgCells(worker(launchGgRun), "token", vi.fn(), launches);
     expect(launchGgRun.mock.calls[0]![0].engine).toBe("structured-2d");
+  });
+
+  it("puts the plan's retry limit on a gg launch, zero included", async () => {
+    const sent = vi.fn<WorkerClient["launchGgRun"]>(() =>
+      Promise.resolve({ jobId: "job-1", statusUrl: "", liveUrl: "" }),
+    );
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 1 })],
+      [ggOption()],
+    );
+    await launchGgCells(worker(sent), "token", vi.fn(), launches, 0);
+    expect(sent.mock.calls[0]?.[0].retryCount).toBe(0);
+    await launchGgCells(worker(sent), "token", vi.fn(), launches);
+    expect(sent.mock.calls[1]?.[0]).not.toHaveProperty("retryCount");
   });
 
   it("isolates a failure so the rest of the trigger still goes out", async () => {
@@ -1147,13 +1218,24 @@ describe("unresolvedGgProblem", () => {
 
 // The dashboard mounted for real, which is what the whole-page tests below need: a
 // signed-in account, one worker, and a plan whose matrix is whatever the test hands in.
+// What a hand launch sent: the harness cells' batch, and each gg run.
+const launchRunBatch = vi.fn<WorkerClient["launchRunBatch"]>((configs) =>
+  Promise.resolve(configs.map((_, i) => ({ runId: ["job", i].join("-") }))),
+);
+const launchGgRun = vi.fn<WorkerClient["launchGgRun"]>(() =>
+  Promise.resolve({ jobId: "job-g", statusUrl: "", liveUrl: "" }),
+);
 const worker = {
   id: "w1",
   client: {
     launchJobs: vi.fn(),
+    launchRunBatch,
+    launchGgRun,
     setRunLifecycleEnabled: vi.fn(async () => {}),
   } as unknown as WorkerClient,
 };
+// The retry limit the mounted plan was saved with.
+const planSaved = { retryCount: 1 };
 
 // How many fill passes the mounted section has asked for. A fill is not a read: it
 // launches runs that cost money, so the count is a behavioural assertion rather than a
@@ -1185,6 +1267,7 @@ function backendValue(
           updatedAt: "2026-08-15T00:00:00Z",
           outerAxis: "case",
           filling: over.filling ?? false,
+          retryCount: planSaved.retryCount,
         },
       ],
       fillCoveragePlan: async () => {
@@ -1395,6 +1478,40 @@ describe("CoveragePlanTestsPage hand launches", () => {
     expect(screen.getByText(/could not be loaded/i)).toBeTruthy();
   });
 
+  // A launch by hand is a launch request the console sends, so the plan's retry limit
+  // has to ride on it: the backend puts it only on the jobs it launches itself.
+  it("launches a cell by hand with the plan's retry limit", async () => {
+    ggState.options = [ggOption()];
+    ggState.loading = false;
+    ggState.error = null;
+    planSaved.retryCount = 3;
+    launchRunBatch.mockClear();
+    launchGgRun.mockClear();
+    try {
+      const [harnessOne, ggOne] = await renderTests();
+      if (!harnessOne || !ggOne) throw new Error("expected both launches");
+      fireEvent.click(harnessOne);
+      await waitFor(() => {
+        expect(launchRunBatch).toHaveBeenCalledTimes(1);
+      });
+      const [configs, , origin] = launchRunBatch.mock.calls[0] ?? [];
+      expect(configs).toHaveLength(1);
+      expect(configs?.[0]?.retryCount).toBe(3);
+      // Still attributed to the plan, so its Halt reaches the run.
+      expect(origin).toEqual({ kind: "plan", id: "p1" });
+      await waitFor(() => {
+        expect(ggOne).toBeEnabled();
+      });
+      fireEvent.click(ggOne);
+      await waitFor(() => {
+        expect(launchGgRun).toHaveBeenCalledTimes(1);
+      });
+      expect(launchGgRun.mock.calls[0]?.[0].retryCount).toBe(3);
+    } finally {
+      planSaved.retryCount = 1;
+    }
+  });
+
   it("retries a blocked cell with its case and combination", async () => {
     ggState = { options: [ggOption()], loading: false, error: null };
     retried = [];
@@ -1566,7 +1683,39 @@ describe("CoveragePlanPage blocked cells", () => {
     expect(screen.queryByText("Blocked cells")).toBeNull();
   });
 
-  it("counts a cell blocked on infrastructure failures too", async () => {
+  // A filling plan with nothing in flight and nothing left that a launch pass could
+  // launch is waiting on its owner, and says so where the plan's state is read: beside
+  // its name on every tab, and on the control line in place of "Filling".
+  it("says a filling plan needs attention, and keeps Halt", async () => {
+    renderPlanSection([cell({ blocked: true })], {
+      matrix: { filling: true, needsAttention: true },
+    });
+    const badge = await screen.findByText("Needs attention");
+    expect(badge).toHaveClass(styles.attentionBadge ?? "missing");
+    expect(screen.getByText(PLAN_ATTENTION_NOTE)).toBeInTheDocument();
+    expect(PLAN_ATTENTION_NOTE).toMatch(
+      /nothing is running, and the blocked cells are waiting for a retry/,
+    );
+    expect(
+      screen.queryByText(/Filling: the rest launch/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Halt" })).toBeEnabled();
+    // The badge is the layout's, so it follows the reader to the tab with the Retry.
+    fireEvent.click(screen.getByRole("link", { name: /^Tests/ }));
+    expect(await screen.findByText("Needs attention")).toBeInTheDocument();
+  });
+
+  it("shows no such status on a plan that is simply filling, or halted", async () => {
+    renderPlanSection([cell({ blocked: true })], {
+      matrix: { filling: true, needsAttention: false },
+    });
+    expect(
+      await screen.findByText(/Filling: the rest launch/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
+  });
+
+  it("counts a cell blocked on used-up retries too", async () => {
     renderPlanSection([cell({ blocked: true })]);
     expect(await screen.findByText("Blocked cells")).toBeTruthy();
   });
