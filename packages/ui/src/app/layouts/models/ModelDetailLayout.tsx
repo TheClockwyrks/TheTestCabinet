@@ -31,7 +31,11 @@ interface ModelDetailLayoutProps {
 // tab pages stay thin and never duplicate it.
 export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   const { modelId } = useParams<{ modelId: string }>();
-  const { models, status: modelsStatus } = useModels();
+  const {
+    models,
+    status: modelsStatus,
+    refreshing: modelsRefreshing,
+  } = useModels();
   // The edit affordance shows only where curating models is possible; null (and
   // thus hidden) on a read-only or logged-out host.
   const config = useModelConfig();
@@ -42,8 +46,11 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   if (!model) {
     // A read has three outcomes and this page must not collapse them into two.
     // While the catalog is still loading the model isn't resolvable YET, so show
-    // the branded full-body loading state (the topbar stays).
-    if (modelsStatus === "loading") {
+    // the branded full-body loading state (the topbar stays). A re-read in
+    // flight is the same wait: the catalog on hand predates it, so a model
+    // created a moment ago (the config form saves, requests a refresh and lands
+    // here in one step) is one the catalog has not answered for yet.
+    if (modelsStatus === "loading" || modelsRefreshing) {
       return (
         <PageLayout>
           <LoadingState label="Loading model…" />

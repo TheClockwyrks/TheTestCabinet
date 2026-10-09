@@ -164,6 +164,11 @@ A surface shows a loading state while its data is in flight, and names an entity
 as not found once the read has settled without it. A read that failed is
 reported as a failure, distinct from both.
 
+A re-read in flight counts as unsettled for an entity the source has yet to
+resolve. The page of an entity created a moment ago therefore shows the loading
+state until the re-read that follows the creation settles, and names the entity
+as not found only if that re-read settles without it.
+
 Those three states decide only what a surface with nothing to show renders. Data
 already resolved is rendered whatever the latest read did: a read that failed
 over a list already on screen is stale data, reported beside the rows rather

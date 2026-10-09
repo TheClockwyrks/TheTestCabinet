@@ -123,7 +123,7 @@ export function ModelConfigPage() {
   const config = useModelConfig();
   const { modelId } = useParams<{ modelId: string }>();
   const [params] = useSearchParams();
-  const { models, status } = useModels();
+  const { models, status, refreshing } = useModels();
   const navigate = useNavigate();
   const { confirm } = useConfirm();
   const runtime = useRunsRuntime();
@@ -267,6 +267,8 @@ export function ModelConfigPage() {
   // read failed, or the read settled and this backend curates no such model.
   // Only the last is an unknown model — reporting a failed read as one would
   // invite the operator to create a duplicate of a model that already exists.
+  // A re-read in flight counts as the first: the catalog on hand predates it, so
+  // a model created a moment ago is one it has not answered for yet.
   if (editing && !existing) {
     return (
       <PageLayout>
@@ -274,7 +276,7 @@ export function ModelConfigPage() {
           command="--edit-model"
           comment={<>// configure a model</>}
         />
-        {status === "loading" ? (
+        {status === "loading" || refreshing ? (
           <LoadingState label="Resolving model…" />
         ) : status === "error" ? (
           <LoadFailureState subject="the model catalog" />

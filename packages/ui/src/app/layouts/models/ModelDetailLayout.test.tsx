@@ -18,9 +18,14 @@ vi.mock("../../data/useModelConfig", () => ({ useModelConfig: () => null }));
 const catalog = vi.hoisted(() => ({
   models: [] as unknown[],
   status: "ready" as string,
+  refreshing: false,
 }));
 vi.mock("../../data/useModels", () => ({
-  useModels: () => ({ models: catalog.models, status: catalog.status }),
+  useModels: () => ({
+    models: catalog.models,
+    status: catalog.status,
+    refreshing: catalog.refreshing,
+  }),
 }));
 
 function summary(slug: string): ModelSummary {
@@ -39,9 +44,11 @@ function renderFor(
   modelId: string,
   models: ModelSummary[],
   status: CatalogStatus,
+  refreshing = false,
 ) {
   catalog.models = models;
   catalog.status = status;
+  catalog.refreshing = refreshing;
   render(
     <MemoryRouter initialEntries={[`/models/${modelId}`]}>
       <Routes>
@@ -87,5 +94,37 @@ describe("ModelDetailLayout when the model does not resolve", () => {
     renderFor("claude", [summary("claude")], "error");
     expect(screen.getByText("body for claude")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+// A refresh re-reads the catalog in place: the status stays `ready` and the
+// models already loaded stay on screen. The config form saves a new model,
+// requests that refresh and navigates here in one step, so this page's first
+// render is against a catalog that predates the model it was opened on.
+describe("ModelDetailLayout while the catalog is being refreshed", () => {
+  it("shows loading, not unknown, while a refresh is in flight for a model not yet in the catalog", () => {
+    renderFor("claude", [summary("gpt")], "ready", true);
+    expect(screen.getByText("Loading model…")).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown model/)).not.toBeInTheDocument();
+  });
+
+  it("still renders a resolved model while refreshing", () => {
+    renderFor("claude", [summary("claude")], "ready", true);
+    expect(screen.getByText("body for claude")).toBeInTheDocument();
+    expect(screen.queryByText("Loading model…")).not.toBeInTheDocument();
+  });
+
+  it("names the model unknown once the refresh has settled without it", () => {
+    renderFor("claude", [summary("gpt")], "ready", false);
+    expect(screen.getByText("Unknown model: claude")).toBeInTheDocument();
+    expect(screen.queryByText("Loading model…")).not.toBeInTheDocument();
+  });
+
+  // A refresh that failed has settled too, and with the model still absent the
+  // page reports the failure rather than waiting forever.
+  it("reports the failure once a refresh has failed without the model", () => {
+    renderFor("claude", [summary("gpt")], "error", false);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("Loading model…")).not.toBeInTheDocument();
   });
 });

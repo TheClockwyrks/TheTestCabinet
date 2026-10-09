@@ -51,10 +51,14 @@ const UNPRICED_LISTING = {
   outputPerMtok: null,
 };
 
-function galleryValue(modelsStatus = "ready"): GalleryDataInput {
+function galleryValue(
+  modelsStatus = "ready",
+  modelsRefreshing?: boolean,
+): GalleryDataInput {
   return {
     models: [],
     modelsStatus,
+    modelsRefreshing,
     canExecute: true,
   } as unknown as GalleryDataInput;
 }
@@ -390,10 +394,12 @@ describe("ModelConfigPage's save failure", () => {
 // model" invites the operator to go and create a duplicate of a model the
 // cabinet already holds.
 describe("ModelConfigPage when the edited model does not resolve", () => {
-  function renderEdit(modelsStatus: string) {
+  function renderEdit(modelsStatus: string, modelsRefreshing?: boolean) {
     render(
       <MemoryRouter initialEntries={["/models/claude/edit"]}>
-        <GalleryDataProvider value={galleryValue(modelsStatus)}>
+        <GalleryDataProvider
+          value={galleryValue(modelsStatus, modelsRefreshing)}
+        >
           <BackendProvider value={backendValue(vi.fn(), vi.fn())}>
             <Routes>
               <Route
@@ -424,6 +430,19 @@ describe("ModelConfigPage when the edited model does not resolve", () => {
   it("names the model unknown once the catalog has settled without it", () => {
     renderEdit("ready");
     expect(screen.getByText(/Unknown model: claude/)).toBeTruthy();
+  });
+
+  // A refresh leaves the catalog `ready` with the models it already held, so a
+  // model created a moment ago is missing from it until the re-read lands.
+  it("waits rather than calling the model unknown while a refresh is in flight", () => {
+    renderEdit("ready", true);
+    expect(screen.getByText("Resolving model…")).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown model/)).not.toBeInTheDocument();
+  });
+
+  it("names the model unknown once the refresh has settled without it", () => {
+    renderEdit("ready", false);
+    expect(screen.getByText(/Unknown model: claude/)).toBeInTheDocument();
   });
 });
 
