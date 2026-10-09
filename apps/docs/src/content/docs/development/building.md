@@ -169,8 +169,10 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
   ingest feed, and the layout of a run tree. Data and pure functions only; core
   re-exports every module at its old path. The test suite fixture the format's
   tests and the suite runtime's tests read is `crates/contracts/fixtures/test-suite/`,
-  and the TCQ conformance fixture the Rust and TypeScript evaluators both execute is
-  `crates/contracts/fixtures/gg_query.conformance.json`.
+  the TCQ conformance fixture the Rust and TypeScript evaluators both execute is
+  `crates/contracts/fixtures/gg_query.conformance.json`, and the
+  [scoring goldens](#the-scoring-goldens) both scoring implementations execute are
+  `crates/contracts/fixtures/scoring/`.
 - `crates/suites`: `test-cabinet-suites` (lib `test_cabinet_suites`). The
   [test-suite runtime](/components/core/overview/#the-suites-crate): the suite
   catalog and lowering, previews, a definition's prompt and the validator runners,
@@ -244,7 +246,8 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
-  frozen at one moment comparable with the same figure recomputed later. It has
+  frozen at one moment comparable with the same figure recomputed later. The
+  [scoring goldens](#the-scoring-goldens) hold each mirror to its counterpart. It has
   no runtime dependencies and imports only types from `run-record` and
   `backend-api`, so it runs in
   a bundle, a build script, or a worker alike. `packages/ui`'s `ratings` module
@@ -497,6 +500,28 @@ scripts/ci/gg-test.sh [k/N]   # gg's unit tests, whole or one hash partition
 
 gg's unit tests are the one part of the suite no gate runs; see
 [Testing gg](#testing-gg).
+
+### The scoring goldens
+
+A run's score and rating are computed twice: by the core in Rust, where the backend
+scores a stored review, and by `@clockwyrks/run-stats` in TypeScript, where the
+consoles, the gallery and the public read edge score the same run. The goldens under
+`crates/contracts/fixtures/scoring/` are the cases both must agree on, one file per
+pair of functions that exists on both sides: `score_checklist`, the toolchain gate
+(`gated`), the review aggregations (`aggregate`), the validator-decided domain ratings
+(`validator_domain`), `merge_review_items`, the errata's `score_exclusions`, and the
+automated-only score with the verdicts and the covered score it is built on
+(`automated`). Each case gives its `name`, `why` it exists, the `input` and what to
+`expect`.
+
+`crates/core/src/review.goldens.test.rs` executes them in the `rust-test` gate and
+`packages/run-stats/src/scoring.goldens.test.ts` in `workspace-test`, both reading the
+files off the contracts crate, so a case added on either side runs on both. Each
+rejects a key it does not know, since a misspelled key would otherwise fall back to
+its default and assert less than it reads as asserting. The expectations are the Rust
+output: a change to a scoring rule changes the goldens, and the other side then has
+to follow. The writeup-based `review::score` has no golden, being a thin wrapper over
+`score_checklist` with no TypeScript counterpart.
 
 ### Tests that need a browser
 

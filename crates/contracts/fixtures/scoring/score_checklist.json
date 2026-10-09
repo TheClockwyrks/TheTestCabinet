@@ -1,0 +1,435 @@
+{
+  "$comment": "Shared scoring goldens: executed by crates/core/src/review.goldens.test.rs and packages/run-stats/src/scoring.goldens.test.ts, which both reject unknown keys. Expectations are the Rust core's output. score_checklist / scoreChecklist: input.items is the effective checklist, input.checklist one review's verdicts; expect is the Score.",
+  "cases": [
+    {
+      "name": "whole items earn all their weight or none",
+      "why": "The binary whole-item rule every pass/fail case scores by.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 2
+          },
+          {
+            "id": "b",
+            "weight": 3
+          }
+        ],
+        "checklist": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "b",
+            "status": "fail"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 2,
+        "total": 5
+      }
+    },
+    {
+      "name": "a category credits each passed point by its own weight",
+      "why": "Points within a category may be weighted independently; the category's total is the sum of its points' weights.",
+      "input": {
+        "items": [
+          {
+            "id": "plain",
+            "weight": 2
+          },
+          {
+            "id": "spin",
+            "weight": 3,
+            "subItems": [
+              {
+                "id": "stationary",
+                "weight": 2
+              },
+              {
+                "id": "moving",
+                "weight": 1
+              }
+            ]
+          }
+        ],
+        "checklist": [
+          {
+            "id": "plain",
+            "status": "pass"
+          },
+          {
+            "id": "spin.stationary",
+            "status": "pass"
+          },
+          {
+            "id": "spin.moving",
+            "status": "fail"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 4,
+        "total": 5
+      }
+    },
+    {
+      "name": "a point with no weight is worth one",
+      "why": "SubReviewItem.weight defaults to 1 on both sides.",
+      "input": {
+        "items": [
+          {
+            "id": "q",
+            "weight": 3,
+            "subItems": [
+              {
+                "id": "a"
+              },
+              {
+                "id": "b"
+              },
+              {
+                "id": "c"
+              }
+            ]
+          }
+        ],
+        "checklist": [
+          {
+            "id": "q.a",
+            "status": "pass"
+          },
+          {
+            "id": "q.b",
+            "status": "fail"
+          },
+          {
+            "id": "q.c",
+            "status": "fail"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 1,
+        "total": 3
+      }
+    },
+    {
+      "name": "an unjudged checklist earns nothing and keeps the total",
+      "why": "Missing verdicts are not failures of the denominator.",
+      "input": {
+        "items": [
+          {
+            "id": "q",
+            "weight": 3,
+            "subItems": [
+              {
+                "id": "a"
+              },
+              {
+                "id": "b"
+              },
+              {
+                "id": "c"
+              }
+            ]
+          }
+        ],
+        "checklist": []
+      },
+      "expect": {
+        "earned": 0,
+        "total": 3
+      }
+    },
+    {
+      "name": "a graded item is worth ten times its weight",
+      "why": "Game-jam categories earn the tier's points times the weight.",
+      "input": {
+        "items": [
+          {
+            "id": "gfx",
+            "weight": 2,
+            "graded": true
+          },
+          {
+            "id": "fun",
+            "weight": 1,
+            "graded": true
+          }
+        ],
+        "checklist": [
+          {
+            "id": "gfx",
+            "status": "great"
+          },
+          {
+            "id": "fun",
+            "status": "incredible"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 26,
+        "total": 30
+      }
+    },
+    {
+      "name": "an unjudged graded item still counts its total",
+      "why": "A jam category nobody graded earns 0 of its 10 \u00d7 weight points.",
+      "input": {
+        "items": [
+          {
+            "id": "gfx",
+            "weight": 1,
+            "graded": true
+          }
+        ],
+        "checklist": []
+      },
+      "expect": {
+        "earned": 0,
+        "total": 10
+      }
+    },
+    {
+      "name": "a binary status on a graded item earns nothing",
+      "why": "pass and fail carry no grade points.",
+      "input": {
+        "items": [
+          {
+            "id": "gfx",
+            "weight": 1,
+            "graded": true
+          }
+        ],
+        "checklist": [
+          {
+            "id": "gfx",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 0,
+        "total": 10
+      }
+    },
+    {
+      "name": "the overall verdict is not a declared item",
+      "why": "The reserved overall mark never adds to the score.",
+      "input": {
+        "items": [
+          {
+            "id": "gfx",
+            "weight": 1,
+            "graded": true
+          }
+        ],
+        "checklist": [
+          {
+            "id": "gfx",
+            "status": "neutral"
+          },
+          {
+            "id": "overall",
+            "status": "incredible"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 5,
+        "total": 10
+      }
+    },
+    {
+      "name": "a graded item with points is scored as a whole",
+      "why": "The graded branch comes before the per-point branch on both sides.",
+      "input": {
+        "items": [
+          {
+            "id": "gfx",
+            "weight": 1,
+            "graded": true,
+            "subItems": [
+              {
+                "id": "x"
+              }
+            ]
+          }
+        ],
+        "checklist": [
+          {
+            "id": "gfx",
+            "status": "great"
+          },
+          {
+            "id": "gfx.x",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 8,
+        "total": 10
+      }
+    },
+    {
+      "name": "an excluded whole item counts toward neither side",
+      "why": "An erratum's excludeFromScore drops the item from earned and total.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 2
+          },
+          {
+            "id": "b",
+            "weight": 3,
+            "scored": false
+          }
+        ],
+        "checklist": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "b",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 2,
+        "total": 2
+      }
+    },
+    {
+      "name": "an excluded point leaves the rest of its category scored",
+      "why": "Exclusion is per point inside a category.",
+      "input": {
+        "items": [
+          {
+            "id": "cat",
+            "weight": 3,
+            "subItems": [
+              {
+                "id": "x"
+              },
+              {
+                "id": "y",
+                "scored": false
+              },
+              {
+                "id": "z"
+              }
+            ]
+          }
+        ],
+        "checklist": [
+          {
+            "id": "cat.x",
+            "status": "pass"
+          },
+          {
+            "id": "cat.y",
+            "status": "pass"
+          },
+          {
+            "id": "cat.z",
+            "status": "fail"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 1,
+        "total": 2
+      }
+    },
+    {
+      "name": "a verdict naming no declared item is ignored",
+      "why": "Stale or stray verdicts never earn points.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 1
+          }
+        ],
+        "checklist": [
+          {
+            "id": "ghost",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 0,
+        "total": 1
+      }
+    },
+    {
+      "name": "the first verdict for an id wins",
+      "why": "Both sides look a verdict up with a first-match find.",
+      "input": {
+        "items": [
+          {
+            "id": "a",
+            "weight": 1
+          }
+        ],
+        "checklist": [
+          {
+            "id": "a",
+            "status": "pass"
+          },
+          {
+            "id": "a",
+            "status": "fail"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 1,
+        "total": 1
+      }
+    },
+    {
+      "name": "a category's points ignore the category's own verdict",
+      "why": "A category is scored per point; a verdict on the category id is not one.",
+      "input": {
+        "items": [
+          {
+            "id": "cat",
+            "weight": 2,
+            "subItems": [
+              {
+                "id": "x"
+              },
+              {
+                "id": "y"
+              }
+            ]
+          }
+        ],
+        "checklist": [
+          {
+            "id": "cat",
+            "status": "pass"
+          },
+          {
+            "id": "cat.y",
+            "status": "pass"
+          }
+        ]
+      },
+      "expect": {
+        "earned": 1,
+        "total": 2
+      }
+    }
+  ]
+}

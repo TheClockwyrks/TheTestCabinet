@@ -1,0 +1,242 @@
+{
+  "$comment": "Shared scoring goldens: executed by crates/core/src/review.goldens.test.rs and packages/run-stats/src/scoring.goldens.test.ts, which both reject unknown keys. Expectations are the Rust core's output. merge_review_items / mergeReviewItems: input.common and input.variant are the two checklists; expect is the merged one. Items compare with defaults filled in (scored true, a point's weight 1, empty lists).",
+  "cases": [
+    {
+      "name": "a fresh variant item is appended after the common ones",
+      "why": "Common first, then the variant's own.",
+      "input": {
+        "common": [
+          {
+            "id": "gameplay",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "scoring"
+              }
+            ]
+          }
+        ],
+        "variant": [
+          {
+            "id": "gyre",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "oriented"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "gameplay",
+          "weight": 1,
+          "subItems": [
+            {
+              "id": "scoring"
+            }
+          ]
+        },
+        {
+          "id": "gyre",
+          "weight": 1,
+          "subItems": [
+            {
+              "id": "oriented"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a variant item reusing a common id folds into that category",
+      "why": "A variant may extend a common category; weights add and points append.",
+      "input": {
+        "common": [
+          {
+            "id": "gameplay",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "scoring"
+              }
+            ]
+          }
+        ],
+        "variant": [
+          {
+            "id": "gameplay",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "serve-direction"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "gameplay",
+          "weight": 2,
+          "subItems": [
+            {
+              "id": "scoring"
+            },
+            {
+              "id": "serve-direction"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "folds and appends keep the common order",
+      "why": "A folded item stays where the common list put it.",
+      "input": {
+        "common": [
+          {
+            "id": "a",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "x"
+              }
+            ]
+          },
+          {
+            "id": "b",
+            "weight": 2
+          }
+        ],
+        "variant": [
+          {
+            "id": "c",
+            "weight": 3
+          },
+          {
+            "id": "a",
+            "weight": 2,
+            "subItems": [
+              {
+                "id": "y",
+                "weight": 2
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "a",
+          "weight": 3,
+          "subItems": [
+            {
+              "id": "x"
+            },
+            {
+              "id": "y",
+              "weight": 2
+            }
+          ]
+        },
+        {
+          "id": "b",
+          "weight": 2
+        },
+        {
+          "id": "c",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "name": "a folded item keeps the common item's own fields",
+      "why": "Only the points and the weight come from the variant.",
+      "input": {
+        "common": [
+          {
+            "id": "gameplay",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "serve",
+                "weight": 1,
+                "failureCap": "broken",
+                "domains": ["play"]
+              }
+            ]
+          }
+        ],
+        "variant": [
+          {
+            "id": "gameplay",
+            "weight": 1,
+            "subItems": [
+              {
+                "id": "hud",
+                "weight": 1,
+                "failureCap": "great",
+                "domains": ["play"]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "gameplay",
+          "weight": 2,
+          "subItems": [
+            {
+              "id": "serve",
+              "weight": 1,
+              "failureCap": "broken",
+              "domains": ["play"]
+            },
+            {
+              "id": "hud",
+              "weight": 1,
+              "failureCap": "great",
+              "domains": ["play"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two whole items with one id add their weights",
+      "why": "The fold does not require points.",
+      "input": {
+        "common": [
+          {
+            "id": "a",
+            "weight": 1
+          }
+        ],
+        "variant": [
+          {
+            "id": "a",
+            "weight": 2
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "a",
+          "weight": 3
+        }
+      ]
+    },
+    {
+      "name": "two empty checklists merge to an empty one",
+      "why": "Nothing is invented.",
+      "input": {
+        "common": [],
+        "variant": []
+      },
+      "expect": []
+    }
+  ]
+}

@@ -1062,3 +1062,7 @@ mod gate_tests;
 #[cfg(test)]
 #[path = "review.overrides.test.rs"]
 mod override_tests;
+
+#[cfg(test)]
+#[path = "review.goldens.test.rs"]
+mod golden_tests;

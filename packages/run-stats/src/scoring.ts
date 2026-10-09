@@ -12,7 +12,9 @@
 //
 // Every function here mirrors a counterpart in the Rust core
 // (`crates/core/src/review.rs`); the mirrors are named per function and must be
-// kept in lockstep, since the backend and these clients score the same runs.
+// kept in lockstep, since the backend and these clients score the same runs. The
+// shared goldens in `crates/contracts/fixtures/scoring/` hold the two to the same
+// cases (`scoring.goldens.test.ts` here, `review.goldens.test.rs` in the core).
 
 import type { DebugScriptResult } from "@clockwyrks/run-record";
 import type {

@@ -57,7 +57,10 @@ splits a module along that line where it has to. The TCQ shapes are contracts an
 the document builder and evaluator are core. A resolved test case is contracts and
 the manifest formats and the catalog that resolves them are core. The event shapes
 are contracts and the per-harness parsers are core. The review shapes are contracts
-and the scoring rules are core.
+and the scoring rules are core. The scoring rules have a TypeScript mirror,
+`@clockwyrks/run-stats`, and the
+[scoring goldens](/development/building/#the-scoring-goldens) in the contracts
+crate's `fixtures/scoring/` hold the two to the same cases.
 
 ## The suites crate
 
