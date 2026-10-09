@@ -57,7 +57,7 @@ const SHOWCASE_LIMIT = 5;
 
 // Home: the cabinet's front door. Top to bottom: the Legendary showcase (the
 // newest runs whose looks a reviewer crowned legendary, staged as playing
-// media), the whole-corpus totals band, the weekly activity chart, and one
+// media, and absent while no run holds the tier), the whole-corpus totals band, the weekly activity chart, and one
 // leaderboard per repo-defined test-case group. The page renders identically
 // for every visitor; nothing on it is signed-in-only.
 export function HomePage() {
@@ -169,19 +169,19 @@ function LegendaryShowcase() {
 
   const hero = entries?.[0];
   const thumbs = entries?.slice(1) ?? [];
-  return (
+  // Nothing rated legendary (or the query failed): the section is left out
+  // whole, heading and all, rather than standing as a heading over an apology.
+  // It still shows while the query is in flight, since the usual answer is a
+  // showcase and holding its place keeps the page from jumping when it lands.
+  return entries !== null && hero === undefined ? null : (
     <section className={styles.showcase}>
       <h2 className={styles.sectionTitle}>Legendary Showcase</h2>
       <p className={styles.sectionHint}>
         The newest runs whose looks reviewers rated legendary, playing
         themselves.
       </p>
-      {entries === null ? (
+      {hero === undefined ? (
         <LoadingState size="section" label="Loading the showcase…" />
-      ) : hero === undefined ? (
-        // The section stays even with nothing to stage, so the page keeps its
-        // shape and the tier's absence is itself visible.
-        <p className={styles.empty}>Nothing has been rated legendary yet.</p>
       ) : (
         <>
           <ShowcaseHero entry={hero} local={isLocal(hero.run)} />
