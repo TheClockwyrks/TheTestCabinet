@@ -442,6 +442,187 @@ async fn a_model_with_no_official_route_records_the_headline_price() {
     assert_eq!(observed.output, Some(0.000015));
 }
 
+/// An endpoints listing as OpenRouter writes one for a model its developer serves at two
+/// tiers: the Flex endpoint first at half price, then the standard one, both under the one
+/// `provider_name` and told apart only by `tag`.
+fn endpoints_with_flex_listed_first() -> serde_json::Value {
+    serde_json::json!({
+        "data": {
+            "name": "OpenAI: GPT-5.6 Sol",
+            "endpoints": [
+                {
+                    "name": "OpenAI | openai/gpt-5.6-sol",
+                    "provider_name": "OpenAI",
+                    "tag": "openai/flex",
+                    "context_length": 400_000,
+                    "pricing": {
+                        "prompt": "0.000000625",
+                        "completion": "0.000005",
+                        "input_cache_read": "0.0000000625",
+                    },
+                    "supported_parameters": ["tools", "tool_choice", "reasoning"],
+                },
+                {
+                    "name": "OpenAI | openai/gpt-5.6-sol",
+                    "provider_name": "OpenAI",
+                    "tag": "openai",
+                    "context_length": 400_000,
+                    "pricing": {
+                        "prompt": "0.00000125",
+                        "completion": "0.00001",
+                        "input_cache_read": "0.000000125",
+                    },
+                    "supported_parameters": ["tools", "tool_choice", "reasoning"],
+                },
+            ],
+        },
+    })
+}
+
+/// The same model with its standard endpoint gone: the developer lists a Flex endpoint
+/// and nothing else.
+fn endpoints_with_only_flex() -> serde_json::Value {
+    let mut listing = endpoints_with_flex_listed_first();
+    listing["data"]["endpoints"]
+        .as_array_mut()
+        .expect("the fixture lists endpoints")
+        .truncate(1);
+    listing
+}
+
+/// A curated `openai/gpt-5.6-sol` entry with no list price.
+async fn db_with_sol() -> Db {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("openai/gpt-5.6-sol".to_string()),
+        ..crate::db::tests::model_write("gpt-5-6-sol", "GPT-5.6 Sol", &["openai/gpt-5.6-sol"])
+    })
+    .await
+    .unwrap();
+    db
+}
+
+/// The billed rate is the developer's standard endpoint's, although its Flex endpoint is
+/// listed first at half the price.
+#[tokio::test]
+async fn the_refresh_records_the_standard_rate_when_flex_is_listed_first() {
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_flex_listed_first(),
+    )
+    .await;
+
+    assert_eq!(refresh_all_prices(&db, &prices).await.unwrap(), 1);
+
+    let observed = db
+        .latest_price("openai/gpt-5.6-sol")
+        .await
+        .unwrap()
+        .expect("the refresh recorded an observation");
+    assert_eq!(observed.uncached_input, Some(0.00000125));
+    assert_eq!(observed.cached_input, Some(0.000000125));
+    assert_eq!(observed.output, Some(0.00001));
+    assert_eq!(observed.provider_pin.as_deref(), Some("OpenAI"));
+}
+
+/// A run's completion observes the standard rate too, through the same official-endpoint
+/// read.
+#[tokio::test]
+async fn a_completion_observes_the_standard_rate_when_flex_is_listed_first() {
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_flex_listed_first(),
+    )
+    .await;
+
+    observe_completion(&db, &prices, "openai/gpt-5.6-sol", HarnessSlug::Kilo).await;
+
+    let observed = db
+        .latest_price("openai/gpt-5.6-sol")
+        .await
+        .unwrap()
+        .expect("the completion recorded an observation");
+    assert_eq!(observed.uncached_input, Some(0.00000125));
+    assert_eq!(observed.cached_input, Some(0.000000125));
+    assert_eq!(observed.output, Some(0.00001));
+}
+
+/// A developer that lists only a Flex endpoint has no priced official endpoint, so the
+/// billed rate is the listing's headline rate and never the Flex one.
+#[tokio::test]
+async fn a_developer_listing_only_flex_records_the_headline_price() {
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_only_flex(),
+    )
+    .await;
+
+    refresh_all_prices(&db, &prices).await.unwrap();
+
+    let observed = db
+        .latest_price("openai/gpt-5.6-sol")
+        .await
+        .unwrap()
+        .expect("the refresh recorded an observation");
+    assert_eq!(observed.uncached_input, Some(0.000003));
+    assert_eq!(observed.cached_input, Some(0.0000003));
+    assert_eq!(observed.output, Some(0.000015));
+    assert_eq!(observed.provider_pin.as_deref(), Some("OpenAI"));
+}
+
+/// The enqueue-time fill writes the standard rate onto the entry when the developer's
+/// Flex endpoint is listed first, and the headline rate when Flex is all it lists.
+#[tokio::test]
+async fn the_fill_takes_the_standard_rate_when_flex_is_listed_first() {
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_flex_listed_first(),
+    )
+    .await;
+
+    let resolved = list_price_for_launch(
+        &db,
+        &prices,
+        "openai/gpt-5.6-sol",
+        HarnessSlug::Kilo,
+        &|| {},
+    )
+    .await
+    .unwrap()
+    .expect("the fill prices the launch");
+    assert_eq!(resolved.uncached_input, Some(0.00000125));
+    assert_eq!(resolved.cached_input, Some(0.000000125));
+    assert_eq!(resolved.output, Some(0.00001));
+    let stored = db.get_model_config("gpt-5-6-sol").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, Some(0.00000125));
+    assert_eq!(stored.config.list_price_cached_input, Some(0.000000125));
+    assert_eq!(stored.config.list_price_output, Some(0.00001));
+
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_only_flex(),
+    )
+    .await;
+    let resolved = list_price_for_launch(
+        &db,
+        &prices,
+        "openai/gpt-5.6-sol",
+        HarnessSlug::Kilo,
+        &|| {},
+    )
+    .await
+    .unwrap()
+    .expect("the fill prices the launch at the headline rate");
+    assert_eq!(resolved.uncached_input, Some(0.000003));
+    assert_eq!(resolved.cached_input, Some(0.0000003));
+    assert_eq!(resolved.output, Some(0.000015));
+}
+
 // --- The enqueue-time list-price fill ------------------------------------------
 
 /// Today's date as the fill stamps it, `YYYY-MM-DD`.

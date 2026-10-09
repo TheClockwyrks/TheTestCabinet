@@ -159,6 +159,110 @@ fn a_provider_with_several_endpoints_is_one_candidate() {
     assert_eq!(list.candidates[1].input, 0.8 / 1e6);
 }
 
+/// One endpoint as the live listing writes it, priced per million tokens.
+fn listed(
+    provider: &str,
+    tag: &str,
+    input: f64,
+    output: f64,
+    cache_read: f64,
+) -> serde_json::Value {
+    let per_token = |price: f64| format!("{:.12}", price / 1e6);
+    serde_json::json!({
+        "provider_name": provider,
+        "tag": tag,
+        "quantization": "fp8",
+        "pricing": {
+            "prompt": per_token(input),
+            "completion": per_token(output),
+            "input_cache_read": per_token(cache_read),
+        },
+        "supported_parameters": ["tools", "tool_choice", "reasoning"],
+    })
+}
+
+/// The offers the candidate filter is handed for a listing of `endpoints`, read off the wire
+/// the way an enqueue reads them.
+fn offers_listed(endpoints: Vec<serde_json::Value>) -> Vec<EndpointOffer> {
+    let body: super::super::ModelEndpointsResponse = serde_json::from_value(serde_json::json!({
+        "data": { "name": "OpenAI: GPT-5.6 Sol", "endpoints": endpoints },
+    }))
+    .expect("the fixture is a well-formed endpoints response");
+    super::super::offers_of(&body.data)
+}
+
+/// A Flex endpoint is never the ceiling: the developer's Flex tier is listed first at half
+/// price, and a provider priced between the two tiers is still within the developer's rates.
+/// It is never a candidate either: the developer is kept at its standard rate although its
+/// Flex endpoint is cheaper, and a provider whose only passing endpoint is Flex is left out.
+#[test]
+fn a_flex_endpoint_is_never_a_candidate_and_never_the_ceiling() {
+    let offers = offers_listed(vec![
+        listed("OpenAI", "openai/flex", 0.5, 2.0, 0.05),
+        listed("OpenAI", "openai", 1.0, 4.0, 0.125),
+        listed("Azure", "azure", 0.8, 3.2, 0.08),
+        listed("Google", "google-vertex/global/flex", 0.4, 1.6, 0.04),
+        listed("Google", "google-vertex/global", 1.5, 6.0, 0.15),
+        listed("Novita", "novita/FLEX", 0.3, 1.2, 0.03),
+    ]);
+    let list = provider_candidates(
+        Some("OpenAI"),
+        &offers,
+        &CandidatePolicy::default(),
+        TOOLS_AND_REASONING,
+        &no_faults(),
+    )
+    .expect("the developer and one other pass");
+
+    assert_eq!(names(&list), ["OpenAI", "Azure"]);
+    assert!(list.candidates[0].developer);
+    assert_eq!(list.candidates[0].input, 1.0 / 1e6);
+    assert_eq!(list.candidates[0].output, 4.0 / 1e6);
+    assert_eq!(list.candidates[0].cache_read, 0.125 / 1e6);
+}
+
+/// A developer that lists only a Flex endpoint sets no ceiling: the model takes the path of
+/// one with no developer endpoint, bounded by the catalog entry's ceiling or refused.
+#[test]
+fn a_developer_listing_only_a_flex_endpoint_sets_no_ceiling() {
+    let offers = offers_listed(vec![
+        listed("OpenAI", "openai/flex", 0.5, 2.0, 0.05),
+        listed("Azure", "azure", 1.0, 4.0, 0.1),
+    ]);
+    assert_eq!(
+        provider_candidates(
+            Some("OpenAI"),
+            &offers,
+            &CandidatePolicy::default(),
+            TOOLS,
+            &no_faults(),
+        ),
+        Err(CandidateRefusal::NoPriceCeiling)
+    );
+
+    let policy = CandidatePolicy {
+        max_input: Some(1.0 / 1e6),
+        max_output: Some(4.0 / 1e6),
+        ..CandidatePolicy::default()
+    };
+    let list = provider_candidates(Some("OpenAI"), &offers, &policy, TOOLS, &no_faults())
+        .expect("the standard endpoint is within the catalog ceiling");
+    assert_eq!(names(&list), ["Azure"]);
+    assert!(!list.candidates[0].developer);
+
+    // Flex endpoints alone are no endpoints at all.
+    assert_eq!(
+        provider_candidates(
+            Some("OpenAI"),
+            &offers_listed(vec![listed("OpenAI", "openai/flex", 0.5, 2.0, 0.05)]),
+            &policy,
+            TOOLS,
+            &no_faults(),
+        ),
+        Err(CandidateRefusal::NoEndpoints)
+    );
+}
+
 /// With the quantization filter off, every endpoint passes it at whatever level it declares,
 /// `unknown` included, and no native level is needed; the price, cache-read, parameter and ban
 /// filters still apply.
