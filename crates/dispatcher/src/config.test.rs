@@ -103,7 +103,7 @@ fn resolves_with_required_and_defaults() {
         );
         // Defaults.
         assert_eq!(config.max_inflight, 8);
-        assert_eq!(config.max_publish_inflight, 2);
+        assert_eq!(config.max_publish_inflight, 8);
         assert_eq!(config.poll_interval.as_secs(), 2);
         assert_eq!(config.job_ttl_seconds, 300);
         assert!(config.driver_service_account.is_none());

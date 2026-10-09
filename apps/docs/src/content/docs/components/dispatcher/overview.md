@@ -41,7 +41,7 @@ at the backend, its own in-flight total, and its own cap.
 | Lane    | Claim                     | `Job`     | Cap                                    | Default |
 | ------- | ------------------------- | --------- | -------------------------------------- | ------- |
 | Run     | `POST /jobs/next`         | driver    | `TCAB_DISPATCHER_MAX_INFLIGHT`         | `8`     |
-| Publish | `POST /publish-jobs/next` | publisher | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | `2`     |
+| Publish | `POST /publish-jobs/next` | publisher | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | `8`     |
 
 A lane claims its oldest queued job and creates one `Job` for it while its
 in-flight total is under its cap. The run lane's backend claim hands jobs back
