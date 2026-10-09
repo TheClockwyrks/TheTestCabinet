@@ -4,9 +4,11 @@
 # A gate that compiles, builds or runs a test suite (rust-clippy, rust-doc,
 # rust-test, shell-tests, ci-tests, typescript) has no hook: it is usually run before the
 # commit, so a hook would run it twice, and a commit that skipped it is caught
-# by the pipeline, which runs every gate. ci/tests/test_wiring.py names the
-# hookless gates, so adding a gate is a decision. `pre-commit install` installs
-# the hooks.
+# by the pipeline, which runs every gate. Neither has playwright-image, which
+# needs the installed workspace and the image's browser, nor a gate the
+# repository writes itself, which the kit gives a step in the pipeline alone.
+# ci/tests/test_wiring.py names the hookless gates, so adding a gate is a
+# decision. `pre-commit install` installs the hooks.
 minimum_pre_commit_version: "4.6.0"
 
 repos:

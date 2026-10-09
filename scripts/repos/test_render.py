@@ -73,6 +73,62 @@ def test_a_pipeline_declares_the_closure_of_its_rust_edges() -> None:
     assert "repositories:" not in render.ci_resources("contracts", "library")
 
 
+def test_a_repository_without_edges_says_so_once() -> None:
+    alone = render.edges_rule("contracts")
+    assert alone.count("no other repository of the project") == 1, alone
+    assert alone.startswith("- It depends on no other repository of the project; the")
+    platform = " ".join(render.edges_rule("platform").split())
+    assert platform.startswith("- It depends on contracts (crates and packages); engines (")
+    assert "and on no other repository of the project; the `dependency-edges` gate" in platform
+
+
+def test_a_browser_track_carries_an_npm_workspace() -> None:
+    """The browser tests drive the workspace's Playwright, so a browser track's repository has a workspace."""
+    for name, track in render.RUST_TRACKS.items():
+        if track in render.BROWSER_TRACKS:
+            assert EDGES.KINDS[EDGES.REPOSITORIES[name]].typescript, name
+            assert render.ci_rust_npm(name, EDGES.REPOSITORIES[name])
+    assert render.ci_rust_npm("platform", "application") == ""
+
+
+def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() -> None:
+    rust = {repo for repo, kind in EDGES.REPOSITORIES.items() if EDGES.KINDS[kind].crate}
+    assert rust >= render.WINDOWS_TESTS
+    assert set(render.EXTRA_GATES) <= set(EDGES.REPOSITORIES)
+    # A gate a kind or track carries has a conditional name, read without its tags.
+    kit_gates = {re.sub(r"\{%.*?%\}", "", path.name).split(".")[0] for path in (render.KIT / "ci" / "gates").iterdir()}
+    for name in render.EXTRA_GATES:
+        jobs = render.extra_gates(name, EDGES.REPOSITORIES[name])
+        own = [gate_id for ids in jobs.values() for gate_id in ids]
+        assert not set(own) & kit_gates, f"{name} adds a gate the kit already renders"
+    assert render.EXTRA_GATES["contracts"] == {"rust": ("contract-drift",)}
+
+
+def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(render.EXTRA_GATES, "gg.rocks", {"rust": ("site-build",)})
+    with pytest.raises(render.RenderError, match="name the job 'rust'"):
+        render.variables("gg.rocks", "site", "The site")
+    monkeypatch.setitem(render.EXTRA_GATES, "gg.rocks", {"checks": ("Site_Build",)})
+    with pytest.raises(render.RenderError, match="not shaped like a gate id"):
+        render.variables("gg.rocks", "site", "The site")
+
+
+def test_the_kits_nextest_is_the_superrepos() -> None:
+    pin = re.compile(r'^NEXTEST_VERSION="\$\{NEXTEST_VERSION:-(.+)\}"$', re.MULTILINE)
+    kit = pin.search((render.KIT / render.NEXTEST_SCRIPT).read_text(encoding="utf-8"))
+    compose = re.search(
+        r"^\s*NEXTEST_VERSION:\s*(\S+)\s*$",
+        (render.SUPERREPO / ".devcontainer" / "docker-compose.yml").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert kit and compose
+    assert kit.group(1) == compose.group(1)
+    superrepo = render.SUPERREPO / "scripts" / "ci" / "install-nextest.sh"
+    if superrepo.is_file():
+        own = pin.search(superrepo.read_text(encoding="utf-8"))
+        assert own and own.group(1) == kit.group(1)
+
+
 @pytest.mark.parametrize(
     ("name", "kind", "description", "said"),
     [
@@ -107,6 +163,91 @@ def test_each_kind_is_rendered_its_shape(kind: str, rendered: Callable[[str], Pa
         manifest = tomllib.loads((root / "crates" / directory / "Cargo.toml").read_text(encoding="utf-8"))
         assert manifest["package"]["name"] == crate
         assert ("/Cargo.lock" in (root / ".gitignore").read_text(encoding="utf-8")) is not shape.commits_lock
+
+
+def _job(pipeline: str, job: str) -> str:
+    """One job of a rendered pipeline's gates stage, up to the next job or stage."""
+    found = re.search(rf"^      - job: {job}\n((?:(?!      - job: |  - stage: ).*\n)*)", pipeline, re.MULTILINE)
+    assert found, f"the pipeline has no {job} job"
+    return found.group(1)
+
+
+def test_a_browser_track_installs_its_workspace_and_checks_its_playwright(rendered: Callable[[str], Path]) -> None:
+    contracts = (rendered("contracts") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    rust = _job(contracts, "rust")
+    feed, install = rust.index(f"- script: {render.NPM_FEED_SCRIPT} "), rust.index("- script: npm ci\n")
+    assert feed < install < rust.index("gate run")
+    assert "gate run playwright-image\n" in rust
+    assert (rendered("contracts") / "ci" / "gates" / "playwright-image.py").is_file()
+    platform = rendered("platform")
+    assert "- script: npm ci\n" not in _job((platform / "azure-pipelines.yml").read_text(encoding="utf-8"), "rust")
+    assert not (platform / "ci" / "gates" / "playwright-image.py").exists()
+    assert not (platform / "ci" / "tests" / "test_playwright_image_gate.py").exists()
+
+
+def test_a_windows_repository_is_rendered_its_windows_job(rendered: Callable[[str], Path]) -> None:
+    contracts = (rendered("contracts") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    windows = _job(contracts, "windows")
+    assert f"vmImage: {render.WINDOWS_IMAGE}\n" in windows
+    assert f"- bash: {render.NEXTEST_SCRIPT}\n" in windows
+    assert "- bash: cargo nextest run --workspace --no-tests=pass --profile ci\n" in windows
+    assert "gate run" not in windows
+    platform = (rendered("platform") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "- job: windows" not in platform
+
+
+def test_an_extra_gate_is_given_a_step_in_its_job(rendered: Callable[[str], Path]) -> None:
+    contracts = (rendered("contracts") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    rust = _job(contracts, "rust")
+    assert rust.count("gate run contract-drift\n") == 1
+    assert rust.index("gate run contract-drift\n") < rust.index("- script: scripts/ci/prune-target.sh")
+    assert "contract-drift" not in _job(contracts, "checks")
+    wiring = (rendered("contracts") / "ci" / "tests" / "test_wiring.py").read_text(encoding="utf-8")
+    assert 'REPOSITORY_PIPELINE_ONLY = "playwright-image contract-drift"' in wiring
+
+
+def test_a_crate_is_never_published_and_resolves_as_the_monorepo_does(rendered: Callable[[str], Path]) -> None:
+    root = rendered("contracts")
+    manifest = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    assert manifest["workspace"]["resolver"] == "3"
+    assert manifest["workspace"]["package"]["publish"] is False
+    monorepo = tomllib.loads((render.SUPERREPO / "Cargo.toml").read_text(encoding="utf-8"))
+    assert manifest["workspace"]["resolver"] == monorepo["workspace"]["resolver"]
+    crate = tomllib.loads((root / "crates" / "contracts" / "Cargo.toml").read_text(encoding="utf-8"))
+    assert crate["package"]["publish"] == {"workspace": True}
+
+
+def test_rustdoc_documents_the_private_items(rendered: Callable[[str], Path]) -> None:
+    config = tomllib.loads((rendered("contracts") / ".cargo" / "config.toml").read_text(encoding="utf-8"))
+    assert config["build"]["rustdocflags"] == ["--document-private-items"]
+    superrepo = tomllib.loads((render.SUPERREPO / ".cargo" / "config.toml").read_text(encoding="utf-8"))
+    assert "--document-private-items" in superrepo["build"]["rustdocflags"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_text_checks_out_lf_and_the_media_as_binary(kind: str, rendered: Callable[[str], Path]) -> None:
+    """The first rule makes every text file LF on every host, and the binary list follows it to override it."""
+    root = rendered(ONE_OF_EACH[kind])
+    rules = [
+        line.split()[0]
+        for line in (root / ".gitattributes").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    assert rules[0] == "*"
+    for media in ("*.wasm", "*.glb", "*.webm", "*.wav", "*.mp3", "*.ogg", "*.mid", "*.png", "*.woff2"):
+        assert media in rules[1:], media
+    asked = git(["check-attr", "text", "eol", "binary", "--", "src/lib.rs", "theme.wav", "ball.vox"], root)
+    assert asked.splitlines() == [
+        "src/lib.rs: text: auto",
+        "src/lib.rs: eol: lf",
+        "src/lib.rs: binary: unspecified",
+        "theme.wav: text: unset",
+        "theme.wav: eol: lf",
+        "theme.wav: binary: set",
+        "ball.vox: text: auto",
+        "ball.vox: eol: lf",
+        "ball.vox: binary: unspecified",
+    ]
 
 
 @pytest.mark.parametrize("kind", KINDS)

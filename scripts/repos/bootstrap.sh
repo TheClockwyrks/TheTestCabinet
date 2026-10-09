@@ -4,10 +4,12 @@
 #   scripts/repos/bootstrap.sh <name>
 #
 # The directory <superrepo>/<name> is what scripts/repos/render.py wrote. This
-# script makes it a git repository on `master`, commits what it holds, pushes
-# it to the remote of the same name beside the superrepo's own, and adds it to
-# the superrepo as a submodule by a relative URL, which git resolves against
-# the superrepo's origin, so the file names no host.
+# script makes it a git repository on `master`, writes the lock files the
+# render cannot (an application's Cargo.lock, a workspace's package-lock.json),
+# commits what it holds, pushes it to the remote of the same name beside the
+# superrepo's own, and adds it to the superrepo as a submodule by a relative
+# URL, which git resolves against the superrepo's origin, so the file names no
+# host.
 #
 # Every step is skipped when it has already happened: a repository with a
 # commit is not committed again, a remote that already holds `master` is not
@@ -81,6 +83,18 @@ if { [ "$kind" = application ] || [ -x "$dir/scripts/resolve-lock.sh" ]; } && [ 
 		(cd "$dir" && cargo generate-lockfile --quiet) || die "cargo could not resolve the lock file of $name"
 	fi
 	printf 'bootstrap: resolved the lock file of %s\n' "$name"
+fi
+
+# A kind carrying an npm workspace commits its lock file too, and the
+# `typescript` gate installs from it with `npm ci`, which refuses a workspace
+# without one. The render cannot write it either, so the first commit carries
+# the one npm resolves from the manifest, written without installing anything.
+# A workspace already holding one keeps it.
+if grep -q '"workspaces"' "$dir/package.json" 2>/dev/null && [ ! -f "$dir/package-lock.json" ] &&
+	! git -C "$dir" rev-parse --verify -q HEAD >/dev/null; then
+	(cd "$dir" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=error) ||
+		die "npm could not write the lock file of $name"
+	printf 'bootstrap: wrote the npm lock file of %s\n' "$name"
 fi
 
 if ! git -C "$dir" rev-parse --verify -q HEAD >/dev/null; then

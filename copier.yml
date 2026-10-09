@@ -59,6 +59,8 @@ _exclude:
     scripts/ci/prune-target.test.sh
     scripts/ci/git-sources.sh
     scripts/ci/git-sources.test.sh
+    scripts/ci/install-nextest.sh
+    scripts/ci/install-nextest.test.sh
     {% endif %}
 
 # The crate's source files are written once and then belong to the repository:

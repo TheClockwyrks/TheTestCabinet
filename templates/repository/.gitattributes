@@ -1,6 +1,13 @@
-# Shell scripts keep LF endings on every platform: a CRLF shebang line, which a
-# Windows checkout would otherwise introduce when core.autocrlf is on, makes the
-# interpreter fail to start.
+# Every text file checks out with LF on every host. A Windows checkout with
+# core.autocrlf on would otherwise turn it into CRLF, which breaks shebang
+# lines, multi-line string literals and a fixture a test reads byte for byte.
+# A repository with no Windows job yet carries the rule too: it costs nothing
+# elsewhere, and a pipeline gains a Windows job without a checkout changing.
+* text=auto eol=lf
+
+# Shell scripts keep LF endings on every platform: a CRLF shebang line makes the
+# interpreter fail to start. The rule above says as much for every text file;
+# this one also holds a script git would not detect as text.
 *.sh text eol=lf
 
 # Formats this repository commits as binary, declared rather than inferred.
@@ -10,9 +17,20 @@
 # are the same question and a gate cannot use one to judge the other.
 # ci/gates/no-nul-bytes.py reads these declarations for that reason.
 #
-# Declaring them also stops git trying to diff or merge them as text. A new
-# binary format needs a line here; a file that needs a NUL and is NOT one of
-# these formats almost certainly wants an escape instead.
+# Declaring them also stops git trying to diff or merge them as text, and,
+# coming after the first rule, turns its `text=auto` back into `-text` for each.
+# A new binary format needs a line here; a file that needs a NUL and is NOT one
+# of these formats almost certainly wants an escape instead. The first block is
+# the media the project's repositories commit, the second the images, archives
+# and fonts.
+*.wasm binary
+*.glb  binary
+*.webm binary
+*.wav  binary
+*.mp3  binary
+*.ogg  binary
+*.mid  binary
+
 *.png  binary
 *.jpg  binary
 *.jpeg binary

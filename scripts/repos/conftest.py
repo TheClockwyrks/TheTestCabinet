@@ -74,9 +74,29 @@ def own_superrepo(tmp_path: Path) -> Path:
     return make_superrepo(tmp_path / "super")
 
 
+def add_own_gates(root: Path, name: str) -> list[str]:
+    """Write a stand-in for each gate the repository adds itself, as its first commit carries them.
+
+    The kit gives such a gate a step in the pipeline and leaves the file to the
+    repository, so a bare render names a gate it does not hold, and its own
+    wiring test says so.
+    """
+    added = []
+    for ids in render.EXTRA_GATES.get(name, {}).values():
+        for gate_id in ids:
+            gate = root / "ci" / "gates" / f"{gate_id}.py"
+            gate.write_text(f'"""The {name} repository\'s own {gate_id} gate (a stand-in)."""\n', encoding="utf-8")
+            added.append(gate_id)
+    return added
+
+
 @pytest.fixture(scope="session")
 def rendered(mini_superrepo: Path, tmp_path_factory: pytest.TempPathFactory) -> Callable[[str], Path]:
-    """A repository rendered from the session's superrepo, once per name, committed as bootstrap would."""
+    """A repository rendered from the session's superrepo, once per name, committed as bootstrap would.
+
+    The gates the repository adds itself are written beside the kit's, as a
+    repository's scaffold commit carries them.
+    """
     done: dict[str, Path] = {}
     base = tmp_path_factory.mktemp("rendered")
 
@@ -84,6 +104,7 @@ def rendered(mini_superrepo: Path, tmp_path_factory: pytest.TempPathFactory) -> 
         if name not in done:
             root = base / name
             render.render(root, name, render.repositories()[name], f"The {name} repository", source=mini_superrepo)
+            add_own_gates(root, name)
             git(["init", "--quiet", "--initial-branch=master"], root)
             commit(root, "chore: scaffold")
             done[name] = root

@@ -18,6 +18,10 @@ the Rust job runs; here each track is held to an image of its own, pulled
 through the project's service connection. Every repository runs for a tag too,
 and such a run publishes the workspace's public packages in a stage held to
 running after the gates, for a tag alone, and to running no gate of its own.
+{% if ci_windows %}
+The suite also runs on Windows, in a job of the gates stage that runs no gate,
+on a hosted Windows agent, under nextest installed by the kit's script.
+{% endif %}
 {% if ci_mirror %}
 A commit on master, staging or nightly, and a published tag, is pushed to the
 GitHub mirror by the last stage, held to running after the gates and the
@@ -55,6 +59,12 @@ PIPELINE_ONLY = {"rust-clippy", "rust-doc", "rust-test", "shell-tests", "ci-test
 # string, which is empty for a kind that adds none.
 KIND_PIPELINE_ONLY = "{{pipeline_only_of_kind}}"
 PIPELINE_ONLY |= set(KIND_PIPELINE_ONLY.split())
+# And so are the ones this repository adds over its kind's: on a Rust track that
+# drives a browser, the gate holding the workspace's Playwright to the image,
+# which needs the workspace installed; and the gates the repository writes
+# itself, each given a step by the kit's render.
+REPOSITORY_PIPELINE_ONLY = "{{pipeline_only_of_repository}}"
+PIPELINE_ONLY |= set(REPOSITORY_PIPELINE_ONLY.split())
 
 # The gate tracks, and the image each runs in. The Rust track is a property of
 # this repository rather than of its kind: a repository whose Rust suite drives
@@ -67,6 +77,11 @@ IMAGE_OF_TRACK = {"rust": RUST_IMAGE, "checks": "web"}
 # The image whose Rust job requires the browser, so a browser test that finds
 # none fails rather than skipping.
 BROWSER_IMAGES = {"rust-browser"}
+PLAYWRIGHT_GATE = "playwright-image"
+# Whether the suite also runs on Windows, in a job of its own.
+WINDOWS = {{ "True" if ci_windows else "False" }}
+WINDOWS_IMAGE = "{{windows_image}}"
+NEXTEST_SCRIPT = "{{nextest_script}}"
 {% else %}
 TRACKS = ("checks",)
 IMAGE_OF_TRACK = {"checks": "web"}
@@ -272,6 +287,46 @@ def test_a_browser_image_requires_its_browser() -> None:
     assert required is (RUST_IMAGE in BROWSER_IMAGES), (
         f"the Rust job in the {RUST_IMAGE} image {'requires' if required else 'does not require'} the browser"
     )
+
+
+def test_a_browser_rust_job_installs_the_workspace_and_checks_its_playwright() -> None:
+    """The browser tests drive the workspace's Playwright, so the job installs it before its first gate.
+
+    The `playwright-image` gate runs there, and only there, holding that
+    Playwright to the browser the image carries.
+    """
+    rust = _gates_jobs()["rust"]
+    browser = RUST_IMAGE in BROWSER_IMAGES
+    installs = NPM_INSTALL in rust
+    verb = "installs" if installs else "never installs"
+    assert installs is browser, f"the Rust job in the {RUST_IMAGE} image {verb} the npm workspace"
+    carried = PLAYWRIGHT_GATE in GATE_IDS
+    assert carried is browser, f"a {RUST_IMAGE} repository {'carries' if carried else 'lacks'} {PLAYWRIGHT_GATE}"
+    if browser:
+        assert rust.index(NPM_INSTALL) < rust.index("gate run"), "the Rust job runs a gate before the install"
+        assert PLAYWRIGHT_GATE in _gates_by_job()["rust"], f"the Rust job does not run {PLAYWRIGHT_GATE}"
+
+
+def test_the_windows_job_runs_the_suite_and_no_gate() -> None:
+    jobs = _gates_jobs()
+    assert ("windows" in jobs) is WINDOWS, f"the gates stage {'has' if 'windows' in jobs else 'has no'} Windows job"
+    if not WINDOWS:
+        pipeline = PIPELINE.read_text(encoding="utf-8")
+        assert NEXTEST_SCRIPT not in pipeline, "a pipeline without a Windows job installs nextest"
+        return
+    windows = jobs["windows"]
+    assert re.search(rf"^          vmImage: {re.escape(WINDOWS_IMAGE)} *$", windows, re.MULTILINE), (
+        f"the Windows job does not run on a hosted {WINDOWS_IMAGE} agent"
+    )
+    assert "container:" not in windows, "the Windows job runs inside a container"
+    install = windows.find(f"- bash: {NEXTEST_SCRIPT}\n")
+    test = windows.find("- bash: cargo nextest run --workspace ")
+    assert 0 <= install < test, "the Windows job does not install nextest and then run the workspace's tests"
+    assert _named(windows) == set(), f"the Windows job runs gates: {sorted(_named(windows))}"
+    assert "scripts/ci/git-sources.sh" in windows, "the Windows job never rewrites the public sources to Azure"
+    used = sorted(_uses(windows))
+    assert used == sorted(_uses(jobs["rust"])), f"the Windows job uses {used}, unlike the Rust job"
+    assert (ROOT / NEXTEST_SCRIPT).is_file(), f"the pipeline runs {NEXTEST_SCRIPT}, which the repository does not hold"
 {% endif %}
 
 

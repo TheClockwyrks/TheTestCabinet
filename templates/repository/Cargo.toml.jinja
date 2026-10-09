@@ -1,7 +1,9 @@
 # The workspace of the {{name}} repository. Every crate under crates/ is a
 # member; add a crate by adding its directory.
 [workspace]
-resolver = "2"
+# The resolver of edition 2024, the monorepo's, so a crate resolves the same
+# features and the same MSRV-aware versions on both sides of an extraction.
+resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
@@ -9,6 +11,10 @@ edition = "2024"
 version = "0.0.0"
 license = "MIT"
 repository = "{{public_source}}"
+# A crate of The Test Cabinet is consumed by its git source, never from
+# crates.io, so none is published; a member says `publish.workspace = true`, and
+# Cargo refuses that key when the root holds none to inherit.
+publish = false
 
 # Warnings-as-errors, baked into the manifests for every member crate that
 # opts in with `[lints] workspace = true`, so a plain `cargo build` enforces

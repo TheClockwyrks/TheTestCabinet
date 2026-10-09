@@ -176,8 +176,20 @@ and the kit's `edges.py` hold:
 - the pipeline's repository resources, the closure of those edges;
 - the CI images, at the commit `ci/images/tags.yml` pins as `ciImageTag`, with
   the Rust job in the `rust-browser` image for a repository whose suite drives
-  a browser and in the `rust` image otherwise;
+  a browser and in the `rust` image otherwise (`RUST_TRACKS` in `render.py`);
+- the Windows job, for a repository `WINDOWS_TESTS` names;
+- the steps of the gates a repository writes itself, which `EXTRA_GATES` names
+  by the job each runs in;
 - the mirror, the feed and the branches.
+
+A crate's workspace uses resolver `"3"`, the monorepo's, and sets
+`publish = false` under `[workspace.package]`, since a crate is consumed by its
+git source. `.cargo/config.toml` documents the private items
+(`[build] rustdocflags = ["--document-private-items"]`), as the superrepo's
+does, so the `rust-doc` gate judges the same documentation inside the
+superrepo and in the pipeline. The root `.gitattributes` opens with
+`* text=auto eol=lf`, so every text file checks out with LF on every host, and
+declares the binary formats after it.
 
 A file a kind does not carry has a conditional name that renders to nothing,
 and a kind carrying no crate is rendered no workspace and no Rust gate.
@@ -193,10 +205,16 @@ uv run --project ci scripts/repos/protect.py contracts
 with two records at its root. `.copier-answers.yml` holds the answers, the
 template's source (`..`) and the commit; `.test-cabinet-repo.toml` holds the
 answers for the gates. `bootstrap.sh` makes the directory a repository on
-`master`, resolves an application's lock, commits, pushes to the Azure remote of
-the same name and adds the repository as a submodule by the relative URL
-`../<name>`. `protect.py` creates `staging` and `nightly` and copies the
-superrepo's branch policies onto `master` and `staging`.
+`master`, resolves an application's `Cargo.lock` and, for a kind carrying an
+npm workspace, writes its `package-lock.json` with
+`npm install --package-lock-only`, commits, pushes to the Azure remote of the
+same name and adds the repository as a submodule by the relative URL
+`../<name>`. The lock files are committed: the render writes neither, and the
+`typescript` gate installs the workspace with `npm ci`, which requires the
+lock. A repository whose first commit is made by hand runs `npm install` at its
+root and commits the lock it writes. `protect.py` creates `staging` and
+`nightly` and copies the superrepo's branch policies onto `master` and
+`staging`.
 
 A kit change reaches a repository through a three-way merge:
 
@@ -220,14 +238,37 @@ The kit renders the gate runner into every repository, with these gates:
 | `rust-fmt`, `rust-clippy`, `rust-doc`, `rust-test` | The Rust workspace, warnings denied and the tests under `cargo nextest`, in a kind carrying a crate |
 | `dependency-edges` | The manifests against the repository's edges |
 | `typescript` | The npm workspace at the root, in a kind carrying one: installed from its lock, built, type-checked and tested |
+| `playwright-image` | On a Rust track that drives a browser: the workspace's `playwright` finds the browser the image carries |
 | `markdownlint`, `cspell`, `format` | The prose and the formatting |
 | `python-lint`, `ci-tests`, `shell-tests`, `no-nul-bytes` | The gate runner and the scripts |
+
+A repository may add gates of its own, such as `contracts`' `contract-drift`.
+The gate is a file the repository writes under `ci/gates/`, and the kit leaves
+it to the repository; `EXTRA_GATES` in `render.py` names it and the job it
+runs in, and the render gives it one step there. Every gate a repository adds
+is hookless, and the rendered `ci/tests/test_wiring.py` holds each to its one
+step.
 
 A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the
 Rust job and every other check in the checks job, inside the web image. A tag's
 run then publishes each public package of the workspace to the feed, at the
 version its manifest carries, which is the tag's.
+
+On a Rust track whose suite drives a browser, the Rust job runs with
+`TCAB_REQUIRE_BROWSER=1` and installs the npm workspace with `npm ci` before
+its gates, since the browser tests drive the workspace's `vitest`,
+`@vitest/browser-playwright` and `playwright`. Its `playwright-image` gate then
+fails unless that `playwright` finds its Chromium, naming the version and
+`PLAYWRIGHT_BROWSERS_PATH`. The image carries the browser of the superrepo's
+`PLAYWRIGHT_VERSION`, so an image bump that moves `PLAYWRIGHT_VERSION` moves
+the `playwright` devDependency of each such repository in the same change as
+the `render.py --update` that brings the new pins.
+
+A repository `WINDOWS_TESTS` names runs its suite on Windows too, in the
+`windows` job of the gates stage on a hosted `windows-2022` agent. The job runs
+no gate: it installs nextest with `scripts/ci/install-nextest.sh`, at the
+devcontainer's `NEXTEST_VERSION`, and runs `cargo nextest run --workspace`.
 
 The last stage pushes a branch or a published tag to the repository's GitHub
 mirror with `scripts/ci/mirror.sh`, over ssh with the secure file

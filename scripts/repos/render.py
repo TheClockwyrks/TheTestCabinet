@@ -122,6 +122,30 @@ RUST_TRACKS: dict[str, str] = {
     "the-spec-cabinet": "rust-browser",
 }
 BROWSER_TRACKS = frozenset({"rust-browser"})
+# The gate a Rust job on a browser track runs to hold the npm workspace's
+# Playwright to the browser the image carries, so a skew between the two fails
+# with one message rather than as every browser test.
+PLAYWRIGHT_GATE = "playwright-image"
+
+# The repositories whose Rust suite also runs on Windows, in a job of its own on
+# a hosted Windows agent: a suite that reads its committed fixtures byte for
+# byte, or that the shipped CLI runs on Windows, is held there. The job runs no
+# gate (the runner and its tools are the Linux images'), only the suite under
+# nextest, which `scripts/ci/install-nextest.sh` installs.
+WINDOWS_TESTS = frozenset({"contracts"})
+WINDOWS_IMAGE = "windows-2022"
+NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
+
+# The gates a repository runs that the kit does not render: each is a file the
+# repository writes under its own `ci/gates/`, and the pipeline gives it one
+# step in the job named, after the kit's gates there. An update never touches
+# the file, and the rendered wiring test holds the step to it and names it
+# hookless, since a gate a repository adds builds or generates something.
+EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
+    "contracts": {"rust": ("contract-drift",)},
+}
+# The jobs of the gates stage an extra gate may name.
+GATE_JOBS = ("rust", "checks")
 
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
@@ -307,6 +331,30 @@ def ci_resources(name: str, kind: str) -> str:
     return "\n".join(lines)
 
 
+def browser_track(name: str) -> bool:
+    """Whether the repository's Rust job runs on a track whose suite drives a browser."""
+    return rust_track(name) in BROWSER_TRACKS
+
+
+def ci_rust_npm(name: str, kind: str) -> str:
+    """The Rust job's install of the npm workspace, for a browser track, or nothing.
+
+    The browser tests of the Rust suite drive the browser through the
+    workspace's own `vitest`, `@vitest/browser-playwright` and `playwright`,
+    which they find under its `node_modules`, so the job installs the
+    workspace as the checks job does, after authenticating npm to the feed.
+    """
+    if not (edge_table().KINDS[kind].crate and browser_track(name)):
+        return ""
+    return "\n".join(
+        [
+            npm_feed_step(),
+            "          - script: npm ci",
+            "            displayName: Install the npm workspace the browser tests drive",
+        ]
+    )
+
+
 def ci_rust_variables(name: str) -> str:
     """The Rust job's `variables`: the cargo home under the cache, and the browser requirement on its track."""
     lines = [
@@ -314,7 +362,7 @@ def ci_rust_variables(name: str) -> str:
         "          CARGO_HOME: $(ciCache)/cargo-home",
         "          CARGO_INCREMENTAL: 0",
     ]
-    if rust_track(name) in BROWSER_TRACKS:
+    if browser_track(name):
         lines.append("          TCAB_REQUIRE_BROWSER: 1")
     return "\n".join(lines)
 
@@ -396,6 +444,51 @@ def ci_kind_checks(kind: str) -> str:
             "              failTaskOnMissingResultsFile: false",
         ]
     return "\n".join(lines)
+
+
+def extra_gates(name: str, kind: str) -> dict[str, tuple[str, ...]]:
+    """The repository's own gates, by the job of the gates stage each runs in."""
+    extra = EXTRA_GATES.get(name, {})
+    jobs = GATE_JOBS if edge_table().KINDS[kind].crate else ("checks",)
+    for job, ids in extra.items():
+        if job not in jobs:
+            raise RenderError(f"{name}'s extra gates name the job {job!r}; its pipeline's jobs are {list(jobs)}")
+        for gate_id in ids:
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", gate_id):
+                raise RenderError(f"{gate_id!r} is not shaped like a gate id")
+    return dict(extra)
+
+
+def ci_extra_gates(name: str, kind: str, job: str) -> str:
+    """The steps of the repository's own gates in one job, or nothing."""
+    lines: list[str] = []
+    for gate_id in extra_gates(name, kind).get(job, ()):
+        lines += [
+            f"          - script: uv run --quiet --project ci gate run {gate_id}",
+            f"            displayName: {gate_id} (this repository's own gate)",
+            "            condition: eq(variables['checksReady'], 'true')",
+        ]
+    return "\n".join(lines)
+
+
+def ci_playwright_gate(name: str, kind: str) -> str:
+    """The Rust job's step of the `playwright-image` gate, for a browser track, or nothing."""
+    if not ci_rust_npm(name, kind):
+        return ""
+    return "\n".join(
+        [
+            f"          - script: uv run --quiet --project ci gate run {PLAYWRIGHT_GATE}",
+            "            displayName: Playwright against the image's browser",
+            "            condition: eq(variables['checksReady'], 'true')",
+        ]
+    )
+
+
+def pipeline_only_of_repository(name: str, kind: str) -> str:
+    """The hookless ids this repository adds: the browser gate and its own gates, as the words of one string."""
+    ids = [PLAYWRIGHT_GATE] if ci_rust_npm(name, kind) else []
+    ids += [gate_id for gate_ids in extra_gates(name, kind).values() for gate_id in gate_ids]
+    return " ".join(ids)
 
 
 def pipeline_only_of_kind(kind: str) -> str:
@@ -480,11 +573,19 @@ def lock_file_rule(kind: str) -> str:
 
 
 def edges_rule(name: str) -> str:
-    """What the repository may depend on, as a wrapped list item of CLAUDE.md."""
+    """What the repository may depend on, as a wrapped list item of CLAUDE.md.
+
+    A repository with no edge depends on no other repository at all, which the
+    sentence says once.
+    """
+    edges = edge_table()
+    if edges.edges_of(name):
+        depends = f"It depends on {edges.describe(name)}, and on no other repository of the project"
+    else:
+        depends = "It depends on no other repository of the project"
     rule = (
-        f"It depends on {edge_table().describe(name)}, and on no other repository of the project; the "
-        "`dependency-edges` gate holds every Cargo and npm manifest to the edges the "
-        "superrepo's Repositories page draws."
+        f"{depends}; the `dependency-edges` gate holds every Cargo and npm manifest to the "
+        "edges the superrepo's Repositories page draws."
     )
     return textwrap.fill(rule, width=80, initial_indent="- ", subsequent_indent="  ", break_on_hyphens=False)
 
@@ -507,6 +608,11 @@ def variables(name: str, kind: str, description: str) -> Variables:
         raise RenderError("a description is one line holding no double quote or backslash")
     shape = edges.KINDS[kind]
     crate_dir, crate = crate_of(name) if shape.crate else ("", "")
+    if shape.crate and browser_track(name) and not typescript_workspace(kind):
+        raise RenderError(
+            f"{name} runs its Rust job on the {rust_track(name)} track, whose browser tests drive the npm "
+            f"workspace's Playwright, and a {kind} repository carries no workspace"
+        )
     return {
         "name": name,
         "kind": kind,
@@ -524,6 +630,15 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "ci_resources": ci_resources(name, kind),
         "ci_rust_track": rust_track(name) if shape.crate else "",
         "ci_rust_variables": ci_rust_variables(name),
+        "ci_rust_npm": ci_rust_npm(name, kind),
+        "ci_playwright_gate": ci_playwright_gate(name, kind),
+        # The conditional name of the `playwright-image` gate and its test.
+        "ci_browser": bool(ci_rust_npm(name, kind)),
+        "ci_rust_extra_gates": ci_extra_gates(name, kind, "rust") if shape.crate else "",
+        "ci_checks_extra_gates": ci_extra_gates(name, kind, "checks"),
+        "ci_windows": bool(shape.crate) and name in WINDOWS_TESTS,
+        "windows_image": WINDOWS_IMAGE,
+        "nextest_script": NEXTEST_SCRIPT,
         "ci_uses": uses_block(fetched_repositories(name)),
         "ci_npm_feed": ci_npm_feed(kind),
         "ci_kind_checks": ci_kind_checks(kind),
@@ -536,6 +651,7 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "release_tags": RELEASE_TAGS,
         "feed_registry": FEED_REGISTRY,
         "pipeline_only_of_kind": pipeline_only_of_kind(kind),
+        "pipeline_only_of_repository": pipeline_only_of_repository(name, kind),
         "typescript_workspace": typescript_workspace(kind),
         "host_disk_command": HOST_DISK_COMMAND,
         "rust_crate": shape.crate,

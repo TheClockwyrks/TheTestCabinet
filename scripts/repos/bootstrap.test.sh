@@ -144,6 +144,41 @@ else
 	printf '  skip an application lock file (no cargo on this machine)\n'
 fi
 
+# --- A workspace's first commit carries its npm lock file -------------------
+# npm is a stub that records its arguments and writes the lock, so nothing is
+# resolved against a registry.
+stubs="$tmp/stubs"
+mkdir -p "$stubs"
+cat >"$stubs/npm" <<'STUB'
+#!/usr/bin/env bash
+echo "$PWD $*" >>"$STUB_NPM_LOG"
+printf '{"lockfileVersion": 3}\n' >package-lock.json
+STUB
+chmod +x "$stubs/npm"
+base="$(fresh_superrepo contracts)"
+printf '{"name": "contracts-repository", "workspaces": ["packages/*"]}\n' >"$base/super/contracts/package.json"
+out="$(STUB_NPM_LOG="$tmp/npm.log" PATH="$stubs:$PATH" run_bootstrap "$base" contracts)"
+status=$?
+check_passed "bootstrap succeeds on a workspace" "$status" "$out"
+check_contains "it writes the npm lock file" "wrote the npm lock file of contracts" "$out"
+check_equals "npm only writes the lock" "$base/super/contracts install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=error" "$(cat "$tmp/npm.log")"
+check_equals "the scaffold commit carries package-lock.json" "package-lock.json" "$(git -C "$base/remotes/contracts" ls-tree --name-only master package-lock.json)"
+
+: >"$tmp/npm.log"
+base="$(fresh_superrepo contracts)"
+printf '{"name": "contracts-repository", "workspaces": ["packages/*"]}\n' >"$base/super/contracts/package.json"
+printf '{"lockfileVersion": 3, "kept": true}\n' >"$base/super/contracts/package-lock.json"
+out="$(STUB_NPM_LOG="$tmp/npm.log" PATH="$stubs:$PATH" run_bootstrap "$base" contracts)"
+check_passed "bootstrap succeeds on a workspace holding its lock" $? "$out"
+check_equals "npm is not run" "" "$(cat "$tmp/npm.log")"
+check_contains "the lock is kept" '"kept": true' "$(git -C "$base/remotes/contracts" show master:package-lock.json)"
+
+base="$(fresh_superrepo contracts)"
+printf '{"name": "contracts-repository"}\n' >"$base/super/contracts/package.json"
+out="$(STUB_NPM_LOG="$tmp/npm.log" PATH="$stubs:$PATH" run_bootstrap "$base" contracts)"
+check_passed "bootstrap succeeds on a manifest without a workspace" $? "$out"
+check_equals "npm is not run for it" "" "$(cat "$tmp/npm.log")"
+
 # --- A directory the kit did not render is refused ------------------------
 base="$(fresh_superrepo)"
 mkdir -p "$base/super/stray"

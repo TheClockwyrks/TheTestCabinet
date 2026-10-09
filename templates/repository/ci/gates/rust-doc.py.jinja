@@ -12,7 +12,9 @@ two catch disjoint problems.
 
 `--no-deps` documents only workspace crates, not the dependency graph, which is
 what makes this cheap enough to sit on every commit, and it reuses the same
-`cargo check` artifacts the clippy gate beside it just built.
+`cargo check` artifacts the clippy gate beside it just built. The private items
+are documented too, by `[build] rustdocflags` in `.cargo/config.toml`, so a
+link in a private item's doc comment is held as well.
 """
 
 from the_test_cabinet_ci import enter_repo_root, fail, succeeded
