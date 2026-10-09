@@ -1,29 +1,52 @@
 @use "../styles/tokens" as t;
 @use "../styles/halo" as h;
+@use "../styles/breakpoints" as bp;
 
 .hero {
   margin-bottom: t.$space-lg;
   font-family: var(--ttc-font);
 }
 
-// The prompt line when the page pins its own actions to it: the command keeps the
-// leading edge, the actions the trailing one. Aligned to the top rather than centred,
-// because the prompt is the taller of the two and its baseline is what the eye follows
-// down to the comment beneath.
-.titleRow {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: t.$space-md;
-  flex-wrap: wrap;
+// The header when the page pins its own actions to the prompt line: a grid whose
+// first row holds the command on the leading edge and the actions on the trailing
+// one, with the comment across both columns beneath. Aligned to the top rather than
+// centred, because the prompt is the taller of the two and its baseline is what the
+// eye follows down to the comment beneath. The prompt wraps inside its own column, so
+// the actions never drop between it and the comment.
+.withTitleActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: t.$space-md;
+  align-items: start;
+
+  .comment,
+  .commentRow {
+    grid-column: 1 / -1;
+  }
 }
 
 .titleActions {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: t.$space-md;
   flex-wrap: wrap;
-  margin-left: auto;
+}
+
+// A narrow viewport has no room for the actions beside the prompt. They take a row of
+// their own under the comment, on the leading edge, so the prompt and its comment stay
+// together as they are on every page without actions.
+@include bp.below(t.$bp-md) {
+  .withTitleActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .titleActions {
+    grid-column: 1;
+    grid-row: 3;
+    margin-top: t.$space-md;
+  }
 }
 
 .prompt {
