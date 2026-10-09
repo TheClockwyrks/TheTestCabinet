@@ -1305,9 +1305,10 @@ fail rather than skip when it is missing (see
 Rust jobs need no browser and stay on the Rust image.
 
 The repository split plans an `android` track, which the template renders only
-once the `tauri_desktop` and `tauri_android` answers are both true, a `base`
-track, and tags computed from each track's inputs rather than from a commit.
-None is here yet; `ci/images/README.md` says what each waits on.
+once the `tauri_desktop` and `tauri_android` answers are both true, and a
+`base` track. Neither is here yet; `ci/images/README.md` says what each waits
+on. The split keeps the commit tag: every repository's images are tagged by the
+commit of the image run that built them.
 
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
 image is built from and on nothing else, and every run builds every track and
