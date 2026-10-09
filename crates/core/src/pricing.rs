@@ -69,7 +69,8 @@ pub struct ModelLaunchFacts {
     /// model's developer.
     pub provider_pin: Option<String>,
     /// Each provider route's per-token prices, keyed by the provider as the listing
-    /// spells it: the first priced route per provider, in listing order. Read through
+    /// spells it: the first priced standard route per provider, in listing order, Flex
+    /// endpoints left out. Read through
     /// [`official_prices`](Self::official_prices).
     pub route_prices: Vec<(String, TokenPrices)>,
 }
@@ -387,11 +388,14 @@ fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
     routes
 }
 
-/// Reduce one model's endpoints body to every named endpoint as the candidate filter reads it,
-/// in listing order. A provider listing several endpoints appears once per endpoint.
+/// Reduce one model's endpoints body to every named standard endpoint as the candidate filter
+/// reads it, in listing order. A provider listing several endpoints appears once per endpoint,
+/// and a [Flex](ModelEndpoint::is_flex) endpoint is left out: it is never a candidate and
+/// never sets the price ceiling.
 fn offers_of(data: &ModelEndpoints) -> Vec<EndpointOffer> {
     data.endpoints
         .iter()
+        .filter(|endpoint| !endpoint.is_flex())
         .filter_map(|endpoint| {
             let provider = endpoint
                 .provider_name
@@ -503,12 +507,17 @@ fn modalities_of(architecture: Option<&Architecture>) -> Vec<String> {
     out
 }
 
-/// Each provider's route prices, in listing order, keeping the first priced route
-/// of a provider that lists several (quantizations, say) — the same route
-/// [`official_provider`] settles on when it scans the names in that order.
+/// Each provider's route prices, in listing order, keeping the first priced standard
+/// route of a provider that lists several (quantizations, say). A
+/// [Flex](ModelEndpoint::is_flex) endpoint is skipped, so a provider that lists its
+/// discounted Flex tier ahead of its standard endpoint is priced at the standard one,
+/// and a provider that lists only Flex endpoints has no route price.
 fn route_prices_of(endpoints: &[ModelEndpoint]) -> Vec<(String, TokenPrices)> {
     let mut out: Vec<(String, TokenPrices)> = Vec::new();
     for endpoint in endpoints {
+        if endpoint.is_flex() {
+            continue;
+        }
         let (Some(name), Some(pricing)) = (endpoint.provider_name.as_deref(), &endpoint.pricing)
         else {
             continue;
@@ -633,6 +642,25 @@ struct ModelEndpoint {
     pricing: Option<Pricing>,
     #[serde(default)]
     supported_parameters: Vec<String>,
+    /// The route tag: the provider's slug, then any region and service tier, separated by
+    /// `/` (`openai`, `openai/flex`, `google-vertex/global/flex`). It is the only field that
+    /// tells a provider's Flex endpoint from its standard one, since both carry the same
+    /// `provider_name`.
+    #[serde(default)]
+    tag: Option<String>,
+}
+
+impl ModelEndpoint {
+    /// Whether this is a provider's Flex endpoint: one whose [`tag`](Self::tag) has a
+    /// segment equal to `flex`, in any ASCII case. Flex is a discounted, slower service
+    /// tier a request has to ask for, so its rates are not what a run is billed at, and no
+    /// price is read from it. An endpoint with no tag is a standard one.
+    fn is_flex(&self) -> bool {
+        self.tag.as_deref().is_some_and(|tag| {
+            tag.split('/')
+                .any(|segment| segment.trim().eq_ignore_ascii_case("flex"))
+        })
+    }
 }
 
 /// OpenRouter prices, reported as per-token USD strings.

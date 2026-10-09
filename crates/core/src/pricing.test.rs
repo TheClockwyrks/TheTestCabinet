@@ -241,6 +241,253 @@ fn the_official_prices_are_the_developers_routes_prices() {
     );
 }
 
+/// One endpoint as the live listing writes it, carrying the route `tag` and nothing the
+/// Flex rule does not read.
+fn tagged(tag: Option<&str>) -> ModelEndpoint {
+    let mut endpoint = serde_json::json!({ "provider_name": "OpenAI" });
+    if let Some(tag) = tag {
+        endpoint["tag"] = serde_json::json!(tag);
+    }
+    serde_json::from_value(endpoint).expect("the fixture is a well-formed endpoint")
+}
+
+/// A Flex endpoint is one whose tag has a `flex` segment, wherever the segment sits and
+/// however it is cased. A tag that merely contains the letters, another service tier, and
+/// an endpoint with no tag are all standard.
+#[test]
+fn a_flex_endpoint_is_one_whose_tag_has_a_flex_segment() {
+    for tag in [
+        "openai/flex",
+        "google-ai-studio/flex",
+        "google-vertex/global/flex",
+        "openai/FLEX",
+        "OpenAI/Flex",
+        "flex",
+    ] {
+        assert!(tagged(Some(tag)).is_flex(), "`{tag}` is a Flex endpoint");
+    }
+    for tag in [
+        "openai",
+        "google-vertex/global",
+        "flexible-co/standard",
+        "flexible-co",
+        "openai/flexible",
+        "novita/reflex",
+        "openai/priority",
+        "groq/fast",
+        "",
+    ] {
+        assert!(
+            !tagged(Some(tag)).is_flex(),
+            "`{tag}` is a standard endpoint"
+        );
+    }
+    assert!(!tagged(None).is_flex());
+    let null_tag: ModelEndpoint =
+        serde_json::from_value(serde_json::json!({ "provider_name": "OpenAI", "tag": null }))
+            .expect("a null tag deserializes");
+    assert!(!null_tag.is_flex());
+}
+
+/// The developer's routes of a model OpenAI serves at two tiers, as the live listing
+/// orders them: the Flex endpoint first at half price, then the standard one, both under
+/// the one `provider_name`.
+fn flex_listed_first() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "name": "OpenAI | openai/gpt-5.6-sol",
+            "provider_name": "OpenAI",
+            "tag": "openai/flex",
+            "context_length": 400_000,
+            "quantization": "unknown",
+            "pricing": {
+                "prompt": "0.000000625",
+                "completion": "0.000005",
+                "input_cache_read": "0.0000000625",
+            },
+            "supported_parameters": ["tools", "tool_choice", "reasoning"],
+        },
+        {
+            "name": "OpenAI | openai/gpt-5.6-sol",
+            "provider_name": "OpenAI",
+            "tag": "openai",
+            "context_length": 400_000,
+            "quantization": "unknown",
+            "pricing": {
+                "prompt": "0.00000125",
+                "completion": "0.00001",
+                "input_cache_read": "0.000000125",
+            },
+            "supported_parameters": ["tools", "tool_choice", "reasoning"],
+        },
+        {
+            "name": "Azure | openai/gpt-5.6-sol",
+            "provider_name": "Azure",
+            "tag": "azure",
+            "context_length": 400_000,
+            "quantization": "unknown",
+            "pricing": {
+                "prompt": "0.00000125",
+                "completion": "0.00001",
+                "input_cache_read": "0.000000125",
+            },
+            "supported_parameters": ["tools", "tool_choice", "reasoning"],
+        },
+    ])
+}
+
+/// The official price is the developer's standard endpoint's, although the listing shows
+/// the same provider's Flex endpoint first and cheaper.
+#[test]
+fn the_official_prices_skip_a_flex_endpoint_listed_first() {
+    let facts = facts_with_routes("openai/gpt-5.6-sol", flex_listed_first());
+
+    assert_eq!(facts.provider_pin.as_deref(), Some("OpenAI"));
+    assert_eq!(
+        facts.official_prices(None),
+        Some(TokenPrices {
+            uncached_input: Some(0.000_001_25),
+            cached_input: Some(0.000_000_125),
+            output: Some(0.000_01),
+        })
+    );
+    // No provider's Flex rate is recorded under any name.
+    assert_eq!(facts.route_prices.len(), 2);
+    assert!(
+        facts
+            .route_prices
+            .iter()
+            .all(|(_, prices)| prices.uncached_input == Some(0.000_001_25))
+    );
+}
+
+/// A Flex endpoint is skipped under a hand-set pin too, and for a provider whose tag
+/// carries a region ahead of the tier.
+#[test]
+fn a_hand_set_pin_skips_a_flex_endpoint() {
+    let facts = facts_with_routes(
+        "google/gemini-3.5-pro",
+        serde_json::json!([
+            {
+                "provider_name": "Google",
+                "tag": "google-vertex/global/flex",
+                "pricing": { "prompt": "0.000001", "completion": "0.000006" },
+            },
+            {
+                "provider_name": "Google",
+                "tag": "google-vertex/global",
+                "pricing": { "prompt": "0.000002", "completion": "0.000012" },
+            },
+        ]),
+    );
+
+    assert_eq!(
+        facts.official_prices(Some("google")),
+        Some(TokenPrices {
+            uncached_input: Some(0.000_002),
+            cached_input: Some(0.000_002),
+            output: Some(0.000_012),
+        })
+    );
+}
+
+/// A developer that lists only Flex endpoints has no official price: the model takes the
+/// path of one with no priced official route, although the provider is still its pin.
+#[test]
+fn a_developer_listing_only_flex_endpoints_has_no_official_price() {
+    let facts = facts_with_routes(
+        "openai/gpt-5.6-sol",
+        serde_json::json!([
+            {
+                "provider_name": "OpenAI",
+                "tag": "openai/flex",
+                "pricing": { "prompt": "0.000000625", "completion": "0.000005" },
+            },
+            {
+                "provider_name": "Azure",
+                "tag": "azure",
+                "pricing": { "prompt": "0.00000125", "completion": "0.00001" },
+            },
+        ]),
+    );
+
+    assert_eq!(facts.provider_pin.as_deref(), Some("OpenAI"));
+    assert_eq!(facts.official_prices(None), None);
+    assert_eq!(facts.official_prices(Some("openai")), None);
+}
+
+/// The candidate filter is handed the standard endpoints only: a Flex endpoint is not an
+/// offer, so it cannot be a candidate or the developer's ceiling.
+#[test]
+fn endpoint_offers_leave_out_flex_endpoints() {
+    let offers = offers_of(&endpoints(serde_json::json!({
+        "data": { "name": "OpenAI: GPT-5.6 Sol", "endpoints": flex_listed_first() },
+    })));
+
+    assert_eq!(
+        offers
+            .iter()
+            .map(|offer| offer.provider.as_str())
+            .collect::<Vec<_>>(),
+        ["OpenAI", "Azure"]
+    );
+    assert_eq!(offers[0].input, Some(0.000_001_25));
+    assert_eq!(offers[0].output, Some(0.000_01));
+    assert_eq!(offers[0].cache_read, Some(0.000_000_125));
+
+    let list = provider_candidates(
+        Some("OpenAI"),
+        &offers,
+        &CandidatePolicy {
+            quantization_filter: false,
+            ..CandidatePolicy::default()
+        },
+        &run_parameters(true),
+        &std::collections::BTreeMap::new(),
+    )
+    .expect("the standard endpoints pass");
+    // The ceiling is the standard rate, so Azure at that rate is kept beside the developer.
+    assert_eq!(list.candidates.len(), 2);
+    assert_eq!(list.candidates[0].provider, "OpenAI");
+    assert_eq!(list.candidates[0].input, 0.000_001_25);
+    assert_eq!(list.candidates[1].provider, "Azure");
+}
+
+/// A model served through Flex endpoints alone has no offer, and the candidate list
+/// refuses it as one the listing names no endpoint for.
+#[test]
+fn a_model_listing_only_flex_endpoints_has_no_offer() {
+    let offers = offers_of(&endpoints(serde_json::json!({
+        "data": {
+            "name": "OpenAI: GPT-5.6 Sol",
+            "endpoints": [
+                {
+                    "provider_name": "OpenAI",
+                    "tag": "openai/flex",
+                    "pricing": {
+                        "prompt": "0.000000625",
+                        "completion": "0.000005",
+                        "input_cache_read": "0.0000000625",
+                    },
+                    "supported_parameters": ["tools", "tool_choice"],
+                },
+            ],
+        },
+    })));
+
+    assert!(offers.is_empty());
+    assert_eq!(
+        provider_candidates(
+            Some("OpenAI"),
+            &offers,
+            &CandidatePolicy::default(),
+            &run_parameters(false),
+            &std::collections::BTreeMap::new(),
+        ),
+        Err(CandidateRefusal::NoEndpoints)
+    );
+}
+
 /// A hand-set pin names the official route where the listing spells the developer
 /// differently from the model id (`qwen/…` served by `Alibaba`).
 #[test]
@@ -406,6 +653,54 @@ async fn official_prices_reads_the_developers_route_from_the_endpoints_payload()
             cached_input: Some(0.000_002),
             output: Some(0.000_008),
         }
+    );
+}
+
+/// The lookup the model form's fill uses returns the standard rate through the real fetch
+/// path when the developer's Flex endpoint is listed first, and fails for a developer
+/// that lists only Flex endpoints.
+#[tokio::test]
+async fn official_prices_ignores_flex_endpoints_in_the_endpoints_payload() {
+    let server = spawn_endpoints_stub(serde_json::json!({
+        "data": { "name": "OpenAI: GPT-5.6 Sol", "endpoints": flex_listed_first() },
+    }))
+    .await;
+    assert_eq!(
+        OpenRouterPrices::with_endpoint(server.url())
+            .official_prices("openai/gpt-5.6-sol")
+            .await
+            .expect("the developer's standard route is priced"),
+        TokenPrices {
+            uncached_input: Some(0.000_001_25),
+            cached_input: Some(0.000_000_125),
+            output: Some(0.000_01),
+        }
+    );
+
+    let flex_only = spawn_endpoints_stub(serde_json::json!({
+        "data": {
+            "name": "OpenAI: GPT-5.6 Sol",
+            "endpoints": [
+                {
+                    "provider_name": "OpenAI",
+                    "tag": "openai/flex",
+                    "pricing": { "prompt": "0.000000625", "completion": "0.000005" },
+                },
+            ],
+        },
+    }))
+    .await;
+    let prices = OpenRouterPrices::with_endpoint(flex_only.url());
+    assert!(matches!(
+        prices.official_prices("openai/gpt-5.6-sol").await,
+        Err(Error::Validation(_))
+    ));
+    assert!(
+        prices
+            .endpoint_offers("openai/gpt-5.6-sol")
+            .await
+            .expect("the model is listed")
+            .is_empty()
     );
 }
 
