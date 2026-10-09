@@ -111,7 +111,8 @@ impl Ingestor<'_> {
         }
         let root = catalog.version_tree(slug, version);
         // Named from the suites root's parent, so the location reads
-        // `test-suites/<slug>/…` whatever directory the root is.
+        // `<root's name>/<slug>/…` (`test-suites/<slug>/…` for the default root)
+        // rather than an absolute path.
         let base = self.roots.suites.parent().unwrap_or(&self.roots.suites);
         let location = to_forward_slash(root.strip_prefix(base).unwrap_or(&root));
         let (loaded, diagnostics) = match load_and_validate(&identity.suite, &root) {

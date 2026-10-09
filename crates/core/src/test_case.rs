@@ -1678,6 +1678,16 @@ fn read_package_dependencies(
     Ok(deps)
 }
 
+/// Which trees of a [`TestCaseCatalog`] hold at least one version folder (see
+/// [`TestCaseCatalog::declared_trees`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeclaredTrees {
+    /// The `test-cases/` root holds a case version.
+    pub test_cases: bool,
+    /// The sibling `game-jams/` folder holds a jam version.
+    pub game_jams: bool,
+}
+
 /// Resolves test case slugs and versions against an on-disk catalog.
 ///
 /// The catalog is the `test-cases/` directory laid out as
@@ -1748,6 +1758,29 @@ impl TestCaseCatalog {
         }
         cases.sort_by(|a, b| a.slug.cmp(&b.slug));
         Ok(cases)
+    }
+
+    /// Which of the catalog's two trees hold at least one version folder: the
+    /// `test-cases/` root itself, and the sibling `game-jams/` folder discovery
+    /// folds into the same catalog. A caller that has to tell an empty tree from a
+    /// populated one asks each separately, since [`list`](Self::list) names a jam
+    /// and a spec-driven case alike.
+    pub fn declared_trees(&self) -> Result<DeclaredTrees> {
+        let mut declared = DeclaredTrees::default();
+        for folder in self.case_folders()? {
+            let jam = is_game_jam_folder(&folder);
+            if (jam && declared.game_jams) || (!jam && declared.test_cases) {
+                continue;
+            }
+            if !self.version_names(&folder)?.is_empty() {
+                if jam {
+                    declared.game_jams = true;
+                } else {
+                    declared.test_cases = true;
+                }
+            }
+        }
+        Ok(declared)
     }
 
     /// List the versions available for a case (looked up by slug or folder name),

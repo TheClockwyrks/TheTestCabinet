@@ -4,9 +4,9 @@ use std::fs;
 use std::path::Path;
 
 use super::{
-    AssetDimension, AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result,
-    SHIPPABLE_PACKAGES, SpecKind, TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
-    shippable_package_description,
+    AssetDimension, AssetKind, BuildCommands, DeclaredTrees, ErratumSeverity, FailureCap,
+    MediaKind, Result, SHIPPABLE_PACKAGES, SpecKind, TestCaseCatalog, TestCaseVersion, TestType,
+    is_shippable_package, shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -2943,6 +2943,38 @@ fn resolves_a_game_jam_from_its_own_manifest() {
     // With no authored categories it gets the generic graded checklist.
     assert!(!version.common_review_items.is_empty());
     assert!(version.common_review_items.iter().all(|item| item.graded));
+}
+
+#[test]
+fn declared_trees_tells_the_case_tree_from_the_jam_tree() {
+    // A jam alone: the catalog lists it, yet `test-cases/` declares nothing.
+    let (dir, catalog) = catalog_with_jam(MINIMAL_JAM);
+    assert_eq!(
+        catalog.declared_trees().expect("the trees read"),
+        DeclaredTrees {
+            test_cases: false,
+            game_jams: true,
+        }
+    );
+
+    // A case folder with no version folder declares nothing either.
+    fs::create_dir_all(dir.path().join("test-cases/end-to-end/easy/empty"))
+        .expect("create an empty case folder");
+    assert!(!catalog.declared_trees().expect("the trees read").test_cases);
+
+    // A version folder counts once it holds its manifest.
+    let version = dir.path().join("test-cases/end-to-end/easy/empty/v1.0.0");
+    fs::create_dir_all(&version).expect("create a version folder");
+    assert!(!catalog.declared_trees().expect("the trees read").test_cases);
+    fs::write(version.join("test-case.toml"), "slug = \"empty\"\n").expect("write manifest");
+    fs::remove_dir_all(dir.path().join("game-jams/trains")).expect("remove the jam");
+    assert_eq!(
+        catalog.declared_trees().expect("the trees read"),
+        DeclaredTrees {
+            test_cases: true,
+            game_jams: false,
+        }
+    );
 }
 
 #[test]

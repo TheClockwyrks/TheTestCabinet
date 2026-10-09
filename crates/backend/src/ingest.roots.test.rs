@@ -33,6 +33,29 @@ fn write_case(definitions: &Path, slug: &str) {
     );
 }
 
+/// Write a minimal game-jam version under `<definitions>/game-jams/<slug>/`.
+fn write_jam(definitions: &Path, slug: &str) {
+    let base = definitions.join("game-jams").join(slug).join("v1.0.0");
+    write(&base.join("prompt.hbs"), "Make a game.");
+    write(&base.join("changelog.md"), "Introduced.");
+    write(
+        &base.join("game-jam.toml"),
+        &format!(
+            "slug = \"{slug}\"\nname = \"Jam\"\ntags = []\n\
+             prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+             max_runtime_hours = 1\n\
+             [build]\ninstall = \"x\"\nbuild = \"y\"\n"
+        ),
+    );
+}
+
+/// Empty a tree in place, leaving the directory itself: the shape a root pointed at
+/// the wrong directory, or a checkout that came out partial, takes.
+fn empty_tree(dir: &Path) {
+    std::fs::remove_dir_all(dir).expect("the tree is removed");
+    std::fs::create_dir_all(dir).expect("the tree is created");
+}
+
 /// Write a group manifest under `<definitions>/test-case-groups/<slug>/`.
 fn write_group(definitions: &Path, slug: &str, cases: &[&str]) {
     let members = cases
@@ -488,4 +511,152 @@ fn a_partial_scan_reports_no_refusal() {
         })
         .expect("the scan succeeds");
     assert!(report.refused_prunes.is_empty());
+}
+
+#[test]
+fn a_populated_jam_tree_does_not_vouch_for_an_emptied_case_tree() {
+    // One catalog reads `test-cases/` and `game-jams/`, but each tree answers for
+    // its own kind: a jam that came through cannot let an emptied case tree prune.
+    let checkout = TempDir::new().expect("a temporary directory");
+    write_case(checkout.path(), "alpha");
+    write_case(checkout.path(), "beta");
+    write_jam(checkout.path(), "jam");
+    let store_dir = TempDir::new().expect("a temporary directory");
+    let store = DefinitionStore::open(store_dir.path()).expect("the store opens");
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("the scan succeeds");
+    assert_eq!(stored_slugs(&store), ["alpha", "beta", "jam"]);
+
+    empty_tree(&checkout.path().join("test-cases"));
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("the scan succeeds");
+
+    assert_eq!(stored_slugs(&store), ["alpha", "beta", "jam"]);
+    assert_eq!(
+        report.refused_prunes.len(),
+        1,
+        "{:?}",
+        report.refused_prunes
+    );
+    assert!(
+        report.refused_prunes[0].starts_with("kept 2 stored authored test-case version(s)"),
+        "{}",
+        report.refused_prunes[0]
+    );
+}
+
+#[test]
+fn an_emptied_jam_tree_keeps_the_stored_jams() {
+    let checkout = TempDir::new().expect("a temporary directory");
+    write_case(checkout.path(), "alpha");
+    write_case(checkout.path(), "beta");
+    write_jam(checkout.path(), "jam");
+    let store_dir = TempDir::new().expect("a temporary directory");
+    let store = DefinitionStore::open(store_dir.path()).expect("the store opens");
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("the scan succeeds");
+
+    // The case tree still prunes as usual beside the guarded jam tree.
+    std::fs::remove_dir_all(checkout.path().join("test-cases/end-to-end/easy/beta"))
+        .expect("the case is removed");
+    empty_tree(&checkout.path().join("game-jams"));
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("the scan succeeds");
+
+    assert_eq!(stored_slugs(&store), ["alpha", "jam"]);
+    assert_eq!(
+        report.refused_prunes.len(),
+        1,
+        "{:?}",
+        report.refused_prunes
+    );
+    assert!(
+        report.refused_prunes[0].starts_with("kept 1 stored game-jam version(s)"),
+        "{}",
+        report.refused_prunes[0]
+    );
+    assert!(
+        report.refused_prunes[0].contains(&checkout.path().join("game-jams").display().to_string()),
+        "the refusal names the tree it found empty: {}",
+        report.refused_prunes[0]
+    );
+}
+
+#[test]
+fn a_scan_that_refused_a_prune_records_no_catalog_token() {
+    // The token claims the store holds that catalog; a refused prune leaves it
+    // holding another one, so the next scan with the token must not skip.
+    let checkout = TempDir::new().expect("a temporary directory");
+    write_case(checkout.path(), "alpha");
+    let store_dir = TempDir::new().expect("a temporary directory");
+    let store = DefinitionStore::open(store_dir.path()).expect("the store opens");
+    let tagged = |token: &str| IngestRequest {
+        catalog_version: Some(token.to_string()),
+        ..Default::default()
+    };
+    Ingestor::new(checkout.path(), &store)
+        .scan(&tagged("first"))
+        .expect("the scan succeeds");
+    assert_eq!(store.catalog_version().as_deref(), Some("first"));
+
+    empty_tree(&checkout.path().join("test-cases"));
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&tagged("second"))
+        .expect("the scan succeeds");
+    assert_eq!(report.refused_prunes.len(), 1);
+    assert_eq!(store.catalog_version().as_deref(), Some("first"));
+
+    write_case(checkout.path(), "alpha");
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&tagged("second"))
+        .expect("the scan succeeds");
+    assert!(report.refused_prunes.is_empty());
+    assert!(
+        report
+            .test_case_versions
+            .iter()
+            .all(|version| version.ingested),
+        "a token the store never recorded forces the rewrite: {:?}",
+        report.test_case_versions
+    );
+    assert_eq!(store.catalog_version().as_deref(), Some("second"));
+}
+
+#[test]
+fn a_store_in_another_record_format_is_exempt_from_the_guard() {
+    // The promoted repair scan rewrites the store to hold only records this build
+    // wrote, so an empty tree prunes what the store held rather than keep records
+    // nothing here can read.
+    let checkout = TempDir::new().expect("a temporary directory");
+    write_case(checkout.path(), "alpha");
+    write_case(checkout.path(), "beta");
+    let store_dir = TempDir::new().expect("a temporary directory");
+    let store = DefinitionStore::open(store_dir.path()).expect("the store opens");
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("the scan succeeds");
+
+    write(
+        &store_dir
+            .path()
+            .join(crate::store::SIDECAR)
+            .join("store-format"),
+        "0",
+    );
+    assert!(store.needs_reingest());
+    empty_tree(&checkout.path().join("test-cases"));
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("the scan succeeds");
+
+    assert!(stored_slugs(&store).is_empty());
+    assert!(
+        report.refused_prunes.is_empty(),
+        "{:?}",
+        report.refused_prunes
+    );
 }

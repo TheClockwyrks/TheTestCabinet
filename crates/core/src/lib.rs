@@ -207,12 +207,12 @@ pub use test_cabinet_contracts::layout::{
     MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
 };
 pub use test_case::{
-    AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
-    EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile,
-    ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
-    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
-    TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
-    WorkspaceFile, runtime_hours_to_seconds, shippable_package_description,
+    AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, DeclaredTrees, Domain,
+    EngineSupport, EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec,
+    ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput,
+    ReviewValidation, SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind,
+    SubReviewItem, TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant,
+    VoxelSpec, WorkspaceFile, runtime_hours_to_seconds, shippable_package_description,
 };
 pub use test_case_group::{TestCaseGroup, TestCaseGroupCatalog};
 pub use toolchain::{
