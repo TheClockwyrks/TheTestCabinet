@@ -941,6 +941,7 @@ terraforming
 teslaprime
 testcabinet
 testcabinetartifacts
+testdata
 testpaths
 tfsgit
 thiserror

@@ -524,6 +524,26 @@ output: a change to a scoring rule changes the goldens, and the other side then 
 to follow. The writeup-based `review::score` has no golden, being a thin wrapper over
 `score_checklist` with no TypeScript counterpart.
 
+### Tests that read case versions
+
+A Rust test that resolves a named case version reads a copy of it under its
+crate's `testdata/definitions/`, laid out like the repository root
+(`test-cases/<type>/<difficulty>/<slug>/<version>/`, `game-jams/`,
+`test-case-groups/`). A copy holds the version's tracked files without its
+`.frozen` marker, so the [frozen-paths](/development/frozen-versions/) gate
+guards the original alone. The tests read no other tree, so they pass wherever
+the catalog itself lives, and a missing copy fails the test that resolves it.
+The format, prose and lint gates and the image build context leave the
+copies out.
+
+The tests that hold every committed version to a rule read the catalog itself:
+`crates/core/tests/committed_catalog.rs`, the group membership check in
+`crates/core/tests/manifests_are_valid.rs`, and the backend's
+`every_stored_manifest_preserves_its_asset_shape`. They read it from
+`TCAB_DEFINITIONS_ROOT`, the directory holding `test-cases/`, `game-jams/` and
+`test-case-groups/`, which defaults to the repository root, and they fail where
+it holds no catalog.
+
 ### Tests that need a browser
 
 A few of the core's and the suites crate's tests run a real toolchain rather than a
