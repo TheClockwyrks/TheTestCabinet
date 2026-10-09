@@ -273,10 +273,10 @@ fn log_pass(
     }
 }
 
-/// Feed what a job that just reached a terminal state belongs to: the ladder dispatch its
-/// origin names, while that dispatch is running, and every filling plan one of whose
-/// cells is the job's — whoever launched it, since a plan counts globally. Each gets a
-/// launch pass as its owner.
+/// Feed what a job that just reached a terminal state belongs to: every running ladder
+/// dispatch one of whose rung slots is the job's cell, and every filling plan one of whose
+/// cells it is — whoever launched it, since both count globally. Each gets a launch pass
+/// as its owner.
 ///
 /// This is what makes a plan fill and a ladder climb by themselves: the run that finishes
 /// is the evidence that may fill a cell or decide a rung, so its arrival is the moment to
@@ -284,7 +284,7 @@ fn log_pass(
 /// because this runs after a driver's status report is stored and must never be the reason
 /// that report fails.
 pub(super) async fn feed_finished_job(state: &AppState, job: &test_cabinet_entities::job::Model) {
-    if let Some((ladder_id, owner)) = super::ladders::dispatch_fed_by(state, job).await {
+    for (ladder_id, owner) in super::ladders::dispatches_fed_by(state, job).await {
         let result = LaunchTarget::Ladder.launch(state, &owner, &ladder_id).await;
         log_pass(LaunchTarget::Ladder, &ladder_id, "a finished run", result);
     }
@@ -294,10 +294,10 @@ pub(super) async fn feed_finished_job(state: &AppState, job: &test_cabinet_entit
     }
 }
 
-/// Feed what a batch of cancelled jobs belonged to, each dispatch and plan once: the
-/// running dispatch an origin names, and every filling plan one of whose cells a job sat
-/// in. A cancelled job was in flight, so it held its cell (and a place under its plan's
-/// or dispatch's limit) for every plan counting it; once it is gone, that cell is missing
+/// Feed what a batch of cancelled jobs belonged to, each dispatch and plan once: every
+/// running dispatch and every filling plan one of whose cells a job sat in. A cancelled
+/// job was in flight, so it held its cell (and a place under its plan's or dispatch's
+/// limit) for every plan and dispatch counting it; once it is gone, that cell is missing
 /// again, and nothing else would notice — the job never finishes to feed anything.
 ///
 /// A pass only launches what is missing, so feeding what was just halted or stopped does
@@ -310,12 +310,8 @@ pub(super) async fn feed_canceled_jobs(
     let mut plans: Vec<(String, String)> = Vec::new();
     let mut cells = std::collections::HashSet::new();
     for job in jobs {
-        if let Some(fed) = super::ladders::dispatch_fed_by(state, job).await
-            && !ladders.contains(&fed)
-        {
-            ladders.push(fed);
-        }
-        // Plans are fed by a job's cell, so one job per cell is enough to find them.
+        // Dispatches and plans are fed by a job's cell, so one job per cell is enough to
+        // find them.
         let cell = (
             job.test_case_slug.clone(),
             job.test_case_version.clone(),
@@ -328,6 +324,11 @@ pub(super) async fn feed_canceled_jobs(
         );
         if !cells.insert(cell) {
             continue;
+        }
+        for fed in super::ladders::dispatches_fed_by(state, job).await {
+            if !ladders.contains(&fed) {
+                ladders.push(fed);
+            }
         }
         for fed in super::coverage::plans_fed_by(state, job).await {
             if !plans.contains(&fed) {

@@ -20,9 +20,9 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{CaseStatement, Expr, Func, IntoCondition, OnConflict, SimpleExpr};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
-    DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, IntoActiveModel,
-    JoinType, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
-    TransactionTrait,
+    DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, FromQueryResult,
+    IntoActiveModel, JoinType, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::comparison::ComparisonConfig;
@@ -3677,7 +3677,9 @@ impl Db {
     /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
     ///
     /// The order is what a plan takes its [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
-    /// from: the first `runsPerCell` of each list. It is read as instants rather than as
+    /// from: the first `runsPerCell` of each list. A ladder dispatch takes a rung slot's
+    /// runs from the same list, under the rung's target, and each run carries what the
+    /// rung's gate reads ([`CellRun::as_rung_run`]). It is read as instants rather than as
     /// text, since RFC 3339 text with and without a fractional second does not sort as
     /// time; a finish time that does not parse sorts after every one that does.
     ///
@@ -3713,9 +3715,12 @@ impl Db {
             .column(run::Column::FinishedAt)
             .column(run::Column::RunState)
             .column(run::Column::TestType)
+            .column(run::Column::Loaded)
+            .column(run::Column::ValidatorRated)
+            .column(run::Column::ValidatorRating)
             .filter(run::Column::RunState.is_in(counted_run_states()))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
-            .into_tuple()
+            .into_model()
             .all(&self.conn())
             .await?;
         let reviewed: std::collections::HashSet<String> = match reviewer_user_id {
@@ -3730,8 +3735,8 @@ impl Db {
                 .collect(),
             None => std::collections::HashSet::new(),
         };
-        // Read apart from the rows, which already select the twelve columns a tuple can
-        // hold. Only the review flag needs it, and unreadable rows are few.
+        // Read apart from the rows: only the review flag needs it, and unreadable rows are
+        // few.
         let unreadable: std::collections::HashSet<String> = match reviewer_user_id {
             Some(_) => run::Entity::find()
                 .select_only()
@@ -3746,42 +3751,34 @@ impl Db {
             None => std::collections::HashSet::new(),
         };
         let mut cells = CellRuns::new();
-        for (
-            slug,
-            version,
-            variant,
-            engine,
-            harness,
-            model,
-            gg_config_id,
-            gg_models,
-            id,
-            finished_at,
-            run_state,
-            test_type,
-        ) in rows
-        {
+        for row in rows {
             let unreviewed = reviewer_user_id.is_some()
-                && !unreadable.contains(&id)
-                && run_state == "completed"
-                && !AUTO_GRADED_TEST_TYPES.contains(&test_type.as_str())
-                && !reviewed.contains(&id);
+                && !unreadable.contains(&row.id)
+                && row.run_state == "completed"
+                && !AUTO_GRADED_TEST_TYPES.contains(&row.test_type.as_str())
+                && !reviewed.contains(&row.id);
             cells
                 .entry((
-                    slug,
-                    version,
-                    variant,
-                    cell_engine(engine),
-                    harness,
-                    model,
-                    gg_config_id.unwrap_or_default(),
-                    gg_models.unwrap_or_default(),
+                    row.test_case_slug,
+                    row.test_case_version,
+                    row.variant,
+                    cell_engine(row.engine_slug),
+                    row.harness_slug,
+                    row.model_id,
+                    row.gg_config_id.unwrap_or_default(),
+                    row.gg_models.unwrap_or_default(),
                 ))
                 .or_default()
                 .push(CellRun {
-                    id,
-                    finished_at,
+                    id: row.id,
+                    finished_at: row.finished_at,
                     unreviewed,
+                    model_failure: row.run_state != "completed",
+                    loaded: row.loaded,
+                    validator_rated: row.validator_rated,
+                    // A token that no longer parses reads as "no rating", which the gate
+                    // treats as unrated rather than as a bad result.
+                    rating: row.validator_rating.as_deref().and_then(Rating::parse),
                 });
         }
         for runs in cells.values_mut() {
@@ -4000,62 +3997,6 @@ impl TerminalJob {
     }
 }
 
-/// One counted run of a rung slot — a completed run, or one that ended on the model's own
-/// failure — reduced to what a ladder's rung gate reads.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CellRunRating {
-    /// The run's id, so a ladder dashboard can link to the evidence a verdict was
-    /// decided from.
-    pub run_id: String,
-    /// Whether the run ended on one of the model's own failures — catastrophic, timed
-    /// out, limit exceeded or hung — rather than completing. Such a run
-    /// produced nothing to rate, and no rating can ever arrive for it, so the gate counts
-    /// it as [`Rating::Broken`] (see [`Self::as_rung_run`]).
-    pub model_failure: bool,
-    /// Whether the produced build loaded (the lifted `run.loaded`). A gate may count a
-    /// run that never loaded as broken outright — there was nothing to play.
-    pub loaded: bool,
-    /// Whether the run's case version was validator-rated when it was pushed (the
-    /// lifted `run.validator_rated`). Such a run with no [`Self::rating`] has not been
-    /// rated *yet* — the store did not hold its version when the rating was last
-    /// decided — rather than being unratable.
-    pub validator_rated: bool,
-    /// The validators' own functional rating for the run (the lifted
-    /// `run.validator_rating`), or `None` when the run carries none — a run pushed while
-    /// the backend did not hold its case version, or one whose stored token no longer
-    /// parses. `None` is not a bad rating: the gate counts it as unrated.
-    ///
-    /// Emphatically **not** the lifted `run.rating`, which folds in every reviewer's
-    /// checklist overrides, and never a review: reviews are labels added after the fact
-    /// and never move a climb.
-    pub rating: Option<Rating>,
-    /// RFC 3339 of when the run finished.
-    pub finished_at: String,
-}
-
-impl CellRunRating {
-    /// This run as [`gate`](crate::coverage::gate) sees it, so the two never drift
-    /// apart in how they name the same two facts.
-    ///
-    /// A [model failure](Self::model_failure) reaches the gate as a broken run whose
-    /// build never loaded, whatever the gate's `unloadedCountsAsBroken` says: that flag
-    /// decides how far a completed run's validator rating is trusted, and a run that
-    /// never completed has no rating to trust. The model had its attempt at the rung and
-    /// produced nothing that works, which is exactly what a broken run is.
-    pub fn as_rung_run(&self) -> RungRun {
-        if self.model_failure {
-            return RungRun {
-                rating: Some(Rating::Broken),
-                loaded: false,
-            };
-        }
-        RungRun {
-            rating: self.rating,
-            loaded: self.loaded,
-        }
-    }
-}
-
 /// Whether a launch-pass claim marked at `held` may be taken now: it is free (`None`) or
 /// its [lease](LAUNCH_LEASE) has expired.
 ///
@@ -4128,8 +4069,10 @@ pub type CellCounts = HashMap<CellKey, u32>;
 /// ([`Db::counted_runs_by_cell`]).
 pub type CellRuns = HashMap<CellKey, Vec<CellRun>>;
 
-/// One counted run of a coverage cell, reduced to what a plan reads to take its
-/// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs).
+/// One counted run of a coverage cell — a completed run, or one that ended on the model's
+/// own failure — reduced to what a plan reads to take its
+/// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
+/// and what a ladder's rung gate reads off each of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CellRun {
     /// The run's id.
@@ -4141,25 +4084,75 @@ pub struct CellRun {
     /// be opened, so it is never offered for review), and has no review by the account
     /// the runs were read for. Always `false` when they were read for no account.
     pub unreviewed: bool,
+    /// Whether the run ended on one of the model's own failures — catastrophic, timed
+    /// out, limit exceeded or hung — rather than completing. Such a run
+    /// produced nothing to rate, and no rating can ever arrive for it, so the gate counts
+    /// it as [`Rating::Broken`] (see [`Self::as_rung_run`]).
+    pub model_failure: bool,
+    /// Whether the produced build loaded (the lifted `run.loaded`). A gate may count a
+    /// run that never loaded as broken outright — there was nothing to play.
+    pub loaded: bool,
+    /// Whether the run's case version was validator-rated when it was pushed (the
+    /// lifted `run.validator_rated`). Such a run with no [`Self::rating`] has not been
+    /// rated *yet* — the store did not hold its version when the rating was last
+    /// decided — rather than being unratable.
+    pub validator_rated: bool,
+    /// The validators' own functional rating for the run (the lifted
+    /// `run.validator_rating`), or `None` when the run carries none — a run pushed while
+    /// the backend did not hold its case version, or one whose stored token no longer
+    /// parses. `None` is not a bad rating: the gate counts it as unrated.
+    ///
+    /// Emphatically **not** the lifted `run.rating`, which folds in every reviewer's
+    /// checklist overrides, and never a review: reviews are labels added after the fact
+    /// and never move a climb.
+    pub rating: Option<Rating>,
+}
+
+impl CellRun {
+    /// This run as [`gate`](crate::coverage::gate) sees it, so the two never drift
+    /// apart in how they name the same two facts.
+    ///
+    /// A [model failure](Self::model_failure) reaches the gate as a broken run whose
+    /// build never loaded, whatever the gate's `unloadedCountsAsBroken` says: that flag
+    /// decides how far a completed run's validator rating is trusted, and a run that
+    /// never completed has no rating to trust. The model had its attempt at the rung and
+    /// produced nothing that works, which is exactly what a broken run is.
+    pub fn as_rung_run(&self) -> RungRun {
+        if self.model_failure {
+            return RungRun {
+                rating: Some(Rating::Broken),
+                loaded: false,
+            };
+        }
+        RungRun {
+            rating: self.rating,
+            loaded: self.loaded,
+        }
+    }
 }
 
 /// One row of [`Db::counted_runs_by_cell`]: a [`CellKey`]'s eight segments (the engine one
 /// and the two gg ones still nullable, as the columns are), then the run's id, finish
-/// time, state, and test type.
-type CellRunRow = (
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    String,
-    String,
-    String,
-    String,
-);
+/// time, state and test type, and the three lifted columns a rung's gate reads. The
+/// fields are named after the columns they are read from.
+#[derive(Debug, FromQueryResult)]
+struct CellRunRow {
+    test_case_slug: String,
+    test_case_version: String,
+    variant: String,
+    engine_slug: Option<String>,
+    harness_slug: String,
+    model_id: String,
+    gg_config_id: Option<String>,
+    gg_models: Option<String>,
+    id: String,
+    finished_at: String,
+    run_state: String,
+    test_type: String,
+    loaded: bool,
+    validator_rated: bool,
+    validator_rating: Option<String>,
+}
 
 /// A [`CellKey`] as one stored string: its eight segments joined with the unit
 /// separator (`U+001F`), which no segment can contain. What
@@ -4645,18 +4638,17 @@ pub type SlotKey = (String, CellKey);
 /// ended.
 type TerminalRow = (String, Option<String>, String);
 
-/// Everything a dispatch's jobs say about its rung slots, read in one pass over the jobs
-/// whose origin names the dispatch ([`Db::dispatch_evidence`]).
+/// Everything the jobs a dispatch launched say about its rung slots, read in one pass
+/// over the jobs whose origin names the dispatch ([`Db::dispatch_evidence`]): what its
+/// limit, its Stop, its early stop and its failing streak act on. A slot's runs are no
+/// part of it. They are its cell's, whoever launched them
+/// ([`Db::counted_runs_by_cell`]).
 #[derive(Debug, Clone, Default)]
 pub struct DispatchEvidence {
     /// The ids of each slot's jobs still in flight, in queue order.
     pub in_flight: HashMap<SlotKey, Vec<String>>,
     /// How many of each slot's jobs are still waiting (`queued` or `pending`).
     pub waiting: HashMap<SlotKey, u32>,
-    /// Each slot's counted runs, oldest first: the run of every finished job of the slot
-    /// that was not automatically retried and ended in a
-    /// [counted](test_cabinet_core::run_record::RunState::counts_as_model_result) state.
-    pub runs: HashMap<SlotKey, Vec<CellRunRating>>,
     /// Each slot's terminal jobs, newest first, for the failing streak.
     pub terminal: HashMap<SlotKey, Vec<TerminalJob>>,
 }
@@ -5172,8 +5164,9 @@ impl Db {
 
     /// Read everything a dispatch's own jobs say about its rung slots, in two queries:
     /// every job whose origin names the dispatch (`ladder:<ladder>/<dispatch>/<rung>`),
-    /// and the runs of the finished ones. Grouped by `(rung id, cell)`, where the cell is
-    /// read off the job's lifted columns exactly as the grouped counts read it.
+    /// and which of the terminal ones ended with a counted run. Grouped by
+    /// `(rung id, cell)`, where the cell is read off the job's lifted columns exactly as
+    /// the grouped counts read it.
     pub async fn dispatch_evidence(
         &self,
         ladder_id: &str,
@@ -5186,8 +5179,6 @@ impl Db {
             .all(&self.conn())
             .await?;
         let mut evidence = DispatchEvidence::default();
-        // (slot, record id, ended at) of the finished jobs whose run may count.
-        let mut finished: Vec<(SlotKey, String)> = Vec::new();
         let mut terminal_rows: Vec<(SlotKey, TerminalRow, i64)> = Vec::new();
         for job in jobs {
             let Some(JobOrigin::Ladder {
@@ -5220,19 +5211,10 @@ impl Db {
             let reaped = job.detail.as_deref() == Some(REAPED_DETAIL);
             if !reaped {
                 terminal_rows.push((
-                    slot.clone(),
-                    (
-                        job.state.clone(),
-                        job.record_id.clone(),
-                        job.updated_at.clone(),
-                    ),
+                    slot,
+                    (job.state, job.record_id, job.updated_at),
                     job.queue_seq,
                 ));
-            }
-            if job.retried_by.is_none()
-                && let Some(record) = job.record_id
-            {
-                finished.push((slot, record));
             }
         }
 
@@ -5251,49 +5233,6 @@ impl Db {
             .await?;
         for (slot, job) in slots.into_iter().zip(read) {
             evidence.terminal.entry(slot).or_default().push(job);
-        }
-
-        if finished.is_empty() {
-            return Ok(evidence);
-        }
-        let ids: Vec<&str> = finished.iter().map(|(_, id)| id.as_str()).collect();
-        let rows: Vec<(String, String, bool, bool, Option<String>, String)> = run::Entity::find()
-            .select_only()
-            .column(run::Column::Id)
-            .column(run::Column::RunState)
-            .column(run::Column::Loaded)
-            .column(run::Column::ValidatorRated)
-            .column(run::Column::ValidatorRating)
-            .column(run::Column::FinishedAt)
-            .filter(run::Column::Id.is_in(ids))
-            .filter(run::Column::RunState.is_in(counted_run_states()))
-            .order_by_asc(run::Column::FinishedAt)
-            .order_by_asc(run::Column::Id)
-            .into_tuple()
-            .all(&self.conn())
-            .await?;
-        let slot_of: HashMap<String, SlotKey> = finished
-            .into_iter()
-            .map(|(slot, record)| (record, slot))
-            .collect();
-        for (run_id, run_state, loaded, validator_rated, rating, finished_at) in rows {
-            let Some(slot) = slot_of.get(&run_id) else {
-                continue;
-            };
-            evidence
-                .runs
-                .entry(slot.clone())
-                .or_default()
-                .push(CellRunRating {
-                    model_failure: run_state != "completed",
-                    loaded,
-                    validator_rated,
-                    // A token that no longer parses reads as "no rating", which the gate
-                    // treats as unrated rather than as a bad result.
-                    rating: rating.as_deref().and_then(Rating::parse),
-                    finished_at,
-                    run_id,
-                });
         }
         Ok(evidence)
     }

@@ -181,14 +181,14 @@ stays out of the public snapshot.
   automatically until a gate over its runs' validator ratings stops it.
 
 The validation scripts are assumed correct, so reviews never gate, meter, or
-trigger the launching of runs. A plan counts runs globally, so a run someone else
-produced satisfies its target. A ladder dispatch counts only the runs it
-launched.
+trigger the launching of runs. A plan and a ladder dispatch both count runs
+globally, so a run someone else produced satisfies a cell's or a rung's target
+and is never launched again.
 
 Launching is limited and serialized. A plan or a ladder keeps at most its
 runs-in-flight limit of its own jobs in flight, so it shares the global queue
 fairly. There is no background daemon: the backend runs a launch pass of a
-filling plan or a running dispatch whenever one of its runs finishes. Each pass
+filling plan or a running dispatch whenever a run of one of its cells finishes. Each pass
 claims its row first, so two concurrent passes cannot both enqueue for one
 shortfall.
 

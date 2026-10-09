@@ -288,7 +288,7 @@ pub fn tally(runs: &[RungRun], target: u32, in_flight: u32, gate: &Gate) -> Gate
 
 /// Evaluate the gate for one climber on one rung.
 ///
-/// `runs` is every **counted** run the climber has on the rung (in its dispatch),
+/// `runs` is every **counted** run the climber's slot holds on the rung,
 /// `target` how many the rung is meant to end with, `in_flight` how many of the slot's
 /// jobs are still queued through running, and `gate` the ladder's rule.
 ///

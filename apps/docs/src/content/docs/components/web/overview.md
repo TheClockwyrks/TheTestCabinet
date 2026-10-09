@@ -272,8 +272,9 @@ order, and the runs-in-flight override, and offers only validator-rated case
 versions as rungs. It flags a rung whose pinned version is no longer the newest
 ingested one, and says that an edit applies to the next Run.
 
-A rung's runs are narrowed by the dispatch's own jobs of that rung and climber. A
-ladder's board holds the console stream's [`runs`
+A rung's runs are the [slot's runs](/components/backend/ladders/#a-rung-slots-runs)
+the board reports for that rung and climber, whoever launched them, and the jobs
+the dispatch has in flight for it. A ladder's board holds the console stream's [`runs`
 topic](/components/backend/api/#topics) open while it is on screen, which keeps
 the tallies and statuses moving as runs finish under it.
 

@@ -1487,18 +1487,7 @@ pub(super) async fn plans_fed_by(
             return Vec::new();
         }
     };
-    let job_cell: CellKey = (
-        job.test_case_slug.clone(),
-        job.test_case_version.clone(),
-        job.variant.clone(),
-        job.engine_slug
-            .clone()
-            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
-        job.harness_slug.clone(),
-        job.model_id.clone(),
-        job.gg_config_id.clone().unwrap_or_default(),
-        job.gg_models.clone().unwrap_or_default(),
-    );
+    let job_cell = job_cell(job);
     let mut fed = Vec::new();
     for (plan_id, owner) in plans {
         match plan_has_cell(state, &owner, &plan_id, &job_cell).await {
@@ -2502,7 +2491,8 @@ struct MatrixInput<'a> {
 /// The run/job counts and latest-version resolution a coverage computation needs,
 /// loaded once so a plan (or every plan, for the summary) can be tallied without further
 /// DB round-trips. A ladder loads only the queue-wide parts ([`Self::load_for_ladder`]):
-/// its counts are its dispatch's own.
+/// its board reads the same global counts by each climber's pinned cells, through
+/// [`cell_runs`] and [`cell_in_flight`].
 pub(super) struct MatrixCtx {
     /// Every counted run per cell, globally, in the order the runs landed. A plan's
     /// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
@@ -2548,9 +2538,9 @@ impl MatrixCtx {
         Ok(ctx)
     }
 
-    /// Load only what does not depend on whose runs count: the harnesses' capacity, the
-    /// queue's `pending` jobs, and the latest version per slug. What a ladder's board
-    /// reads, since a dispatch counts only its own runs.
+    /// Load only the queue-wide parts: the harnesses' capacity, the queue's `pending`
+    /// jobs, and the latest version per slug. What a ladder's launch pass reads beside
+    /// the counts its board loads by each climber's pinned cells.
     pub(super) async fn load_for_ladder(
         state: &AppState,
         mut slugs: Vec<String>,
@@ -2755,11 +2745,10 @@ impl MatrixCtx {
     ) -> CellDemand {
         let key = cell_key(case, member);
         let counted = self.plan_runs(target, case, member).len() as u32;
-        let in_flight = self.in_flight.get(&key).copied().unwrap_or(0);
         CellDemand {
             target,
             counted,
-            in_flight: in_flight.min(target.saturating_sub(counted)),
+            in_flight: cell_in_flight(&self.in_flight, &key, target, counted),
             harness: harness_lane(member.combo.harness),
         }
     }
@@ -2773,12 +2762,7 @@ impl MatrixCtx {
         case: &ReviewPlanCase,
         member: &PlanMember,
     ) -> &[CellRun] {
-        let runs = self
-            .runs
-            .get(&cell_key(case, member))
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        &runs[..runs.len().min(target as usize)]
+        cell_runs(&self.runs, &cell_key(case, member), target)
     }
 
     /// How much room each harness has to start another run, in the lane order
@@ -2838,6 +2822,51 @@ pub(super) fn cell_key_of(case: &ReviewPlanCase, identity: MemberCellIdentity) -
         model,
         config_id,
         models,
+    )
+}
+
+/// The runs a target of `target` holds for one cell: the first `target` counted runs of
+/// the cell to land, out of the global lists [`crate::db::Db::counted_runs_by_cell`]
+/// reads. The one rule a plan's cell and a ladder's rung slot both take their runs by.
+pub(super) fn cell_runs<'a>(
+    runs: &'a crate::db::CellRuns,
+    cell: &CellKey,
+    target: u32,
+) -> &'a [CellRun] {
+    let runs = runs.get(cell).map(Vec::as_slice).unwrap_or_default();
+    &runs[..runs.len().min(target as usize)]
+}
+
+/// The jobs in flight a cell holding `counted` of its `target` runs reads: every job of
+/// the cell in flight, whoever launched it, up to what the cell still needs. A run that
+/// would land beyond the target is not the cell's, so a filled cell reads none.
+pub(super) fn cell_in_flight(
+    in_flight: &crate::db::CellCounts,
+    cell: &CellKey,
+    target: u32,
+    counted: u32,
+) -> u32 {
+    in_flight
+        .get(cell)
+        .copied()
+        .unwrap_or(0)
+        .min(target.saturating_sub(counted))
+}
+
+/// The cell a job belongs to, read off its lifted columns through the same collapses the
+/// grouped counts use.
+pub(super) fn job_cell(job: &test_cabinet_entities::job::Model) -> CellKey {
+    (
+        job.test_case_slug.clone(),
+        job.test_case_version.clone(),
+        job.variant.clone(),
+        job.engine_slug
+            .clone()
+            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
+        job.harness_slug.clone(),
+        job.model_id.clone(),
+        job.gg_config_id.clone().unwrap_or_default(),
+        job.gg_models.clone().unwrap_or_default(),
     )
 }
 

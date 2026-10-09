@@ -168,8 +168,9 @@ carry, because the limit counts what that plan or ladder launched.
 Every figure a plan reports is computed over the plan's runs: the matrix and its
 roll-ups, the summary, the [review queue](#the-scoped-review-queue), and the run
 breakdowns on the console's dashboard, which read
-[the plan's runs](#the-plans-runs). A ladder dispatch counts only the runs it
-launched, so a ladder has no runs beyond its own to leave out.
+[the plan's runs](#the-plans-runs). A ladder dispatch takes each
+[rung slot's runs](/components/backend/ladders/#a-rung-slots-runs) by the same
+rule, under the rung's target.
 
 ### A blocked cell
 
@@ -182,8 +183,9 @@ the streak.
 Retrying a blocked cell records the retry. Only jobs that ended after it count
 toward the streak, so the cell is launched again, and three more failures block
 it again. On a plan the streak is read over every job of the cell, matching the
-global counts. On a ladder it is read over the dispatch's own jobs of that rung
-and climber (see [a blocked climber](/components/backend/ladders/#a-blocked-climber)).
+global counts. On a ladder it is read over the jobs the dispatch launched for
+that rung and climber (see
+[a blocked climber](/components/backend/ladders/#a-blocked-climber)).
 
 ## The matrix
 
@@ -362,11 +364,12 @@ owner starts filling it, edits it while it fills, or retries a blocked cell, and
 when a job reaches a terminal state:
 
 - A job that **succeeded** or **failed** feeds every filling plan whose cells
-  include the job's cell. A failed job that enqueued an automatic retry feeds
+  include the job's cell, and every running ladder dispatch one of whose rung
+  slots is that cell. A failed job that enqueued an automatic retry feeds
   nothing, since the retry takes its place in flight.
-- A **canceled** job feeds the same plans, and the running dispatch its origin
-  names. It was in flight, so it held its cell for every plan filling that cell
-  and held a place under its plan's or dispatch's limit. Once it is gone, the
+- A **canceled** job feeds the same plans and dispatches. It was in flight, so
+  it held its cell for every plan and dispatch counting that cell and held a
+  place under its plan's or dispatch's limit. Once it is gone, the
   cell is missing again and nothing else would notice, because a canceled job
   never finishes. This covers a cancel by hand, a plan's halt or a ladder's stop
   reaching another plan's cells, and a gate's early stop. A plan that was just
@@ -474,8 +477,9 @@ retry is withheld when its origin no longer launches anything: a fill that has
 ended, or a dispatch that is no longer the ladder's running one. A run launched
 by hand, from the run form or a plan's Tests tab, retries as always.
 
-Coverage counting on a plan ignores both columns. A ladder dispatch reads its
-own origin, because a dispatch counts only the runs it launched.
+Coverage counting ignores both columns, on a plan and on a ladder alike. A
+ladder dispatch reads its own origin only for its limit, its Stop and its
+failing streak.
 
 ## Endpoints
 

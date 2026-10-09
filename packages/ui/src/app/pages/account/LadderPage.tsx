@@ -47,9 +47,11 @@ import ladderStyles from "./Ladder.module.scss";
 // A ladder is a configuration that does nothing by itself. Run ladder starts a
 // **dispatch** of it as it stands at that moment: every climber starts on rung 1, the
 // validators rate every completed run, the gate reads those ratings, and the backend
-// launches each climber's next rung itself as runs finish. The dispatch owns its runs
-// and its standing until the next Run replaces it; the runs themselves stay in the run
-// list like any other. A climber failing a rung is the ladder's result for that model,
+// launches each climber's next rung itself as runs finish. A dispatch counts the runs
+// a rung already has, whoever launched them, and launches only what is missing, so a
+// Run over runs that already exist can finish having launched nothing. The dispatch
+// holds its standing until the next Run replaces it; the runs themselves stay in the
+// run list like any other. A climber failing a rung is the ladder's result for that model,
 // so nothing on this board changes a verdict, and the review queue is there only for
 // labelling runs after the fact.
 
@@ -216,6 +218,20 @@ export function describeLadderStop(result: HaltResult): string {
   }
   const jobs = `${result.canceled} run${result.canceled === 1 ? "" : "s"}`;
   return `Stopped. Canceled ${jobs} ${scope}.`;
+}
+
+/**
+ * What a Run started. A dispatch counts the runs its rungs already have and launches
+ * only what is missing, so a Run can finish at once having launched nothing, and "it
+ * launched nothing" must not read as "it did nothing".
+ */
+function describeLadderRun(dispatch: LadderProgress["dispatch"]): string {
+  return dispatch?.status === "finished"
+    ? "Finished: the runs that already exist decided every rung, so nothing was " +
+        "launched. Raise the runs per rung to launch more."
+    : "Running: each climber launches the runs its rung is missing, up to the " +
+        "runs-in-flight limit, and climbs on its own as runs finish. Runs that " +
+        "already exist count.";
 }
 
 /** The fix each kind of block asks for, as the status note groups them. */
@@ -589,9 +605,9 @@ function ConfiguredRungs({ rungs }: { rungs: LadderRung[] }) {
 // the runs left to label. Console-only; gated on a signed-in account, because a ladder
 // belongs to one.
 //
-// Opening this page is a read and only a read. A dispatch launches its own runs, in
-// the backend: when Run is pressed, when a climber is retried, and whenever one of its
-// runs finishes. None of them is a review: the validators rate every completed run,
+// Opening this page is a read and only a read. A dispatch launches the runs its rungs
+// are missing, in the backend: when Run is pressed, when a climber is retried, and
+// whenever a run of one of its rungs finishes. None of them is a review: the validators rate every completed run,
 // and that rating is all the gate reads.
 export function LadderPage() {
   const { ladderId = "" } = useParams();
@@ -704,7 +720,8 @@ export function LadderPage() {
         message:
           "Start a new dispatch of this ladder as it is configured now? Every climber " +
           "starts again at rung 1, and this page shows the new dispatch instead of the " +
-          "last one. The last dispatch's runs stay in the run list.",
+          "last one. Runs that already exist count toward each rung, so only the " +
+          "runs a rung is missing are launched.",
         confirmLabel: "Run ladder",
       }))
     ) {
@@ -715,10 +732,7 @@ export function LadderPage() {
     try {
       const board = await backend.runLadder(ladderId, token);
       setProgress(board);
-      setNote(
-        "Running: rung 1 is launching for every climber, up to the runs-in-flight limit. " +
-          "Each climber climbs on its own as its runs finish.",
-      );
+      setNote(describeLadderRun(board.dispatch));
       const q = await backend.getLadderQueue?.(ladderId, token);
       if (q) setQueue(q);
     } catch (e) {
