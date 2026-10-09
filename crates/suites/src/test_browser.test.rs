@@ -101,11 +101,11 @@ fn the_walk_stops_at_the_repository_root() {
     let root = tempfile::tempdir().expect("a temporary directory");
     tree(
         root.path(),
-        &[".git", "node_modules", "tcab/crates/core"],
-        &["package.json", "tcab/.git"],
+        &[".git", "node_modules", "platform/crates/core"],
+        &["package.json", "platform/.git"],
     );
     assert_eq!(
-        workspace_node_modules(&root.path().join("tcab/crates/core")),
+        workspace_node_modules(&root.path().join("platform/crates/core")),
         None
     );
 }

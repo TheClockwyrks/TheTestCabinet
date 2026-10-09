@@ -131,7 +131,7 @@ CRATES: dict[str, tuple[str, str]] = {
     "contracts": ("contracts", "test-cabinet-contracts"),
     "engines": ("engines", "test-cabinet-engines"),
     "gg": ("gg", "test-cabinet-gg"),
-    "tcab": ("cli", "test-cabinet-cli"),
+    "platform": ("cli", "test-cabinet-cli"),
     "web": ("console-app", "test-cabinet-console-app"),
     "the-spec-cabinet": ("spec-cabinet", "test-cabinet-spec-cabinet"),
 }

@@ -94,9 +94,9 @@ rustdocflags = ["--document-private-items"]
 #   [patch."https://github.com/TheClockwyrks/gg"]
 #   test-cabinet-gg = { path = "gg/crates/gg" }
 
-# tcab is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tcab"]
-#   test-cabinet-cli = { path = "tcab/crates/cli" }
+# platform is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/platform"]
+#   test-cabinet-cli = { path = "platform/crates/cli" }
 
 # web is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/web"]

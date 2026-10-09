@@ -20,7 +20,7 @@ from conftest import commit, git
 EDGES = render.edge_table()
 KINDS = sorted(EDGES.KINDS)
 # One repository of each kind, the one each test renders.
-ONE_OF_EACH = {"library": "contracts", "application": "tcab", "site": "gg.rocks", "content": "test-suites"}
+ONE_OF_EACH = {"library": "contracts", "application": "platform", "site": "gg.rocks", "content": "test-suites"}
 
 
 def test_one_repository_of_each_kind_is_rendered_here() -> None:
@@ -42,7 +42,7 @@ def test_every_repository_carrying_a_crate_names_one() -> None:
     for directory, crate in render.CRATES.values():
         assert re.fullmatch(r"[a-z0-9-]+", directory)
         assert crate.startswith("test-cabinet-")
-    assert render.crate_of("tcab") == ("cli", "test-cabinet-cli")
+    assert render.crate_of("platform") == ("cli", "test-cabinet-cli")
 
 
 def test_the_rust_tracks_are_images_the_superrepo_builds() -> None:
@@ -60,7 +60,7 @@ def test_an_image_is_pinned_at_the_commit_the_superrepo_pins() -> None:
 
 
 def test_a_repository_without_a_tag_pins_master() -> None:
-    assert render.workspace_dependencies("tcab").splitlines() == [
+    assert render.workspace_dependencies("platform").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", branch = "master" }',
         'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", branch = "master" }',
     ]

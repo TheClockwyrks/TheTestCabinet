@@ -27,7 +27,7 @@ and inside the superrepo the patch table and the package links are what point
 it at a sibling checkout.
 
 An edge may be narrowed to some of the target's packages, such as `web`
-taking `@clockwyrks/backend-api` from `tcab` and nothing else, and may admit
+taking `@clockwyrks/backend-api` from `platform` and nothing else, and may admit
 the target's npm packages without its crates. The data edges below are no
 build dependency at all: they are recorded so the `dependency-graph` gate can
 say which jobs need a second checkout.
@@ -72,7 +72,7 @@ REPOSITORIES: Mapping[str, str] = {
     "contracts": "library",
     "engines": "library",
     "gg": "application",
-    "tcab": "application",
+    "platform": "application",
     "web": "application",
     "the-spec-cabinet": "application",
     "gg.rocks": "site",
@@ -110,8 +110,8 @@ PACKAGES: Mapping[str, str] = {
     "@clockwyrks/voxel-runtime": "engines",
     "@clockwyrks/particle-runtime": "engines",
     "@clockwyrks/case-harness": "engines",
-    "@clockwyrks/browser-driver": "tcab",
-    "@clockwyrks/backend-api": "tcab",
+    "@clockwyrks/browser-driver": "platform",
+    "@clockwyrks/backend-api": "platform",
     "@clockwyrks/ui": "web",
     "@clockwyrks/run-stats": "web",
     "@clockwyrks/web": "web",
@@ -144,14 +144,14 @@ BUILD_EDGES: Mapping[str, tuple[Edge, ...]] = {
     "contracts": (),
     "engines": (Edge("contracts", True, _only("@clockwyrks/asset-contract"), "the catalog types; never run-record"),),
     "gg": (Edge("contracts", True, None, "the gg contract types"),),
-    "tcab": (
+    "platform": (
         Edge("contracts", True, None, "the contract types and the suite runtime"),
         Edge("engines", True, None, "the engine catalog and the seeded packages"),
     ),
     "web": (
         Edge("contracts", True, None, "run-record"),
         Edge("engines", True, None, "the voxel and particle runtimes"),
-        Edge("tcab", False, _only("@clockwyrks/backend-api"), "the console's wire types, as a published package"),
+        Edge("platform", False, _only("@clockwyrks/backend-api"), "the console's wire types, as a published package"),
     ),
     "the-spec-cabinet": (
         Edge("contracts", True, None, "the contract types and the suite runtime"),
@@ -172,9 +172,9 @@ class DataEdge(NamedTuple):
 
 
 DATA_EDGES: tuple[DataEdge, ...] = (
-    DataEdge("tcab", "test-suites", "ingest, containers/performance's lattice training data, integration tests"),
-    DataEdge("tcab", "gg", "the pinned released gg binary and toolchains image (deployments/pins.toml)"),
-    DataEdge("test-suites", "tcab", "audio-packs reads containers/sample-packs/; the lattice replay wasm"),
+    DataEdge("platform", "test-suites", "ingest, containers/performance's lattice training data, integration tests"),
+    DataEdge("platform", "gg", "the pinned released gg binary and toolchains image (deployments/pins.toml)"),
+    DataEdge("test-suites", "platform", "audio-packs reads containers/sample-packs/; the lattice replay wasm"),
     DataEdge("web", "test-suites", "the vendored foray and lattice replay assets"),
     DataEdge("the-spec-cabinet", "test-suites", "the authoring checkout"),
 )
