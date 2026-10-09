@@ -5,7 +5,7 @@
 //! these types. The dependency is deliberately one-way: the analyzer needs the contract,
 //! and core must never gain a parser — `oxc` and `syn` would otherwise be linked into
 //! every binary that links core, including those that never analyze a run. See
-//! [`post_run`](crate::post_run) for the seam the analyzer is injected through.
+//! `test_cabinet_core::post_run` for the seam the analyzer is injected through.
 //!
 //! # Two tiers, on purpose
 //!
@@ -58,9 +58,9 @@ pub use catalog::CODE_METRICS;
 /// `implementation/` is a verbatim copy of what the model produced, so a host-written
 /// file there would read as code the model wrote — and, uniquely for this artifact, would
 /// then be *measured* by the next analysis of the same tree. The root is also what the
-/// [run-tree artifact convention](crate::post_run) names: `<name>.json.gz` here, mirrored
-/// into the backend store as opaque bytes under [`CODE_ANALYSIS_ARTIFACT`] and served
-/// back content-negotiated.
+/// run-tree artifact convention (`test_cabinet_core::post_run`) names: `<name>.json.gz`
+/// here, mirrored into the backend store as opaque bytes under [`CODE_ANALYSIS_ARTIFACT`]
+/// and served back content-negotiated.
 pub const CODE_ANALYSIS_TREE_ARTIFACT: &str = "code-analysis.json.gz";
 
 /// The artifact **name** the code-analysis document is stored and served under.
@@ -103,6 +103,8 @@ pub enum CodeAuthoredBasis {
     /// The run record carried a [seed commit](crate::run_record::RunRecord::seed_commit)
     /// and that commit is present in the collected tree. **Exact**: the boundary between
     /// the scaffolding and the model's work is the one the seeder actually created.
+    // The text is emitted into the contract; the link names core's item.
+    #[allow(rustdoc::broken_intra_doc_links)]
     SeedCommit,
     /// No recorded seed commit, but the tree has exactly one root commit and its message
     /// is the seeding message. **Inferred**, and kept only for trees that predate the

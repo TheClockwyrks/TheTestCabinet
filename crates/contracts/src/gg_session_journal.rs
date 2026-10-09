@@ -5,10 +5,10 @@
 //! The [record format](crate::gg_session_record) splits capture from assembly. gg appends one
 //! JSON object per line to [`GG_SESSION_JOURNAL_PATH`] as the run proceeds and **never holds a
 //! message body in memory**; the host, after collecting the run tree,
-//! [streams those lines into the served record](crate::gg_session_assembly). That split is
-//! what satisfies gg's budget constraint — gg assembles nothing — and it is why the journal is
-//! a distinct vocabulary rather than a partially written record: a record is a document with
-//! four arrays in it, and a document cannot be appended to.
+//! streams those lines into the served record (`test_cabinet_core::gg_session_assembly`).
+//! That split is what satisfies gg's budget constraint — gg assembles nothing — and it is
+//! why the journal is a distinct vocabulary rather than a partially written record: a
+//! record is a document with four arrays in it, and a document cannot be appended to.
 //!
 //! # Why the line carries its own index
 //!

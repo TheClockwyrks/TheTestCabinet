@@ -11,7 +11,7 @@ the environment, NDJSON telemetry on stdout. Nothing in the run path needs
 user message, so an issue file from `tasks/` works as the whole brief.
 
 Authoritative references: the invocation contract is `GgInvocation` in
-`crates/core/src/gg.rs`; the configuration surface is
+`crates/contracts/src/gg.rs`; the configuration surface is
 `apps/docs/src/content/docs/gg/configurations.md`; the launch refusal rules are
 the header of `crates/gg/src/validate.rs`. This skill is the shortest path
 through them, not a replacement.
@@ -181,7 +181,7 @@ copy with one block moved.
 
 Both templates leave `skills` and `memories` out (they are on in the console's
 default profile). Add them from the authoring catalog in
-`crates/core/src/gg.rs` (`build_authoring_catalog`) if a study wants them.
+`crates/contracts/src/gg.rs` (`build_authoring_catalog`) if a study wants them.
 
 ### Ceilings worth keeping
 

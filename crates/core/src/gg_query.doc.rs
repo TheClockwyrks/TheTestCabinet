@@ -6,7 +6,8 @@
 //! field name is user-visible — it appears in autocomplete and, more importantly,
 //! **inside saved queries and dashboards**. So the two standing obligations on every
 //! feature that wants to be queryable are: emit scalars, never arrays
-//! ([rule 4](crate::gg_query#the-seven-semantic-rules)), and keep field names stable.
+//! ([rule 4](test_cabinet_contracts::gg_query#the-seven-semantic-rules)), and keep field names
+//! stable.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,12 +32,11 @@ pub use crate::gg::GG_CAPABILITY_CATALOG;
 
 /// The fields that are epoch-millisecond timestamps rather than plain numbers.
 ///
-/// [Rule 6](crate::gg_query#the-seven-semantic-rules) makes a date *be* a number, which is what
-/// keeps ranges, sorts and histograms out of the evaluator entirely — but it also
-/// means date-ness cannot be observed from the values. This list is how the
-/// [field catalog](super::field_catalog) still labels them
-/// [`Date`](super::GgFieldKind::Date), so the editor offers a date picker and a
-/// histogram interval instead of a raw number box.
+/// [Rule 6](test_cabinet_contracts::gg_query#the-seven-semantic-rules) makes a date *be* a
+/// number, which is what keeps ranges, sorts and histograms out of the evaluator entirely — but
+/// it also means date-ness cannot be observed from the values. This list is how the [field
+/// catalog](super::field_catalog) still labels them [`Date`](super::GgFieldKind::Date), so the
+/// editor offers a date picker and a histogram interval instead of a raw number box.
 pub const GG_DATE_FIELDS: &[&str] = &["started", "finished"];
 
 /// The bucket a run that breached no [execution ceiling](crate::gg::GgLimitKind) falls
@@ -118,7 +118,7 @@ pub struct GgDocLifecycle {
 }
 
 /// Flatten a JSON value into `out` under `prefix`, following
-/// [rule 4](crate::gg_query#the-seven-semantic-rules).
+/// [rule 4](test_cabinet_contracts::gg_query#the-seven-semantic-rules).
 ///
 /// - An **object** contributes one dotted field per key, recursively.
 /// - An **array** contributes only `<prefix>.count`. Positional keys would be
@@ -128,7 +128,7 @@ pub struct GgDocLifecycle {
 /// - A **null** contributes nothing — an absent value is a missing key, never a
 ///   stored null.
 /// - A **scalar** is stored, with a non-finite number dropped
-///   ([rule 7](crate::gg_query#the-seven-semantic-rules)).
+///   ([rule 7](test_cabinet_contracts::gg_query#the-seven-semantic-rules)).
 ///
 /// Public because the `code.*` namespace flattens its own typed block through exactly
 /// this function: one flattening rule for the whole document, not one per namespace.
@@ -230,8 +230,8 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
     // different runtimes — and grouping by `engine` is how that shows.
     //
     // Written unconditionally, and therefore **total** over the corpus in the sense
-    // [rule 1](crate::gg_query#the-seven-semantic-rules) cares about: an engineless
-    // run reports the honest `none` rather than an absence, so `count() by engine`
+    // [rule 1](test_cabinet_contracts::gg_query#the-seven-semantic-rules) cares about: an
+    // engineless run reports the honest `none` rather than an absence, so `count() by engine`
     // accounts for every run and `engine != none` means what it reads as.
     doc.insert("engine", subject.engine_slug.clone());
     if let Some(version) = &subject.harness_version {
@@ -404,7 +404,7 @@ fn insert_summary(doc: &mut GgRunDoc, summary: &GgSessionSummary) {
 }
 
 /// Write the `metric.*` namespace, honouring
-/// [rule 3](crate::gg_query#the-seven-semantic-rules): **absent, never zero**.
+/// [rule 3](test_cabinet_contracts::gg_query#the-seven-semantic-rules): **absent, never zero**.
 ///
 /// A record built for a failed run carries default metrics — zero seconds, no tokens,
 /// no cost. Flattened naively, a `timed_out` run would report a run time of zero,
@@ -468,7 +468,7 @@ fn insert_metrics(doc: &mut GgRunDoc, record: &RunRecord) {
 /// because anybody enumerated them.
 ///
 /// The exception is `languages`, and it is the exception
-/// [rule 4](crate::gg_query#the-seven-semantic-rules) predicts: it is a `Vec`, so
+/// [rule 4](test_cabinet_contracts::gg_query#the-seven-semantic-rules) predicts: it is a `Vec`, so
 /// flattening contributes only the useless `code.languages.count`. The question people
 /// actually ask of it — "does this model write TypeScript or Rust, and does it mix
 /// them?" — needs a **scalar** to group by, so the builder derives one:
@@ -561,8 +561,8 @@ pub fn redacted_for_public(doc: &GgRunDoc) -> GgRunDoc {
 /// Parse an RFC 3339 timestamp to epoch milliseconds, or `None` when it is not a
 /// timestamp at all. A record whose timestamps are unparseable simply carries no
 /// `started`/`finished` — which sorts it last in
-/// [document order](crate::gg_query#the-seven-determinism-rules) rather than pretending it
-/// happened at the epoch.
+/// [document order](test_cabinet_contracts::gg_query#the-seven-determinism-rules) rather than
+/// pretending it happened at the epoch.
 fn epoch_millis(rfc3339: &str) -> Option<i64> {
     let parsed = OffsetDateTime::parse(rfc3339, &Rfc3339).ok()?;
     i64::try_from(parsed.unix_timestamp_nanos() / 1_000_000).ok()

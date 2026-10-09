@@ -13,7 +13,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::validator::VALIDATION_BASELINE_DIR;
+use crate::layout::VALIDATION_BASELINE_DIR;
 
 /// The checkout-relative directory the cold-storage submodule is checked out at.
 pub const COLD_STORAGE_DIR: &str = "cold-storage";

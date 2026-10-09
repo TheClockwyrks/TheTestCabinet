@@ -32,13 +32,14 @@ use crate::validation::{
     VoxelGenResult, VoxelPartResult,
 };
 
-/// Candidate output directories a static build may produce.
-///
-/// Public because the [code analyzer](crate::code_analysis) removes exactly these names
-/// from the tree it measures, and the two must agree: a directory this validator will
-/// serve a build out of is, by definition, build output rather than code the model wrote.
-/// One list, read from both sides, so adding a fourth cannot silently start counting it.
-pub const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
+// The build-output names, the validation media directories and the image-store
+// naming are run-tree layout every reader of a run agrees on, so they live in
+// `test_cabinet_contracts::layout` and are re-exported here at their old names.
+pub(crate) use test_cabinet_contracts::layout::VALIDATION_MEDIA_DIR;
+pub use test_cabinet_contracts::layout::{
+    BUILD_OUTPUTS, VALIDATION_BASELINE_DIR, VALIDATION_IMAGE_PREFIX, VALIDATION_SCRIPT_DIR,
+    is_validation_image_name,
+};
 
 /// A validator that builds the implementation and load-checks it in a browser.
 #[derive(Debug, Clone)]
@@ -893,35 +894,6 @@ fn capture_baseline_suites(
     )
 }
 
-/// The run-root-relative directory synthesized *actual* validation media is
-/// collected under, so it travels with the published implementation and is served
-/// by [`crate::playable::serve_validation_file`].
-pub(crate) const VALIDATION_MEDIA_DIR: &str = ".vendor/validation";
-
-/// The directory a case version's **baseline** validation media lives under, one
-/// sub-directory per engine and variant: `validation-baseline/<engine>/<variant>/`.
-/// Synthesized once at capture-baselines time from the reference implementation and
-/// committed to the cold-storage submodule beneath the version's mirrored path (see
-/// [`crate::ColdStorage::validation_baseline_dir`]). Ingest copies it into the stored
-/// version under this same name, and the backend serves it case-scoped from there —
-/// the invariant counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
-///
-/// The engine comes first because it is what makes two captures of the same variant
-/// different media: a variant has one reference implementation PER ENGINE, and the
-/// two draw the same game through different runtimes, so their recordings are not
-/// interchangeable. A reviewer comparing a `simple-2d` run against an engineless
-/// build's frames would be shown a difference between two runtimes and read it as a
-/// difference in the build.
-pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
-
-/// The version-folder-relative directory a case's reporter-side automated-validation
-/// debug scripts live under (`validation/<item>.mjs`, plus any shared modules those
-/// scripts import — e.g. `validation/_helpers.mjs`). Reporter-side and **never**
-/// seeded into the model's run container; the whole directory is materialized into a
-/// backend-driven run's definition store (see [`crate::materialize_version`]) so a
-/// script's sibling imports resolve when the validator runs it.
-pub const VALIDATION_SCRIPT_DIR: &str = "validation";
-
 /// The driver's `--outputs` kind tag for a media kind.
 fn media_kind_tag(kind: MediaKind) -> &'static str {
     match kind {
@@ -992,51 +964,6 @@ pub fn validation_published_extension(kind: MediaKind) -> &'static str {
 pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
     let ext = validation_output_extension(kind);
     format!("{verdict_id}__{output_id}.{ext}")
-}
-
-/// The prefix every file of a recording's **shared image store** carries:
-/// `img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer, where
-/// `<id>` is derived from the bytes themselves. Only the first is written today —
-/// see [`is_validation_image_name`].
-///
-/// A draw-command recording's images are the bulk of its weight — PNG payloads that
-/// gzip cannot compress — and the same sprite is drawn by dozens of a run's
-/// recordings. So the harness writes each *unique* image once as a flat file beside
-/// the recordings and the entry inside the document names that file instead of
-/// carrying base64 of it. The producer is `@clockwyrks/case-harness`'s
-/// `replay/store.ts`, which mirrors this constant as `IMAGE_STORE_PREFIX`; the two
-/// spellings must agree, and there is no negotiation between them — a name that does
-/// not match here simply does not travel.
-///
-/// A store file deliberately shares the flat namespace of
-/// [`validation_media_name`]'s `<verdict>__<output>.<ext>`, and can never collide
-/// with one: a declared output's name always carries `__`, and a store file's never
-/// does. That is what lets it route through the one-segment `/validation/{file}`
-/// endpoints, publish through the media paths, and resolve in every console through
-/// the very resolver the recording it belongs to came from — with no new route, key
-/// shape, or lookup anywhere.
-pub const VALIDATION_IMAGE_PREFIX: &str = "img.";
-
-/// Whether `file` names a file of a recording's shared image store rather than a
-/// declared output.
-///
-/// Both publish paths — the driver's mirror into the backend store and the snapshot
-/// builder's upload — are driven off the run record's *declared* outputs. A store
-/// file is on no record: it backs no verdict and is named by its own bytes, so it
-/// has to be recognized off the directory instead, and this is the one place that
-/// judgement is written down.
-///
-/// The extension is part of the check and not decoration. The namespace admits
-/// exactly two shapes of bytes — a PNG bitmap and a headerless RGBA buffer — so a
-/// name carrying neither extension is not something this side of the contract knows
-/// how to serve a content type for, and it is left where it is rather than published
-/// as an unlabelled blob. Today only the first is ever written: the harness leaves a
-/// pixel buffer inline, where the recording's own gzip compresses raw RGBA far
-/// better than a flat file could be served. `.bin` is recognized here because the
-/// recording format admits a stored buffer and a player resolves one, so the day
-/// that becomes worth writing it travels without this side changing.
-pub fn is_validation_image_name(file: &str) -> bool {
-    file.starts_with(VALIDATION_IMAGE_PREFIX) && (file.ends_with(".png") || file.ends_with(".bin"))
 }
 
 /// Move each declared output's produced file from `tmp` to its stable flat name

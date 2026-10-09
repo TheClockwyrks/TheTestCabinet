@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+	"crates/contracts",
 	"crates/core",
 	"crates/code-analysis",
 	"crates/cli",
@@ -324,7 +325,7 @@ schemars = "1"
 # only the keys that can change the emitted TypeScript (`rename`, `rename_all`,
 # `tag`, `content`, `untagged`, `skip`, `flatten`, `default`,
 # `skip_serializing_if`, ...); anything else it ignores, and then says so. Two
-# attribute shapes in `crates/core/src/gg.rs` trip it: field-level
+# attribute shapes in `crates/contracts/src/gg.rs` trip it: field-level
 # `deserialize_with` (the `count::option_u64` leniency on `GgLoopDetection` and
 # `GgRunLimits`) and container-level `deny_unknown_fields` on an *enum*
 # (`GgHookAction`) — ts-rs has an arm for the latter on structs but not on enums.

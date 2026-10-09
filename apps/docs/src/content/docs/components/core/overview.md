@@ -39,6 +39,28 @@ contracts the rest of the system is built around.
 - **[Results](/components/core/results/)** — getting a finished run onto the
   gallery through review and publish.
 
+## The contracts crate
+
+The data contracts the core defines live in their own crate, `crates/contracts`
+(`test-cabinet-contracts`), beside the core in `crates/core`. A shape belongs there
+when more than one party reads or writes it: gg's configuration, telemetry and
+session record, the TCQ query shapes, the metrics, toolchain and code-analysis
+blocks of a run record, the engine identity a run names, the ingest feed, and the
+names of the files and directories a run tree is made of.
+
+The contracts crate holds data and the pure functions over it. Anything that
+reaches a container, a process, the network or a clock stays in the core, which
+splits a module along that line where it has to: the TCQ shapes are contracts and
+the document builder and evaluator are core, and the engine shapes are contracts
+and the engine catalog is core. The core depends on the contracts crate and
+re-exports every moved module and item at its previous path, so
+`test_cabinet_core::gg::GgConfig` and `test_cabinet_contracts::gg::GgConfig` name
+the same type.
+
+The TypeScript bindings and JSON Schemas are generated from both crates through
+the core's `contract` feature, which turns on the contracts crate's. See
+[Generating the data contract](/development/building/#generating-the-data-contract).
+
 ## Wrapping the core
 
 The wrapping components are thin, adding only the surface their own interface

@@ -14,6 +14,7 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     MediaKind, ModelSpec, NineSlice, ProofFile, SheetSpec, TestCaseVersion, Variant,
 };
+use crate::toolchain::ToolchainCommandResult;
 
 /// A screenshot captured from the implementation during validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +60,48 @@ pub struct StepResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub attempts: Option<u32>,
+}
+
+impl From<&ToolchainCommandResult> for StepResult {
+    /// Report a toolchain command as a validation build step.
+    ///
+    /// Validation reports the case's install as a [`StepResult`],
+    /// and the [toolchain stage](crate::toolchain_stage) runs that same install as a
+    /// toolchain command. This is how the one recorded outcome reaches the validation
+    /// summary when the stage got there first, so the summary carries the step that
+    /// actually ran rather than a second one describing it. The validator's own
+    /// steps go through the same conversion, so a step reads the same whichever
+    /// path produced it.
+    fn from(result: &ToolchainCommandResult) -> Self {
+        // A failure says why: the reason it never started, the packages an install
+        // left missing, or — for a command that ran and exited non-zero — the output
+        // it printed, which is where the real error is. The first line of that detail
+        // is always the reason on its own (the exit, or the reason it never ran), with
+        // the output excerpt on the lines after it, so a reader that has room for one
+        // line — a run's status — can take the reason alone. A step that succeeded
+        // needs no detail.
+        let detail = (!result.succeeded).then(|| {
+            result.detail.clone().unwrap_or_else(|| {
+                let output = result.output.trim();
+                let how = match result.exit_code {
+                    Some(code) => format!("exited {code}"),
+                    None => "was killed by a signal".to_string(),
+                };
+                if output.is_empty() {
+                    format!("`{}` {how}", result.command)
+                } else {
+                    format!("`{}` {how}:\n{output}", result.command)
+                }
+            })
+        });
+        Self {
+            command: result.command.clone(),
+            succeeded: result.succeeded,
+            detail,
+            output: result.ran.then(|| result.output.clone()),
+            attempts: result.attempts,
+        }
+    }
 }
 
 /// The result of a single opt-in validation check.

@@ -1,5 +1,5 @@
 // The **value semantics** of TCQ — the TypeScript twin of the behaviour that lives on
-// `GgValue`, `GgInterval` and `GgAgg` in `crates/core/src/gg_query.rs`.
+// `GgValue`, `GgInterval` and `GgAgg` in `crates/contracts/src/gg_query.rs`.
 //
 // Everything here is mirrored: the console evaluates a query on the backend (Rust) and
 // the public static site evaluates the *same* query in the browser (this file), so a

@@ -8,6 +8,8 @@
 //! The second half tests what only Rust has: the [document builder](build_run_doc),
 //! whose job is to decide what a field is called and when it exists at all.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 use super::*;
@@ -1050,7 +1052,7 @@ fn the_capability_catalog_covers_every_capability_gg_ships() {
     // the ids straight out of the module that declares them rather than restating
     // them, so a new capability cannot land without either updating the catalog or
     // turning this red.
-    const GG_SOURCE: &str = include_str!("gg.rs");
+    const GG_SOURCE: &str = include_str!("../../contracts/src/gg.rs");
     let declared: Vec<&str> = GG_SOURCE
         .lines()
         .filter_map(|line| line.strip_prefix("pub const CAPABILITY_"))
@@ -1134,9 +1136,9 @@ fn the_code_namespace_is_the_whole_analysis_flattened() {
 }
 
 /// **`code.language` is a derived scalar**, because `languages` is an array and
-/// [rule 4](crate::gg_query#the-seven-semantic-rules) makes an array contribute only its
-/// length. Without it, "which language does this model write?" — the first question code
-/// analysis invites — would be unaskable in the language built to ask it.
+/// [rule 4](test_cabinet_contracts::gg_query#the-seven-semantic-rules) makes an array
+/// contribute only its length. Without it, "which language does this model write?" — the first
+/// question code analysis invites — would be unaskable in the language built to ask it.
 #[test]
 fn the_language_list_surfaces_as_a_groupable_scalar() {
     let cases = [
@@ -1167,7 +1169,7 @@ fn the_language_list_surfaces_as_a_groupable_scalar() {
 }
 
 /// The presence marker, so a rate over the code corpus has an honest denominator
-/// ([rule 2](crate::gg_query#the-seven-semantic-rules)). Code analysis is **not
+/// ([rule 2](test_cabinet_contracts::gg_query#the-seven-semantic-rules)). Code analysis is **not
 /// backfilled**, so a large part of the corpus has no `code.*` at all and every code
 /// aggregate must be able to scope itself.
 #[test]

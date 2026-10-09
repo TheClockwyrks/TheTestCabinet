@@ -9,9 +9,10 @@ publish.workspace = true
 # run produced. It walks the tree honouring its ignore files, resolves which files the
 # *model* wrote, parses TypeScript through `oxc` and Rust through `syn`, builds the module
 # graph, detects clones, and rolls the whole thing up into the `CodeAnalysisSummary` /
-# `CodeAnalysisDocument` contract that `test-cabinet-core` owns.
+# `CodeAnalysisDocument` contract that `test-cabinet-contracts` defines and
+# `test-cabinet-core` re-exports.
 #
-# The dependency on core is deliberately **one-way**. Core owns the contract types; this
+# The dependency on core is deliberately **one-way**. Core carries the contract types; this
 # crate produces them; core must never depend back. That is not stylistic — it is what
 # keeps `oxc` and `syn` out of every binary that links core without running the analyzer
 # (the dispatcher, the arena, the artifact service), and it is why the analyzer reaches the run pipeline through core's `PostRunStage` trait

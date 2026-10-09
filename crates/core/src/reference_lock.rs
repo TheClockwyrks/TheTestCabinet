@@ -29,10 +29,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-/// The filename, relative to the test-cases catalog root, the CLI writes and the
-/// backend reads. It lives beside the catalog (not under a version folder) because
-/// its entries span every case, version, and environment.
-pub const REFERENCE_LOCK_FILENAME: &str = "reference-builds.lock.json";
+// The lock's file name is read by the content digest as well as by the CLI and the
+// backend, so it lives in `test_cabinet_contracts::layout` and is re-exported here.
+pub use test_cabinet_contracts::layout::REFERENCE_LOCK_FILENAME;
 
 /// One deployed reference build: the served URL for a
 /// `(slug, version, variant, engine)` tuple in a single environment. The flattened

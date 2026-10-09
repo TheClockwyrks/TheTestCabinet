@@ -15,7 +15,7 @@
 //! *recorded* and leave the run's rating and score to validation and the reviewer.
 //! The gate is a predicate on this summary ([`ToolchainSummary::gates`]) and is
 //! applied where a run's overall rating and score are *aggregated*
-//! ([`crate::review::gated_rating`] / [`crate::review::gated_score`]), never by
+//! (`test_cabinet_core::review::gated_rating` / `gated_score`), never by
 //! rewriting a reviewer's stored verdicts. That separation is deliberate: a
 //! reviewer's own marks are what they wrote, and the gate is an automated verdict
 //! layered over the aggregate, so an implementation that later typechecks re-derives
@@ -69,7 +69,7 @@ const TRUNCATION_MARKER: &str = "\n… output truncated …\n";
 /// produced implementation's repository root.
 ///
 /// The path is a contract between the seeded `vitest.config.ts` and this crate: the
-/// config's `outputFile` names it and the [toolchain stage](crate::toolchain_stage)
+/// config's `outputFile` names it and the toolchain stage (`test_cabinet_core::toolchain_stage`)
 /// reads it back. It sits under `coverage/`, the one directory the seeded workspace
 /// both `.gitignore`s and `.prettierignore`s, so the report is invisible to git, to
 /// the static analyzer's walk, and to the `format` command's `prettier --check`.
@@ -141,7 +141,7 @@ pub const TOOLCHAIN_TEST_ENTRY_LIMIT: usize = 1000;
 pub const TOOLCHAIN_FAILURE_MESSAGE_LIMIT: usize = 1024;
 
 /// The commands a case's `[toolchain]` table declares, resolved onto
-/// [`TestCaseVersion`](crate::test_case::TestCaseVersion).
+/// `TestCaseVersion` (`test_cabinet_core::test_case`).
 ///
 /// `typecheck` is required of any case that declares the table at all; the other
 /// three are optional and simply absent when not declared. Each runs from the
@@ -191,6 +191,8 @@ pub struct ToolchainCommandResult {
     /// Whether the command ran and exited zero — and, for the [verified
     /// install](crate::install), left every package the lockfile declares for the
     /// host on disk.
+    // The text is emitted into the contract; the link names core's item.
+    #[allow(rustdoc::broken_intra_doc_links)]
     pub succeeded: bool,
     /// A bounded excerpt of the command's combined output, capped at
     /// [`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.
@@ -207,6 +209,8 @@ pub struct ToolchainCommandResult {
     /// How many times the command was run before this result was final. Present on
     /// the [verified install](crate::install), which is retried; absent on every
     /// command that is run once.
+    // The text is emitted into the contract; the link names core's item.
+    #[allow(rustdoc::broken_intra_doc_links)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub attempts: Option<u32>,
@@ -239,48 +243,6 @@ impl ToolchainCommandResult {
             truncated,
             detail: None,
             attempts: None,
-        }
-    }
-}
-
-impl From<&ToolchainCommandResult> for crate::validation::StepResult {
-    /// Report a toolchain command as a validation build step.
-    ///
-    /// Validation reports the case's install as a [`StepResult`](crate::validation::StepResult),
-    /// and the [toolchain stage](crate::toolchain_stage) runs that same install as a
-    /// toolchain command. This is how the one recorded outcome reaches the validation
-    /// summary when the stage got there first, so the summary carries the step that
-    /// actually ran rather than a second one describing it. The validator's own
-    /// steps go through the same conversion, so a step reads the same whichever
-    /// path produced it.
-    fn from(result: &ToolchainCommandResult) -> Self {
-        // A failure says why: the reason it never started, the packages an install
-        // left missing, or — for a command that ran and exited non-zero — the output
-        // it printed, which is where the real error is. The first line of that detail
-        // is always the reason on its own (the exit, or the reason it never ran), with
-        // the output excerpt on the lines after it, so a reader that has room for one
-        // line — a run's status — can take the reason alone. A step that succeeded
-        // needs no detail.
-        let detail = (!result.succeeded).then(|| {
-            result.detail.clone().unwrap_or_else(|| {
-                let output = result.output.trim();
-                let how = match result.exit_code {
-                    Some(code) => format!("exited {code}"),
-                    None => "was killed by a signal".to_string(),
-                };
-                if output.is_empty() {
-                    format!("`{}` {how}", result.command)
-                } else {
-                    format!("`{}` {how}:\n{output}", result.command)
-                }
-            })
-        });
-        Self {
-            command: result.command.clone(),
-            succeeded: result.succeeded,
-            detail,
-            output: result.ran.then(|| result.output.clone()),
-            attempts: result.attempts,
         }
     }
 }
@@ -588,6 +550,8 @@ impl ToolchainSmokeResult {
 /// Absent from a run whose case declares no `[toolchain]` table, and from a run
 /// whose tree never reached the host — absence means *not checked*, which the
 /// record's `Option` is what encodes.
+// The text is emitted into the contract; the link names core's item.
+#[allow(rustdoc::broken_intra_doc_links)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -654,7 +618,7 @@ pub fn bounded_output(raw: &str) -> (String, bool) {
 }
 
 /// The largest char boundary at or below `index`.
-pub(crate) fn floor_boundary(text: &str, index: usize) -> usize {
+pub fn floor_boundary(text: &str, index: usize) -> usize {
     let mut index = index.min(text.len());
     while index > 0 && !text.is_char_boundary(index) {
         index -= 1;

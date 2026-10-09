@@ -18,6 +18,11 @@ name = "test_cabinet_core"
 path = "src/lib.rs"
 
 [dependencies]
+# The shapes: the contract modules this crate re-exports at their old paths
+# (`gg`, `metrics`, `toolchain`, `code_analysis`, ...) and the contract halves of the
+# ones it splits (`gg_query`, `engine`, `pricing`, `orchestrator`, the ingest feed and
+# the layout constants).
+test-cabinet-contracts = { path = "../contracts" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -44,10 +49,6 @@ reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
 base64 = { workspace = true }
-# Percent-decoding for the showcase description's Markdown image references
-# (`crate::showcase`), so an extracted name is the plain file name the author
-# wrote rather than the encoded destination a renderer was handed.
-percent-encoding = { workspace = true }
 # SigV4 signing for the shared R2 client (`crate::r2`), which the backend's
 # snapshot refresh and `tcab publish-reference` both use. Signing the handful of
 # requests directly is far cheaper than vendoring the AWS SDK for two verbs.
@@ -117,7 +118,7 @@ schemars = { workspace = true, optional = true }
 # Derive `ts_rs::TS` + `schemars::JsonSchema` on the public data-contract types so
 # the `contract-codegen` generator can emit the TypeScript bindings and JSON
 # Schemas from them. Never enabled by a normal build.
-contract = ["dep:ts-rs", "dep:schemars"]
+contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-contracts/contract"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

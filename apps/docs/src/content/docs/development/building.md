@@ -160,6 +160,12 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 
 ### Rust (Cargo workspace)
 
+- `crates/contracts`: `test-cabinet-contracts` (lib `test_cabinet_contracts`).
+  The [contract](/components/core/overview/#the-contracts-crate) shapes more than
+  one party agrees on: gg's configuration, telemetry and session record, the TCQ
+  query shapes, the metrics, toolchain and code-analysis blocks of a run record,
+  the engine identity a run names, the ingest feed, and the layout of a run tree.
+  Data and pure functions only; core re-exports every module at its old path.
 - `crates/core`: `test-cabinet-core` (lib `test_cabinet_core`). The headless
   [core](/components/core/overview/) that owns all orchestration: resolving a
   test case version, seeding a run's repository, executing the run in a
@@ -885,7 +891,8 @@ gate.
 
 The run-record (and arena, job-API, backend) data contract has a single source of
 truth: the Rust types that derive `ts_rs::TS` and `schemars::JsonSchema` behind
-their `contract` feature, in `crates/core` and `crates/backend`. The TypeScript
+their `contract` feature, in `crates/contracts`, `crates/core` and
+`crates/backend` (core's feature turns on the contracts crate's). The TypeScript
 bindings under `packages/run-record/src/` and `packages/asset-contract/src/` —
 one generator, two packages, because only the latter may be seeded into a run —
 and the JSON Schemas under `apps/docs/public/schema/` are generated from those

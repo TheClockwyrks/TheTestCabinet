@@ -18,8 +18,6 @@ pub mod backend_client;
 pub mod browser;
 pub mod cancel;
 pub mod clock;
-pub mod code_analysis;
-pub mod cold_storage;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
@@ -31,13 +29,9 @@ pub mod error;
 pub mod event;
 pub mod exec_stream;
 pub mod execution;
-pub mod gg;
 pub mod gg_exec;
 pub mod gg_query;
-pub mod gg_reference;
 pub mod gg_session_assembly;
-pub mod gg_session_journal;
-pub mod gg_session_record;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
@@ -45,7 +39,6 @@ pub mod install;
 pub mod job_api;
 pub mod lockfile_check;
 pub mod match_play;
-pub mod metrics;
 pub mod model_id;
 pub mod orchestrator;
 pub mod performance_validator;
@@ -66,16 +59,22 @@ pub mod review;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
-pub mod showcase;
 pub mod test_case;
 pub mod test_case_group;
 pub mod test_suite;
-pub mod toolchain;
 pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
 pub mod vitest_validator;
+
+// The contract modules that moved whole into `test-cabinet-contracts`, re-exported at
+// their old paths so `test_cabinet_core::gg::GgConfig` and the rest name the same
+// items they always did.
+pub use test_cabinet_contracts::{
+    code_analysis, cold_storage, gg, gg_reference, gg_session_journal, gg_session_record, metrics,
+    showcase, toolchain,
+};
 
 #[cfg(test)]
 #[path = "lib.test.rs"]
@@ -197,6 +196,9 @@ pub use run_record::{
     RunState, RunStatus, RunSubject, RunTooling, ShowcaseMedia,
 };
 pub use seeding::FsRepoSeeder;
+pub use test_cabinet_contracts::layout::{
+    MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
+};
 pub use test_case::{
     AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
     EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile,
@@ -2161,30 +2163,6 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
     }
     Some(format!("{}\n\n…(README truncated)", &readme[..end]))
 }
-
-/// The largest showcase description, in bytes. The description is a store-page
-/// blurb; this cap keeps a pathological one from bloating every store downstream.
-/// The run-side capture truncates a longer one on a char boundary with a trailing
-/// marker; the case-side resolution (an authored, committed showcase — see
-/// `test_case::Variant::showcase`) hard-fails instead. Public because the bound is
-/// shared by all three showcases, the suite's
-/// [included](test_suite::ShowcaseManifest), and The Spec Cabinet enforces it on
-/// the one it authors.
-pub const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
-
-/// The most media entries a showcase carousel may hold. The run-side capture
-/// drops the excess with a warning — the carousel is a highlight reel, not an
-/// archive — while the case-side resolution hard-fails on it. Public for the
-/// reason [`MAX_SHOWCASE_DESCRIPTION_BYTES`] is: the bound is shared by all three
-/// showcases, the suite's included.
-pub const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
-
-/// The largest media file a showcase carousel entry may name, in bytes. An entry
-/// naming a larger file is dropped with a warning, since the file travels the
-/// per-run media path and a pathological one would bloat every store downstream.
-/// Public because the driver's backend-store mirror applies the same cap to the
-/// directory it uploads, so a file the capture refused never ships either.
-pub const MAX_SHOWCASE_MEDIA_FILE_BYTES: u64 = 25 * 1024 * 1024;
 
 /// The shape of a `showcase.toml`: the ordered carousel, one `[[media]]` table
 /// per entry. One type for all three showcases — the run-side capture (a

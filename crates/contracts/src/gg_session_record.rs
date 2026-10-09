@@ -190,6 +190,8 @@ pub struct GgSessionSeed {
     /// [`RunRecord::seed_commit`](crate::run_record::RunRecord::seed_commit). The host's
     /// value is harness-agnostic and authoritative; this one is gg's own observation.
     /// They should be equal, and a mismatch is a *diagnostic* rather than redundancy.
+    // The text is emitted into the contract; the link names core's item.
+    #[allow(rustdoc::broken_intra_doc_links)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub baseline_commit: Option<String>,
@@ -991,6 +993,8 @@ pub enum GgSessionTruncationReason {
     /// conversation that never happened, so
     /// [assembly](crate::gg_session_assembly) refuses it outright and the run carries no
     /// record at all. This reason is for damage whose extent is known.
+    // The text is emitted into the contract; the link names core's item.
+    #[allow(rustdoc::broken_intra_doc_links)]
     CorruptJournal,
     /// The journal writer failed (a stalled disk, a dead writer thread), which stops
     /// capture for the whole run.
@@ -1242,8 +1246,8 @@ pub trait GgSessionInterner {
 /// The **body-retaining** [interner](GgSessionInterner): the four pools of an assembled
 /// record, held in memory.
 ///
-/// What [assembly](crate::gg_session_assembly) folds a journal into. gg's capture journal
-/// deliberately does **not** use it — see [`GgSessionInterner`] for why.
+/// What assembly (`test_cabinet_core::gg_session_assembly`) folds a journal into. gg's
+/// capture journal deliberately does **not** use it — see [`GgSessionInterner`] for why.
 #[derive(Debug, Default)]
 pub struct GgSessionPools {
     messages: Vec<GgSessionMessage>,

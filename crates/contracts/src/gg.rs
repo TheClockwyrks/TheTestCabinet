@@ -6,7 +6,7 @@
 //! by a declarative [`GgCapabilitySet`] (which capabilities are on, which
 //! implementation each uses, and how models bind to slots) and reports its activity
 //! over a custom, purpose-built [`GgTelemetryEvent`] channel rather than the
-//! normalized [`crate::event`] stream. See the design docs under `gg/` in the
+//! normalized `test_cabinet_core::event` stream. See the design docs under `gg/` in the
 //! documentation site.
 //!
 //! Like the rest of the contract, these types are the **source of truth**: the
@@ -47,7 +47,7 @@ pub const BINARY_PATH: &str = "/tmp/gg";
 /// [execution ceilings](GgRunLimits).
 ///
 /// It lives in the shared contract because it is a contract: gg writes it and
-/// [`gg_exec`](crate::gg_exec) reads it, and the two crates never link each other. A
+/// `gg_exec` (`test_cabinet_core::gg_exec`) reads it, and the two crates never link each other. A
 /// number each of them believed in separately would be a rule nothing in the workspace
 /// could check, and the failure would surface as a breached ceiling silently recorded as
 /// an ordinary harness error.
@@ -56,8 +56,8 @@ pub const BINARY_PATH: &str = "/tmp/gg";
 /// are nobody's measurement (a refused credential, a gg defect), because the two say
 /// opposite things about the configuration. A `1` says the run never happened; this says the
 /// run happened and ran into a bound the operator armed, which is why it becomes its own
-/// [`RunState::LimitExceeded`](crate::run_record::RunState::LimitExceeded) rather than a
-/// [`HarnessError`](crate::run_record::RunState::HarnessError) the host would retry. `2` is
+/// `RunState::LimitExceeded` (`test_cabinet_core::run_record`) rather than a
+/// `HarnessError` the host would retry. `2` is
 /// left alone: a shell reads it as a usage error.
 pub const EXIT_LIMIT_EXCEEDED: u8 = 3;
 
@@ -1752,12 +1752,12 @@ pub const AUTHORED_REPLAY_MAX_BYTES: u64 = 256 * 1024 * 1024;
 ///
 /// Everything under it is gg's bookkeeping, never the model's work, so seeding adds `/.gg/`
 /// to the seeded repository's `.git/info/exclude`
-/// ([`crate::seeding`]). That is load-bearing rather than tidy: the journal grows *inside the
-/// model's working tree while the session runs*, so without the exclusion it would show up in
-/// an issue reviewer's per-file diff stat, in a worktree
-/// commit, and — through the model's own `git add -A` — in the **public per-run repository**,
-/// where it would publish a verbatim transcript of every model call. It must be excluded at
-/// seed time because no publish-time filter can undo a commit the model already made.
+/// (`test_cabinet_core::seeding`). That is load-bearing rather than tidy: the journal grows
+/// *inside the model's working tree while the session runs*, so without the exclusion it
+/// would show up in an issue reviewer's per-file diff stat, in a worktree commit, and —
+/// through the model's own `git add -A` — in the **public per-run repository**, where it
+/// would publish a verbatim transcript of every model call. It must be excluded at seed
+/// time because no publish-time filter can undo a commit the model already made.
 pub const GG_WORKSPACE_DIR: &str = ".gg";
 
 /// The [skills](CAPABILITY_SKILLS) library inside gg's own [dotdir](GG_WORKSPACE_DIR), and the
@@ -1975,8 +1975,8 @@ impl GgCapabilitySet {
     /// this contract safe for the run path and unsafe everywhere else: code that reads a
     /// **stored** set — a record it did not launch, and so a record that may be
     /// hand-written or corrupt — must ask [`Self::agents`] directly rather than assert a
-    /// root through this. The [document builder](crate::gg_query::build_run_doc) is the
-    /// standing example.
+    /// root through this. The document builder
+    /// (`test_cabinet_core::gg_query::build_run_doc`) is the standing example.
     pub fn root(&self) -> &GgAgentConfig {
         self.agents
             .first()
@@ -2060,10 +2060,11 @@ impl GgCapabilitySet {
     /// **run-wide facts** rather than per-agent powers — where enabling it anywhere
     /// changes the run, so asking only the root silently ignores the configuration.
     ///
-    /// The query language's [`cap.<id>` fields](crate::gg_query::build_run_doc) are the
-    /// case that keeps it: `avg(cap.compaction)` is
-    /// meant to be an enablement *rate*, and a root-only read would score a run that
-    /// configured the capability per-agent as not having used it at all.
+    /// The query language's `cap.<id>` fields
+    /// (`test_cabinet_core::gg_query::build_run_doc`) are the case that keeps it:
+    /// `avg(cap.compaction)` is meant to be an enablement *rate*, and a root-only read
+    /// would score a run that configured the capability per-agent as not having used it at
+    /// all.
     pub fn any_agent_enabled(&self, id: &str) -> bool {
         self.agents.iter().any(|agent| agent.is_enabled(id))
     }
@@ -4931,6 +4932,8 @@ impl GgRunLimits {
 /// A closed, stable taxonomy (unlike the open capability ids): the console labels each one and the
 /// query language's [`limit`](crate::gg_query::build_run_doc) document field groups by them, so the
 /// set is fixed here rather than being a free string.
+// The text is emitted into the contract; the link names core's item.
+#[allow(rustdoc::broken_intra_doc_links)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -4964,8 +4967,9 @@ impl GgLimitKind {
     ];
 
     /// This ceiling's stable wire value — exactly the string serde writes, so the
-    /// [`limit`](crate::gg_query::build_run_doc) document field that buckets runs by it and the
-    /// JSON a run records can never disagree. Pinned over [`ALL`](Self::ALL) by a test.
+    /// `limit` document field (`test_cabinet_core::gg_query::build_run_doc`) that buckets
+    /// runs by it and the JSON a run records can never disagree. Pinned over
+    /// [`ALL`](Self::ALL) by a test.
     pub const fn as_str(self) -> &'static str {
         match self {
             GgLimitKind::Turns => "turns",
@@ -5590,7 +5594,7 @@ pub struct GgInvocation {
     /// backend's address nor a reason to reach it. Every model the set
     /// [binds](GgCapabilitySet::bound_model_ids) must appear here — a run whose catalog could not
     /// answer for one is rejected before the container is pulled
-    /// ([`RunRequest::validate`](crate::RunRequest::validate)) — because gg measures window
+    /// (`test_cabinet_core::RunRequest::validate`) — because gg measures window
     /// fullness, and therefore triggers [compaction](CAPABILITY_COMPACTION), against this figure
     /// and has nothing to invent one from.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -7206,7 +7210,8 @@ pub struct GgProviderCandidate {
 /// a one-candidate list whose quantization is blank, since the pin named none. A record stays
 /// readable, and a launch built from it is [refused](GgProviderCandidate::usable_list) rather
 /// than run under a level nobody chose.
-pub(crate) mod provider_lists {
+#[doc(hidden)]
+pub mod provider_lists {
     use std::collections::BTreeMap;
 
     use serde::{Deserialize, Deserializer};
@@ -7222,7 +7227,7 @@ pub(crate) mod provider_lists {
     }
 
     /// Deserialize a model-to-list map under the rule the [module](self) states.
-    pub(crate) fn read<'de, D>(
+    pub fn read<'de, D>(
         deserializer: D,
     ) -> Result<BTreeMap<String, Vec<GgProviderCandidate>>, D::Error>
     where
@@ -7277,6 +7282,8 @@ impl GgProviderCandidate {
 /// of them directly.
 ///
 /// [result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
+// The text is emitted into the contract; the link names core's item.
+#[allow(rustdoc::broken_intra_doc_links)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -9007,11 +9014,15 @@ pub enum GgTelemetryKind {
     /// ([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) so aggregate queries
     /// need not re-parse the stream. A launch that failed before a session ran emits none (only a
     /// terminal `SessionEnded`).
+    // The text is emitted into the contract; the link names core's item.
+    #[allow(rustdoc::broken_intra_doc_links)]
     SessionSummary {
         /// The computed summary of the session's outcome. Boxed so this variant does not
         /// dominate the size of [`GgTelemetryKind`] (and the [`EventKind`](crate::event::EventKind)
         /// that carries a whole [`GgTelemetryEvent`]); `Box<T>` serializes and renders in the
         /// contract exactly as `T`.
+        // The text is emitted into the contract; the link names core's item.
+        #[allow(rustdoc::broken_intra_doc_links)]
         summary: Box<GgSessionSummary>,
     },
     /// A gg session ended.

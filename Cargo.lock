@@ -5140,6 +5140,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-contracts"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "percent-encoding",
+ "schemars",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ts-rs",
+]
+
+[[package]]
 name = "test-cabinet-core"
 version = "0.7.0"
 dependencies = [
@@ -5156,7 +5170,6 @@ dependencies = [
  "lattice-core",
  "lattice-host",
  "md-5",
- "percent-encoding",
  "png",
  "reqwest 0.12.28",
  "schemars",
@@ -5166,6 +5179,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "test-cabinet-audio-core",
+ "test-cabinet-contracts",
  "test-cabinet-draw",
  "test-cabinet-model-core",
  "test-cabinet-telemetry",
