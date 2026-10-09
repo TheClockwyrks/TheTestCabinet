@@ -185,11 +185,6 @@ status. The run becomes reviewable in the console, and its playable build loads
 from the artifact service. Each enqueued run schedules as its own Job with no
 per-worker registration, so several runs proceed in parallel.
 
-The local overlay sets `TCAB_BACKEND_AUTO_PUBLISH` to `false`, so a finished run
-stays private.
-[Automatic publishing](/components/core/results/#automatic-publishing) needs a
-publisher, which the local dispatcher is not given.
-
 ## 5. Iterate and tear down
 
 ```sh

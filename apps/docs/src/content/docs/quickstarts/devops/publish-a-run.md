@@ -10,8 +10,8 @@ A completed [validator-rated](/testing/end-to-end/evaluation/#rating-channels)
 run [publishes itself](/components/core/results/#automatic-publishing) when it
 finishes, so it needs none of the steps below. They are for the runs that stay
 manual: a legacy run, which is reviewed first, a failed run an operator decides
-to publish, a run whose automatic publish failed, and any run on a backend with
-`TCAB_BACKEND_AUTO_PUBLISH` off ([lifecycle](/components/core/results/#lifecycle)).
+to publish, and a run whose automatic publish failed
+([lifecycle](/components/core/results/#lifecycle)).
 Publishing is irreversible. The full workflow is
 [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/).
 

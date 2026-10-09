@@ -272,26 +272,6 @@ async fn two_concurrent_enqueues_of_one_run_yield_one_publish_job() {
     assert_eq!(third, PublishEnqueue::Attached(all[0].id.clone()));
 }
 
-#[tokio::test]
-async fn with_the_setting_off_nothing_is_enqueued_and_publishing_by_hand_still_works() {
-    let (_dir, mut state) = test_state().await;
-    set_auto_publish(&mut state, false);
-    launch_and_report(&state, "j", "pong", None, run_of("run-j", "pong", GREAT)).await;
-    assert!(publish_jobs(&state).await.is_empty());
-
-    let enqueued =
-        auto_publish_runs(&state, &["run-j".to_string()], AutoPublishCause::LadderPass).await;
-    assert!(enqueued.is_empty());
-    assert!(publish_jobs(&state).await.is_empty());
-
-    let response =
-        crate::api::runs::publish(State(state.clone()), Path("run-j".to_string()), owner())
-            .await
-            .unwrap();
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
-    assert_eq!(publishing(&state).await, ["run-j"]);
-}
-
 /// A publish job that cannot be inserted costs the run its automatic publish and
 /// nothing else: the status report is accepted and the job lands as it would.
 #[tokio::test]
