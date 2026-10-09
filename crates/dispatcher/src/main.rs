@@ -43,6 +43,7 @@ async fn main() -> ExitCode {
         namespace = %config.namespace,
         driver_image = %config.driver_image,
         max_inflight = config.max_inflight,
+        max_publish_inflight = config.max_publish_inflight,
         "dispatcher starting: claiming queued jobs into driver Jobs",
     );
 
