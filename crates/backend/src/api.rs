@@ -31,6 +31,7 @@ mod tests;
 #[path = "api/flow_harness.test.rs"]
 mod flow_harness;
 
+mod auto_publish;
 mod comparisons;
 mod coverage;
 mod game_jams;

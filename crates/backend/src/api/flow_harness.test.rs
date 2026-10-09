@@ -4,6 +4,7 @@
 //! launch make on its jobs.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use axum::Json;
@@ -282,13 +283,45 @@ pub(crate) async fn finish_and_feed(
     slug: &str,
     verdicts: &[(&str, bool)],
 ) {
-    let job = finish(
-        state,
-        job_id,
-        run_of(&format!("run-{job_id}"), slug, verdicts),
-    )
-    .await;
+    // Each run finishes a second after the one before it, as runs finished in turn do.
+    // Left on the fixture's one shared instant, two runs of a cell would be ordered by
+    // their ids, which are random, and a slot's first runs would differ from run to run.
+    static FINISHED: AtomicU32 = AtomicU32::new(0);
+    let nth = FINISHED.fetch_add(1, Ordering::Relaxed);
+    let mut record = run_of(&format!("run-{job_id}"), slug, verdicts);
+    record.finished_at = format!("2026-10-02T00:{:02}:{:02}Z", nth / 60, nth % 60);
+    let job = finish(state, job_id, record).await;
     feed(state, &job).await;
+}
+
+/// Every publish job, oldest first.
+pub(crate) async fn publish_jobs(
+    state: &AppState,
+) -> Vec<test_cabinet_entities::publish_job::Model> {
+    use sea_orm::QueryOrder;
+    use test_cabinet_entities::publish_job;
+    publish_job::Entity::find()
+        .order_by_asc(publish_job::Column::CreatedAt)
+        .order_by_asc(publish_job::Column::Id)
+        .all(&state.db.connection())
+        .await
+        .unwrap()
+}
+
+/// The ids of the runs that have a publish job, oldest job first.
+pub(crate) async fn publishing(state: &AppState) -> Vec<String> {
+    publish_jobs(state)
+        .await
+        .into_iter()
+        .map(|job| job.run_id)
+        .collect()
+}
+
+/// Turn automatic publishing on or off, as `TCAB_BACKEND_AUTO_PUBLISH` does.
+pub(crate) fn set_auto_publish(state: &mut AppState, on: bool) {
+    let mut config = (*state.config).clone();
+    config.auto_publish = on;
+    state.config = std::sync::Arc::new(config);
 }
 
 /// Every job, oldest first.

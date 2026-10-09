@@ -1285,6 +1285,19 @@ pub(super) async fn ladder_pass_locked(
     let library = gg_library(state, user_id).await?;
     let board = read_dispatch(state, id, dispatch, &library, true).await?;
 
+    // Publish what the board counts. A run this dispatch launched published itself
+    // when its driver reported it; a run the dispatch inherited toward a rung is
+    // picked up here. The board names only a reached slot's first `target` runs,
+    // so a run beyond the target, or on a rung no climber reached, is left alone.
+    // A run that has ever had a publish job is passed over, so the passes that
+    // follow enqueue nothing more for it.
+    super::auto_publish::auto_publish_runs(
+        state,
+        &board.run_ids(),
+        super::auto_publish::AutoPublishCause::LadderPass,
+    )
+    .await;
+
     let in_flight = board.in_flight_total();
     if board.finished() && in_flight == 0 {
         state

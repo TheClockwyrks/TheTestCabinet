@@ -248,42 +248,24 @@ pub async fn publish(
     // build behind (the `gh` side reuses the repo, so only the Pages side shows it).
     // A double-click, a second console tab, or a retry after the live stream dropped
     // therefore re-attaches to the publish already running.
-    if let Some(existing) = state
+    //
+    // The same enqueue an automatic publish goes through, so a run that published
+    // itself and a person publishing it by hand converge on one job.
+    let outcome = state
         .db
-        .active_publish_job_for_run(&id, &created_at)
-        .await
-        .map_err(ApiError::from)?
-    {
-        tracing::info!(
-            publish_job.id = %existing.id,
-            publish_job.state = %existing.state,
-            "publish already under way for this run; re-attaching to it"
-        );
-        let publish_job_id = existing.id;
-        let body = PublishResponse {
-            live_url: format!("/publish-jobs/{publish_job_id}/live"),
-            publish_job_id,
-        };
-        return Ok((StatusCode::ACCEPTED, Json(body)).into_response());
-    }
-
-    let publish_job_id = cuid2::create_id();
-    let job_token = cuid2::create_id();
-
-    state
-        .db
-        .enqueue_publish_job(crate::db::NewPublishJob {
-            id: publish_job_id.clone(),
-            run_id: id.clone(),
-            job_token,
-            created_at,
-        })
+        .enqueue_publish_job_once(&id, &created_at)
         .await
         .map_err(ApiError::from)?;
-
+    if let crate::db::PublishEnqueue::Attached(existing) = &outcome {
+        tracing::info!(
+            publish_job.id = %existing,
+            "publish already under way for this run; re-attaching to it"
+        );
+    }
+    let publish_job_id = outcome.job_id().to_string();
     let body = PublishResponse {
-        publish_job_id: publish_job_id.clone(),
         live_url: format!("/publish-jobs/{publish_job_id}/live"),
+        publish_job_id,
     };
     Ok((StatusCode::ACCEPTED, Json(body)).into_response())
 }

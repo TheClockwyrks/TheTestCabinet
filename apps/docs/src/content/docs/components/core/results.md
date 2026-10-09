@@ -133,7 +133,10 @@ dataset the backend exports.
 ## Lifecycle
 
 A run reaches the gallery through the automatic storage every produced run gets
-when it finishes, followed by two explicit steps, review and publish.
+when it finishes, followed by publishing. A completed validator-rated run
+[publishes itself](#automatic-publishing), and every other publishable run is
+published by an operator. Review is a separate step that a legacy run needs
+before it can be published and that stays optional on a validator-rated run.
 
 ### Automatic storage
 
@@ -161,9 +164,11 @@ replaces the reviewer's own.
 
 ### Publish
 
-Publishing releases a reviewed run and flips it public. It is the only point at
-which a run's outputs cross onto the open internet. What it requires depends on
-the run's [terminal state](/components/core/run-records/#status):
+Publishing releases a run and flips it public. It is the only point at which a
+run's outputs cross onto the open internet, and it is irreversible: a published
+run cannot be deleted, and its repository and its build stay public. What it
+requires depends on the run's
+[terminal state](/components/core/run-records/#status):
 
 - A `completed` validator-rated run is publishable as soon as it completes, with
   or without a review, since its functional rating and score stand on the run
@@ -214,6 +219,49 @@ publish-failed notification on the console. Publishing the run again is the
 recovery, admitted as soon as the failed publish job is terminal, and the run
 waits in the console's [Unpublished
 worklist](/components/web/overview/#the-runs-section) until a release lands.
+
+### Automatic publishing
+
+A validator-rated run's functional rating is decided by its validators, so the
+backend publishes it without waiting for anyone. A run publishes itself when all
+of these hold:
+
+- its terminal state is `completed`;
+- its case version is
+  [validator-rated](/terminology/#validator-rated);
+- it is unpublished;
+- no publish job has ever been enqueued for it.
+
+Every other run stays manual. A `catastrophic`, `timed_out`, `hung`,
+`harness_error` or `limit_exceeded` run is published deliberately by an
+operator, a legacy run is published through review, and an `infrastructure` or
+`canceled` run is never published.
+
+The rule applies to every run however it was launched: from the run form, by a
+coverage plan, by a ladder, or as a comparison's arm. The backend applies it at
+two moments:
+
+- When a driver reports a run's terminal status. The run's record is stored and
+  its validator rating decided within that report, so the run is enqueued for
+  publishing as the report is accepted. A report that stores the record again
+  applies the rule again, which publishes a run whose case version the backend
+  did not hold the first time.
+- When a [ladder](/components/backend/ladders/#a-rung-slots-runs) launch pass
+  reads a rung slot's runs. A run the dispatch counts is enqueued for publishing
+  even when another launch produced it.
+
+Automatic publishing enqueues the same publish job an operator's publish does,
+and at most one for a run. A run that already has a publish job in any state is
+left alone, so a failed automatic publish is never retried automatically: it
+raises the publish-failed notification and waits in the Unpublished worklist for
+an operator. An automatic publish that cannot be enqueued is logged and never
+fails the report or the pass that prompted it.
+
+`TCAB_BACKEND_AUTO_PUBLISH` turns automatic publishing off for a deployment. It
+is on by default, and a deployment with no publisher sets it to `false`, since
+its publish jobs would wait in the queue until a publisher was configured and
+then all release at once. With it off the backend enqueues nothing by itself,
+and publishing a run by hand is unchanged.
 
 Only published runs appear in the public snapshot and therefore in the gallery. A
 published catastrophic or timeout failure shows its generated source and has no

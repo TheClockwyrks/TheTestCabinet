@@ -153,3 +153,35 @@ fn ingesting_previews_is_off_unless_the_variable_is_truthy() {
     unsafe { std::env::set_var("TCAB_BACKEND_INGEST_PREVIEWS", "false") };
     assert!(!super::Config::from_env().unwrap().ingest_previews);
 }
+
+/// `TCAB_BACKEND_AUTO_PUBLISH` is on unless set falsy: a deployment that does not
+/// name it publishes automatically, and a value that is not one of the falsy
+/// spellings leaves it on.
+#[test]
+fn automatic_publishing_is_on_unless_the_variable_is_falsy() {
+    const KEY: &str = "TCAB_BACKEND_AUTO_PUBLISH";
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var(KEY);
+    }
+    assert!(super::Config::from_env().unwrap().auto_publish);
+
+    for value in ["0", "false", "FALSE", "No", "off", "  off  "] {
+        // SAFETY: as above.
+        unsafe { std::env::set_var(KEY, value) };
+        assert!(
+            !super::Config::from_env().unwrap().auto_publish,
+            "`{value}` should turn automatic publishing off"
+        );
+    }
+    for value in ["1", "true", "yes", "on", "", "maybe"] {
+        // SAFETY: as above.
+        unsafe { std::env::set_var(KEY, value) };
+        assert!(
+            super::Config::from_env().unwrap().auto_publish,
+            "`{value}` should leave automatic publishing on"
+        );
+    }
+}

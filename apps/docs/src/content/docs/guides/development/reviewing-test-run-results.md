@@ -24,10 +24,11 @@ A review is curatorial, authored by a person after playing the build, so it sits
 outside the [run record](/components/core/run-records/) contract. Every review is
 attributed to the [account](/components/backend/overview/#authentication) that wrote
 it, and a run may carry several reviews, one per account. Across them the run's
-overall rating on the reviewer-given channel is the worst. A validator-rated run
-can be [published](/guides/devops/publishing-a-test-run-result/) with no review
-and gain an aesthetic rating later; a legacy run needs at least one review
-before it can be published.
+overall rating on the reviewer-given channel is the worst. A completed
+validator-rated run
+[publishes itself](/components/core/results/#automatic-publishing) with no
+review and gains an aesthetic rating later; a legacy run needs at least one
+review before it can be [published](/guides/devops/publishing-a-test-run-result/).
 
 ## Review entry points
 
@@ -271,9 +272,11 @@ point score.
 
 ## Next step
 
-A validator-rated run is ready to
-[publish](/guides/devops/publishing-a-test-run-result/) as soon as it completes;
-a legacy run is ready once it has at least one review. If you reviewed a run
+A completed validator-rated run
+[publishes itself](/components/core/results/#automatic-publishing), so a review
+of one needs no publish step. A legacy run is ready to
+[publish](/guides/devops/publishing-a-test-run-result/) once it has at least one
+review. If you reviewed a run
 someone else produced, an operator can now publish it. If you ran, reviewed, and
 are publishing it yourself, `tcab publish` does the self-review and publish in
 one step.

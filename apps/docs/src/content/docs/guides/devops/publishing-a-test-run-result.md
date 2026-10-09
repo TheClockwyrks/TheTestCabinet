@@ -4,8 +4,16 @@ title: Publishing a Test Run Result
 
 ## Overview
 
-A produced run reaches the gallery through two explicit steps, review and
-publish, split so anyone may judge a run someone else produced (see
+A completed
+[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run
+[publishes itself](/components/core/results/#automatic-publishing) when it
+finishes. This guide is for the runs that stay manual: a legacy run, a failed
+run an operator decides to publish, a run whose automatic publish failed, and
+any run on a backend with `TCAB_BACKEND_AUTO_PUBLISH` off. Publishing is
+irreversible.
+
+A manually published run reaches the gallery through two explicit steps, review
+and publish, split so anyone may judge a run someone else produced (see
 [Results: Lifecycle](/components/core/results/#lifecycle)):
 
 - A produced run's [run record](/components/core/run-records/) is stored on the

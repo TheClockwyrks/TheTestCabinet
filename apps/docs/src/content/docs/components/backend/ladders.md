@@ -409,6 +409,16 @@ A run the dispatch read counts here the same as one it launched, and a run two
 rungs share is listed once, under the lower rung. Progress reports their count
 as `runsUnreviewed`. The queue neither blocks nor feeds the climb.
 
+### Publishing a dispatch's runs
+
+A rung is a validator-rated case, so a run a dispatch launches
+[publishes itself](/components/core/results/#automatic-publishing) when it
+completes. Every launch pass of a running dispatch also applies that rule to the
+[slot runs](#a-rung-slots-runs) it reads, so a completed run the dispatch counts
+is published even when another launch produced it and left it unpublished. A
+run beyond a slot's target, a run of a rung the climber has not reached, and a
+run that ended on the model's own failure are left as they are.
+
 ## Endpoints
 
 The ladder surface is specified in the

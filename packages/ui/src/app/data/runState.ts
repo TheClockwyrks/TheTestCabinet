@@ -56,7 +56,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         chip: "completed",
         description: "The run produced a usable, evaluable implementation.",
         consequence:
-          "Scored on the reviewer checklist: by its validators on a validator-rated run, overlaid with any reviewer overrides, and by its reviewers on a legacy run. A validator-rated run is publishable the moment it completes; a legacy run publishes through review.",
+          "Scored on the reviewer checklist: by its validators on a validator-rated run, overlaid with any reviewer overrides, and by its reviewers on a legacy run. A validator-rated run publishes itself when it completes, unless the deployment has automatic publishing off; a legacy run publishes through review.",
         isFailure: false,
         isPublishableFailure: false,
       };

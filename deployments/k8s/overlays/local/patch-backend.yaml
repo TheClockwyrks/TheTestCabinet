@@ -45,6 +45,14 @@ spec:
             # checkout they were written to, so no other overlay sets this.
             - name: TCAB_BACKEND_INGEST_PREVIEWS
               value: "true"
+            # Publish nothing automatically. A completed validator-rated run
+            # otherwise enqueues its own publish job, and this cluster's dispatcher
+            # has no publisher image, so those jobs would never be claimed: they
+            # would pile up in the queue and all release, publicly and irreversibly,
+            # the day a publisher was pointed at this database. Publishing a run by
+            # hand is unchanged.
+            - name: TCAB_BACKEND_AUTO_PUBLISH
+              value: "false"
             # Export to the in-cluster Grafana LGTM stack (the observability
             # component). In-namespace Service DNS; the same value in every overlay.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

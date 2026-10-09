@@ -1900,3 +1900,146 @@ async fn two_climbers_that_ask_for_the_same_runs_are_one_climber_of_a_dispatch()
     assert_eq!(progress.climbers.len(), 1, "{:?}", progress.climbers);
     assert_eq!(in_flight(&state, "pong").await.len(), 1);
 }
+
+// ---- A dispatch publishes the runs it counts ----------------------------------
+
+#[tokio::test]
+async fn a_dispatch_publishes_an_unpublished_run_it_inherited_toward_a_rung() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    // Stored with no status report behind it, so nothing has published it.
+    existing_run(&state, run_of("run-a", "pong", GREAT)).await;
+    assert!(publish_jobs(&state).await.is_empty());
+
+    let progress = run_ladder(&state, &id).await.unwrap();
+    assert_eq!(climber(&progress, SONNET).slots[0].run_ids, ["run-a"]);
+
+    let queued = publish_jobs(&state).await;
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].run_id, "run-a");
+    assert_eq!(queued[0].state, "queued");
+}
+
+#[tokio::test]
+async fn a_dispatch_publishes_only_the_runs_its_slot_takes() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong"], 2, &[SONNET])).await;
+    for (run_id, at) in [
+        ("run-1", "2026-09-01T00:00:01Z"),
+        ("run-2", "2026-09-01T00:00:02Z"),
+        ("run-3", "2026-09-01T00:00:03Z"),
+    ] {
+        let mut record = run_of(run_id, "pong", GREAT);
+        record.finished_at = at.to_string();
+        existing_run(&state, record).await;
+    }
+
+    run_ladder(&state, &id).await.unwrap();
+
+    // The run beyond the target is not the slot's, so the dispatch leaves it alone.
+    let mut published = publishing(&state).await;
+    published.sort();
+    assert_eq!(published, ["run-1", "run-2"]);
+}
+
+#[tokio::test]
+async fn a_dispatch_does_not_publish_a_run_on_a_rung_no_climber_has_reached() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    existing_run(&state, run_of("run-c", "carom", GREAT)).await;
+
+    let progress = run_ladder(&state, &id).await.unwrap();
+    // The climber is on pong, whose run was just launched.
+    assert_eq!(climber(&progress, SONNET).current_rung, Some(0));
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+    assert!(publish_jobs(&state).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_dispatch_does_not_publish_an_inherited_run_that_did_not_complete() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    existing_run(&state, ended_run("run-a", "pong", RunState::Catastrophic)).await;
+
+    let progress = run_ladder(&state, &id).await.unwrap();
+    // The failure is the slot's run, and it is the board's to count, not to publish.
+    assert_eq!(climber(&progress, SONNET).slots[0].run_ids, ["run-a"]);
+    assert!(publish_jobs(&state).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_dispatch_does_not_publish_an_inherited_run_that_is_already_public() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    existing_run(&state, run_of("run-a", "pong", GREAT)).await;
+    state
+        .db
+        .publish("run-a", "2026-09-02T00:00:00Z")
+        .await
+        .unwrap();
+
+    run_ladder(&state, &id).await.unwrap();
+    assert!(publish_jobs(&state).await.is_empty());
+}
+
+#[tokio::test]
+async fn later_passes_enqueue_nothing_more_for_a_run_whose_publish_is_under_way() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    existing_run(&state, run_of("run-a", "pong", GREAT)).await;
+    run_ladder(&state, &id).await.unwrap();
+    assert_eq!(publishing(&state).await, ["run-a"]);
+
+    pass(&state, &id).await;
+    pass(&state, &id).await;
+    assert_eq!(publishing(&state).await, ["run-a"]);
+}
+
+/// One automatic attempt per run. A publish that failed is a person's to retry, so
+/// the passes that keep reading the same board do not enqueue it again.
+#[tokio::test]
+async fn a_failed_publish_is_not_enqueued_again_by_the_passes_that_follow() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    existing_run(&state, run_of("run-a", "pong", GREAT)).await;
+    run_ladder(&state, &id).await.unwrap();
+    let job = publish_jobs(&state).await.remove(0);
+    state
+        .db
+        .set_publish_job_state(&job.id, "failed", "2026-10-02T00:00:00Z", Some("boom"))
+        .await
+        .unwrap();
+
+    pass(&state, &id).await;
+    pass(&state, &id).await;
+
+    let all = publish_jobs(&state).await;
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].state, "failed");
+}
+
+#[tokio::test]
+async fn a_run_a_dispatch_launched_is_published_once_by_its_report_and_the_pass_after_it() {
+    let (_dir, state) = test_state().await;
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    run_ladder(&state, &id).await.unwrap();
+    let launched = launched_by_ladder(&state, &id).await.remove(0);
+
+    report(&state, &launched.id, run_of("run-a", "pong", GREAT)).await;
+    assert_eq!(publishing(&state).await, ["run-a"]);
+
+    pass(&state, &id).await;
+    assert_eq!(publishing(&state).await, ["run-a"]);
+}
+
+#[tokio::test]
+async fn with_automatic_publishing_off_a_dispatch_publishes_nothing() {
+    let (_dir, mut state) = test_state().await;
+    set_auto_publish(&mut state, false);
+    let id = ladder_id(&state, ladder_input(&["pong", "carom"], 1, &[SONNET])).await;
+    existing_run(&state, run_of("run-a", "pong", GREAT)).await;
+
+    run_ladder(&state, &id).await.unwrap();
+    pass(&state, &id).await;
+    assert!(publish_jobs(&state).await.is_empty());
+}

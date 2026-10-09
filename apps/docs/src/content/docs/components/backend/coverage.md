@@ -32,8 +32,10 @@ many as its target asks for (see [a cell's runs](#a-cells-runs)).
 The validation scripts are assumed correct, so a run's result is known the moment
 it finishes. Reviews never gate, meter, or trigger the launching of runs on a plan
 or a ladder. A review stays an optional label: an aesthetic rating, a writeup, or
-checklist overrides. Publishing still reads reviews as described in
-[Results](/components/core/results/).
+checklist overrides. A completed validator-rated run
+[publishes itself](/components/core/results/#automatic-publishing) when it
+finishes, whatever launched it, and publishing any other run reads reviews as
+described in [Results](/components/core/results/).
 
 "Unreviewed" means there is no [review](/components/core/results/#reviews) row
 for the requesting account, so two reviewers pointed at the same cabinet share its
