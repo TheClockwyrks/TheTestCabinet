@@ -14,8 +14,8 @@
 //! version makes no claim about the engine, so publishing a new engine leaves
 //! every run already recorded against that case version intact.
 //!
-//! Like an [orchestrator](crate::orchestrator), and unlike a
-//! [harness](crate::harness), an engine carries **no in-tree Rust code**: it is a
+//! Like an orchestrator (`test_cabinet_core::orchestrator`), and unlike a harness
+//! (`test_cabinet_core::harness`), an engine carries **no in-tree Rust code**: it is a
 //! directory holding one `engine.toml`. The *runtime* the manifest names is an
 //! ordinary npm package, staged into the host package store and vendored into the
 //! run repository at seed time; this module is only the declarative half — the
@@ -37,7 +37,8 @@ use crate::error::{Error, Result};
 // The engine shapes a run record and a test case name (the slugs, the manifest, the
 // selection and the resolved engine) are contract, so they live in
 // `test-cabinet-contracts` and are re-exported here; the catalog that resolves them
-// against the embedded manifests and the host package store is runtime.
+// against the embedded manifests and the host package store is runtime. Core
+// re-exports this module whole as `test_cabinet_core::engine`.
 pub use test_cabinet_contracts::engine::*;
 
 /// A built-in engine's manifest, baked in at build time so the catalog needs no
@@ -66,7 +67,7 @@ fn built_in(slug: &str) -> Option<&'static str> {
 #[derive(Debug, Clone)]
 pub struct EngineCatalog {
     /// The host package store engine packages are staged into — the same
-    /// directory [`FsRepoSeeder`](crate::seeding::FsRepoSeeder) vendors from, so
+    /// directory core's `FsRepoSeeder` (`test_cabinet_core::seeding`) vendors from, so
     /// the version this reports is the version that run would be seeded with.
     package_store: PathBuf,
 }
@@ -80,7 +81,8 @@ impl Default for EngineCatalog {
 impl EngineCatalog {
     /// Build a catalog reading versions from the default host package store (the
     /// `TCAB_PACKAGE_STORE` override when set, otherwise the baked-image default),
-    /// exactly as [`FsRepoSeeder::new`](crate::seeding::FsRepoSeeder::new) does.
+    /// exactly as core's `FsRepoSeeder::new` does
+    /// ([`package_store_dir`](crate::seeding::package_store_dir)).
     pub fn new() -> Self {
         Self {
             package_store: crate::seeding::package_store_dir(),
@@ -88,8 +90,8 @@ impl EngineCatalog {
     }
 
     /// Build a catalog reading versions from an explicit package store rather than
-    /// the default one. The counterpart of
-    /// [`FsRepoSeeder::with_package_store`](crate::seeding::FsRepoSeeder::with_package_store),
+    /// the default one. The counterpart of core's
+    /// `FsRepoSeeder::with_package_store`,
     /// for tests and for a caller staging packages somewhere of its own; pair the
     /// two so the version a case's range is checked against is the version the run
     /// is seeded with.
@@ -106,7 +108,7 @@ impl EngineCatalog {
     /// that would have worked. A *known* slug whose embedded manifest is
     /// malformed is not user input at all: it is an authoring mistake in this
     /// repository, so it panics with the reason, exactly as
-    /// [`harness_registry`](crate::harness_registry)'s manifest load does. The
+    /// `test_cabinet_core::harness_registry`'s manifest load does. The
     /// `every_engine_manifest_loads` guard in `crates/core/tests` is what turns
     /// that panic into a failing test rather than a failing run.
     pub fn resolve(&self, selection: &EngineSelection) -> Result<ResolvedEngine> {
@@ -146,8 +148,9 @@ impl EngineLookup for EngineCatalog {
 /// The version of an engine's package in `package_store`, or `None` when the
 /// engine vendors no package or the store holds nothing usable for it.
 ///
-/// Reads the very file [`seeding`](crate::seeding) reads when it vendors the
-/// package and records the version on the run, so there is exactly one source of
+/// Reads the very file seeding reads
+/// ([`staged_package_version`](crate::seeding::staged_package_version)) when it vendors
+/// the package and records the version on the run, so there is exactly one source of
 /// truth for an engine's version and no way for a gate to be checked against a
 /// number a run would not receive.
 ///

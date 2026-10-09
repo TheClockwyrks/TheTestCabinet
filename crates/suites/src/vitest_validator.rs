@@ -93,8 +93,8 @@
 //! # Bounded by construction
 //!
 //! The whole suite run is capped at [`vitest_timeout`] of wall clock and the output
-//! retained per suite at [`VITEST_OUTPUT_LIMIT`] bytes, exactly as the
-//! [toolchain stage](crate::toolchain_stage) bounds its commands. The cap costs a
+//! retained per suite at [`VITEST_OUTPUT_LIMIT`] bytes, exactly as the toolchain
+//! stage (`test_cabinet_core::toolchain_stage`) bounds its commands. The cap costs a
 //! suite that never terminates that much wall clock and nothing more: the command is
 //! spawned into its own process group and the whole group is killed, so no worker the
 //! suite started outlives the run that stopped waiting for it.
@@ -186,18 +186,18 @@ pub const VITEST_ASSERTION_LIMIT: usize = 1024;
 /// The wall-clock caps one suite run is bounded by, taken together so the runner
 /// reads the environment once and every step of a run is bounded by the same budget.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Caps {
+pub struct Caps {
     /// The cap on the suite run itself.
-    pub(crate) suite: Duration,
+    pub suite: Duration,
     /// The cap on the dependency install the runner falls back to.
-    pub(crate) install: Duration,
+    pub install: Duration,
 }
 
 impl Caps {
     /// The caps this environment sets: [`vitest_timeout`] for the suites, and the
     /// fixed [`VITEST_INSTALL_TIMEOUT`] for an install that is the toolchain stage's
     /// command over the toolchain stage's tree.
-    pub(crate) fn from_env() -> Self {
+    pub fn from_env() -> Self {
         Self {
             suite: vitest_timeout(),
             install: VITEST_INSTALL_TIMEOUT,
@@ -222,7 +222,7 @@ pub const VITEST_CONFIG_FILE: &str = "vitest.config.ts";
 pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
 
 /// The local vitest binary a produced tree's install leaves behind.
-pub(crate) const VITEST_BIN: &str = "node_modules/.bin/vitest";
+pub const VITEST_BIN: &str = "node_modules/.bin/vitest";
 
 /// Where a directory already standing at [`VALIDATION_SCRIPT_DIR`] is held while the
 /// staged validator project needs that name, relative to the produced tree.
@@ -265,14 +265,14 @@ const TRUNCATION_MARKER: &str = " … output truncated … ";
 /// same suites are run twice against two different builds: over a run's collected
 /// tree, where the media travels with the published implementation, and over the
 /// case's own reference implementation, where it lands in the version folder's
-/// committed baseline (see [`crate::validator::capture_baseline_media`]).
+/// committed baseline (see `test_cabinet_core::validator::capture_baseline_media`).
 ///
 /// Returns one [`DebugScriptResult`] per verdict unit the case declares a validator
 /// for, in declared order, or an empty vec when the case declares none. Each result
 /// carries one [`output`](DebugScriptResult::outputs) entry per output the manifest
 /// declares for that point, recording whether the suite actually produced it — so an
 /// empty list means the point declared no media, never that its media went missing.
-pub(crate) fn run_vitest_suites(
+pub fn run_vitest_suites(
     test_case: &TestCaseVersion,
     variant: &Variant,
     engine: &str,
@@ -387,7 +387,7 @@ fn suite_filters(suites: &[Suite]) -> Vec<String> {
 /// The directory holding `engine`'s validator project inside the case's version
 /// folder. A case declares its validators per engine, and this is where it puts
 /// them.
-pub(crate) fn project_dir(test_case: &TestCaseVersion, engine: &str) -> PathBuf {
+pub fn project_dir(test_case: &TestCaseVersion, engine: &str) -> PathBuf {
     test_case.root.join(VALIDATION_SCRIPT_DIR).join(engine)
 }
 
@@ -396,7 +396,7 @@ pub(crate) fn project_dir(test_case: &TestCaseVersion, engine: &str) -> PathBuf 
 /// The presence of the project's own `vitest.config.ts` is the whole test: the
 /// project is what makes the suites runnable, and a case that ships one has said
 /// its points are decided in process rather than by driving a browser.
-pub(crate) fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
+pub fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
     project_dir(test_case, engine)
         .join(VITEST_CONFIG_FILE)
         .is_file()
@@ -410,14 +410,14 @@ pub(crate) fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
 /// the case or the produced tree while the second is a fact about the host, and a
 /// reviewer reading the run must be able to tell them apart.
 #[derive(Debug)]
-pub(crate) struct RunnerFailure {
-    pub(crate) reason: String,
-    pub(crate) inconclusive: Inconclusive,
+pub struct RunnerFailure {
+    pub reason: String,
+    pub inconclusive: Inconclusive,
 }
 
 impl RunnerFailure {
     /// A failure of the case or the produced tree: nothing here was runnable.
-    pub(crate) fn not_run(reason: impl Into<String>) -> Self {
+    pub fn not_run(reason: impl Into<String>) -> Self {
         Self {
             reason: reason.into(),
             inconclusive: Inconclusive::NotRun,
@@ -426,7 +426,7 @@ impl RunnerFailure {
 
     /// A cap that expired. The suites were runnable and the host was too slow to
     /// finish them inside the budget, which says nothing about the build.
-    pub(crate) fn timed_out(reason: impl Into<String>) -> Self {
+    pub fn timed_out(reason: impl Into<String>) -> Self {
         Self {
             reason: reason.into(),
             inconclusive: Inconclusive::TimedOut,
@@ -434,7 +434,7 @@ impl RunnerFailure {
     }
 
     /// A short tag for the log line, so a run stopped at its cap is greppable.
-    pub(crate) fn outcome_tag(&self) -> &'static str {
+    pub fn outcome_tag(&self) -> &'static str {
         match self.inconclusive {
             Inconclusive::TimedOut => "timed-out",
             Inconclusive::NotRun => "not-run",
@@ -565,7 +565,7 @@ fn vitest_command(report_path: &Path, filters: &[String]) -> String {
 }
 
 /// Single-quote `value` for `sh`.
-pub(crate) fn quote(value: &str) -> String {
+pub fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
@@ -583,7 +583,7 @@ pub(crate) fn quote(value: &str) -> String {
 /// A directory already standing at the project's name is held aside while the run
 /// needs it and put back afterwards, so a build that authored one of its own keeps
 /// it.
-pub(crate) struct StagedProject {
+pub struct StagedProject {
     /// Where the project is staged (the tree's [`VALIDATION_SCRIPT_DIR`]).
     at: PathBuf,
     /// Where whatever already stood at [`Self::at`] is held, or `None` when the name
@@ -614,7 +614,7 @@ impl StagedProject {
     /// own — it reaches the implementation through the suite's debug API and imports
     /// nothing this repository ships — so staging the harness beside it would put a
     /// package into the tree that nothing there imports.
-    pub(crate) fn stage_plain(project: &Path, at: PathBuf) -> Result<Self, String> {
+    pub fn stage_plain(project: &Path, at: PathBuf) -> Result<Self, String> {
         let staged = Self {
             displaced: displace(&at)?,
             at,
@@ -715,7 +715,7 @@ fn copy_project(project: &Path, dest: &Path) -> Result<(), String> {
         std::fs::remove_dir_all(dest)
             .map_err(|err| format!("could not clear `{}`: {err}", dest.display()))?;
     }
-    crate::copy_tree(project, dest)
+    crate::fs::copy_tree(project, dest)
         .map_err(|err| format!("could not stage the validator project: {err}"))
 }
 
@@ -749,7 +749,7 @@ fn stage_case_harness(dest: &Path) -> Result<(), String> {
         std::fs::remove_dir_all(&at)
             .map_err(|err| format!("could not clear `{}`: {err}", at.display()))?;
     }
-    crate::copy_tree(&source, &at)
+    crate::fs::copy_tree(&source, &at)
         .map_err(|err| format!("could not stage `{CASE_HARNESS_PACKAGE}`: {err}"))
 }
 
@@ -777,14 +777,14 @@ fn case_harness_source() -> Option<PathBuf> {
 
 /// Make sure the tree's dependencies are installed, installing only when nothing has.
 ///
-/// The tree reaching validation is normally installed already: the
-/// [toolchain stage](crate::toolchain_stage) records the install it ran on the
+/// The tree reaching validation is normally installed already: the toolchain stage
+/// (`test_cabinet_core::toolchain_stage`) records the install it ran on the
 /// [collection](ArtifactCollection::prepared_install) and the validator reuses that
 /// install before any stage that needs dependencies. Reinstalling would be minutes
 /// spent reproducing a state already on disk, so the command runs only for a tree
 /// nothing prepared and whose `node_modules` is absent. A recorded install that
 /// failed is final, and the suite reports it rather than installing again.
-pub(crate) fn ensure_dependencies(
+pub fn ensure_dependencies(
     repo: &Path,
     artifacts: &ArtifactCollection,
     install_command: &str,
@@ -838,15 +838,15 @@ pub(crate) fn ensure_dependencies(
 
 /// A finished command's exit status and captured output.
 #[derive(Debug)]
-pub(crate) struct Ran {
-    pub(crate) code: Option<i32>,
-    pub(crate) stdout: String,
-    pub(crate) stderr: String,
+pub struct Ran {
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 impl Ran {
     /// The command's output, stdout first, for the one excerpt a reader wants.
-    pub(crate) fn combined(&self) -> String {
+    pub fn combined(&self) -> String {
         let mut combined = self.stdout.clone();
         if !self.stderr.trim().is_empty() {
             if !combined.is_empty() && !combined.ends_with('\n') {
@@ -859,7 +859,7 @@ impl Ran {
 }
 
 /// A human phrase for an exit status, for the reason a runner failure carries.
-pub(crate) fn exit_description(code: Option<i32>) -> String {
+pub fn exit_description(code: Option<i32>) -> String {
     match code {
         Some(code) => format!("exit {code}"),
         None => "killed by a signal".to_string(),
@@ -875,7 +875,7 @@ pub(crate) fn exit_description(code: Option<i32>) -> String {
 ///
 /// `env` is set on top of the runner's own inherited environment — the one channel the
 /// runner has to a suite it never calls directly.
-pub(crate) fn run_bounded(
+pub fn run_bounded(
     repo: &Path,
     command: &str,
     timeout: Duration,
@@ -1010,7 +1010,7 @@ struct ReporterTest {
 
 /// What one test did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TestStatus {
+pub enum TestStatus {
     Passed,
     Failed,
     /// Skipped, pending, or todo: the validator declined to decide.
@@ -1019,31 +1019,31 @@ pub(crate) enum TestStatus {
 
 /// One test's outcome, normalized off the reporter document.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TestOutcome {
+pub struct TestOutcome {
     /// What the test asserts, phrased so it reads true when it passes.
-    pub(crate) label: String,
-    pub(crate) status: TestStatus,
+    pub label: String,
+    pub status: TestStatus,
     /// The failure message vitest reported, unbounded, with every stack frame
     /// stripped; the excerpt is taken when the assertion is built.
-    pub(crate) failure: Option<String>,
+    pub failure: Option<String>,
 }
 
 /// One test file's outcome, keyed by its tree-relative path.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SuiteReport {
+pub struct SuiteReport {
     /// The file's path relative to the implementation's repository root, forward
     /// slashed — the key a review item's declared validator is matched on.
-    pub(crate) file: String,
+    pub file: String,
     /// The file-level error, present when the file failed before running any test.
-    pub(crate) message: Option<String>,
-    pub(crate) tests: Vec<TestOutcome>,
+    pub message: Option<String>,
+    pub tests: Vec<TestOutcome>,
 }
 
 /// Parse vitest's JSON reporter document into one report per test file.
 ///
 /// Paths are rewritten relative to `repo` so a file matches the review item that
 /// declared it regardless of where the tree happens to live on the host.
-pub(crate) fn parse_report(json: &str, repo: &Path) -> Result<Vec<SuiteReport>, String> {
+pub fn parse_report(json: &str, repo: &Path) -> Result<Vec<SuiteReport>, String> {
     let document: ReporterDocument = serde_json::from_str(json)
         .map_err(|err| format!("vitest's JSON report could not be read: {err}"))?;
     // Vitest reports the file's real path, which is not the path the tree was reached
@@ -1102,7 +1102,7 @@ fn relative_to(path: &str, roots: &[&Path]) -> String {
 
 /// One verdict unit's validator: the identity carried onto its result, and the tree
 /// path of the test file that decides it.
-pub(crate) struct Suite {
+pub struct Suite {
     item_id: String,
     sub_item_id: Option<String>,
     verdict_id: String,
@@ -1121,7 +1121,7 @@ pub(crate) struct Suite {
 
 impl Suite {
     /// The suite that decides `unit` under `engine_slug`.
-    pub(crate) fn of(unit: &DriveUnit<'_>, engine_slug: &str) -> Self {
+    pub fn of(unit: &DriveUnit<'_>, engine_slug: &str) -> Self {
         Self {
             item_id: unit.item_id.clone(),
             sub_item_id: unit.sub_item_id.clone(),
@@ -1136,7 +1136,7 @@ impl Suite {
     }
 
     /// The result for this suite, given the report of the file that decides it.
-    pub(crate) fn result(&self, report: Option<&SuiteReport>) -> DebugScriptResult {
+    pub fn result(&self, report: Option<&SuiteReport>) -> DebugScriptResult {
         let Some(report) = report else {
             // The case names a validator vitest did not collect. That is a statement
             // about the case's project, never about the build, so the point is left
@@ -1214,11 +1214,7 @@ impl Suite {
     /// A result recording that this suite decided nothing, for `reason`, and which
     /// kind of inconclusive that is. No verdict is synthesized, so the point stays
     /// unanswered and the reviewer decides it by hand.
-    pub(crate) fn inconclusive(
-        &self,
-        reason: &str,
-        inconclusive: Inconclusive,
-    ) -> DebugScriptResult {
+    pub fn inconclusive(&self, reason: &str, inconclusive: Inconclusive) -> DebugScriptResult {
         DebugScriptResult {
             ran: false,
             precondition_unmet: true,
@@ -1325,7 +1321,7 @@ fn prune(produced: &Path, media_dir: &Path) {
 /// and normalizes, touching the filesystem only for the working directory itself. A
 /// path it cannot resolve is handed back as it stands, which for a runner whose repo
 /// path is already absolute — every caller's, in practice — is the same string.
-pub(crate) fn absolute(path: &Path) -> String {
+pub fn absolute(path: &Path) -> String {
     std::path::absolute(path)
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
@@ -1344,7 +1340,7 @@ pub(crate) fn absolute(path: &Path) -> String {
 /// dropped: `validation/<engine>/<rest>` staged at `validation/` is
 /// `validation/<rest>`. `None` when such a path names a validator of some **other**
 /// engine, which is a case that declared a script the run's engine has none of.
-pub(crate) fn staged_path(script_rel: &str, engine_slug: &str) -> Option<String> {
+pub fn staged_path(script_rel: &str, engine_slug: &str) -> Option<String> {
     let Some(rest) = script_rel.strip_prefix(&format!("{VALIDATION_SCRIPT_DIR}/")) else {
         return Some(format!("{VALIDATION_SCRIPT_DIR}/{script_rel}"));
     };
@@ -1397,7 +1393,7 @@ fn assertion(test: &TestOutcome, budget: &mut usize) -> Assertion {
 /// error's own text (`    at run (/…/window-fit.test.ts:175:21)`). Frames carry
 /// file paths and line numbers that mean nothing to a reviewer, so they never
 /// reach a stored assertion or detail.
-pub(crate) fn sanitize_failure(message: &str) -> String {
+pub fn sanitize_failure(message: &str) -> String {
     message
         .lines()
         .filter(|line| !is_stack_frame(line))
@@ -1573,7 +1569,7 @@ fn contract_failure(verdict_id: &str, message: Option<&str>) -> AutoVerdict {
 /// Which end carries the signal depends on the message: an assertion error leads with
 /// what it required, while a stack trace closes with the frame that matters, so
 /// neither end is the one that is always dropped.
-pub(crate) fn bounded(text: &str, limit: usize) -> String {
+pub fn bounded(text: &str, limit: usize) -> String {
     let text = text.trim();
     if text.len() <= limit {
         return text.to_string();

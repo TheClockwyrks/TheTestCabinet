@@ -48,9 +48,10 @@ An engine is a directory under `engines/<slug>/` containing one manifest,
 The last two are declared by an engine that provides a runtime. An engine
 without them supplies no runtime, which is what `none` is.
 
-The built-in engines live under `engines/` in the repo, embedded into
-`crates/core` at build time so a backend-driven worker with no checkout resolves
-them the same way the CLI does. They are catalogued under
+The built-in engines live under `engines/` in the repo. The engine catalog in the
+[suites crate](/components/core/overview/#the-suites-crate) (`crates/suites`) embeds
+every `engines/*/engine.toml` at build time, so a backend-driven worker with no
+checkout resolves them the same way the CLI does. They are catalogued under
 [Engines](/engines/overview/). The catalogue is closed: a run naming a slug
 outside it is refused, because an engine is a staged package and a seeded
 documentation tree the host has to hold.

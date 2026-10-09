@@ -25,18 +25,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The variable that turns a missing browser toolchain from a skip into a failure.
-pub(crate) const REQUIRE_BROWSER: &str = "TCAB_REQUIRE_BROWSER";
+pub const REQUIRE_BROWSER: &str = "TCAB_REQUIRE_BROWSER";
 
 /// Whether this process requires the browser toolchain, read from
 /// [`REQUIRE_BROWSER`].
-pub(crate) fn browser_required() -> bool {
+pub fn browser_required() -> bool {
     required_by(std::env::var_os(REQUIRE_BROWSER).as_deref())
 }
 
 /// Whether a value of [`REQUIRE_BROWSER`] requires the toolchain. Only `1`
 /// does. An unset or empty variable, `0` or any other value is a machine where
 /// the toolchain is optional.
-pub(crate) fn required_by(value: Option<&OsStr>) -> bool {
+pub fn required_by(value: Option<&OsStr>) -> bool {
     value == Some(OsStr::new("1"))
 }
 
@@ -53,13 +53,13 @@ pub(crate) fn required_by(value: Option<&OsStr>) -> bool {
 /// }
 /// ```
 #[track_caller]
-pub(crate) fn skip_without_browser(missing: &str) {
+pub fn skip_without_browser(missing: &str) {
     skip_or_fail(browser_required(), missing);
 }
 
 /// [`skip_without_browser`] with the requirement given rather than read.
 #[track_caller]
-pub(crate) fn skip_or_fail(required: bool, missing: &str) {
+pub fn skip_or_fail(required: bool, missing: &str) {
     if required {
         panic!(
             "{REQUIRE_BROWSER}=1 requires the browser toolchain, and {missing}. \
@@ -71,7 +71,7 @@ pub(crate) fn skip_or_fail(required: bool, missing: &str) {
 }
 
 /// Whether the host has a `node` on its PATH.
-pub(crate) fn node_available() -> bool {
+pub fn node_available() -> bool {
     which::which("node").is_ok()
 }
 
@@ -83,7 +83,7 @@ pub(crate) fn node_available() -> bool {
 /// directory holding a `.git` entry (a directory in a checkout, a file in a
 /// submodule or a worktree), which is the root of the repository `start` is in,
 /// so a superrepo's workspace is never taken for this repository's.
-pub(crate) fn workspace_node_modules(start: &Path) -> Option<PathBuf> {
+pub fn workspace_node_modules(start: &Path) -> Option<PathBuf> {
     for directory in start.ancestors() {
         let modules = directory.join("node_modules");
         if directory.join("package.json").is_file() && modules.is_dir() {
@@ -104,7 +104,7 @@ pub(crate) fn workspace_node_modules(start: &Path) -> Option<PathBuf> {
 /// `@vitest/browser-playwright`, and counts as installed when its
 /// `package.json` is there. `playwright` is checked whether or not it is listed,
 /// since the launch goes through it.
-pub(crate) fn browser_workspace(start: &Path, packages: &[&str]) -> Result<PathBuf, String> {
+pub fn browser_workspace(start: &Path, packages: &[&str]) -> Result<PathBuf, String> {
     if !node_available() {
         return Err("no `node` on PATH".to_string());
     }
@@ -137,7 +137,7 @@ pub(crate) fn browser_workspace(start: &Path, packages: &[&str]) -> Result<PathB
 /// page in it, the way Vitest's Playwright provider launches it. `npm ci`
 /// installs Playwright without downloading a browser, so the packages alone do
 /// not say a browser test can run.
-pub(crate) fn chromium_launches(node_modules: &Path) -> Result<(), String> {
+pub fn chromium_launches(node_modules: &Path) -> Result<(), String> {
     const LAUNCH: &str = "\
         const { chromium } = require('playwright');\n\
         (async () => {\n\

@@ -24,6 +24,12 @@ path = "src/lib.rs"
 # `test_suite`, `gg_query`, `engine`, `pricing`, `orchestrator`, `execution`, the
 # ingest feed and the layout constants).
 test-cabinet-contracts = { path = "../contracts" }
+# The test-suite runtime: the suite catalog and its lowering, previews, the definition
+# prompt, the validator runners and the browser plumbing they use, the engine catalog
+# and the content digests. Re-exported at the old paths (`test_suite`, `engine`,
+# `browser`, `vitest_validator`, `content_digest`, `content_labels`, and the halves of
+# `execution`, `validator`, `prompt` and `seeding` that moved).
+test-cabinet-suites = { path = "../suites" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -35,7 +41,6 @@ toml = { workspace = true }
 # Semantic-version ordering for the engine version ranges a test case declares
 # (`[[engine]]`) and the run gate enforces (`resolve_engine`).
 semver = { workspace = true }
-handlebars = { workspace = true }
 tempfile = { workspace = true }
 # Gzip framing for the run-tree analysis artifacts core assembles on the host
 # (`gg_session_assembly` writes `replay.json.gz`); the same workspace codec the
@@ -119,6 +124,8 @@ contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-contracts/contract"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# `test_browser`, what a test driving a real browser needs (`crate::test_browser`).
+test-cabinet-suites = { path = "../suites", features = ["test-support"] }
 # The same audio contract crate the library links, with its `cli` feature: the audio
 # staging test reads the tree core wrote back through the exact reader the
 # in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the

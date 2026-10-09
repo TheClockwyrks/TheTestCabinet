@@ -1,12 +1,12 @@
 // The **shared conformance suite** — the TypeScript half of the mirrored evaluator's
 // only defence.
 //
-// It reads `crates/core/src/gg_query.conformance.json` **directly off the crate**, not a
-// copy vendored into this package. A copy would be worse than no fixture at all: it
-// would drift silently, keep passing, and still look like protection. Reading the one
-// file means a case added on either side is executed by both suites or neither, and the
-// Rust suite (`crates/core/src/gg_query.test.rs`) asserts the same expectations against
-// the authoritative implementation.
+// It reads `crates/contracts/fixtures/gg_query.conformance.json` **directly off the
+// crate**, not a copy vendored into this package. A copy would be worse than no fixture
+// at all: it would drift silently, keep passing, and still look like protection. Reading
+// the one file means a case added on either side is executed by both suites or neither,
+// and the Rust suite (`crates/core/src/gg_query.test.rs`) asserts the same expectations
+// against the authoritative implementation.
 //
 // The two halves also agree on strictness. The Rust structs are `deny_unknown_fields`
 // because every assertion is optional, so a misspelled expectation key would degrade a
@@ -57,7 +57,7 @@ interface Conformance {
  *  the suite behaves the same run from `packages/ui` and from the repo root. */
 const FIXTURE = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../../../../../crates/core/src/gg_query.conformance.json",
+  "../../../../../../../crates/contracts/fixtures/gg_query.conformance.json",
 );
 
 const fixture = JSON.parse(readFileSync(FIXTURE, "utf8")) as Conformance;

@@ -15,16 +15,12 @@ pub mod asset_reference;
 pub mod audio_stage;
 pub mod auth;
 pub mod backend_client;
-pub mod browser;
 pub mod cancel;
 pub mod clock;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
 pub mod container;
-pub mod content_digest;
-pub mod content_labels;
-pub mod engine;
 pub mod error;
 pub mod event;
 pub mod exec_stream;
@@ -66,7 +62,6 @@ pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
-pub mod vitest_validator;
 
 // The contract modules that moved whole into `test-cabinet-contracts`, re-exported at
 // their old paths so `test_cabinet_core::gg::GgConfig` and the rest name the same
@@ -76,14 +71,23 @@ pub use test_cabinet_contracts::{
     showcase, toolchain,
 };
 
+// The suite runtime's modules that moved whole into `test-cabinet-suites`, re-exported
+// at their old paths in the same way.
+pub use test_cabinet_suites::{browser, content_digest, content_labels, engine, vitest_validator};
+
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
 
 /// What a test driving a real browser needs, and the `TCAB_REQUIRE_BROWSER`
-/// rule for when it is missing.
+/// rule for when it is missing: `test_cabinet_suites::test_browser`, which the
+/// suites crate exposes to this crate's tests through its `test-support` feature.
 #[cfg(test)]
-pub(crate) mod test_browser;
+pub(crate) use test_cabinet_suites::test_browser;
+
+#[cfg(test)]
+#[path = "vitest_validator.core.test.rs"]
+mod vitest_validator_tests;
 
 /// The Test Cabinet commit this build was produced from, stamped at compile time
 /// by `build.rs` into the `TEST_CABINET_COMMIT` environment variable and suffixed
@@ -2849,62 +2853,14 @@ fn parse_pretty_name(os_release: &str) -> Option<String> {
     })
 }
 
-/// Directory names that are never part of a run's collected implementation.
-///
-/// `node_modules` is regenerated from the lockfile by a fresh install, so
-/// keeping it only bloats the artifact and risks shipping platform-specific
-/// binaries — or the broken tool shims a dereferencing copy would leave behind,
-/// since a package manager's `.bin/*` entries are symlinks whose relative
-/// imports only resolve from their real location.
-///
-/// This list is applied twice, for the same reason: `copy_tree` omits these
-/// directories when copying the collected tree into the published
-/// implementation, and the Kubernetes artifact collector excludes them at
-/// `tar` pack time so they never enter the streamed archive in the first place
-/// — packing then unpacking a `node_modules` full of native binaries and
-/// `.bin/*` symlinks is both wasteful and a source of host-side unpack
-/// failures, given the tree is dropped by `copy_tree` immediately afterward.
-pub const SKIPPED_DIRS: &[&str] = &["node_modules"];
+// The directories a collected tree never carries, and the copy that leaves them out,
+// are shared with the suite runtime's validator staging, so they live in
+// `test_cabinet_suites::fs`.
+pub use test_cabinet_suites::fs::SKIPPED_DIRS;
 
-/// Recursively copy a directory tree from `from` to `to`.
-///
-/// Symlinks are recreated as symlinks rather than dereferenced, so any links the
-/// run produced keep pointing at their original targets instead of being
-/// flattened into copies of the target's contents. Dependency directories listed
-/// in [`SKIPPED_DIRS`] are omitted entirely.
+/// Recursively copy a directory tree from `from` to `to`, leaving out
+/// [`SKIPPED_DIRS`] and recreating symlinks as symlinks:
+/// `test_cabinet_suites::fs::copy_tree`, reporting its failure as this crate's error.
 fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if SKIPPED_DIRS.contains(&name.to_str().unwrap_or_default()) {
-            continue;
-        }
-        let dest = to.join(&name);
-        let file_type = entry.file_type()?;
-        if file_type.is_symlink() {
-            copy_symlink(&entry.path(), &dest)?;
-        } else if file_type.is_dir() {
-            copy_tree(&entry.path(), &dest)?;
-        } else {
-            std::fs::copy(entry.path(), &dest)?;
-        }
-    }
-    Ok(())
-}
-
-/// Recreate the symlink at `from` at the new location `to`, preserving its
-/// target verbatim. The target is kept as-is (typically relative to the link's
-/// own directory) so the recreated link resolves the same way the original did.
-fn copy_symlink(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
-    let target = std::fs::read_link(from)?;
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&target, to)?;
-    #[cfg(windows)]
-    if from.is_dir() {
-        std::os::windows::fs::symlink_dir(&target, to)?;
-    } else {
-        std::os::windows::fs::symlink_file(&target, to)?;
-    }
-    Ok(())
+    Ok(test_cabinet_suites::fs::copy_tree(from, to)?)
 }

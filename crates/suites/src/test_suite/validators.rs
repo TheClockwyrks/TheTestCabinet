@@ -100,7 +100,7 @@ const REVIEWED_DETAIL: &str =
 /// Returns an empty vec for a test case that is not suite-defined, which is what
 /// every authored case is: the case path decides those, and the two never both
 /// report on one run.
-pub(crate) fn run_suite_validators(
+pub fn run_suite_validators(
     test_case: &TestCaseVersion,
     artifacts: &ArtifactCollection,
     output_dir: &Path,

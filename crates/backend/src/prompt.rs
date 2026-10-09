@@ -78,6 +78,7 @@ pub fn render_stored_prompt(
                 &manifest.prompt_template,
                 engine,
             )
+            .map_err(Error::from)
         }
         None => render_authored_prompt(manifest, variant, engine),
     }

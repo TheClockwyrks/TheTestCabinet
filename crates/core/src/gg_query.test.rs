@@ -1,7 +1,7 @@
 //! TCQ's tests, in two halves.
 //!
-//! The first half executes `gg_query.conformance.json` — the **shared** fixture the
-//! TypeScript twin runs too. It is the only thing standing between two independent
+//! The first half executes `crates/contracts/fixtures/gg_query.conformance.json` — the
+//! **shared** fixture the TypeScript twin runs too. It is the only thing standing between two independent
 //! evaluators and two different published numbers, so every case in it names the rule
 //! it pins and every new rule owes it a case.
 //!
@@ -34,7 +34,7 @@ use crate::validation::ValidationSummary;
 // --- the shared conformance fixture -------------------------------------------
 
 /// The fixture, compiled in so the test cannot silently run against a missing file.
-const CONFORMANCE: &str = include_str!("gg_query.conformance.json");
+const CONFORMANCE: &str = include_str!("../../contracts/fixtures/gg_query.conformance.json");
 
 /// The fixture document: a corpus, and the cases to run over it.
 #[derive(Debug, Deserialize)]

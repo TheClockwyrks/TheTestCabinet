@@ -1,7 +1,7 @@
 //! Content digests: what a stored version was ingested from, so a
-//! [`changed`](crate::IngestMode::Changed) scan can tell an edited version from one
-//! the store already holds, and a client reading the stored digest back can tell
-//! whether the checkout still matches it.
+//! [`changed`](test_cabinet_contracts::ingest::IngestMode::Changed) scan can tell an
+//! edited version from one the store already holds, and a client reading the stored
+//! digest back can tell whether the checkout still matches it.
 //!
 //! [API](https://docs.testcabinet.ai/components/backend/api/#post-ingest) is
 //! authoritative. A digest is SHA-256 over a version folder's files, visiting their
@@ -20,8 +20,8 @@ use std::io::Result;
 
 use sha2::{Digest, Sha256};
 
-use crate::reference_lock::REFERENCE_LOCK_FILENAME;
 use crate::test_case::is_seeded_dotfile;
+use test_cabinet_contracts::layout::REFERENCE_LOCK_FILENAME;
 
 /// Framing tags, so a file's bytes can never be read as the next path and a
 /// companion can never be read as a folder file.

@@ -767,14 +767,10 @@ fn a_run_that_outlives_its_cap_leaves_every_point_inconclusive_rather_than_faile
         );
     }
 
-    // The scoring rule the reviewer's checklist and the automated score share: an
-    // inconclusive point is not a lost point, it is an unanswered one.
-    let score = crate::comparison::automated_only_score(&items, &results);
-    assert_eq!(
-        (score.earned, score.total),
-        (0.0, 0),
-        "a run stopped at its cap contributes to neither side of the score",
-    );
+    // What these results are worth to the score — neither side of it, because an
+    // inconclusive point is an unanswered one rather than a lost one — is held by
+    // `a_run_stopped_at_its_cap_contributes_to_neither_side_of_the_score` in core,
+    // which owns the scoring rule.
 }
 
 #[test]

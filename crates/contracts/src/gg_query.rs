@@ -28,7 +28,7 @@
 //!   because it must run on the backend for the console *and* in the browser for the
 //!   public static site, which has no backend at all. Cross-implementation drift is
 //!   this design's single largest risk, so it is bounded rather than trusted: the
-//!   checked-in `gg_query.conformance.json` fixture (documents, queries, expected
+//!   checked-in `fixtures/gg_query.conformance.json` fixture (documents, queries, expected
 //!   results, and the expected field catalog) is executed by **both**
 //!   suites. **Any change to the semantics below must grow that fixture.**
 //!

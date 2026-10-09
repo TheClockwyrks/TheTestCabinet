@@ -506,5 +506,9 @@ The summary's types are defined in the
 [contracts crate](/components/core/overview/#the-contracts-crate)
 (`test_cabinet_contracts::validation`), because the run record carries it. The
 validators that produce it, and the `Validator` seam they implement, live in the
-core. A suite-defined case's per-requirement outcomes are part of the
-[test suite format](/test-suites/overview/), which is defined in the same crate.
+core. The runners a validator project runs through, a case's vitest runner and a
+suite's validator runner, live in the
+[suites crate](/components/core/overview/#the-suites-crate) beside the static server
+and browser driver they share with the core's browser drive. A suite-defined case's
+per-requirement outcomes are part of the [test suite format](/test-suites/overview/),
+which is defined in the contracts crate.

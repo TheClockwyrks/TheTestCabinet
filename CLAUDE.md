@@ -27,6 +27,7 @@ Read the doc first; the code location is where the implementation lives.
 | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | Core (headless orchestration; owns the data contracts)                                                                              | [`components/core/`](apps/docs/src/content/docs/components/core/)                                               | `crates/core/`               |
 | Contracts (the shapes more than one party reads or writes; core re-exports them)                                                    | [`components/core/overview.md`](apps/docs/src/content/docs/components/core/overview.md#the-contracts-crate)     | `crates/contracts/`          |
+| Suites (the test-suite runtime, engine catalog, validator runners and browser driver; core re-exports them)                         | [`components/core/overview.md`](apps/docs/src/content/docs/components/core/overview.md#the-suites-crate)        | `crates/suites/`             |
 | CLI (`tcab`)                                                                                                                        | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md)                           | `crates/cli/`                |
 | Dispatcher (claims queued runs → one driver Job each)                                                                               | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md)             | `crates/dispatcher/`         |
 | Driver (per-run-Job executor; streams to the backend)                                                                               | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md)                     | `crates/driver/`             |
@@ -251,7 +252,7 @@ and previews, plus a page per file format (the suite and version manifests,
 specifications, validators, debug APIs, test case definitions, demonstrations,
 assets, reference implementations, and the showcase). The suite model and its
 rules live in `crates/contracts/src/test_suite/`, the catalog, lowering, previews
-and validator runner in `crates/core/src/test_suite/`, the backend's suite ingest
+and validator runner in `crates/suites/src/test_suite/`, the backend's suite ingest
 and API in `crates/backend/`, and the console's Test Suites tab and detail pages
 in `packages/ui/`.
 

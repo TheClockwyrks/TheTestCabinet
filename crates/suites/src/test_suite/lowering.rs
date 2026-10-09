@@ -478,7 +478,9 @@ pub(crate) fn lower(
         changelog_path: context.root.join(&context.manifest.changelog),
         root: context.root.to_path_buf(),
         prompt_path,
-        max_runtime_seconds: crate::runtime_hours_to_seconds(definition.max_runtime_hours),
+        max_runtime_seconds: crate::test_case::runtime_hours_to_seconds(
+            definition.max_runtime_hours,
+        ),
         test_type: resolved_type.test_type,
         // A suite still being iterated on keeps every case it offers out of a
         // deployment that has not opted in, so either declaration hides the case.

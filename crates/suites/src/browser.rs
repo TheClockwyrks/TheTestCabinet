@@ -1,6 +1,6 @@
 //! Shared headless-browser plumbing.
 //!
-//! Both reference rendering (see [`crate::reference`]) and the load-check
+//! Both reference rendering (see `test_cabinet_core::reference`) and the load-check
 //! validator drive a headless browser through the bundled Playwright driver
 //! script (`packages/browser-driver/driver.mjs`) and, for captures, serve a
 //! built site over a tiny static file server. That shared machinery lives here.
@@ -306,8 +306,8 @@ pub struct SmokeDriveResult {
 
 /// Open a served build in the headless browser and report whether it boots.
 ///
-/// This is the single browser question the [toolchain
-/// stage](crate::toolchain_stage) asks: the built site loads, reaches a first
+/// This is the single browser question the toolchain stage
+/// (`test_cabinet_core::toolchain_stage`) asks: the built site loads, reaches a first
 /// animation frame, paints something, and logs nothing to the error console.
 ///
 /// Returns `Err` only when the driver itself could not run — no Node, no

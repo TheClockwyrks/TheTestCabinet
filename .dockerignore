@@ -50,13 +50,13 @@
 !/rust-toolchain.toml
 !/.cargo
 !/crates
-# crates/core bakes these three trees into the binary verbatim via include_str!
-# (the built-in orchestrator runner scripts, the harness manifests, and the
-# built-in engine manifests), so they must be present in the context even though
-# they are not Rust sources. A tree that is baked in but not re-included here does
-# not fail at COPY like a missing Dockerfile source does — it fails much later, as
-# `error: couldn't read ...: No such file or directory` from the compiler, which is
-# how engines/ was missed when engines landed.
+# crates/core and crates/suites bake these three trees into the binary verbatim via
+# include_str! (core the built-in orchestrator runner scripts and the harness
+# manifests, suites the built-in engine manifests), so they must be present in the
+# context even though they are not Rust sources. A tree that is baked in but not
+# re-included here does not fail at COPY like a missing Dockerfile source does — it
+# fails much later, as `error: couldn't read ...: No such file or directory` from the
+# compiler, which is how engines/ was missed when engines landed.
 !/orchestrators
 !/harnesses
 !/engines
@@ -199,7 +199,7 @@
 !/packages/structured-3d
 # The shared engineless (`none`) validator harness and canvas recorder. Nothing
 # bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
-# package store beside the engine runtimes, and crates/core's vitest validator
+# package store beside the engine runtimes, and crates/suites' vitest validator
 # (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
 # store into a case's staged validator project. So the driver image must carry its
 # sources, and a build context missing them fails inside the staging script

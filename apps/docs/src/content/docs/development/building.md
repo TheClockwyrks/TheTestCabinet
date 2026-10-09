@@ -168,7 +168,15 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
   session record, the TCQ query shapes, the engine identity a run names, the
   ingest feed, and the layout of a run tree. Data and pure functions only; core
   re-exports every module at its old path. The test suite fixture the format's
-  tests and the suite runtime's tests read is `crates/contracts/fixtures/test-suite/`.
+  tests and the suite runtime's tests read is `crates/contracts/fixtures/test-suite/`,
+  and the TCQ conformance fixture the Rust and TypeScript evaluators both execute is
+  `crates/contracts/fixtures/gg_query.conformance.json`.
+- `crates/suites`: `test-cabinet-suites` (lib `test_cabinet_suites`). The
+  [test-suite runtime](/components/core/overview/#the-suites-crate): the suite
+  catalog and lowering, previews, a definition's prompt and the validator runners,
+  with the engine catalog, the vitest runner, the browser driver and the content
+  digests they share with the core. Core re-exports every module at its old path.
+  The `test-support` feature exposes `test_browser` to another crate's tests.
 - `crates/core`: `test-cabinet-core` (lib `test_cabinet_core`). The headless
   [core](/components/core/overview/) that owns all orchestration: resolving a
   test case version, seeding a run's repository, executing the run in a
@@ -480,14 +488,16 @@ gg's unit tests are the one part of the suite no gate runs; see
 
 ### Tests that need a browser
 
-A few of core's tests run a real toolchain rather than a stand-in for one: the
+A few of the core's and the suites crate's tests run a real toolchain rather than a
+stand-in for one: the
 lockfile check's script under the host's `node`, and Playwright's Chromium
 launched through the npm workspace, which is how a validator project runs under
 Vitest's browser mode. A machine without that toolchain prints `skipped:` and
 what is missing, and the test passes, so the rest of the suite still runs on a
-laptop with no browser. `crates/core/src/test_browser.rs` holds the helpers such
-a test uses, and `test_browser::tests::the_repository_workspace_launches_chromium`
-checks the toolchain on its own.
+laptop with no browser. `crates/suites/src/test_browser.rs` holds the helpers such
+a test uses, which the suites crate's `test-support` feature exposes to the core's
+tests, and `test_browser::tests::the_repository_workspace_launches_chromium` in the
+suites crate checks the toolchain on its own.
 
 Where the toolchain is meant to be present, a skip is a pass nobody earned.
 `TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
@@ -500,7 +510,7 @@ To hold a local run to the same standard:
 ```sh
 npm ci                                   # the workspace: Vitest, Playwright
 scripts/ci/install-playwright-chromium.sh  # Chromium and its libraries (as root)
-TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-core
+TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-suites -p test-cabinet-core
 ```
 
 The dev container already carries Chromium. A test finds the npm workspace from

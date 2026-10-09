@@ -3,8 +3,8 @@
 //! Everything here has a TypeScript twin that must produce identical output for the
 //! same corpus, because the console evaluates on the backend and the public static
 //! site evaluates in the browser with no backend at all. The
-//! `gg_query.conformance.json` fixture beside this module's test is what holds the two
-//! together; **a change to any rule below must arrive with a fixture case that would
+//! `crates/contracts/fixtures/gg_query.conformance.json` fixture this module's test
+//! executes is what holds the two together; **a change to any rule below must arrive with a fixture case that would
 //! have caught the drift.**
 
 use std::borrow::Borrow;

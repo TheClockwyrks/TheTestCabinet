@@ -7,8 +7,8 @@
 // the reference implementation; where the two languages differ by default — string
 // ordering above all — this file is the one that has to bend.
 //
-// The shared `gg_query.conformance.json` fixture beside the Rust test is what holds the
-// pair together. A change to any rule here must arrive with a fixture case that would
+// The shared `crates/contracts/fixtures/gg_query.conformance.json` fixture, which the
+// Rust test executes too, is what holds the pair together. A change to any rule here must arrive with a fixture case that would
 // have caught the drift.
 import type {
   GgAgg,

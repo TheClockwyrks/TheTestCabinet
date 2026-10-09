@@ -1,7 +1,7 @@
 //! Unit tests for the engine resolution `tcab seed`, `tcab validate`, and
 //! `tcab prompt` share.
 //!
-//! The catalogue itself is `core`'s to test (`crates/core/src/engine.test.rs`);
+//! The catalogue itself is `suites`' to test (`crates/suites/src/engine.test.rs`);
 //! what is pinned here is the part this crate owns — the *order* the two refusals
 //! are reported in, which is what decides whether a mistyped flag sends someone
 //! looking at the flag or at the case's manifest.

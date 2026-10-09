@@ -5410,21 +5410,10 @@ impl TestCaseCatalog {
 }
 
 /// Read the immediate subdirectory names of a directory, ignoring files and
-/// hidden entries.
+/// hidden entries: `test_cabinet_suites::fs::read_dir_names`, reporting its failure as
+/// this crate's error.
 pub(crate) fn read_dir_names(dir: &Path) -> Result<Vec<String>> {
-    let mut names = Vec::new();
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-        if let Some(name) = entry.file_name().to_str()
-            && !name.starts_with('.')
-        {
-            names.push(name.to_string());
-        }
-    }
-    Ok(names)
+    Ok(test_cabinet_suites::fs::read_dir_names(dir)?)
 }
 
 /// The default maximum harness runtime, in hours, applied when a manifest omits

@@ -94,7 +94,7 @@ image of the same commit, so everything above holds in it unchanged, and adds:
 
 The `rust` job runs in it with `TCAB_REQUIRE_BROWSER=1`, which turns a Rust test
 that would skip for want of Node, the npm workspace or Chromium into a failure
-(`crates/core/src/test_browser.rs`). The job's npm
+(`crates/suites/src/test_browser.rs`). The job's npm
 workspace comes from its setup steps, as before. The project's other Rust jobs
 stay on the Rust image.
 

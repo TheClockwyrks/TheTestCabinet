@@ -5167,7 +5167,6 @@ dependencies = [
  "flate2",
  "foray-core",
  "foray-host",
- "handlebars",
  "hex",
  "hmac",
  "http",
@@ -5186,6 +5185,7 @@ dependencies = [
  "test-cabinet-contracts",
  "test-cabinet-draw",
  "test-cabinet-model-core",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
  "test-cabinet-voxel",
  "test-cabinet-voxel-mesh",
@@ -5491,6 +5491,26 @@ name = "test-cabinet-sn-skin"
 version = "0.0.0"
 dependencies = [
  "test-cabinet-model-skin",
+]
+
+[[package]]
+name = "test-cabinet-suites"
+version = "0.0.0"
+dependencies = [
+ "cuid2",
+ "handlebars",
+ "hex",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "test-cabinet-contracts",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "toml",
+ "tracing",
+ "which",
 ]
 
 [[package]]

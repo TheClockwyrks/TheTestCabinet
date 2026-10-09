@@ -23,7 +23,7 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    ReviewItem, ReviewOutput, ReviewValidation, TestCaseVersion, TestType, Variant,
+    TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
     Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
@@ -39,9 +39,11 @@ pub use test_cabinet_contracts::layout::{
     BUILD_OUTPUTS, VALIDATION_BASELINE_DIR, VALIDATION_IMAGE_PREFIX, VALIDATION_SCRIPT_DIR,
     is_validation_image_name, validation_media_name, validation_published_extension,
 };
-pub(crate) use test_cabinet_contracts::layout::{
-    VALIDATION_MEDIA_DIR, media_kind_tag, validation_output_extension,
-};
+pub(crate) use test_cabinet_contracts::layout::{VALIDATION_MEDIA_DIR, media_kind_tag};
+// The checklist's verdict units and the media relocation are shared with the vitest
+// runners, so they live in `test_cabinet_suites::validator`.
+pub use test_cabinet_suites::validator::ScriptedOutput;
+pub(crate) use test_cabinet_suites::validator::{drive_units, relocate_outputs};
 
 /// A validator that builds the implementation and load-checks it in a browser.
 #[derive(Debug, Clone)]
@@ -588,88 +590,6 @@ pub struct ScriptedItemDrive {
     pub outputs: Vec<ScriptedOutput>,
 }
 
-/// One declared media output of a [`ScriptedItemDrive`], with whether the drive
-/// captured it into the media directory (at its [`validation_media_name`]).
-#[derive(Debug, Clone)]
-pub struct ScriptedOutput {
-    /// The output id — the media file's stem.
-    pub id: String,
-    /// Human-readable display name.
-    pub name: String,
-    /// Whether this output is an image or a video clip.
-    pub kind: MediaKind,
-    /// Whether the driven build produced this output (the file now exists under the
-    /// media directory at its [`validation_media_name`]).
-    pub present: bool,
-}
-
-/// One scripted verdict unit to drive: a whole review item (validated as a whole) or
-/// one of its sub-items, resolved to its verdict id, display title, and validation
-/// driver. Borrows the driver from the caller's `review_items_for` list.
-pub(crate) struct DriveUnit<'a> {
-    pub(crate) item_id: String,
-    pub(crate) sub_item_id: Option<String>,
-    /// The verdict id (`<item>` or `<item>.<sub>`) that keys the auto verdict and media.
-    pub(crate) verdict_id: String,
-    /// The unit's own display title (the sub-item's, or the item's), no category prefix.
-    pub(crate) title: String,
-    /// The backing category/item's title, for grouping under its category.
-    pub(crate) category_title: String,
-    /// Whether this unit is scored: `true` for an ordinary point, `false` when the
-    /// backing review point is excluded from scoring for the version (see
-    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`](crate::test_case::SubReviewItem::scored)). Carried onto the
-    /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
-    /// run because it is not scored at all.
-    pub(crate) gates: bool,
-    pub(crate) validation: &'a ReviewValidation,
-}
-
-/// Flatten `items` into the verdict units a case's automated validation decides.
-///
-/// An item validated as a whole contributes one unit keyed by its own id; an item
-/// with sub-items contributes one unit per validated sub-item keyed by
-/// `<item>.<sub>`. Item-level validation and sub-items are mutually exclusive, so at
-/// most one branch fires per item. Both validation paths — the browser drive and the
-/// [vitest runner](crate::vitest_validator) — read their work list from here, so one
-/// checklist flattens into the same units whichever path decides them.
-///
-/// `items` is already the run's own checklist
-/// ([`TestCaseVersion::review_items_for_engine`]): a point whose validator does not
-/// cover the run's engine is gone before this sees it, so every unit here belongs to
-/// the run and nothing filters twice.
-pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
-    items
-        .iter()
-        .flat_map(|item| {
-            let own = item.validation.as_ref().map(|validation| DriveUnit {
-                item_id: item.id.clone(),
-                sub_item_id: None,
-                verdict_id: item.id.clone(),
-                title: item.title.clone(),
-                category_title: item.title.clone(),
-                gates: item.scored,
-                validation,
-            });
-            let subs = item.sub_items.iter().filter_map(|sub| {
-                sub.validation.as_ref().map(|validation| DriveUnit {
-                    item_id: item.id.clone(),
-                    sub_item_id: Some(sub.id.clone()),
-                    verdict_id: ReviewItem::sub_item_verdict_id(&item.id, &sub.id),
-                    // The unit's own title is the sub-item's; the category (the item)
-                    // groups the sub-items in the reviewer UI, so no prefix here.
-                    title: sub.title.clone(),
-                    category_title: item.title.clone(),
-                    // A sub-item gates only if both it and its parent category are
-                    // scored — excluding the whole category also un-gates its points.
-                    gates: item.scored && sub.scored,
-                    validation,
-                })
-            });
-            own.into_iter().chain(subs)
-        })
-        .collect()
-}
-
 /// Drive every scripted verdict unit of `variant` against the served build at `url`,
 /// capturing each declared media output into `media_dir` under its flat, addressable
 /// `<verdict>__<output>.<ext>` name ([`validation_media_name`]).
@@ -894,49 +814,6 @@ fn capture_baseline_suites(
             })
             .collect(),
     )
-}
-
-/// Move each declared output's produced file from `tmp` to its stable flat name
-/// under `media_dir`, returning the per-output presence record.
-///
-/// `tmp` is wherever the producer was told to write, named by output id and
-/// nothing else: the temp directory a browser drive captures into, or the
-/// per-suite directory a [vitest validator](crate::vitest_validator) writes its
-/// recordings to. Both arrive here because the destination is the same in both
-/// cases — a name keyed by the verdict the media backs, flat enough to route
-/// through the one-segment media endpoints.
-///
-/// A file that is not there is recorded absent rather than treated as a failure.
-/// Media is the evidence beside a verdict, not the verdict: what decides the point
-/// is the drive's own outcome, or the suite's assertions.
-pub(crate) fn relocate_outputs(
-    outputs: &[ReviewOutput],
-    verdict_id: &str,
-    media_dir: &Path,
-    tmp: &Path,
-) -> Vec<ScriptedOutput> {
-    outputs
-        .iter()
-        .map(|output| {
-            let ext = validation_output_extension(output.kind);
-            let captured = format!("{}.{ext}", output.id);
-            let present = relocate(
-                &tmp.join(&captured),
-                &media_dir.join(validation_media_name(verdict_id, &output.id, output.kind)),
-            );
-            ScriptedOutput {
-                id: output.id.clone(),
-                name: output.name.clone(),
-                kind: output.kind,
-                present,
-            }
-        })
-        .collect()
-}
-
-/// Move `from` to `to`, returning whether the source existed and was relocated.
-fn relocate(from: &Path, to: &Path) -> bool {
-    from.is_file() && std::fs::rename(from, to).is_ok()
 }
 
 /// A validator for asset-generation runs.

@@ -630,7 +630,10 @@ impl<'a> Ingestor<'a> {
                     });
                 }
             }
-            for suite in suites.list().map_err(BackendError::Core)? {
+            for suite in suites
+                .list()
+                .map_err(|err| BackendError::Core(err.into()))?
+            {
                 for version in suite.versions {
                     self.expand_suite_version(&suites, &suite.slug, &version, &mut targets)?;
                 }

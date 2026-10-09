@@ -6,8 +6,9 @@
 //! implementations of the evaluator hold to) is
 //! [`test_cabinet_contracts::gg_query`], whose types this module re-exports, so
 //! `test_cabinet_core::gg_query::GgQuery` and the rest name the same items they
-//! always did. The checked-in conformance fixture, `gg_query.conformance.json`, is
-//! executed by this module's tests and by the TypeScript evaluator's.
+//! always did. The checked-in conformance fixture,
+//! `crates/contracts/fixtures/gg_query.conformance.json`, is executed by this module's
+//! tests and by the TypeScript evaluator's.
 
 pub use test_cabinet_contracts::gg_query::*;
 

@@ -597,40 +597,6 @@ fn a_type_whose_keys_are_to_be_determined_is_refused_by_name() {
 }
 
 #[test]
-fn an_identity_an_authored_case_already_claims_is_refused() {
-    let dir = tempfile::tempdir().expect("a scratch tree");
-    // An authored catalog whose one case claims `carom-end-to-end`.
-    let authored = dir
-        .path()
-        .join("test-cases/end-to-end/easy/carom-end-to-end/v1.0.0");
-    std::fs::create_dir_all(&authored).expect("the authored folder");
-    std::fs::write(
-        authored.join("test-case.toml"),
-        "slug = \"carom-end-to-end\"\n",
-    )
-    .expect("the authored manifest");
-    let authored = crate::test_case::TestCaseCatalog::new(dir.path().join("test-cases"));
-
-    let materials = dir.path().join("materials");
-    let suites = TestSuiteCatalog::with_materials(checkout(), &materials);
-    assert!(TestSuiteCatalog::collides_with_authored(
-        "carom-end-to-end",
-        &authored
-    ));
-    let err = suites
-        .resolve_beside("carom", "v1.0.0", "end-to-end", &authored)
-        .expect_err("a colliding identity is refused");
-    assert!(err.to_string().contains("already claimed"), "{err}");
-
-    // A definition whose identity nothing claims still resolves.
-    assert!(
-        suites
-            .resolve_beside("carom", "v1.0.0", "ball", &authored)
-            .is_ok()
-    );
-}
-
-#[test]
 fn a_version_folder_disagreeing_with_the_declared_version_is_refused() {
     let dir = tempfile::tempdir().expect("a scratch checkout");
     let root = dir.path().join("checkout");

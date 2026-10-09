@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use super::*;
 use crate::test_suite::*;
-use crate::{
+use test_cabinet_contracts::layout::{
     MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
 };
 

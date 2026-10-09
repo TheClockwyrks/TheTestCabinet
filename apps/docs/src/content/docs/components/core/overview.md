@@ -54,26 +54,49 @@ made of.
 The contracts crate holds data and the pure functions over it. Anything that
 reaches a container, a process, the network or a clock stays in the core, which
 splits a module along that line where it has to. The TCQ shapes are contracts and
-the document builder and evaluator are core. The engine shapes are contracts and
-the engine catalog is core. A resolved test case is contracts and the manifest
-formats and the catalog that resolves them are core. The event shapes are
-contracts and the per-harness parsers are core. The review shapes are contracts
-and the scoring rules are core. The suite format is contracts and the suite catalog,
-lowering, previews and validator runner are core.
+the document builder and evaluator are core. A resolved test case is contracts and
+the manifest formats and the catalog that resolves them are core. The event shapes
+are contracts and the per-harness parsers are core. The review shapes are contracts
+and the scoring rules are core.
 
-The core depends on the contracts crate and re-exports every moved module and item
-at its previous path, so `test_cabinet_core::gg::GgConfig` and
-`test_cabinet_contracts::gg::GgConfig` name the same type. A method that needs the
-core's runtime cannot stay on a contract type, so it is a trait in the core with
-the same name and signature: `RunToolingExt::current` (the build's commit),
-`RunStateExt::classify_failure` (over the core's error), `HarnessEventExt::system`
-(stamped with the clock) and `PartialSuiteTreeExt::complete` and
-`complete_preview`. Each is re-exported beside its type, so a caller that imports
-the module or the crate root calls `RunTooling::current()` as before. The suite
-export rules take the engines a declared slug is checked against
-(`validate_tree_with` and the rest, over an `EngineLookup`). The core's `validate`,
-`validate_tree`, `validate_preview_tree` and `load_and_validate` pass the built-in
-engine catalog.
+## The suites crate
+
+The test-suite runtime lives in `crates/suites` (`test-cabinet-suites`), between the
+contracts crate and the core: it depends on the contracts crate, and the core depends
+on it. It holds what reads a `test-suites/` checkout and turns an offered definition
+into something a run executes: the suite catalog and the lowering of a definition onto
+a test case version, previews, a definition's prompt, and the runner for a suite's
+validator project. It also holds what that runtime shares with the core's validators:
+the built-in [engine catalog](/components/core/engines/), the vitest runner a case's
+validator project runs through, the static server and browser driver, and the content
+digests and labels an ingest keys a version by.
+
+The suite format is contracts and its runtime is the suites crate. The engine shapes
+are contracts and the engine catalog is the suites crate. The authored catalog a suite
+definition's identity collides with is the core's, and the suites crate asks it
+through `AuthoredLookup`, which the core implements for its `TestCaseCatalog`. The
+suites crate's errors are a subset of the core's, with the same messages, and convert
+to them one variant for one.
+
+## Re-exports
+
+The core re-exports every module and item the two crates hold at its previous path,
+so `test_cabinet_core::gg::GgConfig` and `test_cabinet_contracts::gg::GgConfig` name
+the same type, as do `test_cabinet_core::test_suite::TestSuiteCatalog` and
+`test_cabinet_suites::test_suite::TestSuiteCatalog`.
+
+A method that needs runtime cannot stay on a contract type, so it is a trait with the
+same name and signature in the crate that holds the runtime. The core has
+`RunToolingExt::current` (the build's commit), `RunStateExt::classify_failure` (over
+the core's error) and `HarnessEventExt::system` (stamped with the clock). The suites
+crate has `PartialSuiteTreeExt::complete` and `complete_preview` (over the engine
+catalog). Each is re-exported beside its type, so a caller that imports the module or
+the crate root calls `RunTooling::current()` as before.
+
+The suite export rules take the engines a declared slug is checked against
+(`validate_tree_with` and the rest, over an `EngineLookup`). The suites crate's
+`validate`, `validate_tree`, `validate_preview_tree` and `load_and_validate` pass the
+built-in engine catalog.
 
 The TypeScript bindings and JSON Schemas are generated from both crates through
 the core's `contract` feature, which turns on the contracts crate's. See

@@ -566,9 +566,9 @@ done
 # --- what a COPY cannot tell you, part two: the trees baked in with include_str! ---
 
 # The gg guest packages are not the only build input no `COPY` names. `crates/core`
-# BAKES three directories into the binaries verbatim — the built-in orchestrators'
-# manifests and runner scripts, the harness manifests, and the engine manifests —
-# with `include_str!` paths that climb out of `crates/` with `../../../`. They ride
+# and `crates/suites` BAKE three directories into the binaries verbatim — the
+# built-in orchestrators' manifests and runner scripts and the harness manifests
+# (core), and the engine manifests (suites) — with `include_str!` paths that climb out of `crates/` with `../../../`. They ride
 # in on the same `COPY . .` the gg arms do, so the allowlist is the only thing that
 # decides whether the compiler can read them, and nothing above looks at them.
 #
@@ -580,9 +580,10 @@ done
 #
 #     error: couldn't read `crates/core/src/../../../engines/none/engine.toml`
 #
-# which reads as a broken checkout, and stopped `make local-up` from standing the
-# cluster up at all. Every service image compiles `test-cabinet-core`, so a tree
-# missing here takes all six of them down at once.
+# (the catalog was core's then; it is `crates/suites/src/engine.rs` now), which reads
+# as a broken checkout, and stopped `make local-up` from standing the cluster up at
+# all. Every service image compiles `test-cabinet-core`, and with it
+# `test-cabinet-suites`, so a tree missing here takes all six of them down at once.
 #
 # So the rule is asserted from the SOURCE rather than from a list kept in step by
 # hand: every literal `include_str!`/`include_bytes!` path in a compiled Rust source

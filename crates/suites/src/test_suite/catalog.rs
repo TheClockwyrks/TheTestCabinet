@@ -1,5 +1,5 @@
-//! The suite catalog: the `test-suites/` checkout, read the way
-//! [`TestCaseCatalog`] reads `test-cases/`.
+//! The suite catalog: the `test-suites/` checkout, read the way core's
+//! `TestCaseCatalog` (`test_cabinet_core::test_case`) reads `test-cases/`.
 //!
 //! A checkout holds one folder per suite. A folder is a suite exactly when it holds
 //! a `suite.toml`, and a suite holds its exported versions at
@@ -55,7 +55,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
-use crate::test_case::{TestCaseCatalog, TestCaseVersion, read_dir_names, version_key};
+use crate::fs::read_dir_names;
+use crate::test_case::{TestCaseVersion, version_key};
 
 use super::lowering::{SuiteContext, catalog_identity, lower};
 use super::{
@@ -406,8 +407,8 @@ impl TestSuiteCatalog {
     /// The two catalogs share one identity space, so a collision is a genuine
     /// ambiguity rather than a preference. This answers the question for one
     /// identity; the catalog-wide sweep runs where both catalogs are held at once.
-    pub fn collides_with_authored(identity: &str, authored: &TestCaseCatalog) -> bool {
-        authored.versions(identity).is_ok()
+    pub fn collides_with_authored(identity: &str, authored: &impl AuthoredLookup) -> bool {
+        authored.has_authored(identity)
     }
 
     /// Load one exported version whole, after its identity checks out.
@@ -445,7 +446,7 @@ impl TestSuiteCatalog {
         slug: &str,
         version: &str,
         definition: &str,
-        authored: &TestCaseCatalog,
+        authored: &impl AuthoredLookup,
     ) -> Result<TestCaseVersion> {
         let identity = catalog_identity(slug, definition);
         if Self::collides_with_authored(&identity, authored) {
@@ -486,6 +487,17 @@ impl TestSuiteCatalog {
             other => other,
         }
     }
+}
+
+/// The authored catalog a suite definition's identity is checked against.
+///
+/// A definition's catalog identity shares one space with the authored catalog's
+/// slugs, and the authored catalog (core's `TestCaseCatalog`, which implements this)
+/// is runtime this crate does not hold. It is asked one thing: whether an identity is
+/// already an authored test case's slug.
+pub trait AuthoredLookup {
+    /// Whether `identity` names a test case the authored catalog holds.
+    fn has_authored(&self, identity: &str) -> bool;
 }
 
 /// The folder names in `dir` that hold a `version.toml` and satisfy `keep`. An
