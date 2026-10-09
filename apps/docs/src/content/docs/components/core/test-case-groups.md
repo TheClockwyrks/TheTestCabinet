@@ -46,7 +46,11 @@ The backend parses the groups on a whole-catalog ingest scan and writes the set
 to its definition store, so a deployment serves the same groups a local
 checkout resolves. A scan that accepts no group leaves a non-empty stored set in
 place and reports the refusal, so an absent or misplaced `test-case-groups/`
-cannot empty the home page. The set is served in display order at
+cannot empty the home page. Retiring every group is therefore applied by hand,
+by deleting `test-case-groups/test-case-groups.json` from the definition store,
+which then reads as no group (see [the prune
+guard](/components/backend/overview/#test-case-definitions)). The set is served
+in display order at
 [`GET /test-case-groups`](/components/backend/api/#get-test-case-groups), with
 the ordering rank already applied. An ingest that changes the set queues a
 public snapshot refresh, and the snapshot carries the set as its own object, so

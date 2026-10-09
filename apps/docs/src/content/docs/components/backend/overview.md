@@ -70,15 +70,28 @@ own trees, and each can be pointed at a separate checkout (see
 [Configuration](#configuration)).
 
 A whole-catalog scan prunes what its trees no longer declare, and it refuses a
-prune that an empty tree would cause. When the scan finds no authored version,
-it keeps every stored authored version. When it finds no suite version while the
-store holds suites, it keeps every stored suite version and the case versions
-they defined. When it accepts no test-case group while the store holds groups,
-it keeps the stored set. The scan still ingests everything it did find, logs
-each refusal, and reports it to the caller (see
-[`POST /ingest`](/components/backend/api/#post-ingest)). An empty suites tree on
-a store that holds no suites is an ordinary state, since a checkout may leave
-the test suites tree uninitialized.
+prune that an empty tree would cause. When the scan finds no version under
+`test-cases/`, it keeps every stored authored test-case version, and when it
+finds none under `game-jams/`, every stored game jam. Each tree answers for its
+own kind, although one catalog reads both, so a jam that came through does not
+vouch for an emptied case tree. When it finds no suite version while the store
+holds suites, it keeps every stored suite version and the case versions they
+defined. When it accepts no test-case group while the store holds groups, it
+keeps the stored set. The scan still ingests everything it did find, logs each
+refusal, and reports it to the caller (see
+[`POST /ingest`](/components/backend/api/#post-ingest)). It does not record its
+catalog token, so the next scan carrying the same token rewrites every version
+rather than skipping the ones the store kept. An empty suites tree on a store
+that holds no suites is an ordinary state, since a checkout may leave the test
+suites tree uninitialized.
+
+The guard is the reason ingest never applies a catalog that retires every
+version of a kind, or every group: no request lifts it, `force` included. Such
+a retirement is applied to the definition store by hand, by removing the
+retired `test-cases/<slug>/` directories under `TCAB_BACKEND_STORE`, or its
+`test-case-groups/test-case-groups.json` for the groups. A scan against a store
+written in another record format is exempt, since this build can read nothing
+it would keep.
 
 Ingest writes each version as a resolved record whose shape the backend build
 defines, so a store is readable only by a build that agrees on that shape. The

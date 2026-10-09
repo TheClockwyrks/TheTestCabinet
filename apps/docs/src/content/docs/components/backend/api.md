@@ -104,12 +104,15 @@ suite version the checkout no longer declares along with the versions it
 defined.
 
 A whole-catalog scan refuses a prune that an empty tree would cause: it keeps
-the stored authored versions when it finds no authored version, the stored suite
-versions and the case versions they defined when it finds no suite version, and
-the stored [test-case groups](#test-case-groups) when it accepts no group. A
-refused prune is logged and reported under `refusedPrunes`, one sentence per
-refusal naming what was kept. A refusal is reported only when the store held
-something the prune would have removed.
+the stored authored test-case versions when it finds no version under
+`test-cases/`, the stored game jams when it finds none under `game-jams/`, the
+stored suite versions and the case versions they defined when it finds no suite
+version, and the stored [test-case groups](#test-case-groups) when it accepts no
+group. Each tree answers for its own kind only, so a populated `game-jams/` does
+not let an empty `test-cases/` prune. A refused prune is logged and reported
+under `refusedPrunes`, one sentence per refusal naming what was kept. A refusal
+is reported only when the store held something the prune would have removed.
+`force` does not lift the refusal.
 
 The request body is optional JSON:
 
@@ -168,7 +171,8 @@ versions instead of re-rendering them. A changed or first-seen token forces a
 full re-ingest and advances the recorded marker, so content that changed under
 an unchanged version string is still picked up. The marker lives in the store,
 so a fresh store re-ingests unconditionally. A partial scan ignores
-`catalogVersion` and leaves the marker untouched.
+`catalogVersion` and leaves the marker untouched, and so does a scan that
+refused a prune, so the next scan carrying the same token is forced.
 
 A full re-render can take a minute or more, so the response shape is content
 negotiated. By default the call answers once with the full JSON report. A client
