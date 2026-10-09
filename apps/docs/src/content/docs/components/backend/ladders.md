@@ -40,29 +40,55 @@ to the next Run.
 
 1. The owner presses Run. The backend snapshots the configuration: the rungs and
    their targets, the climbers resolved from the groups and one-offs, the gate,
-   the climb order, and the limit in force. It mints a dispatch id and launches
-   rung one for every climber, up to the limit.
-2. Each run completes and its validators rate it at push time.
-3. Every finished run of the dispatch makes the backend run a launch pass, which
-   evaluates the gate on each climber's current rung.
-4. A climber that passes its rung moves to the next one, which the same pass
-   launches. A climber that fails a rung stops there.
-5. The dispatch is **Finished** once every climber has completed or failed and
+   the climb order, and the limit in force. It mints a dispatch id and runs a
+   launch pass.
+2. A launch pass evaluates the gate on each climber's current rung over the runs
+   that [already exist](#a-rung-slots-runs) for it, and launches only the runs
+   the rung is still missing, up to the limit.
+3. Each run completes and its validators rate it at push time.
+4. Every finished run of a rung slot's cell makes the backend run another launch
+   pass.
+5. A climber that passes its rung moves to the next one, which the same pass
+   evaluates and launches. A climber that fails a rung stops there.
+6. The dispatch is **Finished** once every climber has completed or failed and
    none of its runs is in flight. The owner may stop it earlier.
 
 A ladder holds at most one running dispatch, so Run is unavailable while one is
 running. A Run after a dispatch ended replaces it.
 
-### A dispatch owns its runs
+### A rung slot's runs
 
-Only runs the dispatch launched count for its gate and its progress. A launch
-pass stamps every job with the origin `ladder:<ladderId>/<dispatchId>/<rungId>`,
-and the dispatch reads its evidence through that origin. Runs of an earlier
-dispatch, of a coverage plan, or launched by hand never count, even on the same
-cell. That is what makes running the same configuration twice measure it twice.
+A dispatch counts runs the way a
+[plan counts them](/components/backend/coverage/#counts-are-global-reviews-are-labels):
+a rung and a climber form one coverage cell, and the slot's runs are
+[that cell's runs](/components/backend/coverage/#a-cells-runs) under the rung's
+target. They are the first `target` counted runs of the cell to finish, whoever
+launched them and whenever: an earlier dispatch, a coverage plan, a launch by
+hand, or this dispatch. The gate, the progress and the review queue all read
+these runs.
 
-Within a dispatch a rung and a climber are one cell of their own, so a ladder may
-pin the same case on two rungs without the two sharing runs.
+A dispatch therefore launches only what a rung is missing. A rung whose target
+the existing runs already meet is decided by the first launch pass with nothing
+launched, and a dispatch decided entirely by existing runs finishes without
+launching a run. Running the same configuration again reads the same runs and
+reaches the same standing. It launches runs only where a target was raised or a
+cell is short of its target.
+
+A slot's jobs in flight are counted the same way: every job of the cell in
+flight, whoever launched it, up to what the slot still needs. A run someone else
+has queued for the cell holds the slot's place, and the dispatch waits for it.
+
+A slot reads its cell once its climber reaches the rung. A slot the climber has
+not reached holds no runs and no jobs in flight.
+
+Two rungs that pin the same case at the same version, variant and engine are the
+same cell for a climber, so both read the same runs.
+
+A launch pass stamps every job it enqueues with the origin
+`ladder:<ladderId>/<dispatchId>/<rungId>`. The origin is what the dispatch's
+runs-in-flight limit, its Stop, and its
+[failing streak](#a-blocked-climber) act on, and it plays no part in which runs
+count.
 
 ### No history
 
@@ -72,11 +98,11 @@ runs themselves are the results, and stay in the run list like any run.
 
 ### Stopping a dispatch
 
-- **Stop** ends the dispatch and cancels its `queued` and `pending` jobs. Runs
-  already dispatched or running finish, and count for nothing further.
-- **Stop and cancel running** also cancels its `dispatched`, `starting`, and
-  `running` jobs. Those are partly or wholly paid for, so the console confirms it
-  first.
+- **Stop** ends the dispatch and cancels the `queued` and `pending` jobs it
+  launched. Runs already dispatched or running finish.
+- **Stop and cancel running** also cancels the `dispatched`, `starting`, and
+  `running` jobs it launched. Those are partly or wholly paid for, so the
+  console confirms it first.
 
 Both report how many jobs they cancelled. A stopped dispatch launches nothing
 more, and its status is **Stopped**.
@@ -156,12 +182,12 @@ A dispatch climbs its climbers in their resolved declaration order: the
 referenced groups' members in group order, then the one-offs. A gg climber's
 configuration is resolved when each of its runs launches.
 
-A dispatch finds its own runs by each climber's **cells**: the harness, the
+A dispatch finds a climber's runs by the climber's **cells**: the harness, the
 launch model, and for a gg climber the configuration's id and the models its
 bound set runs. The cells are pinned on the climber when it first resolves, at
 Run or at the first launch pass that can resolve it. They are never resolved
 again, so editing or deleting a gg configuration mid-dispatch cannot hide the
-runs the dispatch already made. Those runs keep counting, and a climber with
+runs the dispatch already read. Those runs keep counting, and a climber with
 runs in flight keeps running. A climber whose configuration now resolves to
 other cells is held [`unlaunchable`](#where-a-climber-stands), since its new runs
 would land where the dispatch never looks. Restoring the configuration, or a
@@ -214,8 +240,8 @@ When a dispatch is stopped, every slot that was `running`, `blocked`, or
 
 ### A blocked climber
 
-A climber's current rung is blocked as `failing` when its three most recent
-terminal jobs in this dispatch all failed with no run that counts, as described
+A climber's current rung is blocked as `failing` when the three most recent
+terminal jobs this dispatch launched for it all failed with no run that counts, as described
 under [a blocked cell](/components/backend/coverage/#a-blocked-cell). A job whose
 run ended on the model's own failure counts toward the gate, so it breaks the
 streak.
@@ -251,8 +277,7 @@ run passes the rung, and failing it takes every run broken.
 
 ### What the gate reads
 
-The gate reads the runs the dispatch launched for that rung and climber that
-[count](/components/backend/coverage/#which-runs-count). A completed run is read
+The gate reads the [slot's runs](#a-rung-slots-runs). A completed run is read
 at its validator rating: the functional rating the
 [validators decide](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
 from the run record and the case version's checklist, with the toolchain gate on
@@ -281,10 +306,10 @@ final   = max(target, counted + inFlight)
 pending = final - counted
 ```
 
-`target` is the rung's runs, `counted` the dispatch's runs of the slot that
-count, and `inFlight` the dispatch's jobs of the slot still in flight. A
-fractional threshold is measured against `final`, so the bar does not drift as
-runs land one by one, and an extra run in flight raises it.
+`target` is the rung's runs, `counted` the number of the
+[slot's runs](#a-rung-slots-runs), and `inFlight` the slot's jobs in flight.
+Both are read up to the target, so `final` is the target. A fractional threshold
+is measured against `final`, so the bar does not drift as runs land one by one.
 
 `earlyStop` is off by default. With it off, a rung is undecided while `pending`
 is above zero, so it completes every run it started even when the outcome is
@@ -294,8 +319,9 @@ With `earlyStop` on, the gate decides the moment the outcome is certain, countin
 every pending run as a possible pass and as a possible failure. It passes only
 when the runs already counted clear the bar, fails only when they cannot clear it
 even if every pending and unrated run passes, and is undecided in between. The
-launch pass that records the decision cancels the slot's `queued` and `pending`
-jobs. A job already dispatched or running finishes, and its run is kept.
+launch pass that records the decision cancels the `queued` and `pending` jobs
+the dispatch launched for the slot. A job already dispatched or running
+finishes, and its run is kept.
 
 Either way an outcome never has to be taken back as more evidence lands. The
 evidence behind any answer is reported as a `tally`: counted, rated, unrated,
@@ -304,8 +330,9 @@ passing, pending, in flight, and the number of passing runs required.
 ## Launching runs
 
 A running dispatch launches its runs in a launch pass: it records every verdict
-the gate can now decide, then enqueues what the climb needs, up to the
-dispatch's limit. A launch pass of a ladder is the plan's
+the gate can now decide, then enqueues what each current rung is missing, its
+target less its runs and its jobs in flight, up to the dispatch's limit. A
+launch pass of a ladder is the plan's
 [launch pass](/components/backend/coverage/#a-launch-pass) with one restriction:
 only a climber's current rung is ever launched. Running rung five for a model
 that failed rung two would answer a question the dispatch has already answered.
@@ -318,27 +345,30 @@ emission-order-is-execution-order mechanism a plan uses:
 - **`combination`** takes one climber as far as it gets before starting the next,
   answering "how far does this model get?" soonest.
 
-The dispatch's runs in flight are its jobs in `queued`, `pending`, `dispatched`,
-`starting`, or `running`, across every rung. A bound of `0` launches nothing, so
-a dispatch under it cannot climb.
+The dispatch's runs in flight are the jobs it launched that are `queued`,
+`pending`, `dispatched`, `starting`, or `running`, across every rung. The limit
+caps those alone. A bound of `0` launches nothing, so a dispatch under it climbs
+only as far as existing runs take it.
 
 The backend runs a launch pass of the running dispatch when it is started, when
-one of its climbers is retried, when one of its jobs reaches a terminal state,
-and once at startup. A job feeds only the dispatch its origin names, and only
-while that dispatch is running. A failed job that enqueued an automatic retry
-feeds nothing. A canceled job feeds its dispatch as it feeds a plan, as described
-under [when launch passes
-run](/components/backend/coverage/#when-launch-passes-run), so a run cancelled
-by hand is launched again. The pass runs as the ladder's owner after the job's
-status is stored, so a failed pass never fails the driver's report.
+one of its climbers is retried, when a job of one of its rung slots' cells
+reaches a terminal state, and once at startup. A job feeds every running
+dispatch that holds its cell, whoever launched the job, as it feeds every
+filling plan. A failed job that enqueued an automatic retry feeds nothing.
+
+A canceled job feeds a dispatch as it feeds a plan, as described under
+[when launch passes run](/components/backend/coverage/#when-launch-passes-run),
+so a run cancelled by hand is launched again. The pass runs as the ladder's
+owner after the job's status is stored, so a failed pass never fails the
+driver's report.
 
 Every pass launches under the limit in the snapshot of the dispatch it reads. A
 pass that serves a request left during another pass can be reading a newer
 dispatch than the one that took the claim, and launches it under that
 dispatch's own limit.
 
-A launch pass that finds every climber completed or failed and nothing of the
-dispatch in flight marks the dispatch Finished.
+A launch pass that finds every climber completed or failed and none of the
+dispatch's own jobs in flight marks the dispatch Finished.
 
 ## Progress
 
@@ -353,27 +383,31 @@ runs:
 
 - **total** is the sum over rung slots of the rung's target runs;
 - **done** is the runs that need no more executing, summed per slot as below;
-- **in flight** is the dispatch's jobs still in flight.
+- **in flight** is the jobs the dispatch launched that are still in flight.
 
 | slot status                   | runs done                        |
 | ----------------------------- | -------------------------------- |
-| `running`, `blocked`          | `min(counted, target)`           |
-| `passed`, `failed`, `skipped` | `target - min(inFlight, target)` |
+| `running`, `blocked`          | `counted`                        |
+| `passed`, `failed`, `skipped` | `target - min(launched, target)` |
 | `pending`                     | `0`                              |
 
-A decided or skipped slot needs no more runs, so its whole target is done once
-its runs in flight finish. When done equals total, nothing is left to execute in
-the dispatch.
+`counted` is the number of the [slot's runs](#a-rung-slots-runs), so a run that
+existed before the dispatch started is done from its first pass. `launched` is
+the jobs the dispatch launched for the slot that are still in flight. A decided
+or skipped slot needs no more runs, so its whole target is done once those
+finish. When done equals total, nothing is left to execute in the dispatch.
 
 A ladder with no dispatch reports its status as Not run yet. The ladder's status
 is one of Not run yet, Running, Finished, or Stopped.
 
 ### Reviewing a dispatch's runs
 
-`GET /ladders/{id}/queue` returns the latest dispatch's completed runs its owner
-has not reviewed, in the ladder's own order, so they can be given an aesthetic
-rating and a writeup. Progress reports their count as `runsUnreviewed`. The queue
-neither blocks nor feeds the climb.
+`GET /ladders/{id}/queue` returns the completed runs among the latest
+dispatch's [slot runs](#a-rung-slots-runs) that its owner has not reviewed, in
+the ladder's own order, so they can be given an aesthetic rating and a writeup.
+A run the dispatch read counts here the same as one it launched, and a run two
+rungs share is listed once, under the lower rung. Progress reports their count
+as `runsUnreviewed`. The queue neither blocks nor feeds the climb.
 
 ## Endpoints
 

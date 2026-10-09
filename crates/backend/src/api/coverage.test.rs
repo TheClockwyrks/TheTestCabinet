@@ -127,6 +127,10 @@ pub(super) fn landed(n: usize, unreviewed: usize) -> Vec<crate::db::CellRun> {
             id: format!("r{i}"),
             finished_at: format!("2026-09-01T00:00:{i:02}Z"),
             unreviewed: i < unreviewed,
+            model_failure: false,
+            loaded: true,
+            validator_rated: true,
+            rating: None,
         })
         .collect()
 }

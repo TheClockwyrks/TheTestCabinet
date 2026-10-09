@@ -83,13 +83,13 @@
       "description": "How much of a dispatch's execution is behind it: the figures its progress bar is\ndrawn from.",
       "properties": {
         "done": {
-          "description": "The runs that need no more executing, summed per slot: a passed, failed or\nskipped slot's whole target less its runs still in flight, a running or blocked\nslot's counted runs up to its target, and nothing of a pending one. Equal to\n`total` once nothing is left to execute.",
+          "description": "The runs that need no more executing, summed per slot: a passed, failed or\nskipped slot's whole target less the runs the dispatch still has in flight for\nit, a running or blocked slot's runs, and nothing of a pending one. A run that\nexisted before the dispatch started is done from its first pass. Equal to\n`total` once nothing is left to execute.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
         },
         "inFlight": {
-          "description": "The dispatch's jobs still in flight (`queued` through `running`).",
+          "description": "The jobs the dispatch launched that are still in flight (`queued` through\n`running`).",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -448,7 +448,7 @@
           "type": ["string", "null"]
         },
         "jobIds": {
-          "description": "The dispatch's jobs of this slot still in flight, in queue order.",
+          "description": "The jobs the dispatch launched for this slot that are still in flight, in queue\norder. The tally's `inFlight` also counts a job of the cell someone else\nlaunched, so it can exceed these.",
           "items": {
             "type": "string"
           },
@@ -461,7 +461,7 @@
           "type": "integer"
         },
         "runIds": {
-          "description": "The dispatch's counted runs of this slot, oldest first.",
+          "description": "The slot's runs, oldest first: the first runs of its cell to finish, up to the\nrung's target, whoever launched them. Empty on a slot the climber has not\nreached.",
           "items": {
             "type": "string"
           },
@@ -674,7 +674,7 @@
       "type": "array"
     },
     "runsUnreviewed": {
-      "description": "The dispatch's completed runs the requester has not reviewed — exactly what\n`GET /ladders/{id}/queue` offers. Information only.",
+      "description": "The completed runs among the dispatch's slots' runs that the requester has not\nreviewed — exactly what `GET /ladders/{id}/queue` offers. Information only.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

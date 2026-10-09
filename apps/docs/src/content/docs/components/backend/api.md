@@ -965,12 +965,16 @@ starts a dispatch of it.
   body must be a permutation of the ladder's current rungs; adding or dropping one
   is an edit and goes through `PUT /ladders/{id}`.
 - `POST /ladders/{id}/run` — start a dispatch of the configuration as it stands
-  and run its first launch pass. Answers with the progress board. `409` while a
+  and run its first launch pass, which counts the runs that already exist toward
+  each rung and launches only what is missing
+  ([a rung slot's runs](/components/backend/ladders/#a-rung-slots-runs)). Answers
+  with the progress board. `409` while a
   dispatch is running; `400` naming the cause when the configuration has no rungs,
   resolves no climbers, or holds a rung that is not validator-rated.
-- `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
-  `pending` jobs. With `{ "cancelRunning": true }` it also cancels its
-  `dispatched`, `starting`, and `running` jobs, which a client must confirm first.
+- `POST /ladders/{id}/stop` — end the running dispatch and cancel the `queued` and
+  `pending` jobs it launched. With `{ "cancelRunning": true }` it also cancels
+  the `dispatched`, `starting`, and `running` jobs it launched, which a client
+  must confirm first.
   Answers `{ "canceled": n, "includedActive": bool }`; `409` when no dispatch is
   running.
 - `GET /ladders/{id}/progress` — the board: the rungs, the latest dispatch (its
@@ -991,11 +995,12 @@ starts a dispatch of it.
   `204`; `404` when the combination is not a climber of the dispatch, and `409`
   when no dispatch is running or the climber is not blocked for one of those two
   reasons.
-- `GET /ladders/{id}/queue` — the latest dispatch's completed runs the requesting
-  account has not reviewed, in the ladder's own order.
+- `GET /ladders/{id}/queue` — the completed runs the latest dispatch counts that
+  the requesting account has not reviewed, in the ladder's own order. A run the
+  dispatch read rather than launched is offered the same way.
 
 The backend runs every launch pass of a dispatch itself, prompted by Run, a
-climber's Retry, and the dispatch's finishing runs
+climber's Retry, and every finishing run of one of its rung slots' cells
 ([launching runs](/components/backend/ladders/#launching-runs)).
 
 ## Stopping runs in bulk

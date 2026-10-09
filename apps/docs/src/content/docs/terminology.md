@@ -185,11 +185,12 @@ ladder asks how far a model gets and treats its steps as a sequence in which
 each is harder than the last.
 
 A ladder is a configuration and does nothing by itself. Running it starts a
-**dispatch**, which snapshots the configuration, launches every climber's first
-rung, and climbs automatically: a single gate, parameterised by a
-[rating](#rating) floor and a threshold, reads the ratings the validators decided
-for the dispatch's own runs, and the backend launches the next rung as soon as the
-gate clears. A ladder keeps only its latest dispatch. Every rung is a
+**dispatch**, which snapshots the configuration and climbs automatically: a
+single gate, parameterised by a [rating](#rating) floor and a threshold, reads
+the ratings the validators decided for the runs of each rung, and the backend
+moves a climber to the next rung as soon as the gate clears. A dispatch counts
+the runs that already exist for a rung, whoever launched them, and launches only
+the runs the rung is missing. A ladder keeps only its latest dispatch. Every rung is a
 [validator-rated](#validator-rated) case version, and reviews never move a climb.
 See [Ladders](/components/backend/ladders/).
 

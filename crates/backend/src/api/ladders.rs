@@ -17,11 +17,14 @@
 //! resolved at that moment. Editing the configuration never touches a running dispatch.
 //! A ladder keeps only its latest dispatch; a Run after it ended replaces it.
 //!
-//! A dispatch **owns its runs**: every job it launches carries the origin
-//! `ladder:<ladder>/<dispatch>/<rung>`, and its gate and its progress read only those
-//! jobs ([`crate::db::Db::dispatch_evidence`]). Runs of an earlier dispatch, of a plan,
-//! or launched by hand never count, so running one configuration twice measures it twice,
-//! and two rungs pinning one case are two rung slots that share nothing.
+//! A dispatch **counts runs as a plan does**: a rung and a climber form one coverage cell,
+//! and the slot's runs are the first `target` counted runs of that cell to land, whoever
+//! launched them ([`crate::db::Db::counted_runs_by_cell`]). Its gate, its progress and its
+//! queue read those, so a pass launches only what a rung is missing, a rung the existing
+//! runs already fill is decided with nothing launched, and two rungs pinning one case read
+//! the same runs. Every job a dispatch launches carries the origin
+//! `ladder:<ladder>/<dispatch>/<rung>`, which is what its limit, its Stop and its failing
+//! streak act on ([`crate::db::Db::dispatch_evidence`]) and no part of what counts.
 //!
 //! ## The gate
 //!
@@ -34,8 +37,8 @@
 //! ## Launch passes
 //!
 //! The backend climbs a running dispatch by itself, in **launch passes** run through the
-//! shared [`super::launch`] loop: on Run, on a climber's Retry, whenever one of the
-//! dispatch's jobs finishes ([`dispatch_fed_by`]), and once at startup. A pass records
+//! shared [`super::launch`] loop: on Run, on a climber's Retry, whenever a job of one of
+//! its slots' cells finishes ([`dispatches_fed_by`]), and once at startup. A pass records
 //! every verdict the gate can now decide and launches each climber's current rung, up to
 //! the dispatch's limit. Only a climber's **current** rung is ever launched — that is
 //! what makes a ladder a ladder rather than a plan. Reviews are labels added after the
@@ -57,9 +60,9 @@ use crate::auth::AuthUser;
 use crate::coverage::gate::{self, Gate, GateTally, GateThreshold, RungRun};
 use crate::coverage::schedule::{CellDemand, InFlightLimit, launch_pass};
 use crate::db::{
-    CANCELABLE_WAITING_STATES, CellKey, CellRunRating, DispatchEvidence, JobCancelFilter,
-    JobOrigin, LadderOutcomeKind, OriginScope, SlotKey, StoredDispatch, StoredDispatchClimber,
-    StoredLadder, StoredLadderRung, TerminalJob, combination_key,
+    CANCELABLE_WAITING_STATES, CellCounts, CellKey, CellRun, CellRuns, DispatchEvidence,
+    JobCancelFilter, JobOrigin, LadderOutcomeKind, OriginScope, SlotKey, StoredDispatch,
+    StoredDispatchClimber, StoredLadder, StoredLadderRung, TerminalJob, combination_key,
 };
 use crate::error::ApiError;
 
@@ -68,10 +71,11 @@ use super::coverage::{
     BlockedCell, CoverageQueue, CoverageQueueEntry, FAILING_STREAK, GgLibrary, HaltResult,
     LaunchCell, LaunchPassResult, LaunchSkipped, MAX_QUEUE_RUNS, MemberCellIdentity, PlanMember,
     ReviewPlanCase, ReviewPlanCombo, blocked_cell, blocked_reason, cancel_just_enqueued,
-    cell_key_of, clamp_in_flight_limit, clamp_runs_per_cell, enqueue_launches, for_read,
-    for_storage, gg_library, group_index, halt_jobs, harness_lane, is_failing_streak,
-    launchable_demand, new_id, now, read_gg_library, reject_unstorable_members, resolve_combos,
-    resolve_in_flight_limit, resolve_launch_facts, resolve_member,
+    cell_in_flight, cell_key_of, cell_runs, clamp_in_flight_limit, clamp_runs_per_cell,
+    enqueue_launches, for_read, for_storage, gg_library, group_index, halt_jobs, harness_lane,
+    is_failing_streak, job_cell, launchable_demand, new_id, now, read_gg_library,
+    reject_unstorable_members, resolve_combos, resolve_in_flight_limit, resolve_launch_facts,
+    resolve_member,
 };
 use super::launch::{LaunchTarget, run_launch_passes, spawn_launch};
 
@@ -412,11 +416,13 @@ pub struct DispatchRuns {
     /// The sum over rung slots of the rung's target runs.
     pub total: u32,
     /// The runs that need no more executing, summed per slot: a passed, failed or
-    /// skipped slot's whole target less its runs still in flight, a running or blocked
-    /// slot's counted runs up to its target, and nothing of a pending one. Equal to
+    /// skipped slot's whole target less the runs the dispatch still has in flight for
+    /// it, a running or blocked slot's runs, and nothing of a pending one. A run that
+    /// existed before the dispatch started is done from its first pass. Equal to
     /// `total` once nothing is left to execute.
     pub done: u32,
-    /// The dispatch's jobs still in flight (`queued` through `running`).
+    /// The jobs the dispatch launched that are still in flight (`queued` through
+    /// `running`).
     pub in_flight: u32,
 }
 
@@ -519,9 +525,13 @@ pub struct LadderSlot {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub decided_at: Option<String>,
-    /// The dispatch's counted runs of this slot, oldest first.
+    /// The slot's runs, oldest first: the first runs of its cell to finish, up to the
+    /// rung's target, whoever launched them. Empty on a slot the climber has not
+    /// reached.
     pub run_ids: Vec<String>,
-    /// The dispatch's jobs of this slot still in flight, in queue order.
+    /// The jobs the dispatch launched for this slot that are still in flight, in queue
+    /// order. The tally's `inFlight` also counts a job of the cell someone else
+    /// launched, so it can exceed these.
     pub job_ids: Vec<String>,
 }
 
@@ -609,8 +619,8 @@ pub struct LadderProgress {
     pub rungs: Vec<LadderProgressRung>,
     /// Every climber of the dispatch, in its resolved order. Empty without one.
     pub climbers: Vec<LadderClimber>,
-    /// The dispatch's completed runs the requester has not reviewed — exactly what
-    /// `GET /ladders/{id}/queue` offers. Information only.
+    /// The completed runs among the dispatch's slots' runs that the requester has not
+    /// reviewed — exactly what `GET /ladders/{id}/queue` offers. Information only.
     pub runs_unreviewed: u32,
 }
 
@@ -1083,11 +1093,14 @@ pub async fn progress(
     Ok(Json(progress_of(&state, &user.0.id, &id).await?))
 }
 
-/// `GET /ladders/{id}/queue` — the latest dispatch's completed runs the requesting
-/// account has not reviewed, in the ladder's own order. Empty without a dispatch.
+/// `GET /ladders/{id}/queue` — the completed runs the latest dispatch counts that the
+/// requesting account has not reviewed, in the ladder's own order. Empty without a
+/// dispatch.
 ///
-/// The queue is there for labelling after the fact and neither blocks nor feeds the
-/// climb. A slot's runs sit together, oldest first. 404 when the id is not the caller's.
+/// The queue follows the board: it offers a run the dispatch read exactly as it offers
+/// one the dispatch launched. It is there for labelling after the fact and neither blocks
+/// nor feeds the climb. A slot's runs sit together, oldest first, and a run two rungs
+/// share is listed once, under the lower rung. 404 when the id is not the caller's.
 pub async fn queue(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1114,20 +1127,22 @@ pub async fn queue(
         .await
         .map_err(ApiError::from)?;
     let mut runs: Vec<CoverageQueueEntry> = Vec::new();
+    let mut listed: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut truncated = false;
     'slots: for (climber, position) in board.slot_order() {
         let rung = &board.snapshot.rungs[position];
         let member = &climber.member;
         for run in &climber.slots[position].runs {
-            if !unreviewed.contains(&run.run_id) {
+            if !unreviewed.contains(&run.id) || listed.contains(run.id.as_str()) {
                 continue;
             }
             if runs.len() >= MAX_QUEUE_RUNS {
                 truncated = true;
                 break 'slots;
             }
+            listed.insert(&run.id);
             runs.push(CoverageQueueEntry {
-                run_id: run.run_id.clone(),
+                run_id: run.id.clone(),
                 rung_id: Some(rung.id.clone()),
                 slug: rung.slug.clone(),
                 version: rung.version.clone(),
@@ -1390,40 +1405,81 @@ pub(super) async fn ladder_pass_locked(
     })
 }
 
-/// The ladder a job that just reached a terminal state feeds, as `(ladder id, owner)`:
-/// the one whose dispatch its origin names, while that dispatch is still the ladder's
-/// running one. A job of an ended or replaced dispatch, a legacy `ladder:<id>` job, and
-/// any other job feed no ladder. Never fails; a read that fails is logged.
-pub(super) async fn dispatch_fed_by(
+/// The ladders a job that just reached a terminal state feeds, as `(ladder id, owner)`:
+/// every ladder whose running dispatch holds the job's cell as one of its rung slots —
+/// whoever launched the job, since a dispatch counts every run of its slots' cells, as
+/// [`super::coverage::plans_fed_by`] feeds a plan. That covers the dispatch's own jobs,
+/// whose cells are its slots'. Never fails; a dispatch that cannot be read is logged and
+/// skipped.
+pub(super) async fn dispatches_fed_by(
     state: &AppState,
     job: &test_cabinet_entities::job::Model,
-) -> Option<(String, String)> {
-    let Some(JobOrigin::Ladder {
-        ladder_id,
-        dispatch_id: Some(dispatch_id),
-        ..
-    }) = job.origin.as_deref().and_then(JobOrigin::parse)
-    else {
-        return None;
-    };
-    let read = async {
-        let running = running_dispatch(state, &ladder_id).await?;
-        if !running.is_some_and(|dispatch| dispatch.id == dispatch_id) {
-            return Ok(None);
-        }
-        state
-            .db
-            .ladder_owner(&ladder_id)
-            .await
-            .map_err(ApiError::from)
-    };
-    match read.await {
-        Ok(owner) => owner.map(|owner| (ladder_id, owner)),
+) -> Vec<(String, String)> {
+    let dispatches = match state.db.running_dispatches().await {
+        Ok(dispatches) => dispatches,
         Err(err) => {
-            tracing::warn!(job = %job.id, error = %err.message, "could not find the ladder dispatch a finished run feeds");
-            None
+            tracing::warn!(job = %job.id, error = %err, "could not list the running ladder dispatches a finished run may feed");
+            return Vec::new();
+        }
+    };
+    let job_cell = job_cell(job);
+    let mut fed = Vec::new();
+    for (ladder_id, owner) in dispatches {
+        match dispatch_has_cell(state, &ladder_id, &job_cell).await {
+            Ok(true) => fed.push((ladder_id, owner)),
+            Ok(false) => {}
+            Err(err) => tracing::warn!(
+                job = %job.id,
+                ladder = %ladder_id,
+                error = %err.message,
+                "could not read a running ladder dispatch's rung slots"
+            ),
         }
     }
+    fed
+}
+
+/// Whether `cell` is a rung slot of a ladder's running dispatch: one of its rungs' pins
+/// with one of its climbers' pinned cell shares. Short-circuits on the case pin before
+/// reading any climber. A climber that never resolved has no cells, so it holds none.
+async fn dispatch_has_cell(
+    state: &AppState,
+    ladder_id: &str,
+    cell: &CellKey,
+) -> Result<bool, ApiError> {
+    let Some(dispatch) = running_dispatch(state, ladder_id).await? else {
+        return Ok(false);
+    };
+    let (slug, version, variant, engine, harness, model, config_id, models) = cell;
+    let pinned = parse_snapshot(&dispatch)?.rungs.iter().any(|rung| {
+        let case = rung.case();
+        case.slug == *slug
+            && case.version == *version
+            && case.variant == *variant
+            && case.engine_slug() == *engine
+    });
+    if !pinned {
+        return Ok(false);
+    }
+    let identity: MemberCellIdentity = (
+        harness.clone(),
+        model.clone(),
+        config_id.clone(),
+        models.clone(),
+    );
+    for climber in state
+        .db
+        .dispatch_climbers(&dispatch.id)
+        .await
+        .map_err(ApiError::from)?
+    {
+        if let Some(json) = climber.cell_json.as_deref()
+            && decode_identity(json)? == identity
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// A ladder's dispatch, when it is running.
@@ -1441,12 +1497,13 @@ async fn running_dispatch(state: &AppState, id: &str) -> Result<Option<StoredDis
 /// One rung slot's evidence, as the pure walk reads it.
 #[derive(Debug, Clone, Default)]
 struct SlotEvidence {
-    /// The slot's counted runs, oldest first, as the gate reads them.
+    /// The slot's runs, oldest first, as the gate reads them.
     runs: Vec<RungRun>,
-    /// The slot's jobs in flight.
+    /// The slot's jobs in flight: its cell's, whoever launched them, up to what it still
+    /// needs.
     in_flight: u32,
-    /// Whether the slot's newest terminal jobs since the climber's last retry all failed
-    /// on infrastructure.
+    /// Whether the newest terminal jobs the dispatch launched for the slot since the
+    /// climber's last retry all failed on infrastructure.
     failing: bool,
     /// The verdict recorded on the slot, if any. It stands for the rest of the dispatch.
     recorded: Option<LadderOutcomeKind>,
@@ -1607,8 +1664,8 @@ fn undecided_standing(
 
 /// The runs of one rung slot that need no more executing, for the dispatch's progress
 /// bar. A decided or skipped slot needs no more runs, so its whole target is done once
-/// its runs in flight finish; a current one has done the runs it counted, up to its
-/// target; a pending one has done nothing.
+/// the runs the dispatch has in flight for it finish; a current one has done the runs it
+/// counted, whoever launched them, up to its target; a pending one has done nothing.
 fn slot_runs_done(status: SlotStatus, target: u32, counted: u32, in_flight: u32) -> u32 {
     match status {
         SlotStatus::Running | SlotStatus::Blocked => counted.min(target),
@@ -1621,9 +1678,13 @@ fn slot_runs_done(status: SlotStatus, target: u32, counted: u32, in_flight: u32)
 
 /// One rung slot's raw evidence, kept beside the walk for the wire and the queue.
 struct SlotFacts {
-    /// The dispatch's counted runs of the slot, oldest first.
-    runs: Vec<CellRunRating>,
-    /// The ids of its jobs in flight.
+    /// The slot's runs, oldest first: the first `target` counted runs of its cell to
+    /// land, whoever launched them. Empty on a slot its climber has not reached.
+    runs: Vec<CellRun>,
+    /// Its jobs in flight as its gate reads them: its cell's, whoever launched them, up
+    /// to what it still needs.
+    in_flight: u32,
+    /// The ids of the jobs in flight the dispatch launched for it.
     job_ids: Vec<String>,
     /// How many of those are waiting.
     waiting: u32,
@@ -1652,7 +1713,7 @@ struct DispatchBoard {
     snapshot: DispatchSnapshot,
     /// Its climbers, in resolved order.
     climbers: Vec<BoardClimber>,
-    /// Its jobs' evidence.
+    /// What the jobs it launched say: its limit and its failing streaks read these.
     evidence: DispatchEvidence,
     /// The recorded verdicts and when each was recorded, by `(rung id, climber key)`.
     decided: HashMap<(String, String), (LadderOutcomeKind, String)>,
@@ -1685,6 +1746,8 @@ impl DispatchBoard {
                 let target = self.snapshot.rungs[position].target;
                 let facts = &climber.slots[position];
                 let counted = facts.runs.len() as u32;
+                // The dispatch's own jobs: a decided or skipped slot waits on nothing
+                // anyone else has in flight.
                 let in_flight = facts.job_ids.len() as u32;
                 slots.add(slot.status);
                 runs.total += target;
@@ -1695,8 +1758,8 @@ impl DispatchBoard {
         (slots, runs)
     }
 
-    /// Every job of the dispatch in flight, whatever slot it belongs to — what its limit
-    /// caps and what keeps it from finishing.
+    /// Every job the dispatch launched that is in flight, whatever slot it belongs to —
+    /// what its limit caps and what keeps it from finishing.
     fn in_flight_total(&self) -> u32 {
         self.evidence
             .in_flight
@@ -1715,12 +1778,13 @@ impl DispatchBoard {
         })
     }
 
-    /// The counted runs of every slot, in no particular order.
+    /// The runs of every slot, in no particular order. A run two rungs share is named
+    /// by both.
     fn run_ids(&self) -> Vec<String> {
         self.climbers
             .iter()
             .flat_map(|climber| climber.slots.iter())
-            .flat_map(|slot| slot.runs.iter().map(|run| run.run_id.clone()))
+            .flat_map(|slot| slot.runs.iter().map(|run| run.id.clone()))
             .collect()
     }
 
@@ -1775,7 +1839,7 @@ impl DispatchBoard {
                 member: &climber.member,
                 target: rung.target,
                 counted: facts.runs.len() as u32,
-                in_flight: facts.job_ids.len() as u32,
+                in_flight: facts.in_flight,
                 failing: self.slot_failing(climber, position),
             });
         }
@@ -1859,7 +1923,8 @@ async fn read_dispatch(
         Vec::new()
     };
 
-    let mut evidence = read_evidence(state, ladder_id, &dispatch.id).await?;
+    let mut evidence =
+        read_evidence(state, ladder_id, &dispatch.id, &snapshot, &identities).await?;
     let mut board = DispatchBoard {
         dispatch,
         snapshot,
@@ -1878,7 +1943,7 @@ async fn read_dispatch(
         &evidence,
     );
     if !record {
-        board.evidence = evidence;
+        board.evidence = evidence.jobs;
         return Ok(board);
     }
 
@@ -1940,12 +2005,19 @@ async fn read_dispatch(
         // Cancelled jobs are no longer in flight, and counting them anyway would hold the
         // dispatch back; recorded verdicts carry their time. Both are read again.
         if canceled > 0 {
-            evidence = read_evidence(state, ladder_id, &board.dispatch.id).await?;
+            evidence = read_evidence(
+                state,
+                ladder_id,
+                &board.dispatch.id,
+                &board.snapshot,
+                &identities,
+            )
+            .await?;
         }
         board.decided = read_decided(state, &board.dispatch.id).await?;
         board.climbers = walk_board(&board, stored, members, &identities, &evidence);
     }
-    board.evidence = evidence;
+    board.evidence = evidence.jobs;
     board.early_stop_canceled = canceled;
     Ok(board)
 }
@@ -2017,26 +2089,66 @@ async fn pin_climbers(
     Ok((members, pinned))
 }
 
-/// A dispatch's evidence, with any validator-rated run that carries no rating yet rated
-/// from its record and the store's manifest first — so such a run never stays unrated for
-/// longer than the store lacks its version.
+/// Everything a dispatch's board is walked over.
+struct BoardEvidence {
+    /// What the jobs the dispatch launched say about its slots.
+    jobs: DispatchEvidence,
+    /// Every counted run of every cell of the dispatch's rungs' cases, globally, in the
+    /// order the runs landed. A slot's runs are the first `target` of its cell's list
+    /// ([`cell_runs`]).
+    runs: CellRuns,
+    /// The jobs in flight of the same cells, counted globally.
+    in_flight: CellCounts,
+}
+
+/// A dispatch's evidence: its own jobs, and the global counted runs and jobs in flight of
+/// its rungs' cases, which a plan reads the same way. Any validator-rated run a slot
+/// holds that carries no rating yet is rated from its record and the store's manifest
+/// first — whoever launched it — so such a run never stays unrated for longer than the
+/// store lacks its version.
 async fn read_evidence(
     state: &AppState,
     ladder_id: &str,
     dispatch_id: &str,
-) -> Result<DispatchEvidence, ApiError> {
-    let evidence = state
+    snapshot: &DispatchSnapshot,
+    identities: &[Option<MemberCellIdentity>],
+) -> Result<BoardEvidence, ApiError> {
+    let jobs = state
         .db
         .dispatch_evidence(ladder_id, dispatch_id)
         .await
         .map_err(ApiError::from)?;
-    let unrated: Vec<String> = evidence
-        .runs
-        .values()
-        .flatten()
-        .filter(|run| !run.model_failure && run.validator_rated && run.rating.is_none())
-        .map(|run| run.run_id.clone())
+    let mut slugs: Vec<String> = snapshot
+        .rungs
+        .iter()
+        .map(|rung| rung.slug.clone())
         .collect();
+    slugs.sort();
+    slugs.dedup();
+    let mut runs = state
+        .db
+        .counted_runs_by_cell(&slugs, None)
+        .await
+        .map_err(ApiError::from)?;
+    let in_flight = state
+        .db
+        .count_in_flight_jobs_by_cell(&slugs)
+        .await
+        .map_err(ApiError::from)?;
+    let mut unrated: Vec<String> = Vec::new();
+    for rung in &snapshot.rungs {
+        for identity in identities.iter().flatten() {
+            let cell = cell_key_of(&rung.case(), identity.clone());
+            unrated.extend(
+                cell_runs(&runs, &cell, rung.target)
+                    .iter()
+                    .filter(|run| !run.model_failure && run.validator_rated && run.rating.is_none())
+                    .map(|run| run.id.clone()),
+            );
+        }
+    }
+    unrated.sort();
+    unrated.dedup();
     if !unrated.is_empty()
         && state
             .db
@@ -2045,13 +2157,17 @@ async fn read_evidence(
             .map_err(ApiError::from)?
             > 0
     {
-        return state
+        runs = state
             .db
-            .dispatch_evidence(ladder_id, dispatch_id)
+            .counted_runs_by_cell(&slugs, None)
             .await
-            .map_err(ApiError::from);
+            .map_err(ApiError::from)?;
     }
-    Ok(evidence)
+    Ok(BoardEvidence {
+        jobs,
+        runs,
+        in_flight,
+    })
 }
 
 /// A dispatch's recorded verdicts and their times, by `(rung id, climber key)`.
@@ -2076,12 +2192,17 @@ async fn read_decided(
 
 /// Walk every climber of a board over `evidence`, finding each climber's runs by its
 /// pinned cell share in `identities` (`None`: it never resolved, and has no runs).
+///
+/// A slot takes its runs and its jobs in flight as a plan's cell does: the first `target`
+/// counted runs of its cell, and the cell's jobs in flight up to what it still needs,
+/// whoever launched either. A slot the climber has not reached reads nothing, so the
+/// board never shows evidence for a rung nobody was judged on.
 fn walk_board(
     board: &DispatchBoard,
     stored: Vec<StoredDispatchClimber>,
     members: Vec<PlanMember>,
     identities: &[Option<MemberCellIdentity>],
-    evidence: &DispatchEvidence,
+    evidence: &BoardEvidence,
 ) -> Vec<BoardClimber> {
     let targets: Vec<u32> = board
         .snapshot
@@ -2109,39 +2230,47 @@ fn walk_board(
             for rung in &board.snapshot.rungs {
                 let cell = cell_key_of(&rung.case(), identity.clone());
                 let key: SlotKey = (rung.id.clone(), cell.clone());
-                let runs = evidence.runs.get(&key).cloned().unwrap_or_default();
-                let job_ids = evidence.in_flight.get(&key).cloned().unwrap_or_default();
+                let runs = cell_runs(&evidence.runs, &cell, rung.target).to_vec();
+                let in_flight =
+                    cell_in_flight(&evidence.in_flight, &cell, rung.target, runs.len() as u32);
+                let jobs = &evidence.jobs;
+                let job_ids = jobs.in_flight.get(&key).cloned().unwrap_or_default();
                 let recorded = board
                     .decided
                     .get(&(rung.id.clone(), stored.climber_key.clone()))
                     .map(|(kind, _)| *kind);
                 slot_evidence.push(SlotEvidence {
-                    runs: runs.iter().map(CellRunRating::as_rung_run).collect(),
-                    in_flight: job_ids.len() as u32,
+                    runs: runs.iter().map(CellRun::as_rung_run).collect(),
+                    in_flight,
                     failing: slot_failing(
-                        evidence
-                            .terminal
-                            .get(&key)
-                            .map(Vec::as_slice)
-                            .unwrap_or(&[]),
+                        jobs.terminal.get(&key).map(Vec::as_slice).unwrap_or(&[]),
                         stored.retried_at.as_deref(),
                     ),
                     recorded,
                 });
                 facts.push(SlotFacts {
                     runs,
+                    in_flight,
                     job_ids,
-                    waiting: evidence.waiting.get(&key).copied().unwrap_or(0),
+                    waiting: jobs.waiting.get(&key).copied().unwrap_or(0),
                     cell,
                 });
             }
-            let walk = walk_climber(
+            let mut walk = walk_climber(
                 &targets,
                 &slot_evidence,
                 &board.snapshot.gate,
                 member.unlaunchable.as_deref(),
                 stopped,
             );
+            // The rungs above the one the climber stands on or failed are not reached.
+            let reached = walk.current.map_or(targets.len(), |current| current + 1);
+            for position in reached..targets.len() {
+                facts[position].runs.clear();
+                facts[position].in_flight = 0;
+                walk.slots[position].tally =
+                    gate::tally(&[], targets[position], 0, &board.snapshot.gate);
+            }
             BoardClimber {
                 stored,
                 member,
@@ -2285,7 +2414,7 @@ fn climbers_to_wire(board: &DispatchBoard, now: &str) -> Vec<LadderClimber> {
                         status: slot.status,
                         tally: (reached || has_evidence).then(|| RungTally::from_gate(slot.tally)),
                         decided_at,
-                        run_ids: facts.runs.iter().map(|run| run.run_id.clone()).collect(),
+                        run_ids: facts.runs.iter().map(|run| run.id.clone()).collect(),
                         job_ids: facts.job_ids.clone(),
                     }
                 })

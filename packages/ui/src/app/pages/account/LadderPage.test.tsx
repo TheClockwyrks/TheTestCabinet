@@ -607,9 +607,9 @@ describe("ClimberRow", () => {
     expect(screen.getByText("Case 0 · base · v1.0.0")).toBeTruthy();
   });
 
-  // A rung's runs are the dispatch's own: the gate counts nothing else, so the list
-  // under a rung shows nothing else either.
-  it("lists only the dispatch's own runs of a rung", async () => {
+  // A rung's runs are the ones the board says the slot holds, whoever launched them:
+  // the gate counts nothing else, so the list under a rung shows nothing else either.
+  it("lists only the runs the slot holds for a rung", async () => {
     const query = vi.fn(async () => ({
       summaries: [runSummary("run-1", "case-0"), runSummary("other", "case-0")],
       total: 2,
@@ -711,9 +711,12 @@ describe("LadderPage", () => {
 
   let board: LadderProgress;
   let calls: string[];
+  // What a Run answers with: a running dispatch unless a test says otherwise.
+  let ranBoard: LadderProgress;
 
   beforeEach(() => {
     calls = [];
+    ranBoard = progress();
     confirmAnswer = true;
     confirmSpy.mockClear();
   });
@@ -726,7 +729,7 @@ describe("LadderPage", () => {
       getLadderQueue: async () => ({ runs: [], truncated: false }),
       runLadder: async () => {
         calls.push("run");
-        board = progress();
+        board = ranBoard;
         return board;
       },
       stopLadder: async (_id: string, input: { cancelRunning: boolean }) => {
@@ -773,11 +776,35 @@ describe("LadderPage", () => {
     const stop = screen.getByRole("button", { name: "Stop" });
     expect((stop as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "▶ Run ladder" }));
-    await screen.findByText(/rung 1 is launching for every climber/);
+    await screen.findByText(
+      /launches the runs its rung is missing.*Runs that already exist count/,
+    );
     expect(calls).toEqual(["run"]);
     // A first Run replaces nothing, so it is not confirmed.
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(screen.getByText("Running")).toBeTruthy();
+  });
+
+  // A dispatch counts the runs its rungs already have, so a Run over runs that exist
+  // finishes at once. "Launched nothing" must not read as "did nothing".
+  it("says a Run decided by existing runs launched nothing", async () => {
+    ranBoard = progress({
+      dispatch: dispatch({
+        status: "finished",
+        endedAt: "2026-10-02T10:00:01Z",
+        runs: { total: 9, done: 9, inFlight: 0 },
+        climbersRunning: 0,
+        climbersCompleted: 1,
+      }),
+      climbers: [climber({ status: "completed", currentRung: undefined })],
+    });
+    renderPage(progress({ dispatch: null, climbers: [], runsUnreviewed: 0 }));
+    await screen.findByText("Not run yet");
+    fireEvent.click(screen.getByRole("button", { name: "▶ Run ladder" }));
+    await screen.findByText(
+      /the runs that already exist decided every rung, so nothing was launched/,
+    );
+    expect(calls).toEqual(["run"]);
   });
 
   it("shows the summary with the skipped count, and offers no removed controls", async () => {

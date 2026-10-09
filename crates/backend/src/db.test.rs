@@ -6133,7 +6133,7 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
 }
 
 #[tokio::test]
-async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
+async fn a_slots_runs_carry_the_validators_rating_and_never_a_review() {
     use test_cabinet_core::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
@@ -6146,9 +6146,9 @@ async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
         Some(&manifest),
     )
     .await;
-    let evidence = slot_runs(&db, "rung").await;
+    let evidence = slot_runs(&db).await;
     assert_eq!(evidence.len(), 1);
-    assert_eq!(evidence[0].run_id, "r1");
+    assert_eq!(evidence[0].id, "r1");
     assert!(evidence[0].validator_rated);
     assert_eq!(
         evidence[0].rating,
@@ -6180,7 +6180,7 @@ async fn dispatch_evidence_reads_the_validators_rating_and_never_a_review() {
         Some("great"),
         "a review never touches the validators' own rating",
     );
-    assert_eq!(slot_runs(&db, "rung").await[0].rating, Some(Rating::Great));
+    assert_eq!(slot_runs(&db).await[0].rating, Some(Rating::Great));
 }
 
 #[tokio::test]
@@ -6190,7 +6190,7 @@ async fn a_legacy_runs_reviews_never_rate_it_for_a_gate() {
     db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
-    let evidence = slot_runs(&db, "rung").await;
+    let evidence = slot_runs(&db).await;
     assert!(!evidence[0].validator_rated);
     assert_eq!(
         evidence[0].rating, None,
@@ -6351,12 +6351,12 @@ async fn a_dispatch_counts_the_models_outcomes_and_never_infrastructure() {
         finished_dispatch_job(&db, &format!("j-{id}"), "rung", &run, None).await;
     }
 
-    let mut runs = slot_runs(&db, "rung").await;
-    runs.sort_by(|a, b| a.run_id.cmp(&b.run_id));
+    let mut runs = slot_runs(&db).await;
+    runs.sort_by(|a, b| a.id.cmp(&b.id));
     // An infrastructure-class failure retries and a cancel was somebody's decision:
     // neither is the model's result.
     assert_eq!(
-        runs.iter().map(|r| r.run_id.as_str()).collect::<Vec<_>>(),
+        runs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
         vec!["ok", "timed-out"],
     );
     // A run that ended on the model's own failure is evidence, as a broken run.
@@ -7066,23 +7066,23 @@ async fn finished_dispatch_job(
     .unwrap();
 }
 
-/// The dispatch's counted runs of one rung's [`sample_cell`] slot.
-async fn slot_runs(db: &Db, rung: &str) -> Vec<CellRunRating> {
-    db.dispatch_evidence("l1", "d1")
+/// The counted runs of the [`sample_cell`], in the order they landed: what a rung slot of
+/// that cell takes its runs from, whoever launched them.
+async fn slot_runs(db: &Db) -> Vec<CellRun> {
+    db.counted_runs_by_cell(&["pong".to_string()], None)
         .await
         .unwrap()
-        .runs
-        .remove(&(rung.to_string(), sample_cell()))
+        .remove(&sample_cell())
         .unwrap_or_default()
 }
 
 #[tokio::test]
-async fn dispatch_evidence_reads_only_the_dispatchs_own_jobs_grouped_by_rung() {
+async fn dispatch_evidence_reads_the_dispatchs_own_jobs_and_a_slots_runs_are_its_cells() {
     let db = Db::connect_in_memory().await.unwrap();
     finished_dispatch_job(&db, "j1", "r1", &record("run-1"), None).await;
     finished_dispatch_job(&db, "j2", "r2", &record("run-2"), None).await;
-    // The same cell launched by hand, by a plan, and by another dispatch: none of it is
-    // this dispatch's evidence.
+    // The same cell launched by hand, by a plan, and by another dispatch: their jobs are
+    // not this dispatch's, and the run is the cell's all the same.
     db.push(&record("by-hand"), &links(), None, None)
         .await
         .unwrap();
@@ -7101,21 +7101,20 @@ async fn dispatch_evidence_reads_only_the_dispatchs_own_jobs_grouped_by_rung() {
     let evidence = db.dispatch_evidence("l1", "d1").await.unwrap();
     let r1 = ("r1".to_string(), sample_cell());
     let r2 = ("r2".to_string(), sample_cell());
-    // One case pinned on two rungs is two slots that share nothing.
+    // The runs are read by cell, whatever rung or launcher produced them: one case pinned
+    // on two rungs is one cell, and the run nobody's job produced is in it.
+    let mut runs: Vec<String> = slot_runs(&db).await.into_iter().map(|run| run.id).collect();
+    runs.sort();
+    assert_eq!(runs, vec!["by-hand", "run-1", "run-2"]);
+    // In flight globally: this dispatch's two, the plan's and the other dispatch's.
     assert_eq!(
-        evidence.runs[&r1]
-            .iter()
-            .map(|run| run.run_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["run-1"]
+        db.count_in_flight_jobs_by_cell(&["pong".to_string()])
+            .await
+            .unwrap()
+            .get(&sample_cell()),
+        Some(&4)
     );
-    assert_eq!(
-        evidence.runs[&r2]
-            .iter()
-            .map(|run| run.run_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["run-2"]
-    );
+    // The dispatch's own jobs stay apart, by rung.
     assert_eq!(evidence.in_flight[&r1], vec!["waiting".to_string()]);
     assert_eq!(evidence.in_flight[&r2], vec!["running".to_string()]);
     assert_eq!(evidence.waiting.get(&r1).copied(), Some(1));
@@ -7194,10 +7193,10 @@ async fn a_retried_attempts_run_counts_once_through_its_retry() {
     .unwrap();
 
     assert_eq!(
-        slot_runs(&db, "r1")
+        slot_runs(&db)
             .await
             .iter()
-            .map(|run| run.run_id.as_str())
+            .map(|run| run.id.as_str())
             .collect::<Vec<_>>(),
         vec!["retry-run"]
     );
