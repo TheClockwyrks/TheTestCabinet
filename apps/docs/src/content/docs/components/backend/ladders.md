@@ -108,6 +108,13 @@ runs themselves are the results, and stay in the run list like any run.
   `running` jobs it launched. Those are partly or wholly paid for, so the
   console confirms it first.
 
+Both also reach the jobs an earlier dispatch of the same ladder launched and
+left in flight. A dispatch started after a plain Stop
+[waits on those jobs](#a-rung-slots-runs) as its own slots' jobs in flight, so
+its Stop and cancel running cancels them with its own. A Stop never reaches a
+job a plan, another ladder or a hand launch enqueued, even one the dispatch is
+waiting on.
+
 Both report how many jobs they cancelled. A stopped dispatch launches nothing
 more, and its status is **Stopped**.
 

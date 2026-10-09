@@ -778,7 +778,7 @@ export function LadderPage() {
         !(await confirm({
           title: "Stop and cancel running",
           message:
-            "Stop this dispatch and cancel every run it launched, runs already executing " +
+            "Stop this dispatch and cancel every run this ladder launched, runs already executing " +
             "included? Their work so far is lost and their cost is already spent. Use " +
             "“Stop” to cancel only what has not started.",
           confirmLabel: "Stop and cancel running",
@@ -986,7 +986,7 @@ export function LadderPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !running || !backend?.stopLadder}
-                title="End this dispatch and cancel every run it launched, runs already executing included."
+                title="End this dispatch and cancel every run this ladder launched, runs already executing included."
                 onClick={() => void stop(true)}
               >
                 Stop and cancel running
