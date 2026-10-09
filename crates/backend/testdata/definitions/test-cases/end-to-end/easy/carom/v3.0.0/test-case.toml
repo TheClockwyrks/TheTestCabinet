@@ -1,0 +1,2355 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`; see `docs/test-cases.md`.
+
+# The case's stable identity, recorded in every run. It stays `pong` because runs
+# published before the folder was renamed reference it.
+slug = "pong"
+
+# Human-readable display name for this test case.
+name = "Carom"
+
+# Relative difficulty of this case, surfaced on the site. Carom is one
+# self-contained real-time loop — ball, paddles, spin, two obstacles, a light AI —
+# with no subsystem big enough to need splitting out behind an interface, so easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "paddle", "physics"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A top-down paddle duel where the swing of a paddle puts spin on the ball, and \
+two obstacles turn the open field into a bank-shot puzzle."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. Carom is an easy case, so 90 minutes is comfortably more than a
+# healthy build needs while still catching a session that never terminates.
+max_runtime_hours = 1.5
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Every variant offers the same two ways to play — Solo
+# and Versus — and is rated on the same common `single-player` and `versus`
+# domains (no variant adds a domain of its own); the variants differ only in the
+# *rules of the game itself*, which apply equally to Solo and Versus. That
+# difference is carried by the specs that branch on the selected variant:
+# `specs/overview.md.hbs`, `specs/playfield.md.hbs` (the field, paddles, ball, and
+# how the obstacles behave), `specs/balls.md.hbs` (how many balls there are and how
+# each is launched), `specs/ui.md.hbs` (the screens and the cues),
+# `specs/modes/single-player.md.hbs` (which ball the AI defends),
+# `specs/state.md.hbs` (the obstacle clock and poses gyre's state carries, and
+# multi's array of balls) and `specs/instrumentation.md.hbs` (gyre's
+# `setObstacleClock`, and what a snapshot reports). They are rendered before they
+# land, so each variant's seeded spec set reads as one self-contained game.
+#   - base  — fixed, upright obstacles and a single ball served toward the
+#             receiver. The reference build.
+#   - gyre  — obstacles that sway and rotate, so the ball bounces off tilted,
+#             oriented faces instead of axis-aligned ones.
+#   - multi — three independent balls that collide with each other, each with its
+#             own hold, its own launch at a random angle, and its own respawn onto
+#             a field that never freezes.
+# This list is a root key, so it must precede the first table header.
+variants = [
+  "variants/base.toml",
+  "variants/gyre.toml",
+  "variants/multi.toml",
+]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics; one of them also owns rendering, collision detection,
+# and the gameplay framework the game is written inside. It is a *run dimension*,
+# chosen per run alongside the model, the harness, and the variant, and recorded
+# on the run; it is not a property of the game.
+#
+# Carom supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the input, the audio, the overlay
+#                     and the `window.__carom` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module: the levels, the game mode(s) that hold the
+#                     match rules, the actors and the controllers that drive the
+#                     paddles, and the debug surface its instance's `initialize`
+#                     returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`, so a
+# later 1.x or 2.x from the host package store is accepted as it lands. Widening or
+# moving a range means a new case version, so the pin is the statement that THIS
+# spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# which surfaces the build still supplies, Carom's touch layout, and Carom's cue
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     input, audio, diagnostics overlay and `window.__carom`
+#                     surface, and every figure the specification fixes, from the
+#                     specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the state, the debug surface its `initialize`
+#                     returns beside that state, the three functions, and the
+#                     `BACKGROUND` color `src/main.ts` hands the engine.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules: `src/constants.ts`
+#                     (every figure this specification fixes plus the level
+#                     names, the actor tags, the action bindings and the cue
+#                     names, which a validator imports; the look is NOT among
+#                     them) and `src/main.ts` (the browser entry). The build
+#                     writes `src/game.ts`: the `GameDefinition` the engine
+#                     drives — its levels, its game mode(s), its actors and the
+#                     controllers that drive the paddles — the debug surface its
+#                     instance's `initialize` returns, and the `BACKGROUND` color
+#                     `src/main.ts` hands the engine.
+#
+# A variant may replace this whole table with one of its own, which gyre and multi
+# both do: under each engine that seeds one, gyre's seeded `src/constants.ts`
+# documents the obstacle centers as the base centers the live poses sway about,
+# and multi's carries the home points, the ball count, the contact distance and
+# the fifth cue. What a variant changes about the surface (gyre's
+# `setObstacleClock` and obstacle poses, multi's balls addressed by index and
+# reported as an array) is carried by the specs. The engineless project holds no
+# game code for a variant to differ in, so every variant shares it. The seeded
+# files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
+# build to commit a `package-lock.json`, so the validated build installs exactly
+# what the deploy will. Both commands are required — there are no defaults, so
+# every case states exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded `workspace` ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken` and scores it zero,
+# because code that does not compile is not reviewable. The other three are
+# recorded and gate nothing — `test` additionally records the count and coverage
+# the build's own suite reports, which is how a build that ships tests is told
+# apart from one that ships none. Each is spelled `npx` rather than
+# `npm run <script>` so the check is the case's own statement of what is run and
+# does not depend on the model leaving the seeded scripts intact.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint . --max-warnings 0"
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. The handle is required as soon as any review item declares a `validation`
+# script, which they do below. It names the ENGINELESS contract: an engineless
+# build writes the surface itself and installs it on `window.__carom`, so the
+# handle is what a person opening the console of such a build finds. An engine run
+# has no global at all — the build writes the surface, its `initialize` returns
+# it, and a validator reads it back off `engine.debug`. What shape the surface's
+# operations take is the engine's contract. Under `simple-2d` the engine holds the
+# state by value and hands every reader a read-only view, so the surface is
+# written in the shape of `update`: a pose takes the current state and returns the
+# next, which a validator applies through `engine.apply`, and a reading takes the
+# state and returns what it read, which a validator calls with `engine.state`.
+# Under `structured-2d` the state lives in the framework objects the engine owns,
+# so the surface's operations are methods on the live game: a pose takes only its
+# own arguments and arranges the open world through the same systems play uses,
+# and a reading takes nothing and returns plain data. The seeded specification documents
+# the surface independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded.
+#
+# There is deliberately no `tick_hz`. It existed to tell the validation runtime what
+# one stepped tick was worth, because a driver stepped the build's own fixed
+# timestep through the debug API at a rate the manifest had to state. Nothing steps
+# that way now: the engine mandates no timestep at all — it hands the game the real
+# elapsed time of each frame — and a validator supplies its own clock object and
+# calls `engine.advance(n)`, so the size of a step is stated in the validator that
+# takes it and differs on purpose between suites (a steady clock, an uneven
+# sequence, a jittered clock). A single case-wide rate could only get them wrong, and the
+# key is optional precisely so a case whose build is clocked in real time omits it.
+[instrumentation]
+handle = "__carom"
+
+# The specs: every one is seeded for EVERY variant of this case, at the `dest`
+# path within the run workspace. The specification is decomposed by concern, and
+# there is a single list — what a variant changes wholesale (the field with its
+# obstacles, and the state and debug operations that go with them) is not a
+# separate per-variant file but a branch inside a common spec, rendered for the
+# selected variant before it lands (see below). Every seeded set thus asserts
+# exactly one game — the overview and visual design, the field and obstacles, the
+# balls/serving/physics, the menus/screens/scoring, the two ways to play (Solo and
+# Versus, with their controls, HUD, and the AI), the game's state, and the
+# debugging/automation surface — with no cross-variant language, because the
+# branching resolves at seed time and the model never sees the alternative.
+#
+# There is no proof spec: the media a reviewer looks at is captured by this
+# case's own validators from scenarios the case controls. The showcase spec below
+# does ask the build for media, but as the game's own store-page presentation
+# rather than as evidence any point is judged on.
+#
+# Every spec is an `.hbs` template, rendered before it lands, and two axes are
+# branched on. `variant.slug` selects the obstacles the game has and how many balls
+# ricochet between them: `specs/playfield.md.hbs` (fixed, upright obstacles vs. the
+# gyre variant's swaying, rotating ones), `specs/balls.md.hbs` (one served ball vs.
+# multi's three independent ones and their collisions), `specs/overview.md.hbs`,
+# `specs/ui.md.hbs` (multi's fifth cue and its screens),
+# `specs/modes/single-player.md.hbs` (which ball the AI defends),
+# `specs/state.md.hbs` (the obstacle clock and poses gyre's state carries, and
+# multi's `balls` array) and `specs/instrumentation.md.hbs` (gyre's
+# `setObstacleClock` operation and the obstacle poses a snapshot reports, and how
+# multi's operations address a ball by index).
+# `engine.slug` selects what the build is handed and what it writes:
+# `specs/overview.md.hbs`, `specs/state.md.hbs`, `specs/instrumentation.md.hbs`
+# and `specs/showcase.md.hbs`. A spec's `dest` defaults to its `source` with a
+# trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+[[spec]]
+source = "specs/playfield.md.hbs"
+
+[[spec]]
+source = "specs/balls.md.hbs"
+
+[[spec]]
+source = "specs/ui.md.hbs"
+
+[[spec]]
+source = "specs/modes/single-player.md.hbs"
+
+[[spec]]
+source = "specs/modes/versus.md.hbs"
+
+# The shape of the game's state. Under `simple-2d` this is the `CaromState`
+# contract the debug surface reads and poses and the validators read back, stated
+# by the case rather than by the seeded `src/game.ts`, which holds the three stubs
+# alone. Under `none` the build owns the shape and the debug surface is the
+# only contract over it. It seeds to `specs/state.md`.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every variant must expose: a render-free,
+# steppable core; an API to drive and inspect the game from code; and a read-only
+# debug overlay. Seeded for every variant and framed as an ordinary developer
+# affordance of the game. It branches on the engine for how the surface is reached
+# (`window.__carom` under `none`, `engine.debug` under `simple-2d`) and on the
+# variant for gyre's extra operation; it seeds to `specs/instrumentation.md`.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, screenshots and a short clip under `none`); it seeds
+# to `specs/showcase.md`.
+# The sounds the game plays, when each plays, and how muting behaves. The events
+# themselves belong to the files that define them; this one names the sound each
+# makes. It branches on `engine.slug`, because an engine run plays a cue through
+# the runtime's bus under the seeded `CUES` names while an engineless build writes
+# the audio layer under them, and on `variant.slug` for multi's fifth cue.
+[[spec]]
+source = "specs/audio.md.hbs"
+
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`: the specification fixes
+# behavior, not appearance, so there is no visual target to seed or to score
+# against. Every piece of evidence a reviewer sees comes from this case's
+# validators, which pose each scenario against the game the build wrote and
+# capture what it renders. The automated load check still runs.
+
+# Scoring domains. A run is rated on each independently, and the run's overall
+# rating is the WORST across them — a flawless single-player mode cannot mask a
+# broken versus mode. Every case must declare at least one. This case is on the
+# engine format, so it is validator-rated: each domain's FUNCTIONAL rating is
+# decided by the validators behind the point checklist below (every point names
+# the domains its failure lowers and how far — see `domains` / `failure_cap`
+# there), and the reviewer's judgement lives in the separate AESTHETIC rating of
+# each domain: the look, the polish, and the feel of each mode. The mode-specific
+# control categories are named plainly so the checklist still reads by mode.
+[[domain]]
+id = "single-player"
+name = "Single Player"
+description = "Solo play: a human paddle against the computer-controlled opponent."
+
+[[domain]]
+id = "versus"
+name = "Versus"
+description = "Two-player local play: two human-controlled paddles, no AI."
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare
+# name grouping the points a reviewer grades — and each
+# `[[review.categories.items]]` under it is one graded review item, worth one
+# point (the default weight), so a category is worth the number of items it holds
+# (no fractional scoring). A category carries no prose of its own; each review item
+# states in `description` the claim its validator checks. Categories are common to
+# every variant here; a point a variant changes lives in that variant's own file
+# instead. The checklist is reporter-side material — never seeded into a run, so
+# the model never sees it; each item restates a rule the seeded specification
+# already states, and every threshold a validator asserts is derived from a figure
+# or rule in the specs plus a numeric tolerance.
+#
+# EVERY point on this checklist carries a validation script, and every point is one
+# observable behavior, so a build fails exactly the rule it breaks (a top-edge hit
+# and a bottom-edge hit are two points, not one). Each script is a vitest suite
+# under `validation/<engine>/<suite directory>/<item id>.test.ts`, and for most
+# points the suite directory IS the point's category. Three groups deliberately sit
+# elsewhere, and are named here so a reader following this manifest looks in the
+# right directory: the `ui` category's window-fit and trail points are under
+# `rendering/`, because they read what the build DREW rather than a screen it
+# reached; multi's `gameplay`, `audio` and `multi-ball` points are all under
+# `multi/`, so that variant's suites stand together; and gyre's are under `gyre/`.
+#
+# The `<engine>` level is the ENGINE the suite is written against — a validator
+# speaks one engine's vocabulary, so this case, which supports three, ships one
+# directory per engine: `validation/none/` drives the build in Chromium through
+# `window.__carom`, and `validation/simple-2d/` and `validation/structured-2d/`
+# each run in process against their vendored engine. The three are the same
+# scenarios; only how they reach the build differs. The directory for the run's
+# engine is what gets staged into the built workspace at `validation/`.
+#
+# A `simple-2d` suite imports the runtime and the build's own `src/game.ts`,
+# constructs it over a headless canvas with a clock it scripts, poses the scenario
+# by applying the poses of the surface `engine.debug` returns through
+# `engine.apply`, and steps it with `advance`. It reads behavior back from
+# `engine.state` (or the surface's `snapshot` over it), audio from the runtime's
+# `cue:played` event, and drawing from the canvas — either the pixels or a
+# recording proxy over the 2D context.
+#
+# A `structured-2d` suite imports the engine and the build's own `src/game.ts`,
+# constructs the engine over a headless canvas with a clock it scripts, poses the
+# scenario by calling the operations of the surface `engine.debug` returns — the
+# value the build's instance built in `initialize` — which arrange the live world
+# through the same systems play uses, and steps it with `engine.advance`. It
+# reads behavior back from the surface's readings and `engine.world`, audio from
+# the engine's `cue:played` event, and drawing from the canvas — either the
+# pixels or the engine's own draw-command recorder.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. A `replay` output is a draw-command recording: the suite arms the
+# runtime's recorder around the section the point is about — the contact, the
+# point played out, the paddle held still while paused — and never around the
+# arrangement that got there. An `image` output is a single captured frame. Both
+# are evidence beside the verdict rather than any part of it: a point passes or
+# fails on its assertions alone.
+#
+# Nothing on this checklist asks a reviewer to judge how a screen looks. Appearance
+# is rated through the domains above; the rendering points here assert SOME of what
+# the specification fixes about what is drawn — that the field is fitted, that the
+# solid bodies are told apart by color, that the scores are drawn, that the trail
+# has the length the spec gives it — and capture the frame as evidence. What the
+# specification fixes and no point asserts is named in the `ui` category's comment
+# below, so the gap is on the record rather than implied away.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a "(Solo)" point
+# lowers only `single-player`, a "(Versus)" point only `versus`, and a point about
+# the game both modes share lowers both. `failure_cap` is the highest functional
+# rating those domains may reach while the point fails; each domain gets the LOWEST
+# cap among its failing points, and a domain with no failing point is flawless. The
+# caps are graded by how much of the game a failure takes away: `broken` where the
+# game cannot be played at all (no debug surface, the game never advances, a paddle
+# that cannot be moved, a match that cannot start, a point that never scores);
+# `scuffed` where a rule the game is built on is noticeably wrong (a hit angle, a
+# bounce, spin, the AI, the serve, the visibility of the bodies); `passable` where
+# the fault is a tolerance, a ceiling, an edge case or a secondary path (a speed
+# within a percentage, a clamp at a bound, a corner, a countdown, a menu detail, a
+# cue); and `great` where it is a cosmetic detail (the trail, the copy on a screen,
+# a second key for an action another key already raises on the same screen). No
+# point caps at `flawless`: a failure always costs.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The build writes the surface and returns it from `initialize`, so this point
+# checks both that every operation is there and that the state the build's
+# `src/game.ts` declares actually backs it: every operation runs against a real
+# game, and a snapshot reports the full documented shape with live values. Every
+# other automated item poses its scenario through the same surface, so a state the
+# build hollowed out or reshaped also shows up as those items failing to run — this
+# point names the fault plainly and captures a live-match frame as proof the driven
+# game is what was inspected.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "debug-api"
+title = "Debug and automation API present"
+description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, each poses or reads the running game, and snapshot reports the full documented shape with current values."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
+# Automated validation: reflect that every required operation is installed as a
+# function and that a snapshot reports the full documented shape, then capture the
+# live match that was driven. See validation/<engine>/instrumentation/debug-api.test.ts.
+validation = { script = "instrumentation/debug-api.test.ts", outputs = [
+  { id = "state", name = "The driven in-game state", kind = "image" },
+] }
+# `menuItemRect` is the one reading whose CONTRACT has a negative half, and the
+# point above only establishes that the operation is there and answers on a menu.
+# specs/instrumentation.md fixes two DIFFERENT conditions under which it reports
+# nothing, and a build that hands back a region anyway sends a pointer driver at a
+# rectangle no item occupies. They are two edge cases rather than one, so they are
+# two points: a screen that shows no menu at all, and a menu that is on screen
+# answering for an index it has no item at. A build that answers `null` on the two
+# screens and hands back a stale rect past the end of the title menu has one of the
+# two right, and the split is what says so. `countdown` and `playing` share a
+# validator because they are the SAME edge case read twice — a screen with no menu —
+# in the same way.
+[[review.categories.items]]
+id = "menu-rect-null"
+title = "menuItemRect reports no region on a screen with no menu"
+description = "menuItemRect returns null on playing and on countdown, the two screens that show no menu."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: ask for a region on the countdown and on a live match and
+# confirm each answers null. The cap is `great` because the fault is invisible to a
+# player: it costs a driver its certainty, not the game its flow. See
+# validation/<engine>/instrumentation/menu-rect-null.test.ts.
+validation = { script = "instrumentation/menu-rect-null.test.ts", outputs = [
+  { id = "live", name = "The live match whose regions were asked for", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-rect-range"
+title = "menuItemRect reports no region past a menu's last item"
+description = "On the title screen, menuItemRect returns null for an index past the last item of the menu the screen shows."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: ask the title menu for a region at `TITLE_ITEMS.length` and
+# confirm it answers null. Same cap and same reason as the point above. See
+# validation/<engine>/instrumentation/menu-rect-range.test.ts.
+validation = { script = "instrumentation/menu-rect-range.test.ts", outputs = [
+  { id = "menu", name = "The title menu whose regions were read back", kind = "image" },
+] }
+
+# --- Gameplay -----------------------------------------------------------------
+[[review.categories]]
+id = "gameplay"
+title = "Gameplay"
+# The serve, the hold and the points a match is decided by are NOT common. Every
+# variant has all of them, but multi has them differently: a launch is drawn over
+# the full circle and so has no direction or angle to check, a hold belongs to a
+# ball rather than to the match, and a scored point takes one ball out of play
+# instead of freezing the field and opening a countdown. A variant may only ADD to
+# a common review item, never replace the validator behind one (see
+# `merge_review_items` in the core), so `serve-*`, `countdown-length`,
+# `scoring-p1`, `scoring-p2`, `match-win` and `deuce` live in `variants/base.toml`
+# and `variants/gyre.toml`, and multi states its own in `variants/multi.toml`.
+#
+# Pausing is checked around the pre-serve countdown: that it is allowed there (not
+# only once the ball is in flight), and that the countdown freezes while paused
+# rather than ticking away behind the pause menu.
+[[review.categories.items]]
+id = "pause-during-countdown"
+title = "Pausing during the countdown"
+description = "A pause key pressed on the countdown screen sets screen to paused, with resumeScreen countdown."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: start a match (which opens on the countdown), dispatch a
+# pause key there, and confirm the game pauses. See
+# validation/<engine>/gameplay/pause-during-countdown.test.ts.
+validation = { script = "gameplay/pause-during-countdown.test.ts", outputs = [
+  { id = "paused", name = "Paused during the pre-serve countdown", kind = "image" },
+] }
+[[review.categories.items]]
+id = "countdown-frozen"
+title = "Countdown pauses with the game"
+description = "While paused during the countdown, holdTimer does not change over an interval far longer than HOLD_TIME, the ball stays held, and resuming returns to the countdown screen."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pause during the countdown, then let far more than the hold
+# elapse in both simulation and real time — the game must stay paused with the ball
+# still held, and resume back into the countdown. See
+# validation/<engine>/gameplay/countdown-frozen.test.ts.
+validation = { script = "gameplay/countdown-frozen.test.ts", outputs = [
+  { id = "countdown", name = "The countdown frozen while paused", kind = "replay" },
+] }
+# The AI is checked as five separate points, all in Solo, each driving the real
+# computer opponent (setAiControl, see specs/instrumentation.md) against a posed
+# shot and reading what it does. Each threshold follows from AI_SPEED, AI_REACT,
+# the deadzone values and the shot's own flight time.
+[[review.categories.items]]
+id = "ai-intercepts"
+title = "AI runs down a reachable shot (Solo)"
+description = "In Solo, a ball aimed to arrive 200 units from the AI paddle's center, with more flight time than that distance takes at AI_SPEED, is blocked: the ball leaves the paddle with vx < 0 and player one does not score."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: drive the real AI against a shot ~200 units off its paddle's
+# start — within its reach — and confirm it blocks it (player one does not score). See
+# validation/<engine>/gameplay/ai-intercepts.test.ts.
+validation = { script = "gameplay/ai-intercepts.test.ts", outputs = [
+  { id = "block", name = "The AI running down and blocking a reachable shot", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ai-outrun"
+title = "AI is outrun by a fast shot out of reach (Solo)"
+description = "In Solo, a fast, shallow shot arriving farther from the AI paddle's center than AI_SPEED covers in its flight time gets past: player one's score increments."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: drive the real AI against a fast, low-angle shot arriving far
+# from its start and confirm the shot gets past it (player one scores) — an AI that
+# moved faster than it should would block it. See validation/<engine>/gameplay/ai-outrun.test.ts.
+validation = { script = "gameplay/ai-outrun.test.ts", outputs = [
+  { id = "scored", name = "A fast shot outrunning the AI paddle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ai-no-predict"
+title = "AI does not predict bank shots (Solo)"
+description = "In Solo, a fast, steep shot that banks off a wall before arriving gets past the AI paddle, which tracks the ball's lagged position rather than its post-bounce destination: player one's score increments."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: drive the real AI against a fast, steep shot that banks off a
+# wall and confirm the shot gets past it (player one scores) — an AI that predicted
+# the reflected destination, or moved too fast, would block it. See
+# validation/<engine>/gameplay/ai-no-predict.test.ts.
+validation = { script = "gameplay/ai-no-predict.test.ts", outputs = [
+  { id = "scored", name = "A bank shot beating the AI paddle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ai-homes"
+title = "AI returns home while the ball moves away (Solo)"
+description = "In Solo, with the ball moving away (vx < 0) and the AI paddle posed off center, the paddle moves toward AI_HOME_Y and stops with its center within AI_HOME_DEADZONE of it, at vy 0."
+domains = ["single-player"]
+failure_cap = "passable"
+# Automated validation: pose the AI paddle near a bound and a ball travelling toward
+# the left goal, advance, and confirm the paddle moves toward AI_HOME_Y and settles
+# within AI_HOME_DEADZONE of it. See validation/<engine>/gameplay/ai-homes.test.ts.
+validation = { script = "gameplay/ai-homes.test.ts", outputs = [
+  { id = "home", name = "The AI paddle returning to center", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ai-deadzone"
+title = "AI holds still inside its deadzone (Solo)"
+description = "In Solo with the ball travelling toward the AI, an AI paddle posed less than AI_DEADZONE (10 units) from the target that ball gives it reports vy 0 and its center does not move."
+domains = ["single-player"]
+failure_cap = "passable"
+# Automated validation: pose a ball travelling toward the AI with vy 0, stand the AI
+# paddle a few units off the target that gives it, advance, and confirm the paddle
+# reports vy 0 and stayed where it was. AI_DEADZONE is the only one of the five
+# figures specs/modes/single-player.md names that no other point reads: `ai-homes`
+# settles inside AI_HOME_DEADZONE, and the three interception points all run the
+# paddle at AI_SPEED. A paddle that jitters on the ball instead of settling is
+# playable but visibly wrong, so the miss is `passable`. See
+# validation/<engine>/gameplay/ai-deadzone.test.ts.
+validation = { script = "gameplay/ai-deadzone.test.ts", outputs = [
+  { id = "still", name = "The AI paddle holding still on a ball inside its deadzone", kind = "replay" },
+] }
+# The simulation is driven by elapsed time, not by a count of frames. The frame clock
+# is the engine's and a validator supplies it, so this is checkable head-on: the same
+# scenario is replayed under several clocks and the outcomes must agree.
+[[review.categories.items]]
+id = "delta-time-independent"
+title = "The simulation advances on elapsed time, not on frames"
+description = "One scenario (a ball banked off a wall into a paddle and the flight that follows) driven under a steady clock, an uneven clock and a jittered clock reaches the same paddle contact, the same bank, the same scorer, the same final heading and speed, and takes the same game time."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive that one scenario three times under three clocks — a
+# `ConstantClock` at a steady 120 Hz, a `SequenceClock` repeating an uneven pattern of
+# deltas, and a jittered `JitterClock` — and compare the outcomes. Only facts that survive
+# a legitimate change in step size are compared, never a position: the sharpest of
+# them is the game time each drive took, read from the engine's own frame clock,
+# because a build that advances per frame rather than per second traces the same
+# path and can only give itself away on the clock. See
+# validation/<engine>/gameplay/delta-time-independent.test.ts.
+validation = { script = "gameplay/delta-time-independent.test.ts", outputs = [
+  { id = "drive", name = "The scenario driven under a varying clock", kind = "replay" },
+] }
+
+# --- Paddles ------------------------------------------------------------------
+[[review.categories]]
+id = "paddles"
+title = "Paddles"
+# Hit angle is checked as three separate points — a center hit, a top-edge hit and
+# a bottom-edge hit — so a paddle that returns everything straight, or everything at
+# the same angle, or deflects the right amount the wrong way, fails the point it
+# gets wrong rather than the whole.
+[[review.categories.items]]
+id = "hit-center"
+title = "Hit angle: center returns straight"
+description = "A ball striking a stationary paddle at its center leaves with an angle from horizontal of 0 degrees, within 1 degree."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: read back the outgoing angle of a real stationary-paddle
+# bounce at the paddle center (~0 deg). See validation/<engine>/paddles/hit-center.test.ts.
+validation = { script = "paddles/hit-center.test.ts", outputs = [
+  { id = "straight", name = "A straight center hit", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "hit-top-edge"
+title = "Hit angle: top edge deflects upward"
+description = "A ball striking a stationary paddle at cy - PADDLE_HALF leaves upward at -MAX_BOUNCE_ANGLE (55 degrees above horizontal, vy < 0), within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: read back the outgoing angle of a real stationary-paddle
+# bounce at the top edge (~-55 deg). See validation/<engine>/paddles/hit-top-edge.test.ts.
+validation = { script = "paddles/hit-top-edge.test.ts", outputs = [
+  { id = "deflection", name = "A steep upward edge deflection", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "hit-bottom-edge"
+title = "Hit angle: bottom edge deflects downward"
+description = "A ball striking a stationary paddle at cy + PADDLE_HALF leaves downward at +MAX_BOUNCE_ANGLE (55 degrees below horizontal, vy > 0), within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: read back the outgoing angle of a real stationary-paddle
+# bounce at the bottom edge (~+55 deg). See validation/<engine>/paddles/hit-bottom-edge.test.ts.
+validation = { script = "paddles/hit-bottom-edge.test.ts", outputs = [
+  { id = "deflection", name = "A steep downward edge deflection", kind = "replay" },
+] }
+# The paddle's end caps are checked as two separate points, one per cap: a
+# contact on the top or bottom face is resolved like a wall (specs/balls.md),
+# not by the bounce formula, so a build that treats every paddle contact as a hit
+# fails the cap it gets wrong.
+[[review.categories.items]]
+id = "end-cap-top"
+title = "Top end cap reflects like a wall"
+description = "A ball dropping vertically onto a stationary paddle's top face leaves with vy reversed, vx and speed unchanged, spin unchanged, and its center at cy - PADDLE_HALF - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drop a spinless ball straight down the paddle's own x
+# span onto its top face and read the rebound. See
+# validation/<engine>/paddles/end-cap-top.test.ts.
+validation = { script = "paddles/end-cap-top.test.ts", outputs = [
+  { id = "bounce", name = "A ball reflecting off the top end cap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "end-cap-bottom"
+title = "Bottom end cap reflects like a wall"
+description = "A ball climbing vertically into a stationary paddle's bottom face leaves with vy reversed, vx and speed unchanged, spin unchanged, and its center at cy + PADDLE_HALF + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: send a spinless ball straight up the paddle's own x span
+# into its bottom face and read the rebound. See
+# validation/<engine>/paddles/end-cap-bottom.test.ts.
+validation = { script = "paddles/end-cap-bottom.test.ts", outputs = [
+  { id = "bounce", name = "A ball reflecting off the bottom end cap", kind = "replay" },
+] }
+# Rally acceleration is checked as two separate points — that a hit speeds the ball
+# up, and that the speed-up stops at a ceiling — so a build that never accelerates and
+# one that accelerates without bound each fail the point they break.
+[[review.categories.items]]
+id = "rally-accelerates"
+title = "Rally accelerates after each hit"
+description = "Across a straight rally, the ball's speed after each paddle hit is SPEED_MULT (1.04) times its speed before the hit, within 1 percent, while below SPEED_CAP."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive a real straight rally and record the ball's speed after
+# each paddle hit — the per-hit ratio is ~1.04 and the sequence never decreases while
+# below the cap. See validation/<engine>/paddles/rally-accelerates.test.ts.
+validation = { script = "paddles/rally-accelerates.test.ts", outputs = [
+  { id = "acceleration", name = "A rally accelerating hit by hit", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "rally-caps"
+title = "Rally speed caps at the ceiling"
+description = "Across a long straight rally, the ball's speed reaches SPEED_CAP (980 units per second) within 1 percent and never exceeds it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real straight rally to its ceiling and confirm the
+# ball's speed plateaus at 980 and never exceeds it. See validation/<engine>/paddles/rally-caps.test.ts.
+validation = { script = "paddles/rally-caps.test.ts", outputs = [
+  { id = "ceiling", name = "A rally plateauing at the speed ceiling", kind = "replay" },
+] }
+
+# --- Paddle Movement ----------------------------------------------------------
+# How fast each paddle moves under each way it is controlled: the human paddle at
+# PADDLE_SPEED in Solo and for both players in Versus, and the AI paddle at AI_SPEED.
+# Each is driven the way it really moves — a held key for the human paddles, the
+# real AI's chase for the opponent — and its rate is measured back. The two bound
+# points drive a paddle into each bound and read the clamp.
+[[review.categories]]
+id = "paddle-movement"
+title = "Paddle Movement"
+[[review.categories.items]]
+id = "speed-solo-player"
+title = "Human paddle speed (Solo)"
+description = "In Solo, while a movement key is held, the left paddle's center moves at PADDLE_SPEED (720 units per second), within 2 percent."
+domains = ["single-player"]
+failure_cap = "passable"
+# Automated validation: hold a movement key and measure the left paddle's rate. See
+# validation/<engine>/paddle-movement/speed-solo-player.test.ts.
+validation = { script = "paddle-movement/speed-solo-player.test.ts", outputs = [
+  { id = "move", name = "The human paddle moving at its speed (Solo)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-solo-ai"
+title = "AI paddle speed (Solo)"
+description = "In Solo, the AI paddle chasing a ball far from its center moves at AI_SPEED (560 units per second), within 2 percent."
+domains = ["single-player"]
+failure_cap = "passable"
+# Automated validation: hand the real AI its paddle, give it a ball to chase, and
+# measure its rate. See validation/<engine>/paddle-movement/speed-solo-ai.test.ts.
+validation = { script = "paddle-movement/speed-solo-ai.test.ts", outputs = [
+  { id = "move", name = "The AI paddle chasing at its speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-versus-p1"
+title = "Player one paddle speed (Versus)"
+description = "In Versus, while a player-one movement key is held, the left paddle's center moves at PADDLE_SPEED (720 units per second), within 2 percent."
+domains = ["versus"]
+failure_cap = "passable"
+# Automated validation: hold a movement key and measure the left paddle's rate. See
+# validation/<engine>/paddle-movement/speed-versus-p1.test.ts.
+validation = { script = "paddle-movement/speed-versus-p1.test.ts", outputs = [
+  { id = "move", name = "Player one's paddle moving at its speed (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-versus-p2"
+title = "Player two paddle speed (Versus)"
+description = "In Versus, while a player-two movement key is held, the right paddle's center moves at PADDLE_SPEED (720 units per second), within 2 percent."
+domains = ["versus"]
+failure_cap = "passable"
+# Automated validation: hold a movement key and measure the right paddle's rate. See
+# validation/<engine>/paddle-movement/speed-versus-p2.test.ts.
+validation = { script = "paddle-movement/speed-versus-p2.test.ts", outputs = [
+  { id = "move", name = "Player two's paddle moving at its speed (Versus)", kind = "replay" },
+] }
+# The pre-serve countdown is checked as its own four points, one per way a paddle
+# is controlled: the hold locks the ball and never the paddles (specs/balls.md,
+# The paddles during the countdown), so a paddle must move during the countdown
+# exactly as it does in a rally, and the AI must run its rule there. Each check
+# starts the match with the menu keys so the build's own countdown is what runs,
+# moves the paddle, and reads the screen on the frame the movement was measured:
+# still the countdown, the ball still held. A build that freezes its paddles until
+# the serve — a habit some models fall into — fails these four rather than the
+# speed points above, which read their rate inside the same hold without saying so.
+[[review.categories.items]]
+id = "countdown-solo-player"
+title = "Human paddle moves during the countdown (Solo)"
+description = "In Solo, a movement key held while the screen is countdown and the ball is held moves the left paddle at PADDLE_SPEED (720 units per second), within 2 percent, with the screen still countdown and the ball still held when the movement is read."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: enter a Solo match from the title with the menu keys — a
+# match posed open through the debug surface belongs to its driver, so the real
+# input pipeline needs one entered unposed — hold a movement key inside the
+# countdown, measure the paddle's rate, and read the screen on the frame the
+# window closes. See validation/<engine>/paddle-movement/countdown-solo-player.test.ts.
+validation = { script = "paddle-movement/countdown-solo-player.test.ts", outputs = [
+  { id = "move", name = "The human paddle moving during the countdown (Solo)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-solo-ai"
+title = "AI paddle moves during the countdown (Solo)"
+description = "In Solo, the AI paddle posed near the bottom bound while the screen is countdown returns to within AI_HOME_DEADZONE (18) of AI_HOME_Y (360) and reports vy 0 before the countdown ends, with the screen still countdown and the ball still held when it is read."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: open a Solo match on its countdown through the debug
+# surface, pose the AI paddle far from home during the countdown, hand it to the
+# real AI, and read it back with the hold still running. See validation/<engine>/paddle-movement/countdown-solo-ai.test.ts.
+validation = { script = "paddle-movement/countdown-solo-ai.test.ts", outputs = [
+  { id = "home", name = "The AI paddle returning home during the countdown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-versus-p1"
+title = "Player one paddle moves during the countdown (Versus)"
+description = "In Versus, a player-one movement key held while the screen is countdown and the ball is held moves the left paddle at PADDLE_SPEED (720 units per second), within 2 percent, and the right paddle not at all, with the screen still countdown and the ball still held when the movement is read."
+domains = ["versus"]
+failure_cap = "scuffed"
+# Automated validation: enter a Versus match from the title with the menu keys — a
+# match posed open through the debug surface belongs to its driver, so the real
+# input pipeline needs one entered unposed — hold a player-one movement key inside
+# the countdown, measure the left paddle's rate, and read the screen on the frame
+# the window closes. See
+# validation/<engine>/paddle-movement/countdown-versus-p1.test.ts.
+validation = { script = "paddle-movement/countdown-versus-p1.test.ts", outputs = [
+  { id = "move", name = "Player one's paddle moving during the countdown (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-versus-p2"
+title = "Player two paddle moves during the countdown (Versus)"
+description = "In Versus, a player-two movement key held while the screen is countdown and the ball is held moves the right paddle at PADDLE_SPEED (720 units per second), within 2 percent, and the left paddle not at all, with the screen still countdown and the ball still held when the movement is read."
+domains = ["versus"]
+failure_cap = "scuffed"
+# Automated validation: enter a Versus match from the title with the menu keys — a
+# match posed open through the debug surface belongs to its driver, so the real
+# input pipeline needs one entered unposed — hold a player-two movement key inside
+# the countdown, measure the right paddle's rate, and read the screen on the frame
+# the window closes. See
+# validation/<engine>/paddle-movement/countdown-versus-p2.test.ts.
+validation = { script = "paddle-movement/countdown-versus-p2.test.ts", outputs = [
+  { id = "move", name = "Player two's paddle moving during the countdown (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bound-top"
+title = "Paddle stops at the top bound"
+description = "A paddle driven upward stops with its center at PADDLE_MIN_CY (55) and reports vy 0 while the movement continues to be held into the bound."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a paddle up past the bound and read its center and
+# velocity back. See validation/<engine>/paddle-movement/bound-top.test.ts.
+validation = { script = "paddle-movement/bound-top.test.ts", outputs = [
+  { id = "bound", name = "A paddle pinned at the top bound", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bound-bottom"
+title = "Paddle stops at the bottom bound"
+description = "A paddle driven downward stops with its center at PADDLE_MAX_CY (665) and reports vy 0 while the movement continues to be held into the bound."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a paddle down past the bound and read its center and
+# velocity back. See validation/<engine>/paddle-movement/bound-bottom.test.ts.
+validation = { script = "paddle-movement/bound-bottom.test.ts", outputs = [
+  { id = "bound", name = "A paddle pinned at the bottom bound", kind = "replay" },
+] }
+
+# --- Ball ---------------------------------------------------------------------
+[[review.categories]]
+id = "ball"
+title = "Ball"
+# The obstacle bounce is checked per face — each obstacle's left, right, top and
+# bottom — so a build that reflects off only some faces fails exactly those. Those
+# eight strike each face at its midpoint; `corner-graze` covers the ends of a face,
+# where deciding WHICH face was hit is the hard part. Tunneling is checked per body
+# kind at SPEED_CAP, and the wall bounce per wall.
+#
+# Three further rules of specs/balls.md's resolution are their own points, because
+# they are the rules a build gets wrong by leaving them out rather than by getting
+# them backwards. The directional guard — a component is reversed only when it
+# points INTO the face — is stated twice and is therefore TWO points:
+# `already-leaving-wall` for the wall rule's `vy < 0` condition and
+# `already-leaving-cap` for step 4 of the rectangle rule, read on a paddle's end
+# cap. They are different rules over different components with different
+# resolutions, so a build that guards one and not the other is graded as such.
+# `corner-tie` is the tie-break in step 2: when two depths are equal the earlier
+# face in the order left, right, top, bottom wins, and a build that picks the other
+# one sends the ball off at a wholly different heading.
+[[review.categories.items]]
+id = "bounce-a-left"
+title = "Bounces off obstacle A (left face)"
+description = "A ball fired level at the midpoint of obstacle A's left face leaves with vx reversed, vy unchanged, and its center at x0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at obstacle A's left face and confirm it
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-a-left.test.ts.
+validation = { script = "ball/bounce-a-left.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle A's left face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-a-right"
+title = "Bounces off obstacle A (right face)"
+description = "A ball fired level at the midpoint of obstacle A's right face leaves with vx reversed, vy unchanged, and its center at x1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at obstacle A's right face and confirm it
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-a-right.test.ts.
+validation = { script = "ball/bounce-a-right.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle A's right face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-a-top"
+title = "Bounces off obstacle A (top face)"
+description = "A ball fired vertically at the midpoint of obstacle A's top face leaves with vy reversed, vx unchanged, and its center at y0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot down onto obstacle A's top face and confirm
+# it reflects upward. See validation/<engine>/ball/bounce-a-top.test.ts.
+validation = { script = "ball/bounce-a-top.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle A's top face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-a-bottom"
+title = "Bounces off obstacle A (bottom face)"
+description = "A ball fired vertically at the midpoint of obstacle A's bottom face leaves with vy reversed, vx unchanged, and its center at y1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot up onto obstacle A's bottom face and confirm
+# it reflects downward. See validation/<engine>/ball/bounce-a-bottom.test.ts.
+validation = { script = "ball/bounce-a-bottom.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle A's bottom face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-b-left"
+title = "Bounces off obstacle B (left face)"
+description = "A ball fired level at the midpoint of obstacle B's left face leaves with vx reversed, vy unchanged, and its center at x0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at obstacle B's left face and confirm it
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-b-left.test.ts.
+validation = { script = "ball/bounce-b-left.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle B's left face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-b-right"
+title = "Bounces off obstacle B (right face)"
+description = "A ball fired level at the midpoint of obstacle B's right face leaves with vx reversed, vy unchanged, and its center at x1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at obstacle B's right face and confirm it
+# reflects, staying on the near side. See validation/<engine>/ball/bounce-b-right.test.ts.
+validation = { script = "ball/bounce-b-right.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle B's right face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-b-top"
+title = "Bounces off obstacle B (top face)"
+description = "A ball fired vertically at the midpoint of obstacle B's top face leaves with vy reversed, vx unchanged, and its center at y0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot down onto obstacle B's top face and confirm
+# it reflects upward. See validation/<engine>/ball/bounce-b-top.test.ts.
+validation = { script = "ball/bounce-b-top.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle B's top face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bounce-b-bottom"
+title = "Bounces off obstacle B (bottom face)"
+description = "A ball fired vertically at the midpoint of obstacle B's bottom face leaves with vy reversed, vx unchanged, and its center at y1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot up onto obstacle B's bottom face and confirm
+# it reflects downward. See validation/<engine>/ball/bounce-b-bottom.test.ts.
+validation = { script = "ball/bounce-b-bottom.test.ts", outputs = [
+  { id = "bank", name = "Bank shot off obstacle B's bottom face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "corner-graze"
+title = "A corner hit reflects off one face, not both"
+description = "A ball arriving at a shallow angle on a vertical face 4 units inside its end leaves with vx reversed and vy keeping its sign, for each of three obstacle corners."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: graze three obstacle corners at a shallow angle, arriving on a
+# vertical face just inside its end, and confirm each reflects on ONE axis — the
+# horizontal velocity reverses while the vertical one keeps its sign. See
+# validation/<engine>/ball/corner-graze.test.ts.
+validation = { script = "ball/corner-graze.test.ts", outputs = [
+  { id = "graze", name = "Three corner grazes, each banking off a single face", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-tunnel-obstacle"
+title = "Never tunnels through an obstacle at high speed"
+description = "A ball fired at an obstacle at SPEED_CAP (980 units per second) reflects off it and is never observed on the far side."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at an obstacle at the rally ceiling — the
+# fastest the spec allows the ball to move — and confirm it rebounds. See
+# validation/<engine>/ball/no-tunnel-obstacle.test.ts.
+validation = { script = "ball/no-tunnel-obstacle.test.ts", outputs = [
+  { id = "fast", name = "A high-speed obstacle rebound without tunneling", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-tunnel-paddle"
+title = "Never tunnels through a paddle at high speed"
+description = "A ball fired at a paddle at SPEED_CAP (980 units per second) reflects off it and is never observed behind it."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at a paddle at the rally ceiling and confirm
+# it rebounds. See validation/<engine>/ball/no-tunnel-paddle.test.ts.
+validation = { script = "ball/no-tunnel-paddle.test.ts", outputs = [
+  { id = "fast", name = "A high-speed paddle rebound without tunneling", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-tunnel-wall"
+title = "Never tunnels through a wall at high speed"
+description = "A ball fired at a wall at SPEED_CAP (980 units per second) reflects off it and is never observed outside the field."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot at a wall at the rally ceiling and confirm it
+# rebounds. See validation/<engine>/ball/no-tunnel-wall.test.ts.
+validation = { script = "ball/no-tunnel-wall.test.ts", outputs = [
+  { id = "fast", name = "A high-speed wall rebound without tunneling", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "obstacle-no-speedup"
+title = "Obstacle bounce keeps the ball's speed"
+description = "A ball's speed after bouncing off an obstacle equals its speed before, within 0.1 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: fire a real shot at an obstacle and read the ball's speed
+# before and after the bounce. See validation/<engine>/ball/obstacle-no-speedup.test.ts.
+validation = { script = "ball/obstacle-no-speedup.test.ts", outputs = [
+  { id = "bank", name = "A bank shot keeping its speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wall-bounce-top"
+title = "Bounces off the top wall"
+description = "A ball reaching the top wall leaves with vy reversed, vx unchanged, its speed unchanged, and its center at y = BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot into the top wall and read the velocity and
+# position back. See validation/<engine>/ball/wall-bounce-top.test.ts.
+validation = { script = "ball/wall-bounce-top.test.ts", outputs = [
+  { id = "bounce", name = "A bounce off the top wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wall-bounce-bottom"
+title = "Bounces off the bottom wall"
+description = "A ball reaching the bottom wall leaves with vy reversed, vx unchanged, its speed unchanged, and its center at y = FIELD_H - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: fire a real shot into the bottom wall and read the velocity
+# and position back. See validation/<engine>/ball/wall-bounce-bottom.test.ts.
+validation = { script = "ball/wall-bounce-bottom.test.ts", outputs = [
+  { id = "bounce", name = "A bounce off the bottom wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "already-leaving-wall"
+title = "A wall already being left does not reverse the ball"
+description = "A ball posed overlapping the top wall while its vy already points away from that wall keeps that vy exactly: the wall rule fires only on a ball travelling into the wall."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose the ball across the top wall travelling downward and
+# read `vy` back after a frame — the wall rule's `vy < 0` guard means nothing may
+# happen to it. Reversing a ball that is already leaving traps it against the wall
+# rather than making the game unplayable, so the miss is `passable`. See
+# validation/<engine>/ball/already-leaving-wall.test.ts.
+validation = { script = "ball/already-leaving-wall.test.ts", outputs = [
+  { id = "leaving", name = "A ball posed across the top wall and travelling away from it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "already-leaving-cap"
+title = "A paddle end cap already being left does not reverse the ball"
+description = "A ball posed overlapping the top end cap of the left paddle, with vy already pointing up and out of that face, is placed clear of that face and keeps that vy exactly."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose the ball inside the paddle's expanded rectangle with the
+# TOP face the shallowest of the four, travelling upward, and read `vy` back after a
+# frame. This is step 4 of the rectangle rule read where the specification actually
+# leaves the guard reachable: an end cap reverses `vy` only when it points into the
+# face, and a front-face contact is a paddle hit that recomputes the velocity
+# outright, so the front face cannot decide this. It is a DISTINCT edge case from the
+# wall guard above (a different rule, a different component, a different resolution),
+# so it is a distinct point. Same cost as the wall form. See
+# validation/<engine>/ball/already-leaving-cap.test.ts.
+validation = { script = "ball/already-leaving-cap.test.ts", outputs = [
+  { id = "leaving", name = "A ball posed inside a paddle's end cap and travelling out of it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "corner-tie"
+title = "A tied corner resolves off the left face"
+description = "A ball posed on the right paddle's top-left corner with equal left and top penetration depths resolves off the LEFT face: it is placed at x = P2_X0 - BALL_R and returns as a paddle hit rather than reflecting off the end cap."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose the ball so the left and top depths are equal to the
+# unit and read which resolution ran — the left face is a paddle hit (the outgoing
+# angle comes from the contact offset and the speed multiplies), the top face is an
+# end cap (vy reverses, speed unchanged), so the two outcomes are told apart without
+# reading which face the build thought it struck. It is posed against a PADDLE
+# rather than an obstacle because a paddle is the axis-aligned rectangle in every
+# variant, gyre's turning obstacles included. Losing a corner sends one shot in a
+# direction the player did not expect, which is `passable`. See
+# validation/<engine>/ball/corner-tie.test.ts.
+validation = { script = "ball/corner-tie.test.ts", outputs = [
+  { id = "corner", name = "A ball resolving off the tied corner's left face", kind = "replay" },
+] }
+
+# --- Spin ---------------------------------------------------------------------
+[[review.categories]]
+id = "spin"
+title = "Spin"
+[[review.categories.items]]
+id = "stationary"
+title = "No spin from a stationary paddle"
+description = "A ball with spin 0 striking a paddle whose vy is 0 leaves with spin 0."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: a real stationary-paddle contact imparts no spin, so the
+# return stays straight. See validation/<engine>/spin/stationary.test.ts.
+validation = { script = "spin/stationary.test.ts", outputs = [
+  { id = "straight", name = "Straight return, no curve", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "at-bound"
+title = "No spin at the field bound"
+description = "A ball struck by a paddle pinned at a bound, with the movement held into the bound, leaves with spin 0, while the same held movement mid-field imparts spin."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: a paddle pinned at the bound while holding the key into it
+# imparts no spin (its real velocity clamps to zero), while the same held key
+# mid-field does. See validation/<engine>/spin/at-bound.test.ts.
+validation = { script = "spin/at-bound.test.ts", outputs = [
+  { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "replay" },
+] }
+# A paddle swung as it strikes imparts spin — checked for each way a paddle is
+# controlled: the human paddle in Solo and for both players in Versus, and the real
+# AI opponent striking while it chases. The human contexts cover a downward and an
+# upward swing between them, so the suite shows up and down curving the ball opposite
+# ways. The expected spin is paddleVy * SPIN_FROM_PADDLE, clamped.
+[[review.categories.items]]
+id = "moving-solo-player"
+title = "Human paddle imparts spin while moving (Solo)"
+description = "In Solo, a ball struck by the left paddle moving downward at PADDLE_SPEED leaves with spin PADDLE_SPEED * SPIN_FROM_PADDLE (612), within 5 percent."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: a real downward-swung left-paddle contact imparts positive
+# spin. See validation/<engine>/spin/moving-solo-player.test.ts.
+validation = { script = "spin/moving-solo-player.test.ts", outputs = [
+  { id = "curve", name = "A curved shot off the moving human paddle (Solo)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "moving-solo-ai"
+title = "AI paddle imparts spin while moving (Solo)"
+description = "In Solo, a ball struck by the AI paddle while it chases at AI_SPEED leaves with spin of magnitude AI_SPEED * SPIN_FROM_PADDLE (476), within 10 percent, signed by the paddle's direction."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: the real AI strikes the ball while chasing and imparts spin
+# from its motion. See validation/<engine>/spin/moving-solo-ai.test.ts.
+validation = { script = "spin/moving-solo-ai.test.ts", outputs = [
+  { id = "curve", name = "A curved shot off the moving AI paddle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "moving-versus-p1"
+title = "Player one imparts spin while moving (Versus)"
+description = "In Versus, a ball struck by the left paddle moving upward at PADDLE_SPEED leaves with spin -PADDLE_SPEED * SPIN_FROM_PADDLE (-612), within 5 percent."
+domains = ["versus"]
+failure_cap = "scuffed"
+# Automated validation: a real upward-swung left-paddle contact imparts negative
+# spin. See validation/<engine>/spin/moving-versus-p1.test.ts.
+validation = { script = "spin/moving-versus-p1.test.ts", outputs = [
+  { id = "curve", name = "A curved shot off player one's moving paddle (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "moving-versus-p2"
+title = "Player two imparts spin while moving (Versus)"
+description = "In Versus, a ball struck by the right paddle moving downward at PADDLE_SPEED leaves with spin PADDLE_SPEED * SPIN_FROM_PADDLE (612), within 5 percent."
+domains = ["versus"]
+failure_cap = "scuffed"
+# Automated validation: a real downward-swung right-paddle contact imparts positive
+# spin. See validation/<engine>/spin/moving-versus-p2.test.ts.
+validation = { script = "spin/moving-versus-p2.test.ts", outputs = [
+  { id = "curve", name = "A curved shot off player two's moving paddle (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "decay"
+title = "Spin decays"
+description = "A ball posed with spin loses half its spin magnitude after SPIN_HALFLIFE (0.8 s) of flight, within 5 percent, and has under a fifth of it after 2 s."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: impart real spin, then step the real simulation forward and
+# confirm the spin falls to half after one half-life and to a small fraction after
+# ~2 s. See validation/<engine>/spin/decay.test.ts.
+validation = { script = "spin/decay.test.ts", outputs = [
+  { id = "decay", name = "A curved shot straightening out", kind = "replay" },
+] }
+# The direction spin curves the flight is fixed by the spec's rotation rule, so it is
+# checked per sign: positive spin turns a rightward ball clockwise (vy grows
+# positive), negative spin counterclockwise. The two preservation points check that
+# a wall bounce and an obstacle bounce change spin by the decay alone.
+[[review.categories.items]]
+id = "curve-positive"
+title = "Positive spin curves clockwise"
+description = "A ball posed level with vx > 0 and positive spin has, after a short flight, vy > 0 and the same speed within 1 percent: its heading turned clockwise on screen by the arc the spin rule integrates to, within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose a level rightward ball with positive spin, advance, and
+# read the heading back. See validation/<engine>/spin/curve-positive.test.ts.
+validation = { script = "spin/curve-positive.test.ts", outputs = [
+  { id = "curve", name = "A flight curving clockwise", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "curve-negative"
+title = "Negative spin curves counterclockwise"
+description = "A ball posed level with vx > 0 and negative spin has, after a short flight, vy < 0 and the same speed within 1 percent: its heading turned counterclockwise on screen by the arc the spin rule integrates to, within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose a level rightward ball with negative spin, advance, and
+# read the heading back. See validation/<engine>/spin/curve-negative.test.ts.
+validation = { script = "spin/curve-negative.test.ts", outputs = [
+  { id = "curve", name = "A flight curving counterclockwise", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "preserved-wall"
+title = "Spin survives a wall bounce"
+description = "A spinning ball's spin after a wall bounce equals its spin before, less the decay over the elapsed time, within 2 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose a spinning ball into a wall and compare the spin across
+# the bounce against the decay alone. See validation/<engine>/spin/preserved-wall.test.ts.
+validation = { script = "spin/preserved-wall.test.ts", outputs = [
+  { id = "bounce", name = "A spinning ball bouncing off a wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "preserved-obstacle"
+title = "Spin survives an obstacle bounce"
+description = "A spinning ball's spin after an obstacle bounce equals its spin before, less the decay over the elapsed time, within 2 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose a spinning ball into an obstacle and compare the spin
+# across the bounce against the decay alone. See
+# validation/<engine>/spin/preserved-obstacle.test.ts.
+validation = { script = "spin/preserved-obstacle.test.ts", outputs = [
+  { id = "bounce", name = "A spinning ball bouncing off an obstacle", kind = "replay" },
+] }
+# The clamp is its own point because nothing else can reach it. A paddle travels at
+# PADDLE_SPEED at most, so one strike off a stationary ball adds at most
+# PADDLE_SPEED * SPIN_FROM_PADDLE — well short of SPIN_CLAMP — and the four
+# `moving-*` points therefore only ever read the unclamped sum. The bound is reached
+# by striking a ball that is ALREADY spinning, which is how a rally reaches it too.
+[[review.categories.items]]
+id = "clamped"
+title = "Spin is clamped at SPIN_CLAMP"
+description = "A paddle hit whose spin + paddleVy * SPIN_FROM_PADDLE (0.85) would carry the ball past SPIN_CLAMP (900) leaves its spin at SPIN_CLAMP exactly, within 1 unit per second squared."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose a ball already carrying most of the bound, strike it
+# with a paddle swung hard the same way, and read the spin on the contact frame —
+# the sum overshoots, the clamp holds. An unclamped build curves the ball harder
+# than the rules allow without making the game unplayable, so `passable`. See
+# validation/<engine>/spin/clamped.test.ts.
+validation = { script = "spin/clamped.test.ts", outputs = [
+  { id = "clamp", name = "A hard strike on an already-spinning ball holding at the clamp", kind = "replay" },
+] }
+
+# --- Pause --------------------------------------------------------------------
+# While the game is paused nothing advances: no paddle moves — neither a human paddle
+# with a movement key held (checked for each control context, as the paddle-speed
+# points are) nor the AI chasing a ball — and a ball in flight hangs where it was.
+# Unpausing resumes from exactly that state rather than teleporting the ball.
+[[review.categories]]
+id = "pause"
+title = "Pause"
+[[review.categories.items]]
+id = "paddle-solo-player"
+title = "Human paddle frozen while paused (Solo)"
+description = "In Solo, while paused with a movement key held, the left paddle's cy does not change."
+domains = ["single-player"]
+failure_cap = "passable"
+# Automated validation: pause, hold a movement key, and confirm the left paddle does
+# not move. See validation/<engine>/pause/paddle-solo-player.test.ts.
+validation = { script = "pause/paddle-solo-player.test.ts", outputs = [
+  { id = "frozen", name = "The human paddle held still while paused (Solo)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "paddle-solo-ai"
+title = "AI paddle frozen while paused (Solo)"
+description = "In Solo, while paused with a ball posed for the AI to chase, the right paddle's cy does not change."
+domains = ["single-player"]
+failure_cap = "passable"
+# Automated validation: pose a ball for the AI to chase, pause, and confirm the AI
+# paddle does not move. See validation/<engine>/pause/paddle-solo-ai.test.ts.
+validation = { script = "pause/paddle-solo-ai.test.ts", outputs = [
+  { id = "frozen", name = "The AI paddle held still while paused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "paddle-versus-p1"
+title = "Player one paddle frozen while paused (Versus)"
+description = "In Versus, while paused with a player-one movement key held, the left paddle's cy does not change."
+domains = ["versus"]
+failure_cap = "passable"
+# Automated validation: pause, hold a movement key, and confirm the left paddle does
+# not move. See validation/<engine>/pause/paddle-versus-p1.test.ts.
+validation = { script = "pause/paddle-versus-p1.test.ts", outputs = [
+  { id = "frozen", name = "Player one's paddle held still while paused (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "paddle-versus-p2"
+title = "Player two paddle frozen while paused (Versus)"
+description = "In Versus, while paused with a player-two movement key held, the right paddle's cy does not change."
+domains = ["versus"]
+failure_cap = "passable"
+# Automated validation: pause, hold a movement key, and confirm the right paddle does
+# not move. See validation/<engine>/pause/paddle-versus-p2.test.ts.
+validation = { script = "pause/paddle-versus-p2.test.ts", outputs = [
+  { id = "frozen", name = "Player two's paddle held still while paused (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ball-suspended"
+title = "Ball suspended while paused"
+description = "A ball in flight keeps the same x, y, vx, vy and spin across a long paused stretch."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pause a ball in flight and confirm it does not move over a
+# long paused stretch. See validation/<engine>/pause/ball-suspended.test.ts.
+validation = { script = "pause/ball-suspended.test.ts", outputs = [
+  { id = "suspended", name = "A ball hanging still while paused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ball-continues"
+title = "Ball continues after unpausing"
+description = "After resuming, the ball moves from its paused position by its preserved velocity times the game time elapsed since the resume, the resuming frame included, within one sub-step (MAX_SUBSTEP) of travel, with vx and vy unchanged."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pause a ball in flight, resume, and confirm one step advances
+# it from the paused position with no teleport. See validation/<engine>/pause/ball-continues.test.ts.
+validation = { script = "pause/ball-continues.test.ts", outputs = [
+  { id = "continues", name = "The ball resuming from where it was paused", kind = "replay" },
+] }
+
+# --- Single Player Controls ---------------------------------------------------
+# Solo: the human controls player one (the left paddle). Each control is driven by
+# dispatching real keyboard events at the event target the engine listens on, so the
+# engine's own action binding resolves the key exactly as it does in a browser, and
+# the effect is read back from the game's state. (Solo play is rated on the
+# single-player domain, which the reviewer scores separately from this checklist.)
+#
+# All four movement points cap at `scuffed`, and the reason is the mode rather than
+# the key. specs/modes/single-player.md routes ALL FOUR movement actions to the one
+# left paddle, so W/S and the arrows are duplicates of each other here and a build
+# that wired up only one pair is still fully playable in Solo — which is why none of
+# the four is `broken`. They are not `great` either: a player who reaches for the
+# pair the build left out finds the paddle dead with nothing on screen telling them
+# to try the other one, which is normal play made unpleasant. That is the line
+# between these and `navigation.space-confirms`, where `Space` is a second key for
+# an action `Enter` already raises on the menu the player is looking at. In Versus
+# each of the four keys is a player's ONLY binding, so the same four points in the
+# next category stay at `broken`.
+[[review.categories]]
+id = "controls-solo"
+title = "Single Player Controls"
+[[review.categories.items]]
+id = "up"
+title = "Up arrow moves the paddle"
+description = "In Solo, holding ArrowUp decreases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "scuffed"
+validation = { script = "controls-solo/up.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "replay" }] }
+[[review.categories.items]]
+id = "down"
+title = "Down arrow moves the paddle"
+description = "In Solo, holding ArrowDown increases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "scuffed"
+validation = { script = "controls-solo/down.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "replay" }] }
+[[review.categories.items]]
+id = "w"
+title = "W moves the paddle"
+description = "In Solo, holding KeyW decreases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "scuffed"
+validation = { script = "controls-solo/w.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "replay" }] }
+[[review.categories.items]]
+id = "s"
+title = "S moves the paddle"
+description = "In Solo, holding KeyS increases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "scuffed"
+validation = { script = "controls-solo/s.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "replay" }] }
+[[review.categories.items]]
+id = "escape"
+title = "Esc pauses"
+description = "In Solo, pressing Escape during a live match sets screen to paused."
+domains = ["single-player"]
+failure_cap = "scuffed"
+validation = { script = "controls-solo/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
+[[review.categories.items]]
+id = "p"
+title = "P pauses"
+description = "In Solo, pressing KeyP during a live match sets screen to paused."
+domains = ["single-player"]
+failure_cap = "scuffed"
+validation = { script = "controls-solo/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
+[[review.categories.items]]
+id = "m"
+title = "M toggles mute"
+description = "In Solo, pressing KeyM flips the snapshot's muted flag, and pressing it again flips it back."
+domains = ["single-player"]
+failure_cap = "great"
+validation = { script = "controls-solo/m.test.ts", outputs = [
+  { id = "mute", name = "Title after toggling mute", kind = "image" },
+] }
+
+# --- Multi Player Controls ----------------------------------------------------
+# Versus: player one drives the left paddle with W/S, player two the right paddle
+# with Up/Down. (Versus play is rated on the versus domain, scored separately from
+# this checklist.)
+[[review.categories]]
+id = "controls-versus"
+title = "Multi Player Controls"
+[[review.categories.items]]
+id = "up"
+title = "Up arrow moves player two's paddle"
+description = "In Versus, holding ArrowUp decreases the right paddle's cy and leaves the left paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
+validation = { script = "controls-versus/up.test.ts", outputs = [{ id = "move", name = "Right paddle moving up", kind = "replay" }] }
+[[review.categories.items]]
+id = "down"
+title = "Down arrow moves player two's paddle"
+description = "In Versus, holding ArrowDown increases the right paddle's cy and leaves the left paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
+validation = { script = "controls-versus/down.test.ts", outputs = [{ id = "move", name = "Right paddle moving down", kind = "replay" }] }
+[[review.categories.items]]
+id = "w"
+title = "W moves player one's paddle"
+description = "In Versus, holding KeyW decreases the left paddle's cy and leaves the right paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
+validation = { script = "controls-versus/w.test.ts", outputs = [{ id = "move", name = "Left paddle moving up", kind = "replay" }] }
+[[review.categories.items]]
+id = "s"
+title = "S moves player one's paddle"
+description = "In Versus, holding KeyS increases the left paddle's cy and leaves the right paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
+validation = { script = "controls-versus/s.test.ts", outputs = [{ id = "move", name = "Left paddle moving down", kind = "replay" }] }
+[[review.categories.items]]
+id = "escape"
+title = "Esc pauses"
+description = "In Versus, pressing Escape during a live match sets screen to paused."
+domains = ["versus"]
+failure_cap = "scuffed"
+validation = { script = "controls-versus/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
+[[review.categories.items]]
+id = "p"
+title = "P pauses"
+description = "In Versus, pressing KeyP during a live match sets screen to paused."
+domains = ["versus"]
+failure_cap = "scuffed"
+validation = { script = "controls-versus/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
+[[review.categories.items]]
+id = "m"
+title = "M toggles mute"
+description = "In Versus, pressing KeyM flips the snapshot's muted flag, and pressing it again flips it back."
+domains = ["versus"]
+failure_cap = "great"
+validation = { script = "controls-versus/m.test.ts", outputs = [
+  { id = "mute", name = "Title after toggling mute", kind = "image" },
+] }
+
+# --- Navigation ---------------------------------------------------------------
+# The menu state machine specs/ui.md fixes, one transition per point: every
+# transition is driven by dispatching the real key at the engine's event target and
+# read back from screen and menuIndex. The wrap points check both ends of the title
+# menu, and `space-confirms` checks the second confirm binding.
+#
+# specs/ui.md gives MOVEMENT to all three menus that have more than one item, so
+# each of them carries its own movement point: the title's two, the pause menu's,
+# and the match-over screen's. They cap differently because the screens are reached
+# differently. A title menu that cannot be moved leaves a player on `SOLO` with no
+# way to reach the other two entries, and a pause menu that cannot be moved leaves
+# them on `RESUME` with no way to restart or quit — both are normal play made
+# unpleasant (`scuffed`). The match-over screen's two entries both lead somewhere
+# usable, so being stuck on the first of them only costs a path (`passable`).
+# Wrapping is checked once per menu shape rather than once per menu: the title's two
+# wrap points cover a three-item menu at both ends, so the pause menu carries one
+# wrap point and the two-item match-over screen carries none.
+#
+# The three `same-frame-*` points are the resolution specs/ui.md fixes at the end of
+# its keyboard section. They are rules a build only has once it decides what
+# to do when two edges land together, and a build that reads its edges in a
+# different order plays the same until the frame two arrive at once — which is why
+# each of them is its own point rather than a clause on the movement points above.
+# All three cap at `passable`: the wrong item is selected or confirmed on the odd
+# frame, and the menu is still usable.
+[[review.categories]]
+id = "navigation"
+title = "Navigation"
+[[review.categories.items]]
+id = "title-down"
+title = "Down moves the title selection"
+description = "On the title with menuIndex 0, one ArrowDown press sets menuIndex to 1."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-down.test.ts", outputs = [{ id = "menu", name = "The title menu with the second item selected", kind = "image" }] }
+[[review.categories.items]]
+id = "title-up"
+title = "Up moves the title selection"
+description = "On the title with menuIndex 2, one ArrowUp press sets menuIndex to 1."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/title-up.test.ts", outputs = [{ id = "menu", name = "The title menu with the second item selected", kind = "image" }] }
+[[review.categories.items]]
+id = "title-up-wraps"
+title = "Up wraps from the first title item to the last"
+description = "On the title with menuIndex 0, one ArrowUp press sets menuIndex to 2, the last item."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-up-wraps.test.ts", outputs = [{ id = "menu", name = "The title menu wrapped to the last item", kind = "image" }] }
+[[review.categories.items]]
+id = "title-down-wraps"
+title = "Down wraps from the last title item to the first"
+description = "On the title with menuIndex 2, one ArrowDown press sets menuIndex to 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-down-wraps.test.ts", outputs = [{ id = "menu", name = "The title menu wrapped to the first item", kind = "image" }] }
+[[review.categories.items]]
+id = "title-solo"
+title = "SOLO starts a Solo match"
+description = "On the title with menuIndex 0, pressing Enter sets mode to solo, screen to countdown, and both scores to 0."
+domains = ["single-player"]
+failure_cap = "broken"
+validation = { script = "navigation/title-solo.test.ts", outputs = [{ id = "countdown", name = "The Solo match opening on its countdown", kind = "image" }] }
+[[review.categories.items]]
+id = "title-versus"
+title = "VERSUS starts a Versus match"
+description = "On the title with menuIndex 1, pressing Enter sets mode to versus, screen to countdown, and both scores to 0."
+domains = ["versus"]
+failure_cap = "broken"
+validation = { script = "navigation/title-versus.test.ts", outputs = [{ id = "countdown", name = "The Versus match opening on its countdown", kind = "image" }] }
+[[review.categories.items]]
+id = "title-howto"
+title = "HOW TO PLAY opens the how-to screen"
+description = "On the title with menuIndex 2, pressing Enter sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-howto.test.ts", outputs = [{ id = "howto", name = "The how-to screen", kind = "image" }] }
+[[review.categories.items]]
+id = "howto-back"
+title = "Escape leaves the how-to screen"
+description = "On the how-to screen, pressing Escape sets screen to title with menuIndex 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/howto-back.test.ts", outputs = [{ id = "title", name = "The title after leaving how-to", kind = "image" }] }
+[[review.categories.items]]
+id = "howto-confirm"
+title = "Enter leaves the how-to screen"
+description = "On the how-to screen, pressing Enter sets screen to title with menuIndex 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/howto-confirm.test.ts", outputs = [{ id = "title", name = "The title after leaving how-to", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Escape resumes from the pause menu"
+description = "On the pause menu reached from a live match, pressing Escape sets screen back to the screen that was paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/pause-escape.test.ts", outputs = [{ id = "resumed", name = "The match resumed by Escape", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P resumes from the pause menu"
+description = "On the pause menu reached from a live match, pressing KeyP sets screen back to the screen that was paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/pause-p.test.ts", outputs = [{ id = "resumed", name = "The match resumed by P", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-resume"
+title = "RESUME resumes"
+description = "On the pause menu with menuIndex 0, pressing Enter sets screen back to the screen that was paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/pause-resume.test.ts", outputs = [{ id = "resumed", name = "The match resumed from the menu", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-restart"
+title = "RESTART starts the match over"
+description = "On the pause menu with menuIndex 1, pressing Enter sets screen to countdown in the same mode with both scores 0 and both paddles at FIELD_CY."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/pause-restart.test.ts", outputs = [{ id = "restarted", name = "The restarted match opening on its countdown", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-quit"
+title = "QUIT TO MENU returns to the title"
+description = "On the pause menu with menuIndex 2, pressing Enter sets screen to title with menuIndex 0 and both scores 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/pause-quit.test.ts", outputs = [{ id = "title", name = "The title after quitting", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-down"
+title = "Down moves the pause selection"
+description = "On the pause menu with menuIndex 0, one ArrowDown press sets menuIndex to 1, with screen still paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/pause-down.test.ts", outputs = [{ id = "menu", name = "The pause menu with RESTART selected", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-wraps"
+title = "The pause selection wraps"
+description = "On the pause menu with menuIndex 0, one ArrowUp press sets menuIndex to 2, the last of PAUSE_ITEMS."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/pause-wraps.test.ts", outputs = [{ id = "menu", name = "The pause menu wrapped to QUIT TO MENU", kind = "image" }] }
+[[review.categories.items]]
+id = "matchover-play-again"
+title = "PLAY AGAIN starts a new match"
+description = "On the match-over screen with menuIndex 0, pressing Enter sets screen to countdown in the same mode with both scores 0 and winner null."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/matchover-play-again.test.ts", outputs = [{ id = "restarted", name = "The new match opening on its countdown", kind = "image" }] }
+[[review.categories.items]]
+id = "matchover-menu"
+title = "MENU returns to the title"
+description = "On the match-over screen with menuIndex 1, pressing Enter sets screen to title with menuIndex 0, both scores 0 and winner null."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/matchover-menu.test.ts", outputs = [{ id = "title", name = "The title after the match", kind = "image" }] }
+[[review.categories.items]]
+id = "matchover-escape"
+title = "Escape leaves the match-over screen"
+description = "On the match-over screen, pressing Escape sets screen to title with menuIndex 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/matchover-escape.test.ts", outputs = [{ id = "title", name = "The title after leaving match-over by Escape", kind = "image" }] }
+[[review.categories.items]]
+id = "matchover-down"
+title = "Down moves the match-over selection"
+description = "On the match-over screen with menuIndex 0, one ArrowDown press sets menuIndex to 1, with screen still matchover."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/matchover-down.test.ts", outputs = [{ id = "menu", name = "The match-over screen with MENU selected", kind = "image" }] }
+[[review.categories.items]]
+id = "space-confirms"
+title = "Space confirms a menu item"
+description = "On the title with menuIndex 2, pressing Space sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+validation = { script = "navigation/space-confirms.test.ts", outputs = [{ id = "howto", name = "The how-to screen opened by Space", kind = "image" }] }
+[[review.categories.items]]
+id = "same-frame-up-wins"
+title = "Up is applied before down on one frame"
+description = "On the title with menuIndex 1, a frame carrying an up edge and a down edge together sets menuIndex to 0: the menu moves up only."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: press an up key and a down key so both edges land in one
+# input read, advance one frame, and read menuIndex. Posing menuIndex 1 first is
+# what makes the reading unambiguous: up alone reaches 0, down alone reaches 2, and
+# both applied reach 1 again. See
+# validation/<engine>/navigation/same-frame-up-wins.test.ts.
+validation = { script = "navigation/same-frame-up-wins.test.ts", outputs = [{ id = "menu", name = "The title menu after a frame carrying both edges", kind = "image" }] }
+[[review.categories.items]]
+id = "same-frame-move-before-confirm"
+title = "Movement is applied before confirm on one frame"
+description = "On the title with menuIndex 0, a frame carrying a down edge and a confirm edge together sets menuIndex to 1 and leaves screen at title: the menu moves and confirms nothing."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: press a down key and a confirm key so both edges land in one
+# input read, advance one frame, and read screen and menuIndex — the title has to
+# still be showing, on the entry the movement reached. See
+# validation/<engine>/navigation/same-frame-move-before-confirm.test.ts.
+validation = { script = "navigation/same-frame-move-before-confirm.test.ts", outputs = [{ id = "menu", name = "The title menu moved but not confirmed", kind = "image" }] }
+[[review.categories.items]]
+id = "same-frame-pause-wins"
+title = "Pause and back are read before the pause menu's edges"
+description = "On the pause menu with menuIndex 0, a frame carrying a pause edge and a down edge together sets screen to resumeScreen and leaves menuIndex at 0: the frame resumes and does nothing else."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pause a live match, press a pause key and a down key so both
+# edges land in one input read, advance one frame, and confirm the match resumed
+# with the selection where it was. See
+# validation/<engine>/navigation/same-frame-pause-wins.test.ts.
+validation = { script = "navigation/same-frame-pause-wins.test.ts", outputs = [{ id = "resumed", name = "The match resumed by a frame that also carried a movement edge", kind = "image" }] }
+# The remembered title selection is graded once per path back to the title
+# (specs/ui.md, "The remembered title selection" and "Returning to the title"):
+# confirming an entry on the title menu stores it in `titleIndex`, and every return
+# to the title restores `menuIndex` from it, so the title comes back on the entry
+# the player left it by. Each point drives one path and reads both halves — what
+# the confirm remembered, and what the return restored. Between them the three
+# cover all three entries, which is what says the restored selection follows the
+# entry confirmed rather than a constant; each poses `titleIndex` onto another
+# entry first where the entry it expects is the one a fresh title already carries.
+[[review.categories.items]]
+id = "title-remembers-howto"
+title = "The title returns to HOW TO PLAY from the how-to screen"
+description = "Confirming HOW TO PLAY on the title sets titleIndex to 2, and pressing Escape on the how-to screen returns to the title with menuIndex 2."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-remembers-howto.test.ts", outputs = [{ id = "title", name = "The title back on HOW TO PLAY", kind = "image" }] }
+[[review.categories.items]]
+id = "title-remembers-solo"
+title = "QUIT TO MENU from a Solo match returns to the title on SOLO"
+description = "With titleIndex posed to 2, confirming SOLO on the title sets titleIndex to 0, and confirming QUIT TO MENU on the pause menu of that Solo match returns to the title with menuIndex 0."
+domains = ["single-player"]
+failure_cap = "passable"
+validation = { script = "navigation/title-remembers-solo.test.ts", outputs = [{ id = "title", name = "The title back on SOLO after quitting", kind = "image" }] }
+[[review.categories.items]]
+id = "title-remembers-versus"
+title = "MENU after a Versus match returns to the title on VERSUS"
+description = "With titleIndex posed to 2, confirming VERSUS on the title sets titleIndex to 1, and confirming MENU on that match's match-over screen returns to the title with menuIndex 1."
+domains = ["versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-remembers-versus.test.ts", outputs = [{ id = "title", name = "The title back on VERSUS after the match", kind = "image" }] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md drives every menu screen with a mouse as well as with the keyboard,
+# over item regions the BUILD lays out and reports through `menuItemRect`. The case
+# fixes no menu geometry, so each point below asks the build where it put the item
+# and drives the real pointer at the middle of that region: any layout passes, and
+# a build that reports a region it does not answer on fails. The first three points
+# are the three behaviors specs/ui.md gives the pointer — a move selects, a press
+# and its release inside one item confirms that item, and two edges that fall in
+# different items confirm nothing — and `outside-confirms-nothing` is the edge that
+# falls in NO item, which the same sentence fixes and which a build that hit-tests
+# by nearest item rather than by containment gets wrong.
+#
+# WHICH MENUS ARE GRADED, and why not all four. The handling is one piece of code,
+# so those four behaviors are read once, on the title menu, where the entries
+# confirm to screens a check reads straight off `screen`. What is NOT one piece of
+# code is whether a screen is wired to it at all, and that is per screen: `paused`
+# and `matchover` therefore carry a confirm point each, because a build whose pause
+# menu is mouse-dead is a build a player cannot quit with the mouse they started the
+# match with. `howto` carries none — its single item confirms to the title, which is
+# exactly where `navigation.howto-confirm` already leaves it, so a fifth drive of the
+# same handling would only ever fail beside the points above it.
+#
+# `same-frame-pointer-wins` is the one ORDERING rule specs/ui.md gives the pointer:
+# the pointer and the contacts are read in the same input read as the keyboard and
+# applied after its edges. The spec states it for "a pointer or touch selection"
+# together, so it is one rule read once, with the pointer, rather than a matching
+# point in the `touch` category.
+#
+# The REMEMBERED title selection (`titleIndex`) is not read here. specs/ui.md makes
+# the three input routes one rule — confirming an item on the title menu sets
+# `titleIndex` to that item's index, from the keyboard, from a pointer and from a
+# touch contact alike — so it is decided once, through the keyboard, by the three
+# `navigation.title-remembers-*` points, rather than three more times here and three
+# more again under Touch.
+#
+# The keyboard's own edges are the `navigation` category's points, not these.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 2, with screen still title."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [{ id = "menu", name = "The title menu with the hovered item selected", kind = "image" }] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [{ id = "howto", name = "The how-to screen opened by a click", kind = "image" }] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside VERSUS's leaves screen at title, confirming neither item."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [{ id = "title", name = "The title still showing after the pointer slid off", kind = "image" }] }
+[[review.categories.items]]
+id = "outside-confirms-nothing"
+title = "A press and release outside every item confirms nothing"
+description = "On the title, pressing and releasing the pointer at a point inside no region menuItemRect reports leaves screen at title and menuIndex where it was."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: read all three title regions back, pick a point of the field
+# outside every one of them, click there, and confirm nothing moved and nothing
+# opened. See validation/<engine>/pointer/outside-confirms-nothing.test.ts.
+validation = { script = "pointer/outside-confirms-nothing.test.ts", outputs = [{ id = "title", name = "The title unchanged after a click on empty field", kind = "image" }] }
+[[review.categories.items]]
+id = "same-frame-pointer-wins"
+title = "A pointer selection beats a keyboard movement edge on the same frame"
+description = "On the title with menuIndex 0, a frame carrying a keyboard down edge together with the pointer moving onto the region menuItemRect reports for HOW TO PLAY leaves menuIndex at 2, the item the pointer named."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: move the pointer onto the third item and press a down key so
+# both land in one input read, advance one frame, and read menuIndex — the keyboard
+# alone would leave 1, so 2 says the pointer was applied after it. See
+# validation/<engine>/pointer/same-frame-pointer-wins.test.ts.
+validation = { script = "pointer/same-frame-pointer-wins.test.ts", outputs = [{ id = "menu", name = "The title menu on the item the pointer named", kind = "image" }] }
+[[review.categories.items]]
+id = "pause-click-confirms"
+title = "A click confirms an item on the pause menu"
+description = "With a live Solo match paused, pressing and releasing the pointer inside the region menuItemRect reports for RESUME sets screen to resumeScreen."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pause a live match, read the pause menu's first region back,
+# click it, and confirm the match resumed. This grades whether `paused` is wired to
+# the pointer at all, which the title points cannot say. See
+# validation/<engine>/pointer/pause-click-confirms.test.ts.
+validation = { script = "pointer/pause-click-confirms.test.ts", outputs = [{ id = "resumed", name = "The match resumed by a click on RESUME", kind = "image" }] }
+[[review.categories.items]]
+id = "matchover-click-confirms"
+title = "A click confirms an item on the match-over screen"
+description = "On the match-over screen, pressing and releasing the pointer inside the region menuItemRect reports for MENU returns to the title."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: POSE the match-over screen with `openMatchOver` — driving
+# twenty-two real points would fail this menu point whenever the scoring was broken —
+# read the second match-over region back, click it, and confirm the title is showing.
+# This grades whether `matchover` is wired to the pointer at all. See
+# validation/<engine>/pointer/matchover-click-confirms.test.ts.
+validation = { script = "pointer/matchover-click-confirms.test.ts", outputs = [{ id = "title", name = "The title reached by a click on MENU", kind = "image" }] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu screen a finger as well as the keyboard and the
+# mouse, and a finger is not a small mouse: it never hovers, so the first the
+# build hears of it is the contact LANDING, and the landing is what selects. Each
+# point below drives one real touch contact — carrying the device a finger
+# carries — at the middle of the region the build reports through `menuItemRect`,
+# so any layout passes and only the handling is graded. The three are the three
+# behaviors specs/ui.md gives a contact: a landing selects, a lift inside the
+# region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger. All three are graded on
+# the title menu, where a confirm that should not have happened is loud (a match
+# opens) and one that should have is silent (the title stays).
+#
+# WHICH MENUS ARE GRADED follows the `pointer` category exactly, and for the same
+# reason: the handling is one piece of code and is read once on the title, while
+# whether a screen is wired to it is per screen, so `paused` and `matchover` each
+# carry a tap point. `howto` carries none — its one item confirms to the title,
+# which `navigation.howto-confirm` already decides. The remembered title selection
+# is likewise not read here: specs/ui.md makes the keyboard, the pointer and the
+# contact one rule, so `titleIndex` is decided once, by the three
+# `navigation.title-remembers-*` points.
+#
+# The mouse's own edges are the `pointer` category's points, and the keyboard's the
+# `navigation` category's, not these.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 2."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: land a real touch contact in the region the build reports
+# for the third title item, leave it down so no lift can confirm, and read
+# menuIndex back. See validation/<engine>/touch/landing-selects.test.ts.
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: land and lift a real touch contact inside the third title
+# item's reported region, with no key pressed, and read the screen it confirmed
+# to. See validation/<engine>/touch/tap-confirms.test.ts.
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside SOLO's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 2."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: slide one real touch contact from the first title item to
+# the third and lift it there — the screen must stay on the title, and the
+# selection must have followed the finger, which is what says the contact was read
+# at all. See validation/<engine>/touch/drag-cancels.test.ts.
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-tap-confirms"
+title = "A tap confirms an item on the pause menu"
+description = "With a live Solo match paused, a touch contact landing and lifting inside the region menuItemRect reports for RESUME sets screen to resumeScreen."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pause a live match, read the pause menu's first region back,
+# land and lift one real contact inside it, and confirm the match resumed. This
+# grades whether `paused` takes a finger at all, which the title points cannot say —
+# a build that reaches its pause menu only through a key is a build a player on a
+# tablet cannot leave. See validation/<engine>/touch/pause-tap-confirms.test.ts.
+validation = { script = "touch/pause-tap-confirms.test.ts", outputs = [
+  { id = "resumed", name = "The match resumed by a tap on RESUME", kind = "image" },
+] }
+[[review.categories.items]]
+id = "matchover-tap-confirms"
+title = "A tap confirms an item on the match-over screen"
+description = "On the match-over screen, a touch contact landing and lifting inside the region menuItemRect reports for MENU returns to the title."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: POSE the match-over screen with `openMatchOver` — driving
+# twenty-two real points would fail this menu point whenever the scoring was broken —
+# read the second match-over region back, land and lift one real contact inside it,
+# and confirm the title is showing. See validation/<engine>/touch/matchover-tap-confirms.test.ts.
+validation = { script = "touch/matchover-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title reached by a tap on MENU", kind = "image" },
+] }
+
+# --- Visibility (sampled from the rendered canvas) ----------------------------
+# Each point samples the pixels the build actually RENDERS at a known on-field
+# location (a paddle center, an obstacle center, the ball) TWICE: once with the body
+# standing there, and once with the field bare under it after the body has been
+# taken off the field or moved away through the debug API. A body the build drew
+# separates the two readings; one it never drew leaves them the same ground. Each
+# sample is taken well inside the shape, because a rounded edge is anti-aliased.
+# The palette itself is the build's, and how it looks is the reviewer's to rate.
+#
+# THE BALL IS THE EXCEPTION among these four caps, and it is deliberate. A paddle or
+# an obstacle the build never drew is still findable: a paddle sits on a known edge
+# and the player is the one driving it, and an obstacle sits where the field always
+# puts it, so losing either is normal play made unpleasant (`scuffed`). A ball that
+# is not drawn cannot be tracked, and tracking the ball is the whole of what a
+# player does here, so that point is `broken` — the game cannot be played as
+# intended at all.
+[[review.categories]]
+id = "visibility"
+title = "Visibility"
+[[review.categories.items]]
+id = "left-paddle"
+title = "The left paddle is drawn"
+description = "On a posed field, the pixels at the left paddle's center differ from the pixels the same point holds once both paddles have moved off it."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: sample the rendered pixels at the left paddle's center, move
+# both paddles to the top of their travel, and sample the same point again. See
+# validation/<engine>/visibility/left-paddle.test.ts.
+validation = { script = "visibility/left-paddle.test.ts", outputs = [
+  { id = "scene", name = "The posed field showing the paddles and the obstacles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "right-paddle"
+title = "The right paddle is drawn"
+description = "On a posed field, the pixels at the right paddle's center differ from the pixels the same point holds once both paddles have moved off it."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: sample the rendered pixels at the right paddle's center, move
+# both paddles to the top of their travel, and sample the same point again. See
+# validation/<engine>/visibility/right-paddle.test.ts.
+validation = { script = "visibility/right-paddle.test.ts", outputs = [
+  { id = "scene", name = "The posed field showing the paddles and the obstacles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "obstacle"
+title = "An obstacle is drawn"
+description = "On a posed field, the pixels at an obstacle's center differ from the pixels the same point holds once the obstacles have been taken off the field."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: sample the rendered pixels at an obstacle's center, clear the
+# obstacles off the field, and sample the same point again. See
+# validation/<engine>/visibility/obstacle.test.ts.
+validation = { script = "visibility/obstacle.test.ts", outputs = [
+  { id = "scene", name = "The posed field showing the paddles and the obstacles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ball"
+title = "The ball is drawn"
+description = "On a posed field, the pixels at the ball's center differ from the pixels the same point holds once the ball has moved away."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
+# Automated validation: sample the rendered pixels at the ball's center, send the ball
+# down the field, and sample the same point again. See
+# validation/<engine>/visibility/ball.test.ts.
+validation = { script = "visibility/ball.test.ts", outputs = [
+  { id = "scene", name = "The posed field showing the ball", kind = "image" },
+] }
+
+# --- HUD ----------------------------------------------------------------------
+# The two scores are read from what the build draws: after setScore(7, 9) the frame's
+# text draws are inspected for the digits, player one's figure left of center and
+# player two's figure right of it. Where the text sits and how it is set is the
+# build's.
+#
+# WHAT "LEFT OF CENTER" IS MEASURED FROM is the FIGURE's place, in all three projects.
+# specs/overview.md fixes where each score's figure is drawn, not how many runs the
+# scoreboard is. A run showing only the one score is read at its anchor, mapped through
+# whatever transform and alignment the build drew under; a run carrying both scores (a
+# centred `7     9`) is read by where that score's glyphs sit within the run's measured
+# extent. The three projects decide the point one way and a build grades the same on
+# every engine.
+[[review.categories]]
+id = "hud"
+title = "HUD"
+[[review.categories.items]]
+id = "score-p1"
+title = "Player one's score is drawn"
+description = "After setScore(7, 9), a frame of the live match draws the text 7 left of the field's center."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose the scores, render, and find the text draw. See
+# validation/<engine>/hud/score-p1.test.ts.
+validation = { script = "hud/score-p1.test.ts", outputs = [
+  { id = "hud", name = "The HUD at 7-9", kind = "image" },
+] }
+[[review.categories.items]]
+id = "score-p2"
+title = "Player two's score is drawn"
+description = "After setScore(7, 9), a frame of the live match draws the text 9 right of the field's center."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: pose the scores, render, and find the text draw. See
+# validation/<engine>/hud/score-p2.test.ts.
+validation = { script = "hud/score-p2.test.ts", outputs = [
+  { id = "hud", name = "The HUD at 7-9", kind = "image" },
+] }
+
+# --- UI -----------------------------------------------------------------------
+# What is drawn and which screens are reachable. The rendering points assert SOME of
+# the figures the specification fixes about drawing — the field's containment and
+# scale, its letterboxing, and a trail behind a moving ball — and the screen points
+# reach each screen, read back the copy the spec fixes for it, and capture it. How a
+# screen looks is rated through the domains, not here.
+#
+# WHAT THE SPECIFICATION FIXES AND NOTHING HERE ASSERTS, said plainly so the gap is
+# on the record: specs/overview.md's "Visual design" requires a dashed center net
+# drawn at `x = NET_X` (640), a label naming the mode drawn somewhere on the field,
+# and a field that is dark. None of the three is graded. The net and the label are
+# decoration whose copy and styling the spec hands to the build, and darkness is a
+# property of a palette the build chooses, so an assertion would be reading a hex
+# value the case deliberately does not fix (see "Appearance is loose and reviewed"
+# in the authoring guide). They reach the score through the reviewer's aesthetic
+# rating instead, which is where a field drawn white or a missing net is judged.
+#
+# Two more of the same kind: the same "Visual design" list makes the bars around
+# the field the field's background color, and the trail behind the ball its path
+# over the last TRAIL_TIME seconds, so the streak's length follows the ball's
+# speed. Neither is graded either. A check on the first reads a color the case
+# fixes no value for, and a check on the second measures how far a drawn mark
+# reaches, which are both appearance. What the two rendering points below assert is
+# that nothing the game drew reaches the bars and that a ball in flight leaves the
+# lane behind it painted, and the stills they capture are what the reviewer rates
+# the look from.
+#
+# The FIT is two points rather than one, because the two failures cost different
+# things. A field that is cropped, stretched, scaled differently on the two axes, or
+# drawn somewhere other than where the fit puts it takes part of the playfield away
+# from the player, distorts the geometry the whole game is written in, or moves what
+# the player reaches for, so `window-fit` is `scuffed`. A field that spilled into the
+# bars beside it leaves the game untouched entirely, so `window-fit-bars` is `great`.
+#
+# `window-fit` IS SCOPED TO `none`, because under an engine the fit is the engine's:
+# it owns the canvas element, the uniform scale, the centering and the device pixel
+# ratio, and every build on that engine draws in logical units and gets the same
+# verdict. Under `none` the build derives the fit itself, which is where the point
+# grades the model's own code. What the bars hold is every engine's, because a build
+# that draws outside the fitted field reaches them under any runtime.
+#
+# The SCREEN points are split the same way and for the same reason: a build that
+# draws its menu but no heading is not the same build as one that draws neither. The
+# menu-item halves (`state-title-items`, `state-pause`, `state-matchover`) are
+# `passable`, because a player who cannot see the entries is choosing between them
+# blind; the copy halves (`state-title`, `state-matchover-score`) are `great`,
+# because a title screen missing the word CAROM still reads as a menu and still
+# works. `state-howto` stays `great` for a third reason: the how-to screen is an
+# OPTIONAL path — nothing on it is needed to start, play or finish a match — so a
+# build that draws it empty has left the standard flow of gameplay alone.
+[[review.categories]]
+id = "ui"
+title = "UI"
+[[review.categories.items]]
+id = "window-fit"
+title = "The whole field fits the surface at one scale"
+description = "Over surfaces wider than the field, taller than it, and at a raised device pixel ratio, the whole 1280x720 field is inside the surface, its aspect ratio is preserved, and it is centered: one scale on both axes, nothing cropped, and each body drawn at the device coordinate the centered fit puts it at. The fit is read on the first frame, before any input."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: build the game over several differently-shaped surfaces, and
+# over each one check the canvas the build sized against the surface and sample the
+# field at the device coordinate the fit the SPECIFICATION states implies, so the
+# point says the build DREW into that map rather than only computing it. Scoped to
+# `none`, where the build derives the fit; under an engine the runtime owns it. See
+# validation/none/rendering/window-fit.test.ts.
+validation = { script = "rendering/window-fit.test.ts", engines = ["none"], outputs = [
+  { id = "fit", name = "The whole field inside an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "window-fit-bars"
+title = "The letterbox bars hold nothing the game drew"
+description = "On a surface wider than the field, the pixels in the letterbox bars either side of the fitted field are unchanged between two poses of the same match that move every body on the field."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: sample four device columns across the two bars over a posed
+# scene, re-pose the field with the obstacles removed and the paddles at the top of
+# their travel, and sample the same columns again. A field that spilled past its fit
+# paints those columns with content that moved between the two poses. What color the
+# bars carry is the reviewer's to rate. See
+# validation/<engine>/rendering/window-fit-bars.test.ts.
+validation = { script = "rendering/window-fit-bars.test.ts", outputs = [
+  { id = "bars", name = "The letterbox bars beside the fitted field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "trail-length"
+title = "A moving ball leaves a trail"
+description = "Behind a ball in steady flight down an empty lane, the lane holds pixels the same lane did not hold before the ball entered it."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: read the lane bare, drive the ball down it, and read the lane
+# behind the ball again: a build that draws a trail changed it. How long the streak
+# is, how it tapers and what it is colored are the reviewer's to rate. See
+# validation/<engine>/rendering/trail-length.test.ts.
+validation = { script = "rendering/trail-length.test.ts", outputs = [
+  { id = "trail", name = "The trail behind a ball at speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-title"
+title = "The title screen draws its title"
+description = "After reset() the screen is title, and the frame draws TITLE_TEXT (CAROM)."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the text draws for the title copy,
+# and capture the screen. See validation/<engine>/ui/state-title.test.ts.
+validation = { script = "ui/state-title.test.ts", outputs = [
+  { id = "title", name = "The title / main menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-title-items"
+title = "The title screen draws its menu"
+description = "After reset() the screen is title, and the frame draws every item of TITLE_ITEMS (SOLO, VERSUS, HOW TO PLAY)."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: reset to the title, read the text draws for the three
+# entries, and capture the screen. Split from the title copy above because a build
+# that draws the menu but no heading is not the same build as one that draws
+# neither. See validation/<engine>/ui/state-title-items.test.ts.
+validation = { script = "ui/state-title-items.test.ts", outputs = [
+  { id = "menu", name = "The title menu's three entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-howto"
+title = "How to play"
+description = "Selecting HOW TO PLAY from the title sets screen to howto, and the frame draws text naming the movement keys."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: navigate the menu to How to Play, read the text draws, and
+# capture it. See validation/<engine>/ui/state-howto.test.ts.
+validation = { script = "ui/state-howto.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-pause"
+title = "Pause (resume/restart/quit)"
+description = "Pausing a live match sets screen to paused, and the frame draws every item of PAUSE_ITEMS."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pause a live match, read the text draws, and capture the
+# pause menu. See validation/<engine>/ui/state-pause.test.ts.
+validation = { script = "ui/state-pause.test.ts", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-matchover"
+title = "Match over draws its menu"
+description = "A match driven to its end sets screen to matchover, and the frame draws every item of MATCHOVER_ITEMS (PLAY AGAIN, MENU)."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real match to its end, read the text draws for the
+# two entries, and capture the match-over screen. See
+# validation/<engine>/ui/state-matchover.test.ts.
+validation = { script = "ui/state-matchover.test.ts", outputs = [
+  { id = "matchover", name = "The match-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-matchover-score"
+title = "Match over draws the final score"
+description = "A match driven to its end draws the final score on the match-over screen: the text of each side's score as the match finished."
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: drive a real match to a known final score, read the text
+# draws for both figures, and capture the screen. Split from the menu above because
+# a build that offers the two entries but tells the player nothing about how the
+# match ended is not the same build as one that shows neither. See
+# validation/<engine>/ui/state-matchover-score.test.ts.
+validation = { script = "ui/state-matchover-score.test.ts", outputs = [
+  { id = "score", name = "The final score on the match-over screen", kind = "image" },
+] }
+
+# --- Audio (read from the engine's `cue:played` event) ------------------------
+# Cues are the engine's: the game defines them and asks for them by name, and the
+# engine broadcasts a `cue:played` event on the frame each one is asked for. A
+# validator subscribes to that event before the game initializes and asserts on what
+# arrived, so a cue is confirmed to fire on its event without an audio device, an
+# unlock gesture, or anything to wait for. Under `none` the cue's name is not
+# observable from outside the build, so what is checked there is that a sound is
+# emitted on the event's frame and on no frame before it. The sound itself is the
+# build's, and is rated through the domains.
+#
+# THE WALL CUE HAS TWO TRIGGERS. specs/audio.md gives `wall-bounce` to the top and
+# bottom walls AND to a paddle's end caps, so it is two points: `wall-bounce` for
+# the wall and `end-cap` for the cap. They are two rather than one because a build
+# that resolves an end cap like a wall in the physics and then forgets to sound it
+# fails only the second, which is what says where to look.
+#
+# "ONCE ON THAT FRAME" IS NOT GRADED on the four single-ball cues, and that is a
+# limit of the reading rather than an oversight. specs/audio.md requires each cue to
+# play once on its frame however many sub-steps raised it, but under `none` the only
+# thing observable from outside the build is that a sound started, and one build
+# starting two identical blips in a frame is indistinguishable from one starting the
+# blip it should have. Grading a count under the engines alone would mean a point
+# that can only ever fail on two of the three, which is worse than a point the
+# reviewer is left to settle by ear. Multi's `ball-bounce` states the clause because
+# a pair meeting is one event across two balls and double-sounding it is the
+# plausible failure there; even there it is the engine buses that answer the count,
+# and its `none` suite reads the frame alone.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "paddle-hit"
+title = "Paddle-hit cue"
+description = "The paddle-hit cue plays on the frame the ball hits a paddle, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real paddle contact and confirm the `paddle-hit` cue
+# is played on that frame. See validation/<engine>/audio/paddle-hit.test.ts.
+validation = { script = "audio/paddle-hit.test.ts", outputs = [
+  { id = "hit", name = "The paddle hit whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wall-bounce"
+title = "Wall bounce cue"
+description = "The wall-bounce cue plays on the frame the ball bounces off the top or bottom wall, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: fire the ball into a wall and confirm the `wall-bounce` cue
+# is played on that frame. See validation/<engine>/audio/wall-bounce.test.ts.
+validation = { script = "audio/wall-bounce.test.ts", outputs = [
+  { id = "bounce", name = "The wall bounce whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "end-cap"
+title = "End-cap cue"
+description = "The wall-bounce cue plays on the frame the ball reflects off a paddle's top or bottom end cap, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: fire the ball into a paddle's end cap across an otherwise
+# empty field and confirm the `wall-bounce` cue is played on the frame the vertical
+# velocity reverses. The physics of that reflection is `paddles.end-cap-top` and
+# `paddles.end-cap-bottom`; this is the sound it owes. See
+# validation/<engine>/audio/end-cap.test.ts.
+validation = { script = "audio/end-cap.test.ts", outputs = [
+  { id = "bounce", name = "The end-cap bounce whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "obstacle-bounce"
+title = "Obstacle bounce cue"
+description = "The obstacle-bounce cue plays on the frame the ball bounces off an obstacle, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: fire the ball into an obstacle and confirm the
+# `obstacle-bounce` cue is played on that frame. See
+# validation/<engine>/audio/obstacle-bounce.test.ts.
+validation = { script = "audio/obstacle-bounce.test.ts", outputs = [
+  { id = "bounce", name = "The obstacle bounce whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring"
+title = "Scoring cue"
+description = "The score cue plays on the frame a point is scored, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real point and confirm the `score` cue is played on
+# that frame. See validation/<engine>/audio/scoring.test.ts.
+validation = { script = "audio/scoring.test.ts", outputs = [
+  { id = "score", name = "The scored point whose cue is checked", kind = "replay" },
+] }
+# Muting is the other half of the audio spec, and every cue point above only ever
+# runs unmuted. `controls-solo.m` and `controls-versus.m` establish that the key flips
+# the bit; this establishes what the bit is FOR, which specs/audio.md states as
+# "muting silences the cues and changes nothing else". The bit is POSED with
+# `setMuted` rather than pressed, so a build whose `m` binding is broken loses the
+# two controls points and this one is still decided on its own merits. What "silent"
+# is read from differs by project, exactly as the cue's name does: under `none` no
+# audio source may start at all, which specs/audio.md states for an engineless build,
+# and under an engine the cue the bus announces carries a gain of zero, because the
+# engines express a mute as a silent play rather than as a play that did not happen.
+[[review.categories.items]]
+id = "muted-silences"
+title = "Muting silences the cues"
+description = "With muted set, a real paddle contact sounds nothing: no audible cue is produced on the frame of the contact or on any frame after it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: pose the mute bit with `setMuted`, drive the same paddle
+# contact `audio.paddle-hit` drives, and confirm nothing audible came out of it. A game that
+# cannot be silenced is playable, so `passable`. See
+# validation/<engine>/audio/muted-silences.test.ts.
+validation = { script = "audio/muted-silences.test.ts", outputs = [
+  { id = "muted", name = "The muted paddle hit that sounded nothing", kind = "replay" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own — a whole file of the specification, and the one
+# piece of a run a person meets before they meet the game — where every other
+# point on this checklist is one behavior of the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of gameplay untouched. The weight and the cap say different
+# things on purpose — how much of the score the point carries, and how far a
+# failure may drag the ratings down.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two
+# files are there and that the carousel points at a file that is there with them:
+# not a dimension, not a byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }

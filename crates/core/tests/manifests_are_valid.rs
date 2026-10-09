@@ -2,7 +2,7 @@
 //! resolve through the same loaders the running services use.
 //!
 //! The test-case + variant manifests are guarded separately in
-//! `catalog_and_seeding.rs` (`every_catalog_case_and_variant_resolves`). This file
+//! `committed_catalog.rs` (`every_catalog_case_and_variant_resolves`). This file
 //! covers the remaining manifest kinds so that **no** committed manifest — of any
 //! kind — can be malformed without a test failing:
 //!
@@ -33,6 +33,17 @@ use test_cabinet_core::{
 /// The repository root (two levels up from this crate's `Cargo.toml`).
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// The directory holding the committed `test-cases/`, `game-jams/` and
+/// `test-case-groups/`: `TCAB_DEFINITIONS_ROOT` when set (the backend's name for
+/// it), otherwise the repository root. The groups are checked against the whole
+/// catalog, so they are read where the catalog is rather than from a copy.
+fn definitions_root() -> PathBuf {
+    std::env::var_os("TCAB_DEFINITIONS_ROOT")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(repo_root)
 }
 
 /// Immediate subdirectory paths of `dir`, ignoring files and hidden entries.
@@ -160,7 +171,7 @@ fn every_harness_manifest_parses_and_matches_the_enum() {
 /// leaderboard carry that identity.
 #[test]
 fn every_test_case_group_manifest_loads() {
-    let root = repo_root();
+    let root = definitions_root();
     let groups = TestCaseGroupCatalog::new(root.join("test-case-groups"))
         .list()
         .unwrap_or_else(|err| panic!("load test-case groups: {err:?}"));

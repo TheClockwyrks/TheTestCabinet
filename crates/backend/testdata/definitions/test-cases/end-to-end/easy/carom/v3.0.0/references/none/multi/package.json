@@ -1,0 +1,28 @@
+{
+  "name": "carom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Carom (Multi-ball) — a neon top-down paddle duel played with three independent balls, on no engine.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10",
+    "@napi-rs/canvas": "^1",
+    "@vitest/coverage-istanbul": "^5",
+    "eslint": "^10",
+    "playwright": "^1.63.0",
+    "prettier": "^3",
+    "typescript": "^6",
+    "typescript-eslint": "^8",
+    "vite": "^8",
+    "vitest": "^5"
+  }
+}

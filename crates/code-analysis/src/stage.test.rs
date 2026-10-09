@@ -17,17 +17,18 @@ use test_cabinet_core::{
 
 use super::*;
 
-/// The repository's own `test-cases/` directory. A real resolved case is cheaper to
-/// obtain than a hand-written `TestCaseVersion` literal, and the stage reads nothing from
-/// it — which is itself worth pinning: the analysis is a function of the tree, not of the
-/// case.
+/// A copy of the frozen carom v2.1.0 under `testdata/definitions/`. A real resolved case
+/// is cheaper to obtain than a hand-written `TestCaseVersion` literal, and the stage reads
+/// nothing from it — which is itself worth pinning: the analysis is a function of the
+/// tree, not of the case.
 fn catalog_case() -> (TestCaseVersion, Variant) {
     let catalog = TestCaseCatalog::new(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases"),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata/definitions/test-cases"),
     );
     let case = catalog
-        .resolve_latest("carom")
-        .expect("resolve the bundled carom case");
+        .resolve("carom", "v2.1.0")
+        .expect("the fixture copy of carom v2.1.0 resolves");
     let variant = case.variant("base").expect("carom's base variant").clone();
     (case, variant)
 }

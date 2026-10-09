@@ -372,6 +372,9 @@
 **/node_modules/
 **/dist/
 **/.astro/
+# The copies of committed case versions the Rust tests read. No image builds a test,
+# and the copies weigh tens of megabytes.
+/crates/*/testdata/
 # The guest packages' own scratch, which the block above would otherwise admit and
 # which dwarfs everything else in this context: measured on a developer machine that
 # has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of

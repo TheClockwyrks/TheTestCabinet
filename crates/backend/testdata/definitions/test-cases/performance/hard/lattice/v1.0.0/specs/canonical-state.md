@@ -1,0 +1,107 @@
+# Canonical state and the checksum
+
+Correctness is checked by **checksum**: the host hashes a **canonical byte
+serialization** of each snapshot and your engine matches iff its checksum equals
+the reference's at every snapshot. The checksum is computed over the canonical
+bytes, **not** over the JSON text, so JSON formatting differences can never
+affect correctness. This is Factorio's own desync-detection model — each engine
+checksums its state and a mismatch means a simulation diverged.
+
+**The host hashes the `entities` you return, and compares that.** The `checksum`
+field you send is not taken on trust: for every snapshot the host re-serializes
+the `entities` beside it to canonical bytes, hashes those, and requires the
+result to equal both the `checksum` you reported and the reference's. So a
+snapshot passes only when its state _is_ the reference's state — reporting the
+right checksum next to state that does not hash to it is a wrong answer, and so
+is naming an item the prototype table does not define. Two consequences worth
+planning for:
+
+- The `entities` you emit at each scheduled snapshot must be your real state, in
+  full. You cannot skip materializing it and report a checksum computed some
+  cheaper way.
+- Because the state is what is graded, it is also what browser playback draws.
+  The factory a reviewer watches is the factory you were scored on.
+
+If you write your engine in Rust over `lattice-sdk`, you get this for free:
+`Snapshot::new(tick, entities)` builds a snapshot and computes its checksum over
+exactly these bytes. This document specifies the rule so a non-Rust engine can
+reproduce it byte-for-byte, and so you can verify your understanding.
+
+## The checksum: FNV-1a 64-bit
+
+```
+offset_basis = 0xcbf29ce484222325
+prime        = 0x00000100000001b3
+
+hash = offset_basis
+for each byte b in the canonical bytes:
+    hash = (hash XOR b) * prime          // wrapping (mod 2^64) multiply
+```
+
+The checksum string is the lowercase hex of `hash`, zero-padded to 16 digits,
+with the `fnv1a64:` prefix — formatted exactly `fnv1a64:%016x`, e.g.
+`fnv1a64:9f3c1a77b2e40118`.
+
+## The canonical byte layout
+
+All multi-byte integers are **little-endian** and **fixed-width** (no varint).
+**Item ids are encoded as the item's stable `u16` index** into the prototype
+item table — `iron-ore` is `0`, `iron-plate` is `1`, and so on through `circuit`
+at `6` (the full index table is in `specs/prototypes.md`). They are never encoded
+as the string, so the bytes are language- and format-independent.
+
+Serialize, in order:
+
+1. `tick: u64` — the snapshot tick.
+2. `entity_count: u32` — the number of entities.
+3. For **each entity, in scenario placement order**: a 1-byte `kind` tag
+   followed by the entity body.
+
+The kind tags are:
+
+| Entity    | `kind` tag |
+| --------- | ---------- |
+| belt      | `0`        |
+| splitter  | `1`        |
+| inserter  | `2`        |
+| assembler | `3`        |
+| source    | `4`        |
+| sink      | `5`        |
+| furnace   | `6`        |
+
+### Entity bodies
+
+- **belt** (`kind = 0`): the **left** lane then the **right** lane. Each lane
+  is:
+  - `item_count: u32`, then for each item **from the output end backward**
+    (ascending `pos`): `pos: u32` (units from the output end), `item: u16` (the
+    item index).
+- **splitter** (`kind = 1`): `out_pref: u16` (little-endian) — the per-lane,
+  item-agnostic output-preference cursor, bit `L` being the output belt (`0`/`1`) the
+  next item on lane `L` (`L = 0` left, `L = 1` right) prefers, whatever the item's type
+  (only the two low bits are ever set) — then `in_first: u8`, which of the two input
+  belts (`0`/`1`) the splitter tries first this tick; see `specs/rules.md`. (A base
+  splitter holds no items between ticks, so those two cursors are all that is
+  serialized.)
+- **inserter** (`kind = 2`): `phase: u8` (`idle = 0`, `swing = 1`, `return = 2`);
+  `held_present: u8` (`0`/`1`); if `held_present == 1`, `held: u16` (the item
+  index) — **omitted entirely** when `held_present == 0` (that is, in both the
+  `idle` and `return` phases); `swing_left: u16` (the ticks left in the current
+  motion — the swing out while `swing`, the return while `return`, `0` while `idle`).
+- **assembler** (`kind = 3`): the input buffer then the output buffer, each as a
+  count map: `kinds: u8`, then `kinds` × { `item: u16`, `count: u16` } **sorted
+  by item index ascending**. Then `craft_left: u16`.
+- **source** (`kind = 4`): `emit_phase: u32` (= `tick % period`).
+- **sink** (`kind = 5`): `kinds: u8`, then `kinds` × { `item: u16`, `count: u64`
+  } **sorted by item index ascending**.
+- **furnace** (`kind = 6`): identical body layout to the assembler — the input
+  buffer then the output buffer, each a count map (`kinds: u8`, then `kinds` ×
+  { `item: u16`, `count: u16` } **sorted by item index ascending**), then
+  `craft_left: u16`. Only the `kind` tag distinguishes a furnace from an assembler
+  in the byte stream.
+
+Two engines that produce an identical entity list at an identical tick build a
+byte-identical buffer and therefore an identical checksum. Note the sort and
+order rules carefully — the count maps are sorted by **item index**, not by
+string key, and belt lanes are **left before right**, items **ascending in
+`pos`**.

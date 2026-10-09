@@ -3,8 +3,8 @@
 //! The catalogue itself is `core`'s to test
 //! (`crates/core/src/test_case_group.test.rs`); what is pinned here is the part
 //! this crate owns — the two renderings and the root resolution — plus a walk of
-//! the repository's real catalogue, the same way `engines`' test reads this
-//! crate's neighbors off disk.
+//! a copy of the repository's catalogue under `testdata/definitions/`, the same way
+//! `engines`' test resolves a copied case.
 
 use std::path::PathBuf;
 
@@ -22,13 +22,16 @@ fn group(slug: &str, name: &str, summary: Option<&str>, cases: &[&str]) -> TestC
 
 #[test]
 fn the_repository_catalogue_lists() {
-    // The committed catalogue must render through the same loader this command
-    // uses; membership against the case catalog is `manifests_are_valid`'s job.
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-case-groups");
+    // The committed catalogue's groups must render through the same loader this
+    // command uses; membership against the case catalog is `manifests_are_valid`'s
+    // job.
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-case-groups");
     let listing = TestCaseGroupCatalog::new(root)
         .list()
         .expect("the repository's test-case-group catalogue loads");
-    assert!(!listing.is_empty(), "no test-case groups found");
+    let slugs: Vec<&str> = listing.iter().map(|group| group.slug.as_str()).collect();
+    assert_eq!(slugs.len(), 3, "every copied group loads: {slugs:?}");
 }
 
 #[test]

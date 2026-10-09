@@ -1,0 +1,31 @@
+# Starter Cargo workspace for a Foray controller submission.
+#
+# You write only `controller/src/lib.rs`. The game engine (`foray-core`) and the
+# controller SDK (`foray-controller-sdk`) your controller builds against are NOT
+# in this workspace — the run container provides them under `/opt/foray/buildkit`,
+# along with the `foray` CLI you run local matches with and the baseline opponents
+# (see `specs/contract.md` and `specs/baselines.md`). They are the SAME engine and
+# SDK the harness scores you against; you build against them, you do not edit them.
+#
+# Build your controller with:
+#
+#     cargo build --release --target wasm32-unknown-unknown -p controller
+#
+# which emits `target/wasm32-unknown-unknown/release/controller.wasm` — the
+# artifact the harness loads and scores. `.cargo/config.toml` defaults the build
+# target to wasm32 for the `controller` package, so a bare `cargo build --release`
+# works too.
+
+[workspace]
+resolver = "2"
+# The controller is the only crate in this workspace; the engine and SDK it
+# path-depends on live outside it (in the container's `/opt/foray/buildkit`), so
+# they are ordinary out-of-workspace path dependencies, not members.
+members = ["controller"]
+
+# Concrete values for the controller's `*.workspace = true` inheritance.
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+publish = false

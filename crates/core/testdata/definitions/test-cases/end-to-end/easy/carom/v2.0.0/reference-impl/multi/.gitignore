@@ -1,0 +1,14 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`.
+dist/
+build/
+out/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log

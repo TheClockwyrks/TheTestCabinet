@@ -1,0 +1,5 @@
+# The controller compiles to WebAssembly, so the wasm target must be installed.
+# The run container already has it; this file makes the requirement explicit and
+# lets a local `rustup` add it automatically.
+[toolchain]
+targets = ["wasm32-unknown-unknown"]

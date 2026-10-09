@@ -1,0 +1,81 @@
+# Carom — Showcase
+
+The finished game ships a showcase: the store-page presentation of the game, in
+a `showcase/` directory at the root of this repository. This file defines its
+contents.
+
+## Layout
+
+Every file of the showcase sits directly in `showcase/`, with no subdirectories:
+
+| Path | Holds |
+| --- | --- |
+| `showcase/showcase.md` | The description. |
+| `showcase/showcase.toml` | The carousel. |
+| `showcase/<file>` | Each media file the carousel and the description name. |
+
+## The description
+
+`showcase/showcase.md` is Markdown written for a player: what Carom is, how a
+match plays out from the opening rally to match point, and how its spin and bank
+shots feel in play. Three to five short paragraphs, with playing the game as
+their whole subject. It may embed images that sit beside it, referenced by bare
+relative path (for example `![The field](field.png)`); every image it embeds is a
+`.png` in `showcase/`.
+
+## The carousel
+
+`showcase/showcase.toml` lists the media in the order they are presented, one
+`[[media]]` table per entry:
+
+{{#if (eq engine.slug "none")}}
+```toml
+[[media]]
+file = "rally.webm"
+name = "A rally curving through the obstacles"
+
+[[media]]
+file = "title.png"
+name = "The title screen"
+```
+{{else}}
+```toml
+[[media]]
+file = "rally.json.gz"
+name = "A rally curving through the obstacles"
+
+[[media]]
+file = "title.png"
+name = "The title screen"
+```
+{{/if}}
+
+- `file` names a file directly in `showcase/`, with no path separators. Every
+  file the carousel names is present there, and each stays under 25 MiB.
+- `name` is a caption of a few words.
+- The carousel holds two to four entries, and the first is the strongest view of
+  live play.
+
+## Media
+
+The file extension states what an entry is:
+
+{{#if (eq engine.slug "none")}}
+| Extension | Media |
+| --- | --- |
+| `.png` | A screenshot of the running game. |
+| `.webm` | A video clip of the running game, a few seconds long. |
+
+Screenshots carry most of the carousel. Motion, such as spin curving a flight
+into a bank shot, ships as a `.webm` clip. How screenshots and clips are captured
+is yours to decide.
+{{else}}
+| Extension | Media |
+| --- | --- |
+| `.png` | A screenshot of the running game. |
+| `.json.gz` | A replay: a gzipped recording of the game's own drawing, made with the engine's recorder, which the engine documents in `engine/recording.md`. |
+
+Screenshots carry most of the carousel. Motion ships as a replay, and each replay
+holds a few seconds of live play, such as a rally banking through the obstacles.
+How screenshots and replays are captured is yours to decide.
+{{/if}}

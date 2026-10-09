@@ -1,0 +1,316 @@
+slug = "lattice"
+# The Test Cabinet test case manifest — Lattice.
+#
+# This is a PERFORMANCE case: the model writes a wasm ENGINE that simulates a
+# deterministic Factorio-style factory, and a run scores that engine on a set of
+# held-out scenarios — first for correctness (its canonical state must match a
+# reference oracle bit-for-bit at every snapshot, compared by checksum), then for
+# the FUEL it consumed. Lower fuel is better. The harness reads this file to build
+# the submission to wasm and run it once per scored scenario through the shared
+# `lattice-host` (the same host the `lattice` CLI uses), recording correctness and
+# the fuel total. There is no head-to-head match and no replay renderer in v1.
+
+# Human-readable display name (in-fiction title). The on-disk slug (`lattice`)
+# matches this title.
+name = "Lattice"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Lattice asks
+# the model to reimplement an exact fixed-point simulation (two-lane belt
+# compaction, side-loading, splitters, inserters, assemblers) AND to do it with as
+# little work as possible — the transport-line representation Factorio itself uses.
+# Getting the bit-exact answer is hard; getting it cheaply is harder.
+difficulty = "hard"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["simulation", "wasm"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+Write the engine for a deterministic Factorio-style factory — two-lane belts, \
+item compaction, splitters, inserters, assemblers — and reproduce a reference \
+engine's exact state, bit for bit, with as little fuel as you can spend."""
+
+# Site-facing prose introducing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to describe the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects the in-container workspace path via `{{workspace}}`.
+prompt = "prompt.hbs"
+
+# This is a performance case. The type selects which manifest tables are required
+# ([build]/[contract]/[sandbox] and the [[case]] scored set) and which are
+# forbidden ([simulation]/[match]/[replay] — there is no real-time loop, no
+# head-to-head match, and no replay renderer in v1 — plus [canvas]/[tool]/[output]
+# and [[check]]).
+type = "performance"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. Writing, building, and iterating a from-spec fixed-point engine
+# against the local CLI and training scenarios is a substantial session, so it
+# gets a full hour.
+max_runtime_hours = 1
+# Starter workspace seeded into the root of every run before the specs. It is a
+# small Cargo project: just the engine skeleton the model fills in. Everything it
+# builds against and runs with — the engine SDK + contract types (the "buildkit"),
+# the `lattice` CLI, the reference engines, and the training scenarios — is
+# provided by the performance run-container image under `/opt/lattice`
+# (`$LATTICE_HOME`) and on `PATH`, not vendored here (see
+# `containers/performance/Dockerfile`). Seeded files land at the run root
+# (`workspaces/base/engine/...` -> `engine/...`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. `cargo fetch` pre-downloads the engine's crate
+# dependencies (it path-depends on the baked buildkit's `lattice-core`/SDK and
+# pulls their registry deps) so the model's first build is offline-fast.
+init = "cargo fetch"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# v1 ships a single base variant — the shipped ruleset and prototype table scored
+# against the held-out set — declared in its own file under `variants/`. The harder
+# directions the overview names (a much larger SCALE, realistic inner-lane-shorter
+# CURVES, underground belts / long-handed inserters, priority/filter splitters and
+# stack inserters) are future variants layered on this base ruleset, not part of
+# v1. This list is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the harness builds the model's submission into a wasm engine module.
+# `install` fetches dependencies; `build` emits the module; `module` names the
+# produced artifact (relative to the run root) the validator loads. The engine
+# crate is a `cdylib` named `engine`, so the artifact path is stable. For v1 a
+# submission is a `wasm32-unknown-unknown` core module (the host instantiates it
+# with no imports, exactly as Foray does); `wasm32-wasip2` is a documented
+# forward-looking option, not the shipped path. All three fields are required.
+[build]
+install = "cargo fetch"
+build = "cargo build --release --target wasm32-unknown-unknown -p engine"
+module = "target/wasm32-unknown-unknown/release/engine.wasm"
+
+# The engine contract: the exported entry the host invokes once per scenario, and
+# the JSON Schemas for the scenario passed in and the state returned. The two
+# schemas are seeded for the model to read (the resolver seeds them at these exact
+# dests). They are generated from `lattice-core`'s `Scenario`/`Snapshot` types, so
+# they can never drift from the engine the harness scores against.
+[contract]
+entry = "simulate"
+input = "schemas/scenario.json"
+output = "schemas/state.json"
+
+# Per-scenario sandbox limits applied to every `simulate` invocation. Unlike an
+# adversarial case (which meters per tick), a performance engine simulates the
+# whole scenario in one call, so the fuel ceiling and the consumed-fuel result are
+# both per scenario. `fuel_limit` is the **pass/fail line**: an engine must produce
+# the oracle's answer within it to pass, and its consumed fuel is the score. A
+# per-case `fuel_runway` (below) may let the engine run *past* this line so an
+# overshoot can be measured, but the line itself is unchanged. Exceeding memory (or
+# the runway) fails that scenario (see specs/sandbox.md). The efficient
+# transport-line engine finishes every scored scenario well inside this budget; a
+# move-every-item engine does not.
+[sandbox]
+fuel_limit = 40_000_000_000
+max_memory_bytes = 268_435_456   # 256 MiB
+
+# --- Smoke tests: the correctness pre-flight ------------------------------------
+# Before any of the large scored scenarios below runs, the engine must reproduce
+# EVERY one of these tiny held-out scenarios (`kind = "smoke"`). Each exercises ONE
+# behavior in isolation — a belt line, a two-sided side-load, a splitter balancing
+# one belt across both outputs, an inserter carrying items between belts, an
+# assembler crafting a single- and a two-input recipe, a belt run turning a
+# perpendicular corner (a curve), and a two-stage crafting chain (one assembler's
+# output feeding the next) — so a broken engine is caught in milliseconds instead of
+# after burning through the long `large` case, and every interconnection behavior the
+# scored factories rely on has an isolated gate. A
+# smoke test is graded on CORRECTNESS ALONE (its fuel is not metered into the score);
+# if any one fails, the stress scenarios are not run and are counted as failed. These
+# come from the single smoke-test source (`packages/ui/preview/gen-smoke.mjs`), which
+# also drives the local preview player, so the behaviors watched there are exactly the
+# ones gated here; their `.out` oracles come from `lattice solve`, like the scored
+# set. Held out — never seeded into the run, never baked into the image.
+[[case]]
+input = "smoke/belt-transport.json"
+expected = "smoke/belt-transport.out"
+kind = "smoke"                 # belts carry items across tiles into a sink
+
+[[case]]
+input = "smoke/side-load.json"
+expected = "smoke/side-load.out"
+kind = "smoke"                 # side-loading fills the near lane, from both sides
+
+[[case]]
+input = "smoke/splitter.json"
+expected = "smoke/splitter.out"
+kind = "smoke"                 # a splitter balances one belt across both outputs
+
+[[case]]
+input = "smoke/inserter-belt-belt.json"
+expected = "smoke/inserter-belt-belt.out"
+kind = "smoke"                 # an inserter carries items from one belt to another
+
+[[case]]
+input = "smoke/furnace-single.json"
+expected = "smoke/furnace-single.out"
+kind = "smoke"                 # a furnace smelts ore + coal into a plate; inserters feed and unload it
+
+[[case]]
+input = "smoke/assembler-two-input.json"
+expected = "smoke/assembler-two-input.out"
+kind = "smoke"                 # an assembler crafts a two-input recipe (circuit)
+
+[[case]]
+input = "smoke/curve.json"
+expected = "smoke/curve.out"
+kind = "smoke"                 # a belt run turns a corner (perpendicular curve, both lanes)
+
+[[case]]
+input = "smoke/craft-chain.json"
+expected = "smoke/craft-chain.out"
+kind = "smoke"                 # one assembler's output feeds the next (2-stage plate→gear)
+
+# The held-out scored set: the scenarios the validator actually grades, paired
+# with the reference oracle's expected `state` (as produced by `lattice solve`).
+# These are committed WITH the case and are NOT seeded into the run and NOT baked
+# into the container image — they are the train/test split's test half, unseen by
+# the model. They are deliberately larger and longer than the baked training
+# scenarios so the efficiency gap between a naive and a transport-line engine
+# dominates the fuel total (`large` is 72x40 over 360,000 ticks).
+#
+# The set is a progression of two layouts:
+#   - `small` is a `lines` layout — independent east-flowing belt/craft/circuit
+#     lines stacked in bands. It is the fast, simple CORRECTNESS confirmation: a
+#     small grid an engine reproduces (or fails) in ~1s, exercising every entity and
+#     the circuit chain without the cost of a big factory.
+#   - `medium` and `large` are hand-drawn **main-bus** factories. Sources emit raw ore
+#     and the coal the smelters burn; the ore is rerouted (splitters fan it up/down)
+#     into plate smelters and fully consumed there. Plate lanes then run east across
+#     the grid, LINED with product stations that tap them: gear and cable stations
+#     along the lanes, and a machine works building `circuit`, `transport-belt`,
+#     `inserter`, and `assembler` (the last from a belt fed forward into it — a
+#     machine building a machine). Machinery covers the full width edge to edge — not
+#     clustered at one end — and belts of all three tiers move at their own speeds.
+#     They stress every interconnection behavior the specs describe: belt→belt taps,
+#     curves, splitter rerouting/balancing, the two-input `circuit` chain, and
+#     multi-stage crafting through the machine tree. On `large` every stage (cable,
+#     gear, circuit, and all three machines) drains to its own single-item sink, so a
+#     jammed-but-periodic engine cannot masquerade as correct.
+#
+# Every scored scenario exercises EVERY entity and the multi-input recipe: belts, a
+# splitter, inserters, assemblers, and the two-input `circuit` chain. An earlier
+# scored set was generated before the generator could emit inserters or assemblers at
+# all, so it graded only belts and splitters while the specs described far more; an
+# engine that skipped crafting entirely would have scored correct.
+#
+# Each scored scenario is graded at FIVE ticks: its quarter/half/end
+# checkpoints, plus two inside the browser-playback window (`1250` and `2500`, from
+# `lattice-core`'s `PLAYBACK_WINDOW_TICKS`). The window ones exist because playback
+# shows a scenario's first 2,500 ticks and nothing else, while the quarter/half/end
+# checkpoints of a long scenario all land far past that — `small` was once graded no
+# earlier than tick 12,500. That left the entire stretch a reviewer can WATCH
+# ungraded, so an engine whose warm-up diverged but whose steady state did not passed
+# while its playback visibly disagreed with the case's Reference tab. Grading inside
+# the window closes that, and gives the console's player recorded checksums it can
+# compare its frames against (its drift gate). The two extra snapshots cost almost
+# nothing: an engine has to simulate those ticks regardless.
+#
+# `small` is generated; `medium` and `large` are drawn by hand in the designer
+# (`apps/lattice-designer`, which opens these files and saves back to them):
+#   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000 --out cases/small.json
+# then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
+# A scored `snapshots` array is load-bearing — the case grades at exactly those ticks
+# — so it is edited deliberately, never regenerated. Any change to the engine's rules
+# or to a layout requires redoing the oracle, since the expected answers are the
+# comparison key.
+#
+# A layout is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
+# wide AND leave the transport reference under the fuel ceiling. The main-bus factory
+# has a substantial one-time WARM-UP: its sub-bus lanes and splitter balancers take a
+# while to reach equilibrium, and the transport reference fingerprints the world until
+# it detects the steady cycle — so most of its fuel is that fixed warm-up, and its
+# total barely grows with more ticks. The naive engine, by contrast, pays per tick, so
+# the gap WIDENS the longer a scenario runs. That is why the scored bus scenarios run
+# long (medium 300k, large 360k ticks): the warm-up is amortised and the naive/
+# transport gap opens to ~8-10x. Current transport fuel is small ~0.63B, medium ~20B,
+# large ~28B (all under the 40B ceiling; the small figure roughly doubled when the
+# two playback-window checkpoints were added, since the reference now materializes
+# state during warm-up as well as at steady state), while the naive engine burns
+# small ~15.6B, medium ~142B, and `large` does not finish inside 400B.
+#
+# The transport figure is entity count times how long the factory takes to SETTLE, so
+# a bigger layout stays affordable only if every station keeps to its own craft
+# period. One that spends its time output-blocked, or whose output rate exactly
+# matches the single inserter draining it (a `copper-cable` station makes 2 items per
+# 32 ticks and one arm moves 1 per 16), never lets the world repeat and costs billions
+# on its own; give such a station a second outlet.
+#
+# The EFFICIENCY discrimination is on the two bus scenarios: naive medium/large blow
+# past the 40B ceiling and fail, transport
+# passes. `small` is the CORRECTNESS confirmation, not an efficiency gate — its factory
+# is tiny enough that even the naive engine finishes under 40B, so both engines pass it;
+# the naive engine is failed by the case as a whole on medium and large. (When the
+# ceiling was 5B a naive `small` was over it too, but the ceiling is 40B now.) When
+# re-seeding or resizing, check BOTH engines and keep the transport reference under
+# ceiling on every scenario AND naive over it on the two bus scenarios, AND confirm
+# crafted items reach the sinks (a wide gap on a jammed factory proves nothing); a
+# longer tick count strengthens the gap if it is thin:
+#   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
+#     --fuel-limit 300000000000
+# `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`
+# pass line (up to `fuel_limit * fuel_runway`) so the grader can record HOW FAR
+# over the ceiling it ran and still offer playback, instead of trapping with no
+# reading. The pass/fail line is unchanged — it stays `fuel_limit`. The multiplier
+# is scaled DOWN as scenarios grow: burning through the ceiling on a big scenario is
+# the costly warm-up/fill phase whose wall-clock scales steeply with scenario size,
+# while fuel *beyond* it is cheap steady-state, so a wide runway is affordable on the
+# tiny `small` case but a big scenario should keep it tight — the overshoot reading it
+# buys is not worth the extra verification wall-clock.
+[[case]]
+input = "cases/small.json"     # lines, 24x12 over 50,000 ticks — confirms correctness
+expected = "cases/small.out"
+fuel_runway = 10.0             # up to 400B: small verifies fast, so measure far over
+
+[[case]]
+input = "cases/medium.json"    # bus, 48x32 over 300,000 ticks — a main-bus factory
+expected = "cases/medium.out"
+fuel_runway = 5.0              # up to 200B
+
+[[case]]
+input = "cases/large.json"     # bus, 72x40 over 360,000 ticks — efficiency dominates here
+expected = "cases/large.out"
+fuel_runway = 2.0              # up to 80B: large is costly to verify, so keep it tight
+
+# No `[[domain]]` or `[[review_item]]` tables: a performance run is graded
+# ENTIRELY by the harness — correctness against the reference oracle first, then
+# the fuel a correct engine burned — and carries no human review, so there is no
+# reviewer checklist to declare and no rating to rate. The recorded result
+# (correctness + fuel) is the whole verdict, and the console shows it on the run's
+# Results tab. Everything a reviewer would once have eyeballed here (does it
+# exploit the transport-line representation, does it get compaction right, did it
+# really simulate the held-out set) is either already decided by the bit-exact
+# checksum gate or reflected in the fuel number itself.
+
+# Common specs: seeded for the (single) variant. The model-facing brief, split by
+# concern — the simulation rules, the prototype table, the engine contract + ABI,
+# the canonical-state + checksum model, and the `lattice` CLI. The `input`/`output`
+# schemas are seeded automatically by the `[contract]` table above, so they are
+# not repeated here.
+[[spec]]
+source = "specs/rules.md"
+
+[[spec]]
+source = "specs/prototypes.md"
+
+[[spec]]
+source = "specs/contract.md"
+
+[[spec]]
+source = "specs/canonical-state.md"
+
+[[spec]]
+source = "specs/cli.md"

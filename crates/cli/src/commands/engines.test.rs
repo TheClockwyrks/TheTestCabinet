@@ -6,11 +6,11 @@
 //! are reported in, which is what decides whether a mistyped flag sends someone
 //! looking at the flag or at the case's manifest.
 //!
-//! These resolve a real case out of the repository's catalog rather than building
-//! a `TestCaseVersion` literal, the same way `analyze`'s test reads this crate off
-//! disk: the case is a **frozen** version, so what it supports cannot drift, and
-//! reading it exercises the resolution that actually puts `none` in a case's
-//! supported set.
+//! These resolve a real case rather than building a `TestCaseVersion` literal: a
+//! copy of a **frozen** version under `testdata/definitions/`, so what it supports
+//! cannot drift and the test does not depend on where the repository's catalog
+//! lives, and reading it exercises the resolution that actually puts `none` in a
+//! case's supported set.
 
 use std::path::PathBuf;
 
@@ -21,10 +21,10 @@ use super::*;
 /// Resolve `carom` at the frozen `v2.1.0` — authored before engines existed, so
 /// it declares no `engines` and supports exactly the engineless run.
 fn engineless_case() -> TestCaseVersion {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases");
     TestCaseCatalog::new(root)
         .resolve("carom", "v2.1.0")
-        .expect("carom v2.1.0 is a frozen case version in this repository")
+        .expect("the fixture copy of carom v2.1.0 resolves")
 }
 
 #[test]
