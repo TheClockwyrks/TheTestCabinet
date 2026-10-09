@@ -13,7 +13,7 @@ publish.workspace = true
 # and well-formedness checks, and nothing that reaches a container, a process, the
 # network or a clock. `test-cabinet-core` depends
 # on this crate and re-exports every module at its old path, so
-# `test_cabinet_core::gg::GgConfig` and the rest keep naming the same items.
+# `test_cabinet_core::gg::GgRunLimits` and the rest keep naming the same items.
 #
 # Keep it that way: a dependency added here is one every party that reads a run
 # record, a harness included, compiles. Runtime belongs in core.

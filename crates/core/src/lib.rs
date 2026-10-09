@@ -64,7 +64,7 @@ pub mod validation;
 pub mod validator;
 
 // The contract modules that moved whole into `test-cabinet-contracts`, re-exported at
-// their old paths so `test_cabinet_core::gg::GgConfig` and the rest name the same
+// their old paths so `test_cabinet_core::gg::GgRunLimits` and the rest name the same
 // items they always did.
 pub use test_cabinet_contracts::{
     code_analysis, cold_storage, gg, gg_reference, gg_session_journal, gg_session_record, metrics,

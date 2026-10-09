@@ -84,8 +84,8 @@ to them one variant for one.
 ## Re-exports
 
 The core re-exports every module and item the two crates hold at its previous path,
-so `test_cabinet_core::gg::GgConfig` and `test_cabinet_contracts::gg::GgConfig` name
-the same type, as do `test_cabinet_core::test_suite::TestSuiteCatalog` and
+so `test_cabinet_core::gg::GgRunLimits` and `test_cabinet_contracts::gg::GgRunLimits`
+name the same type, as do `test_cabinet_core::test_suite::TestSuiteCatalog` and
 `test_cabinet_suites::test_suite::TestSuiteCatalog`.
 
 A method that needs runtime cannot stay on a contract type, so it is a trait with the

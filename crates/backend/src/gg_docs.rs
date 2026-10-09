@@ -466,7 +466,7 @@ impl<'a> CatalogScores<'a> {
     /// The run's score fraction, or `None` when it has no reviews, its case is not
     /// ingested, or that case declares no weighted checklist at all (a zero
     /// denominator is an absent score, never a zero one — see
-    /// rule 1 of the query language (`test_cabinet_contracts::gg_query`), which a
+    /// [rule 1](test_cabinet_core::gg_query#the-seven-semantic-rules), which a
     /// stored `0` would violate by dragging every average down).
     pub fn score(&mut self, run: &StoredRun) -> Option<f64> {
         let manifest = self.manifest(run)?;
