@@ -8,8 +8,9 @@
 # the mirror's sibling repository. The sidecar rewrites that address to the Azure
 # Repos HTTPS one and answers git's credential request with this token, so a deployed
 # checkout clones and refreshes the submodule at the commit its branch names. The
-# credential is a personal access token scoped to Code (Read) on the test suites
-# repository, so it can read nothing else.
+# credential is a personal access token with the Code (Read) scope. A token cannot
+# be limited to one repository: it reads every repository in the organization that
+# its owner can read.
 #
 # Run it once per environment, before the first deploy that carries the test suites,
 # and again whenever the token is rotated. Until it has run, the credential's own
