@@ -21,6 +21,8 @@
 #     it. A Dockerfile that copies `.` reads the whole build context, which is the
 #     repository root filtered by the root .dockerignore, so its inputs are that file
 #     and every tracked file under each path the allowlist re-includes (its `!` lines).
+#     A path under a submodule lists the submodule's gitlink, its pinned commit, since
+#     the index holds none of the submodule's files.
 #     A superset of what the build reads is fine: it can only rebuild too often, never
 #     too seldom.
 #   - the digests of the images it is built from (its `FROM` parents and the builder
@@ -99,9 +101,26 @@ allowlisted_paths() {
 	grep -E '^!' .dockerignore | sed -E 's/^!\/?//; s/\/$//' | sort -u
 }
 
-# `git ls-files -s` over paths, which is empty for a path with no tracked file.
+# The index's gitlinks, the paths of its submodules, which main reads once: the
+# digests are computed in subshells, which would each read it again.
+GITLINKS=()
+
+# `git ls-files -s` over paths, which is empty for a path with no tracked file. A
+# path inside a submodule has no tracked file in this index, only the submodule's
+# gitlink, so the gitlink is listed for it too: a bump of the submodule's pin moves
+# the digest of every image that reads under it.
 listing() {
-	git ls-files -s -- "$@"
+	local -a specs=("$@")
+	local path gitlink
+	for gitlink in "${GITLINKS[@]}"; do
+		for path in "$@"; do
+			if [[ "$path" == "$gitlink" || "$path" == "$gitlink"/* ]]; then
+				specs+=("$gitlink")
+				break
+			fi
+		done
+	done
+	git ls-files -s -- "${specs[@]}"
 }
 
 declare -A DIGESTS=()
@@ -145,6 +164,7 @@ digest_of() {
 
 main() {
 	local -a names=()
+	mapfile -t GITLINKS < <(git ls-files -s | awk -F '\t' '$1 ~ /^160000 / { print $2 }')
 	if [[ $# -gt 0 ]]; then
 		names=("$@")
 	else

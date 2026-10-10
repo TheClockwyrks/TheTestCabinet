@@ -1060,12 +1060,14 @@ prints: one `<name> <digest> <parents>` line for every image `image-names.sh` li
 the `tools` and `gg-toolchains` builders. An image's digest covers its Dockerfile, every
 context path the Dockerfile copies (as `git ls-files -s` records them, so the index and
 not the working tree is what is described; a Dockerfile that copies `.` reads the whole
-context, which is the root `.dockerignore`'s listing), the digests of the images it is
-built from, and a schema constant. Anything that changes below an image therefore changes
-the image's own digest, and a change to the schema constant changes every digest at once,
-which is how a build is forced when an unpinned upstream (a base image named by tag, an
-apt package set, a toolchain fetched by version) has to be refreshed without a file in the
-repository changing: bump `INPUTS_SCHEMA` in that script.
+context, which is the root `.dockerignore`'s listing; a path under a submodule, such as
+`contracts/`, is recorded as the submodule's pinned commit, the only entry the index holds
+for it), the digests of the images it is built from, and a schema constant. Anything that
+changes below an image therefore changes the image's own digest, and a change to the
+schema constant changes every digest at once, which is how a build is forced when an
+unpinned upstream (a base image named by tag, an apt package set, a toolchain fetched by
+version) has to be refreshed without a file in the repository changing: bump
+`INPUTS_SCHEMA` in that script.
 
 With the table, `build.sh` pushes every image it builds under two tags: the commit's
 (`<sha>-<arch>`) and `inputs-<digest>-<arch>`. Before it builds an image it looks the
