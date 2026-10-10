@@ -5,7 +5,8 @@
 #
 # The directory <superrepo>/<name> is what scripts/repos/render.py wrote. This
 # script makes it a git repository on `master`, writes the lock files the
-# render cannot (an application's Cargo.lock, a workspace's package-lock.json),
+# render cannot (an application's Cargo.lock, a workspace's package-lock.json,
+# the gate runner's ci/uv.lock),
 # commits what it holds, pushes it to the remote of the same name beside the
 # superrepo's own, and adds it to the superrepo as a submodule by a relative
 # URL, which git resolves against the superrepo's origin, so the file names no
@@ -95,6 +96,17 @@ if grep -q '"workspaces"' "$dir/package.json" 2>/dev/null && [ ! -f "$dir/packag
 	(cd "$dir" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=error) ||
 		die "npm could not write the lock file of $name"
 	printf 'bootstrap: wrote the npm lock file of %s\n' "$name"
+fi
+
+# The gate runner's uv project commits its lock too, as the superrepo's does:
+# the first `uv run --project ci` writes one, and a repository whose scaffold
+# lacks it would carry it untracked from its first gate on. The kit renders
+# none, since a lock rendered from the template would be stale the moment a
+# dependency released, so the first commit carries the one uv resolves.
+if [ -f "$dir/ci/pyproject.toml" ] && [ ! -f "$dir/ci/uv.lock" ] &&
+	! git -C "$dir" rev-parse --verify -q HEAD >/dev/null; then
+	(cd "$dir" && uv lock --quiet --project ci) || die "uv could not write the lock file of ${name}'s ci project"
+	printf 'bootstrap: wrote the uv lock file of %s\n' "$name"
 fi
 
 if ! git -C "$dir" rev-parse --verify -q HEAD >/dev/null; then

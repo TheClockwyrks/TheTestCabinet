@@ -179,6 +179,41 @@ out="$(STUB_NPM_LOG="$tmp/npm.log" PATH="$stubs:$PATH" run_bootstrap "$base" con
 check_passed "bootstrap succeeds on a manifest without a workspace" $? "$out"
 check_equals "npm is not run for it" "" "$(cat "$tmp/npm.log")"
 
+# --- The first commit carries the gate runner's uv lock ---------------------
+# uv is a stub that records its arguments and writes the lock, so nothing is
+# resolved against an index.
+cat >"$stubs/uv" <<'STUB'
+#!/usr/bin/env bash
+echo "$PWD $*" >>"$STUB_UV_LOG"
+printf 'version = 1\n' >ci/uv.lock
+STUB
+chmod +x "$stubs/uv"
+: >"$tmp/uv.log"
+base="$(fresh_superrepo contracts)"
+mkdir -p "$base/super/contracts/ci"
+printf '[project]\nname = "the-test-cabinet-ci"\n' >"$base/super/contracts/ci/pyproject.toml"
+out="$(STUB_UV_LOG="$tmp/uv.log" PATH="$stubs:$PATH" run_bootstrap "$base" contracts)"
+status=$?
+check_passed "bootstrap succeeds on a repository with a ci project" "$status" "$out"
+check_contains "it writes the uv lock file" "wrote the uv lock file of contracts" "$out"
+check_equals "uv only locks the ci project" "$base/super/contracts lock --quiet --project ci" "$(cat "$tmp/uv.log")"
+check_equals "the scaffold commit carries ci/uv.lock" "ci/uv.lock" "$(git -C "$base/remotes/contracts" ls-tree --name-only master ci/uv.lock)"
+
+: >"$tmp/uv.log"
+base="$(fresh_superrepo contracts)"
+mkdir -p "$base/super/contracts/ci"
+printf '[project]\nname = "the-test-cabinet-ci"\n' >"$base/super/contracts/ci/pyproject.toml"
+printf 'version = 1\nkept = true\n' >"$base/super/contracts/ci/uv.lock"
+out="$(STUB_UV_LOG="$tmp/uv.log" PATH="$stubs:$PATH" run_bootstrap "$base" contracts)"
+check_passed "bootstrap succeeds on a ci project holding its lock" $? "$out"
+check_equals "uv is not run" "" "$(cat "$tmp/uv.log")"
+check_contains "the lock is kept" "kept = true" "$(git -C "$base/remotes/contracts" show master:ci/uv.lock)"
+
+base="$(fresh_superrepo contracts)"
+out="$(STUB_UV_LOG="$tmp/uv.log" PATH="$stubs:$PATH" run_bootstrap "$base" contracts)"
+check_passed "bootstrap succeeds without a ci project" $? "$out"
+check_equals "uv is not run for it" "" "$(cat "$tmp/uv.log")"
+
 # --- A directory the kit did not render is refused ------------------------
 base="$(fresh_superrepo)"
 mkdir -p "$base/super/stray"
