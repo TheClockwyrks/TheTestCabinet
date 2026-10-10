@@ -151,7 +151,9 @@ esac
 STUB
 
 # git: a branch fetches when branch-<name>.yml exists, and FETCH_HEAD's
-# ci/images/tags.yml is that file until the next fetch. `origin` is
+# ci/images/tags.yml is that file until the next fetch, as its .gitmodules is
+# gitmodules-<name> when that exists (and cannot be read when
+# STUB_UNREADABLE_GITMODULES_ON names the branch). `origin` is
 # STUB_ORIGIN, against which the relative URLs of .gitmodules resolve. What
 # reads .gitmodules or a submodule's repository (`config -f`, `ls-remote`,
 # `init`, and anything run with `-C`) is real git's.
@@ -190,12 +192,23 @@ case "$1" in
 		;;
 	ls-tree)
 		branch="$(cat "$STUB_DIR/fetched")"
-		[ "$2" = "FETCH_HEAD" ] && [ "$3" = "ci/images/" ] || exit 128
+		[ "$2" = "FETCH_HEAD" ] || exit 128
+		if [ "$3" = ".gitmodules" ]; then
+			[ ! -f "$STUB_DIR/gitmodules-$branch" ] ||
+				echo "100644 blob 0000000000000000000000000000000000000000	.gitmodules"
+			exit 0
+		fi
+		[ "$3" = "ci/images/" ] || exit 128
 		[ -z "${STUB_NO_IMAGES_ON:-}" ] || [ "$branch" != "$STUB_NO_IMAGES_ON" ] || exit 0
 		echo "040000 tree 0000000000000000000000000000000000000000	ci/images"
 		;;
 	show)
 		branch="$(cat "$STUB_DIR/fetched")"
+		if [ "$2" = "FETCH_HEAD:.gitmodules" ]; then
+			[ "${STUB_UNREADABLE_GITMODULES_ON:-}" != "$branch" ] || exit 128
+			cat "$STUB_DIR/gitmodules-$branch"
+			exit 0
+		fi
 		[ "$2" = "FETCH_HEAD:ci/images/tags.yml" ] || exit 128
 		[ -z "${STUB_NO_PINS_ON:-}" ] || [ "$branch" != "$STUB_NO_PINS_ON" ] || exit 128
 		cat "$STUB_DIR/branch-$branch.yml"
@@ -467,6 +480,35 @@ check_contains "while what nothing pins still goes" "${REPOSITORY}@sha256:own" "
 check_lacks "a repository without the image, or without a pipeline, names nothing" "test-suites/" "$out"
 check_lacks "and neither does media" "media/" "$out"
 check_lacks "an absolute URL is not this project's, and is not read" "example.invalid" "$(cat "$stub/git.log")"
+
+# The checkout names no submodule, as `master` did before contracts reached it,
+# while `nightly` names contracts and `staging` names it too, by the same URL
+# spelled another way; a branch predating ci/images/ is still read.
+write_fixtures
+printf '[submodule "contracts"]\n\tpath = contracts\n\turl = ../contracts\n' >"$stub/gitmodules-nightly"
+printf '[submodule "c"]\n\tpath = c\n\turl = ../contracts\n' >"$stub/gitmodules-staging"
+cp "$stub/gitmodules-nightly" "$stub/gitmodules-master"
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" STUB_NO_IMAGES_ON=master STUB_NO_PINS_ON=master run rust)"
+check_equal "a submodule only a live branch names exits 0" "0" "$?"
+check_contains "and its pins are kept" \
+	"${REPOSITORY}: keeping $CHECKOUT $STAGING $NIGHTLY $STALE $SUBMODULE " "$out"
+check_lacks "so a tag only that submodule pins stays" "@sha256:stale" "$(deleted)"
+check_equal "a repository several branches name is read once" "1" \
+	"$(grep -c "contracts/nightly pins" <<<"$out")"
+
+write_fixtures
+printf '[submodule "contracts"]\n\tpath = contracts\n\turl = ../contracts\n' >"$stub/gitmodules-nightly"
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" STUB_UNREADABLE_GITMODULES_ON=nightly run rust)"
+check_equal "a live branch's .gitmodules that cannot be read refuses" "1" "$?"
+check_contains "naming the branch" "cannot read origin/nightly's .gitmodules; refusing to purge" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
+
+write_fixtures
+printf '[submodule "missing"]\n\tpath = missing\n\turl = ../missing\n' >"$stub/gitmodules-staging"
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" run rust)"
+check_equal "a repository only another branch names, which this job cannot reach, refuses" "1" "$?"
+check_contains "naming it" "cannot list the branches of missing" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
 
 write_fixtures
 submodules contracts ../contracts missing ../missing

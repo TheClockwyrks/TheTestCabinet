@@ -40,7 +40,11 @@
 # `ubuntu-the-test-cabinet-<track>-cicd:<40 hex>`, in its own
 # azure-pipelines.yml, and its branches move to a newer pin only as the merge-up
 # that bumped `ciImageTag` here reaches them. So what the live branches of each
-# repository .gitmodules names by a relative URL pin there is kept too. A
+# repository .gitmodules names by a relative URL pin there is kept too, where
+# the .gitmodules is the checkout's and every live branch's together: a
+# repository added on `nightly` is a submodule there before it is one on
+# `master`, and a run on `master` that read only its own file would delete what
+# that repository's branches pin. A
 # repository whose pipeline names no CI image, or that has no pipeline at all,
 # keeps nothing, and one that cannot be read stops the purge. A tag of such a
 # repository is not kept: its run is a one-off, and a re-run after its image is
@@ -209,10 +213,31 @@ kept_tags() {
 		printf '%s\n' "$own"
 	fi
 	local pins
+	# Every .gitmodules there is to read, the checkout's first, for
+	# submodule_pins.
+	GITMODULES_TEXTS=()
+	if [ -f .gitmodules ]; then
+		GITMODULES_TEXTS+=("$(cat .gitmodules)")
+	fi
 	for branch in "${LIVE_BRANCHES[@]}"; do
 		if ! git "${auth[@]}" fetch --quiet "${depth[@]}" origin "$branch"; then
 			echo "ci-image-purge.sh: cannot fetch origin/$branch; refusing to purge" >&2
 			return 1
+		fi
+		# Read before the pins, since a branch that predates ci/images/ can
+		# still name a submodule. A branch without the file names none; one
+		# whose file is there and cannot be read stops the purge, since what it
+		# names would otherwise go unkept.
+		if ! text="$(git ls-tree FETCH_HEAD .gitmodules)"; then
+			echo "ci-image-purge.sh: cannot list origin/$branch's tree; refusing to purge" >&2
+			return 1
+		fi
+		if [ -n "$text" ]; then
+			if ! text="$(git show FETCH_HEAD:.gitmodules)"; then
+				echo "ci-image-purge.sh: cannot read origin/$branch's .gitmodules; refusing to purge" >&2
+				return 1
+			fi
+			GITMODULES_TEXTS+=("$text")
 		fi
 		if ! text="$(git show "FETCH_HEAD:${PINS_FILE}" 2>/dev/null)"; then
 			if [ -z "$(git ls-tree FETCH_HEAD "$(dirname "$PINS_FILE")/" 2>/dev/null)" ]; then
@@ -233,8 +258,10 @@ kept_tags() {
 }
 
 # Every image of this track a live branch of a submodule repository pins: each
-# `.gitmodules` entry whose URL is relative names a repository of this project,
-# resolved against `origin` the way git resolves it. Its branches are listed,
+# entry of the `.gitmodules` texts kept_tags gathered (GITMODULES_TEXTS) whose
+# URL is relative names a repository of this project, resolved against
+# `origin` the way git resolves it, and read once however many of the texts
+# name it. Its branches are listed,
 # and each live one it has is fetched one commit deep and without blobs into a
 # scratch repository, whose azure-pipelines.yml alone is then read, so a
 # repository of media costs what its trees do. Anything that cannot be listed,
@@ -244,19 +271,25 @@ kept_tags() {
 # each job running this declares every such repository under `uses:`
 # (azure-pipelines-ci-images.yml).
 submodule_pins() {
-	[ -f .gitmodules ] || return 0
-	local base entry key url name remote heads branch repo text pins
-	local -a entries auth
-	mapfile -t entries < <(git config -f .gitmodules --get-regexp '^submodule\..*\.url$' 2>/dev/null || true)
+	[ "${#GITMODULES_TEXTS[@]}" -gt 0 ] || return 0
+	local base entry key url name remote heads branch repo text pins count=0
+	local -a entries=() auth
+	local -A seen=()
+	local scratch
+	scratch="$(mktemp -d)"
+	# shellcheck disable=SC2064 # the directory is known now, and is what goes.
+	trap "rm -rf '$scratch'; trap - RETURN" RETURN
+	for text in "${GITMODULES_TEXTS[@]}"; do
+		count=$((count + 1))
+		printf '%s\n' "$text" >"${scratch}/gitmodules-${count}"
+		mapfile -t -O "${#entries[@]}" entries < <(git config -f "${scratch}/gitmodules-${count}" --get-regexp '^submodule\..*\.url$' 2>/dev/null || true)
+	done
 	[ "${#entries[@]}" -gt 0 ] || return 0
 	if ! base="$(git remote get-url origin 2>/dev/null)"; then
 		echo "ci-image-purge.sh: this checkout has no origin to resolve the submodules' URLs against; refusing to purge" >&2
 		return 1
 	fi
-	local scratch
-	scratch="$(mktemp -d)"
-	# shellcheck disable=SC2064 # the directory is known now, and is what goes.
-	trap "rm -rf '$scratch'; trap - RETURN" RETURN
+	count=0
 	for entry in "${entries[@]}"; do
 		key="${entry%% *}"
 		url="${entry#* }"
@@ -267,6 +300,9 @@ submodule_pins() {
 			echo "ci-image-purge.sh: cannot resolve ${name}'s URL ${url}; refusing to purge" >&2
 			return 1
 		fi
+		[ -z "${seen[$remote]:-}" ] || continue
+		seen[$remote]=1
+		count=$((count + 1))
 		auth=()
 		if [ -n "${SYSTEM_ACCESSTOKEN:-}" ] && [[ "$remote" == https://*dev.azure.com/* ]]; then
 			auth=(-c "http.extraheader=AUTHORIZATION: bearer ${SYSTEM_ACCESSTOKEN}")
@@ -275,7 +311,7 @@ submodule_pins() {
 			echo "ci-image-purge.sh: cannot list the branches of ${name} (${remote}); refusing to purge" >&2
 			return 1
 		fi
-		repo="${scratch}/${name}"
+		repo="${scratch}/repository-${count}"
 		git init --quiet --bare "$repo"
 		git -C "$repo" remote add origin "$remote"
 		for branch in "${LIVE_BRANCHES[@]}"; do

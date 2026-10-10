@@ -312,11 +312,14 @@ A repository's pipeline names each CI image it runs in by commit,
 render that wrote it. The superrepo's image pipeline deletes, after each run,
 every image tag nothing live pins (`scripts/ci/ci-image-purge.sh`). It keeps
 what the superrepo's `master`, `staging` and `nightly` pin and, for each
-submodule `.gitmodules` names by a relative URL, every image the
-`azure-pipelines.yml` of that repository's `master`, `staging` and `nightly`
-names. A repository it cannot read stops the purge, so each image job declares
-every such repository under `resources` and names it under `uses:`, which
-puts it in the job token's scope, and a new submodule is added there with it.
+submodule the `.gitmodules` of the checkout or of any of those branches names
+by a relative URL, every image the `azure-pipelines.yml` of that repository's
+`master`, `staging` and `nightly` names. Reading every branch's `.gitmodules`
+is what keeps a repository added on `nightly` safe from a run on `master`,
+where it is not yet a submodule. A repository it cannot read stops the purge,
+so each image job declares every such repository under `resources` and names
+it under `uses:`, which puts it in the job token's scope, and a new submodule
+is added there with it.
 Two rules follow:
 
 - **The merge-up rule.** A repository's image pin moves

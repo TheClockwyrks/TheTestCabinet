@@ -1428,8 +1428,9 @@ of its runs the image pipeline purges the registry of every CI image tag that
 `master`, `staging`, `nightly` and the checkout do not pin
 (`scripts/ci/ci-image-purge.sh`), keeping as well every tag the
 `azure-pipelines.yml` of a submodule repository's `master`, `staging` or
-`nightly` names. That reaches the repositories of every submodule
-`.gitmodules` names by a relative URL, which each image job declares under
+`nightly` names. That reaches the repositories of every submodule the
+`.gitmodules` of the checkout or of any of those branches names by a relative
+URL, which each image job declares under
 `resources` and names under `uses:`; see
 [Repositories](/development/repositories/#a-repositorys-gates-and-pipeline).
 

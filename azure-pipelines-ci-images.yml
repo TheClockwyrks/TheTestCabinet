@@ -100,10 +100,12 @@ pr: none
 pool:
   vmImage: ubuntu-24.04
 
-# The repositories each job's purge reads beside this one: every submodule
-# .gitmodules names by a relative URL. scripts/ci/ci-image-purge.sh keeps the
-# CI images the live branches of each pin in their own azure-pipelines.yml, and
-# refuses to purge when one cannot be read. No job checks one out; each names
+# The repositories each job's purge reads beside this one: every submodule the
+# .gitmodules of the checkout or of a live branch names by a relative URL, so a
+# branch's job reaches the submodules `nightly` added before they reach it.
+# scripts/ci/ci-image-purge.sh keeps the CI images the live branches of each
+# pin in their own azure-pipelines.yml, and refuses to purge when one cannot be
+# read. No job checks one out; each names
 # them under `uses:`, which is what puts them in the scope of the job's access
 # token. A submodule added to .gitmodules is added here too, or every purge
 # stops.
