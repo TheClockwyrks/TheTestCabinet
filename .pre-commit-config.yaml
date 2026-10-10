@@ -433,5 +433,7 @@ repos:
         name: "script library tests (node --test)"
         entry: uv run --quiet --project ci gate run scripts-test
         language: system
-        files: '^scripts/lib/.*\.m?js$|^ci/gates/scripts-test\.py$'
+        # The library, the staging script and its test, the gate whose STRICT list
+        # that test reads, and the manifests the staging script writes from.
+        files: '^scripts/lib/.*\.m?js$|^scripts/[^/]+\.test\.mjs$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/seeded-contract-check\.sh$|^packages/[^/]+/package\.json$|^ci/gates/scripts-test\.py$'
         pass_filenames: false
