@@ -33,5 +33,5 @@ surfaces reasoning content when Cline reports it as a distinct block.
 ## Cost
 
 Cline reports no run cost of its own, so the comparable cost is computed from
-the list price curated on the model's catalog entry, applied to the recorded
+the list price held on the model's catalog entry, applied to the recorded
 token classes. See [Cost](/components/core/metrics/#cost).

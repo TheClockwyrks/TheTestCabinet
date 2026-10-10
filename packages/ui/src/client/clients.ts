@@ -18,6 +18,7 @@ import type {
   Model,
   ModelAccuracy,
   ModelInput,
+  ListPriceRefresh,
   ModelListing,
   ModelProbe,
   ModelProbeDetail,
@@ -187,7 +188,7 @@ export interface BackendClient {
   // `app/data/harnesses.ts` — not served by the backend.)
   //
   // The model catalog is served by `GET /models`: curated configs merged with the
-  // models derived from recorded runs, each with its observed price history. The
+  // models derived from recorded runs, each with its observed catalog facts. The
   // config mutations below are optional so a transport that can't reach them (the
   // static site) omits them and the console hides the affordance — the same
   // pattern `deleteRun?`/`killRun?` use.
@@ -203,8 +204,17 @@ export interface BackendClient {
   /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
   seedModelFromRun?(runId: string): Promise<ModelSeed>;
   /** What OpenRouter publishes about a model, so the config form can fill itself
-   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer). */
-  lookupOpenrouterModel?(slug: string, token: string): Promise<ModelListing>;
+   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer).
+   * `providerPin` is the form's current developer provider: when set, its rate
+   * is the one the listing's prices carry while it lists a complete one. */
+  lookupOpenrouterModel?(
+    slug: string,
+    token: string,
+    providerPin?: string | null,
+  ): Promise<ModelListing>;
+  /** Re-read every curated entry's list price from OpenRouter and report what
+   * changed (`POST /models/list-prices/refresh`, Bearer). */
+  refreshListPrices?(token: string): Promise<ListPriceRefresh>;
 
   // Model probes — responses-as-code readiness checks of a catalog model. The
   // reads are open (probe results are console-only catalog context, like the
@@ -479,9 +489,9 @@ export interface BackendClient {
   fillCoveragePlan?(id: string, token: string): Promise<LaunchPassResult>;
 
   /**
-   * Retry one cell blocked by repeated infrastructure failures
-   * (`POST /coverage-plans/{id}/cells/retry`, Bearer): resets that cell's failing
-   * streak and launches its shortfall (under the limit when the plan is filling, at
+   * Retry one cell blocked on a launch that used up its automatic retries
+   * (`POST /coverage-plans/{id}/cells/retry`, Bearer): forgets that failure and
+   * launches its shortfall (under the limit when the plan is filling, at
    * once otherwise). Resolves on `204`; rejects `404` for a cell not in the plan and
    * `409` for a cell that is not blocked.
    */
@@ -596,8 +606,8 @@ export interface BackendClient {
   getLadderQueue?(id: string, token: string): Promise<CoverageQueue>;
 
   /**
-   * Retry a climber of the running dispatch that is blocked on infrastructure failures
-   * or an unlaunchable combination (`POST /ladders/{id}/climbers/retry`, Bearer), once
+   * Retry a climber of the running dispatch that is blocked on a launch that used up
+   * its automatic retries or on an unlaunchable combination (`POST /ladders/{id}/climbers/retry`, Bearer), once
    * its owner has fixed the cause. Resolves on `204`; rejects with `404` for a
    * combination that is not a climber of the dispatch and `409` for one that is not
    * blocked that way or when no dispatch is running.

@@ -18,9 +18,10 @@ import ladderStyles from "./Ladder.module.scss";
 import styles from "./Coverage.module.scss";
 
 // The runs behind one rung slot's verdict, for one climber, listed under the rung
-// itself — only the runs the latest dispatch launched for that slot, because only
-// those count for it: a run of the same case and model from a plan, a hand launch or
-// an earlier dispatch is not this dispatch's evidence.
+// itself — exactly the runs the board says the slot holds. A dispatch counts runs as a
+// plan does, so these are the first runs of the slot's cell to finish, up to the rung's
+// target, whoever launched them: a plan, a hand launch, an earlier dispatch, or this
+// one. A run of the cell beyond the target is not the slot's, and is not listed.
 //
 // The board says a climber passed or failed a rung, and the way to see why is to look
 // at the runs the gate counted. Listing them here rather than
@@ -33,7 +34,7 @@ import styles from "./Coverage.module.scss";
 
 // How many of a rung's runs to hold. A rung is one case × one climber, so its runs are
 // counted in single figures, and a window this size over the cell's runs is a ceiling
-// the dispatch's own runs never reach in practice.
+// the slot's runs never reach in practice.
 const RUN_LIMIT = 100;
 
 export function RungRuns({
@@ -43,7 +44,7 @@ export function RungRuns({
 }: {
   rung: LadderProgressRung;
   climber: LadderClimber;
-  /** The dispatch's slot: its counted runs and its jobs still in flight. */
+  /** The slot: the runs it holds and the jobs the dispatch has in flight for it. */
   slot: LadderSlot;
 }) {
   const { queryRunSummaries, localIds, writeups } = useGalleryData();
@@ -64,8 +65,8 @@ export function RungRuns({
   // `gg` harness. The rung's verdict counts by the configuration's id, so the listing
   // behind it narrows by the same id.
   const ggConfigId = ggConfigKey(climber.ggConfigId);
-  // The dispatch's own runs of this slot: its counted runs (records) and its jobs still
-  // in flight. Keyed by their joined ids so a re-read board with the same runs does not
+  // The slot's runs (records, whoever launched them) and the jobs the dispatch still
+  // has in flight for it. Keyed by their joined ids so a re-read board with the same runs does not
   // re-query.
   const runIdsKey = slot.runIds.join("|");
   const jobIdsKey = slot.jobIds.join("|");

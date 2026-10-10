@@ -52,6 +52,7 @@ fn config() -> Config {
         sandbox_namespace: "tcab".to_string(),
         driver_service_account: Some("tcab-driver".to_string()),
         max_inflight: 8,
+        max_publish_inflight: 2,
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
         // Mirrors what `DriverResources::from_env` resolves by default: the memory
@@ -590,6 +591,61 @@ fn publish_job_carries_ownership_and_job_id_labels() {
         meta_labels.get(JOB_ID_LABEL).map(String::as_str),
         Some("pub-456")
     );
+}
+
+/// The kind label is what the reconcile counts each admission lane by, so a driver
+/// `Job` and a publish `Job` must carry different values, on the `Job` itself (the
+/// object the dispatcher lists).
+#[test]
+fn each_job_carries_its_kind_label() {
+    let driver = build_driver_job(&claim(), &config()).unwrap();
+    let publish = build_publish_job(&publish_claim(), &config());
+    let kind = |job: &Job| {
+        job.metadata
+            .labels
+            .as_ref()
+            .unwrap()
+            .get(JOB_KIND_LABEL)
+            .cloned()
+    };
+    assert_eq!(kind(&driver).as_deref(), Some("run"));
+    assert_eq!(kind(&publish).as_deref(), Some("publish"));
+}
+
+/// The literals are an on-cluster contract: a dispatcher reads back the labels a
+/// previous dispatcher process wrote.
+#[test]
+fn the_kind_label_literals_are_stable() {
+    assert_eq!(JOB_KIND_LABEL, "tcab.dev/job-kind");
+    assert_eq!(JobKind::Run.label_value(), "run");
+    assert_eq!(JobKind::Publish.label_value(), "publish");
+}
+
+#[test]
+fn a_kind_label_round_trips_through_classify() {
+    for kind in [JobKind::Run, JobKind::Publish] {
+        // The name disagrees with the label on purpose: the label wins.
+        let name = match kind {
+            JobKind::Run => publish_job_name("x"),
+            JobKind::Publish => job_name("x"),
+        };
+        assert_eq!(JobKind::classify(Some(kind.label_value()), &name), kind);
+    }
+}
+
+#[test]
+fn an_unlabelled_job_is_classified_by_its_name() {
+    assert_eq!(
+        JobKind::classify(None, &publish_job_name("pub-456")),
+        JobKind::Publish
+    );
+    assert_eq!(JobKind::classify(None, &job_name("job-123")), JobKind::Run);
+    // An unrecognized value is read as no label at all.
+    assert_eq!(
+        JobKind::classify(Some("mystery"), &publish_job_name("pub-456")),
+        JobKind::Publish
+    );
+    assert_eq!(JobKind::classify(Some("mystery"), "anything"), JobKind::Run);
 }
 
 #[test]

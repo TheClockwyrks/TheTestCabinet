@@ -14,6 +14,7 @@ which schedules a reviewer's runs.
 ```
 test-case-groups/
 ├── arcade-physics/test-case-group.toml   # one manifest per group
+├── puzzle-logic/test-case-group.toml
 ├── sim-economy/test-case-group.toml
 └── tower-defense/test-case-group.toml
 ```

@@ -31,7 +31,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub cell_json: Option<String>,
     /// RFC 3339 of when the owner last retried this climber, or `NULL` for never. Only
-    /// jobs that ended after it count toward its failing streak.
+    /// jobs that ended after it are read for its failing block.
     #[sea_orm(nullable)]
     pub retried_at: Option<String>,
 }

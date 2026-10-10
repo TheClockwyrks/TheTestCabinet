@@ -11,6 +11,14 @@ import type {
   LadderInput,
   LadderRungInput,
 } from "@clockwyrks/run-record/ladders";
+import { dispatchLive } from "./ladder-dispatch";
+import {
+  DEFAULT_RETRY_LIMIT,
+  RETRY_LIMIT_DESCRIPTION,
+  RETRY_LIMIT_LABEL,
+  retryLimitHelp,
+  useRetryLimitField,
+} from "./retry-limit";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
@@ -78,6 +86,8 @@ export function LadderEditPage() {
     integer: true,
   });
   const runsPerCell = runsPerCellField.value ?? DEFAULT_RUNS_PER_CELL;
+  // How many automatic retries each run a dispatch launches gets.
+  const retryLimitField = useRetryLimitField();
   const [gate, setGate] = useState<Gate>(DEFAULT_GATE);
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
@@ -127,6 +137,7 @@ export function LadderEditPage() {
           setRungs(existing.rungs.map(rungInput));
           setOuterAxis(existing.outerAxis);
           setInFlightLimit(existing.inFlightLimit ?? null);
+          retryLimitField.set(existing.retryCount);
         }
         setLoading(false);
       })
@@ -146,7 +157,7 @@ export function LadderEditPage() {
         .getLadderProgress?.(ladderId, token)
         .then(
           (board) =>
-            active && setDispatchRunning(board.dispatch?.status === "running"),
+            active && setDispatchRunning(dispatchLive(board.dispatch?.status)),
         )
         .catch(() => {
           /* optional; the note simply stays away */
@@ -164,8 +175,15 @@ export function LadderEditPage() {
     return () => {
       active = false;
     };
-    // `runsPerCellField.set` is referentially stable (see components/NumberField).
-  }, [backend, token, editing, ladderId, runsPerCellField.set]);
+    // Both fields' `set` are referentially stable (see components/NumberField).
+  }, [
+    backend,
+    token,
+    editing,
+    ladderId,
+    runsPerCellField.set,
+    retryLimitField.set,
+  ]);
 
   // Which rungs of the climb a ladder cannot climb at all. Known only once each rung's
   // version has resolved; one the backend does not hold is allowed, as the backend
@@ -194,6 +212,9 @@ export function LadderEditPage() {
     // A ladder with no run target has no climb to measure, so an emptied or
     // out-of-range field refuses the save rather than being corrected in place.
     runsPerCellField.valid &&
+    // The backend would clamp a retry limit out of range; the save is refused
+    // instead, so what is saved is what the field says.
+    retryLimitField.valid &&
     // The backend refuses a rung that is not validator-rated, so the save is refused
     // here first, with the rung marked in the climb above.
     unclimbable === 0;
@@ -215,6 +236,7 @@ export function LadderEditPage() {
         // default", a bound of 0 means "launch nothing", and no limit means "launch
         // every rung as soon as it is reached".
         ...(inFlightLimit === null ? {} : { inFlightLimit }),
+        retryCount: retryLimitField.value ?? DEFAULT_RETRY_LIMIT,
       };
       if (editing && ladderId && backend?.updateLadder) {
         await backend.updateLadder(ladderId, input, token);
@@ -327,6 +349,26 @@ export function LadderEditPage() {
             onChange={setInFlightLimit}
             subject="ladder"
           />
+          <SettingRow
+            label={RETRY_LIMIT_LABEL}
+            description={RETRY_LIMIT_DESCRIPTION}
+            help={retryLimitHelp("ladder")}
+            modified={retryLimitField.raw !== String(DEFAULT_RETRY_LIMIT)}
+            onReset={() => {
+              retryLimitField.set(DEFAULT_RETRY_LIMIT);
+            }}
+          >
+            {(id) => (
+              <NumberField
+                id={id}
+                wrapperClassName={styles.settingNumber}
+                showProblem={false}
+                {...retryLimitField.bounds}
+                value={retryLimitField.raw}
+                onChange={retryLimitField.setRaw}
+              />
+            )}
+          </SettingRow>
           {!editing && (
             <p className={styles.empty}>
               Saving launches nothing. Open the ladder and press Run ladder when
@@ -375,6 +417,11 @@ export function LadderEditPage() {
           {runsPerCellField.message && (
             <p className={`${exec.notice} ${exec.warn}`}>
               {runsPerCellField.message}
+            </p>
+          )}
+          {retryLimitField.message && (
+            <p className={[exec.notice, exec.warn].join(" ")}>
+              {retryLimitField.message}
             </p>
           )}
           {unclimbable > 0 && (

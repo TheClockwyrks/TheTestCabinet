@@ -17,6 +17,7 @@ import type {
   RungTally,
   SlotStatus,
 } from "@clockwyrks/run-record/ladders";
+import { dispatchBadgeClass, dispatchLive } from "./ladder-dispatch";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -47,9 +48,11 @@ import ladderStyles from "./Ladder.module.scss";
 // A ladder is a configuration that does nothing by itself. Run ladder starts a
 // **dispatch** of it as it stands at that moment: every climber starts on rung 1, the
 // validators rate every completed run, the gate reads those ratings, and the backend
-// launches each climber's next rung itself as runs finish. The dispatch owns its runs
-// and its standing until the next Run replaces it; the runs themselves stay in the run
-// list like any other. A climber failing a rung is the ladder's result for that model,
+// launches each climber's next rung itself as runs finish. A dispatch counts the runs
+// a rung already has, whoever launched them, and launches only what is missing, so a
+// Run over runs that already exist can finish having launched nothing. The dispatch
+// holds its standing until the next Run replaces it; the runs themselves stay in the
+// run list like any other. A climber failing a rung is the ladder's result for that model,
 // so nothing on this board changes a verdict, and the review queue is there only for
 // labelling runs after the fact.
 
@@ -70,11 +73,24 @@ export function dispatchStatusLabel(status: DispatchStatus | null): string {
       return "Not run yet";
     case "running":
       return "Running";
+    case "needsAttention": {
+      return "Needs attention";
+    }
     case "finished":
       return "Finished";
     case "stopped":
       return "Stopped";
   }
+}
+
+/** The Run control's hover text: what it starts, or why it is unavailable. */
+function runTitle(status: DispatchStatus | null): string {
+  if (status === "needsAttention") {
+    return "A dispatch is waiting on its blocked climbers. Unblock them, or stop it to run again.";
+  }
+  return status === "running"
+    ? "A dispatch is running. Stop it to run again."
+    : "Start a dispatch of this ladder as it is configured now: every climber starts on rung 1 and climbs on its own as its runs finish.";
 }
 
 /**
@@ -117,7 +133,7 @@ function blockedLabel(block: ClimberBlock | undefined, at: number): string {
     case "unlaunchable":
       return `Blocked at rung ${at}: cannot launch`;
     case "failing":
-      return `Blocked at rung ${at}: runs keep failing`;
+      return `Blocked at rung ${at}: retries used up`;
     case "unrated":
       return `Blocked at rung ${at}: ${block.runs} run${block.runs === 1 ? "" : "s"} unrated`;
     case undefined:
@@ -136,8 +152,10 @@ export function describeClimberBlock(block: ClimberBlock): string {
       return `This combination cannot be launched: ${block.reason}. Fix the combination, then retry this climber.`;
     case "failing":
       return (
-        `The last ${block.attempts} runs on this rung failed on infrastructure, so ` +
-        "the ladder stopped launching it. Fix the cause, then retry this climber."
+        "A run launched for this rung used up its automatic retries without a " +
+        `run that counts (${block.attempts} attempt${block.attempts === 1 ? "" : "s"}) ` +
+        "and was not launched again. Fix the cause, then retry this climber to " +
+        "launch it again."
       );
     case "unrated":
       return (
@@ -218,12 +236,26 @@ export function describeLadderStop(result: HaltResult): string {
   return `Stopped. Canceled ${jobs} ${scope}.`;
 }
 
+/**
+ * What a Run started. A dispatch counts the runs its rungs already have and launches
+ * only what is missing, so a Run can finish at once having launched nothing, and "it
+ * launched nothing" must not read as "it did nothing".
+ */
+function describeLadderRun(dispatch: LadderProgress["dispatch"]): string {
+  return dispatch?.status === "finished"
+    ? "Finished: the runs that already exist decided every rung, so nothing was " +
+        "launched. Raise the runs per rung to launch more."
+    : "Running: each climber launches the runs its rung is missing, up to the " +
+        "runs-in-flight limit, and climbs on its own as runs finish. Runs that " +
+        "already exist count.";
+}
+
 /** The fix each kind of block asks for, as the status note groups them. */
 const BLOCK_NOTES: Record<ClimberBlock["kind"], (n: number) => string> = {
   unlaunchable: (n) =>
     `${n} blocked climber${n === 1 ? "" : "s"} cannot be launched at all: fix the combination named on ${n === 1 ? "its card" : "each card"}, then retry.`,
   failing: (n) =>
-    `${blockedSubject(n)} on a rung whose runs keep failing on infrastructure: fix the cause, then retry ${n === 1 ? "it" : "each"}.`,
+    `${blockedSubject(n)} on a rung where a launch used up its automatic retries without a run that counts: fix the cause, then retry ${n === 1 ? "it" : "each"}.`,
   unrated: (n) =>
     `${blockedSubject(n)} on a rung whose runs carry no validator rating: re-push those runs.`,
 };
@@ -237,6 +269,11 @@ function blockedSubject(n: number): string {
 export const LADDER_FINISHED_NOTE = "Finished.";
 /** The note of a dispatch its owner stopped. */
 export const LADDER_STOPPED_NOTE = "Stopped.";
+
+/** What a dispatch that reads Needs attention says before its blocked climbers' reasons. */
+export const LADDER_ATTENTION_NOTE =
+  "Nothing is running: every climber has completed, failed or is blocked, and the " +
+  "blocked climbers are waiting on you.";
 
 /** The order the block reasons are listed in. */
 const BLOCK_ORDER: ClimberBlock["kind"][] = [
@@ -252,8 +289,9 @@ const BLOCK_ORDER: ClimberBlock["kind"][] = [
  * A finished dispatch says "Finished." and a stopped one "Stopped.": the figures say
  * how it went. A running one names the blocked climbers' reasons, each with its count
  * and its fix (the blocked total is already a summary figure), and a dispatch that
- * cannot climb at all because its runs-in-flight limit is zero. A dispatch that is
- * simply running, and a ladder never run, get no note.
+ * cannot climb at all because its runs-in-flight limit is zero. One that reads Needs
+ * attention says first that nothing is running and the blocked climbers are waiting
+ * for a retry. A dispatch that is simply running, and a ladder never run, get no note.
  */
 export function ladderStatusNote(progress: LadderProgress): string | null {
   const dispatch = progress.dispatch;
@@ -261,7 +299,8 @@ export function ladderStatusNote(progress: LadderProgress): string | null {
   if (dispatch.status === "finished") return LADDER_FINISHED_NOTE;
   if (dispatch.status === "stopped") return LADDER_STOPPED_NOTE;
 
-  const parts: string[] = [];
+  const parts: string[] =
+    dispatch.status === "needsAttention" ? [LADDER_ATTENTION_NOTE] : [];
   const counts = new Map<ClimberBlock["kind"], number>();
   for (const climber of progress.climbers) {
     const kind =
@@ -442,7 +481,7 @@ export function ClimberRow({
   // Why the climber is not moving and what fixes it — only while the dispatch can
   // still move it. A combination that cannot launch is named too when the block is
   // something else, because it will stop the climb the moment that clears.
-  const live = dispatch === "running";
+  const live = dispatchLive(dispatch);
   const block = live && climber.status === "blocked" ? climber.blocked : null;
   const reasons: string[] = [];
   if (block) reasons.push(describeClimberBlock(block));
@@ -589,9 +628,9 @@ function ConfiguredRungs({ rungs }: { rungs: LadderRung[] }) {
 // the runs left to label. Console-only; gated on a signed-in account, because a ladder
 // belongs to one.
 //
-// Opening this page is a read and only a read. A dispatch launches its own runs, in
-// the backend: when Run is pressed, when a climber is retried, and whenever one of its
-// runs finishes. None of them is a review: the validators rate every completed run,
+// Opening this page is a read and only a read. A dispatch launches the runs its rungs
+// are missing, in the backend: when Run is pressed, when a climber is retried, and
+// whenever a run of one of its rungs finishes. None of them is a review: the validators rate every completed run,
 // and that rating is all the gate reads.
 export function LadderPage() {
   const { ladderId = "" } = useParams();
@@ -690,7 +729,9 @@ export function LadderPage() {
   }, [inFlightKey, refresh]);
 
   const dispatch = progress?.dispatch ?? null;
-  const running = dispatch?.status === "running";
+  // A dispatch that reads Needs attention is still the running one: Run stays
+  // unavailable, and Stop and a climber's Retry stay available.
+  const running = dispatchLive(dispatch?.status);
 
   // Start a dispatch of the configuration as it stands now. Run again replaces the
   // last dispatch's standing on this page (its runs stay in the run list), so that is
@@ -704,7 +745,8 @@ export function LadderPage() {
         message:
           "Start a new dispatch of this ladder as it is configured now? Every climber " +
           "starts again at rung 1, and this page shows the new dispatch instead of the " +
-          "last one. The last dispatch's runs stay in the run list.",
+          "last one. Runs that already exist count toward each rung, so only the " +
+          "runs a rung is missing are launched.",
         confirmLabel: "Run ladder",
       }))
     ) {
@@ -715,10 +757,7 @@ export function LadderPage() {
     try {
       const board = await backend.runLadder(ladderId, token);
       setProgress(board);
-      setNote(
-        "Running: rung 1 is launching for every climber, up to the runs-in-flight limit. " +
-          "Each climber climbs on its own as its runs finish.",
-      );
+      setNote(describeLadderRun(board.dispatch));
       const q = await backend.getLadderQueue?.(ladderId, token);
       if (q) setQueue(q);
     } catch (e) {
@@ -739,7 +778,7 @@ export function LadderPage() {
         !(await confirm({
           title: "Stop and cancel running",
           message:
-            "Stop this dispatch and cancel every run it launched, runs already executing " +
+            "Stop this dispatch and cancel every run this ladder launched, runs already executing " +
             "included? Their work so far is lost and their cost is already spent. Use " +
             "“Stop” to cancel only what has not started.",
           confirmLabel: "Stop and cancel running",
@@ -766,9 +805,9 @@ export function LadderPage() {
     [backend, token, ladderId, refresh, confirm],
   );
 
-  // Retry a climber blocked on runs that kept failing or on a combination that could
-  // not launch, once its owner has fixed the cause: the backend forgets those failures
-  // and relaunches that climber's rung.
+  // Retry a climber blocked on a run that used up its automatic retries or on a
+  // combination that could not launch, once its owner has fixed the cause: the backend
+  // forgets that failure and relaunches that climber's rung.
   const retry = useCallback(
     async (climber: LadderClimber) => {
       if (!backend?.retryLadderClimber || !token) return;
@@ -818,20 +857,18 @@ export function LadderPage() {
   return (
     <PageLayout>
       <header className={styles.detailHeader}>
-        <div className={styles.detailTitleRow}>
+        <div className={[styles.detailTitleRow, styles.dashTitleRow].join(" ")}>
           <BackChevron to={routes.accountLadders()} label="All ladders" />
-          <h1 className={styles.detailTitle}>{ladder?.name ?? ladderId}</h1>
+          <h1 className={[styles.detailTitle, styles.dashTitle].join(" ")}>
+            {ladder?.name ?? ladderId}
+          </h1>
           {!loading && progress && (
             <span
-              className={`${ladderStyles.cardBadge} ${ladderStyles.detailBadge} ${
-                running
-                  ? ladderStyles.badgeRunning
-                  : dispatch?.status === "finished"
-                    ? ladderStyles.badgeFinished
-                    : dispatch?.status === "stopped"
-                      ? ladderStyles.badgeStopped
-                      : ladderStyles.badgeIdle
-              }`}
+              className={[
+                ladderStyles.cardBadge,
+                ladderStyles.detailBadge,
+                dispatchBadgeClass(dispatch?.status ?? null),
+              ].join(" ")}
             >
               {badge}
             </span>
@@ -917,17 +954,21 @@ export function LadderPage() {
           <div className={styles.controls}>
             <span className={styles.controlOrder}>
               Climbs in this order: <strong>{ladderAxisLabel(axis)}</strong>
+              {dispatch && (
+                <>
+                  {" · "}
+                  <span title="The retry limit this dispatch took when it started: how many times each run it launches is retried automatically. An edit to the ladder applies to the next Run.">
+                    Retry limit: <strong>{dispatch.retryCount}</strong>
+                  </span>
+                </>
+              )}
             </span>
             <span className={`${styles.controlActions} ${styles.controlEnd}`}>
               <button
                 type="button"
                 className={exec.primary}
                 disabled={busy || running || !backend?.runLadder}
-                title={
-                  running
-                    ? "A dispatch is running. Stop it to run again."
-                    : "Start a dispatch of this ladder as it is configured now: every climber starts on rung 1 and climbs on its own as its runs finish."
-                }
+                title={runTitle(dispatch?.status ?? null)}
                 onClick={() => void run()}
               >
                 ▶ Run ladder
@@ -945,7 +986,7 @@ export function LadderPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !running || !backend?.stopLadder}
-                title="End this dispatch and cancel every run it launched, runs already executing included."
+                title="End this dispatch and cancel every run this ladder launched, runs already executing included."
                 onClick={() => void stop(true)}
               >
                 Stop and cancel running

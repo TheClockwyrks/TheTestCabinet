@@ -65,6 +65,9 @@ pub struct Model {
     /// `coverage_settings.in_flight_limit`.
     #[sea_orm(nullable)]
     pub in_flight_limit: Option<i32>,
+    /// How many automatic retries each run the plan launches gets: the `retryCount` its
+    /// launch passes put on every launch request. `1` unless the owner chose otherwise.
+    pub retry_count: i32,
     /// RFC 3339 of when a launch pass claimed this plan, or `NULL` when none is running.
     ///
     /// A pass is started by the owner (All missing, a cell Retry) and by every finished

@@ -490,13 +490,13 @@ describe("RunsPage global stop controls", () => {
     const header = comment.closest("header");
     expect(header).not.toBeNull();
 
-    // And that row is the header's own, a sibling of the row the New-run button is on
-    // rather than a column of it. A header laid out as one column of somebody else's
+    // And that row is the header's own, a sibling of the cluster the New-run button is
+    // in rather than a column of it. A header laid out as one column of somebody else's
     // row gives its comment line only that column's width, which is not enough for the
     // three buttons — they wrap onto a row of their own, which is the whole thing
     // moving them here was meant to avoid.
     const newRun = screen.getByRole("link", { name: "+ New run" });
-    expect(newRun.parentElement?.parentElement?.parentElement).toBe(header);
+    expect(newRun.parentElement?.parentElement).toBe(header);
     expect(comment.parentElement?.parentElement).toBe(header);
   });
 

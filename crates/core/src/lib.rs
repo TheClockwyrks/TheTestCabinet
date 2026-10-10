@@ -161,7 +161,8 @@ pub use playable::{
 pub use post_run::{PostRunContext, PostRunReport, PostRunStage};
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{
-    MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, ModelListing, OpenRouterPrices, ProviderRoute,
+    ListPriceResolution, ListPriceStep, ListRate, MODALITY_IMAGE, ModelDetails, ModelLaunchFacts,
+    ModelListing, ModelsListingPrices, OpenRouterPrices, ProviderRoute,
 };
 pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
 pub use publish::{

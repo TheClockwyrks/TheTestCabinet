@@ -33,6 +33,6 @@ the run participates in token comparisons.
 Claude Code reports the exact charge for a run as `total_cost_usd` on its
 terminal `result` event. That figure is recorded as the run's [actual
 cost](/components/core/metrics/#harness-reported-cost). The comparable cost is
-computed from the model's curated list price as for every harness; the provider
+computed from the model's list price as for every harness; the provider
 native model id a Claude Code run reports is mapped to its catalog entry through
 the model's aliases.

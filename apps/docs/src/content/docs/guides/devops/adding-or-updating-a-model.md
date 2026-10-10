@@ -13,12 +13,12 @@ the same task reduced to its steps.
 
 ## Where the catalog lives
 
-The catalog is owned by the backend. Model records, their aliases, and their
-billed-rate history live in the backend store as the `model`, `model_alias`, and
-`model_price` tables. The backend serves the catalog at `GET /models` and bakes
-it into the public R2 snapshot as `models.json`, pointed to by the snapshot
-`index.json`'s `modelsKey`, so the static gallery renders model metadata and
-rates without a backend round-trip.
+The catalog is owned by the backend. Model records, their aliases, and the
+catalog facts observed about them live in the backend store as the `model`,
+`model_alias`, and `model_price` tables. The backend serves the catalog at
+`GET /models` and bakes it into the public R2 snapshot as `models.json`, pointed
+to by the snapshot `index.json`'s `modelsKey`, so the static gallery renders
+model metadata and list prices without a backend round-trip.
 
 Curating a model is an in-app edit that takes effect immediately, with no
 recompile and no release.
@@ -54,21 +54,20 @@ A model record has these fields:
 - Provider logo, supplied as an [svgl.app](https://svgl.app) `https://` URL. The
   backend fetches and sanitizes the SVG server-side.
 - Description, markdown prose shown on the model's page.
-- OpenRouter slug, the id OpenRouter lists the model under, used to observe the
-  model's billed rate. It is separate from the aliases, so a model can carry it
-  without ever being run through an OpenRouter harness.
-- List price: the model developer's published uncached input, cached input, and
-  output rates per Mtok, with the date the figures were taken. An operator
-  enters them from the developer's own pricing page, and they are what a run's
-  comparable cost is priced from. Fill from OpenRouter seeds the three rates
-  from the official endpoint's listing, for confirmation or correction against
-  the pricing page. The three rates are saved together with their date or not
-  at all, and a blank set on an existing model keeps the stored one.
+- OpenRouter slug, the id OpenRouter lists the model under, used to read the
+  model's list price and catalog facts. It is separate from the aliases, so a
+  model can carry it without ever being run through an OpenRouter harness.
+- List price: the uncached input, cached input, and output rates per Mtok a
+  run's comparable cost is priced from, with the date the figures were taken.
+  The backend keeps it current from OpenRouter (see
+  [List price](#list-price)), and Fill from OpenRouter seeds the three rates on
+  the form. The three rates are saved together with their date or not at all,
+  and a blank set on an existing model keeps the stored one.
 - Developer provider, the OpenRouter provider name of the model developer's own
   endpoint. Blank takes the provider whose `provider_name` on the endpoints
   listing matches the author segment of the model id, ignoring case and
   punctuation. Set it where the two differ (`qwen/…` served by `Alibaba`). Its
-  endpoint's rates are the billed rate the catalog records.
+  standard endpoint's rates are the first choice for the model's list price.
 - Quantization filter, on by default. Off accepts every endpoint at whatever
   level it declares, `unknown` included, for a model every provider serves at
   one precision nobody discloses: a closed model's providers declare none, so
@@ -124,10 +123,10 @@ looks the slug up in OpenRouter's catalog and fills in the display fields:
 - Description, as OpenRouter publishes it. OpenRouter truncates long blurbs
   itself, so what lands in the field is what it serves.
 
-The fill also seeds the three list-price rates from the official provider's
-endpoint in the model's endpoints listing, the same endpoint the developer provider
-follows. The figures are a seed: confirm or correct them against the developer's
-pricing page, and enter the date they were taken.
+The fill also seeds the three list-price rates by the
+[list price resolution](/components/core/metrics/#list-price-resolution), which
+tries the developer provider currently entered on the form first. Enter the
+date the figures were taken.
 
 When the id list is still untouched, the fill also claims the slug as the entry's
 first alias under Others (OpenRouter). A list you have already put an id into is
@@ -154,49 +153,72 @@ nothing.
 Either way, adding goes through the form and an explicit Save, and the display
 name is required.
 
-## Price history
+## List price
 
-A run's comparable cost is computed from the list price curated on the model's
-catalog entry, entered from the developer's pricing page (see
-[Metrics](/components/core/metrics/#cost)). An entry saved without a list price
-has one filled the first time a run binding it is enqueued: the official
-endpoint's rate on OpenRouter, dated that day. Confirm or correct a filled list
-price against the developer's pricing page. A launch naming a model the catalog
-has no entry for, or one OpenRouter lists no rate for, is refused at enqueue
-with the reason named.
+A run's comparable cost is computed from the list price on the model's catalog
+entry and from no other price (see [Metrics](/components/core/metrics/#cost)).
+The backend reads the list price from OpenRouter, taking the first of these
+that lists a complete rate:
 
-Beside the list price the backend retains a per-model history of the official
-endpoint's billed rate:
+1. The developer provider set on the entry.
+2. The provider named by the model id's author segment, `anthropic` for
+   `anthropic/claude-haiku-5.5`.
+3. The model's own price in OpenRouter's models listing (the `pricing` field of
+   its `/models` entry).
 
-- The backend observes the official endpoint's current billed rate when a run
-  completes, and again on a 24-hour periodic refresh.
+The first two steps read the provider's standard endpoint in the model's
+endpoints listing, and a Flex endpoint listed beside it is skipped.
+
+The third step's figure is the one OpenRouter's API reports for the model, which
+can differ from the "In / Out Price" on OpenRouter's web page for the model. It
+is a third party's rate. Where OpenRouter spells the developer differently from
+the model id's author segment, such as `qwen/…` served by `Alibaba` or
+`mistralai/…` by `Mistral`, set the developer provider to get the developer's
+own price.
+
+A developer provider you set always decides the price while its standard
+endpoint lists a complete rate. The 24-hour refresh and the Refresh button both
+re-read that provider's rate, and move to the later steps only when yours
+returns nothing.
+
+The backend refreshes the list price of every curated model shortly after it
+starts and every 24 hours after that. An entry saved without a list price also
+has one filled the first time a run binding it is enqueued. A launch naming a
+model the catalog has no entry for, or one OpenRouter yields no rate for, is
+refused at enqueue with the reason named.
+
+The Refresh button, beside Add model in the Models section, runs the same
+refresh on demand. The button is disabled while the refresh runs. When it finishes the
+model list reloads and the page reports how many models were updated, how many
+were confirmed unchanged, and how many OpenRouter had no rate for. A refresh
+that fails reports the error.
+
+A list price entered by hand on the form is saved as entered and stands until
+the next refresh resolves a rate for the model from OpenRouter. A model
+OpenRouter does not list keeps its hand-entered price through every refresh.
+Saving the form without changing the list price fields leaves the price, its
+date, and its source as they were.
+The model's Stats tab shows the list price with its date and source.
+
+A refresh changes the catalog entry only. Runs keep the cost they were scored
+at.
+
+## Catalog facts
+
+The backend records the model's context window, release date, input modalities,
+and developer provider as OpenRouter reports them, which makes the catalog the
+single store of those facts:
+
+- It observes them when a run completes, and again on the 24-hour periodic
+  task that refreshes list prices.
 - It records a first observation the moment a model first appears: when you save
-  it here with an OpenRouter slug, when a run that binds it is enqueued (on every
-  enqueue path — the run form, a gg launch, a plan or ladder launch pass, an automatic
-  retry), and at backend startup for every known model still missing one. The
-  startup pass is what prices a freshly seeded deployment's curated catalog
-  before its first run. All of this seeding is missing-only, so a model already
-  on record is left to the two paths above. A model on record with no developer
-  provider counts as missing.
-- Each observation carries the model's developer provider, read from the model's
-  endpoints listing beside the rate.
-- An observation is appended only when something changed: the billed rate, or one
-  of the catalog facts riding along on it. The stored history collapses
-  consecutive-equal rates, so an observation recorded for a fact change adds no
-  spurious rate step.
-- A `:free`-tagged OpenRouter run observes the model's base rate. The free
-  variant is a routing tag rather than a free run.
-
-The observed billed rate never rewrites the list price and never changes what a
-run is scored at. The model's Stats tab shows the latest list price and billed
-rate side by side with the difference, so a discount, a price change, or a
-listing error is visible on the model rather than silently in the runs.
-
-## Catalog facts recorded with each observation
-
-Each billed-rate observation carries the model's context window, release date,
-and input modalities as OpenRouter reported them at that moment, which makes the
-catalog the single store of those facts.
+  it here with an OpenRouter slug, when a run that binds it is enqueued, and at
+  backend startup for every known model still missing one. This seeding is
+  missing-only, so a model already on record is left to the two paths above. A
+  model on record with no developer provider counts as missing.
+- An observation is appended only when one of the facts changed.
+- A `:free`-tagged OpenRouter run observes the model's base listing. The free
+  variant is a routing tag.
 
 The context window is what a [gg](/gg/overview/) run's window-fullness accounting
 and [compaction](/gg/compaction/) trigger are measured against. When a gg run is
@@ -205,7 +227,7 @@ capability set binds and pushes the figures onto the launch, so gg keeps no mode
 table of its own.
 
 A model with no observation yet is seeded at enqueue by the launch-time
-billed-rate fetch. Should that not answer, the launch falls back to a per-model
+fetch. Should that not answer, the launch falls back to a per-model
 lookup for that one model. If neither can answer, the launch is rejected: gg
 assumes no default window, because a run measured against a guessed one reports
 the wrong thing while looking healthy. See

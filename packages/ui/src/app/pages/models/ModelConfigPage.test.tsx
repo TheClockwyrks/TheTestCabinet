@@ -35,15 +35,15 @@ const LISTING = {
   name: "Claude Sonnet 4.5",
   provider: "Anthropic",
   description: "A model for agents and coding workflows.",
-  // The official endpoint's current per-Mtok rates, which the fill seeds the
-  // list-price fields from.
+  // The model's list price per Mtok as the backend resolved it, which the fill
+  // seeds the list-price fields from.
   inputPerMtok: 3,
   cachedInputPerMtok: 0.3,
   outputPerMtok: 15,
 };
 
-// A listing whose endpoint publishes no rates at all: the fill leaves the
-// list-price block to the operator.
+// A listing OpenRouter yields no rate for: the fill leaves the list-price block
+// to the operator.
 const UNPRICED_LISTING = {
   ...LISTING,
   inputPerMtok: null,
@@ -51,10 +51,14 @@ const UNPRICED_LISTING = {
   outputPerMtok: null,
 };
 
-function galleryValue(modelsStatus = "ready"): GalleryDataInput {
+function galleryValue(
+  modelsStatus = "ready",
+  modelsRefreshing?: boolean,
+): GalleryDataInput {
   return {
     models: [],
     modelsStatus,
+    modelsRefreshing,
     canExecute: true,
   } as unknown as GalleryDataInput;
 }
@@ -73,6 +77,7 @@ function backendValue(
       fetchModelLogo: vi.fn(),
       seedModelFromRun: vi.fn(),
       lookupOpenrouterModel,
+      refreshListPrices: vi.fn(),
     },
     identity: null,
     status: "ready",
@@ -130,7 +135,11 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     fireEvent.click(fillButton());
 
     await waitFor(() => expect(nameInput()).toHaveValue("Claude Sonnet 4.5"));
-    expect(lookup).toHaveBeenCalledWith("anthropic/claude-sonnet-4.5", "t");
+    expect(lookup).toHaveBeenCalledWith(
+      "anthropic/claude-sonnet-4.5",
+      "t",
+      null,
+    );
     expect(providerInput()).toHaveValue("Anthropic");
     expect(descriptionInput()).toHaveValue(LISTING.description);
   });
@@ -183,7 +192,11 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     fireEvent.click(fillButton());
 
     await settle();
-    expect(lookup).toHaveBeenCalledWith("anthropic/claude-sonnet-4.5", "t");
+    expect(lookup).toHaveBeenCalledWith(
+      "anthropic/claude-sonnet-4.5",
+      "t",
+      null,
+    );
   });
 
   it("reports a slug OpenRouter does not list and changes nothing", async () => {
@@ -209,7 +222,7 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     await settle();
   });
 
-  it("seeds the list-price fields from the listing's official endpoint", async () => {
+  it("seeds the list-price fields from the listing's resolved rate", async () => {
     renderPage();
     typeSlug("anthropic/claude-sonnet-4.5");
     fireEvent.click(fillButton());
@@ -252,14 +265,28 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     expect(asOfInput()).toHaveValue("2026-07-01");
   });
 
-  it("leaves the list-price block blank when the endpoint lists no rates", async () => {
+  // The developer provider typed on the form decides whose rate the fill reads,
+  // exactly as it decides the rate a refresh writes once the entry is saved.
+  it("passes the form's developer provider to the lookup", async () => {
+    const lookup = renderPage();
+    typeSlug("qwen/qwen3-coder");
+    fireEvent.change(screen.getByLabelText("Developer provider"), {
+      target: { value: "  Alibaba " },
+    });
+    fireEvent.click(fillButton());
+
+    await waitFor(() => expect(inputPriceInput()).toHaveValue("3"));
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("qwen/qwen3-coder", "t", "Alibaba");
+  });
+
+  it("leaves the list-price block blank when OpenRouter yields no rate", async () => {
     renderPage(vi.fn().mockResolvedValue(UNPRICED_LISTING));
     typeSlug("anthropic/claude-sonnet-4.5");
     fireEvent.click(fillButton());
 
     await waitFor(() => expect(nameInput()).toHaveValue("Claude Sonnet 4.5"));
-    // An unlisted figure seeds nothing: the operator enters the developer's
-    // pricing page's figures by hand.
+    // No rate seeds nothing: the operator may enter the figures by hand.
     expect(inputPriceInput()).toHaveValue("");
     expect(cachedPriceInput()).toHaveValue("");
     expect(outputPriceInput()).toHaveValue("");
@@ -390,10 +417,12 @@ describe("ModelConfigPage's save failure", () => {
 // model" invites the operator to go and create a duplicate of a model the
 // cabinet already holds.
 describe("ModelConfigPage when the edited model does not resolve", () => {
-  function renderEdit(modelsStatus: string) {
+  function renderEdit(modelsStatus: string, modelsRefreshing?: boolean) {
     render(
       <MemoryRouter initialEntries={["/models/claude/edit"]}>
-        <GalleryDataProvider value={galleryValue(modelsStatus)}>
+        <GalleryDataProvider
+          value={galleryValue(modelsStatus, modelsRefreshing)}
+        >
           <BackendProvider value={backendValue(vi.fn(), vi.fn())}>
             <Routes>
               <Route
@@ -424,6 +453,19 @@ describe("ModelConfigPage when the edited model does not resolve", () => {
   it("names the model unknown once the catalog has settled without it", () => {
     renderEdit("ready");
     expect(screen.getByText(/Unknown model: claude/)).toBeTruthy();
+  });
+
+  // A refresh leaves the catalog `ready` with the models it already held, so a
+  // model created a moment ago is missing from it until the re-read lands.
+  it("waits rather than calling the model unknown while a refresh is in flight", () => {
+    renderEdit("ready", true);
+    expect(screen.getByText("Resolving model…")).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown model/)).not.toBeInTheDocument();
+  });
+
+  it("names the model unknown once the refresh has settled without it", () => {
+    renderEdit("ready", false);
+    expect(screen.getByText(/Unknown model: claude/)).toBeInTheDocument();
   });
 });
 

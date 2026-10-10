@@ -547,7 +547,7 @@
           "type": ["number", "null"]
         },
         "comparable": {
-          "description": "The canonical figure shown on the site, stable across providers. It is\ncomputed from the run's token classes and the model's curated list\nprice, and from nothing else: a billed figure never feeds it, so two\nruns of one model at different billed rates still compare on the same\nbasis. `None` when the cost is unknown.",
+          "description": "The canonical figure shown on the site, stable across providers. It is\ncomputed from the run's token classes and the model's list price, and\nfrom nothing else: a billed figure never feeds it, so two runs of one\nmodel served at different prices still compare on the same basis. `None`\nwhen the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         }

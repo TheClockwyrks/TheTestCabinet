@@ -32,7 +32,7 @@ use test_cabinet_core::comparison_aggregate::aggregate_comparison;
 use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
 
 use crate::auth::AuthUser;
-use crate::db::{ArmRunStatus, NewPublishJob, StoredComparison};
+use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
@@ -225,7 +225,8 @@ pub struct ComparisonPublishOutcome {
 }
 
 /// `POST /comparisons/{id}/publish` — publish the comparison to the public site and
-/// enqueue a publish job for each of its arm runs that is publishable. Marks the
+/// enqueue a publish job for each of its arm runs that is publishable, unpublished
+/// and has no release already under way. Marks the
 /// comparison published (so the next snapshot folds it in) and best-effort enqueues
 /// the runs behind it; an un-publishable run (an infrastructure failure, or a
 /// review-less run with no automated verdicts) is skipped and reported rather than
@@ -265,19 +266,30 @@ pub async fn publish_comparison(
             if !seen.insert(run_id.clone()) {
                 continue;
             }
+            // A run that is already public has nothing left to release: most arm
+            // runs publish themselves on completion, and a second publish job would
+            // deploy a second, orphaned build of the same run.
+            if state
+                .db
+                .is_run_published(run_id)
+                .await
+                .map_err(ApiError::from)?
+            {
+                continue;
+            }
             match state.db.ensure_publishable_comparison_run(run_id).await {
                 Ok(()) => {
-                    state
+                    // The shared enqueue: a run whose release is already under way
+                    // (its own automatic publish, say) keeps that job and is not
+                    // counted as enqueued here.
+                    let outcome = state
                         .db
-                        .enqueue_publish_job(NewPublishJob {
-                            id: cuid2::create_id(),
-                            run_id: run_id.clone(),
-                            job_token: cuid2::create_id(),
-                            created_at: now()?,
-                        })
+                        .enqueue_publish_job_once(run_id, &now()?)
                         .await
                         .map_err(ApiError::from)?;
-                    enqueued.push(run_id.clone());
+                    if matches!(outcome, PublishEnqueue::Enqueued(_)) {
+                        enqueued.push(run_id.clone());
+                    }
                 }
                 Err(err) => skipped.push(SkippedRun {
                     run_id: run_id.clone(),

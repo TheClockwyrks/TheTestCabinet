@@ -244,3 +244,38 @@ a.row:hover .logo {
     text-align: left;
   }
 }
+
+// The Refresh button underlines its label on hover, as the links beside it in a
+// page header do (Coverage plans, on the runs list), and not while it is
+// disabled.
+.refreshButton {
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+}
+
+// The Refresh icon: kept at its own size beside the label, with a little
+// more air than the button's own gap gives a glyph that fills its box.
+.refreshIcon {
+  flex: none;
+  margin-inline-end: t.$space-xs;
+}
+
+// The icon while its request is in flight: one turn a second,
+// and still for a reader who asked for reduced motion (the disabled button
+// already says the request is running).
+.spin {
+  animation: refresh-spin 1s linear infinite;
+}
+
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}

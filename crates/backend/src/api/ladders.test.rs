@@ -56,6 +56,7 @@ fn input(rungs: Vec<LadderRungInput>) -> LadderInput {
         rungs,
         outer_axis: LadderAxis::Rung,
         in_flight_limit: None,
+        retry_count: None,
     }
 }
 
@@ -322,7 +323,7 @@ fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherw
     // Runs still to come: the ladder's to solve, and it keeps feeding this climber.
     let climbing = gate::tally(&[rated(Rating::Broken)], 5, 0, &gate_rule);
     assert_eq!(
-        undecided_standing(&climbing, model.unlaunchable.as_deref(), 0, false),
+        undecided_standing(&climbing, model.unlaunchable.as_deref(), 0, None),
         (ClimberStatus::Running, None)
     );
     // Every run completed and one carries no validator rating: nothing the ladder
@@ -337,35 +338,152 @@ fn an_undecided_rung_is_climbing_while_the_ladder_can_feed_it_and_blocked_otherw
         &gate_rule,
     );
     assert_eq!(
-        undecided_standing(&unrated, model.unlaunchable.as_deref(), 0, false),
+        undecided_standing(&unrated, model.unlaunchable.as_deref(), 0, None),
         (
             ClimberStatus::Blocked,
             Some(ClimberBlock::Unrated { runs: 1 })
         )
     );
-    // Runs still to come, but the cell keeps failing and nothing of it is in flight.
+    // Runs still to come, but its launch used up its two attempts and nothing of it is in
+    // flight.
     assert_eq!(
-        undecided_standing(&climbing, model.unlaunchable.as_deref(), 0, true),
+        undecided_standing(&climbing, model.unlaunchable.as_deref(), 0, Some(2)),
         (
             ClimberStatus::Blocked,
-            Some(ClimberBlock::Failing {
-                attempts: FAILING_STREAK as u32
-            })
+            Some(ClimberBlock::Failing { attempts: 2 })
         )
     );
     // With a run still in flight it is climbing: that run may yet complete.
     assert_eq!(
-        undecided_standing(&climbing, model.unlaunchable.as_deref(), 1, true),
+        undecided_standing(&climbing, model.unlaunchable.as_deref(), 1, Some(2)),
         (ClimberStatus::Running, None)
     );
     // A climber that cannot be launched is blocked for that reason first.
     let gone = gg_member("cfg-9", "opus", "haiku");
-    let (status, blocked) = undecided_standing(&climbing, gone.unlaunchable.as_deref(), 0, true);
+    let (status, blocked) = undecided_standing(&climbing, gone.unlaunchable.as_deref(), 0, Some(2));
     assert_eq!(status, ClimberStatus::Blocked);
     assert!(
         matches!(blocked, Some(ClimberBlock::Unlaunchable { ref reason }) if reason.contains("cfg-9")),
         "{blocked:?}"
     );
+}
+
+#[test]
+fn a_slot_is_blocked_by_a_job_that_used_up_its_retries_until_a_later_launch_replaces_it() {
+    let job =
+        |state: &str, counted: bool, retried: bool, attempt: u32, ended_at: &str| TerminalJob {
+            state: state.to_string(),
+            counted,
+            retried,
+            attempt,
+            ended_at: ended_at.to_string(),
+        };
+    let failed = |attempt: u32, ended_at: &str| job("failed", false, false, attempt, ended_at);
+    let at = |text: &str| {
+        Some(
+            time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc3339)
+                .unwrap(),
+        )
+    };
+    let launched_together = at("2026-10-02T00:00:00Z");
+    assert_eq!(slot_failing(&[], None, None), None);
+    // One failure with no retries left is enough, and it names its attempts.
+    assert_eq!(
+        slot_failing(
+            &[failed(0, "2026-10-02T00:00:01Z")],
+            None,
+            launched_together
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        slot_failing(
+            &[
+                failed(1, "2026-10-02T00:00:02Z"),
+                job("failed", false, true, 0, "2026-10-02T00:00:01Z"),
+            ],
+            None,
+            launched_together
+        ),
+        Some(2)
+    );
+    // A job that was retried, that was canceled, or whose run counts blocks nothing.
+    for other in [
+        job("failed", false, true, 0, "2026-10-02T00:00:02Z"),
+        job("canceled", false, false, 0, "2026-10-02T00:00:02Z"),
+        job("succeeded", true, false, 0, "2026-10-02T00:00:02Z"),
+    ] {
+        assert_eq!(
+            slot_failing(std::slice::from_ref(&other), None, launched_together),
+            None
+        );
+        // Ending after a failure it was launched together with does not replace the
+        // failure either.
+        assert_eq!(
+            slot_failing(
+                &[other, failed(0, "2026-10-02T00:00:01Z")],
+                None,
+                launched_together
+            ),
+            Some(1)
+        );
+    }
+    // A launch created after the failure ended replaces it. One created at the instant
+    // it ended does not.
+    let terminal = [failed(0, "2026-10-02T00:00:01Z")];
+    assert_eq!(
+        slot_failing(&terminal, None, at("2026-10-02T00:00:01.000000001Z")),
+        None
+    );
+    assert_eq!(
+        slot_failing(&terminal, None, at("2026-10-02T00:00:01Z")),
+        Some(1)
+    );
+    // Of two failures, the one that ended after the newest launch was created blocks, and
+    // the attempts are those of the most recently ended one that does.
+    let terminal = [
+        failed(2, "2026-10-02T00:00:05Z"),
+        failed(1, "2026-10-02T00:00:04Z"),
+        failed(0, "2026-10-02T00:00:01Z"),
+    ];
+    assert_eq!(
+        slot_failing(&terminal, None, at("2026-10-02T00:00:03Z")),
+        Some(3)
+    );
+    // Only jobs that ended after the climber's retry are read.
+    let terminal = [failed(0, "2026-10-02T00:00:01Z")];
+    assert_eq!(
+        slot_failing(&terminal, Some("2026-10-02T00:00:01Z"), launched_together),
+        None
+    );
+    assert_eq!(
+        slot_failing(&terminal, Some("2026-10-02T00:00:00Z"), launched_together),
+        Some(1)
+    );
+}
+
+#[test]
+fn a_snapshot_taken_before_the_retry_limit_reads_one_retry() {
+    let snapshot: DispatchSnapshot = serde_json::from_str(
+        r#"{"rungs":[],"gate":{"floor":"scuffed","threshold":{"kind":"count","runs":1}},
+            "outerAxis":"rung","inFlightLimit":{"kind":"unbounded"},"runsPerCell":2}"#,
+    )
+    .unwrap();
+    assert_eq!(snapshot.retry_count, 1);
+}
+
+#[test]
+fn a_stored_dispatch_status_never_reads_as_needing_attention() {
+    for (token, status) in [
+        ("running", DispatchStatus::Running),
+        ("finished", DispatchStatus::Finished),
+        ("stopped", DispatchStatus::Stopped),
+        ("needsAttention", DispatchStatus::Stopped),
+    ] {
+        assert_eq!(DispatchStatus::parse(token), status);
+    }
+    // It is stored as the running dispatch it is.
+    assert_eq!(DispatchStatus::NeedsAttention.as_str(), "running");
 }
 
 #[test]
@@ -935,7 +1053,7 @@ fn evidence(runs: &[Rating], in_flight: u32, recorded: Option<LadderOutcomeKind>
     SlotEvidence {
         runs: runs.iter().map(|rating| rated(*rating)).collect(),
         in_flight,
-        failing: false,
+        failing: None,
         recorded,
     }
 }

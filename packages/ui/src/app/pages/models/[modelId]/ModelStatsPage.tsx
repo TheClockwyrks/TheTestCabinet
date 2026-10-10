@@ -27,9 +27,8 @@ import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
 import styles from "./ModelStatsPage.module.scss";
 
 // The Stats tab (`/models/:modelId/stats`): the model's quantitative facts from
-// the catalog — its curated list price beside the observed billed rate of its
-// official endpoint, and the context window and release date resolved from
-// OpenRouter. Figures that could not be resolved show a muted dash rather than
+// the catalog — its list price, and the context window and release date
+// resolved from OpenRouter. Figures that could not be resolved show a muted dash rather than
 // being hidden, so the layout stays stable across models.
 export function ModelStatsPage() {
   return (
@@ -173,12 +172,14 @@ function StatsContent({ model }: { model: ModelSummary }) {
         </section>
       )}
 
-      {/* List price: the developer's published figures the comparable cost is
-          computed from, per Mtok, with the date they were taken and where they
-          came from. A set filled from OpenRouter at enqueue is provisional until
-          the operator confirms it against the developer's pricing page, which the
-          source line says. A model without one has it filled at the first
-          enqueue, which the empty state names. */}
+      {/* List price: the only price a model has and what the comparable cost is
+          computed from, per Mtok, with the date the figures were taken and where
+          they came from. The backend re-reads every model's rate from OpenRouter
+          daily and on the Models page's Refresh, so the usual source is
+          OpenRouter and the date says how fresh the figure is; a set entered by
+          hand stands until a refresh resolves a rate for the model. A model
+          without one has had none entered and none resolved, which the empty
+          state says. */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>List price</h2>
         <div className={styles.grid}>
@@ -203,11 +204,7 @@ function StatsContent({ model }: { model: ModelSummary }) {
                 />
               )}
               {model.listPriceSource === "openrouter" ? (
-                <Stat
-                  label="Source — confirm against the developer's pricing page"
-                  value="Filled from OpenRouter"
-                  muted
-                />
+                <Stat label="Source" value="Read from OpenRouter" />
               ) : (
                 model.listPriceSource === "hand" && (
                   <Stat label="Source" value="Entered by hand" />
@@ -216,52 +213,10 @@ function StatsContent({ model }: { model: ModelSummary }) {
             </>
           ) : (
             <Stat
-              label="No list price — filled from OpenRouter when a run is first enqueued"
+              label="No list price — OpenRouter has yielded no rate for this model"
               value="—"
               muted
             />
-          )}
-        </div>
-      </section>
-
-      {/* Billed rate: the official endpoint's observed current price, per Mtok.
-          Where the list price is known too, each class carries the difference as
-          a signed percentage of the list figure — the gap that says the endpoint
-          is discounting, surcharging, or has drifted from what a run is priced
-          at. Within half a percent the two read as the same price and the delta
-          is muted. */}
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Billed rate</h2>
-        <div className={styles.grid}>
-          {model.prices ? (
-            <>
-              <Stat
-                label="Uncached input / Mtok"
-                value={formatUsd(perMillion(model.prices.uncachedInput))}
-                delta={priceDelta(
-                  model.prices.uncachedInput,
-                  model.listPrice?.uncachedInput ?? null,
-                )}
-              />
-              <Stat
-                label="Cached input / Mtok"
-                value={formatUsd(perMillion(model.prices.cachedInput))}
-                delta={priceDelta(
-                  model.prices.cachedInput,
-                  model.listPrice?.cachedInput ?? null,
-                )}
-              />
-              <Stat
-                label="Output / Mtok"
-                value={formatUsd(perMillion(model.prices.output))}
-                delta={priceDelta(
-                  model.prices.output,
-                  model.listPrice?.output ?? null,
-                )}
-              />
-            </>
-          ) : (
-            <Stat label="No billed rate observed yet" value="—" muted />
           )}
         </div>
       </section>
@@ -580,44 +535,15 @@ interface StatProps {
   value: string;
   /** Render the value muted, without the accent glow (used for missing data). */
   muted?: boolean;
-  /** The billed-vs-list difference under the value, signed and muted when the
-   * two are the same price for practical purposes. Absent when there is no
-   * list figure to compare against. */
-  delta?: { text: string; muted: boolean };
 }
 
-function Stat({ label, value, muted = false, delta }: StatProps) {
+function Stat({ label, value, muted = false }: StatProps) {
   return (
     <div className={styles.stat}>
       <span className={styles.statLabel}>{label}</span>
       <span className={`${styles.statValue}${muted ? ` ${styles.muted}` : ""}`}>
         {value}
       </span>
-      {delta && (
-        <span
-          className={`${styles.statDelta}${delta.muted ? ` ${styles.muted}` : ""}`}
-        >
-          {delta.text}
-        </span>
-      )}
     </div>
   );
-}
-
-// The billed rate's difference from the list price for one price class, as a
-// signed percentage of the list figure ("+12.0% vs list") — the drift between
-// what a run is priced at and what the endpoint currently charges. Null when
-// either side is unknown; a zero list figure has no meaningful percentage. Half
-// a percent either way is the same price for practical purposes and mutes.
-function priceDelta(
-  billed: number | null,
-  list: number | null,
-): { text: string; muted: boolean } | undefined {
-  if (billed === null || list === null || list === 0) return undefined;
-  const fraction = (billed - list) / list;
-  const percent = fraction * 100;
-  return {
-    text: `${percent >= 0 ? "+" : "−"}${Math.abs(percent).toFixed(1)}% vs list`,
-    muted: Math.abs(percent) < 0.5,
-  };
 }

@@ -45,5 +45,5 @@ same name. See [Authentication](/harnesses/kilo/authentication/).
 
 The leading `openrouter/` is stripped before the catalog lookup, so
 `openrouter/anthropic/claude-opus-4.8` is priced as `anthropic/claude-opus-4.8`.
-The comparable cost is computed from the model's curated list price. See
+The comparable cost is computed from the model's list price. See
 [Metrics](/harnesses/kilo/metrics/).

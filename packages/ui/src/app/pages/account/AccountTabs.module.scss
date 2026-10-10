@@ -6,6 +6,9 @@
 // The account section's tab bar, mirroring the runs / settings tab strips: a row
 // of underlined pills riding a hairline baseline, the active one glowing in the
 // accent. Sits between the section header and the page body.
+// The width of the edge fade on the swipeable strip, matching `swipe-fade`'s.
+$fade: 1.75rem;
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -14,7 +17,8 @@
   border-bottom: t.$border-hairline solid t.$color-border;
 
   // On narrow screens the tabs read as a single swipeable strip rather than
-  // wrapping, matching the other tab strips.
+  // wrapping, matching the other tab strips. Seven tabs wrapped would be three
+  // rows on a phone, pushing the page's own content below the fold.
   @include bp.below(t.$bp-md) {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -27,7 +31,38 @@
       display: none;
     }
 
-    @include s.swipe-fade;
+    // Fade whichever edge has tabs scrolled past it, so the strip reads as
+    // swipeable in that direction. The trailing fade is the other strips'
+    // `swipe-fade` and is the resting state, since the row starts at its leading
+    // edge. Unlike theirs it is two-sided and follows the scroll position
+    // (AccountTabs marks the edges): this strip is the one long enough that its
+    // active tab is routinely scrolled to, which leaves tabs hidden on the
+    // leading side and, at the end of the row, would leave the last tab dimmed
+    // by a fade with nothing behind it.
+    --fade-start: 0rem;
+    --fade-end: 0rem;
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--fade-start),
+      #000 calc(100% - var(--fade-end)),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--fade-start),
+      #000 calc(100% - var(--fade-end)),
+      transparent 100%
+    );
+
+    &[data-more-start] {
+      --fade-start: #{$fade};
+    }
+
+    &[data-more-end] {
+      --fade-end: #{$fade};
+    }
   }
 }
 

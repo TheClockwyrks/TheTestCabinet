@@ -8,14 +8,22 @@ export interface ModelsState {
   /** The catalog's load state, so the UI can tell loading and an unreachable
    * backend apart from a genuinely empty catalog. */
   status: CatalogStatus;
+  /** Whether a catalog read is in flight that has yet to settle. A model the
+   * loaded catalog does not hold is unresolved, not unknown, while this is
+   * true; one it does hold renders regardless. */
+  refreshing: boolean;
 }
 
 // The Models section's data, resolved from the gallery context the host injects:
 // the console fetches it from the backend (`GET /models`), the static site reads
 // it from the build-time snapshot. A thin selector, mirroring `useTestCases`.
 export function useModels(): ModelsState {
-  const { models, modelsStatus } = useGalleryData();
-  return { models, status: modelsStatus };
+  const { models, modelsStatus, modelsRefreshing } = useGalleryData();
+  return {
+    models,
+    status: modelsStatus,
+    refreshing: modelsRefreshing ?? false,
+  };
 }
 
 /**

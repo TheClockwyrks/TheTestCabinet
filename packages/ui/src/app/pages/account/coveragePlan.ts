@@ -102,8 +102,15 @@ function groupKey(cell: CoverageCell, axis: CoverageAxis): string {
  * A cell the matrix marked [unlaunchable](CoverageCell.unlaunchable) is skipped by
  * both. What is broken there is the member, not the trigger, so launching it by hand
  * would fail in exactly the way a launch pass already reported.
+ *
+ * `retryCount` is the plan's retry limit, put on every item so a run launched by hand
+ * is retried as often as one a launch pass enqueues. Omitted, the backend applies its
+ * default.
  */
-export function itemsForCells(cells: CoverageCell[]): LaunchItem[] {
+export function itemsForCells(
+  cells: CoverageCell[],
+  retryCount?: number,
+): LaunchItem[] {
   return cells
     .filter((cell) => !isGgCombo(cell) && !cell.unlaunchable)
     .flatMap((cell) =>
@@ -127,6 +134,7 @@ export function itemsForCells(cells: CoverageCell[]): LaunchItem[] {
           // server-side (`launch_body`), and the two must agree on the whole pin.
           engine: caseEngine(cell),
           maxRuntimeOverride: null,
+          ...(retryCount !== undefined && { retryCount }),
         },
         track: {
           testCaseSlug: cell.slug,
@@ -226,6 +234,7 @@ export async function launchGgCells(
   token: string | null,
   track: (run: InProgressRun) => void,
   launches: GgCellLaunch[],
+  retryCount?: number,
 ): Promise<{ cell: CoverageCell; error: string }[]> {
   const failures: { cell: CoverageCell; error: string }[] = [];
   for (const { cell, capabilitySet } of launches) {
@@ -241,6 +250,8 @@ export async function launchGgCells(
           // a segment of the cell it counts against. No runtime override, because a
           // plan pins none and the case's own runtime applies.
           engine: caseEngine(cell),
+          // The plan's retry limit, as the harness cells beside it carry it.
+          ...(retryCount !== undefined && { retryCount }),
         },
         token ?? "",
       );
@@ -317,7 +328,7 @@ export interface MatrixGroup {
   pending: number;
   /** Completed runs the signed-in account has not reviewed. */
   unreviewed: number;
-  /** Cells blocked by repeated infrastructure failures, each offering Retry. */
+  /** Cells blocked on a run that used up its automatic retries, each offering Retry. */
   blocked: number;
   /** The completed segment's width, as a percentage. */
   donePct: number;
@@ -404,6 +415,17 @@ export function describeUnlaunchable(blocked: BlockedCell[]): string {
   const more = blocked.length > 1 ? " (and others)" : "";
   return ` ${cells} could not be launched: ${first.reason}${more}.`;
 }
+
+/** The status a filling plan shows while it waits on its owner. */
+export const PLAN_ATTENTION_LABEL = "Needs attention";
+
+/** What that status means, as the badge's hover text and the bar's. */
+export const PLAN_ATTENTION_TITLE =
+  "Nothing is running: the blocked cells are waiting for a retry.";
+
+/** What a filling plan that needs attention says on its control line. */
+export const PLAN_ATTENTION_NOTE =
+  "Needs attention: nothing is running, and the blocked cells are waiting for a retry. Retry them on the Tests tab, or Halt to stop filling.";
 
 /**
  * What a plan says when its runs-in-flight limit is 0: it launches nothing at all, so

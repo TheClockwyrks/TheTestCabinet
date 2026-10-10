@@ -47,17 +47,12 @@ export type { HarnessEvent };
 
 // --- Model catalog (served by the backend `GET /models`) ---
 
-/** A comparable per-token price triple, USD; each member null when unknown. */
+/** A per-token price triple, USD: a model's list price. Each member is null
+ * when unknown. */
 export interface ModelPrices {
   uncachedInput: number | null;
   cachedInput: number | null;
   output: number | null;
-}
-
-/** One observation in a model's price history. */
-export interface PriceObservation {
-  observedAt: string;
-  prices: ModelPrices;
 }
 
 /** One canonical model id a catalog entry claims, tagged with the harness family
@@ -70,13 +65,14 @@ export interface ModelAlias {
   harnessFamily: HarnessFamily;
 }
 
-/** One catalog entry: a curated model merged with its runs + price history, or a
- * model derived from runs alone (`curated: false`). Mirrors the backend `ModelOut`. */
-/** Where a model's list price came from: entered or confirmed by the operator
- * (`hand`), or filled from the official endpoint's OpenRouter rate at enqueue
- * (`openrouter`), for the operator to confirm against the developer's page. */
+/** Where a model's list price came from: read from OpenRouter (`openrouter`) by
+ * a refresh of every entry or at enqueue, or entered by an operator (`hand`),
+ * which stands until the next refresh resolves a rate for the model. */
 export type ListPriceSource = "hand" | "openrouter";
 
+/** One catalog entry: a curated model merged with its runs and its observed
+ * catalog facts, or a model derived from runs alone (`curated: false`). Mirrors
+ * the backend `ModelOut`. */
 export interface Model {
   slug: string;
   name: string;
@@ -94,20 +90,16 @@ export interface Model {
   /** The canonical model ids this entry claims, each tagged with the harness
    * family it is usable with. */
   aliases: ModelAlias[];
-  /** The billed rate: the latest observed per-token price of the model's
-   * official OpenRouter endpoint, refreshed by the backend. Null until the
-   * first observation. */
-  price: ModelPrices | null;
-  /** The curated developer list price (per-token USD, all-or-nothing) a run's
-   * comparable cost is computed from, or null while the model has none — the
-   * first launch naming such a model fills it from OpenRouter. */
+  /** The list price (per-token USD, all-or-nothing): the only price a model
+   * has, and what a run's comparable cost is computed from. Null while the
+   * model has none. */
   listPrice: ModelPrices | null;
-  /** The date (`YYYY-MM-DD`) the list-price figures were taken, or null. */
+  /** The date (`YYYY-MM-DD`) the list-price figures were taken: the day they
+   * were last read from OpenRouter, or the date entered with a hand-set price.
+   * Null while the model has no list price. */
   listPriceAsOf: string | null;
   /** Where the list price came from, or null while the model has none. */
   listPriceSource: ListPriceSource | null;
-  /** The observed price history, ascending, consecutive-equal deduped. */
-  priceHistory: PriceObservation[];
   /** The latest observed context window in tokens, or null. */
   contextLength: number | null;
   /** The developer provider: the OpenRouter provider name of the model
@@ -168,14 +160,15 @@ export interface ModelInput {
   bannedProviders?: string[];
   /** The providers accepted despite declaring `unknown` quantization. */
   unknownQuantizationProviders?: string[];
-  /** The developer's published uncached-input price per Mtok, or null. Per
-   * Mtok because that is the unit a developer pricing page publishes; the
-   * backend divides down to per-token. All three list-price fields are present
-   * and non-negative, or all three null. */
+  /** The list price of uncached input per Mtok, or null. Per Mtok because
+   * that is the unit a pricing page publishes; the backend divides down to
+   * per-token. All three list-price fields are present and non-negative, or
+   * all three null. A set written here is sourced `hand` and stands until the
+   * next refresh resolves a rate for the model from OpenRouter. */
   listPriceInputPerMtok: number | null;
-  /** The developer's published cached-input price per Mtok, or null. */
+  /** The list price of cached input per Mtok, or null. */
   listPriceCachedInputPerMtok: number | null;
-  /** The developer's published output price per Mtok, or null. */
+  /** The list price of output per Mtok, or null. */
   listPriceOutputPerMtok: number | null;
   /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
   listPriceAsOf: string | null;
@@ -201,20 +194,38 @@ export interface LogoFetchResult {
 
 /** What OpenRouter publishes about a model (`GET /models/openrouter?slug=`), for
  * the config form to fill itself in with. The display fields are the curated
- * ones the form edits; the prices seed its list-price fields for the operator
- * to confirm. The context window and the modalities are recorded by the backend
- * itself and are never form state. */
+ * ones the form edits; the prices seed its list-price fields. They are resolved
+ * by the flow every list price read from OpenRouter is (the hand-set developer
+ * provider's standard endpoint, else the model id's author provider's, else the
+ * model's own price in OpenRouter's models listing, the `pricing` field of its
+ * `/models` entry), so the three are all present or all null. The context
+ * window and the modalities are recorded by the backend itself and are never
+ * form state. */
 export interface ModelListing {
   name: string;
   provider: string;
   description: string | null;
-  /** The official endpoint's current uncached-input price per Mtok, for seeding
-   * the form's list-price field; null when OpenRouter does not list it. */
+  /** The list price of uncached input per Mtok, for seeding the form's
+   * list-price field; null when OpenRouter yields no rate for the model. */
   inputPerMtok: number | null;
-  /** The official endpoint's current cached-input price per Mtok, or null. */
+  /** The list price of cached input per Mtok, or null. */
   cachedInputPerMtok: number | null;
-  /** The official endpoint's current output price per Mtok, or null. */
+  /** The list price of output per Mtok, or null. */
   outputPerMtok: number | null;
+}
+
+/** What a refresh of every catalog entry's list price did
+ * (`POST /models/list-prices/refresh`), counted in entries. Mirrors the backend
+ * `ListPriceRefreshOut`. */
+export interface ListPriceRefresh {
+  /** Every curated catalog entry: the sum of the other three. */
+  total: number;
+  /** The entries whose rate changed, or that had no list price and now do. */
+  updated: number;
+  /** The entries whose stored rate OpenRouter confirmed; their date was rewritten. */
+  unchanged: number;
+  /** The entries OpenRouter gave no rate for, which keep what they hold. */
+  unresolved: number;
 }
 
 // --- Model probes (responses-as-code readiness checks) ---
@@ -1211,8 +1222,9 @@ export interface LaunchConfig {
   engine?: string;
   maxRuntimeOverride: number | null;
   // How many times the backend automatically retries this run after a terminal
-  // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to
-  // accept the backend default of 1; a timeout or completed run is never retried.
+  // infrastructure failure, harness error, hang, or catastrophic (won't-load) build.
+  // Omit (undefined) to accept the backend default of 1; a timeout or completed run
+  // is never retried.
   retryCount?: number;
 }
 
