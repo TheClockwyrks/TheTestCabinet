@@ -239,12 +239,18 @@ stages:
                 cargo-home | v1 | "$(Agent.OS)" | rust-toolchain.toml
               path: $(ciCache)
 
+          # The version moves when the restored output stops matching what the
+          # build produces under the same names, so that a restore from an
+          # earlier lock would leave two builds side by side. v2: the contracts
+          # crates moved under contracts/, which gave them and every crate above
+          # them new artifact names; the v1 output plus the rebuild outgrew the
+          # disk the cache save needs.
           - task: Cache@2
             displayName: Restore the build output
             inputs:
-              key: 'cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
+              key: 'cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
               restoreKeys: |
-                cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml
+                cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml
               path: target
 
           # The build output cache restores `target/` whole, the reports the
