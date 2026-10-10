@@ -229,7 +229,11 @@ git source. `.cargo/config.toml` documents the private items
 does, so the `rust-doc` gate judges the same documentation inside the
 superrepo and in the pipeline. The root `.gitattributes` opens with
 `* text=auto eol=lf`, so every text file checks out with LF on every host, and
-declares the binary formats after it.
+declares the binary formats after it. Every repository carries the superrepo's
+MIT `LICENSE`, the license its crates and packages declare. The commit hooks'
+large-file check leaves out `history/commit-map`, the map an extracted
+repository commits from its history's rewrite, which is larger than the check's
+500 KB.
 
 A file a kind does not carry has a conditional name that renders to nothing,
 and a kind carrying no crate is rendered no workspace and no Rust gate.
