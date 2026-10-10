@@ -39,6 +39,7 @@ ignores:
   - "**/build/**"
   - "tmp/**"
   - "cold-storage/**"
+  - "contracts/**"
   - "tasks/**/done/**"
   - ".claude/workflows/**"
   - ".claude/worktrees/**"

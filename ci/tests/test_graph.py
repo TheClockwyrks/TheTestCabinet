@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -132,6 +133,52 @@ def test_a_checked_out_repository_patched_and_pinned_as_rendered_passes(superrep
     report = graph.check(superrepo, kit=ROOT)
     assert report.problems == []
     assert report.checked == ["contracts"]
+
+
+def _with_contracts_and_a_lock(superrepo: Path) -> None:
+    _gitmodules(superrepo, "cold-storage", "contracts")
+    _checkout(superrepo, "contracts")
+    _patch_table(superrepo, {"contracts": {"test-cabinet-contracts": "contracts/crates/contracts"}})
+    _write(superrepo / "Cargo.lock", "version = 4\n")
+
+
+def test_a_lock_current_against_the_checked_out_crates_passes(superrepo: Path) -> None:
+    _with_contracts_and_a_lock(superrepo)
+    asked: list[Path] = []
+    report = graph.check(superrepo, kit=ROOT, lock=lambda root: asked.append(root) or [])
+    assert report.problems == []
+    assert asked == [superrepo]
+
+
+def test_a_lock_stale_against_the_checked_out_crates_is_refused(superrepo: Path) -> None:
+    _with_contracts_and_a_lock(superrepo)
+    report = graph.check(superrepo, kit=ROOT, lock=lambda root: ["Cargo.lock is stale"])
+    assert report.problems == ["Cargo.lock is stale"]
+
+
+def test_a_superrepo_without_a_lock_is_not_asked_about_one(superrepo: Path) -> None:
+    _with_contracts_and_a_lock(superrepo)
+    (superrepo / "Cargo.lock").unlink()
+    report = graph.check(superrepo, kit=ROOT, lock=lambda root: pytest.fail("the lock was checked"))
+    assert report.problems == []
+
+
+def test_the_lock_check_reads_the_root_lock_and_the_nested_ones(tmp_path: Path) -> None:
+    _write(tmp_path / "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\nedition = "2024"\n')
+    _write(tmp_path / "src" / "lib.rs", "")
+    _write(tmp_path / "Cargo.lock", "version = 4\n")
+    if shutil.which("cargo") is None:
+        pytest.skip("cargo is not installed here")
+    nested = tmp_path / "packages" / "guest"
+    _write(nested / "Cargo.toml", '[package]\nname = "guest"\nversion = "0.1.0"\nedition = "2024"\n')
+    _write(nested / "src" / "lib.rs", "")
+    _write(nested / "Cargo.lock", "version = 4\n")
+    stale = "is not current against the checked-out crates; " + graph.LOCK_FIX
+    assert graph.lock_problems(tmp_path) == [f"Cargo.lock {stale}", f"packages/guest/Cargo.lock {stale}"]
+    for workspace in (tmp_path, nested):
+        (workspace / "Cargo.lock").unlink()
+        subprocess.run(["cargo", "generate-lockfile", "--offline"], cwd=workspace, check=True, capture_output=True)
+    assert graph.lock_problems(tmp_path) == []
 
 
 def test_a_checked_out_repository_without_its_record_is_refused(superrepo: Path) -> None:
@@ -270,7 +317,8 @@ def test_the_data_edges_of_a_checked_out_repository_are_noted(superrepo: Path) -
 
 
 def test_the_generated_patch_table_is_what_the_check_reads() -> None:
-    """The commented tables `sources.py` writes are the ones the check accepts for a repository not checked out."""
-    assert graph.patches(ROOT) == {}
+    """The tables `sources.py` writes: active for a registered submodule, commented for a repository that is not one."""
     rust = [repo for repo, kind in edges.REPOSITORIES.items() if edges.KINDS[kind].crate]
-    assert graph.commented_patches(ROOT) == {render.public_source(repo) for repo in rust}
+    registered = set(graph.submodules(ROOT))
+    assert set(graph.patches(ROOT)) == {render.public_source(repo) for repo in rust if repo in registered}
+    assert graph.commented_patches(ROOT) == {render.public_source(repo) for repo in rust if repo not in registered}

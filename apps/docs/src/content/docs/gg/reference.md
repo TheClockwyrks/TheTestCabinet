@@ -281,7 +281,7 @@ data, so requiring a token would buy nothing and would stop a signed-out console
 from linking to the page.
 
 The wire shape is `GgReference` and `GgReferenceApi` in
-`crates/contracts/src/gg_reference.rs`, which is where each field's meaning is
+`contracts/crates/contracts/src/gg_reference.rs`, which is where each field's meaning is
 documented. The projection that fills them in is `crates/gg/src/reference.rs`
 and its three halves: `reference.tools.rs` for the registry's own definitions,
 `reference.conditions.rs` for the sweep that derives what buys a tool, and

@@ -16,7 +16,7 @@ path = "src/main.rs"
 # contract's modules and documents, which it reads as external homes and never
 # writes.
 [dependencies]
-contract-codegen = { path = "../contract-codegen" }
+contract-codegen = { path = "../../contracts/crates/contract-codegen" }
 test-cabinet-core = { path = "../core", features = ["contract"] }
 test-cabinet-backend = { path = "../backend", features = ["contract"] }
 anyhow = { workspace = true }

@@ -23,8 +23,9 @@ schema rather than redefining the record, so there is one source of truth for it
 shape.
 
 The record's types are defined in the
-[contracts crate](/components/core/overview/#the-contracts-crate), `crates/contracts`
-(`test_cabinet_contracts::run_record` and the modules its parts come from), and the
+[contracts crate](/components/core/overview/#the-contracts-crate),
+`contracts/crates/contracts` (`test_cabinet_contracts::run_record` and the modules
+its parts come from), and the
 schema and the `@clockwyrks/run-record` TypeScript bindings are generated from them.
 The core re-exports them at `test_cabinet_core::run_record`, beside the two
 constructors that need its runtime: the build's own commit and the classification

@@ -85,10 +85,13 @@ is_pipeline() { # path
 # and game jams at compile time or in a test, so those stay in. What is left
 # out is what no Rust job opens: the sites, the board, the manifests, the
 # run-container definitions, the gates' sources, prose, every shell test, and
-# the scripts only the image, deploy and release jobs run.
+# the scripts only the image, deploy and release jobs run. Of the submodule
+# pins, contracts' reaches them: the workspace depends on its crates by path,
+# and every Rust job initializes it with scripts/ci/submodules.sh.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
+		contracts | scripts/ci/submodules.sh) return 0 ;;
 		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
@@ -117,7 +120,6 @@ reaches_rust() { # path
 			scripts/ci/seeded-contract-check.sh | scripts/ci/service-image.sh | \
 			scripts/ci/service-images.sh | scripts/ci/settle-workloads.sh | \
 			scripts/ci/spec-vocabulary-check.mjs | scripts/ci/submodule-pins.sh | \
-			scripts/ci/submodules.sh | \
 			scripts/ci/tcab-image-pin.sh) return 1 ;;
 	esac
 	local pin

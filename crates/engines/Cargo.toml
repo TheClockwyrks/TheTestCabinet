@@ -17,7 +17,7 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 # The slug-order test holds the table to the contract's `BUILT_IN_SLUGS`.
-test-cabinet-contracts = { path = "../contracts" }
+test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
 
 [lints]
 workspace = true

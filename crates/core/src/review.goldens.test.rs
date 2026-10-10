@@ -1,6 +1,6 @@
 //! The shared scoring goldens, executed against the Rust implementation.
 //!
-//! Every file under `crates/contracts/fixtures/scoring/` holds the cases one function
+//! Every file under `contracts/crates/contracts/fixtures/scoring/` holds the cases one function
 //! pair must agree on: a function here (or in [`crate::comparison`] and
 //! [`crate::test_case`]) and its mirror in `packages/run-stats/src/scoring.ts`. The
 //! TypeScript half, `packages/run-stats/src/scoring.goldens.test.ts`, reads the same
@@ -315,7 +315,11 @@ impl AggregateOf {
 
 macro_rules! golden {
     ($file:literal) => {
-        include_str!(concat!("../../contracts/fixtures/scoring/", $file, ".json"))
+        include_str!(concat!(
+            "../../../contracts/crates/contracts/fixtures/scoring/",
+            $file,
+            ".json"
+        ))
     };
 }
 

@@ -1,8 +1,0 @@
-name = "Carom, bounce"
-type = "audio-fx"
-difficulty = "easy"
-specifications = ["assets"]
-prompt = "prompts/audio-fx.hbs"
-
-[audio-fx]
-id = "bounce"

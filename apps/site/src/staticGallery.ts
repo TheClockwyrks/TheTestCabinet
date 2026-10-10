@@ -64,7 +64,7 @@ const LOCAL_RUNS_URL = "/__local-runs__/index.json";
  *
  * The `img.` prefix MIRRORS `IMAGE_STORE_PREFIX` in
  * `packages/case-harness/src/replay/store.ts` and `VALIDATION_IMAGE_PREFIX` in
- * `crates/contracts/src/layout.rs`; a declared output never carries it, so asking here
+ * `contracts/crates/contracts/src/layout.rs`; a declared output never carries it, so asking here
  * first costs a declared name nothing.
  */
 function storeUrl(prefix: string | undefined, file: string): string | null {

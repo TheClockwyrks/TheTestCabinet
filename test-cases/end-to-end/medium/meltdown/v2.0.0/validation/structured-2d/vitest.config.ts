@@ -59,7 +59,7 @@ export default defineEngineValidationConfig({
   //
   // IT CANNOT RUN AWAY WITH THE RUN, because the runner caps the WHOLE vitest
   // invocation at forty-five minutes of wall clock regardless (`VITEST_TIMEOUT`,
-  // `crates/suites/src/vitest_validator.rs`). A hung suite is still bounded, and the
+  // `contracts/crates/suites/src/vitest_validator.rs`). A hung suite is still bounded, and the
   // figure here is between a fifth and a quarter of that cap, so one stuck check
   // cannot be the thing that spends it.
   testTimeout: 600_000,

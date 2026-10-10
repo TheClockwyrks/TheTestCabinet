@@ -41,8 +41,10 @@ contracts the rest of the system is built around.
 
 ## The contracts crate
 
-The data contracts the core defines live in their own crate, `crates/contracts`
-(`test-cabinet-contracts`), beside the core in `crates/core`. A shape belongs there
+The data contracts the core depends on live in their own crate,
+`test-cabinet-contracts`, in the
+[contracts repository](/development/repositories/), which the superrepo checks
+out at `contracts/` (`contracts/crates/contracts`). A shape belongs there
 when more than one party reads or writes it: the run record and every part of it
 (the subject and state, the normalized events, the validation summary, the metrics,
 toolchain and code-analysis blocks), the review shapes, a resolved test case
@@ -67,8 +69,9 @@ crate's `fixtures/scoring/` hold the two to the same cases.
 
 ## The suites crate
 
-The test-suite runtime lives in `crates/suites` (`test-cabinet-suites`), between the
-contracts crate and the core: it depends on the contracts crate and on no other crate
+The test-suite runtime lives in `test-cabinet-suites`, in the contracts repository
+beside the contracts crate (`contracts/crates/suites`), between the contracts crate
+and the core: it depends on the contracts crate and on no other crate
 of this project, and the core depends on it. It sits on the contracts side of the
 [repository cut](/development/repositories/), so The Spec Cabinet runs the same
 suite logic the core does. It holds what reads a `test-suites/` checkout and turns an

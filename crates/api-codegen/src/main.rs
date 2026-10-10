@@ -16,8 +16,9 @@
 //! `@clockwyrks/run-record` and a `$ref` to one resolves to the contract document's
 //! URL. Nothing in the data contract refers back to a type here.
 //!
-//! Run it with `cargo run -p api-codegen`, or `npm run gen:contract`, which runs both
-//! generators and normalizes the output with Prettier.
+//! Run it with `cargo run -p api-codegen`, or `npm run gen:contract`, which runs it
+//! and normalizes the output with Prettier. `contract-codegen` is the contracts
+//! repository's (the `contracts/` submodule) and runs there.
 
 use std::path::{Path, PathBuf};
 

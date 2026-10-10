@@ -771,9 +771,11 @@ load_dockerignore "$REPO_ROOT/.dockerignore"
 # Read off the filesystem rather than out of git, exactly as the staging script's own
 # readdirSync does: a package added and not yet committed is a real build input, and a
 # gate that ran before `git add` and rejected it would be wrong. The glob does not
-# descend, so a workspace's own `node_modules` cannot be mistaken for a member.
+# descend, so a workspace's own `node_modules` cannot be mistaken for a member. The
+# staging script reads the contracts submodule's packages too (asset-contract is in
+# the runtimes' closure), so this does as well.
 package_manifests=()
-for staged_manifest in "$REPO_ROOT"/packages/*/package.json; do
+for staged_manifest in "$REPO_ROOT"/packages/*/package.json "$REPO_ROOT"/contracts/packages/*/package.json; do
 	[[ -f "$staged_manifest" ]] || continue
 	package_manifests+=("${staged_manifest#"$REPO_ROOT/"}")
 done
@@ -797,7 +799,9 @@ while ((${#staged_queue[@]} > 0)); do
 	[[ "$staged_seen" == *"|$staged_name|"* ]] && continue
 	staged_seen="$staged_seen|$staged_name|"
 	if ! staged_dir="$(package_dir_for "$staged_name")"; then
-		echo "error: $STAGING_SCRIPT stages '$staged_name', and no packages/*/package.json declares that name." >&2
+		echo "error: $STAGING_SCRIPT stages '$staged_name', and no packages/*/package.json or contracts/packages/*/package.json declares that name." >&2
+		[[ -f "$REPO_ROOT/contracts/package.json" ]] ||
+			echo "       The contracts submodule is not checked out: git submodule update --init contracts" >&2
 		problems=$((problems + 1))
 		continue
 	fi
@@ -810,7 +814,7 @@ while ((${#staged_queue[@]} > 0)); do
 	echo "error: .dockerignore keeps '$staged_dir' OUT of the build context, and $STAGING_SCRIPT stages '$staged_name' from it." >&2
 	echo "       No COPY names it — the services image's package-store stage copies the whole context" >&2
 	echo "       and then runs that script, so this fails as: Error: shippable package $staged_name" >&2
-	echo "       not found under packages/ — which takes every image in services.Dockerfile down." >&2
+	echo "       not found under packages/ or contracts/packages/ — which takes every image in services.Dockerfile down." >&2
 	echo "       Fix: add '!/$staged_dir' to the .dockerignore allowlist, with a comment saying what stages it." >&2
 	problems=$((problems + 1))
 done

@@ -1,5 +1,0 @@
-id = "table"
-name = "Table"
-kind = "blender"
-specification = "assets"
-files = ["table.py"]

@@ -1,7 +1,0 @@
-handle = "__carom"
-description = "The Carom debug surface."
-
-[[module]]
-name = "ball"
-path = "debug-api/ball.toml"
-description = "The live ball."

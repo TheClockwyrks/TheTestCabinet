@@ -1,8 +1,8 @@
 // The shared scoring goldens, executed against the TypeScript mirror.
 //
-// Every file under `crates/contracts/fixtures/scoring/` holds the cases one function
+// Every file under `contracts/crates/contracts/fixtures/scoring/` holds the cases one function
 // pair must agree on: a Rust function (crates/core/src/review.rs,
-// crates/core/src/comparison.rs or crates/contracts/src/test_case.rs) and its mirror
+// crates/core/src/comparison.rs or contracts/crates/contracts/src/test_case.rs) and its mirror
 // in `./scoring`. The files are read **directly off the crate**, never copied into this
 // package, so a case added on either side is executed by both suites; the Rust half is
 // `crates/core/src/review.goldens.test.rs`, and the expectations are its output.
@@ -45,7 +45,7 @@ import {
  *  directory so the suite behaves the same run from the package and from the root. */
 const GOLDENS = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../crates/contracts/fixtures/scoring",
+  "../../../contracts/crates/contracts/fixtures/scoring",
 );
 
 type Json = Record<string, unknown>;

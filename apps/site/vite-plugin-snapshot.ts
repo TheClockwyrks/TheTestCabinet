@@ -893,7 +893,7 @@ function worstAestheticRating(tiers: string[]): string | null {
  * validation output.
  *
  * MIRRORS `VALIDATION_IMAGE_PREFIX` / `is_validation_image_name` in
- * `crates/contracts/src/layout.rs` and `IMAGE_STORE_PREFIX` in
+ * `contracts/crates/contracts/src/layout.rs` and `IMAGE_STORE_PREFIX` in
  * `packages/case-harness/src/replay/store.ts`. A declared output's flat name always
  * carries `__` and a store file's never does, which is what keeps the two apart in
  * the one namespace they share.

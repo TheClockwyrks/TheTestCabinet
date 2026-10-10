@@ -94,7 +94,7 @@ export interface ValidationConfigOptions {
  * Five minutes is set against that measured worst case rather than against a
  * healthy machine, and against the one ceiling a validator project cannot move:
  * the runner caps the WHOLE suite run at forty-five minutes (`VITEST_TIMEOUT`,
- * `crates/suites/src/vitest_validator.rs`). At load average ~650 — half again the
+ * `contracts/crates/suites/src/vitest_validator.rs`). At load average ~650 — half again the
  * worst these projects have been run under — the slowest file measured 170 s and
  * the whole run 1 059 s of those 2 700. Five minutes is a NINTH of the outer cap,
  * so a single file can only cross it on a host where the whole run was already

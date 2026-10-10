@@ -1,4 +1,0 @@
-id = "ball-bounce"
-name = "Ball Bounce"
-summary = "One ball, one cushion, one reflection."
-specification = "ball-physics"

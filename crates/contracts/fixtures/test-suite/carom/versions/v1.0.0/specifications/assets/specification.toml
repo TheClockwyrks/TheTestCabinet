@@ -1,9 +1,0 @@
-id = "assets"
-name = "Assets"
-summary = "What the suite's bundled assets must look and sound like."
-path = "assets.md"
-
-[[requirement]]
-id = "readable-silhouette"
-kind = "non-functional"
-text = "Every produced asset SHOULD read clearly at the size it is presented at."

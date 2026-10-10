@@ -25,17 +25,18 @@
 # catalogues are reflected with; everything else that build needs is in the
 # image, so a container is ready to build the workspace when this returns.
 #
-# The `git submodule update` populates `test-suites/`, the suites checkout The
-# Test Cabinet ingests from. It names that submodule alone, because cold-storage
-# beside it is optional and about 2 GB. It needs the same git credentials that
+# The `git submodule update` populates `contracts/`, the contracts repository
+# whose crates and packages the workspace builds against, and `test-suites/`, the
+# suites checkout The Test Cabinet ingests from. It names those two alone, because
+# cold-storage beside them is optional and about 2 GB. It needs the same git credentials that
 # fetched the superproject, it is a no-op when the host clone the checkout is
 # mounted from already populated it, and a failure is said rather than failing
 # the creation of a container that is otherwise ready.
 set -euo pipefail
 
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  git submodule update --init test-suites ||
-    echo "submodule update failed; test-suites/ is the suites checkout The Test Cabinet ingests; run 'git submodule update --init test-suites' manually"
+  git submodule update --init contracts test-suites ||
+    echo "submodule update failed; contracts/ is a build input and test-suites/ the suites checkout The Test Cabinet ingests; run 'git submodule update --init contracts test-suites' manually"
   bash scripts/setup-hooks.sh
 else
   echo "--- the commit hook (skipped: this is not a git repository yet)"

@@ -38,7 +38,7 @@
 // the speed of the driver's round trips. `--tick-hz` is the case's fixed
 // simulation rate, which is what relates those two clocks; omit it for a case
 // whose debug API is specified in seconds. See `validation.mjs` for the runtime,
-// `crates/suites/src/browser.rs` (the caller), and the end-to-end instrumentation
+// `contracts/crates/suites/src/browser.rs` (the caller), and the end-to-end instrumentation
 // docs for the contract. Infra failures (no Playwright,
 // no Chromium) exit non-zero so the caller degrades; a build/script failure is
 // reported in the result with `ran: false` and exits zero (the caller gates on it).

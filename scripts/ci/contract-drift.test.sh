@@ -70,16 +70,20 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
-readonly GENERATED="packages/run-record/src/index.ts packages/asset-contract/src/index.ts packages/backend-api/src/index.ts apps/docs/public/schema/run-record.json"
+readonly GENERATED="packages/backend-api/src/index.ts apps/docs/public/schema/backend-api/snapshot.schema.json"
+# The contracts repository's files: its own gate checks them, and the docs build
+# copies its schemas into the two directories .gitignore lists.
+readonly CONTRACTS="contracts/packages/run-record/src/index.ts apps/docs/public/schema/core/run-record.schema.json"
 fresh_repo() {
 	local repo file
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci" "$repo/bin"
 	cp "$CI_DIR/contract-drift.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
-	for file in $GENERATED README.md; do
+	for file in $GENERATED README.md contracts/packages/run-record/src/index.ts; do
 		mkdir -p "$repo/$(dirname "$file")"
 		echo "generated" >"$repo/$file"
 	done
+	printf '/apps/docs/public/schema/core/\n/apps/docs/public/schema/gg/\n' >"$repo/.gitignore"
 	cat >"$repo/bin/npm" <<'STUB'
 #!/usr/bin/env bash
 echo "npm $* [cwd=$PWD]" >>"$STUB_LOG"
@@ -117,7 +121,13 @@ repo="$(fresh_repo)"
 out="$(run "$repo" STUB_DRIFT="$repo/README.md")"
 check_equal "a change outside the generated artifacts passes" "0" "$?"
 
-for file in packages/run-record/src/new.ts packages/backend-api/src/new.ts apps/docs/public/schema/new/new.schema.json; do
+for file in $CONTRACTS; do
+	repo="$(fresh_repo)"
+	out="$(run "$repo" STUB_DRIFT="$repo/$file")"
+	check_equal "a change to the contracts repository's $file passes" "0" "$?"
+done
+
+for file in packages/backend-api/src/new.ts apps/docs/public/schema/new/new.schema.json; do
 	repo="$(fresh_repo)"
 	out="$(run "$repo" STUB_NEW="$repo/$file")"
 	check_equal "a newly emitted, uncommitted $file fails" "1" "$?"
@@ -128,6 +138,10 @@ done
 repo="$(fresh_repo)"
 out="$(run "$repo" STUB_NEW="$repo/notes/new.txt")"
 check_equal "a new file outside the generated artifacts passes" "0" "$?"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_NEW="$repo/apps/docs/public/schema/gg/session-record.schema.json")"
+check_equal "a copied contracts schema, which .gitignore lists, passes" "0" "$?"
 
 repo="$(fresh_repo)"
 out="$(run "$repo" STUB_NPM_EXIT=1)"

@@ -1,7 +1,0 @@
-# A fixture engine for the suites crate's tests: a built-in slug with a runtime's
-# shape (a package and its docs). Not the built-in manifest.
-slug = "simple-2d"
-name = "Fixture simple-2d"
-description = "A fixture engine that vendors the simple-2d runtime package."
-package = "@clockwyrks/simple-2d"
-docs = "docs"

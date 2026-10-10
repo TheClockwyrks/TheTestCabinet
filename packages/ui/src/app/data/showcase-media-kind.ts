@@ -1,7 +1,7 @@
 import type { MediaKind } from "../../client/types";
 
 // Extension → media kind, the contract's own mapping. Mirrors
-// `MediaKind::from_path` in `crates/contracts/src/test_case.rs`, which is what the run
+// `MediaKind::from_path` in `contracts/crates/contracts/src/test_case.rs`, which is what the run
 // and case showcases are given their `kind` by before they reach the wire.
 const BY_EXTENSION: Record<string, MediaKind> = {
   png: "image",

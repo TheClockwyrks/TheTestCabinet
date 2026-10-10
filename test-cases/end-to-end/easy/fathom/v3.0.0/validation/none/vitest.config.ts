@@ -51,7 +51,7 @@ import { defineValidationConfig } from "./case-harness/vitest-config";
 // quiet times of 6-14 s, and Fathom's driven ticks are costlier than that case's
 // pointer work, not cheaper. Five minutes is also a ninth of the forty-five
 // minutes the runner caps the WHOLE suite run at (`VITEST_TIMEOUT`,
-// `crates/suites/src/vitest_validator.rs`), so a file can only cross it on a host
+// `contracts/crates/suites/src/vitest_validator.rs`), so a file can only cross it on a host
 // where the run was already lost. Nothing here is unlike the other engineless
 // cases in either direction, so this case names neither ceiling and takes both.
 // `vitest-config.ts` states the measurements in full.

@@ -53,7 +53,7 @@ The built-in engines live under `engines/` in the repo. The data crate
 build time as a table keyed by slug, in `BUILT_IN_SLUGS` order, so a
 backend-driven worker with no checkout resolves them the same way the CLI does.
 The engine catalog in the
-[suites crate](/components/core/overview/#the-suites-crate) (`crates/suites`)
+[suites crate](/components/core/overview/#the-suites-crate) (`contracts/crates/suites`)
 resolves a selection against a manifest table it is given
 (`EngineCatalog::from_manifests`). The core builds the default catalog over the
 built-in table: `EngineCatalog::new` and `EngineCatalog::with_package_store` are

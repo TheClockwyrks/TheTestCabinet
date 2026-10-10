@@ -1,8 +1,0 @@
-name = "Carom, table"
-type = "blender"
-difficulty = "hard"
-specifications = ["assets"]
-prompt = "prompts/blender.hbs"
-
-[blender]
-id = "table"

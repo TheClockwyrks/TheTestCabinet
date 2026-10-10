@@ -23,13 +23,13 @@ path = "src/lib.rs"
 # ones it splits (`run_record`, `event`, `review`, `validation`, `test_case`,
 # `test_suite`, `gg_query`, `engine`, `pricing`, `orchestrator`, `execution`, the
 # ingest feed and the layout constants).
-test-cabinet-contracts = { path = "../contracts" }
+test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
 # The test-suite runtime: the suite catalog and its lowering, previews, the definition
 # prompt, the validator runners and the browser plumbing they use, the engine catalog
 # and the content digests. Re-exported at the old paths (`test_suite`, `engine`,
 # `browser`, `vitest_validator`, `content_digest`, `content_labels`, and the halves of
 # `execution`, `validator`, `prompt` and `seeding` that moved).
-test-cabinet-suites = { path = "../suites" }
+test-cabinet-suites = { path = "../../contracts/crates/suites" }
 # The built-in engine manifests, as data: the table `engine::EngineCatalogExt` builds
 # the default engine catalog over.
 test-cabinet-engines = { path = "../engines" }
@@ -129,7 +129,7 @@ contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-contracts/contract"]
 [dev-dependencies]
 tempfile = { workspace = true }
 # `test_browser`, what a test driving a real browser needs (`crate::test_browser`).
-test-cabinet-suites = { path = "../suites", features = ["test-support"] }
+test-cabinet-suites = { path = "../../contracts/crates/suites", features = ["test-support"] }
 # The same audio contract crate the library links, with its `cli` feature: the audio
 # staging test reads the tree core wrote back through the exact reader the
 # in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the

@@ -35,7 +35,7 @@
 // look fast is how a correct build loses a point to the load average. What the
 // package's own figures are argued against is the one ceiling this project cannot
 // move: the runner caps the WHOLE suite run at forty-five minutes
-// (`VITEST_TIMEOUT`, `crates/suites/src/vitest_validator.rs`).
+// (`VITEST_TIMEOUT`, `contracts/crates/suites/src/vitest_validator.rs`).
 //
 // AND THE MEASUREMENT THAT SAYS SO, taken so a later author has an absolute rather
 // than a fraction to reason from. Against the `warhead` reference build, 291 suite

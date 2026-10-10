@@ -71,7 +71,7 @@ tree, and there is none.
 - **It never reaches a run repository.** It is staged into the host package store
   beside the engine runtimes, and read only _after_ the run's container is gone.
   It is deliberately absent from `SHIPPABLE_PACKAGES` in
-  `crates/contracts/src/test_case.rs`: a case that could name it in its manifest's
+  `contracts/crates/contracts/src/test_case.rs`: a case that could name it in its manifest's
   `packages` key would vendor the validators into the run repo and hand the model
   the tests.
 

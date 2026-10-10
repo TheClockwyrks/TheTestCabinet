@@ -13,7 +13,7 @@
 // Every function here mirrors a counterpart in the Rust core
 // (`crates/core/src/review.rs`); the mirrors are named per function and must be
 // kept in lockstep, since the backend and these clients score the same runs. The
-// shared goldens in `crates/contracts/fixtures/scoring/` hold the two to the same
+// shared goldens in `contracts/crates/contracts/fixtures/scoring/` hold the two to the same
 // cases (`scoring.goldens.test.ts` here, `review.goldens.test.rs` in the core).
 
 import type { DebugScriptResult } from "@clockwyrks/run-record";
@@ -350,7 +350,7 @@ export function verdictIdsForItem(item: {
  * item with a fresh id is appended, preserving "common first, then the variant's
  * own". Because resolution forbids two items resolving to the same verdict id, a
  * merge only ever unions disjoint sub-items under a shared category id. Mirrors
- * `merge_review_items` in the Rust contracts crate (crates/contracts/src/test_case.rs).
+ * `merge_review_items` in the Rust contracts crate (contracts/crates/contracts/src/test_case.rs).
  */
 export function mergeReviewItems<
   T extends {
@@ -384,7 +384,7 @@ export function mergeReviewItems<
  * them. A point with no validator, or one whose validator names no engines, is
  * carried on every engine. Non-mutating. Mirrors
  * `TestCaseVersion::review_items_for_engine` in the Rust contracts crate
- * (crates/contracts/src/test_case.rs).
+ * (contracts/crates/contracts/src/test_case.rs).
  */
 export function reviewItemsForEngine<
   T extends {

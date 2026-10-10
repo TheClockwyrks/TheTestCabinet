@@ -82,9 +82,10 @@ rustdocflags = ["--document-private-items"]
 # every patch path eagerly, so an entry for a missing directory would fail
 # every build under the superrepo, the monorepo's own included.
 
-# contracts is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/contracts"]
-#   test-cabinet-contracts = { path = "contracts/crates/contracts" }
+[patch."https://github.com/TheClockwyrks/contracts"]
+contract-codegen = { path = "contracts/crates/contract-codegen" }
+test-cabinet-contracts = { path = "contracts/crates/contracts" }
+test-cabinet-suites = { path = "contracts/crates/suites" }
 
 # engines is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/engines"]
@@ -105,5 +106,14 @@ rustdocflags = ["--document-private-items"]
 # the-spec-cabinet is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/the-spec-cabinet"]
 #   test-cabinet-spec-cabinet = { path = "the-spec-cabinet/crates/spec-cabinet" }
+
+# Cargo still fetches a patched git source to resolve the lock file, so the
+# source has to be reachable even though nothing is built from it. While the
+# mirrors are private, `scripts/repos/sources.py rewrites --apply` rewrites
+# each public source to the Azure remote in the user's git configuration,
+# which the command-line fetch below honours and cargo's built-in one would
+# not.
+[net]
+git-fetch-with-cli = true
 
 # END the patch table.

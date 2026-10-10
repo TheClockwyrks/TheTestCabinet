@@ -37,12 +37,6 @@ build/
 # formatting.
 .copier-answers.yml
 
-# The committed test suite fixture is written by the suite model's canonical TOML
-# emitter, and `the_committed_fixture_round_trips_byte_for_byte` asserts that
-# loading and saving it reproduces these bytes exactly. Formatting anything in it
-# fails that test.
-crates/contracts/fixtures/test-suite/
-
 # --- Owned by another gate -------------------------------------------------
 
 # The design documentation. markdownlint (`.markdownlint-cli2.yaml`) and cspell
@@ -67,6 +61,8 @@ deployments/k8s/
 # The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
 # eslint.config.js leave out too, so the gates never disagree about a path.
 /cold-storage/**
+# The contracts repository, a submodule whose own gates format it.
+/contracts/**
 /tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**

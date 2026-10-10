@@ -1,9 +1,0 @@
-name = "Carom, ball"
-type = "voxel"
-difficulty = "medium"
-specifications = ["assets"]
-prompt = "prompts/voxel.hbs"
-
-[voxel]
-id = "ball"
-animated = true

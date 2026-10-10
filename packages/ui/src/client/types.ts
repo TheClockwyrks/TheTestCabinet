@@ -42,7 +42,7 @@ export type {
 };
 export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
-// contract (crates/contracts/src/event.rs) — the live monitor and the published
+// contract (contracts/crates/contracts/src/event.rs) — the live monitor and the published
 // Events tab both render it. Re-exported here so consumers keep importing it
 // from the shared client types.
 export type { HarnessEvent };

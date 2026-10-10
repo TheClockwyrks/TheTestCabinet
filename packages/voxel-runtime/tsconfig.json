@@ -11,7 +11,7 @@
     "noEmit": false,
     "allowImportingTsExtensions": false
   },
-  "references": [{ "path": "../asset-contract" }],
+  "references": [{ "path": "../../contracts/packages/asset-contract" }],
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]
 }

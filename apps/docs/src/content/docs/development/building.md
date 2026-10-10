@@ -41,24 +41,28 @@ own machine is covered by [Running](/development/running/).
 
 The repository lives on Azure Repos and is mirrored to GitHub, and a clone from
 either host works the same way. Each submodule is a separate repository:
-[`cold-storage`](#cold-storage) and `test-suites`, the
+[`contracts`](#the-contracts-submodule), the data contracts the workspace builds
+against, [`cold-storage`](#cold-storage) and `test-suites`, the
 [test suites](/test-suites/overview/) checkout.
 
 A plain clone downloads the superproject alone and leaves each submodule
-directory empty. It builds and passes every gate, because nothing in the build,
-the tests, or CI reads a submodule's contents. Fetch a submodule into it later
-when a task needs one:
+directory empty. `contracts` is a build input: the Cargo and npm workspaces
+depend on its crates and packages by path, so a clone initializes it before it
+builds anything. The other two are read by no build, test or gate. Fetch one
+when a task needs it:
 
 ```sh
 git clone <superproject-url>
+git submodule update --init contracts
 git submodule update --init --depth 1 cold-storage
 git submodule update --init test-suites
 ```
 
-The devcontainer populates `test-suites/` when it creates a container, because
-a local backend ingests its suites from that checkout. `.gitmodules` sets the
-submodule's tracked branch to `master`, so `git submodule update --remote
-test-suites` moves the checkout to that branch's tip.
+The devcontainer populates `contracts/` and `test-suites/` when it creates a
+container, the second because a local backend ingests its suites from that
+checkout. `.gitmodules` sets the tracked branch of both to `master`, so
+`git submodule update --remote test-suites` moves that checkout to the branch's
+tip.
 
 A recursive clone also downloads every submodule at the commit the superproject
 pins, which for `cold-storage` is about 2 GB of media. `--shallow-submodules`
@@ -107,35 +111,47 @@ table test.
 
 ### Submodules in CI
 
-No gate reads a submodule, so the template's gate jobs check out none, which
-also keeps the baseline media out of every devcontainer start. Nothing in the
-pipeline initializes submodules recursively. A job that needs a submodule's
-files names it and runs `scripts/ci/submodules.sh init <path>...`, which
-initializes exactly those submodules at their pinned commits, one commit deep,
-without their own submodules. `submodules.sh list` prints what `init` would
-initialize and touches nothing.
+Every checkout in the pipeline is made with `submodules: false`, and nothing
+initializes submodules recursively, which keeps the baseline media out of every
+job. A job that needs a submodule's files names it and runs
+`scripts/ci/submodules.sh init <path>...`, which initializes exactly those
+submodules at their pinned commits, one commit deep, without their own
+submodules. `submodules.sh list` prints what `init` would initialize and
+touches nothing.
 
-`submodules.sh init --build-context` also initializes every submodule the root
+Every job that builds from the checkout initializes `contracts` right after its
+own checkout: the template's `rust` and `web` gate jobs, every job on
+`.azure/tcab/rust-job-steps.yml` (`rust_build`, the `gg_tests_<k>_of_<N>`
+partitions, `binary_linux`, `gg_amd64`), `binary_windows` (in Git Bash),
+`gg_arm64` and the `docs` job. The jobs that build nothing from the workspace
+(`paths`, the mirror, `gg_publish`, the manifest fuses and the deploys)
+initialize none.
+
+`submodules.sh init --build-context` initializes every submodule the root
 `.dockerignore` re-includes any part of, as `scripts/ci/build-context.sh
---submodules` prints them. The image jobs (`audiostore_<arch>`,
-`runimages_<arch>`, `services_<arch>`) run it after their checkout. No submodule
-is in the build context today, so it says so and does nothing. A path in a
-submodule enters the context the way any path does, by a re-inclusion that
-names it, and the `build-context` gate checks it against that submodule's
-checkout. When the checkout has not initialized the submodule, the gate lists
-the path as unverified rather than failing.
+--submodules` prints them, which is `contracts`. The image jobs
+(`audiostore_<arch>`, `runimages_<arch>`, `services_<arch>`) run it after their
+checkout. A path in a submodule enters the context the way any path does, by a
+re-inclusion that names it, and the `build-context` gate checks it against that
+submodule's checkout. When the checkout has not initialized the submodule, the
+gate lists the path as unverified rather than failing.
 
-The project scopes the job's access token to the repositories a job names. So
-a job that fetches a submodule also checks the submodule's repository out,
-which puts the repository in the token's scope. `submodule_pins` does this for
-every submodule: `.azure/project/jobs.yml` lists them in its `submodules`
-parameter, with each one's path and repository, and the job checks each
-repository out beside this one before it runs `scripts/ci/submodule-pins.sh`
-with the token in `SYSTEM_ACCESSTOKEN`. `scripts/ci/submodules.sh check` holds
-that list to `.gitmodules`, and `scripts/ci/submodules.test.sh` runs the check
-against the repository, so the `shell-tests` gate fails on a submodule added to
-one and not the other. An image job that comes to build from a context
-admitting a submodule needs the same checkout of its repository.
+The project scopes the job's access token to the repositories a job names. Both
+pipelines declare `contracts` under `resources.repositories`, and every job
+that initializes it names it under the job's `uses: repositories:`, which puts
+the repository in the token's scope without checking it out. The script sends
+the token in `SYSTEM_ACCESSTOKEN` to `dev.azure.com` alone. The repository is
+authorized for the `the-test-cabinet` and `the-test-cabinet-release` pipeline
+definitions once, in the project's pipeline permissions.
+
+`submodule_pins` checks every submodule's repository out instead:
+`.azure/project/jobs.yml` lists them in its `submodules` parameter, with each
+one's path and repository, and the job checks each repository out beside this
+one before it runs `scripts/ci/submodule-pins.sh` with the token in
+`SYSTEM_ACCESSTOKEN`. `scripts/ci/submodules.sh check` holds that list to
+`.gitmodules`, and `scripts/ci/submodules.test.sh` runs the check against the
+repository, so the `shell-tests` gate fails on a submodule added to one and not
+the other.
 
 ## Layout
 
@@ -160,25 +176,6 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 
 ### Rust (Cargo workspace)
 
-- `crates/contracts`: `test-cabinet-contracts` (lib `test_cabinet_contracts`).
-  The [contract](/components/core/overview/#the-contracts-crate) shapes more than
-  one party agrees on: the run record and its parts (events, validation summary,
-  metrics, toolchain and code analysis), the review shapes, a resolved test case
-  version, the test suite format and its rules, gg's configuration, telemetry and
-  session record, the TCQ query shapes, the engine identity a run names, the
-  ingest feed, and the layout of a run tree. Data and pure functions only; core
-  re-exports every module at its old path. The test suite fixture the format's
-  tests and the suite runtime's tests read is `crates/contracts/fixtures/test-suite/`,
-  the TCQ conformance fixture the Rust and TypeScript evaluators both execute is
-  `crates/contracts/fixtures/gg_query.conformance.json`, and the
-  [scoring goldens](#the-scoring-goldens) both scoring implementations execute are
-  `crates/contracts/fixtures/scoring/`.
-- `crates/suites`: `test-cabinet-suites` (lib `test_cabinet_suites`). The
-  [test-suite runtime](/components/core/overview/#the-suites-crate): the suite
-  catalog and lowering, previews, a definition's prompt and the validator runners,
-  with the engine catalog, the vitest runner, the browser driver and the content
-  digests they share with the core. Core re-exports every module at its old path.
-  The `test-support` feature exposes `test_browser` to another crate's tests.
 - `crates/engines`: `test-cabinet-engines` (lib `test_cabinet_engines`). The
   built-in [engine](/components/core/engines/) manifests as data: `BUILT_IN`, every
   `engines/*/engine.toml` keyed by slug. Only its test depends on another crate
@@ -215,10 +212,8 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/telemetry`: `test-cabinet-telemetry`. The shared
   [OpenTelemetry](/development/observability/) wiring every long-lived binary
   initializes at startup.
-- `crates/contract-codegen` and `crates/api-codegen`: the two
-  [generators](#generating-the-data-contract) of the committed TypeScript
-  bindings and JSON Schemas, one for the data contract and one for the backend's
-  API.
+- `crates/api-codegen`: the [generator](#generating-the-data-contract) of the
+  backend API's committed TypeScript bindings and JSON Schemas.
 
 The remaining members are the asset-generation tools (`draw`, `voxel`, `mc`,
 `sn`, `dc`, `paint`, `particle-*`, `sfx-*`, `music` and the libraries they
@@ -229,18 +224,6 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 
 ### TypeScript (npm workspace)
 
-- `packages/run-record`: `@clockwyrks/run-record`. Shared TypeScript types
-  and JSON Schema for the [run record](/components/core/run-records/), the
-  central data contract.
-- `packages/asset-contract`: `@clockwyrks/asset-contract`. The rig and F-curve
-  shapes a produced model is described by, generated in the same pass from the
-  same Rust types. Its own package because it is the only slice of the contract
-  that may be **seeded**: the voxel and particle runtimes depend on it and are
-  vendored into a model's workspace, so whatever they depend on travels with
-  them. `run-record` re-exports these types, so a console keeps importing them
-  from there. The `seeded-contract` gate (`ci/gates/seeded-contract.py`, which
-  runs `scripts/ci/seeded-contract-check.sh`) keeps the evaluation half out of
-  a run.
 - `packages/backend-api`: `@clockwyrks/backend-api`. The TypeScript types of the
   [backend's API](/components/backend/api/): its request and response shapes,
   the run queue, coverage plans and ladders, accounts, comparisons, the
@@ -298,6 +281,62 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `apps/docs`: `@the-test-cabinet/docs`. This Astro Starlight documentation
   site. The workspace template renders its `package.json`, which pins the
   site's dependencies; the pages are the project's.
+
+### The contracts submodule
+
+`contracts/` at the root is a git submodule holding the
+[contracts repository](/development/repositories/#the-repositories), the shapes more
+than one party reads or writes. The workspaces build against its checkout:
+`crates/core`, `crates/engines` and `crates/api-codegen` depend on its crates by
+`path`, the root `Cargo.toml` excludes `contracts` from its own members, and the
+root `package.json` lists `contracts/packages/*` among its workspaces. Its own
+pipeline runs its gates, so this repository's prose, format and lint gates leave
+it out. It keeps the layout it had inside this repository:
+
+- `contracts/crates/contracts`: `test-cabinet-contracts` (lib
+  `test_cabinet_contracts`). The
+  [contract](/components/core/overview/#the-contracts-crate) shapes more than one
+  party agrees on: the run record and its parts (events, validation summary,
+  metrics, toolchain and code analysis), the review shapes, a resolved test case
+  version, the test suite format and its rules, gg's configuration, telemetry and
+  session record, the TCQ query shapes, the engine identity a run names, the
+  ingest feed, and the layout of a run tree. Data and pure functions only; core
+  re-exports every module at its old path. Its `fixtures/` holds the test suite
+  fixture the format's tests and the suite runtime's tests read (`test-suite/`),
+  the TCQ conformance fixture the Rust and TypeScript evaluators both execute
+  (`gg_query.conformance.json`), and the
+  [scoring goldens](#the-scoring-goldens) both scoring implementations execute
+  (`scoring/`).
+- `contracts/crates/suites`: `test-cabinet-suites` (lib `test_cabinet_suites`).
+  The [test-suite runtime](/components/core/overview/#the-suites-crate): the
+  suite catalog and lowering, previews, a definition's prompt and the validator
+  runners, with the engine catalog, the vitest runner, the browser driver and the
+  content digests they share with the core. Core re-exports every module at its
+  old path. The `test-support` feature exposes `test_browser` to another crate's
+  tests.
+- `contracts/crates/contract-codegen`: the
+  [generator](#generating-the-data-contract) of the data contract's TypeScript
+  bindings and JSON Schemas.
+- `contracts/packages/run-record`: `@clockwyrks/run-record`. Shared TypeScript
+  types for the [run record](/components/core/run-records/), the central data
+  contract.
+- `contracts/packages/asset-contract`: `@clockwyrks/asset-contract`. The rig and
+  F-curve shapes a produced model is described by, generated in the same pass
+  from the same Rust types. Its own package because it is the only slice of the
+  contract that may be **seeded**: the voxel and particle runtimes depend on it
+  and are vendored into a model's workspace, so whatever they depend on travels
+  with them. `run-record` re-exports these types, so a console keeps importing
+  them from there. The contracts repository's tests hold its wording to the
+  seeded vocabulary, and this repository's `seeded-contract` gate
+  (`scripts/ci/seeded-contract-check.sh`) keeps every seeded package's closure
+  from reaching `run-record`.
+- `contracts/schema/core/` and `contracts/schema/gg/`: the data contract's JSON
+  Schemas, which the docs site publishes.
+
+A commit that moves the `contracts` pin carries what the pin moves with it: the
+regenerated `Cargo.lock` and `package-lock.json`, and the CI image pin when the
+contracts pipeline's moved. [Bumping a pin](/development/repositories/#bumping-a-pin)
+states the steps.
 
 ### Cold storage
 
@@ -423,19 +462,19 @@ The project's own gates, wired the same way:
 | Id | What it checks |
 | --- | --- |
 | `frozen-paths` | No change to a [frozen](/development/frozen-versions/) test-case version |
-| `seeded-contract` | No evaluation vocabulary in the packages seeded into a model's workspace |
+| `seeded-contract` | No evaluation vocabulary in the packages seeded into a model's workspace, and no seeded closure reaching `@clockwyrks/run-record` |
 | `spec-vocabulary` | No evaluation vocabulary in a non-frozen version's seeded specs |
 | `spec-prose` | markdownlint and cspell over the test-case, game-jam and group prose |
 | `audio-packs` | Every version's `[audio] packs` resolves against the pack registry |
 | `build-context` | Every project Dockerfile's `COPY` sources, and the `containers/` Rust pins |
 | `k8s-deploy-sets` | The staging and prod deploy sets, pinned to a commit |
 | `ci-image-pins` | The root pipelines name every CI image as `<repository>:${{ variables.ciImageTag }}` and include `ci/images/tags.yml`, `azure-pipelines.yml` passes the Rust one to `.azure/project/jobs.yml` as `rustImage`, and no file under `.azure/` names one |
-| `dependency-graph` | The submodules, the patch table and the package links against the repositories' [edges](/development/repositories/#the-edges) |
+| `dependency-graph` | The submodules, the patch table and the package links against the repositories' [edges](/development/repositories/#the-edges), and `Cargo.lock` against the checked-out crates |
 | `scripts-test` | `node --test` over `scripts/lib` and `scripts/*.test.mjs` |
 | `workspace-test` | Every npm workspace's Vitest run but the console's and this site's; no hook |
 | `validators-typecheck` | `tsc` over every test case's validator projects; no hook |
 | `site-build` | The gallery's build; no hook |
-| `contract-drift` | The generated data contract is current; no hook |
+| `contract-drift` | The generated backend API contract is current; no hook |
 
 `.pre-commit-config.yaml` runs each gate as one hook, triggered by the files it
 judges, except the ones marked "no hook", which build the workspace packages or
@@ -511,8 +550,8 @@ gg's unit tests are the one part of the suite no gate runs; see
 A run's score and rating are computed twice: by the core in Rust, where the backend
 scores a stored review, and by `@clockwyrks/run-stats` in TypeScript, where the
 consoles, the gallery and the public read edge score the same run. The goldens under
-`crates/contracts/fixtures/scoring/` are the cases both must agree on, one file per
-pair of functions that exists on both sides: `score_checklist`, the toolchain gate
+`contracts/crates/contracts/fixtures/scoring/` are the cases both must agree on, one
+file per pair of functions that exists on both sides: `score_checklist`, the toolchain gate
 (`gated`), the review aggregations (`aggregate`), the validator-decided domain ratings
 (`validator_domain`), `merge_review_items`, the errata's `score_exclusions`, and the
 automated-only score with the verdicts and the covered score it is built on
@@ -521,10 +560,10 @@ automated-only score with the verdicts and the covered score it is built on
 
 `crates/core/src/review.goldens.test.rs` executes them in the `rust-test` gate and
 `packages/run-stats/src/scoring.goldens.test.ts` in `workspace-test`, both reading the
-files off the contracts crate, so a case added on either side runs on both, and each
-fails when the directory holds a file it executes no test for. Each rejects a key it
-does not know, since a misspelled key would otherwise fall back to its default and
-assert less than it reads as asserting. The expectations are the Rust
+files off the contracts submodule's checkout, so a case added on either side runs on
+both, and each fails when the directory holds a file it executes no test for. Each
+rejects a key it does not know, since a misspelled key would otherwise fall back to
+its default and assert less than it reads as asserting. The expectations are the Rust
 output: a change to a scoring rule changes the goldens, and the other side then has
 to follow. The writeup-based `review::score` has no golden, being a thin wrapper over
 `score_checklist` with no TypeScript counterpart.
@@ -557,10 +596,11 @@ lockfile check's script under the host's `node`, and Playwright's Chromium
 launched through the npm workspace, which is how a validator project runs under
 Vitest's browser mode. A machine without that toolchain prints `skipped:` and
 what is missing, and the test passes, so the rest of the suite still runs on a
-laptop with no browser. `crates/suites/src/test_browser.rs` holds the helpers such
-a test uses, which the suites crate's `test-support` feature exposes to the core's
-tests, and `test_browser::tests::the_repository_workspace_launches_chromium` in the
-suites crate checks the toolchain on its own.
+laptop with no browser. `contracts/crates/suites/src/test_browser.rs` holds the
+helpers such a test uses, which the suites crate's `test-support` feature exposes to
+the core's tests, and `test_browser::tests::the_repository_workspace_launches_chromium`
+in the suites crate, which the contracts repository's pipeline runs, checks the
+toolchain on its own.
 
 Where the toolchain is meant to be present, a skip is a pass nobody earned.
 `TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
@@ -967,48 +1007,58 @@ gate.
 
 The run-record data contract and the backend API built on it have a single
 source of truth: the Rust types that derive `ts_rs::TS` and
-`schemars::JsonSchema` behind their `contract` feature, in `crates/contracts`,
-`crates/core` and `crates/backend` (core's feature turns on the contracts
-crate's). Two generators turn them into the committed TypeScript bindings and the
-JSON Schemas under `apps/docs/public/schema/`:
+`schemars::JsonSchema` behind their `contract` feature, in
+`contracts/crates/contracts`, `crates/core` and `crates/backend` (core's feature
+turns on the contracts crate's). Two generators turn them into committed
+TypeScript bindings and JSON Schemas:
 
-- `crates/contract-codegen` writes the data contract from `crates/contracts`:
-  `packages/run-record/src/` and `packages/asset-contract/src/` (two packages,
-  because only the latter may be seeded into a run) and their schemas.
+- `contract-codegen`, in the contracts repository, writes the data contract
+  from its contracts crate: `packages/run-record/src/` and
+  `packages/asset-contract/src/` (two packages, because only the latter may be
+  seeded into a run) and their schemas under `schema/core/` and `schema/gg/`.
+  It runs there, with that repository's own `npm run gen:contract`, and that
+  repository's `contract-drift` gate holds its output current.
 - `crates/api-codegen` writes the backend's API from `crates/backend` and
-  `crates/core`: `packages/backend-api/src/` and its schemas. It reads the first
-  generator's modules and documents without writing them, so a backend type that
-  refers to a contract type imports it from `@clockwyrks/run-record` and
-  references it at the contract document's URL. Nothing in the data contract
-  refers back to the backend API.
+  `crates/core`: `packages/backend-api/src/` and its schemas under
+  `apps/docs/public/schema/`. It reads the first generator's modules and
+  documents without writing them, so a backend type that refers to a contract
+  type imports it from `@clockwyrks/run-record` and references it at the
+  contract document's URL. Nothing in the data contract refers back to the
+  backend API.
 
-Each generator owns its directories under `apps/docs/public/schema/`. The data
-contract's are `core/` and `gg/`; the backend's are `backend-api/`, `coverage/`,
-`jobs-api/` and `snapshot/`. Each generator resolves the workspace root from its
-own crate, so each writes where its own workspace keeps its outputs. Five of the
+The docs site publishes every schema under `/schema/`. The backend's
+directories are `backend-api/`, `coverage/`, `jobs-api/` and `snapshot/`,
+committed under `apps/docs/public/schema/`. The data contract's `core/` and
+`gg/` are copies: the docs site's `prebuild` and `predev` run
+`scripts/copy-contract-schemas.mjs`, which copies them out of
+`contracts/schema/` into `apps/docs/public/schema/`, where `.gitignore` lists
+them, and fails when the submodule is not checked out. Each generator resolves
+the workspace root from its own crate, so each writes where its own workspace
+keeps its outputs. Five of the
 backend's documents once sat in the contract's directories and moved to
 `backend-api/`: `tournament.schema.json`, `gg-query-batch-request.schema.json`,
 `gg-query-batch-response.schema.json`, `gg-saved-query.schema.json` and
 `gg-dashboard.schema.json`. Their old URLs under `/schema/core/` and
 `/schema/gg/` redirect to the new ones with a 301, from
 `apps/docs/public/_redirects`, which the docs site's Cloudflare Pages project
-reads. After changing any contract type, regenerate and commit:
+reads. After changing a backend API type, regenerate and commit:
 
 ```sh
 npm run gen:contract
 ```
 
-It runs both generators, mirrors gg's built-in system-prompt templates into
+It runs `api-codegen`, mirrors gg's built-in system-prompt templates into
 `packages/backend-api/src/gg-system-prompt.ts` (the backend API's package, not the
 data contract's, because the data contract depends on nothing of gg's), formats
-the output with Prettier, and compiles the two regenerated packages. The
-`contract-drift` gate regenerates and fails on any diff, or on a generated file
-that was never committed, so the Rust, TypeScript, and JSON Schema
-representations stay in step.
+the output with Prettier, and compiles `@clockwyrks/backend-api` with the
+`run-record` it references. The `contract-drift` gate regenerates and fails on
+any diff, or on a generated file that was never committed, so the Rust,
+TypeScript, and JSON Schema representations stay in step. A change to a data
+contract type is made, regenerated and committed in the contracts repository,
+and reaches this one by a [pin bump](/development/repositories/#bumping-a-pin).
 
-`contract-codegen` compiles `test-cabinet-contracts` only, and `api-codegen`
-compiles `test-cabinet-core` and `test-cabinet-backend`, so neither needs any of
-gg's program-language toolchains.
+`api-codegen` compiles `test-cabinet-core` and `test-cabinet-backend`, so it
+needs none of gg's program-language toolchains.
 
 ## Projecting gg's reference
 
@@ -1221,10 +1271,12 @@ for runs everything. The `rust` group (`rust_build`, `binary_linux`,
 `binary_windows`) leaves out the documentation site, the web app and gallery,
 the issue board, the deployment manifests, the run-container definitions, the
 gates' own sources under `ci/`, Markdown outside `crates/`, every shell test,
-and the scripts only the image, deploy and release jobs run. The `gg` group
+the scripts only the image, deploy and release jobs run, and every submodule pin
+but `contracts`'. A `contracts` pin reaches it, since the workspace depends on
+that repository's crates by path. The `gg` group
 (the gg test partitions) leaves out those and the test cases and game jams,
 which gg's suite never reads. The `submodules` group (`submodule_pins`) is the
-one allowlist: `.gitmodules`, a submodule's pin, and the script itself. A change
+one allowlist: `.gitmodules`, a submodule's pin, and the pin script. A change
 under `.azure/`, to `ci/images/`, to `rust-toolchain.toml` or to
 `changed-paths.sh` reaches every group.
 
@@ -1392,13 +1444,15 @@ variables:
 | `tcab-deploy` | Azure Resource Manager | The publish stage's registry sign-in (`AcrPush`), the registry purge after each deployment (`AcrDelete`) and the cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
 | `tcab-gg-publish` | Azure Resource Manager | Storage Blob Data Contributor on `testcabinetartifacts` |
 | `github-mirror-key` | Secure file | The GitHub mirror's write deploy key, one per mirror |
+| `contracts` | Repository | The [contracts submodule](#the-contracts-submodule), which every building job initializes through its job token |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Secret pipeline variables | The docs deploy |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | Secret pipeline variables | Staging the audio store out of the audio object store (read-only) |
 
 The secret variables must be set on the pipeline before `master` or `staging`
 builds can complete their images and deploy stages. The release pipeline needs
-`the-test-cabinet-acr`, `tcab-gg-publish` and `github-mirror-key` authorized for
-it, and its build identity allowed to view and queue runs of the main pipeline.
+`the-test-cabinet-acr`, `tcab-gg-publish`, `github-mirror-key` and the
+`contracts` repository authorized for it, and its build identity allowed to view
+and queue runs of the main pipeline.
 
 ### Creating the pipelines
 

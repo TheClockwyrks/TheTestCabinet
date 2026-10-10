@@ -23,39 +23,48 @@ Every component has an overview (and often deeper pages) under
 [`apps/docs/src/content/docs/components/`](apps/docs/src/content/docs/components/).
 Read the doc first; the code location is where the implementation lives.
 
-| Component                                                                                                                           | Authoritative doc                                                                                               | Code                         |
-| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Core (headless orchestration; re-exports the contracts and suites crates)                                                           | [`components/core/`](apps/docs/src/content/docs/components/core/)                                               | `crates/core/`               |
-| Contracts (the shapes more than one party reads or writes; core re-exports them)                                                    | [`components/core/overview.md`](apps/docs/src/content/docs/components/core/overview.md#the-contracts-crate)     | `crates/contracts/`          |
-| Suites (the test-suite runtime, engine catalog, validator runners and browser driver; core re-exports them)                         | [`components/core/overview.md`](apps/docs/src/content/docs/components/core/overview.md#the-suites-crate)        | `crates/suites/`             |
-| CLI (`tcab`)                                                                                                                        | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md)                           | `crates/cli/`                |
-| Dispatcher (claims queued runs → one driver Job each)                                                                               | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md)             | `crates/dispatcher/`         |
-| Driver (per-run-Job executor; streams to the backend)                                                                               | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md)                     | `crates/driver/`             |
-| Artifacts (serves produced run trees off a volume)                                                                                  | [`components/artifacts/overview.md`](apps/docs/src/content/docs/components/artifacts/overview.md)               | `crates/artifacts/`          |
-| Arena (runs adversarial matches/tournaments — CPU-bound wasm — off the backend)                                                     | [`components/arena/overview.md`](apps/docs/src/content/docs/components/arena/overview.md)                       | `crates/arena/`              |
-| Web console                                                                                                                         | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md)                           | `apps/web/`                  |
-| Backend (private def/results server)                                                                                                | [`components/backend/`](apps/docs/src/content/docs/components/backend/)                                         | `crates/backend/`            |
-| Site (public static gallery)                                                                                                        | [`components/site/overview.md`](apps/docs/src/content/docs/components/site/overview.md)                         | `apps/site/`                 |
-| UI library (`@clockwyrks/ui`)                                                                                                       | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md)                             | `packages/ui/`               |
-| Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three)                                 | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md)       | `packages/voxel-runtime/`    |
-| Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
-| Docs site                                                                                                                           | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md)                         | `apps/docs/`                 |
+| Component                                                                                                                           | Authoritative doc                                                                                               | Code                          |
+| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| Core (headless orchestration; re-exports the contracts and suites crates)                                                           | [`components/core/`](apps/docs/src/content/docs/components/core/)                                               | `crates/core/`                |
+| Contracts (the shapes more than one party reads or writes; core re-exports them)                                                    | [`components/core/overview.md`](apps/docs/src/content/docs/components/core/overview.md#the-contracts-crate)     | `contracts/crates/contracts/` |
+| Suites (the test-suite runtime, engine catalog, validator runners and browser driver; core re-exports them)                         | [`components/core/overview.md`](apps/docs/src/content/docs/components/core/overview.md#the-suites-crate)        | `contracts/crates/suites/`    |
+| CLI (`tcab`)                                                                                                                        | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md)                           | `crates/cli/`                 |
+| Dispatcher (claims queued runs → one driver Job each)                                                                               | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md)             | `crates/dispatcher/`          |
+| Driver (per-run-Job executor; streams to the backend)                                                                               | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md)                     | `crates/driver/`              |
+| Artifacts (serves produced run trees off a volume)                                                                                  | [`components/artifacts/overview.md`](apps/docs/src/content/docs/components/artifacts/overview.md)               | `crates/artifacts/`           |
+| Arena (runs adversarial matches/tournaments — CPU-bound wasm — off the backend)                                                     | [`components/arena/overview.md`](apps/docs/src/content/docs/components/arena/overview.md)                       | `crates/arena/`               |
+| Web console                                                                                                                         | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md)                           | `apps/web/`                   |
+| Backend (private def/results server)                                                                                                | [`components/backend/`](apps/docs/src/content/docs/components/backend/)                                         | `crates/backend/`             |
+| Site (public static gallery)                                                                                                        | [`components/site/overview.md`](apps/docs/src/content/docs/components/site/overview.md)                         | `apps/site/`                  |
+| UI library (`@clockwyrks/ui`)                                                                                                       | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md)                             | `packages/ui/`                |
+| Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three)                                 | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md)       | `packages/voxel-runtime/`     |
+| Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/`  |
+| Docs site                                                                                                                           | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md)                         | `apps/docs/`                  |
 
-Other shared packages: `packages/run-record/` (`@clockwyrks/run-record` —
-TypeScript types + JSON Schema for the run record contract; see
+The contracts and suites crates, the data contract's generator
+(`contracts/crates/contract-codegen`) and its two packages live in the contracts
+repository, checked out as the [`contracts/`](contracts/) submodule, which the
+Cargo and npm workspaces depend on by path; a clone runs
+`git submodule update --init contracts` before it builds. Changing them is a
+commit there and a pin bump here, which carries the regenerated `Cargo.lock`
+and `package-lock.json` (see
+[Repositories](apps/docs/src/content/docs/development/repositories.md#bumping-a-pin)).
+
+Other shared packages: `contracts/packages/run-record/` (`@clockwyrks/run-record` —
+TypeScript types for the run record contract; see
 [`components/core/run-records.md`](apps/docs/src/content/docs/components/core/run-records.md)),
-`packages/asset-contract/` (`@clockwyrks/asset-contract` — the rig and F-curve
-shapes a produced model is described by, generated alongside `run-record` from the
-same Rust types but kept in its own package because the voxel and particle runtimes
-depend on it and are vendored into a model's workspace, which `run-record` must
-never be; the `seeded-contract` gate keeps it that way),
+`contracts/packages/asset-contract/` (`@clockwyrks/asset-contract` — the rig and
+F-curve shapes a produced model is described by, generated alongside `run-record`
+from the same Rust types but kept in its own package because the voxel and
+particle runtimes depend on it and are vendored into a model's workspace, which
+`run-record` must never be; the contracts repository's tests and the
+`seeded-contract` gate keep it that way),
 `packages/backend-api/` (`@clockwyrks/backend-api` — the TypeScript types of the
 backend's API and published snapshot, built on `run-record`; generated by
-`crates/api-codegen`, while `crates/contract-codegen` generates the two packages
-above),
+`crates/api-codegen`),
 `packages/run-stats/` (`@clockwyrks/run-stats` — the framework-free scoring
 rules, each mirroring a counterpart in `crates/core/src/review.rs` and held to
-it by the shared goldens in `crates/contracts/fixtures/scoring/`, plus the
+it by the shared goldens in `contracts/crates/contracts/fixtures/scoring/`, plus the
 set-level rollup that lets a figure frozen at one moment and the same figure
 recomputed later be compared; `packages/ui`'s `ratings` module re-exports the
 scoring half alongside its display metadata)
@@ -138,10 +147,10 @@ audio-packs              every version's [audio] packs resolve
 build-context            Dockerfile COPY sources; containers/ Rust pins
 ci-image-pins            every CI image reference reads ciImageTag
 ci-tests                 pytest over ci/ and scripts/repos/
-contract-drift           the generated contract is current (no hook)
+contract-drift           the generated API contract is current (no hook)
 cspell                   the prose's spelling, .cspell/project-words.txt
 dependency-graph         the repositories against their edges, the patch
-                         table and the package links
+                         table, the package links and Cargo.lock
 devcontainer-declaration the checkout is mounted where the container works
 docs-build               the documentation site's build
 docs-typecheck           the documentation site's astro check
@@ -256,10 +265,10 @@ authoritative over their on-disk format: the layout, drafts, exported versions
 and previews, plus a page per file format (the suite and version manifests,
 specifications, validators, debug APIs, test case definitions, demonstrations,
 assets, reference implementations, and the showcase). The suite model and its
-rules live in `crates/contracts/src/test_suite/`, the catalog, lowering, previews
-and validator runner in `crates/suites/src/test_suite/`, the backend's suite ingest
-and API in `crates/backend/`, and the console's Test Suites tab and detail pages
-in `packages/ui/`.
+rules live in `contracts/crates/contracts/src/test_suite/`, the catalog, lowering,
+previews and validator runner in `contracts/crates/suites/src/test_suite/`, the
+backend's suite ingest and API in `crates/backend/`, and the console's Test
+Suites tab and detail pages in `packages/ui/`.
 
 Authored suites live in a separate test suites repository, included here as a
 git submodule at [`test-suites/`](test-suites/), one folder per suite holding

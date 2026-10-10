@@ -1,5 +1,5 @@
 //! Tests for the single resolution entry point, driven by a minimal authored
-//! catalog and the committed fixture suite at `crates/contracts/fixtures/test-suite/`.
+//! catalog and the committed fixture suite at `contracts/crates/contracts/fixtures/test-suite/`.
 
 use std::fs;
 use std::path::PathBuf;

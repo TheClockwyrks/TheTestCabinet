@@ -25,6 +25,7 @@
     "/package-lock.json",
     "/tmp/**",
     "/cold-storage/**",
+    "/contracts/**",
     "/tasks/**/done/**",
     "/.claude/workflows/**",
     "/.claude/worktrees/**",

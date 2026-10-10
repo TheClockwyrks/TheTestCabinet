@@ -318,13 +318,13 @@ async fn a_published_run_this_build_cannot_read_is_deletable() {
 // The generation's pin to the contract
 // ---------------------------------------------------------------------------
 
-/// The published schema root the generated contract schemas live under, relative to
-/// this crate.
+/// The root the generated contract schemas live under, relative to this crate: the
+/// contracts repository's `schema/`, which the docs site publishes.
 ///
 /// A schema is the contract's structural form: it is generated from the very types
 /// this build deserializes stored records into, and CI regenerates and diffs it, so
 /// a Rust change that has not reached it fails there rather than here.
-const SCHEMA_ROOT: &str = "../../apps/docs/public/schema";
+const SCHEMA_ROOT: &str = "../../contracts/schema";
 
 /// The run record's own schema, relative to [`SCHEMA_ROOT`]. The pin starts here and
 /// follows every published schema it references.

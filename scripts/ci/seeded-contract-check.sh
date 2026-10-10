@@ -1,40 +1,36 @@
 #!/usr/bin/env bash
-# Gate: the generated contract package that gets SEEDED must not name this project
-# or say anything about how a run is judged.
+# Gate: the packages that get SEEDED into a model's workspace must not name this
+# project or say anything about how a run is judged.
 #
-# `@clockwyrks/asset-contract` describes the rig a produced model is made of, and
-# `packages/voxel-runtime` / `packages/particle-runtime` depend on it. Those
-# runtimes are vendored into a model's own workspace at seed time, so every byte of
-# this package travels with them and is readable by the model building the case.
-#
-# That makes it the one generated package bound by
+# The engines and the voxel and particle runtimes are vendored into a model's own
+# workspace at seed time, with the whole `file:` closure they depend on, so every
+# byte of them is readable by the model building the case. That binds them by
 # `guides/authoring/writing-case-specifications.md`: a model must not learn that it
 # is being evaluated, that its output is scored, or that The Test Cabinet exists.
-# The package is generated from Rust doc comments by `crates/contract-codegen`,
-# which copies them through verbatim (`ts_rs` `T::docs()`), so a `///` line added to
-# one of these types on the Rust side lands in a run workspace — silently, because
-# nothing else looks. This is what looks.
+#
+# The runtimes' one generated dependency, `@clockwyrks/asset-contract`, is the
+# contracts repository's (the contracts/ submodule). It is generated from Rust doc
+# comments, and that repository's own tests (`tests/asset-contract.test.ts`) hold
+# it to the STRICT list below. This script checks the hand-written packages that
+# live here and the closure that reaches it.
 #
 # The rest of the contract (`@clockwyrks/run-record` — records, reviews — and the
 # backend's `@clockwyrks/backend-api` — ladders, snapshots) is deliberately NOT
 # checked: it is never seeded, and it is supposed to talk about evaluation.
-#
-# To fix a failure, reword the Rust doc comment so it describes the shape rather
-# than the machinery around it, and move any maintainer-facing note to a plain `//`
-# comment beneath it, which is not copied. `crates/contracts/src/test_case.rs`'s
-# `ModelSpec` is the worked example.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-readonly PKG="packages/asset-contract/src"
-
 # Two tiers, because the two bodies of code can afford different vocabulary.
 #
-# STRICT applies to the generated asset contract, which is nothing but wire shapes.
-# No word here has an innocent reading in a file that describes a rig, so the list
-# can be broad — and being broad is the point, since its prose comes from Rust doc
-# comments written by someone thinking about the harness.
+# STRICT applies to what is nothing but wire shapes: the generated asset contract
+# (checked in the contracts repository, by the same list) and every manifest the
+# staging script writes (scripts/stage-tcab-packages.test.mjs reads the list from
+# here). No word here has an innocent reading in a file that describes a rig, so
+# the list can be broad — and being broad is the point, since the contract's prose
+# comes from Rust doc comments written by someone thinking about the harness.
+# Nothing in this script reads it; the staging test does, by this line's text.
+# shellcheck disable=SC2034
 readonly STRICT='test.cabinet|testcabinet|\btcab\b|\bbenchmark(s|ed|ing)?\b|\bevaluat(e|ed|es|ing|ion)\b|\bscor(e|ed|es|ing)\b|\bgrad(e|ed|es|ing)\b|\breview(s|ed|er|ers|ing)?\b|\brun.record\b|\bleaderboard\b|\bladder\b|\bharness\b|https?://'
 
 # HANDWRITTEN applies to the engines and runtimes, which are ordinary game code and
@@ -45,41 +41,10 @@ readonly STRICT='test.cabinet|testcabinet|\btcab\b|\bbenchmark(s|ed|ing)?\b|\bev
 # the surfaces a model has no business knowing exist.
 readonly HANDWRITTEN='test.cabinet|testcabinet|\btcab\b|\brun.record\b|\bleaderboard\b|\bbenchmark(s|ed|ing)?\b|review (tab|page|queue|ui)|\bthe review UI\b|\bthis (test.)?case.s manifest\b'
 
-if [ ! -d "$PKG" ]; then
-	echo >&2 "seeded-contract-check: $PKG does not exist."
-	echo >&2 "If the package moved, update this gate — do not delete it."
-	exit 1
-fi
-
-# A relocated or emptied package would otherwise sail through the greps below, and
-# the gate would report success having checked nothing.
-if [ -z "$(find "$PKG" -name '*.ts' -print -quit)" ]; then
-	echo >&2 "seeded-contract-check: $PKG holds no TypeScript."
-	echo >&2 "The generator writes it (crates/contract-codegen). Run \`npm run gen:contract\`."
-	exit 1
-fi
-
-# Tested on the OUTPUT rather than grep's exit status: this repo's `grep` is ugrep,
-# whose status for a recursive search is not reliably 1-on-no-match, and a gate that
-# misreads "nothing found" as "found something" is a gate nobody will keep.
-hits=$(grep -rniE "$STRICT" "$PKG" 2>/dev/null || true)
-if [ -n "$hits" ]; then
-	echo >&2 "The seeded contract package names what a model must not learn:"
-	echo >&2
-	echo "$hits" >&2
-	echo >&2
-	echo >&2 "These types are vendored into a model's workspace. Reword the Rust doc"
-	echo >&2 "comment they are generated from (crates/contracts)"
-	echo >&2 "and rerun \`npm run gen:contract\`. See the header of this script."
-	exit 1
-fi
-
-# The engines and runtimes themselves. These are hand-written, they ship their doc
-# comments in the `.d.ts` and `.js` they publish, and they are vendored into the run
-# workspace under `.vendor/engine/` and `.vendor/packages/` — so their prose is read
-# by the model exactly as the generated package's is. Checking only the generated
-# half was the gap that let "the run record would describe a run that never happened"
-# sit in three engines' published output.
+# The engines and runtimes. These are hand-written, they ship their doc comments in
+# the `.d.ts` and `.js` they publish, and they are vendored into the run workspace
+# under `.vendor/engine/` and `.vendor/packages/` — so their prose is read by the
+# model exactly as the generated package's is.
 seeded_dirs=$(node --input-type=module -e '
 import { readFileSync } from "node:fs";
 const src = readFileSync("scripts/stage-tcab-packages.mjs", "utf8");
@@ -124,15 +89,25 @@ done
 # the word splitting on the last line is how the derived list becomes argv.
 # shellcheck disable=SC2016,SC2086
 node --input-type=module -e '
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // Read from the caller rather than hand-copied, so this cannot drift from the
 // SHIPPABLE list the staging script actually stages.
 const SEEDED = process.argv.slice(2);
 const BANNED = "@clockwyrks/run-record";
 
-const manifest = (dir) =>
-  JSON.parse(readFileSync(`packages/${dir}/package.json`, "utf8"));
+// A package lives under packages/, or under contracts/packages/ for the contracts
+// repository, which holds two of them.
+const manifest = (dir) => {
+  const path = [`packages/${dir}/package.json`, `contracts/packages/${dir}/package.json`]
+    .find((candidate) => existsSync(candidate));
+  if (!path) {
+    console.error(`No packages/${dir}/package.json or contracts/packages/${dir}/package.json.`);
+    console.error("Is the contracts submodule checked out? git submodule update --init contracts");
+    process.exit(1);
+  }
+  return JSON.parse(readFileSync(path, "utf8"));
+};
 const dirOf = (name) => name.replace(/^@clockwyrks\//, "");
 
 const failures = [];
@@ -157,7 +132,7 @@ if (failures.length) {
   console.error(`\nSeeding copies the whole \`file:\` closure into the run repository, so
 ${BANNED} would be readable by the model — leaderboards, reviews and
 all. Depend on @clockwyrks/asset-contract instead, or move the type you need
-into it (crates/contract-codegen, ASSET_SPEC_TYPES).`);
+into it (contracts/crates/contract-codegen, ASSET_SPEC_TYPES).`);
   process.exit(1);
 }
 ' -- $seeded_dirs

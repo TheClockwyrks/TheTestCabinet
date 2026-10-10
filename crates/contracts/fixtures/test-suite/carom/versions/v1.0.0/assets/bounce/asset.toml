@@ -1,5 +1,0 @@
-id = "bounce"
-name = "Bounce"
-kind = "audio-fx"
-specification = "assets"
-files = ["bounce.wav"]

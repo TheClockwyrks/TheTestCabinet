@@ -635,7 +635,7 @@ fn suite_checkout() -> tempfile::TempDir {
     std::fs::create_dir_all(dir.path().join("test-cases")).expect("the authored tree");
     copy(
         &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../contracts/fixtures/test-suite"),
+            .join("../../contracts/crates/contracts/fixtures/test-suite"),
         &dir.path().join("test-suites"),
     );
     dir

@@ -2,7 +2,7 @@
 //! suite context, ingested both as an exported version and as a preview, for the
 //! tests of every reader that renders a stored version's prompt.
 //!
-//! The suite is the committed fixture at `crates/contracts/fixtures/test-suite/carom/`,
+//! The suite is the committed fixture at `contracts/crates/contracts/fixtures/test-suite/carom/`,
 //! with the `end-to-end` definition's template replaced by one naming `workspace`,
 //! `engine` and every covered specification — the shape a wizard-authored prompt
 //! takes, and the one the authored-case context cannot render.

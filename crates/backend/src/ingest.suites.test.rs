@@ -1,5 +1,5 @@
 //! Suite ingest, driven by the committed fixture suite at
-//! `crates/contracts/fixtures/test-suite/carom/`: a `suite.toml`, one exported version
+//! `contracts/crates/contracts/fixtures/test-suite/carom/`: a `suite.toml`, one exported version
 //! at `versions/v1.0.0/`, and a `drafts/main/` tree ingest never reads.
 //!
 //! The fixture offers one definition of every fully specified type plus one of a

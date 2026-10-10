@@ -24,17 +24,17 @@ the kit and the gates over the whole set.
 | `gg.rocks` | site | gg's public site |
 | `test-suites` | content | The test cases and game jams |
 
-Inside this checkout the cut between `contracts` and `platform` is drawn ahead
-of the move. What `contracts` will hold already builds on its own:
+`contracts` is checked out at `contracts/`. It holds
 `crates/contracts` (`test-cabinet-contracts`, with its fixtures),
 `crates/suites` (`test-cabinet-suites`, the test suite runtime, which depends
 on `test-cabinet-contracts` and on no `platform` crate, so `platform` and The Spec
 Cabinet run the same suite logic), `crates/contract-codegen`, which generates
-from the contracts crate alone, and the two packages it generates,
-`packages/run-record` and `packages/asset-contract`. `platform`'s side of the cut
-is `crates/api-codegen` and the package it generates, `packages/backend-api`
-(`@clockwyrks/backend-api`), which is the one package `web` takes from
-`platform`.
+from the contracts crate alone, the two packages it generates,
+`packages/run-record` and `packages/asset-contract`, and their JSON Schemas under
+`schema/`. The other repositories are still the superrepo's own directories.
+`platform`'s side of the cut with `contracts` is `crates/api-codegen` and the
+package it generates, `packages/backend-api` (`@clockwyrks/backend-api`), which
+is the one package `web` takes from `platform`.
 
 The kind decides a repository's shape. A library carries a Rust workspace and
 commits no `Cargo.lock`; an application carries one and commits its lock. A
@@ -112,6 +112,15 @@ feed as the registry of the `@clockwyrks` scope.
 
 ## Inside the superrepo
 
+The superrepo's own workspaces, which hold every repository not yet split out,
+build against a checked-out repository by path. Its Cargo crates name
+`contracts`' crates as `path = "../../contracts/crates/<crate>"`, its root
+`Cargo.toml` lists `contracts` under `exclude`, since that directory is a
+workspace of its own, and its root `package.json` lists `contracts/packages/*`
+among its workspaces. So a build inside the superrepo compiles the checkout at
+the commit the superrepo pins, and neither the feed nor a git source is
+fetched for it.
+
 Cargo reads `.cargo/config.toml` from every parent of the directory it runs in,
 so a build inside a submodule inherits the superrepo's. Its `[patch]` tables
 redirect each repository's public source to the sibling checkout, so a change
@@ -122,7 +131,12 @@ the monorepo's own aliases and build settings, and
 
 A repository that is not checked out has its table written as a comment.
 Cargo loads every patch path eagerly, so an entry naming a missing directory
-fails every build under the superrepo. `[net] git-fetch-with-cli` joins the
+fails every build under the superrepo. An active table applies to every Cargo
+workspace beneath the superrepo, and a workspace that does not use an entry
+records it in its lock as `[[patch.unused]]`, at the patched crate's version.
+So the locks of the workspaces nested under `packages/` (gg's guest and its
+Rust library set, which gg's build resolves with `--locked`) carry those
+entries. `[net] git-fetch-with-cli` joins the
 block once an entry is active: cargo still fetches a patched source to resolve
 the lock file, and while the mirrors are private
 `scripts/repos/sources.py rewrites --apply` sends each mirror's fetch to its
@@ -140,8 +154,10 @@ The `dependency-graph` gate holds the three together. Every submodule is a
 repository of the table or one the kit renders nothing into; the patch table
 covers every repository carrying a crate; and a checked-out repository carries
 its record, a patch entry per crate it declares, manifests its edges permit,
-CI image pins this checkout names, and package links that are current. A
-submodule that is not checked out is noted and passed over.
+CI image pins this checkout names, and package links that are current. With a
+repository carrying crates checked out, the superrepo's `Cargo.lock` is current
+against it (`cargo metadata --locked --offline`). A submodule that is not
+checked out is noted and passed over.
 
 ## The record of what builds together
 
@@ -155,6 +171,30 @@ Inside the superrepo cargo rewrites an application's lock file to the sibling
 checkouts, so that copy is never committed. An application's
 `scripts/resolve-lock.sh` resolves the lock in a copy of the sources outside
 every patch table and writes it back.
+
+### Bumping a pin
+
+The superrepo's `Cargo.lock` records the version and the dependencies of every
+crate its workspace reaches by path, and its `package-lock.json` those of every
+package its npm workspace holds. A pin bump that changes either leaves both
+stale, and every `--locked` cargo command and `npm ci` then fails. So a commit
+that moves the `contracts` pin carries, in the same commit:
+
+1. the gitlink, a commit on `contracts`' `master`
+   (`git -C contracts checkout <commit>`);
+2. the root lock, updated for the three crates:
+   `cargo update --offline -p test-cabinet-contracts -p test-cabinet-suites -p contract-codegen`;
+3. each nested lock under `packages/`, rewritten by
+   `cargo metadata --offline --format-version 1` in its directory, when a
+   crate's version moved;
+4. `npm install` at the root, and the `package-lock.json` it writes;
+5. the matching `ciImageTag`, when the `contracts` pipeline's image pin moved,
+   which the `dependency-graph` gate requires.
+
+The `dependency-graph` gate names a stale root or nested `Cargo.lock` at commit
+time, and the
+`web-browser-test` gate a `playwright` pin of `contracts` that differs from the
+image's.
 
 ## The kit
 

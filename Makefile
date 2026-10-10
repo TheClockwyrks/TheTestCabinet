@@ -44,7 +44,7 @@ docs:
 # `uv.lock`, and the bytecode caches are found rather than named because Python
 # writes one beside every package it imports.
 clean:
-	@rm -rf target node_modules apps/*/node_modules packages/*/node_modules \
+	@rm -rf target node_modules apps/*/node_modules packages/*/node_modules contracts/packages/*/node_modules \
 		apps/docs/.astro apps/docs/dist apps/web/dist .cspellcache \
 		ci/.venv ci/.pytest_cache ci/.ruff_cache .ruff_cache
 	@find ci -type d -name __pycache__ -prune -exec rm -rf {} +

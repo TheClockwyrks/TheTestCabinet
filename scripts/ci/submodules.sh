@@ -23,9 +23,9 @@
 #
 # On an Azure Pipelines agent the job passes its access token in
 # SYSTEM_ACCESSTOKEN, and it is sent to dev.azure.com alone. The project scopes
-# the job token to the repositories a job names, so a job that runs this must
-# also check out each submodule's repository (as the `submodule_pins` job does),
-# or the fetch is refused.
+# the job token to the repositories a job names, so a job that runs this names
+# each submodule's repository under the job's `uses: repositories:` (or checks
+# it out, as the `submodule_pins` job does), or the fetch is refused.
 #
 # `check` holds the `submodules` parameter of .azure/project/jobs.yml, the list
 # the `submodule_pins` job checks out, to .gitmodules: the same paths, each with
@@ -152,7 +152,7 @@ init() {
 		if ! git "${auth[@]}" -c submodule.recurse=false submodule update --init --depth 1 -- "$path"; then
 			echo "submodules.sh: could not initialize ${path}" >&2
 			if [[ ${#auth[@]} -gt 0 ]]; then
-				echo "     The job token reaches only the repositories the job names; check the submodule's repository out in the job." >&2
+				echo "     The job token reaches only the repositories the job names; name the submodule's repository under the job's 'uses: repositories:'." >&2
 			fi
 			return 1
 		fi

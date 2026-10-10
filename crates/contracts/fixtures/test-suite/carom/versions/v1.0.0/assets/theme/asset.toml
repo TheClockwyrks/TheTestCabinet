@@ -1,5 +1,0 @@
-id = "theme"
-name = "Theme"
-kind = "music"
-specification = "assets"
-files = ["theme.wav"]

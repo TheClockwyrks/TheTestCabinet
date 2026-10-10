@@ -387,6 +387,7 @@ ggmodule
 ggop
 gifenc
 Gini
+gitlink
 gitrun
 GIVEUP
 glimmerfin
@@ -686,6 +687,8 @@ poseless
 postconditions
 powerup
 practise
+prebuild
+predev
 preflighted
 premultiplies
 preopen

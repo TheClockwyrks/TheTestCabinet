@@ -28,13 +28,19 @@ What is asked:
   checkout names on each track it runs;
 - `.package-links.json` links every package a checked-out workspace
   produces, links nothing else, and an installed workspace naming a linked
-  package resolves it to the sibling checkout.
+  package resolves it to the sibling checkout;
+- with a repository carrying crates checked out, the superrepo's `Cargo.lock`
+  is current against it (`cargo metadata --locked --offline`), since the
+  workspace depends on those crates by path and a pin bump that moves a
+  crate's version or dependencies leaves the lock stale; and so is the lock of
+  each Cargo workspace nested under `packages/`, which records the patch
+  table's entries it does not use as `[[patch.unused]]`.
 
 The data edges, the ones no manifest can name (a run reading a suite, a CLI
 pinning gg's released binary), are reported as notes and never refused.
 
-A submodule that is not checked out, which is every one on the pipeline's
-shallow checkout, is skipped with a notice: its manifests are its own
+A submodule that is not checked out, which is every one a pipeline job does
+not initialize, is skipped with a notice: its manifests are its own
 pipeline's to judge.
 """
 
@@ -43,8 +49,11 @@ from __future__ import annotations
 import configparser
 import importlib.util
 import re
+import shutil
+import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
@@ -59,6 +68,19 @@ RENDER = Path("scripts") / "repos" / "render.py"
 LINK_SCRIPT = "scripts/repos/link-packages.sh"
 PATCH_SCRIPT = "scripts/repos/sources.py patch-table --write"
 PIPELINE = "azure-pipelines.yml"
+# What holds the superrepo's lock to the checked-out crates, run from its root.
+LOCK_CHECK = ("cargo", "metadata", "--locked", "--offline", "--format-version", "1")
+# What cargo says when `--locked` stopped it rewriting the lock, as against
+# failing for another reason (a crate this machine never downloaded).
+LOCK_STALE = "because --locked was passed"
+# The Cargo workspaces nested under the superrepo whose committed locks its
+# builds read with `--locked`: gg's guest and Rust library-set workspaces.
+NESTED_LOCKS = ("packages/*/Cargo.lock", "packages/*/*/Cargo.lock")
+# The pin-bump procedure the Repositories development page states.
+LOCK_FIX = (
+    "regenerate it offline (`cargo update --offline -p <each crate of the bumped repository>` at the root,"
+    " `cargo metadata --offline --format-version 1` in a nested workspace) and commit it with the pin"
+)
 # A container entry of a pipeline's resources, and the image it names.
 CONTAINER = re.compile(r"^    - container: (?P<name>\S+) *\n      image: (?P<image>\S+) *$", re.MULTILINE)
 
@@ -170,11 +192,40 @@ class Report:
         return not self.problems
 
 
-def check(root: Path, kit: Path | None = None) -> Report:
+def lock_problems(root: Path) -> list[str]:
+    """Each committed lock under the superrepo that is not current against the checkouts.
+
+    The root `Cargo.lock` and every lock `NESTED_LOCKS` matches. `--no-deps`
+    would skip the resolution that compares a lock to its manifests, so the
+    check resolves the whole graph, offline, from what cargo has already
+    downloaded. A lock is stale only when cargo would rewrite it; a resolution
+    that fails for another reason (a machine that never fetched the crates) is
+    left to the `--locked` gates that do fetch them.
+    """
+    locks = [root / "Cargo.lock", *sorted(lock for pattern in NESTED_LOCKS for lock in root.glob(pattern))]
+    problems = []
+    for lock in locks:
+        if not lock.is_file():
+            continue
+        ran = subprocess.run(list(LOCK_CHECK), cwd=lock.parent, capture_output=True, text=True, check=False)
+        if ran.returncode != 0 and LOCK_STALE in ran.stderr:
+            name = lock.relative_to(root).as_posix()
+            problems.append(f"{name} is not current against the checked-out crates; {LOCK_FIX}")
+    return problems
+
+
+def check(
+    root: Path,
+    kit: Path | None = None,
+    *,
+    lock: Callable[[Path], list[str]] | None = None,
+) -> Report:
     """Hold the submodules, the patch table, the package links and each checked-out repository together.
 
     `root` is the superrepo checkout, and `kit` the superrepo whose kit and
     render script judge it, `root` itself unless a test names another.
+    `lock` reports the stale locks (`lock_problems` unless a test names
+    another).
     """
     kit = root if kit is None else kit
     report = Report()
@@ -259,6 +310,14 @@ def check(root: Path, kit: Path | None = None) -> Report:
         if one.source in present or one.target in present
     )
     check_links(root, kit, registered, present, report)
+    crates = [path for path in present if crates_of(root / path)]
+    if crates and (root / "Cargo.lock").is_file():
+        if lock is None and shutil.which("cargo") is None:
+            report.notices.append(
+                f"cargo is not installed here, so Cargo.lock is not checked against {', '.join(crates)}"
+            )
+        else:
+            report.problems.extend((lock or lock_problems)(root))
     return report
 
 

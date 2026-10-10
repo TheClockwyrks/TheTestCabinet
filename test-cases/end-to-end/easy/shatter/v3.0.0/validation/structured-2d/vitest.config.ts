@@ -44,7 +44,7 @@ export default defineEngineValidationConfig({
   // Against that, the fifteen minutes
   // `guides/authoring/writing-debug-apis-and-validators.md` asks a case to finish
   // in, and the forty-five the runner caps the WHOLE suite run at
-  // (`VITEST_TIMEOUT`, `crates/suites/src/vitest_validator.rs`), are both orders of
+  // (`VITEST_TIMEOUT`, `contracts/crates/suites/src/vitest_validator.rs`), are both orders of
   // magnitude away. Nothing here is close to either, so the worker count is set
   // by what the host can spare rather than by a deadline.
   maxWorkers: 8,

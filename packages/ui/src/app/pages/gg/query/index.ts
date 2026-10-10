@@ -12,7 +12,7 @@
 // - **Evaluation is mirrored.** `evaluate` and `fieldCatalog` exist twice — authoritative
 //   in `crates/core/src/gg_query.eval.rs`, twinned here — because they must run on the
 //   backend for the console *and* in the browser for the public static site, which has no
-//   backend at all. The shared `crates/contracts/fixtures/gg_query.conformance.json`
+//   backend at all. The shared `contracts/crates/contracts/fixtures/gg_query.conformance.json`
 //   fixture is executed by both suites (`conformance.test.ts` here) and is the only
 //   thing standing between two independent evaluators and two different published
 //   numbers.

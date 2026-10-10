@@ -1,9 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-	"crates/contracts",
 	"crates/core",
-	"crates/suites",
 	"crates/engines",
 	"crates/code-analysis",
 	"crates/cli",
@@ -33,7 +31,6 @@ members = [
 	"crates/gg-sandbox-artifacts/swift",
 	"crates/gg-sandbox-artifacts/cpp",
 	"crates/gg-sandbox-artifacts/csharp",
-	"crates/contract-codegen",
 	"crates/api-codegen",
 	"crates/draw",
 	"crates/model-core",
@@ -84,6 +81,10 @@ members = [
 	"crates/entities",
 	"crates/migration",
 ]
+# The contracts repository, a submodule, is a workspace of its own: its crates are
+# path dependencies of this one, built from the checkout at the commit the
+# superrepo pins.
+exclude = ["contracts"]
 
 [workspace.package]
 edition = "2024"
@@ -330,7 +331,7 @@ schemars = "1"
 # only the keys that can change the emitted TypeScript (`rename`, `rename_all`,
 # `tag`, `content`, `untagged`, `skip`, `flatten`, `default`,
 # `skip_serializing_if`, ...); anything else it ignores, and then says so. Two
-# attribute shapes in `crates/contracts/src/gg.rs` trip it: field-level
+# attribute shapes in `contracts/crates/contracts/src/gg.rs` trip it: field-level
 # `deserialize_with` (the `count::option_u64` leniency on `GgLoopDetection` and
 # `GgRunLimits`) and container-level `deny_unknown_fields` on an *enum*
 # (`GgHookAction`) — ts-rs has an arm for the latter on structs but not on enums.

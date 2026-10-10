@@ -103,6 +103,17 @@ trigger:
 # never used, so a reference names one image for as long as the registry keeps
 # it. The forty zeros are the placeholder a render carries; see the header.
 
+# The repositories the jobs read beside this one: the contracts repository, the
+# `contracts/` submodule every build compiles against. No job checks it out. A
+# job that builds names it under `uses:`, which puts it in the scope of the job's
+# access token, and runs `scripts/ci/submodules.sh init contracts` after its own
+# checkout, which fetches the commit the superproject pins.
+resources:
+  repositories:
+    - repository: contracts
+      type: git
+      name: the-test-cabinet/contracts
+
 pool:
   vmImage: ubuntu-24.04
 
@@ -172,6 +183,9 @@ stages:
         # free tier, and the organisation's purchased parallel jobs lift that
         # cap to 360.
         timeoutInMinutes: 120
+        uses:
+          repositories:
+            - contracts
         variables:
           # The registry and the git checkouts, under the directory the cache
           # task saves, which is the whole reason CARGO_HOME moves at all.
@@ -189,12 +203,19 @@ stages:
           # line tables, so a failed test's backtrace still names its lines.
           CARGO_INCREMENTAL: 0
           # The image carries the browser toolchain, so a Rust test that would
-          # skip for want of it fails instead (crates/suites/src/test_browser.rs).
+          # skip for want of it fails instead (contracts/crates/suites/src/test_browser.rs).
           TCAB_REQUIRE_BROWSER: 1
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
+
+          # The contracts submodule, at the pinned commit; the job's `uses:`
+          # puts its repository in the token's scope.
+          - script: scripts/ci/submodules.sh init contracts
+            displayName: Initialize the contracts submodule
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
           # On the agent, not in the container, which is what `target: host`
           # says. The SDKs it removes are the hosted image's own and are in no
@@ -333,10 +354,20 @@ stages:
           image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         timeoutInMinutes: 60
+        uses:
+          repositories:
+            - contracts
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
+
+          # The contracts submodule, at the pinned commit; the job's `uses:`
+          # puts its repository in the token's scope.
+          - script: scripts/ci/submodules.sh init contracts
+            displayName: Initialize the contracts submodule
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
           - script: scripts/ci/free-disk.sh
             displayName: Free disk space on the agent

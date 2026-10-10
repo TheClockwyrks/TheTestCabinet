@@ -11,6 +11,6 @@
     "noEmit": false,
     "allowImportingTsExtensions": false
   },
-  "references": [{ "path": "../run-record" }],
+  "references": [{ "path": "../../contracts/packages/run-record" }],
   "include": ["src"]
 }

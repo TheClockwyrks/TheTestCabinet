@@ -1,7 +1,7 @@
 // The **shared conformance suite** — the TypeScript half of the mirrored evaluator's
 // only defence.
 //
-// It reads `crates/contracts/fixtures/gg_query.conformance.json` **directly off the
+// It reads `contracts/crates/contracts/fixtures/gg_query.conformance.json` **directly off the
 // crate**, not a copy vendored into this package. A copy would be worse than no fixture
 // at all: it would drift silently, keep passing, and still look like protection. Reading
 // the one file means a case added on either side is executed by both suites or neither,
@@ -57,7 +57,7 @@ interface Conformance {
  *  the suite behaves the same run from `packages/ui` and from the repo root. */
 const FIXTURE = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../../../../../../crates/contracts/fixtures/gg_query.conformance.json",
+  "../../../../../../../contracts/crates/contracts/fixtures/gg_query.conformance.json",
 );
 
 const fixture = JSON.parse(readFileSync(FIXTURE, "utf8")) as Conformance;

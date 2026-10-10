@@ -27,7 +27,7 @@ The built-in engines are embedded at build time by `crates/engines`
 (`test-cabinet-engines`), whose `BUILT_IN` table the core's default engine catalog
 is built over, so a backend-driven worker (which has no local checkout) resolves
 them the same way as the CLI. Adding an engine adds its entry to that table and its
-slug to `BUILT_IN_SLUGS` in `crates/contracts/src/engine.rs`.
+slug to `BUILT_IN_SLUGS` in `contracts/crates/contracts/src/engine.rs`.
 
 The authoritative design lives at
 [`components/core/engines.md`](../apps/docs/src/content/docs/components/core/engines.md);

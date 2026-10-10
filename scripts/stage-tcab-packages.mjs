@@ -32,7 +32,7 @@
 // without a build.
 //
 // The SHIPPABLE list below is the superset of the SHIPPABLE_PACKAGES allowlist in
-// crates/contracts/src/test_case.rs. That allowlist is what a case's manifest `packages`
+// contracts/crates/contracts/src/test_case.rs. That allowlist is what a case's manifest `packages`
 // names are validated against, so every name a case may request must appear in both
 // lists. The extra entries here are ENGINE runtimes (@clockwyrks/simple-2d,
 // @clockwyrks/structured-2d, @clockwyrks/simple-3d, @clockwyrks/structured-3d) and the shared validator harness
@@ -65,7 +65,7 @@ import { fileURLToPath } from "node:url";
 /**
  * Everything staged into the package store. The first two are the packages a test
  * case may request via its manifest `packages` key, and those two MUST also appear
- * in SHIPPABLE_PACKAGES in crates/contracts/src/test_case.rs. The rest are engine
+ * in SHIPPABLE_PACKAGES in contracts/crates/contracts/src/test_case.rs. The rest are engine
  * runtimes and the shared validator harness: never nameable by a case — so they are
  * staged from here and are deliberately absent from that Rust allowlist.
  *
@@ -94,17 +94,27 @@ const args = process.argv.slice(2);
 const manifestsOnly = args.includes("--manifests-only");
 const positional = args.filter((arg) => arg !== "--manifests-only");
 const outDir = resolve(positional[0] ?? "/opt/tcab-packages");
-const packagesDir = join(repoRoot, "packages");
+// The package directories of the npm workspace: this repository's own, and the
+// contracts repository's (the `contracts/` submodule), which holds
+// @clockwyrks/asset-contract, a dependency of the voxel and particle runtimes.
+const packagesDirs = [
+  join(repoRoot, "packages"),
+  join(repoRoot, "contracts", "packages"),
+];
 
-// Map every in-repo package name -> { dir, pkg } by reading packages/*/package.json.
+// Map every in-repo package name -> { dir, pkg } by reading each directory's
+// */package.json.
 const byName = new Map();
-for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-  if (!entry.isDirectory()) continue;
-  const dir = join(packagesDir, entry.name);
-  const manifestPath = join(dir, "package.json");
-  if (!existsSync(manifestPath)) continue;
-  const pkg = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (pkg?.name) byName.set(pkg.name, { dir, pkg });
+for (const packagesDir of packagesDirs) {
+  if (!existsSync(packagesDir)) continue;
+  for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(packagesDir, entry.name);
+    const manifestPath = join(dir, "package.json");
+    if (!existsSync(manifestPath)) continue;
+    const pkg = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (pkg?.name) byName.set(pkg.name, { dir, pkg });
+  }
 }
 
 // The transitive closure of the shippable packages over their @clockwyrks
@@ -114,7 +124,10 @@ const visit = (name) => {
   if (closure.has(name)) return;
   const entry = byName.get(name);
   if (!entry)
-    throw new Error(`shippable package ${name} not found under packages/`);
+    throw new Error(
+      `shippable package ${name} not found under packages/ or contracts/packages/` +
+        " (is the contracts submodule checked out?)",
+    );
   closure.add(name);
   for (const dep of Object.keys(entry.pkg.dependencies ?? {})) {
     if (dep.startsWith("@clockwyrks/")) visit(dep);
