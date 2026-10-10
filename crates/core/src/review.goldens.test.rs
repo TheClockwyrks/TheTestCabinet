@@ -543,8 +543,9 @@ fn every_golden_file_is_executed() {
             rest[..rest.find('"').expect("a closed golden name")].to_owned()
         })
         .collect();
-    let dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/scoring");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_support::CONTRACT_FIXTURES)
+        .join("scoring");
     let present: std::collections::BTreeSet<String> = std::fs::read_dir(&dir)
         .expect("the goldens directory")
         .map(|entry| entry.expect("a directory entry").path())

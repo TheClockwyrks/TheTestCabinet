@@ -503,7 +503,8 @@ async fn a_suite_reference_build_is_uploaded_listed_played_and_replaced() {
     std::fs::create_dir_all(checkout.join("test-cases")).unwrap();
     copy_dir(
         &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../contracts/fixtures/test-suite"),
+            .join(crate::test_paths::CONTRACT_FIXTURES)
+            .join("test-suite"),
         &checkout.join("test-suites"),
     );
     let store = DefinitionStore::open(checkout.join("store")).unwrap();

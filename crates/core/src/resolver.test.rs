@@ -9,7 +9,9 @@ use crate::test_suite::SUITE_VARIANT_SLUG;
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn suites_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_support::CONTRACT_FIXTURES)
+        .join("test-suite")
 }
 
 /// A temporary authored catalog holding one resolvable `demo` case.

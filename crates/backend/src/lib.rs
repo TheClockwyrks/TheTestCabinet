@@ -416,3 +416,6 @@ async fn build_with_prices(
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+mod test_paths;

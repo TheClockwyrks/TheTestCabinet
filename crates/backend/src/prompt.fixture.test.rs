@@ -102,7 +102,9 @@ pub fn engine(slug: &str) -> ResolvedEngine {
 
 /// The committed fixture suites checkout — the directory holding `carom/`.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_paths::CONTRACT_FIXTURES)
+        .join("test-suite")
 }
 
 /// Give the `end-to-end` definition of the version folder at `version` the template.

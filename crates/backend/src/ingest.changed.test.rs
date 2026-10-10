@@ -74,8 +74,9 @@ fn write_jam(checkout: &Path, slug: &str, version: &str) {
 /// Copy the committed fixture suite into the checkout, as `carom@v1.0.0` and a
 /// second version `carom@v1.1.0` with identical content.
 fn write_suite(checkout: &Path) {
-    let fixture =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_paths::CONTRACT_FIXTURES)
+        .join("test-suite");
     let suites = checkout.join(TEST_SUITES_DIR);
     copy_tree(&fixture, &suites).expect("the fixture copies");
     let next = suites.join("carom/versions/v1.1.0");

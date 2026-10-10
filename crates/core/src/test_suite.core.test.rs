@@ -12,7 +12,9 @@ use crate::test_case::TestCaseCatalog;
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn checkout() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_support::CONTRACT_FIXTURES)
+        .join("test-suite")
 }
 
 #[test]

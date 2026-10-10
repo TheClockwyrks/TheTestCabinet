@@ -14,7 +14,9 @@ use crate::store::DefinitionStore;
 
 /// The committed fixture suites checkout — the directory holding `carom/`.
 fn fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_paths::CONTRACT_FIXTURES)
+        .join("test-suite")
 }
 
 /// A checkout holding an empty `test-cases/` tree and the fixture suite, so a

@@ -75,7 +75,9 @@ fn write_group(definitions: &Path, slug: &str, cases: &[&str]) {
 /// The committed fixture suites tree, the directory holding `carom/`. Ingest never
 /// writes to a suites tree, so a scan can read the committed copy in place.
 fn suites_fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/test-suite")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::test_paths::CONTRACT_FIXTURES)
+        .join("test-suite")
 }
 
 /// The case slugs the store holds, sorted.

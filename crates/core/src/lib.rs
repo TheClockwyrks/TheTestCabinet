@@ -82,6 +82,9 @@ pub use test_cabinet_suites::{content_digest, content_labels, engine, vitest_val
 #[path = "lib.test.rs"]
 mod tests;
 
+#[cfg(test)]
+mod test_support;
+
 /// What a test driving a real browser needs, and the `TCAB_REQUIRE_BROWSER`
 /// rule for when it is missing: `test_cabinet_suites::test_browser`, which the
 /// suites crate exposes to this crate's tests through its `test-support` feature.
