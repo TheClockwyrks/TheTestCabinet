@@ -31,6 +31,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use test_cabinet_core::test_suite::TestSuiteCatalogExt as _;
 use test_cabinet_core::test_suite::{
     ASSETS_DIR, AssetFolder, DEBUG_API_DIR, DEBUG_API_FILE, DemoFolder, PROMPTS_DIR, SHOWCASE_DIR,
     SPECIFICATIONS_DIR, SUITE_MANIFEST_FILE, SpecificationFolder, SuiteVersion,

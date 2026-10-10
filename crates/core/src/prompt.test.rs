@@ -4,7 +4,9 @@ use super::{
     ASSET_QUALITY_PREAMBLE, FULL_STACK_2D_PREAMBLE, FULL_STACK_3D_PREAMBLE, GAME_JAM_DIVIDER,
     GAME_JAM_PREAMBLE, GAME_JAM_README_DIRECTIVE, render_prompt, render_spec,
 };
-use crate::engine::{EngineCatalog, EngineSelection, NONE_SLUG, ResolvedEngine};
+use crate::engine::{
+    EngineCatalog, EngineCatalogExt as _, EngineSelection, NONE_SLUG, ResolvedEngine,
+};
 use crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR;
 use crate::run_record::PriorGameJamEntry;
 use crate::test_case::{

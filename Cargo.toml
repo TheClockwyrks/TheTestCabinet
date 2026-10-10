@@ -4,6 +4,7 @@ members = [
 	"crates/contracts",
 	"crates/core",
 	"crates/suites",
+	"crates/engines",
 	"crates/code-analysis",
 	"crates/cli",
 	"crates/gg",

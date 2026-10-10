@@ -46,6 +46,7 @@ use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
 use crate::store::{DefinitionStore, StoredManifest};
+use test_cabinet_core::engine::EngineCatalogExt as _;
 use test_cabinet_core::r2::R2Client;
 
 /// The schema version stamped into every snapshot document.

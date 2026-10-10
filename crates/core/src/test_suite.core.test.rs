@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use super::TestSuiteCatalog;
 use crate::test_case::TestCaseCatalog;
+use crate::test_suite::TestSuiteCatalogExt as _;
 
 /// The committed fixture checkout — the directory holding the `carom/` suite.
 fn checkout() -> PathBuf {

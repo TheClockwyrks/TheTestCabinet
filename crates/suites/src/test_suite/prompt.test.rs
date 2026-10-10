@@ -1,6 +1,7 @@
 //! Tests for rendering a suite-defined case's prompt, driven by the committed
 //! fixture suite at `crates/contracts/fixtures/test-suite/carom/versions/v1.0.0/`.
 
+use crate::test_engines::fixture_catalog;
 use std::path::{Path, PathBuf};
 
 use super::*;
@@ -14,7 +15,7 @@ fn checkout() -> PathBuf {
 /// Resolve one fixture definition, rendering its specifications into `dir`.
 fn resolve(dir: &Path, definition: &str) -> TestCaseVersion {
     TestSuiteCatalog::with_materials(checkout(), dir)
-        .resolve("carom", "v1.0.0", definition)
+        .resolve_with("carom", "v1.0.0", definition, &fixture_catalog())
         .unwrap_or_else(|err| panic!("{definition} should resolve: {err}"))
 }
 
@@ -85,7 +86,7 @@ fn a_definition_read_as_records_renders_the_prompt_its_tree_renders() {
     let template_path = dir.path().join("full.hbs");
     std::fs::write(&template_path, template).expect("the template is written");
     resolved.prompt_path = template_path;
-    let engine = crate::engine::EngineCatalog::default()
+    let engine = fixture_catalog()
         .resolve(&crate::engine::EngineSelection::new(
             "simple-2d".to_string(),
         ))

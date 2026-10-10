@@ -17,6 +17,7 @@ use super::{
     read_game_jam_readme, read_showcase, resolve_engine, run_init, with_runtime_cap,
     write_run_streams,
 };
+use crate::engine::EngineCatalogExt as _;
 use crate::execution::ExecOutput;
 use crate::test_case::MediaKind;
 use crate::validation::{DebugScriptResult, StepResult, ValidationSummary};

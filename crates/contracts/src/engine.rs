@@ -4,9 +4,11 @@
 //! directory holding one `engine.toml`, whose runtime is an npm package staged into
 //! the host package store. This module is the declarative half of that: the slugs,
 //! the manifest's shape, a run's selection, and the resolved engine. The catalog that
-//! resolves a selection against the embedded manifests and the host package store,
-//! `EngineCatalog`, is runtime and lives in `test_cabinet_core::engine`, which
-//! re-exports everything here and implements [`EngineLookup`] for it.
+//! resolves a selection against a table of manifests and the host package store,
+//! `EngineCatalog`, is runtime and lives in `test_cabinet_suites::engine`, which
+//! re-exports everything here and implements [`EngineLookup`] for it; core re-exports
+//! both as `test_cabinet_core::engine`, beside the catalog over the built-in table
+//! (`test_cabinet_engines::BUILT_IN`).
 
 use semver::Version;
 use serde::Deserialize;
@@ -20,7 +22,8 @@ pub const MANIFEST_FILE: &str = "engine.toml";
 pub const NONE_SLUG: &str = "none";
 
 /// The slugs of every built-in engine, in catalogue order. Kept in step with
-/// the built-in manifest table, and the order
+/// the built-in manifest table (`test_cabinet_engines::BUILT_IN`, whose test holds
+/// it to this list), and the order
 /// `test_cabinet_core::engine::EngineCatalog::all` enumerates in.
 pub const BUILT_IN_SLUGS: &[&str] = &[
     NONE_SLUG,

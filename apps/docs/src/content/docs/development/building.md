@@ -179,6 +179,11 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
   with the engine catalog, the vitest runner, the browser driver and the content
   digests they share with the core. Core re-exports every module at its old path.
   The `test-support` feature exposes `test_browser` to another crate's tests.
+- `crates/engines`: `test-cabinet-engines` (lib `test_cabinet_engines`). The
+  built-in [engine](/components/core/engines/) manifests as data: `BUILT_IN`, every
+  `engines/*/engine.toml` keyed by slug. Only its test depends on another crate
+  (the contracts crate, for `BUILT_IN_SLUGS`); the core builds its
+  default engine catalog over it.
 - `crates/core`: `test-cabinet-core` (lib `test_cabinet_core`). The headless
   [core](/components/core/overview/) that owns all orchestration: resolving a
   test case version, seeding a run's repository, executing the run in a

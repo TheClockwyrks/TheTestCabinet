@@ -3,6 +3,7 @@
 //! client.
 
 use super::*;
+use crate::engine::EngineCatalogExt as _;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::reference::ReferenceRenderer;
 use crate::run_record::{
@@ -11,6 +12,7 @@ use crate::run_record::{
 use crate::test_case::{
     BuildCommands, ReferenceView, ReviewItem, SpecFile, TestCaseVersion, Variant, WorkspaceFile,
 };
+use crate::test_suite::TestSuiteCatalogExt as _;
 use crate::validation::ValidationSummary;
 
 /// A minimal in-memory [`BackendClient`] returning a one-spec, one-asset,
@@ -1457,7 +1459,7 @@ async fn materialize_rebuilds_the_suite_version_a_definition_was_lowered_from() 
     // suite-defined, and the prompt handed to the harness is the one the
     // definition renders — naming the specification documents seeding wrote.
     assert!(crate::test_suite::is_suite_defined(&version));
-    let engine = crate::engine::EngineCatalog::default()
+    let engine = crate::engine::EngineCatalog::new()
         .resolve(&crate::engine::EngineSelection::new("none".to_string()))
         .expect("the engineless run");
     let variant = version

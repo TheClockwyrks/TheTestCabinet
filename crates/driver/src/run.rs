@@ -24,10 +24,11 @@ use test_cabinet_core::ToolchainStage;
 use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
-    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, Error, FsRepoSeeder,
-    HttpBackendClient, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
-    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState, RunStateExt,
-    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog,
+    EngineCatalogExt as _, Error, FsRepoSeeder, HttpBackendClient, OrchestratorCatalog,
+    PrerenderedReferenceRenderer, PriorGameJamEntry, RenderedReference, RunCancellation, RunEngine,
+    RunRecord, RunRequest, RunState, RunStateExt, TestCaseCatalog, TestCaseVersion, TestType,
+    materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 

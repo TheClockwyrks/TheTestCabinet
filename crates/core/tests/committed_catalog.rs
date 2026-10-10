@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use test_cabinet_core::engine::{EngineCatalog, EngineSelection};
+use test_cabinet_core::engine::{EngineCatalog, EngineCatalogExt as _, EngineSelection};
 use test_cabinet_core::{TestCaseCatalog, TestType, ensure_engine_supported};
 
 /// The directory holding the committed `test-cases/` and `game-jams/`:

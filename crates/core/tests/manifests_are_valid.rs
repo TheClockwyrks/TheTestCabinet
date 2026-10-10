@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use test_cabinet_core::engine::{
-    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineSelection,
+    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineCatalogExt as _, EngineSelection,
 };
 use test_cabinet_core::{
     BUILT_IN_SLUGS, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, OrchestratorCatalog,

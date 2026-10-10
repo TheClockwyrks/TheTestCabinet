@@ -11,11 +11,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::*;
-use crate::engine::{EngineCatalog, EngineSelection};
+use crate::engine::EngineSelection;
 use crate::test_case::{
     AssetDimension, AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation,
     SubReviewItem, TestCaseVersion, TestType, Variant,
 };
+use crate::test_engines::fixture_catalog;
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -159,11 +160,11 @@ fn output(id: &str, kind: MediaKind) -> ReviewOutput {
     }
 }
 
-/// The `simple-2d` engine, which vendors a runtime.
+/// The `simple-2d` engine of the fixture table, which vendors a runtime.
 fn engine() -> crate::engine::ResolvedEngine {
-    EngineCatalog::default()
+    fixture_catalog()
         .resolve(&EngineSelection::new("simple-2d"))
-        .expect("simple-2d is a built-in engine")
+        .expect("simple-2d is a fixture engine")
 }
 
 /// The suite for the first verdict unit `items` declares.

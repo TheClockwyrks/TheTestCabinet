@@ -22,6 +22,11 @@ pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
 pub mod container;
+// The file is not `engine.rs`: `crates/core/src/engine.rs` is an earlier path of the
+// suites crate's engine module, and a new file there would carry core's history into
+// an extraction of that crate.
+#[path = "engine_catalog.rs"]
+pub mod engine;
 pub mod error;
 pub mod event;
 pub mod exec_stream;
@@ -76,7 +81,7 @@ pub use test_cabinet_contracts::{
 // at their old paths in the same way.
 // `browser` is the exception: a module of the core's own that re-exports the suites
 // crate's and supplies the trace context its driver calls take.
-pub use test_cabinet_suites::{content_digest, content_labels, engine, vitest_validator};
+pub use test_cabinet_suites::{content_digest, content_labels, vitest_validator};
 
 #[cfg(test)]
 #[path = "lib.test.rs"]
@@ -138,8 +143,8 @@ pub use code_analysis::{
 pub use cold_storage::{COLD_STORAGE_DIR, COLD_STORAGE_DIR_ENV, ColdStorage};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use engine::{
-    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineManifest, EngineSelection,
-    NONE_SLUG, ResolvedEngine,
+    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineCatalogExt, EngineManifest,
+    EngineSelection, NONE_SLUG, ResolvedEngine, built_in_catalog,
 };
 pub use error::{Error, Result};
 pub use event::{

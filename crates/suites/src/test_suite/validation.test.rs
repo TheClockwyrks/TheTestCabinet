@@ -10,9 +10,9 @@
 //! editing one the rest of the fixture names, so a test about one invariant does
 //! not drag in the diagnostics of every file that referenced what it changed.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::*;
+use crate::test_engines::fixture_catalog;
 use crate::test_suite::*;
 use test_cabinet_contracts::layout::{
     MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
@@ -61,7 +61,7 @@ fn broken_at(root: PathBuf, break_it: impl FnOnce(&Path)) -> (SuiteVersion, Vec<
         .expect("the suite manifest is copied");
     break_it(&root);
     let suite = crate::test_suite::load_suite_manifest_of(&root).expect("the suite manifest loads");
-    load_and_validate(&suite, &root).expect("the version loads")
+    load_and_validate_with(&suite, &root, &fixture_catalog()).expect("the version loads")
 }
 
 /// The diagnostics a version with one break carries.
@@ -137,7 +137,8 @@ fn extra_requirement(requirement: &str) -> SuiteEntity {
 #[test]
 fn the_committed_fixture_produces_no_diagnostics() {
     let suite = crate::test_suite::load_suite_manifest_of(&fixture()).expect("the suite loads");
-    let (_, found) = load_and_validate(&suite, &fixture()).expect("the fixture loads");
+    let (_, found) =
+        load_and_validate_with(&suite, &fixture(), &fixture_catalog()).expect("the fixture loads");
     assert_eq!(found, []);
 }
 

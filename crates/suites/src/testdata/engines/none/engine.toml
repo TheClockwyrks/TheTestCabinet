@@ -1,0 +1,5 @@
+# A fixture engine for the suites crate's tests: the engineless baseline's shape,
+# with no package and no docs. Not the built-in manifest.
+slug = "none"
+name = "Fixture none"
+description = "A fixture engine that vendors no runtime."

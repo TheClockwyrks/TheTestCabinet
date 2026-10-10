@@ -1,4 +1,5 @@
 use super::*;
+use test_cabinet_core::engine::EngineCatalogExt as _;
 
 use std::collections::HashMap;
 

@@ -75,12 +75,15 @@ suite logic the core does. It holds what reads a `test-suites/` checkout and tur
 offered definition into something a run executes: the suite catalog and the lowering
 of a definition onto a test case version, previews, a definition's prompt, and the
 runner for a suite's validator project. It also holds what that runtime shares with
-the core's validators: the built-in [engine catalog](/components/core/engines/), the
+the core's validators: the [engine catalog](/components/core/engines/), the
 vitest runner a case's validator project runs through, the static server and browser
 driver, and the content digests and labels an ingest keys a version by.
 
 The suite format is contracts and its runtime is the suites crate. The engine shapes
-are contracts and the engine catalog is the suites crate. The authored catalog a suite
+are contracts, the engine catalog is the suites crate, and the built-in manifest
+table is `crates/engines`, which the core builds its default catalog over. The suites
+crate names no engine table, so every part of it that checks a declared engine slug
+takes the catalog as an argument. The authored catalog a suite
 definition's identity collides with is the core's, and the suites crate asks it
 through `AuthoredLookup`, which the core implements for its `TestCaseCatalog`. The
 suites crate's errors are a subset of the core's, with the same messages, and convert
@@ -96,14 +99,18 @@ name the same type, as do `test_cabinet_core::test_suite::TestSuiteCatalog` and
 A method that needs runtime cannot stay on a contract type, so it is a trait with the
 same name and signature in the crate that holds the runtime. The core has
 `RunToolingExt::current` (the build's commit), `RunStateExt::classify_failure` (over
-the core's error) and `HarnessEventExt::system` (stamped with the clock). The suites
-crate has `PartialSuiteTreeExt::complete` and `complete_preview` (over the engine
-catalog). Each is re-exported beside its type, so a caller that imports the module or
-the crate root calls `RunTooling::current()` as before.
+the core's error) and `HarnessEventExt::system` (stamped with the clock). The forms
+over the built-in engines are the core's: `EngineCatalogExt::new` and
+`with_package_store`, `PartialSuiteTreeExt::complete` and `complete_preview`, and
+`TestSuiteCatalogExt::resolve` and `resolve_beside`. Each is re-exported beside its
+type, so a caller that imports the module or the crate root calls
+`RunTooling::current()` as before.
 
 The suite export rules take the engines a declared slug is checked against
-(`validate_tree_with` and the rest, over an `EngineLookup`). The suites crate's
-`validate`, `validate_tree`, `validate_preview_tree` and `load_and_validate` pass the
+(`validate_tree_with` and the rest, over an `EngineLookup`), as do the suites crate's
+`TestSuiteCatalog::resolve_with`, `resolve_beside_with` and
+`preview_completeness_with`. The core's `validate`, `validate_tree`,
+`validate_preview_tree`, `load_and_validate` and `preview_completeness` pass the
 built-in engine catalog.
 
 The suites crate links no OpenTelemetry. Its browser driver calls (`capture`,

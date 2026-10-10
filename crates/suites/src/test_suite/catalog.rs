@@ -25,7 +25,7 @@
 //! suite's version, so `carom/versions/v1.0.0/test-cases/end-to-end.toml` resolves
 //! as `carom-end-to-end` at `v1.0.0`. That identity shares one space with the
 //! authored catalog's slugs, so a collision between the two is a real ambiguity;
-//! [`TestSuiteCatalog::resolve_beside`] refuses one it is asked about, and
+//! [`TestSuiteCatalog::resolve_beside_with`] refuses one it is asked about, and
 //! catalog-wide collision detection runs where both catalogs are held at once.
 //!
 //! # Previews
@@ -54,6 +54,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::engine::EngineCatalog;
 use crate::error::{Error, Result};
 use crate::fs::read_dir_names;
 use crate::test_case::{TestCaseVersion, version_key};
@@ -418,8 +419,18 @@ impl TestSuiteCatalog {
             .map_err(|err| self.invalid(slug, version, VERSION_MANIFEST_FILE, err.to_string()))
     }
 
-    /// Resolve one offered definition into the [`TestCaseVersion`] a run executes.
-    pub fn resolve(&self, slug: &str, version: &str, definition: &str) -> Result<TestCaseVersion> {
+    /// Resolve one offered definition into the [`TestCaseVersion`] a run executes,
+    /// checking the engines it declares against `engines`.
+    ///
+    /// `test_cabinet_core::test_suite::TestSuiteCatalogExt::resolve` is this over the
+    /// built-in engines.
+    pub fn resolve_with(
+        &self,
+        slug: &str,
+        version: &str,
+        definition: &str,
+        engines: &EngineCatalog,
+    ) -> Result<TestCaseVersion> {
         let loaded = self.load(slug, version)?;
         let root = self.version_tree(slug, version);
         let file = format!("{TEST_CASES_DIR}/{definition}.toml");
@@ -432,21 +443,23 @@ impl TestSuiteCatalog {
             })?;
         let materials = self.materials.join(&loaded.suite.slug).join(version);
         let context = SuiteContext::new(&root, version, &loaded, &materials);
-        lower(&context, &offered.slug, &offered.definition)
+        lower(&context, &offered.slug, &offered.definition, engines)
     }
 
     /// Resolve one offered definition, refusing an identity the authored catalog
-    /// already claims.
+    /// already claims, and checking the engines it declares against `engines`.
     ///
     /// The collision is checked before the folder is read, so an ambiguous identity
     /// is reported as the ambiguity it is rather than as whatever the resolve would
-    /// have found.
-    pub fn resolve_beside(
+    /// have found. `test_cabinet_core::test_suite::TestSuiteCatalogExt::resolve_beside`
+    /// is this over the built-in engines.
+    pub fn resolve_beside_with(
         &self,
         slug: &str,
         version: &str,
         definition: &str,
         authored: &impl AuthoredLookup,
+        engines: &EngineCatalog,
     ) -> Result<TestCaseVersion> {
         let identity = catalog_identity(slug, definition);
         if Self::collides_with_authored(&identity, authored) {
@@ -457,7 +470,7 @@ impl TestSuiteCatalog {
                 format!("identity `{identity}` is already claimed by an authored test case"),
             ));
         }
-        self.resolve(slug, version, definition)
+        self.resolve_with(slug, version, definition, engines)
     }
 
     /// Report a failure against one file of one suite version.

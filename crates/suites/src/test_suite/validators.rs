@@ -49,7 +49,7 @@
 //! served build, so a reported `<path>.test.ts` maps back to the validator module
 //! `<path>.ts` — which is exactly the string a requirement's `validators` key lists.
 //! Each path is claimed by exactly one requirement across the whole suite (the
-//! invariant [`validate`](super::validate) enforces), so the claim is the whole
+//! invariant [`validate_with`](super::validate_with) enforces), so the claim is the whole
 //! mapping: a requirement collects the results of every validator path it lists.
 //!
 //! - A requirement passes when every validator it claims ran and every assertion

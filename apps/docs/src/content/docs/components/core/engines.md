@@ -48,10 +48,16 @@ An engine is a directory under `engines/<slug>/` containing one manifest,
 The last two are declared by an engine that provides a runtime. An engine
 without them supplies no runtime, which is what `none` is.
 
-The built-in engines live under `engines/` in the repo. The engine catalog in the
-[suites crate](/components/core/overview/#the-suites-crate) (`crates/suites`) embeds
-every `engines/*/engine.toml` at build time, so a backend-driven worker with no
-checkout resolves them the same way the CLI does. They are catalogued under
+The built-in engines live under `engines/` in the repo. The data crate
+`crates/engines` (`test-cabinet-engines`) embeds every `engines/*/engine.toml` at
+build time as a table keyed by slug, in `BUILT_IN_SLUGS` order, so a
+backend-driven worker with no checkout resolves them the same way the CLI does.
+The engine catalog in the
+[suites crate](/components/core/overview/#the-suites-crate) (`crates/suites`)
+resolves a selection against a manifest table it is given
+(`EngineCatalog::from_manifests`). The core builds the default catalog over the
+built-in table: `EngineCatalog::new` and `EngineCatalog::with_package_store` are
+`test_cabinet_core::engine::EngineCatalogExt`'s. They are catalogued under
 [Engines](/engines/overview/). The catalogue is closed: a run naming a slug
 outside it is refused, because an engine is a staged package and a seeded
 documentation tree the host has to hold.

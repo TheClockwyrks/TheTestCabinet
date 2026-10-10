@@ -18,6 +18,7 @@
 //! says they are meant to be present fails instead, rather than reporting a pass it
 //! did not earn.
 
+use crate::test_engines::fixture_catalog;
 use std::path::{Path, PathBuf};
 
 use super::*;
@@ -113,7 +114,7 @@ fn the_generated_project_decides_requirements_against_a_served_build() {
     }
     let materials = scratch.path().join("materials");
     let test_case = TestSuiteCatalog::with_materials(checkout, &materials)
-        .resolve("carom", "v1.0.0", "end-to-end")
+        .resolve_with("carom", "v1.0.0", "end-to-end", &fixture_catalog())
         .expect("the fixture definition resolves");
 
     // The tree a run collected: the model's install, and the static build it produced,

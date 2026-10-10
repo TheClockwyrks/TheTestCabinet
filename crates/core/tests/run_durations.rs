@@ -38,9 +38,9 @@ use std::time::Duration;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
-    EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
-    HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
-    OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    EngineCatalogExt as _, EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder,
+    HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds,
+    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
     PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
     RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
     TokenCounts, Usage, ValidationSummary, Validator, Variant,

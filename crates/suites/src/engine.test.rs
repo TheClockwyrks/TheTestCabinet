@@ -1,106 +1,18 @@
-//! Tests for the engine catalogue: resolving each built-in, the runtime split
-//! between an engine that vendors one and the `none` baseline, and the default
-//! selection.
+//! Tests for the engine catalogue's logic: an unknown slug, the default selection,
+//! the slug shape, and the version a resolved engine reports from the package store.
+//!
+//! Each runs over the fixture table (`crate::test_engines`), so it asserts what the
+//! catalog does with a manifest rather than what a built-in manifest says; the
+//! built-in manifests are held by core's `engine_catalog.test.rs`.
 
 use super::*;
+use crate::test_engines::{fixture_catalog, fixture_catalog_in};
 
 // --- catalog resolution -----------------------------------------------------
 
 #[test]
-fn every_builtin_slug_resolves() {
-    let catalog = EngineCatalog::new();
-    for slug in BUILT_IN_SLUGS {
-        let engine = catalog
-            .resolve(&EngineSelection::new(*slug))
-            .unwrap_or_else(|err| panic!("resolve built-in engine `{slug}`: {err:?}"));
-        // The manifest embedded under `engines/<slug>/` must claim that slug; the
-        // load asserts it, and this is the guard that the assert ran on every one.
-        assert_eq!(engine.slug(), *slug);
-        assert!(!engine.manifest.name.trim().is_empty());
-        assert!(!engine.manifest.description.trim().is_empty());
-    }
-}
-
-#[test]
-fn none_provides_no_runtime() {
-    let catalog = EngineCatalog::new();
-    let engine = catalog
-        .resolve(&EngineSelection::none())
-        .expect("`none` resolves");
-
-    assert_eq!(engine.slug(), NONE_SLUG);
-    assert!(
-        !engine.provides_runtime(),
-        "`none` is the baseline: it vendors nothing"
-    );
-    // Nothing to seed, nothing to bind a host interface to, nothing to document.
-    assert_eq!(engine.package(), None);
-    assert_eq!(engine.docs(), None);
-}
-
-#[test]
-fn simple_2d_reports_its_package_and_docs() {
-    let catalog = EngineCatalog::new();
-    let engine = catalog
-        .resolve(&EngineSelection::new("simple-2d"))
-        .expect("`simple-2d` resolves");
-
-    assert!(engine.provides_runtime());
-    // These three are the seeding contract: what to copy out of the host package
-    // store, what a driver binds to, and which directory is seeded as the
-    // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@clockwyrks/simple-2d"));
-    assert_eq!(engine.docs(), Some("docs"));
-}
-
-#[test]
-fn structured_2d_reports_its_package_and_docs() {
-    let catalog = EngineCatalog::new();
-    let engine = catalog
-        .resolve(&EngineSelection::new("structured-2d"))
-        .expect("`structured-2d` resolves");
-
-    assert!(engine.provides_runtime());
-    // These three are the seeding contract: what to copy out of the host package
-    // store, what a driver binds to, and which directory is seeded as the
-    // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@clockwyrks/structured-2d"));
-    assert_eq!(engine.docs(), Some("docs"));
-}
-
-#[test]
-fn simple_3d_reports_its_package_and_docs() {
-    let catalog = EngineCatalog::new();
-    let engine = catalog
-        .resolve(&EngineSelection::new("simple-3d"))
-        .expect("`simple-3d` resolves");
-
-    assert!(engine.provides_runtime());
-    // These three are the seeding contract: what to copy out of the host package
-    // store, what a driver binds to, and which directory is seeded as the
-    // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@clockwyrks/simple-3d"));
-    assert_eq!(engine.docs(), Some("docs"));
-}
-
-#[test]
-fn structured_3d_reports_its_package_and_docs() {
-    let catalog = EngineCatalog::new();
-    let engine = catalog
-        .resolve(&EngineSelection::new("structured-3d"))
-        .expect("`structured-3d` resolves");
-
-    assert!(engine.provides_runtime());
-    // These three are the seeding contract: what to copy out of the host package
-    // store, what a driver binds to, and which directory is seeded as the
-    // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@clockwyrks/structured-3d"));
-    assert_eq!(engine.docs(), Some("docs"));
-}
-
-#[test]
 fn an_unknown_slug_is_an_error_naming_the_valid_slugs() {
-    let catalog = EngineCatalog::new();
+    let catalog = fixture_catalog();
     let err = catalog
         .resolve(&EngineSelection::new("unreal"))
         .expect_err("an unknown engine is refused");
@@ -128,16 +40,6 @@ fn the_default_selection_is_none() {
     // before engines existed.
     assert_eq!(EngineSelection::default(), EngineSelection::none());
     assert_eq!(EngineSelection::default().slug, NONE_SLUG);
-}
-
-// --- enumeration ------------------------------------------------------------
-
-#[test]
-fn all_lists_every_builtin_in_catalogue_order() {
-    let catalog = EngineCatalog::new();
-    let all = catalog.all();
-    let slugs: Vec<&str> = all.iter().map(|manifest| manifest.slug.as_str()).collect();
-    assert_eq!(slugs, BUILT_IN_SLUGS);
 }
 
 // --- slug shape -------------------------------------------------------------
@@ -181,7 +83,7 @@ fn a_resolved_engine_reports_the_version_of_its_staged_package() {
     // and records the version on the run, so the gate and the record can never
     // disagree.
     let store = store_with("@clockwyrks/simple-2d", "1.4.2");
-    let engine = EngineCatalog::with_package_store(store.path())
+    let engine = fixture_catalog_in(store.path())
         .resolve(&EngineSelection::new("simple-2d"))
         .expect("`simple-2d` resolves");
 
@@ -196,7 +98,7 @@ fn the_engineless_engine_reports_no_version() {
     // Not a missing version: `none` vendors no package, so there is nothing to
     // have a version.
     let store = store_with("@clockwyrks/simple-2d", "1.4.2");
-    let engine = EngineCatalog::with_package_store(store.path())
+    let engine = fixture_catalog_in(store.path())
         .resolve(&EngineSelection::none())
         .expect("`none` resolves");
 
@@ -211,7 +113,7 @@ fn an_engine_missing_from_the_store_resolves_without_a_version() {
     // resolve engines without ever seeding one, so an empty store is not an error
     // here. The two places it matters refuse on their own.
     let store = tempfile::tempdir().expect("temp store");
-    let engine = EngineCatalog::with_package_store(store.path())
+    let engine = fixture_catalog_in(store.path())
         .resolve(&EngineSelection::new("simple-2d"))
         .expect("resolution does not depend on the store");
 
@@ -222,7 +124,7 @@ fn an_engine_missing_from_the_store_resolves_without_a_version() {
 #[test]
 fn a_staged_version_that_is_not_a_semantic_version_reports_none() {
     let store = store_with("@clockwyrks/simple-2d", "nightly");
-    let engine = EngineCatalog::with_package_store(store.path())
+    let engine = fixture_catalog_in(store.path())
         .resolve(&EngineSelection::new("simple-2d"))
         .expect("resolution does not depend on the store");
 

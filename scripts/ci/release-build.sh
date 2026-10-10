@@ -15,4 +15,4 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "cargo build --release --all-targets (contracts + suites + core + CLI)"
-cargo build --release --locked -p test-cabinet-contracts -p test-cabinet-suites -p test-cabinet-core -p test-cabinet-cli --all-targets
+cargo build --release --locked -p test-cabinet-contracts -p test-cabinet-suites -p test-cabinet-engines -p test-cabinet-core -p test-cabinet-cli --all-targets

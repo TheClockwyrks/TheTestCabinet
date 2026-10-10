@@ -5193,6 +5193,7 @@ dependencies = [
  "test-cabinet-audio-core",
  "test-cabinet-contracts",
  "test-cabinet-draw",
+ "test-cabinet-engines",
  "test-cabinet-model-core",
  "test-cabinet-suites",
  "test-cabinet-telemetry",
@@ -5298,6 +5299,13 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "test-cabinet-engines"
+version = "0.0.0"
+dependencies = [
+ "test-cabinet-contracts",
 ]
 
 [[package]]

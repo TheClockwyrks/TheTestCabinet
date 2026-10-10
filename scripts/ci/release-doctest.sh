@@ -8,4 +8,4 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "cargo test --release --doc (contracts + suites + core + CLI)"
-cargo test --release --locked -p test-cabinet-contracts -p test-cabinet-suites -p test-cabinet-core -p test-cabinet-cli --doc
+cargo test --release --locked -p test-cabinet-contracts -p test-cabinet-suites -p test-cabinet-engines -p test-cabinet-core -p test-cabinet-cli --doc

@@ -5,10 +5,11 @@
 //! browser. See `docs/components/core/overview.md`.
 //!
 //! - [`test_suite`]: the suite catalog, the lowering of a definition onto a test case
-//!   version, previews, a definition's prompt, the export rules held to the built-in
-//!   engines, and the runner for a suite's validator project.
-//! - [`engine`]: the built-in engine catalog, the manifests it embeds and the
-//!   version each engine's staged package reports.
+//!   version, previews, a definition's prompt, the export rules held to an engine
+//!   catalog, and the runner for a suite's validator project.
+//! - [`engine`]: the engine catalog over a table of manifests it is handed, and the
+//!   version each engine's staged package reports. The built-in table is
+//!   `test_cabinet_engines::BUILT_IN`; core builds its default catalog over it.
 //! - [`vitest_validator`], [`validator`] and [`browser`]: a case's or a suite's vitest
 //!   project, the verdict units a checklist flattens into, and the static server and
 //!   browser driver the validators use.
@@ -20,6 +21,9 @@
 //! executes the result is `test_cabinet_core`'s, which depends on this crate and
 //! re-exports every module at its old path, so `test_cabinet_core::test_suite::*`,
 //! `test_cabinet_core::engine::EngineCatalog` and the rest keep naming the same items.
+//! What names the built-in engines is core's: the catalog over the built-in table,
+//! and the forms of the export rules, the suite catalog's resolution and the preview
+//! completeness that use it (each `*_with` form here takes the catalog).
 
 pub mod browser;
 pub mod content_digest;
@@ -39,6 +43,9 @@ pub mod vitest_validator;
 /// `test-support` feature.
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_browser;
+
+#[cfg(test)]
+mod test_engines;
 
 pub use error::{Error, Result};
 

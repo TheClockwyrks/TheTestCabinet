@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 use semver::Version;
 use serde::Deserialize;
 
-use crate::engine::{BUILT_IN_SLUGS, EngineCatalog, EngineSelection, NONE_SLUG};
+use crate::engine::{
+    BUILT_IN_SLUGS, EngineCatalog, EngineCatalogExt as _, EngineSelection, NONE_SLUG,
+};
 use crate::error::{Error, Result};
 use crate::review::FailureCap;
 

@@ -6,6 +6,7 @@
 //! exported tree carrying the preview version and `experimental = true`.
 
 use super::*;
+use crate::test_engines::fixture_catalog;
 use crate::test_suite::PREVIEWS_DIR;
 
 /// The version a preview of the draft `main` carries.
@@ -155,7 +156,7 @@ fn a_preview_resolves_under_the_suite_slug_at_its_prerelease_version() {
     assert!(identity.manifest.experimental);
 
     let resolved = catalog
-        .resolve("carom", PREVIEW, "end-to-end")
+        .resolve_with("carom", PREVIEW, "end-to-end", &fixture_catalog())
         .expect("the preview's definition resolves");
     assert_eq!(resolved.slug, "carom-end-to-end");
     assert_eq!(resolved.version, PREVIEW);

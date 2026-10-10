@@ -10,6 +10,7 @@ use super::*;
 use crate::engine::NONE_SLUG;
 use crate::prompt::{SuiteSpecification, render_suite_prompt};
 use crate::test_case::{AssetKind, TestType};
+use crate::test_engines::fixture_catalog;
 use crate::test_suite::SUITE_VARIANT_SLUG;
 use crate::test_suite::{SuiteManifest, suite_dir_of};
 
@@ -26,7 +27,7 @@ fn catalog(dir: &Path) -> TestSuiteCatalog {
 /// Resolve one fixture definition, failing the test with the resolution error.
 fn resolve(dir: &Path, definition: &str) -> TestCaseVersion {
     catalog(dir)
-        .resolve("carom", "v1.0.0", definition)
+        .resolve_with("carom", "v1.0.0", definition, &fixture_catalog())
         .unwrap_or_else(|err| panic!("{definition} should resolve: {err}"))
 }
 
@@ -106,7 +107,12 @@ fn drafts_are_never_listed_or_resolved() {
         "{definitions:?}"
     );
     for name in ["main", "drafts/main"] {
-        assert!(catalog.resolve("carom", name, "sketch").is_err(), "{name}");
+        assert!(
+            catalog
+                .resolve_with("carom", name, "sketch", &fixture_catalog())
+                .is_err(),
+            "{name}"
+        );
     }
 }
 
@@ -131,7 +137,11 @@ fn a_folder_without_a_suite_manifest_is_not_a_suite() {
     assert_eq!(listed, vec!["carom"]);
     assert!(catalog.versions("pinball").is_err());
     assert!(!catalog.has_version("pinball", "v1.0.0"));
-    assert!(catalog.resolve("pinball", "v1.0.0", "ball").is_err());
+    assert!(
+        catalog
+            .resolve_with("pinball", "v1.0.0", "ball", &fixture_catalog())
+            .is_err()
+    );
 }
 
 #[test]
@@ -371,7 +381,7 @@ fn a_definition_is_experimental_when_either_side_declares_it() {
     let catalog = TestSuiteCatalog::with_materials(&root, &materials);
     assert!(
         catalog
-            .resolve("carom", "v1.0.0", "ball")
+            .resolve_with("carom", "v1.0.0", "ball", &fixture_catalog())
             .expect("the definition resolves")
             .experimental
     );
@@ -384,7 +394,7 @@ fn a_definition_is_experimental_when_either_side_declares_it() {
         .expect("the manifest writes");
     assert!(
         catalog
-            .resolve("carom", "v1.0.0", "end-to-end")
+            .resolve_with("carom", "v1.0.0", "end-to-end", &fixture_catalog())
             .expect("the definition resolves")
             .experimental
     );
@@ -468,7 +478,7 @@ fn a_specification_the_suite_does_not_declare_is_refused() {
     )
     .expect("the definition writes");
     let err = TestSuiteCatalog::with_materials(&root, dir.path().join("materials"))
-        .resolve("carom", "v1.0.0", "ball")
+        .resolve_with("carom", "v1.0.0", "ball", &fixture_catalog())
         .expect_err("an undeclared specification is refused");
     assert!(err.to_string().contains("`nope`"), "{err}");
 }
@@ -486,7 +496,7 @@ fn a_code_producing_definition_declaring_no_engine_is_refused_by_name() {
     )
     .expect("the definition writes");
     let err = TestSuiteCatalog::with_materials(&root, dir.path().join("materials"))
-        .resolve("carom", "v1.0.0", "end-to-end")
+        .resolve_with("carom", "v1.0.0", "end-to-end", &fixture_catalog())
         .expect_err("a code-producing definition without engines is refused");
     assert!(err.to_string().contains("`end-to-end`"), "{err}");
     assert!(err.to_string().contains("engines"), "{err}");
@@ -593,7 +603,7 @@ fn every_resolved_version_carries_a_scoring_domain() {
 fn a_type_whose_keys_are_to_be_determined_is_refused_by_name() {
     let dir = materials();
     let err = catalog(dir.path())
-        .resolve("carom", "v1.0.0", "efficiency")
+        .resolve_with("carom", "v1.0.0", "efficiency", &fixture_catalog())
         .expect_err("a performance definition is refused");
     let message = err.to_string();
     assert!(message.contains("performance"), "{message}");
@@ -611,7 +621,7 @@ fn a_version_folder_disagreeing_with_the_declared_version_is_refused() {
     )
     .expect("the version folder renames");
     let err = TestSuiteCatalog::with_materials(&root, dir.path().join("materials"))
-        .resolve("carom", "v2.0.0", "ball")
+        .resolve_with("carom", "v2.0.0", "ball", &fixture_catalog())
         .expect_err("a disagreeing version folder is refused");
     assert!(err.to_string().contains("v2.0.0"), "{err}");
     assert!(err.to_string().contains("version.toml"), "{err}");
@@ -639,7 +649,7 @@ fn a_suite_directory_disagreeing_with_the_declared_slug_is_refused() {
     copy_fixture(&root);
     std::fs::rename(root.join("carom"), root.join("billiards")).expect("the suite renames");
     let err = TestSuiteCatalog::with_materials(&root, dir.path().join("materials"))
-        .resolve("billiards", "v1.0.0", "ball")
+        .resolve_with("billiards", "v1.0.0", "ball", &fixture_catalog())
         .expect_err("a disagreeing suite directory is refused");
     assert!(err.to_string().contains("billiards"), "{err}");
     assert!(err.to_string().contains("suite.toml"), "{err}");
@@ -649,7 +659,7 @@ fn a_suite_directory_disagreeing_with_the_declared_slug_is_refused() {
 fn a_definition_the_suite_does_not_offer_is_refused() {
     let dir = materials();
     let err = catalog(dir.path())
-        .resolve("carom", "v1.0.0", "nope")
+        .resolve_with("carom", "v1.0.0", "nope", &fixture_catalog())
         .expect_err("an unknown definition is refused");
     assert!(err.to_string().contains("test-cases/nope.toml"), "{err}");
 }
@@ -714,7 +724,7 @@ fn a_blank_init_is_refused() {
     )
     .expect("the definition writes");
     let err = TestSuiteCatalog::with_materials(&root, dir.path().join("materials"))
-        .resolve("carom", "v1.0.0", "end-to-end")
+        .resolve_with("carom", "v1.0.0", "end-to-end", &fixture_catalog())
         .expect_err("a blank init is refused");
     assert!(err.to_string().contains("init"), "{err}");
 }

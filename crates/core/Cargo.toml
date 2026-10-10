@@ -30,6 +30,9 @@ test-cabinet-contracts = { path = "../contracts" }
 # `browser`, `vitest_validator`, `content_digest`, `content_labels`, and the halves of
 # `execution`, `validator`, `prompt` and `seeding` that moved).
 test-cabinet-suites = { path = "../suites" }
+# The built-in engine manifests, as data: the table `engine::EngineCatalogExt` builds
+# the default engine catalog over.
+test-cabinet-engines = { path = "../engines" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

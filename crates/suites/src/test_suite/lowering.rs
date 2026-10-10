@@ -331,11 +331,13 @@ fn difficulty_of(difficulty: SuiteDifficulty) -> &'static str {
     }
 }
 
-/// Lower one definition onto the [`TestCaseVersion`] a run executes.
+/// Lower one definition onto the [`TestCaseVersion`] a run executes, checking the
+/// engines it declares against `catalog`.
 pub(crate) fn lower(
     context: &SuiteContext<'_>,
     definition_slug: &str,
     definition: &SuiteTestCaseDefinition,
+    catalog: &EngineCatalog,
 ) -> Result<TestCaseVersion> {
     let file = format!("test-cases/{definition_slug}.toml");
     let invalid = |detail: String| context.invalid(&file, detail);
@@ -385,7 +387,7 @@ pub(crate) fn lower(
     }
 
     let common_specs = render_specifications(context, &file, definition)?;
-    let engines = resolve_engines(context, &file, definition, resolved_type.test_type)?;
+    let engines = resolve_engines(context, &file, definition, resolved_type.test_type, catalog)?;
     let common_workspace =
         resolve_workspaces(context, &file, definition, &resolved_type, &engines)?;
 
@@ -542,7 +544,7 @@ pub(crate) fn lower(
 /// The engines a run of this definition may select.
 ///
 /// A code-producing definition is required to list them, and every slug must be one
-/// the engine catalog knows; an empty list is refused by name rather than silently
+/// `catalog` knows; an empty list is refused by name rather than silently
 /// standing in for the engineless run. An asset-producing definition selects no
 /// engine, so it resolves to the engineless run alone.
 fn resolve_engines(
@@ -550,6 +552,7 @@ fn resolve_engines(
     file: &str,
     definition: &SuiteTestCaseDefinition,
     test_type: TestType,
+    catalog: &EngineCatalog,
 ) -> Result<Vec<EngineSupport>> {
     if test_type == TestType::AssetGeneration {
         return Ok(vec![EngineSupport::unbounded(NONE_SLUG)]);
@@ -563,7 +566,6 @@ fn resolve_engines(
             ),
         ));
     }
-    let catalog = EngineCatalog::default();
     let mut engines = Vec::with_capacity(definition.engines.len());
     for slug in &definition.engines {
         catalog

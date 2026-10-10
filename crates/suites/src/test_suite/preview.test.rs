@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 use super::*;
+use crate::test_engines::fixture_catalog;
 use crate::test_suite::{
-    PartialSuiteTreeExt, SUITE_MANIFEST_FILE, SuiteVersion, load_and_validate,
-    load_suite_manifest_of, validate_tree,
+    SUITE_MANIFEST_FILE, SuiteVersion, load_and_validate_with, load_suite_manifest_of,
+    validate_tree_with,
 };
 
 /// The committed fixture suite folder.
@@ -53,14 +54,14 @@ fn draft() -> (TempDir, PathBuf) {
 fn read(root: &Path) -> (PartialSuiteTree, Vec<SuiteDiagnostic>) {
     let suite = load_suite_manifest_of(root).expect("the suite manifest reads");
     let tree = PartialSuiteTree::load(&suite, root);
-    let problems = validate_tree(root, &tree);
+    let problems = validate_tree_with(root, &tree, &fixture_catalog());
     (tree, problems)
 }
 
 /// Each definition of the draft at `root`, mapped to what holds it back.
 fn completeness(root: &Path) -> BTreeMap<String, Vec<SuiteDiagnostic>> {
     let (tree, problems) = read(root);
-    preview_completeness(root, &tree, &problems, "main")
+    preview_completeness_with(root, &tree, &problems, "main", &fixture_catalog())
         .into_iter()
         .map(|entry| (entry.definition, entry.problems))
         .collect()
@@ -300,20 +301,21 @@ fn a_written_preview_validates_where_the_backend_reads_it() {
     let (checkout, root) = draft();
     std::fs::remove_dir_all(root.join("reference-implementations")).expect("removed");
     let (tree, problems) = read(&root);
-    let complete: Vec<String> = preview_completeness(&root, &tree, &problems, "main")
-        .into_iter()
-        .filter(DefinitionCompleteness::is_complete)
-        .map(|entry| entry.definition)
-        .collect();
+    let complete: Vec<String> =
+        preview_completeness_with(&root, &tree, &problems, "main", &fixture_catalog())
+            .into_iter()
+            .filter(DefinitionCompleteness::is_complete)
+            .map(|entry| entry.definition)
+            .collect();
     let preview = preview_tree(&tree, &complete, "main");
     assert!(
-        validate_tree(&root, &preview)
+        validate_tree_with(&root, &preview, &fixture_catalog())
             .iter()
             .any(|problem| problem.message.contains("no reference implementation")),
         "an exported version is still held to declaring one"
     );
     let version: SuiteVersion = preview
-        .complete_preview(&root)
+        .complete_preview_with(&root, &fixture_catalog())
         .expect("the preview converts to the complete model");
 
     let suite_dir = checkout.path().join(".previews/carom");
@@ -332,7 +334,8 @@ fn a_written_preview_validates_where_the_backend_reads_it() {
     }
 
     let suite = load_suite_manifest_of(&written).expect("the copy beside the preview reads");
-    let (loaded, diagnostics) = load_and_validate(&suite, &written).expect("the preview reads");
+    let (loaded, diagnostics) =
+        load_and_validate_with(&suite, &written, &fixture_catalog()).expect("the preview reads");
     assert_eq!(diagnostics, Vec::new());
     assert_eq!(
         loaded.manifest.version.as_deref(),

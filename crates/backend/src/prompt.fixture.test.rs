@@ -11,8 +11,12 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use test_cabinet_core::TestCaseVersion;
-use test_cabinet_core::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
-use test_cabinet_core::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
+use test_cabinet_core::engine::{
+    EngineCatalog, EngineCatalogExt as _, EngineSelection, ResolvedEngine,
+};
+use test_cabinet_core::test_suite::{
+    PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog, TestSuiteCatalogExt as _,
+};
 
 use crate::ingest::{IngestRequest, Ingestor, copy_tree};
 use crate::store::DefinitionStore;

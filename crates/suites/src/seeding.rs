@@ -15,8 +15,9 @@ use crate::error::{Error, Result};
 /// override when set, otherwise the baked-image default
 /// ([`TCAB_PACKAGES_DIR`](crate::test_case::TCAB_PACKAGES_DIR)).
 ///
-/// Shared with [`EngineCatalog::new`](crate::engine::EngineCatalog::new), which
-/// reads an engine's version out of the same store, so a default-constructed
+/// Shared with core's default engine catalog (`test_cabinet_core::engine::EngineCatalogExt::new`,
+/// built with [`EngineCatalog::from_manifests`](crate::engine::EngineCatalog::from_manifests)),
+/// which reads an engine's version out of the same store, so a default-constructed
 /// catalog and a default-constructed seeder can never disagree about which store
 /// a run's engine comes from.
 pub fn package_store_dir() -> PathBuf {

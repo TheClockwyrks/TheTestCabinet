@@ -10,8 +10,8 @@
 
 use anyhow::Result;
 use test_cabinet_core::{
-    EngineCatalog, EngineManifest, EngineSelection, ResolvedEngine, TestCaseVersion,
-    ensure_engine_supported,
+    EngineCatalog, EngineCatalogExt as _, EngineManifest, EngineSelection, ResolvedEngine,
+    TestCaseVersion, ensure_engine_supported,
 };
 
 use crate::cli::EnginesArgs;

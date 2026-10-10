@@ -14,6 +14,7 @@
 //! build is really served, the process is really run under its cap, and the document
 //! is really parsed.
 
+use crate::test_engines::fixture_catalog;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -29,7 +30,7 @@ fn checkout() -> PathBuf {
 /// every test here runs.
 fn end_to_end(materials: &Path) -> TestCaseVersion {
     TestSuiteCatalog::with_materials(checkout(), materials)
-        .resolve("carom", "v1.0.0", "end-to-end")
+        .resolve_with("carom", "v1.0.0", "end-to-end", &fixture_catalog())
         .expect("the fixture definition resolves")
 }
 

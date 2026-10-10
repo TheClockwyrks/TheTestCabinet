@@ -11,8 +11,8 @@ use test_cabinet_core::post_run::{PostRunContext, PostRunStage};
 use test_cabinet_core::test_case::{TestCaseVersion, Variant};
 use test_cabinet_core::{
     ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, EngineCatalog,
-    EngineSelection, HarnessSlug, OrchestratorSelection, ResolvedEngine, RunRequest,
-    TestCaseCatalog,
+    EngineCatalogExt as _, EngineSelection, HarnessSlug, OrchestratorSelection, ResolvedEngine,
+    RunRequest, TestCaseCatalog,
 };
 
 use super::*;

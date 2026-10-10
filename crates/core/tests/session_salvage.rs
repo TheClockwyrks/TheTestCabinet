@@ -30,12 +30,12 @@ use test_cabinet_core::gg_session_record::GG_SESSION_FORMAT_VERSION;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
-    EngineSelection, Error as CoreError, EventFormat, ExecOutput, FsRepoSeeder, HarnessInvocation,
-    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
-    OrchestratorCatalog, OrchestratorSelection, OutputSink, PrerenderedReferenceRenderer,
-    ProofFile, RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
-    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, Usage, ValidationSummary, Validator,
-    Variant,
+    EngineCatalogExt as _, EngineSelection, Error as CoreError, EventFormat, ExecOutput,
+    FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds,
+    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink,
+    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
+    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
+    Usage, ValidationSummary, Validator, Variant,
 };
 
 /// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the

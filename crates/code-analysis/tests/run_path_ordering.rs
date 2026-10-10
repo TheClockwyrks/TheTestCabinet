@@ -52,12 +52,12 @@ use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, CODE_ANALYSIS_TREE_ARTIFACT,
     CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, EngineCatalog, EngineSelection, EventFormat, EventSink,
-    ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
-    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage,
-    ValidationSummary, Validator, Variant,
+    ContainerSpec, ContainerStart, EngineCatalog, EngineCatalogExt as _, EngineSelection,
+    EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome,
+    HarnessRegistry, HarnessSlug, MediaKind, NoopEventSink, OrchestratorCatalog,
+    OrchestratorSelection, OutputSink, OutputStream, PrerenderedReferenceRenderer, ProofFile,
+    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
+    TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
 /// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the

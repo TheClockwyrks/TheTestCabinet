@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
 use crate::test_case::{TestCaseCatalog, TestCaseVersion};
-use crate::test_suite::{TEST_SUITES_DIR, TestSuiteCatalog};
+use crate::test_suite::{TEST_SUITES_DIR, TestSuiteCatalog, TestSuiteCatalogExt as _};
 
 /// Resolves a named test case version against the authored catalog and the suites
 /// checkout beside it.

@@ -19,10 +19,12 @@
 //! [partial model](PartialSuiteTree) and without writing anything:
 //!
 //! - which definitions are complete, and what holds back each one that is not
-//!   ([`preview_completeness`]);
+//!   ([`preview_completeness_with`], against the engines a definition's declared
+//!   slugs are checked against; `test_cabinet_core::test_suite::preview_completeness`
+//!   is its form over the built-in engines);
 //! - the tree a preview of some definitions is, restricted to those definitions and
 //!   what they reference ([`preview_tree`]), which converts to the complete model
-//!   through [`PartialSuiteTree::complete_preview`](super::PartialSuiteTreeExt::complete_preview);
+//!   through [`PartialSuiteTree::complete_preview_with`];
 //! - the files beside that model's TOML that the preview copies from the draft
 //!   ([`preview_files`]).
 //!
@@ -44,8 +46,9 @@ use super::{
 };
 use super::{DEBUG_API_DECLARATION_FILE, SuiteTrees, VALIDATORS_DIR, WORKSPACES_DIR};
 use super::{
-    SuiteDiagnostic, SuiteEntity, VITEST_CONFIG_FILE, targeted_asset, validate_preview_tree,
+    SuiteDiagnostic, SuiteEntity, VITEST_CONFIG_FILE, targeted_asset, validate_preview_tree_with,
 };
+use crate::engine::EngineLookup;
 
 /// The directory no preview copies: what a package manager installed is not
 /// authored, and it is reinstalled wherever the preview is built.
@@ -85,13 +88,15 @@ impl DefinitionCompleteness {
 /// Whether each test case definition of the draft `tree` is complete, in slug order.
 ///
 /// `root` is the draft's folder, `diagnostics` every problem the export rules found
-/// in it, and `draft` its name. A definition file that does not parse is listed too,
+/// in it, `draft` its name, and `engines` the engines a declared engine slug is
+/// checked against. A definition file that does not parse is listed too,
 /// incomplete, with its parse problem.
-pub fn preview_completeness(
+pub fn preview_completeness_with(
     root: &Path,
     tree: &PartialSuiteTree,
     diagnostics: &[SuiteDiagnostic],
     draft: &str,
+    engines: &dyn EngineLookup,
 ) -> Vec<DefinitionCompleteness> {
     let mut slugs: BTreeSet<String> = tree
         .test_cases
@@ -112,7 +117,7 @@ pub fn preview_completeness(
                 .cloned()
                 .collect();
             let restricted = references.restrict(tree, draft);
-            for problem in validate_preview_tree(root, &restricted) {
+            for problem in validate_preview_tree_with(root, &restricted, engines) {
                 if !problems.contains(&problem) {
                     problems.push(problem);
                 }
