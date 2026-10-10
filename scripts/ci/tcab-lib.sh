@@ -94,3 +94,38 @@ ci_assert_namespaced() {
 	done < <(ci_manifest_index)
 	return "$bad"
 }
+
+# ci_resolve_url <base> <url>: the address git clones a submodule from when
+# `.gitmodules` names it <url> in a superproject cloned from <base>. An absolute
+# URL is returned as it is. Each leading `../` drops one path component of
+# <base>, which may be a URL, an scp-style address, or a local path.
+ci_resolve_url() {
+	local base="$1" url="$2"
+	if [[ "$url" != ./* && "$url" != ../* ]]; then
+		printf '%s\n' "$url"
+		return
+	fi
+	base="${base%/}"
+	while :; do
+		case "$url" in
+			./*) url="${url#./}" ;;
+			../*)
+				url="${url#../}"
+				if [[ "$base" == */* ]]; then
+					base="${base%/*}"
+				elif [[ "$base" == *:* ]]; then
+					base="${base%:*}:"
+				else
+					echo "cannot resolve a relative URL against '$1'" >&2
+					return 1
+				fi
+				;;
+			*) break ;;
+		esac
+	done
+	if [[ "$base" == *: ]]; then
+		printf '%s%s\n' "$base" "$url"
+	else
+		printf '%s/%s\n' "$base" "$url"
+	fi
+}

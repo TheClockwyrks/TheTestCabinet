@@ -1426,7 +1426,12 @@ one for taking an image whose base moved under a floating tag: queue the image
 pipeline by hand on the branch's head and pin the commit it ran on. After each
 of its runs the image pipeline purges the registry of every CI image tag that
 `master`, `staging`, `nightly` and the checkout do not pin
-(`scripts/ci/ci-image-purge.sh`).
+(`scripts/ci/ci-image-purge.sh`), keeping as well every tag the
+`azure-pipelines.yml` of a submodule repository's `master`, `staging` or
+`nightly` names. That reaches the repositories of every submodule
+`.gitmodules` names by a relative URL, which each image job declares under
+`resources` and names under `uses:`; see
+[Repositories](/development/repositories/#a-repositorys-gates-and-pipeline).
 
 A job pulls its CI image from the registry before its first step runs, so a
 registry answer that times out would fail the job before it has checked

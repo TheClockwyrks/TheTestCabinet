@@ -304,6 +304,30 @@ Rust job and every other check in the checks job, inside the web image. A tag's
 run then publishes each public package of the workspace to the feed, at the
 version its manifest carries, which is the tag's.
 
+A repository's pipeline names each CI image it runs in by commit,
+`ubuntu-the-test-cabinet-<track>-cicd:<commit>`, at the `ciImageTag` of the
+render that wrote it. The superrepo's image pipeline deletes, after each run,
+every image tag nothing live pins (`scripts/ci/ci-image-purge.sh`). It keeps
+what the superrepo's `master`, `staging` and `nightly` pin and, for each
+submodule `.gitmodules` names by a relative URL, every image the
+`azure-pipelines.yml` of that repository's `master`, `staging` and `nightly`
+names. A repository it cannot read stops the purge, so each image job declares
+every such repository under `resources` and names it under `uses:`, which
+puts it in the job token's scope, and a new submodule is added there with it.
+Two rules follow:
+
+- **The merge-up rule.** A repository's image pin moves
+  `nightly → staging → master` with the superrepo change that bumped
+  `ciImageTag`: the `render.py --update` that brings the new pin lands on the
+  repository's `nightly` with that change, and is merged up as it is. So no
+  live branch of a repository pins an image older than the superrepo's oldest
+  live pin by more than one merge-up, and the purge never deletes an image a
+  live branch still runs in.
+- **The patch-tag rule.** A tag's pins are not kept. A tag's run publishes and
+  mirrors once, and a re-run after its image is purged fails at container
+  initialization. A tag whose run failed is followed by a patch tag (`v0.1.1`
+  after `v0.1.0`) on a commit carrying current pins, never re-run.
+
 On a Rust track whose suite drives a browser, the Rust job runs with
 `TCAB_REQUIRE_BROWSER=1` and installs the npm workspace with `npm ci` before
 its gates, since the browser tests drive the workspace's `vitest`,

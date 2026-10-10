@@ -35,6 +35,18 @@
 # deleting that tag would fail its gates at job initialization rather than in
 # a check.
 #
+# The project's other repositories pull the same images. A repository rendered
+# from the kit (scripts/repos/render.py) names each image it runs in by commit,
+# `ubuntu-the-test-cabinet-<track>-cicd:<40 hex>`, in its own
+# azure-pipelines.yml, and its branches move to a newer pin only as the merge-up
+# that bumped `ciImageTag` here reaches them. So what the live branches of each
+# repository .gitmodules names by a relative URL pin there is kept too. A
+# repository whose pipeline names no CI image, or that has no pipeline at all,
+# keeps nothing, and one that cannot be read stops the purge. A tag of such a
+# repository is not kept: its run is a one-off, and a re-run after its image is
+# gone is replaced by a patch tag (the Repositories page of the documentation
+# site).
+#
 # The credential is the one `Docker@2` wrote for the `the-test-cabinet-acr`
 # service connection, read back out of the docker configuration. That
 # connection's service principal holds AcrPush and AcrDelete on the registry;
@@ -88,8 +100,10 @@ readonly REPOSITORY="ubuntu-the-test-cabinet-${track}-cicd"
 # overwrite orphans.
 readonly CACHE_REPOSITORY="${REPOSITORY}-cache"
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$here"
+# The project's helpers, ci_resolve_url among them; sourcing it changes into the
+# repository root.
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # An Authorization header for one repository, built from whatever the docker
 # configuration holds. The two logins that write it write different things, and
@@ -160,7 +174,8 @@ pins_in() {
 		sed -E 's/^.*:[[:space:]]*//' || true
 }
 
-# Every tag a live branch pins, plus the one this checkout pins.
+# Every tag a live branch pins, plus the one this checkout pins, plus what the
+# live branches of the submodule repositories pin (submodule_pins).
 #
 # Only the one file on each branch is wanted, so the fetch asks for as little
 # history as it can get away with. `--depth 1` is how the pipeline's own
@@ -213,6 +228,77 @@ kept_tags() {
 			return 1
 		fi
 		printf '%s\n' "$pins"
+	done
+	submodule_pins
+}
+
+# Every image of this track a live branch of a submodule repository pins: each
+# `.gitmodules` entry whose URL is relative names a repository of this project,
+# resolved against `origin` the way git resolves it. Its branches are listed,
+# and each live one it has is fetched one commit deep and without blobs into a
+# scratch repository, whose azure-pipelines.yml alone is then read, so a
+# repository of media costs what its trees do. Anything that cannot be listed,
+# fetched or read stops the purge, for the reason a superrepo branch does.
+#
+# On an agent the job's token reaches only the repositories the job names, so
+# each job running this declares every such repository under `uses:`
+# (azure-pipelines-ci-images.yml).
+submodule_pins() {
+	[ -f .gitmodules ] || return 0
+	local base entry key url name remote heads branch repo text pins
+	local -a entries auth
+	mapfile -t entries < <(git config -f .gitmodules --get-regexp '^submodule\..*\.url$' 2>/dev/null || true)
+	[ "${#entries[@]}" -gt 0 ] || return 0
+	if ! base="$(git remote get-url origin 2>/dev/null)"; then
+		echo "ci-image-purge.sh: this checkout has no origin to resolve the submodules' URLs against; refusing to purge" >&2
+		return 1
+	fi
+	local scratch
+	scratch="$(mktemp -d)"
+	# shellcheck disable=SC2064 # the directory is known now, and is what goes.
+	trap "rm -rf '$scratch'; trap - RETURN" RETURN
+	for entry in "${entries[@]}"; do
+		key="${entry%% *}"
+		url="${entry#* }"
+		[[ "$url" == ../* || "$url" == ./* ]] || continue
+		name="${key#submodule.}"
+		name="${name%.url}"
+		if ! remote="$(ci_resolve_url "$base" "$url")"; then
+			echo "ci-image-purge.sh: cannot resolve ${name}'s URL ${url}; refusing to purge" >&2
+			return 1
+		fi
+		auth=()
+		if [ -n "${SYSTEM_ACCESSTOKEN:-}" ] && [[ "$remote" == https://*dev.azure.com/* ]]; then
+			auth=(-c "http.extraheader=AUTHORIZATION: bearer ${SYSTEM_ACCESSTOKEN}")
+		fi
+		if ! heads="$(git "${auth[@]}" ls-remote --heads "$remote")"; then
+			echo "ci-image-purge.sh: cannot list the branches of ${name} (${remote}); refusing to purge" >&2
+			return 1
+		fi
+		repo="${scratch}/${name}"
+		git init --quiet --bare "$repo"
+		git -C "$repo" remote add origin "$remote"
+		for branch in "${LIVE_BRANCHES[@]}"; do
+			awk -v ref="refs/heads/${branch}" '$2 == ref { found = 1 } END { exit !found }' <<<"$heads" || continue
+			if ! git "${auth[@]}" -C "$repo" fetch --quiet --no-tags --depth 1 --filter=blob:none origin \
+				"+refs/heads/${branch}:refs/heads/${branch}"; then
+				echo "ci-image-purge.sh: cannot fetch ${name}/${branch}; refusing to purge" >&2
+				return 1
+			fi
+			if [ -z "$(git -C "$repo" ls-tree "refs/heads/${branch}" azure-pipelines.yml)" ]; then
+				continue
+			fi
+			# The blob was left behind, so this fetches it, with the token above.
+			if ! text="$(git "${auth[@]}" -C "$repo" show "refs/heads/${branch}:azure-pipelines.yml")"; then
+				echo "ci-image-purge.sh: cannot read ${name}/${branch}'s azure-pipelines.yml; refusing to purge" >&2
+				return 1
+			fi
+			pins="$(grep -oE "ubuntu-the-test-cabinet-${track}-cicd:[0-9a-f]{40}" <<<"$text" | sed 's/^.*://' || true)"
+			if [ -n "$pins" ]; then
+				echo "ci-image-purge.sh: ${name}/${branch} pins $(sort -u <<<"$pins" | tr '\n' ' ')" >&2
+				printf '%s\n' "$pins"
+			fi
+		done
 	done
 	return 0
 }

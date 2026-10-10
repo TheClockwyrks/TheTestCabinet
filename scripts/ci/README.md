@@ -28,8 +28,8 @@ rendered from (`.copier-answers.yml` names its source, version and answers).
   [`tcab-lib.sh`](tcab-lib.sh), which resolves the repository root, changes into it,
   and provides `log`, the registry name (`CI_REGISTRY`), the architecture an image is
   published under (`ci_arch`), and the manifest reader and namespace check
-  (`ci_manifest_index`, `ci_assert_namespaced`). A script that needs both sources
-  both.
+  (`ci_manifest_index`, `ci_assert_namespaced`), and the resolver of a submodule's
+  relative URL (`ci_resolve_url`). A script that needs both sources both.
 
 `fetch.sh` is the third sourced helper. It has no side effect at all, not even a
 `cd`, because the toolchain installers that source it also run inside
@@ -183,9 +183,12 @@ the CI-images pipeline pushes, `ci-image-purge.sh` (from
 `.azure/project/ci-image-steps.yml`, with the `the-test-cabinet-acr`
 credential) deletes from the track's `ubuntu-the-test-cabinet-<track>-cicd`
 repository every tag that `master`, `staging`, `nightly` and the checkout do not
-pin as `ciImageTag` in `ci/images/tags.yml`, and from it and its `-cache`
-repository the untagged manifests older than an hour; a branch it cannot fetch
-stops it.
+pin as `ciImageTag` in `ci/images/tags.yml`, nor the `azure-pipelines.yml` of
+those branches of a submodule repository (each `.gitmodules` entry with a
+relative URL, which the image jobs name under `uses:`) names as
+`ubuntu-the-test-cabinet-<track>-cicd:<commit>`, and from it and its `-cache`
+repository the untagged manifests older than an hour; a branch or a submodule
+repository it cannot read stops it.
 
 ### The Rust jobs and their caches
 
@@ -293,7 +296,7 @@ a gg whose version is not the tag's; `gg_publish`; and `mirror`, which pushes th
 | `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture; `TCAB_PREBUILT_GG` replaces the `gg-build` stage for `backend` and `driver`                                                         | `service-image.test.sh`               |
 | `service-images.sh <commit>`                                                                          | every service image of one architecture, on one builder: `service-image.sh` per service in a fixed order                                                                        | `service-images.test.sh`              |
 | `registry-purge.sh [--dry-run] [--keep <sha>]... [--keep-count <n>] [--no-cluster]`                   | delete the `tcab-*` and `test-cabinet-*` images no environment runs, after each deployment; the policy is under _Registry retention_                                            | `registry-purge.test.sh`              |
-| `ci-image-purge.sh [--dry-run] <rust\|rust-browser\|web>`                                             | delete the track's CI images no live branch pins in `ci/images/tags.yml`, after the CI-images pipeline pushes                                                                   | `ci-image-purge.test.sh`              |
+| `ci-image-purge.sh [--dry-run] <rust\|rust-browser\|web>`                                             | delete the track's CI images no live branch pins in `ci/images/tags.yml` or a submodule repository's pipeline, after the CI-images pipeline pushes                              | `ci-image-purge.test.sh`              |
 | `manifest.sh <commit> <image>...`                                                                     | fuse each image's two architecture tags into the multi-arch `<commit>` tag                                                                                                      | `manifest.test.sh`                    |
 | `deploy-environment.sh <staging\|prod> <commit>`                                                      | roll an environment's cluster to one commit's images and wait on every workload; `--render` prints the set                                                                      | `deploy-environment.test.sh`          |
 | `pre-deploy.sh`, `post-deploy.sh`, `settle-workloads.sh`, `pin-images.sh`, `retire-legacy-backend.sh` | the staging deploy's project steps around the template's `deploy.sh`; each header says what it does                                                                             | each has its `.test.sh`               |

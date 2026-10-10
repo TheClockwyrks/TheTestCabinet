@@ -34,44 +34,9 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
-# resolve_url <base> <url>: the address git clones a submodule from when
-# `.gitmodules` names it <url> in a superproject cloned from <base>. An absolute
-# URL is returned as it is. Each leading `../` drops one path component of
-# <base>, which may be a URL, an scp-style address, or a local path.
-resolve_url() {
-	local base="$1" url="$2"
-	if [[ "$url" != ./* && "$url" != ../* ]]; then
-		printf '%s\n' "$url"
-		return
-	fi
-	base="${base%/}"
-	while :; do
-		case "$url" in
-			./*) url="${url#./}" ;;
-			../*)
-				url="${url#../}"
-				if [[ "$base" == */* ]]; then
-					base="${base%/*}"
-				elif [[ "$base" == *:* ]]; then
-					base="${base%:*}:"
-				else
-					echo "submodule-pins.sh: cannot resolve a relative URL against '$1'" >&2
-					return 1
-				fi
-				;;
-			*) break ;;
-		esac
-	done
-	if [[ "$base" == *: ]]; then
-		printf '%s%s\n' "$base" "$url"
-	else
-		printf '%s/%s\n' "$base" "$url"
-	fi
-}
-
 # The resolver alone, for the table test.
 if [[ "${1:-}" == "--resolve" ]]; then
-	resolve_url "$2" "$3"
+	ci_resolve_url "$2" "$3"
 	exit
 fi
 
@@ -162,7 +127,7 @@ for pin in "${pins[@]}"; do
 		failed=1
 		continue
 	fi
-	url="$(resolve_url "$superproject_url" "$(git config -f .gitmodules "submodule.${name}.url")")"
+	url="$(ci_resolve_url "$superproject_url" "$(git config -f .gitmodules "submodule.${name}.url")")"
 
 	log "${path}: is ${commit} on $(or_list "${allowed[@]}") of ${url}?"
 	repo="${scratch}/${name}"
