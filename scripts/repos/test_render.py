@@ -59,9 +59,10 @@ def test_an_image_is_pinned_at_the_commit_the_superrepo_pins() -> None:
         render.image_reference("nowhere")
 
 
-def test_a_repository_without_a_tag_pins_master() -> None:
+def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
+    """`contracts` has cut a tag, which its dependents pin; `engines` has none, so they follow its `master`."""
     assert render.workspace_dependencies("platform").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", branch = "master" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }',
         'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", branch = "master" }',
     ]
     assert render.workspace_dependencies("contracts") == "# contracts depends on no crate of another repository."

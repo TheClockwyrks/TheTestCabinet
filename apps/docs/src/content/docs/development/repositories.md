@@ -94,6 +94,11 @@ git = "https://github.com/TheClockwyrks/contracts"
 tag = "v0.1.0"
 ```
 
+The render writes the tag `TAGS` in `scripts/repos/render.py` records for the
+repository, `v0.1.0` for `contracts`, and `branch = "master"` for one it records
+none for. A new tag is recorded there, and reaches a dependent with its next
+`render.py --update`.
+
 A manifest never names a path outside its repository or an Azure source, and
 `dependency-edges` refuses both. That is what lets each repository build on its
 own, in its own pipeline.
