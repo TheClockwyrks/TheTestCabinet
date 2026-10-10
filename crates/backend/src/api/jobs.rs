@@ -97,7 +97,7 @@ pub async fn launch(
             launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
         bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
     }
-    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
+    crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &launch_models(&body)).await;
     let record = candidate_record(&state, [&body]).await;
     // A list price filled at this enqueue changes the catalog the public snapshot shows.
     let on_fill = || {
@@ -184,11 +184,11 @@ pub async fn launch_batch(
 
     let attribution = attribution(&user, &query)?;
     let now = now_rfc3339()?;
-    // Price every model the batch binds in one pass — one catalog fetch for the whole
+    // Observe every model the batch binds in one pass — one catalog fetch for the whole
     // batch rather than one per run, and before any run resolves its window.
     let batch_models: Vec<(String, HarnessSlug)> =
         body.runs.iter().flat_map(launch_models).collect();
-    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &batch_models).await;
+    crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &batch_models).await;
     // The stored gg runs every gg run's candidate lists are ordered by, loaded once per batch.
     let record = candidate_record(&state, &body.runs).await;
 
@@ -304,9 +304,9 @@ pub async fn launch_batch(
 /// model id plus — for a gg run — each model its capability set binds to an agent.
 ///
 /// This is the set the catalog is asked to know about at enqueue (see
-/// [`crate::bootstrap::seed_launch_prices`]), which is the same set a gg launch resolves
+/// [`crate::bootstrap::seed_launch_facts`]), which is the same set a gg launch resolves
 /// windows for. It is harness-agnostic on purpose: a third-party-harness run has one
-/// model, and it deserves a priced catalog entry just as much as a gg run's does.
+/// model, and it deserves an observed catalog entry just as much as a gg run's does.
 pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
     let mut models: Vec<(String, HarnessSlug)> = Vec::new();
     let mut push = |id: &str| {
@@ -557,8 +557,8 @@ async fn resolve_one_model_facts(
             ));
         }
     };
-    // The list price the run is scored at is the catalog entry's, filled from the
-    // official endpoint's rate when the entry carries none yet. A catalog read that
+    // The list price the run is scored at is the catalog entry's, filled from
+    // OpenRouter when the entry carries none yet. A catalog read that
     // fails is, exactly like a failed window read, an unknown rather than "no price".
     let list_prices =
         crate::bootstrap::list_price_for_launch(db, prices, model_id, harness, on_fill)
@@ -570,7 +570,7 @@ async fn resolve_one_model_facts(
     let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
         format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")
     })?;
-    // The id to ask OpenRouter under is the same one prices are looked up by, so a curated model
+    // The id to ask OpenRouter under is the same one its facts are observed by, so a curated model
     // resolves through its configured slug.
     let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
         .await
@@ -1751,11 +1751,11 @@ async fn maybe_enqueue_retry(
         return Ok(false);
     }
 
-    // Re-seed the retried launch's model prices exactly as its original enqueue did.
-    // Missing-only, so a launch that was already priced costs nothing; this covers
+    // Re-seed the retried launch's model facts exactly as its original enqueue did.
+    // Missing-only, so a launch whose models are on record costs nothing; this covers
     // the launch whose seeding was foiled by a transient OpenRouter failure.
     if let Ok(body) = serde_json::from_str::<LaunchBody>(&job.request_json) {
-        crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
+        crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &launch_models(&body)).await;
     }
 
     let retry_id = cuid2::create_id();

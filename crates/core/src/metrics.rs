@@ -105,10 +105,9 @@ fn sum_reported(a: Option<u64>, b: Option<u64>) -> Option<u64> {
 
 /// Per-token prices (USD) used to compute the comparable cost.
 ///
-/// These are the model developer's published list prices, curated on the
-/// model's catalog entry — not the billed rate of whichever endpoint served the
-/// run. Reasoning tokens are priced at the output rate, so no separate field is
-/// needed.
+/// These are the model's list prices, held on the model's catalog entry — not
+/// what whichever endpoint served the run charged for it. Reasoning tokens are
+/// priced at the output rate, so no separate field is needed.
 ///
 /// Each price is optional: `None` means the price is **unknown** (OpenRouter
 /// does not list one, or lists a nonsensical value such as a negative sentinel),
@@ -152,10 +151,10 @@ pub struct TokenPrices {
 #[serde(rename_all = "camelCase")]
 pub struct Cost {
     /// The canonical figure shown on the site, stable across providers. It is
-    /// computed from the run's token classes and the model's curated list
-    /// price, and from nothing else: a billed figure never feeds it, so two
-    /// runs of one model at different billed rates still compare on the same
-    /// basis. `None` when the cost is unknown.
+    /// computed from the run's token classes and the model's list price, and
+    /// from nothing else: a billed figure never feeds it, so two runs of one
+    /// model served at different prices still compare on the same basis. `None`
+    /// when the cost is unknown.
     pub comparable: Option<f64>,
     /// The amount the run was actually billed, recorded for reference: the
     /// harness's own accounting where it reports one, otherwise the comparable

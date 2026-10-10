@@ -195,7 +195,7 @@ entry, found through the entry's aliases by the run's canonical model ID.
 Harnesses that route through OpenRouter use OpenRouter model IDs, with any
 `openrouter/` routing prefix and `:free`-style variant tag stripped; harnesses
 that take a provider-native model ID match an alias of their own harness family
-unchanged. The billed-rate lookup maps a provider-native ID to its OpenRouter
+unchanged. A lookup on OpenRouter maps a provider-native ID to its OpenRouter
 equivalent. Which case a harness falls into, and the exact mapping it applies, is
 documented on that harness's Metrics page.
 

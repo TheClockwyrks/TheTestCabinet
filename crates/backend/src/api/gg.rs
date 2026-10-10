@@ -466,13 +466,13 @@ pub async fn launch_gg(
             launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
         bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
     }
-    // Price every model this run binds at enqueue, the same seeding `POST /jobs`
-    // performs, so the catalog can split the run's cost per token class from its
-    // first turn instead of only after the run completes. Missing-only and
-    // best-effort: an already-priced model costs nothing, and an unpriced one
-    // costs a cost split, not the launch. It also runs before the window
-    // resolution below, which then usually finds the window already on record.
-    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&launch)).await;
+    // Observe every model this run binds at enqueue, the same seeding `POST /jobs`
+    // performs, so the catalog knows the run's models from the moment the run
+    // exists. Missing-only and best-effort: a model already on record costs
+    // nothing, and one that cannot be observed never costs the launch. It also
+    // runs before the window resolution below, which then usually finds the
+    // window already on record.
+    crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &launch_models(&launch)).await;
     // Tell the run what the catalog knows about the models it binds — the context
     // window each agent's fullness accounting and compaction trigger are measured
     // against. gg keeps no model table of its own and assumes no default, so a model

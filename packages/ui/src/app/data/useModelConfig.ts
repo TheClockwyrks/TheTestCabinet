@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
 import type {
+  ListPriceRefresh,
   Model,
   ModelInput,
   ModelListing,
@@ -28,8 +29,14 @@ export interface ModelConfigApi {
   fetchLogo(url: string): Promise<string>;
   /** Seed a blank draft from a run of an unknown model. */
   seedFromRun(runId: string): Promise<ModelSeed>;
-  /** What OpenRouter publishes about a slug, to fill the form in with. */
-  lookupOpenrouter(slug: string): Promise<ModelListing>;
+  /** What OpenRouter publishes about a slug, to fill the form in with. The
+   * prices are the given developer provider's while it lists a complete rate. */
+  lookupOpenrouter(
+    slug: string,
+    providerPin?: string | null,
+  ): Promise<ModelListing>;
+  /** Re-read every curated entry's list price from OpenRouter. */
+  refreshListPrices(): Promise<ListPriceRefresh>;
   /** The bearer token the mutations are authorized with. */
   token: string;
 }
@@ -60,7 +67,8 @@ export function useModelConfig(): ModelConfigApi | null {
       !client.deleteModel ||
       !client.fetchModelLogo ||
       !client.seedModelFromRun ||
-      !client.lookupOpenrouterModel
+      !client.lookupOpenrouterModel ||
+      !client.refreshListPrices
     ) {
       return null;
     }
@@ -72,6 +80,7 @@ export function useModelConfig(): ModelConfigApi | null {
       fetchModelLogo,
       seedModelFromRun,
       lookupOpenrouterModel,
+      refreshListPrices,
     } = client;
     return {
       createModel: (input) => createModel(input, token),
@@ -79,7 +88,9 @@ export function useModelConfig(): ModelConfigApi | null {
       deleteModel: (slug) => deleteModel(slug, token),
       fetchLogo: async (url) => (await fetchModelLogo(url, token)).logoSvg,
       seedFromRun: (runId) => seedModelFromRun(runId),
-      lookupOpenrouter: (slug) => lookupOpenrouterModel(slug, token),
+      lookupOpenrouter: (slug, providerPin) =>
+        lookupOpenrouterModel(slug, token, providerPin),
+      refreshListPrices: () => refreshListPrices(token),
       token,
     };
   }, [canExecute, client, token]);

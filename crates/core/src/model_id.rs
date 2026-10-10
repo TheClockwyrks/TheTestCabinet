@@ -14,7 +14,7 @@
 //!   look free.
 //!
 //! [`canonical_model_id`] collapses those forms to one identity string used to
-//! group runs, key a model's price history, and match a run against the catalog.
+//! group runs, key a model's observed catalog facts, and match a run against the catalog.
 //! [`openrouter_price_id`] maps a run's model id onto the exact id OpenRouter
 //! lists it under, for the comparable-cost lookup. Both are harness-aware, and
 //! this module is the single source of truth for that logic (mirrored, for

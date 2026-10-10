@@ -99,8 +99,8 @@ pub use model_probes::{
     ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput, ProbeTriggerResponse,
 };
 pub use models::{
-    AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
-    ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
+    AliasInput, AliasOut, ListPriceRefreshOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse,
+    ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
 pub use test_cases::{
@@ -146,8 +146,8 @@ pub struct AppState {
     /// prune of a deleted run's tree in the artifact service (see
     /// [`crate::artifacts`]) and the svgl.app model-logo fetch.
     pub http: reqwest::Client,
-    /// The OpenRouter price source used to record a model's price history when a
-    /// run completes and on the periodic refresh.
+    /// The OpenRouter reads: a model's list price, and the catalog facts observed
+    /// when a run completes and on the periodic refresh.
     pub prices: test_cabinet_core::OpenRouterPrices,
     /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
     /// query endpoints run over. Loaded lazily on the first query and reconciled per
@@ -186,16 +186,21 @@ pub fn router(state: AppState) -> Router {
         .route("/config", get(client_config))
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
-        // runs, with price history) plus operator-driven config CRUD, a
-        // seed-from-run authoring helper, the OpenRouter fill-in lookup, and the
-        // svgl.app logo fetch. Reads are open; the mutations, the seed, the lookup,
-        // and the logo fetch require a token. `/models/seed`, `/models/logo`, and
-        // `/models/openrouter` are static, so they outrank the `/models/{slug}`
-        // dynamic route regardless of registration order.
+        // runs, with their observed catalog facts) plus operator-driven config CRUD,
+        // a seed-from-run authoring helper, the OpenRouter fill-in lookup, the
+        // svgl.app logo fetch, and the refresh of every list price. Reads are open;
+        // the mutations, the seed, the lookup, the logo fetch, and the refresh
+        // require a token. `/models/seed`, `/models/logo`, `/models/openrouter`, and
+        // `/models/list-prices/refresh` are static, so they outrank the
+        // `/models/{slug}` dynamic routes regardless of registration order.
         .route("/models", get(models::list).post(models::create))
         .route("/models/seed", get(models::seed))
         .route("/models/openrouter", get(models::openrouter))
         .route("/models/logo", post(models::logo))
+        .route(
+            "/models/list-prices/refresh",
+            post(models::refresh_list_prices),
+        )
         .route(
             "/models/{slug}",
             axum::routing::put(models::update).delete(models::delete),

@@ -75,41 +75,19 @@ these normalized values from each harness's raw reporting.
 Every run records cost two ways:
 
 - The comparable cost, the canonical figure. It is computed from the model's
-  list price, curated on its catalog entry as the uncached input, cached input,
-  and output rates per Mtok entered from the developer's own pricing page, so
-  the figure is stable across providers and discounts rather than tracking what
-  one provider happened to bill.
+  list price, the uncached input, cached input, and output rates per Mtok held
+  on its catalog entry, so the figure is stable across providers and discounts
+  rather than tracking what one provider happened to bill.
 - The actual cost charged for the run, recorded alongside the comparable cost
   for reference. It is the harness's own accounting where the harness reports
   one, and equal to the comparable cost otherwise.
 
-The backend resolves the model's list price when a run is enqueued and stamps it
-onto the launch, so a run is scored at the list price its model carried at
-enqueue. A gg run is scored at the list price of the model it is published
+The list price is the only model price the system holds, and every price
+calculation reads it. The backend resolves the model's list price when a run is
+enqueued and stamps it onto the launch, so a run is scored at the list price its
+model carried at enqueue and keeps that cost when the entry's price later
+changes. A gg run is scored at the list price of the model it is published
 under, and every model its capability set binds is priced the same way.
-
-A catalog entry that carries no list price is filled at enqueue from OpenRouter:
-the backend reads the model's official endpoint rate, by the same rule the
-[billed rate](#price-history) follows, and writes the three rates onto the entry
-dated that day and marked as sourced from OpenRouter. The operator confirms or
-corrects the filled rates against the developer's pricing page later; the runs
-already enqueued keep the rates they were stamped with. A filled list price
-stays as written until the operator edits it. A launch naming a model
-the catalog has no entry for, or one OpenRouter lists no rate for, is refused
-with the reason named.
-
-A list price filled before Flex endpoints were ignored can hold a Flex rate, so
-the backend rewrites the stored list prices once per database. The first time
-it starts on a database, in the background, it reads the standard rate of every
-catalog entry that carries a list price and writes it over the stored one,
-dated that day and marked as sourced from OpenRouter, whoever entered the
-figure it replaces. It leaves an entry as it is when the entry has no list
-price, has no OpenRouter slug, is not listed by OpenRouter, has no priced
-official endpoint, or already holds the standard rate. Runs keep the cost they
-were scored at. The backend reads every rate before it writes any: if OpenRouter
-cannot be read it writes nothing and tries again the next time it starts, and
-once the rewrite has happened it is recorded on the database and never runs
-again. A rewrite regenerates the public snapshot.
 
 Comparable cost is derived from the recorded token classes and the list price's
 rates for uncached input, cached input, and output, with reasoning tokens priced
@@ -120,31 +98,99 @@ free run. Both figures are `null` whenever the cost cannot be determined,
 including when no token class was reported at all, so a run whose usage never
 reached us is recorded as unknown rather than as `$0.00`.
 
-### Price history
+### List price resolution
 
-Beside the curated list price, the [backend](/components/backend/overview/)
-records the official provider endpoint's billed rate as a per-model history: the
-rates the model's OpenRouter endpoints listing shows at that moment for the
-endpoint its developer provider names, with the date, the developer provider, and the catalog
-facts observed alongside. A model with no priced official endpoint records the
-listing's headline rate. An
-observation is recorded when a run completes, missing-only when a model is saved
-or first enqueued, and on a 24-hour periodic refresh, and is appended only when
-the observed facts changed.
+A list price read from OpenRouter is the first of these that yields a complete
+rate:
 
-The official endpoint is the developer provider's standard endpoint: the first
-priced one the listing shows under that provider's name whose `tag` has no
-`flex` segment. OpenRouter lists a provider's Flex tier as a second endpoint
-under the same provider name, at a discount, with a `tag` such as `openai/flex`
-or `google-vertex/global/flex`. A Flex endpoint is ignored wherever a price is
-read from the listing, so a developer provider that lists only Flex endpoints
-has no priced official endpoint. An observation already in the history stays as
-recorded, and a later observation at a different rate is appended after it.
+1. The standard endpoint of the developer provider set on the catalog entry,
+   when one is set. The provider is matched by name, ignoring case and
+   punctuation.
+2. The standard endpoint of the provider named by the model id's author
+   segment, `anthropic` for `anthropic/claude-haiku-5.5`.
+3. The model's own price in OpenRouter's models listing (the `pricing` field of
+   its `/models` entry).
 
-The recorded history is what the model's Stats tab shows beside the list price,
-with the difference, so a discount, a price change, or a listing error is
-visible on the model. It never rewrites what a run is scored at: the comparable
-cost is computed from the list price and nothing else.
+A complete rate has the input, cached input, and output rates all known, where
+a price that lists no cached input rate takes its input rate for it. A step that
+finds no endpoint, or a price without a complete rate, falls to the next one.
+When no step yields a rate, OpenRouter has no list price for the model. The
+resolution reports which step answered.
+
+The first two steps read the model's `/models/{id}/endpoints` listing. The third
+reads the models listing at `GET /models`, which is read only when the first two
+steps yielded no rate. The price of a provider that neither the entry nor the
+model id names is read at no step, wherever the endpoints listing places it.
+
+The third step's figure is the one OpenRouter's API reports for the model. It
+can differ from the "In / Out Price" on OpenRouter's web page for the model,
+which shows the first-listed provider's rate. It is also a third party's rate.
+Where OpenRouter spells the developer differently from the model id's author
+segment, such as `qwen/…` served by `Alibaba` or `mistralai/…` by `Mistral`,
+setting the developer provider on the entry is how an operator gets the
+developer's own price.
+
+A developer provider set on the entry therefore decides the price for as long as
+its standard endpoint lists a complete rate. Every read, the 24-hour refresh and
+the Refresh button included, takes that provider's rate, and falls to the
+later steps only when that provider yields none.
+
+A standard endpoint is one whose `tag` has no `flex` segment. OpenRouter lists a
+provider's Flex tier as a second endpoint under the same provider name, at a
+discount, with a `tag` such as `openai/flex` or `google-vertex/global/flex`.
+The first two steps read standard endpoints only: a provider that lists its Flex
+endpoint first is priced at its standard one, and a provider that lists only
+Flex endpoints yields no rate at its step.
+
+Every list price written from OpenRouter is resolved this way, is dated the UTC
+day it was read, and is marked as sourced from OpenRouter. A list price an
+operator enters on the model's form is marked as entered by hand. A save of the
+form that sends the stored rates and date back unchanged enters nothing: the
+entry keeps its list price, date, and source as stored.
+
+### List price refresh
+
+A refresh resolves the list price of every curated catalog entry and writes it
+onto the entry, whether or not the entry already holds one and whoever entered
+it. The [backend](/components/backend/overview/) runs a refresh in the
+background shortly after it starts and every 24 hours after that, and an
+operator runs one on demand with the Models page's Refresh button.
+
+An entry is looked up by its OpenRouter slug. An entry without one is looked up
+by its aliases, each mapped onto OpenRouter's spelling for the alias's harness
+family, and the first alias OpenRouter lists is used. The endpoints listings are
+read a bounded number at a time, and each read is given 15 seconds to finish. A
+listing that has not answered by then could not be read.
+
+A refresh reads the models listing at most once, the first time an entry reaches
+the third step, and every later entry that reaches it reuses that read. When the
+models listing cannot be read, the entries that reached the third step are
+unresolved and the entries the first two steps answered are written as usual.
+
+Each entry ends a refresh in one of three states:
+
+- Updated: the resolved rate differs from the stored one, or the entry held
+  none. The rate, date, and source are written.
+- Unchanged: the resolved rate equals the stored one. The date and source are
+  still written, so the date states how fresh the figure is.
+- Unresolved: OpenRouter does not list the model, the resolution yields no
+  complete rate for it, or a listing it needed could not be read. The entry
+  keeps what it holds, so a price entered by hand for a model OpenRouter does
+  not list stands.
+
+A refresh reports the count of entries in each state beside the total, and
+regenerates the public snapshot when any rate changed. Entries are written one
+at a time as their listings are read, so a refresh that stops part-way, on a
+database failure or because the request that ran it went away, leaves the
+entries it reached written. It regenerates the public snapshot for those too.
+
+A catalog entry that carries no list price when a run binding it is enqueued is
+filled then, by the same resolution. A launch naming a model the catalog has no
+entry for, or one OpenRouter yields no rate for, is refused with the reason
+named.
+
+A list price an operator enters on the model's form stands until the next
+refresh resolves a rate for that model from OpenRouter.
 
 ### Harness-reported cost
 

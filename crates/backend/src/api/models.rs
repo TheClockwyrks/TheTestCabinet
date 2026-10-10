@@ -1,17 +1,19 @@
 //! The model-catalog endpoints: the merged catalog read plus the operator-driven
-//! config CRUD, seed-from-run helper, OpenRouter fill-in lookup, and svgl.app
-//! logo fetch.
+//! config CRUD, seed-from-run helper, OpenRouter fill-in lookup, svgl.app logo
+//! fetch, and the refresh of every list price.
 //!
 //! The catalog is composed on the fly from three sources: the operator-curated
-//! `model` configs (display name, provider, logo, prose, aliases), the observed
-//! `model_price` history, and the distinct models the stored runs reference. Any
+//! `model` configs (display name, provider, logo, prose, aliases, list price), the
+//! catalog facts observed on OpenRouter (the `model_price` table, which holds no
+//! price), and the distinct models the stored runs reference. Any
 //! model with at least one run appears — curated or not — so a newly-run model
 //! shows up without a release. Curated config is layered on by alias; an
 //! uncurated model is shown, derived, under its canonical id.
 //!
 //! Reads are open (the private-network model); the config mutations, the
-//! OpenRouter lookup, and the logo fetch require a bearer token (see
-//! [`AuthUser`]) — the last two because they reach a third party. The same
+//! OpenRouter lookup, the logo fetch, and the list-price refresh require a bearer
+//! token (see [`AuthUser`]) — the lookup and the logo fetch because they reach a
+//! third party. The same
 //! [`compose_catalog`] the read uses also builds the public snapshot's catalog, so
 //! the two never disagree.
 
@@ -32,7 +34,7 @@ use crate::error::ApiError;
 
 use super::AppState;
 
-/// The base of a model's OpenRouter page / price listing.
+/// The base of a model's OpenRouter page.
 const OPENROUTER_BASE: &str = "https://openrouter.ai/";
 
 /// `GET /models` — the merged model catalog.
@@ -43,8 +45,8 @@ pub struct ModelCatalogResponse {
     pub models: Vec<ModelOut>,
 }
 
-/// One catalog entry: a curated model merged with its runs and price history, or
-/// a model derived from runs with no curated config.
+/// One catalog entry: a curated model merged with its runs and its observed
+/// catalog facts, or a model derived from runs with no curated config.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -71,24 +73,20 @@ pub struct ModelOut {
     /// family it is usable with (so a run form can offer only the slugs the
     /// selected harness can launch).
     pub aliases: Vec<AliasOut>,
-    /// The latest observed **billed rate** — what the official provider's
-    /// endpoint charges right now — or null when none is recorded. A run's
-    /// comparable cost is computed from [`list_price`](Self::list_price), not
-    /// this.
-    pub price: Option<ModelPricesOut>,
-    /// The curated developer list price (per-token USD) a run's comparable cost
-    /// is computed from — all-or-nothing: `Some` only when all three prices are
-    /// set. Null for a derived or unpriced model.
+    /// The model's list price (per-token USD), the only price a model has and
+    /// what a run's comparable cost is computed from — all-or-nothing: `Some`
+    /// only when all three prices are set. Null for a derived or unpriced model.
     pub list_price: Option<ModelPricesOut>,
-    /// The date the list-price figures were taken, or null.
+    /// The date the list-price figures were taken (`YYYY-MM-DD`): the day they
+    /// were last read from OpenRouter, or the date recorded with a set entered
+    /// by hand. Null when the model carries no list price.
     pub list_price_as_of: Option<String>,
-    /// Where the list price came from: `hand` for a set the operator entered or
-    /// confirmed, `openrouter` for one filled from the official endpoint's rate
-    /// at enqueue (see [`crate::bootstrap::list_price_for_launch`]), or null
-    /// when the model carries none.
+    /// Where the list price came from: `openrouter` for a set read from
+    /// OpenRouter (by a refresh of every entry, see
+    /// [`crate::bootstrap::refresh_list_prices`], or at enqueue), `hand` for a
+    /// set an operator entered, which stands until the next refresh resolves a
+    /// rate for the model, or null when the model carries none.
     pub list_price_source: Option<String>,
-    /// The observed price history, ascending, consecutive-equal deduped.
-    pub price_history: Vec<PriceObservationOut>,
     /// The latest observed context window in tokens, or null.
     pub context_length: Option<u64>,
     /// The developer provider: the OpenRouter provider name of the model developer's own
@@ -141,7 +139,7 @@ pub struct AliasOut {
     pub harness_family: HarnessFamily,
 }
 
-/// A comparable per-token price triple.
+/// A per-token price triple, in USD: a model's list price.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -149,15 +147,6 @@ pub struct ModelPricesOut {
     pub uncached_input: Option<f64>,
     pub cached_input: Option<f64>,
     pub output: Option<f64>,
-}
-
-/// One price observation in a model's history.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PriceObservationOut {
-    pub observed_at: String,
-    pub prices: ModelPricesOut,
 }
 
 /// One slug ↔ harness-family pairing in a config write. The operator supplies a
@@ -225,18 +214,20 @@ pub struct ModelConfigInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub unknown_quantization_providers: Option<Vec<String>>,
-    /// The developer's published list price per **Mtok** of input, in USD — the
-    /// unit every developer pricing page publishes; the store carries per token.
-    /// The list-price write is all-or-nothing: all three prices (plus
-    /// `list_price_as_of`) or none; absent on update preserves the stored set.
+    /// The list price per **Mtok** of input, in USD — the unit every pricing
+    /// page publishes; the store carries per token. The list-price write is
+    /// all-or-nothing: all three prices (plus `list_price_as_of`) or none;
+    /// absent on update preserves the stored set. A set written here is sourced
+    /// `hand` and stands until the next refresh resolves a rate for the model
+    /// from OpenRouter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub list_price_input_per_mtok: Option<f64>,
-    /// The developer's published list price per **Mtok** of cached input, in USD.
+    /// The list price per **Mtok** of cached input, in USD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub list_price_cached_input_per_mtok: Option<f64>,
-    /// The developer's published list price per **Mtok** of output, in USD.
+    /// The list price per **Mtok** of output, in USD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub list_price_output_per_mtok: Option<f64>,
@@ -272,10 +263,12 @@ pub struct ModelSeedOut {
 
 /// The `GET /models/openrouter` response: the descriptive facts OpenRouter
 /// publishes about a model, for the config form to fill itself in with, plus the
-/// official endpoint's current prices scaled to per Mtok — the seed figures for
-/// the form's curated list-price fields (the whole point of the fill). An absent
-/// price is not an error: the field is null and the form leaves it for the
-/// operator. The context window and the modalities remain deliberately absent:
+/// model's list price as OpenRouter publishes it, scaled to per Mtok — the seed
+/// figures for the form's list-price fields. The rate is resolved by the same
+/// [flow](test_cabinet_core::ModelLaunchFacts::list_price) every list price read
+/// from OpenRouter is, so the three figures are all present or all null. A model
+/// with no rate is not an error: the fields are null and the form leaves them for
+/// the operator. The context window and the modalities remain deliberately absent:
 /// the backend records those itself from the same catalog (on save, on launch,
 /// and on the 24-hour refresh), so they are never form state to begin with.
 #[derive(Debug, Serialize)]
@@ -288,12 +281,32 @@ pub struct ModelListingOut {
     pub provider: String,
     /// OpenRouter's prose description, or null when it publishes none.
     pub description: Option<String>,
-    /// The official endpoint's current input price per Mtok in USD, or null.
+    /// The list price of input per Mtok in USD, or null.
     pub input_per_mtok: Option<f64>,
-    /// The official endpoint's current cached-input price per Mtok in USD, or null.
+    /// The list price of cached input per Mtok in USD, or null.
     pub cached_input_per_mtok: Option<f64>,
-    /// The official endpoint's current output price per Mtok in USD, or null.
+    /// The list price of output per Mtok in USD, or null.
     pub output_per_mtok: Option<f64>,
+}
+
+/// The `POST /models/list-prices/refresh` response: what the refresh of every
+/// catalog entry's list price did, counted in entries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ListPriceRefreshOut {
+    /// Every curated catalog entry: the sum of the other three.
+    #[cfg_attr(feature = "contract", ts(type = "number"))]
+    pub total: u64,
+    /// The entries whose rate changed, or that had no list price and now have one.
+    #[cfg_attr(feature = "contract", ts(type = "number"))]
+    pub updated: u64,
+    /// The entries whose stored rate OpenRouter confirmed. Their date was rewritten.
+    #[cfg_attr(feature = "contract", ts(type = "number"))]
+    pub unchanged: u64,
+    /// The entries OpenRouter gave no rate for, which keep what they hold.
+    #[cfg_attr(feature = "contract", ts(type = "number"))]
+    pub unresolved: u64,
 }
 
 /// The `POST /models/logo` request/response.
@@ -479,15 +492,39 @@ async fn write_config(
                 "model list price is dated: set listPriceAsOf to the date the prices were taken",
             ));
         };
-        (
-            Some(input_per_mtok / 1_000_000.0),
-            Some(cached_per_mtok / 1_000_000.0),
-            Some(output_per_mtok / 1_000_000.0),
-            Some(as_of),
-            // The operator typed/confirmed the set (the form's Fill merely
-            // seeds the same fields).
-            Some("hand".to_string()),
-        )
+        let submitted = [
+            input_per_mtok / 1_000_000.0,
+            cached_per_mtok / 1_000_000.0,
+            output_per_mtok / 1_000_000.0,
+        ];
+        let existing = state
+            .db
+            .get_model_config(&slug)
+            .await
+            .map_err(ApiError::from)?
+            .map(|existing| existing.config);
+        match existing.filter(|config| holds_list_price(config, submitted, &as_of)) {
+            // The form sends back the set it was opened with whenever the operator
+            // saves some other field. Nobody entered that set, so the entry keeps
+            // it exactly as stored, source included.
+            Some(config) => (
+                config.list_price_input,
+                config.list_price_cached_input,
+                config.list_price_output,
+                config.list_price_as_of,
+                config.list_price_source,
+            ),
+            // The operator entered the set (the form's Fill merely seeds the
+            // same fields). It stands until the next refresh of every list price
+            // resolves a rate for the model.
+            None => (
+                Some(submitted[0]),
+                Some(submitted[1]),
+                Some(submitted[2]),
+                Some(as_of),
+                Some("hand".to_string()),
+            ),
+        }
     };
 
     state
@@ -521,16 +558,16 @@ async fn write_config(
         .await
         .map_err(ApiError::from)?;
 
-    // Price a newly-configured OpenRouter slug right now, so the model shows its prices
-    // (and its context window) the moment it is saved rather than staying blank until
-    // its first run completes. Best-effort and missing-only: a slug already on record
-    // costs nothing and keeps its history.
+    // Observe a newly-configured OpenRouter slug right now, so the model shows its
+    // context window and its developer provider the moment it is saved rather than
+    // staying blank until its first run completes. Best-effort and missing-only: a
+    // slug already on record costs nothing and keeps its history.
     if let Some(slug) = &openrouter_slug {
-        crate::bootstrap::seed_curated_price(&state.db, &state.prices, slug).await;
+        crate::bootstrap::seed_curated_facts(&state.db, &state.prices, slug).await;
     }
 
     // The catalog changed, so the public snapshot must be regenerated — after the
-    // seeding above, so the snapshot carries the price too.
+    // seeding above, so the snapshot carries the facts too.
     state.publisher.queue_refresh();
 
     // Re-compose just this model for the response.
@@ -552,6 +589,39 @@ async fn write_config(
         .find(|m| m.slug == slug)
         .ok_or_else(|| ApiError::internal("composed model missing after write"))?;
     Ok(Json(out))
+}
+
+/// Whether `config` already holds the list price a write submits: the same three
+/// per-token rates and the same date.
+///
+/// A rate is the same when it agrees to nine significant digits. The form shows a
+/// stored rate per Mtok at twelve, so a figure the operator left alone comes back
+/// within that, and no two published prices are that close. The date is compared as
+/// the form shows it, by its first ten characters (`YYYY-MM-DD`).
+fn holds_list_price(
+    config: &test_cabinet_entities::model::Model,
+    submitted: [f64; 3],
+    as_of: &str,
+) -> bool {
+    let same_rate = |stored: Option<f64>, submitted: f64| {
+        stored.is_some_and(|stored| {
+            (stored - submitted).abs() <= 1e-9 * stored.abs().max(submitted.abs())
+        })
+    };
+    let stored = [
+        config.list_price_input,
+        config.list_price_cached_input,
+        config.list_price_output,
+    ];
+    let same_date = config
+        .list_price_as_of
+        .as_deref()
+        .is_some_and(|stored| stored == as_of || stored.get(..10) == Some(as_of));
+    same_date
+        && stored
+            .into_iter()
+            .zip(submitted)
+            .all(|(stored, submitted)| same_rate(stored, submitted))
 }
 
 /// `DELETE /models/{slug}` — remove a curated model config. Requires a bearer
@@ -630,11 +700,23 @@ pub async fn seed(
 pub struct OpenRouterLookupQuery {
     /// The OpenRouter slug to look up, e.g. `anthropic/claude-opus-4.8`.
     pub slug: String,
+    /// The form's current developer provider, when it sets one: the provider whose
+    /// standard rate the list-price figures are read from while it publishes a
+    /// complete one. Absent or blank reads as none set.
+    #[serde(default)]
+    pub provider_pin: Option<String>,
 }
 
-/// `GET /models/openrouter?slug=` — the descriptive facts OpenRouter publishes
-/// about a model, so the config form can fill itself in instead of the operator
-/// retyping what OpenRouter already knows. Requires a bearer token.
+/// `GET /models/openrouter?slug=&providerPin=` — the descriptive facts OpenRouter
+/// publishes about a model, so the config form can fill itself in instead of the
+/// operator retyping what OpenRouter already knows. Requires a bearer token.
+///
+/// The list-price figures are resolved by the
+/// [list-price flow](test_cabinet_core::ModelLaunchFacts::list_price) with
+/// `providerPin` as the hand-set developer provider, so the form is seeded with the
+/// rate a refresh would write for the entry as the form holds it. The flow's last
+/// step, the model's own price in OpenRouter's models listing, is what reads that
+/// listing, and only when the model's endpoints answer neither earlier step.
 ///
 /// Bearer-gated like the logo fetch, and for the same reason: both make the
 /// backend reach out to a third party on the caller's behalf, so both are limited
@@ -655,18 +737,58 @@ pub async fn openrouter(
         state.prices.model_listing(slug).await.map_err(|err| {
             ApiError::not_found(format!("looking up `{slug}` on OpenRouter: {err}"))
         })?;
-    // The official endpoint's current prices seed the form's list-price fields.
-    // A failure or absent price is not an error — the field is null and the form
-    // leaves it for the operator.
-    let official = state.prices.official_prices(slug).await.ok();
-    let per_mtok = |price: Option<f64>| price.map(|p| p * 1_000_000.0);
+    // The model's list price seeds the form's list-price fields. A failure or a
+    // model with no complete rate is not an error — the fields are null and the
+    // form leaves them for the operator. The models listing is read only when
+    // no provider's standard endpoint answers.
+    let hand_pin = query
+        .provider_pin
+        .as_deref()
+        .map(str::trim)
+        .filter(|provider| !provider.is_empty());
+    let rate = state
+        .prices
+        .list_price(slug, hand_pin)
+        .await
+        .ok()
+        .flatten()
+        .map(|resolved| resolved.rate);
+    let per_mtok = |price: f64| price * 1_000_000.0;
     Ok(Json(ModelListingOut {
         name: listing.name,
         provider: listing.provider,
         description: listing.description,
-        input_per_mtok: per_mtok(official.as_ref().and_then(|p| p.uncached_input)),
-        cached_input_per_mtok: per_mtok(official.as_ref().and_then(|p| p.cached_input)),
-        output_per_mtok: per_mtok(official.and_then(|p| p.output)),
+        input_per_mtok: rate.map(|rate| per_mtok(rate.uncached_input)),
+        cached_input_per_mtok: rate.map(|rate| per_mtok(rate.cached_input)),
+        output_per_mtok: rate.map(|rate| per_mtok(rate.output)),
+    }))
+}
+
+/// `POST /models/list-prices/refresh` — read every catalog entry's list price from
+/// OpenRouter now, as the 24-hour refresh does
+/// ([`crate::bootstrap::refresh_list_prices`]), and answer with what it did.
+/// Requires a bearer token, like every other write to the catalog.
+///
+/// The public snapshot is regenerated when a rate changed, by a refresh that ended
+/// early too. Runs are untouched: a run keeps the cost it was scored at.
+#[tracing::instrument(name = "models.refresh_list_prices", skip(state, _user), err(Debug))]
+pub async fn refresh_list_prices(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<ListPriceRefreshOut>, ApiError> {
+    // The refresh queues the snapshot refresh itself, whenever it changed a rate and
+    // however it ended: a refresh cut short (a database failure, a caller that went
+    // away) leaves the entries it wrote changed.
+    let refresh = crate::bootstrap::refresh_list_prices(&state.db, &state.prices, &|| {
+        state.publisher.queue_refresh();
+    })
+    .await
+    .map_err(ApiError::from)?;
+    Ok(Json(ListPriceRefreshOut {
+        total: refresh.total as u64,
+        updated: refresh.updated as u64,
+        unchanged: refresh.unchanged as u64,
+        unresolved: refresh.unresolved as u64,
     }))
 }
 
@@ -784,13 +906,13 @@ fn normalize_providers(providers: &[String]) -> Vec<String> {
 /// whose reference-image reads are gated on the modalities) is told the answers at
 /// launch rather than keeping a table of its own.
 ///
-/// The lookup mirrors how prices are recorded: observations are keyed by the run's
+/// The lookup mirrors how the facts are recorded: observations are keyed by the run's
 /// canonical model id, except for a **curated** model, whose observations are stored
 /// under its configured OpenRouter slug so every alias shares one history. So the
 /// canonical id is tried first and the curated slug second.
 ///
-/// Best-effort by construction: a model with no price observation yet (the catalog
-/// learns one when the model is first priced) simply has no facts, which the caller
+/// Best-effort by construction: a model with no observation yet (the catalog
+/// records one when it first meets the model) simply has no facts, which the caller
 /// treats as "unknown" rather than an error.
 pub async fn launch_facts_for(
     db: &crate::db::Db,
@@ -807,7 +929,7 @@ pub async fn launch_facts_for(
     Ok(latest_launch_facts(db, &slug).await?.unwrap_or_default())
 }
 
-/// The catalog facts on the latest price observation stored under `key`, or `None`
+/// The catalog facts on the latest observation stored under `key`, or `None`
 /// when there is no observation at all. An observation recorded before a column
 /// existed simply carries an empty field for it.
 async fn latest_launch_facts(
@@ -825,14 +947,14 @@ async fn latest_launch_facts(
             provider_pin: row
                 .provider_pin
                 .filter(|provider| !provider.trim().is_empty()),
-            // The stored observation keeps the official endpoint's price, not every
-            // route's; a launch reads no route price.
-            route_prices: Vec::new(),
+            // An observation holds no rate, and a launch reads none from here.
+            route_rates: Vec::new(),
         }))
 }
 
-/// Compose the merged catalog from curated configs, the full price history, and
-/// the distinct `(model_id, harness_slug)` pairs some runs reference.
+/// Compose the merged catalog from curated configs, every observation of a
+/// model's catalog facts (the `model_price` rows), and the distinct
+/// `(model_id, harness_slug)` pairs some runs reference.
 ///
 /// This is the single composition the `GET /models` read and the public snapshot
 /// share, so the console and the static site show the same catalog. Curated
@@ -840,14 +962,13 @@ async fn latest_launch_facts(
 /// every remaining canonical id becomes a derived entry.
 pub fn compose_catalog(
     configs: &[StoredModel],
-    prices: &[model_price::Model],
+    observations: &[model_price::Model],
     run_models: &[(String, String)],
 ) -> Vec<ModelOut> {
-    // Price history grouped by (canonical) model id, ascending, consecutive-equal
-    // deduped.
+    // The observations grouped by (canonical) model id, ascending.
     let mut history: std::collections::HashMap<&str, Vec<&model_price::Model>> =
         std::collections::HashMap::new();
-    for row in prices {
+    for row in observations {
         history.entry(row.model_id.as_str()).or_default().push(row);
     }
 
@@ -888,7 +1009,8 @@ pub fn compose_catalog(
                 }
             }
         }
-        // Merge the histories of every alias into one series.
+        // Merge the histories of every alias into one, so the newest observation
+        // under any of them is the entry's.
         let mut rows: Vec<&model_price::Model> = alias_set
             .iter()
             .filter_map(|a| history.get(a.alias.as_str()))
@@ -896,7 +1018,6 @@ pub fn compose_catalog(
             .copied()
             .collect();
         rows.sort_by(|a, b| a.observed_at.cmp(&b.observed_at).then(a.id.cmp(&b.id)));
-        let series = observations(&rows);
         let facts = latest_facts(&rows);
         let config = &stored.config;
         let hand_set_pin = config
@@ -940,11 +1061,9 @@ pub fn compose_catalog(
                     harness_family: entry.family,
                 })
                 .collect(),
-            price: facts.price,
             list_price,
             list_price_as_of,
             list_price_source,
-            price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,
             input_modalities: facts.input_modalities,
@@ -968,7 +1087,6 @@ pub fn compose_catalog(
         }
         let rows: Vec<&model_price::Model> =
             history.get(canonical.as_str()).cloned().unwrap_or_default();
-        let series = observations(&rows);
         let facts = latest_facts(&rows);
         let family = covered_family
             .get(canonical)
@@ -987,11 +1105,9 @@ pub fn compose_catalog(
                 slug: canonical.clone(),
                 harness_family: family,
             }],
-            price: facts.price,
             list_price: None,
             list_price_as_of: None,
             list_price_source: None,
-            price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,
             input_modalities: facts.input_modalities,
@@ -1010,47 +1126,20 @@ pub fn compose_catalog(
     out
 }
 
-/// Build the deduped observation series (consecutive-equal price triples
-/// collapsed) from time-ordered rows.
-fn observations(rows: &[&model_price::Model]) -> Vec<PriceObservationOut> {
-    let mut series: Vec<PriceObservationOut> = Vec::new();
-    for row in rows {
-        let prices = ModelPricesOut {
-            uncached_input: row.uncached_input,
-            cached_input: row.cached_input,
-            output: row.output,
-        };
-        if series.last().map(|o| &o.prices) == Some(&prices) {
-            continue;
-        }
-        series.push(PriceObservationOut {
-            observed_at: row.observed_at.clone(),
-            prices,
-        });
-    }
-    series
-}
-
 /// The catalog facts carried on the newest of `rows` (time-ordered): the latest
-/// price, context window, release date, and accepted input modalities.
+/// context window, release date, accepted input modalities, and developer provider.
 #[derive(Debug, Default)]
 struct LatestFacts {
-    price: Option<ModelPricesOut>,
     context_length: Option<u64>,
     released_at: Option<String>,
     input_modalities: Vec<String>,
     provider_pin: Option<String>,
 }
 
-/// The latest price and catalog facts from time-ordered rows.
+/// The latest catalog facts from time-ordered rows.
 fn latest_facts(rows: &[&model_price::Model]) -> LatestFacts {
     match rows.last() {
         Some(row) => LatestFacts {
-            price: Some(ModelPricesOut {
-                uncached_input: row.uncached_input,
-                cached_input: row.cached_input,
-                output: row.output,
-            }),
             context_length: row.context_length.and_then(|c| u64::try_from(c).ok()),
             released_at: row.released_at.clone(),
             input_modalities: crate::bootstrap::decode_modalities(row.input_modalities.as_deref()),

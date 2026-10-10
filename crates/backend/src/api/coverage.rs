@@ -2456,7 +2456,7 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
             }
             continue;
         };
-        // Price the models the set binds before resolving their windows, exactly as the gg
+        // Observe the models the set binds before resolving their windows, exactly as the gg
         // launch endpoint does and in the same order: the seeding usually puts the window on
         // record, so the resolution below finds it without a second fetch.
         let models: Vec<(String, HarnessSlug)> = gg
@@ -2467,7 +2467,7 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
             .filter(|id| !id.trim().is_empty())
             .map(|id| (id.to_string(), HarnessSlug::Gg))
             .collect();
-        crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &models).await;
+        crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &models).await;
         match super::jobs::gg_model_facts(
             &state.db,
             &state.prices,
@@ -3188,7 +3188,7 @@ pub(super) async fn enqueue_launches(
     let on_fill = || {
         state.publisher.queue_refresh();
     };
-    // Every model the harness cells bind, so their prices can be seeded at enqueue exactly
+    // Every model the harness cells bind, so their facts can be seeded at enqueue exactly
     // as `POST /jobs` seeds a by-hand launch's — once for the batch, below. A gg cell's are
     // seeded as it is lowered instead, because its window resolution needs them on record
     // first.
@@ -3215,7 +3215,7 @@ pub(super) async fn enqueue_launches(
             // than enqueue a run with no windows on it, which gg would have no way to
             // measure. It blocks its own cell and never the whole pass.
             Some(None) => {
-                crate::bootstrap::seed_launch_prices(
+                crate::bootstrap::seed_launch_facts(
                     &state.db,
                     &state.prices,
                     &super::jobs::launch_models(&body),
@@ -3309,10 +3309,10 @@ pub(super) async fn enqueue_launches(
     if jobs.is_empty() {
         return Ok(Enqueued { launched, blocked });
     }
-    // Price the harness cells' models before the runs exist. Missing-only and best-effort:
-    // a model already on record costs nothing, and an unpriced model costs a cost
-    // split, never the pass.
-    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &models).await;
+    // Observe the harness cells' models before the runs exist. Missing-only and
+    // best-effort: a model already on record costs nothing, and one that cannot be
+    // observed never costs the pass.
+    crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &models).await;
     state.db.enqueue_jobs(jobs).await.map_err(ApiError::from)?;
     Ok(Enqueued { launched, blocked })
 }

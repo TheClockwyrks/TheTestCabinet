@@ -363,7 +363,7 @@ means the run was never measured rather than measured at zero.
 ## `models.json` — the model catalog
 
 The composed model catalog: the curated model configuration unioned with the
-models derived from recorded runs, each with its rate history. The public site
+models derived from recorded runs, each with its list price. The public site
 renders its Models section from this file rather than a bundled dataset.
 
 ## `comparisons.json` — published comparisons

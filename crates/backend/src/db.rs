@@ -436,10 +436,6 @@ const RUN_GG_CONFIG_ID_BACKFILL: &str = "run.gg_config_id";
 /// The `backfill_state` key of [`Db::backfill_in_flight_gg_config_ids`].
 const JOB_GG_CONFIG_ID_BACKFILL: &str = "job.gg_config_id";
 
-/// The `backfill_state` key of the one-time
-/// [list price rewrite](crate::bootstrap::rewrite_list_prices).
-const LIST_PRICE_REWRITE_BACKFILL: &str = "model.list_price_standard_rate";
-
 /// The SeaORM-backed store.
 pub struct Db {
     handle: ConnHandle,
@@ -7449,22 +7445,22 @@ pub struct ModelConfigWrite {
     /// The providers accepted despite declaring `unknown` quantization. Empty is stored as
     /// `NULL`.
     pub unknown_quantization_providers: Vec<String>,
-    /// The developer's published list price per **token** of input, in USD (the
+    /// The list price per **token** of input, in USD (the
     /// form enters per Mtok; the store carries per token). The write is
     /// **all-or-nothing**: a caller writes all three prices plus
     /// `list_price_as_of`, or nothing — the store enforces nothing but the API
     /// layer does.
     pub list_price_input: Option<f64>,
-    /// The developer's published list price per **token** of cached input, in
-    /// USD. See [`list_price_input`](Self::list_price_input).
+    /// The list price per **token** of cached input, in USD. See
+    /// [`list_price_input`](Self::list_price_input).
     pub list_price_cached_input: Option<f64>,
-    /// The developer's published list price per **token** of output, in USD.
-    /// See [`list_price_input`](Self::list_price_input).
+    /// The list price per **token** of output, in USD. See
+    /// [`list_price_input`](Self::list_price_input).
     pub list_price_output: Option<f64>,
     /// The date the list-price figures were taken.
     pub list_price_as_of: Option<String>,
     /// Where the list-price figures came from: `hand` for an operator-entered
-    /// set, `openrouter` for one the enqueue-time fill wrote (see
+    /// set, `openrouter` for one read from OpenRouter (see
     /// [`Db::set_list_price`]).
     pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
@@ -7517,21 +7513,22 @@ pub struct ListPriceWrite {
     pub output: f64,
     /// The date the rates were taken, `YYYY-MM-DD`.
     pub as_of: String,
-    /// Where the rates came from (`openrouter` for the enqueue-time fill).
+    /// Where the rates came from (`openrouter` for a set read from OpenRouter).
     pub source: String,
     /// RFC 3339 timestamp for the updated stamp.
     pub now: String,
 }
 
-/// One price observation to append to a model's history.
-#[derive(Debug, Clone)]
+/// One observation of a model's catalog facts to append to its history.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriceWrite {
+    /// The canonical model id the facts were observed for.
     pub model_id: String,
+    /// RFC 3339 of the observation.
     pub observed_at: String,
-    pub uncached_input: Option<f64>,
-    pub cached_input: Option<f64>,
-    pub output: Option<f64>,
+    /// The context window in tokens, or `None` when OpenRouter reported none.
     pub context_length: Option<i64>,
+    /// The model's release date (RFC 3339), or `None`.
     pub released_at: Option<String>,
     /// The accepted input modalities as a comma-separated lowercase list, or
     /// `None` when OpenRouter reported none (unknown, not "text only").
@@ -7572,7 +7569,7 @@ fn alias_entry(row: model_alias::Model) -> AliasEntry {
     }
 }
 
-/// The model catalog store: curated config, its aliases, and observed prices.
+/// The model catalog store: curated config, its aliases, and observed catalog facts.
 impl Db {
     /// Every curated model config with its aliases, ordered by slug.
     pub async fn list_model_configs(&self) -> Result<Vec<StoredModel>> {
@@ -7719,7 +7716,7 @@ impl Db {
     }
 
     /// Delete a curated model config (its aliases cascade). Returns whether a row
-    /// was removed. The model's runs and price history are untouched, so it may
+    /// was removed. The model's runs and observed facts are untouched, so it may
     /// reappear as a derived (uncurated) catalog entry.
     pub async fn delete_model_config(&self, slug: &str) -> Result<bool> {
         let deleted = model::Entity::delete_by_id(slug).exec(&self.conn()).await?;
@@ -7753,7 +7750,7 @@ impl Db {
             .await?)
     }
 
-    /// The most recent price observation for a canonical model id, or `None`.
+    /// The most recent observation of a canonical model id's catalog facts, or `None`.
     pub async fn latest_price(&self, model_id: &str) -> Result<Option<model_price::Model>> {
         Ok(model_price::Entity::find()
             .filter(model_price::Column::ModelId.eq(model_id))
@@ -7763,15 +7760,12 @@ impl Db {
             .await?)
     }
 
-    /// Append a price observation to a model's history.
+    /// Append an observation of a model's catalog facts to its history.
     pub async fn insert_price_observation(&self, write: PriceWrite) -> Result<()> {
         model_price::Entity::insert(model_price::ActiveModel {
             id: NotSet,
             model_id: Set(write.model_id),
             observed_at: Set(write.observed_at),
-            uncached_input: Set(write.uncached_input),
-            cached_input: Set(write.cached_input),
-            output: Set(write.output),
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
             input_modalities: Set(write.input_modalities),
@@ -7782,8 +7776,8 @@ impl Db {
         Ok(())
     }
 
-    /// Every price observation, ascending by `(model_id, observed_at)`. The
-    /// catalog groups these into per-model histories.
+    /// Every observation of a model's catalog facts, ascending by
+    /// `(model_id, observed_at)`. The catalog reads each model's newest.
     pub async fn all_model_prices(&self) -> Result<Vec<model_price::Model>> {
         Ok(model_price::Entity::find()
             .order_by_asc(model_price::Column::ModelId)
@@ -7837,8 +7831,9 @@ impl Db {
     }
 
     /// Write a complete list price onto a curated model's catalog entry, replacing
-    /// whatever it held, and stamp the entry updated. The enqueue-time fill from
-    /// OpenRouter writes through here; an operator's own edits go through
+    /// whatever it held, and stamp the entry updated. A list price read from
+    /// OpenRouter is written through here, by the enqueue-time fill and by the
+    /// refresh of every entry; an operator's own edits go through
     /// [`Self::upsert_model_config`]. A slug no curated model has is an error.
     pub async fn set_list_price(&self, write: ListPriceWrite) -> Result<()> {
         model::ActiveModel {
@@ -7928,7 +7923,7 @@ impl Db {
 
     /// Whether any stored run is a candidate for `:free` normalization — an
     /// OpenRouter-accessed harness whose model id carries a trailing `:tag`. Used
-    /// to skip the OpenRouter price fetch entirely at startup when there is nothing
+    /// to skip the catalog read entirely at startup when there is nothing
     /// to re-price (the common case), so a boot with no such runs costs no network.
     pub async fn has_free_tag_candidates(&self) -> Result<bool> {
         let rows: Vec<(String, String)> = run::Entity::find()
@@ -8181,7 +8176,7 @@ impl Db {
     /// fail toward including a row, never toward skipping one that needed the lift. A
     /// spurious match — the string occurring somewhere else in the record — parses, finds
     /// nothing to lift and stays `NULL`: a harmless no-write residue. The same pushdown
-    /// [`Self::has_free_tag_candidates`] uses to keep a boot's price fetch off the wire.
+    /// [`Self::has_free_tag_candidates`] uses to keep a boot's catalog read off the wire.
     ///
     /// Best-effort per row: a record that no longer deserializes is left for a later
     /// boot. Returns how many rows were filled.
@@ -8543,19 +8538,6 @@ impl Db {
         active.update(&self.conn()).await?;
         touch_run(&self.conn(), run_id).await?;
         Ok(true)
-    }
-
-    /// Whether the one-time [list price rewrite](crate::bootstrap::rewrite_list_prices)
-    /// has completed on this database.
-    pub async fn list_price_rewrite_completed(&self) -> Result<bool> {
-        self.backfill_completed(LIST_PRICE_REWRITE_BACKFILL).await
-    }
-
-    /// Record the one-time [list price rewrite](crate::bootstrap::rewrite_list_prices)
-    /// as complete, so no later start runs it.
-    pub async fn mark_list_price_rewrite_complete(&self) -> Result<()> {
-        self.mark_backfill_complete(LIST_PRICE_REWRITE_BACKFILL)
-            .await
     }
 
     /// Whether the named startup backfill has already run to completion.

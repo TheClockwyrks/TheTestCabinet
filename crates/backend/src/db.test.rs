@@ -2785,30 +2785,187 @@ async fn backfill_alias_families_corrects_legacy_rows() {
 }
 
 #[tokio::test]
-async fn price_observations_dedup_and_latest() {
+async fn the_latest_price_is_the_newest_of_a_models_history() {
     let db = Db::connect_in_memory().await.unwrap();
-    let obs = |input: f64, at: &str| PriceWrite {
+    let obs = |context_length: i64, at: &str| PriceWrite {
         model_id: "x/y".to_string(),
         observed_at: at.to_string(),
-        uncached_input: Some(input),
-        cached_input: None,
-        output: Some(2.0),
-        context_length: Some(200_000),
+        context_length: Some(context_length),
         released_at: None,
         input_modalities: Some("text,image".to_string()),
         provider_pin: None,
     };
-    db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z"))
+    db.insert_price_observation(obs(200_000, "2026-01-01T00:00:00Z"))
         .await
         .unwrap();
-    db.insert_price_observation(obs(1.5, "2026-01-02T00:00:00Z"))
+    db.insert_price_observation(obs(1_000_000, "2026-01-02T00:00:00Z"))
         .await
         .unwrap();
 
     let latest = db.latest_price("x/y").await.unwrap().unwrap();
-    assert_eq!(latest.uncached_input, Some(1.5));
+    assert_eq!(latest.context_length, Some(1_000_000));
     assert_eq!(db.all_model_prices().await.unwrap().len(), 2);
     assert!(db.latest_price("nope").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn dropping_the_model_price_rates_keeps_every_rows_facts() {
+    // Rolled back, `model_price` has its three rate columns, as a deployment holds
+    // it before this migration. Rows written there, with rates, come
+    // through the migration with every fact they carried and no rate.
+    use sea_orm::{ConnectionTrait, Statement};
+    use test_cabinet_migration::MigratorTrait;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let conn = db.connection();
+    let backend = conn.get_database_backend();
+    let migrations = test_cabinet_migration::Migrator::migrations();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20261010_000057_drop_model_price_rates")
+        .expect("the migration is registered");
+    let steps = (migrations.len() - index) as u32;
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
+        .await
+        .unwrap();
+
+    for (model_id, observed_at, input, context, released, modalities, pin) in [
+        (
+            "anthropic/claude-opus-4.8",
+            "2026-09-01T00:00:00Z",
+            "0.000005",
+            "200000",
+            "'2026-05-01T00:00:00Z'",
+            "'text,image'",
+            "'Anthropic'",
+        ),
+        // The same model's rate changed and nothing else did.
+        (
+            "anthropic/claude-opus-4.8",
+            "2026-09-02T00:00:00Z",
+            "0.000004",
+            "1000000",
+            "'2026-05-01T00:00:00Z'",
+            "'text,image'",
+            "'Anthropic'",
+        ),
+        // A row recorded before any fact column was filled.
+        (
+            "legacy/model",
+            "2026-07-01T00:00:00Z",
+            "NULL",
+            "NULL",
+            "NULL",
+            "NULL",
+            "NULL",
+        ),
+    ] {
+        conn.execute(Statement::from_string(
+            backend,
+            format!(
+                "INSERT INTO model_price (model_id, observed_at, uncached_input, cached_input, \
+                 output, context_length, released_at, input_modalities, provider_pin) VALUES \
+                 ('{model_id}', '{observed_at}', {input}, {input}, 0.00002, {context}, \
+                 {released}, {modalities}, {pin})"
+            ),
+        ))
+        .await
+        .unwrap();
+    }
+    // The marker the removed one-time list price rewrite left, beside another pass's.
+    for key in ["model.list_price_standard_rate", "run.gg_config_id"] {
+        conn.execute(Statement::from_string(
+            backend,
+            format!(
+                "INSERT INTO backfill_state (id, completed_at) VALUES \
+                 ('{key}', '2026-10-01T00:00:00Z')"
+            ),
+        ))
+        .await
+        .unwrap();
+    }
+
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
+        .await
+        .unwrap();
+
+    let rows = db.all_model_prices().await.unwrap();
+    assert_eq!(rows.len(), 3, "every row is kept");
+    let latest = db
+        .latest_price("anthropic/claude-opus-4.8")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.observed_at, "2026-09-02T00:00:00Z");
+    assert_eq!(latest.context_length, Some(1_000_000));
+    assert_eq!(latest.released_at.as_deref(), Some("2026-05-01T00:00:00Z"));
+    assert_eq!(latest.input_modalities.as_deref(), Some("text,image"));
+    assert_eq!(latest.provider_pin.as_deref(), Some("Anthropic"));
+    let first = rows
+        .iter()
+        .find(|row| row.observed_at == "2026-09-01T00:00:00Z")
+        .expect("the older observation is kept");
+    assert_eq!(first.context_length, Some(200_000));
+    let legacy = db.latest_price("legacy/model").await.unwrap().unwrap();
+    assert_eq!(legacy.context_length, None);
+    assert_eq!(legacy.provider_pin, None);
+
+    // The rate columns are gone, and the table keeps its name.
+    conn.execute(Statement::from_string(
+        backend,
+        "SELECT context_length FROM model_price".to_string(),
+    ))
+    .await
+    .expect("the table keeps its name");
+    for gone in [
+        "SELECT uncached_input FROM model_price",
+        "SELECT cached_input FROM model_price",
+        "SELECT output FROM model_price",
+    ] {
+        assert!(
+            conn.execute(Statement::from_string(backend, gone.to_string()))
+                .await
+                .is_err(),
+            "`{gone}` must no longer resolve"
+        );
+    }
+
+    // Only the removed rewrite's marker is deleted.
+    let markers: Vec<String> = backfill_state::Entity::find()
+        .all(&conn)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(markers, ["run.gg_config_id"]);
+
+    // The table takes a new observation, and rolls back and forward again intact.
+    db.insert_price_observation(PriceWrite {
+        model_id: "legacy/model".to_string(),
+        observed_at: "2026-10-10T00:00:00Z".to_string(),
+        context_length: Some(128_000),
+        released_at: None,
+        input_modalities: None,
+        provider_pin: None,
+    })
+    .await
+    .unwrap();
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
+        .await
+        .unwrap();
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
+        .await
+        .unwrap();
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 4);
+    assert_eq!(
+        db.latest_price("legacy/model")
+            .await
+            .unwrap()
+            .unwrap()
+            .context_length,
+        Some(128_000)
+    );
 }
 
 #[tokio::test]

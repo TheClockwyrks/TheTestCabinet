@@ -59,8 +59,8 @@ pub struct Backend {
     pub bind: String,
     /// The background refresher handle; kept alive for the server's lifetime.
     pub refresher: crate::publisher::RefresherHandle,
-    /// The periodic model-price refresher task; kept alive for the server's
-    /// lifetime (dropping it aborts the 24-hour re-pricing loop).
+    /// The periodic refresher of list prices and catalog facts; kept alive for the
+    /// server's lifetime (dropping it aborts the 24-hour loop).
     pub price_refresher: tokio::task::JoinHandle<()>,
     /// The periodic [artifact reclamation sweep](crate::artifacts); kept alive for
     /// the server's lifetime (dropping it aborts the loop). `None` when the sweep is
@@ -302,28 +302,27 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");
     }
-    // Price every known model the catalog holds no observation for, so a freshly
-    // seeded deployment shows prices — and a live run its per-class cost split —
+    // Observe every known model the catalog holds no observation for, so a freshly
+    // seeded deployment knows its models' context windows and developer providers
     // before the first run rather than after it completes. Missing-only (a
     // steady-state boot fetches nothing) and best-effort: an unreachable OpenRouter
     // leaves the models to the launch-time and completion-time observations.
-    match crate::bootstrap::seed_catalog_prices(&db, &prices).await {
+    match crate::bootstrap::seed_catalog_facts(&db, &prices).await {
         Ok(seeded) if seeded > 0 => {
-            tracing::info!(seeded, "seeded missing model prices at startup");
+            tracing::info!(seeded, "seeded missing model catalog facts at startup");
         }
         Ok(_) => {}
-        Err(err) => tracing::warn!(error = %err, "skipping startup model-price seeding"),
+        Err(err) => tracing::warn!(error = %err, "skipping startup model catalog fact seeding"),
     }
-    let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
-    // Once per database, rewrite the stored list prices to their standard endpoint's
-    // rate. In the background, since the one pass that does the work reads an endpoints
-    // listing per priced model; a rewrite changes the catalog the public snapshot shows.
-    {
+    // The periodic refresher reads every list price from OpenRouter shortly after
+    // this start and every 24 hours after, in the background: a start never waits
+    // on OpenRouter. A changed rate changes the catalog the public snapshot shows.
+    let price_refresher = {
         let publisher = publisher.clone();
-        crate::bootstrap::spawn_list_price_rewrite(Arc::clone(&db), prices.clone(), move || {
+        crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone(), move || {
             publisher.queue_refresh();
-        });
-    }
+        })
+    };
 
     // A deployment that advertises an artifact service to consoles but gives this
     // backend no address of its own for it silently loses three things, none of which
