@@ -86,8 +86,9 @@ images and this image all install from, with the Rust arm's deferring to
 command that installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
-`post-create.sh` populates the `test-suites/` submodule, the suites checkout the
-local backend ingests (not `cold-storage/`, which is optional and about 2 GB),
+`post-create.sh` populates the `contracts/` submodule, which every build compiles
+against, and the `test-suites/` submodule, the suites checkout the local backend
+ingests (not `cold-storage/`, which is optional and about 2 GB),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
 directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
 workspace's locked dependencies when the container is created.

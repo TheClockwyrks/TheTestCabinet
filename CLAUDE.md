@@ -237,9 +237,9 @@ Before the first start, copy the host's file to `.devcontainer/.env`
 [`.devcontainer/README.md`](.devcontainer/README.md#host-files)). The container
 user is `dev`. The image carries everything a build needs, gg's eleven
 program-language toolchains included, so the first image build is long and the
-container's creation is short: `post-create.sh` initializes the `test-suites`
-submodule, installs the git hook and runs `npm ci`, and nothing runs in the
-background afterwards. cargo builds into
+container's creation is short: `post-create.sh` initializes the `contracts`
+submodule (a build input) and the `test-suites` one, installs the git hook and
+runs `npm ci`, and nothing runs in the background afterwards. cargo builds into
 `target/` in the checkout, which `make clean` removes. See [`development/running.md`](apps/docs/src/content/docs/development/running.md#the-dev-container).
 
 ## Doing things (guides & quickstarts)

@@ -613,7 +613,15 @@ To hold a local run to the same standard:
 ```sh
 npm ci                                   # the workspace: Vitest, Playwright
 scripts/ci/install-playwright-chromium.sh  # Chromium and its libraries (as root)
-TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-suites -p test-cabinet-core
+TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-core
+```
+
+The suites crate is a path dependency here rather than a member of the workspace,
+and cargo tests no package outside the workspace, so its own browser tests run in
+the `contracts/` checkout, as its pipeline runs them:
+
+```sh
+cd contracts && npm ci && TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-suites
 ```
 
 The dev container already carries Chromium. A test finds the npm workspace from
