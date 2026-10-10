@@ -36,6 +36,7 @@ import type {
   ModelAccuracy,
   ModelInput,
   ModelCandidates,
+  ListPriceRefresh,
   ModelListing,
   ModelProbe,
   ModelProbeDetail,
@@ -791,10 +792,26 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     async lookupOpenrouterModel(
       slug: string,
       token: string,
+      providerPin?: string | null,
     ): Promise<ModelListing> {
+      // The developer provider rides along only when the form has one: the
+      // parameter absent is "no hand-set provider", which the backend resolves
+      // from the model id's author segment.
+      const pin = providerPin?.trim();
+      const query = new URLSearchParams({ slug });
+      if (pin) query.set("providerPin", pin);
       return getJson<ModelListing>(
         baseUrl,
-        `/models/openrouter?slug=${encodeURIComponent(slug)}`,
+        `/models/openrouter?${query.toString()}`,
+        token,
+      );
+    },
+
+    async refreshListPrices(token: string): Promise<ListPriceRefresh> {
+      return postJson<ListPriceRefresh>(
+        baseUrl,
+        "/models/list-prices/refresh",
+        {},
         token,
       );
     },

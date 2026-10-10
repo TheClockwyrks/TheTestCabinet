@@ -1,6 +1,6 @@
 import type {
-  LadderSummary,
   DispatchStatus,
+  LadderSummary,
 } from "@clockwyrks/backend-api/ladders";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";

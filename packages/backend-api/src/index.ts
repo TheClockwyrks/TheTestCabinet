@@ -189,8 +189,8 @@ export type AliasOut = {
 };
 
 /**
- * One catalog entry: a curated model merged with its runs and price history, or
- * a model derived from runs with no curated config.
+ * One catalog entry: a curated model merged with its runs and its observed
+ * catalog facts, or a model derived from runs with no curated config.
  */
 export type ModelOut = {
   /**
@@ -234,33 +234,25 @@ export type ModelOut = {
    */
   aliases: Array<AliasOut>;
   /**
-   * The latest observed **billed rate** — what the official provider's
-   * endpoint charges right now — or null when none is recorded. A run's
-   * comparable cost is computed from [`list_price`](Self::list_price), not
-   * this.
-   */
-  price: ModelPricesOut | null;
-  /**
-   * The curated developer list price (per-token USD) a run's comparable cost
-   * is computed from — all-or-nothing: `Some` only when all three prices are
-   * set. Null for a derived or unpriced model.
+   * The model's list price (per-token USD), the only price a model has and
+   * what a run's comparable cost is computed from — all-or-nothing: `Some`
+   * only when all three prices are set. Null for a derived or unpriced model.
    */
   listPrice: ModelPricesOut | null;
   /**
-   * The date the list-price figures were taken, or null.
+   * The date the list-price figures were taken (`YYYY-MM-DD`): the day they
+   * were last read from OpenRouter, or the date recorded with a set entered
+   * by hand. Null when the model carries no list price.
    */
   listPriceAsOf: string | null;
   /**
-   * Where the list price came from: `hand` for a set the operator entered or
-   * confirmed, `openrouter` for one filled from the official endpoint's rate
-   * at enqueue (see [`crate::bootstrap::list_price_for_launch`]), or null
-   * when the model carries none.
+   * Where the list price came from: `openrouter` for a set read from
+   * OpenRouter (by a refresh of every entry, see
+   * [`crate::bootstrap::refresh_list_prices`], or at enqueue), `hand` for a
+   * set an operator entered, which stands until the next refresh resolves a
+   * rate for the model, or null when the model carries none.
    */
   listPriceSource: string | null;
-  /**
-   * The observed price history, ascending, consecutive-equal deduped.
-   */
-  priceHistory: Array<PriceObservationOut>;
   /**
    * The latest observed context window in tokens, or null.
    */
@@ -322,20 +314,12 @@ export type ModelOut = {
 };
 
 /**
- * A comparable per-token price triple.
+ * A per-token price triple, in USD: a model's list price.
  */
 export type ModelPricesOut = {
   uncachedInput: number | null;
   cachedInput: number | null;
   output: number | null;
-};
-
-/**
- * One price observation in a model's history.
- */
-export type PriceObservationOut = {
-  observedAt: string;
-  prices: ModelPricesOut;
 };
 
 /**
@@ -410,18 +394,20 @@ export type ModelConfigInput = {
    */
   unknownQuantizationProviders?: Array<string>;
   /**
-   * The developer's published list price per **Mtok** of input, in USD — the
-   * unit every developer pricing page publishes; the store carries per token.
-   * The list-price write is all-or-nothing: all three prices (plus
-   * `list_price_as_of`) or none; absent on update preserves the stored set.
+   * The list price per **Mtok** of input, in USD — the unit every pricing
+   * page publishes; the store carries per token. The list-price write is
+   * all-or-nothing: all three prices (plus `list_price_as_of`) or none;
+   * absent on update preserves the stored set. A set written here is sourced
+   * `hand` and stands until the next refresh resolves a rate for the model
+   * from OpenRouter.
    */
   listPriceInputPerMtok?: number;
   /**
-   * The developer's published list price per **Mtok** of cached input, in USD.
+   * The list price per **Mtok** of cached input, in USD.
    */
   listPriceCachedInputPerMtok?: number;
   /**
-   * The developer's published list price per **Mtok** of output, in USD.
+   * The list price per **Mtok** of output, in USD.
    */
   listPriceOutputPerMtok?: number;
   /**
@@ -470,10 +456,12 @@ export type ModelSeedOut = {
 /**
  * The `GET /models/openrouter` response: the descriptive facts OpenRouter
  * publishes about a model, for the config form to fill itself in with, plus the
- * official endpoint's current prices scaled to per Mtok — the seed figures for
- * the form's curated list-price fields (the whole point of the fill). An absent
- * price is not an error: the field is null and the form leaves it for the
- * operator. The context window and the modalities remain deliberately absent:
+ * model's list price as OpenRouter publishes it, scaled to per Mtok — the seed
+ * figures for the form's list-price fields. The rate is resolved by the same
+ * [flow](test_cabinet_core::ModelLaunchFacts::list_price) every list price read
+ * from OpenRouter is, so the three figures are all present or all null. A model
+ * with no rate is not an error: the fields are null and the form leaves them for
+ * the operator. The context window and the modalities remain deliberately absent:
  * the backend records those itself from the same catalog (on save, on launch,
  * and on the 24-hour refresh), so they are never form state to begin with.
  */
@@ -491,17 +479,40 @@ export type ModelListingOut = {
    */
   description: string | null;
   /**
-   * The official endpoint's current input price per Mtok in USD, or null.
+   * The list price of input per Mtok in USD, or null.
    */
   inputPerMtok: number | null;
   /**
-   * The official endpoint's current cached-input price per Mtok in USD, or null.
+   * The list price of cached input per Mtok in USD, or null.
    */
   cachedInputPerMtok: number | null;
   /**
-   * The official endpoint's current output price per Mtok in USD, or null.
+   * The list price of output per Mtok in USD, or null.
    */
   outputPerMtok: number | null;
+};
+
+/**
+ * The `POST /models/list-prices/refresh` response: what the refresh of every
+ * catalog entry's list price did, counted in entries.
+ */
+export type ListPriceRefreshOut = {
+  /**
+   * Every curated catalog entry: the sum of the other three.
+   */
+  total: number;
+  /**
+   * The entries whose rate changed, or that had no list price and now have one.
+   */
+  updated: number;
+  /**
+   * The entries whose stored rate OpenRouter confirmed. Their date was rewritten.
+   */
+  unchanged: number;
+  /**
+   * The entries OpenRouter gave no rate for, which keep what they hold.
+   */
+  unresolved: number;
 };
 
 /**

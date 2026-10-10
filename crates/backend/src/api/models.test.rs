@@ -134,24 +134,21 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
     }
 }
 
-fn price(
+/// One stored observation of `model_id`'s catalog facts.
+fn observation(
     id: i32,
     model_id: &str,
     observed_at: &str,
-    input: f64,
-    output: f64,
+    context_length: i64,
 ) -> model_price::Model {
     model_price::Model {
         id,
         model_id: model_id.to_string(),
         observed_at: observed_at.to_string(),
-        uncached_input: Some(input),
-        cached_input: None,
-        output: Some(output),
-        context_length: Some(200_000),
+        context_length: Some(context_length),
         released_at: Some("2026-01-01T00:00:00Z".to_string()),
         input_modalities: Some("text,image".to_string()),
-        provider_pin: None,
+        provider_pin: Some("Anthropic".to_string()),
     }
 }
 
@@ -163,12 +160,11 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
         "Anthropic",
         &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
     )];
-    let prices = vec![price(
+    let prices = vec![observation(
         1,
         "anthropic/claude-opus-4.8",
         "2026-01-02T00:00:00Z",
-        5.0,
-        15.0,
+        200_000,
     )];
     // A Kilo run of the curated model (openrouter/ + :free), and an uncurated model.
     let run_models = vec![
@@ -193,7 +189,12 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
         opus.covered_model_ids,
         vec!["openrouter/anthropic/claude-opus-4.8:free"]
     );
-    assert_eq!(opus.price.as_ref().unwrap().output, Some(15.0));
+    // The facts observed under an alias are the entry's.
+    assert_eq!(opus.context_length, Some(200_000));
+    assert_eq!(opus.released_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+    assert_eq!(opus.input_modalities, ["text", "image"]);
+    assert_eq!(opus.provider_pin.as_deref(), Some("Anthropic"));
+    assert!(!opus.provider_pin_set_by_hand);
     assert_eq!(
         opus.openrouter_url.as_deref(),
         Some("https://openrouter.ai/claude-opus-4-8")
@@ -219,7 +220,8 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
     assert!(!derived.curated);
     assert_eq!(derived.name, "deepseek/deepseek-v4");
     assert_eq!(derived.provider, "deepseek");
-    assert!(derived.price.is_none());
+    assert_eq!(derived.context_length, None);
+    assert!(derived.input_modalities.is_empty());
     // A derived entry's alias family comes from the harness that reported it (an
     // OpenCode run here → the OpenRouter family).
     assert_eq!(derived.aliases.len(), 1);
@@ -271,20 +273,42 @@ fn compose_carries_the_curated_list_price() {
     assert_eq!(derived.list_price, None);
 }
 
+/// An entry serves the facts of its newest observation, across every alias it claims,
+/// and an observation carries no price onto the entry: the list price is the only one.
 #[test]
-fn price_history_dedups_consecutive_equal() {
-    let prices = vec![
-        price(1, "x/y", "2026-01-01T00:00:00Z", 1.0, 2.0),
-        price(2, "x/y", "2026-01-02T00:00:00Z", 1.0, 2.0), // unchanged
-        price(3, "x/y", "2026-01-03T00:00:00Z", 1.5, 2.0), // changed
+fn an_entry_serves_the_facts_of_its_newest_observation() {
+    let observations = vec![
+        observation(1, "x/y", "2026-01-01T00:00:00Z", 200_000),
+        observation(2, "x/y", "2026-01-02T00:00:00Z", 400_000),
+        observation(3, "x/y", "2026-01-03T00:00:00Z", 1_000_000),
     ];
     let run_models = vec![("x/y".to_string(), "goose".to_string())];
-    let catalog = compose_catalog(&[], &prices, &run_models);
+    let catalog = compose_catalog(&[], &observations, &run_models);
     let entry = &catalog[0];
-    assert_eq!(entry.price_history.len(), 2, "consecutive equal collapsed");
-    assert_eq!(entry.price_history[0].observed_at, "2026-01-01T00:00:00Z");
-    assert_eq!(entry.price_history[1].observed_at, "2026-01-03T00:00:00Z");
-    assert_eq!(entry.price.as_ref().unwrap().uncached_input, Some(1.5));
+    assert_eq!(entry.context_length, Some(1_000_000));
+    assert_eq!(entry.list_price, None);
+
+    // A curated entry merges the histories of its aliases, newest first.
+    let observations = vec![
+        observation(1, "claude-opus-4-8", "2026-01-05T00:00:00Z", 1_000_000),
+        observation(
+            2,
+            "anthropic/claude-opus-4.8",
+            "2026-01-02T00:00:00Z",
+            200_000,
+        ),
+    ];
+    let curated = config(
+        "claude-opus-4-8",
+        "Claude Opus 4.8",
+        "Anthropic",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    );
+    let catalog = compose_catalog(&[curated], &observations, &[]);
+    assert_eq!(catalog[0].context_length, Some(1_000_000));
+    let wire = serde_json::to_value(&catalog[0]).unwrap();
+    assert!(wire.get("price").is_none(), "{wire}");
+    assert!(wire.get("priceHistory").is_none(), "{wire}");
 }
 
 #[test]
@@ -351,14 +375,11 @@ fn lookup_slug_rejects_an_empty_slug() {
 // The context-window lookup (the single store gg is told its window from)
 // ---------------------------------------------------------------------------
 
-/// A price observation for `model_id` carrying `context_length`.
+/// An observation of `model_id` carrying `context_length`.
 fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWrite {
     crate::db::PriceWrite {
         model_id: model_id.to_string(),
         observed_at: "2026-01-01T00:00:00Z".to_string(),
-        uncached_input: Some(1.0),
-        cached_input: None,
-        output: Some(2.0),
         context_length: Some(context_length),
         released_at: None,
         input_modalities: None,
@@ -534,6 +555,127 @@ async fn write_config_stores_a_full_list_price_per_token() {
         .unwrap();
     assert!((stored.config.list_price_input.unwrap() - 2.0 * per_token).abs() < f64::EPSILON * 8.0);
     assert_eq!(stored.config.list_price_source.as_deref(), Some("hand"));
+}
+
+/// An entry priced from OpenRouter on 2026-10-09, at rates whose per-Mtok form does
+/// not survive the scaling exactly (0.121 per Mtok comes back as
+/// 0.12099999999999998), and the write the form sends when it is opened on that entry
+/// and saved: the stored figures as it shows them, and the stored date.
+async fn openrouter_priced_entry(state: &AppState) -> ModelConfigInput {
+    let _created = write_config(state, "deepseek-v4".to_string(), input("deepseek-v4"))
+        .await
+        .unwrap();
+    state
+        .db
+        .set_list_price(crate::db::ListPriceWrite {
+            slug: "deepseek-v4".to_string(),
+            uncached_input: 0.000000121,
+            cached_input: 0.000000026,
+            output: 0.0000044,
+            as_of: "2026-10-09".to_string(),
+            source: "openrouter".to_string(),
+            now: "2026-10-09T00:00:00Z".to_string(),
+        })
+        .await
+        .unwrap();
+    let mut resubmitted = input("deepseek-v4");
+    resubmitted.list_price_input_per_mtok = Some(0.121);
+    resubmitted.list_price_cached_input_per_mtok = Some(0.026);
+    resubmitted.list_price_output_per_mtok = Some(4.4);
+    resubmitted.list_price_as_of = Some("2026-10-09".to_string());
+    resubmitted
+}
+
+/// The stored list price of `deepseek-v4`: its rates, date and source.
+async fn stored_list_price(state: &AppState) -> ([Option<f64>; 3], Option<String>, Option<String>) {
+    let config = state
+        .db
+        .get_model_config("deepseek-v4")
+        .await
+        .unwrap()
+        .unwrap()
+        .config;
+    (
+        [
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ],
+        config.list_price_as_of,
+        config.list_price_source,
+    )
+}
+
+/// Saving another field of an entry sends its list price back as the form showed it.
+/// Nobody entered that set, so it stays exactly as stored: a price read from
+/// OpenRouter is still sourced `openrouter`, with its date and its figures untouched.
+#[tokio::test]
+async fn write_config_keeps_the_source_of_a_list_price_sent_back_unchanged() {
+    let (_dir, state) = test_state().await;
+    let mut resubmitted = openrouter_priced_entry(&state).await;
+    let before = stored_list_price(&state).await;
+    resubmitted.provider_pin = Some("DeepSeek".to_string());
+    resubmitted.name = "DeepSeek V4".to_string();
+
+    let out = write_config(&state, "deepseek-v4".to_string(), resubmitted)
+        .await
+        .unwrap();
+
+    assert_eq!(out.list_price_source.as_deref(), Some("openrouter"));
+    assert_eq!(out.name, "DeepSeek V4");
+    assert_eq!(stored_list_price(&state).await, before);
+    assert_eq!(before.2.as_deref(), Some("openrouter"));
+}
+
+/// A save that changes a figure, or only the date, is a set the operator entered: it
+/// is stored as sent and sourced `hand`.
+#[tokio::test]
+async fn write_config_marks_a_changed_list_price_as_entered_by_hand() {
+    let (_dir, state) = test_state().await;
+    let mut redated = openrouter_priced_entry(&state).await;
+    redated.list_price_as_of = Some("2026-10-10".to_string());
+    let out = write_config(&state, "deepseek-v4".to_string(), redated)
+        .await
+        .unwrap();
+    assert_eq!(out.list_price_source.as_deref(), Some("hand"));
+    assert_eq!(out.list_price_as_of.as_deref(), Some("2026-10-10"));
+
+    // Back to a set read from OpenRouter, then one figure changed.
+    let mut repriced = openrouter_priced_entry(&state).await;
+    repriced.list_price_output_per_mtok = Some(4.5);
+    let out = write_config(&state, "deepseek-v4".to_string(), repriced)
+        .await
+        .unwrap();
+    assert_eq!(out.list_price_source.as_deref(), Some("hand"));
+    let (rates, as_of, source) = stored_list_price(&state).await;
+    assert!((rates[2].unwrap() - 4.5e-6).abs() < 1e-18);
+    assert_eq!(as_of.as_deref(), Some("2026-10-09"));
+    assert_eq!(source.as_deref(), Some("hand"));
+}
+
+/// A set entered by hand and sent back unchanged is still the operator's.
+#[tokio::test]
+async fn write_config_keeps_a_hand_entered_list_price_sent_back_unchanged() {
+    let (_dir, state) = test_state().await;
+    let entered = || {
+        let mut entered = input("deepseek-v4");
+        entered.list_price_input_per_mtok = Some(2.0);
+        entered.list_price_cached_input_per_mtok = Some(0.2);
+        entered.list_price_output_per_mtok = Some(6.0);
+        entered.list_price_as_of = Some("2026-10-01".to_string());
+        entered
+    };
+    let _created = write_config(&state, "deepseek-v4".to_string(), entered())
+        .await
+        .unwrap();
+    let before = stored_list_price(&state).await;
+
+    let _saved = write_config(&state, "deepseek-v4".to_string(), entered())
+        .await
+        .unwrap();
+
+    assert_eq!(stored_list_price(&state).await, before);
+    assert_eq!(before.2.as_deref(), Some("hand"));
 }
 
 /// A partial list-price set is a 422 naming the missing side of the

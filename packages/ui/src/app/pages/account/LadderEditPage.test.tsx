@@ -13,14 +13,15 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { LadderEditPage } from "./LadderEditPage";
+import { retryLimitHelp } from "./retry-limit";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../../data/galleryContext";
-import { LadderEditPage } from "./LadderEditPage";
-import { retryLimitHelp } from "./retry-limit";
 
 // The page's app chrome reads contexts none of these tests are about; stub it as the
 // other account page tests do.

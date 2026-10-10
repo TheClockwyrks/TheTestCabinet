@@ -18,6 +18,7 @@ import type {
   Model,
   ModelAccuracy,
   ModelInput,
+  ListPriceRefresh,
   ModelListing,
   ModelProbe,
   ModelProbeDetail,
@@ -191,7 +192,7 @@ export interface BackendClient {
   // `app/data/harnesses.ts` — not served by the backend.)
   //
   // The model catalog is served by `GET /models`: curated configs merged with the
-  // models derived from recorded runs, each with its observed price history. The
+  // models derived from recorded runs, each with its observed catalog facts. The
   // config mutations below are optional so a transport that can't reach them (the
   // static site) omits them and the console hides the affordance — the same
   // pattern `deleteRun?`/`killRun?` use.
@@ -207,8 +208,17 @@ export interface BackendClient {
   /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
   seedModelFromRun?(runId: string): Promise<ModelSeed>;
   /** What OpenRouter publishes about a model, so the config form can fill itself
-   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer). */
-  lookupOpenrouterModel?(slug: string, token: string): Promise<ModelListing>;
+   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer).
+   * `providerPin` is the form's current developer provider: when set, its rate
+   * is the one the listing's prices carry while it lists a complete one. */
+  lookupOpenrouterModel?(
+    slug: string,
+    token: string,
+    providerPin?: string | null,
+  ): Promise<ModelListing>;
+  /** Re-read every curated entry's list price from OpenRouter and report what
+   * changed (`POST /models/list-prices/refresh`, Bearer). */
+  refreshListPrices?(token: string): Promise<ListPriceRefresh>;
 
   // Model probes — responses-as-code readiness checks of a catalog model. The
   // reads are open (probe results are console-only catalog context, like the

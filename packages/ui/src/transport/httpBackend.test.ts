@@ -1200,3 +1200,68 @@ describe("createHttpBackend dispatch and fill controls", () => {
     expect(JSON.parse(String(init?.body))).toEqual(input);
   });
 });
+
+// Answers every fetch with `body` as a 200 JSON response.
+function stubJsonOk(body: unknown) {
+  const fetchMock = vi.fn<
+    (url: string, init?: RequestInit) => Promise<Response>
+  >(() => Promise.resolve(Response.json(body)));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+const authorization = (init?: RequestInit) =>
+  new Headers(init?.headers).get("authorization");
+
+describe("createHttpBackend model list prices", () => {
+  it("refreshes every list price with the bearer token", async () => {
+    const counts = { total: 4, updated: 1, unchanged: 2, unresolved: 1 };
+    const fetchMock = stubJsonOk(counts);
+    await expect(
+      createHttpBackend(BACKEND).refreshListPrices?.("tok"),
+    ).resolves.toEqual(counts);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(`${BACKEND}/models/list-prices/refresh`);
+    expect(init?.method).toBe("POST");
+    expect(authorization(init)).toBe("Bearer tok");
+  });
+
+  const LISTING = {
+    name: "Qwen3 Coder",
+    provider: "Qwen",
+    description: null,
+    inputPerMtok: 1,
+    cachedInputPerMtok: 0.1,
+    outputPerMtok: 5,
+  };
+
+  it("looks a slug up without a developer provider when none is set", async () => {
+    for (const pin of [undefined, null, "", " ".repeat(3)]) {
+      const fetchMock = stubJsonOk(LISTING);
+      await createHttpBackend(BACKEND).lookupOpenrouterModel?.(
+        "qwen/qwen3-coder",
+        "tok",
+        pin,
+      );
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
+        `${BACKEND}/models/openrouter?slug=qwen%2Fqwen3-coder`,
+      );
+    }
+  });
+
+  it("passes the form's developer provider as providerPin", async () => {
+    const fetchMock = stubJsonOk(LISTING);
+    await expect(
+      createHttpBackend(BACKEND).lookupOpenrouterModel?.(
+        "qwen/qwen3-coder",
+        "tok",
+        " Alibaba Cloud ",
+      ),
+    ).resolves.toEqual(LISTING);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(
+      `${BACKEND}/models/openrouter?slug=qwen%2Fqwen3-coder&providerPin=Alibaba+Cloud`,
+    );
+    expect(authorization(init)).toBe("Bearer tok");
+  });
+});

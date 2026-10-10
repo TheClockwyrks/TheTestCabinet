@@ -18,9 +18,8 @@ import { ModelStatsPage } from "./ModelStatsPage";
 // execution mode, summed across its covered ids, with absent halves presented
 // as absent (an empty ring naming the mode) rather than as zeros — and the
 // whole section absent where the fold isn't served (the static site). Below it,
-// the List price and Billed rate sections: the curated figures a run's
-// comparable cost is computed from beside the official endpoint's observed
-// rate, with the difference between them surfaced per price class.
+// the List price section: the only price a model has, which a run's comparable
+// cost is computed from, with the date it was taken and where it came from.
 
 // The page's app chrome reads contexts (backdrop settings, topbar) that are
 // irrelevant to the stats under test.
@@ -47,11 +46,9 @@ const MODEL = {
   // Two covered ids, so the fold across ids is exercised.
   modelIds: ["anthropic/claude-x", "anthropic/claude-x-preview"],
   aliases: [],
-  prices: null,
   listPrice: null,
   listPriceAsOf: null,
   listPriceSource: null,
-  priceHistory: [],
   contextLength: null,
   providerPin: null,
   providerPinSetByHand: false,
@@ -311,7 +308,7 @@ describe("the Stats tab's Provider candidates section", () => {
   });
 });
 
-describe("the Stats tab's price sections", () => {
+describe("the Stats tab's list price", () => {
   function renderPriced(model: ModelSummary) {
     render(
       <MemoryRouter initialEntries={[`/models/${model.slug}/stats`]}>
@@ -331,10 +328,10 @@ describe("the Stats tab's price sections", () => {
     );
   }
 
-  it("shows the list price and the billed rate side by side with the difference", async () => {
+  it("shows the list price per Mtok with its date and source", async () => {
     renderPriced({
       ...MODEL,
-      // The curated figures: $3 / $0.30 / $15 per Mtok, taken mid-August.
+      // $3 / $0.30 / $15 per Mtok, taken mid-August.
       listPrice: {
         uncachedInput: 3e-6,
         cachedInput: 3e-7,
@@ -342,36 +339,19 @@ describe("the Stats tab's price sections", () => {
       },
       listPriceAsOf: "2026-08-15",
       listPriceSource: "hand",
-      // The observed billed rate: input discounted 10%, output surcharged 10%,
-      // the cached class unchanged.
-      prices: {
-        uncachedInput: 2.7e-6,
-        cachedInput: 3e-7,
-        output: 16.5e-6,
-      },
     });
 
-    // Both sections render, in the page's order.
-    expect(await screen.findByText("List price")).toBeTruthy();
-    expect(screen.getByText("Billed rate")).toBeTruthy();
-    // The list figures per Mtok, and when they were taken.
-    const listSection = screen.getByText("List price").closest("section")!;
+    const listHeading = await screen.findByText("List price");
+    const listSection = listHeading.closest("section")!;
     expect(within(listSection).getByText("$3.00")).toBeTruthy();
     expect(within(listSection).getByText("$0.30")).toBeTruthy();
     expect(within(listSection).getByText("$15.00")).toBeTruthy();
     expect(within(listSection).getByText("Aug 15, 2026")).toBeTruthy();
     expect(within(listSection).getByText("Entered by hand")).toBeTruthy();
-    // The billed figures per Mtok beside them.
-    const billedSection = screen.getByText("Billed rate").closest("section")!;
-    expect(within(billedSection).getByText("$2.70")).toBeTruthy();
-    expect(within(billedSection).getByText("$16.50")).toBeTruthy();
-    // The difference per class, signed against the list figure.
-    expect(within(billedSection).getByText("−10.0% vs list")).toBeTruthy();
-    expect(within(billedSection).getByText("+10.0% vs list")).toBeTruthy();
-    expect(within(billedSection).getByText("+0.0% vs list")).toBeTruthy();
+    expect(within(listSection).queryByText("Read from OpenRouter")).toBeNull();
   });
 
-  it("marks a list price filled from OpenRouter as one to confirm", async () => {
+  it("names OpenRouter as the source of a list price a refresh read", async () => {
     renderPriced({
       ...MODEL,
       listPrice: {
@@ -381,44 +361,34 @@ describe("the Stats tab's price sections", () => {
       },
       listPriceAsOf: "2026-09-28",
       listPriceSource: "openrouter",
-      prices: null,
     });
 
     const listSection = (await screen.findByText("List price")).closest(
       "section",
     )!;
-    expect(
-      within(listSection).getByText("Filled from OpenRouter"),
-    ).toBeTruthy();
-    expect(
-      within(listSection).getByText(
-        "Source — confirm against the developer's pricing page",
-      ),
-    ).toBeTruthy();
+    expect(within(listSection).getByText("Read from OpenRouter")).toBeTruthy();
+    expect(within(listSection).getByText("Sep 28, 2026")).toBeTruthy();
     expect(within(listSection).queryByText("Entered by hand")).toBeNull();
   });
 
-  it("names the fill when the model has no list price yet", async () => {
+  it("says so when the model has no list price", async () => {
     renderPriced({
       ...MODEL,
       listPrice: null,
       listPriceAsOf: null,
       listPriceSource: null,
-      prices: { uncachedInput: 3e-6, cachedInput: null, output: 15e-6 },
     });
 
     expect(
       await screen.findByText(
-        "No list price — filled from OpenRouter when a run is first enqueued",
+        "No list price — OpenRouter has yielded no rate for this model",
       ),
     ).toBeTruthy();
-    // The billed rate still renders; with no list figure there is no
-    // difference to report against it.
-    expect(screen.getByText("Billed rate")).toBeTruthy();
-    expect(screen.queryByText(/vs list/)).toBeNull();
   });
 
-  it("says so when no billed rate has been observed yet", async () => {
+  // The list price is the only price a model has: the page carries no second
+  // price section, and nothing is compared against the list figure.
+  it("shows no billed rate and no difference against the list price", async () => {
     renderPriced({
       ...MODEL,
       listPrice: {
@@ -427,11 +397,11 @@ describe("the Stats tab's price sections", () => {
         output: 15e-6,
       },
       listPriceAsOf: "2026-08-15",
-      listPriceSource: "hand",
-      prices: null,
+      listPriceSource: "openrouter",
     });
 
-    expect(await screen.findByText("No billed rate observed yet")).toBeTruthy();
-    expect(screen.getByText("$3.00")).toBeTruthy();
+    expect(await screen.findByText("List price")).toBeTruthy();
+    expect(screen.queryByText(/billed/i)).toBeNull();
+    expect(screen.queryByText(/vs list/)).toBeNull();
   });
 });

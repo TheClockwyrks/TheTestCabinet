@@ -74,7 +74,6 @@ export {
   toModelSummary,
   type ModelSummary,
   type ModelPrices,
-  type PriceObservation,
 } from "./data/models";
 export {
   type TestCaseSummary,

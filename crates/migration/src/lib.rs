@@ -80,6 +80,7 @@ mod m20261002_000053_add_ladder_top_up_requested;
 mod m20261002_000054_ladder_plain_flow;
 mod m20261002_000055_ladder_dispatch;
 mod m20261009_000056_add_retry_count;
+mod m20261010_000057_drop_model_price_rates;
 
 pub struct Migrator;
 
@@ -147,6 +148,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261002_000054_ladder_plain_flow::Migration),
             Box::new(m20261002_000055_ladder_dispatch::Migration),
             Box::new(m20261009_000056_add_retry_count::Migration),
+            Box::new(m20261010_000057_drop_model_price_rates::Migration),
         ]
     }
 }

@@ -38,11 +38,10 @@ The full walkthrough is
 3. Enter the OpenRouter slug and click Fill from OpenRouter to populate the
    display name, provider, and description from OpenRouter's catalog. For a model
    OpenRouter does not list, fill the fields in by hand.
-4. Enter the model's list price from the developer's own pricing page: the
-   uncached input, cached input, and output rates per Mtok, and the date the
-   figures were taken. Fill from OpenRouter seeds the three rates from the
-   official provider endpoint's listing; confirm or correct them against the
-   pricing page. Save refuses a partial or undated set.
+4. Check the model's list price: the uncached input, cached input, and output
+   rates per Mtok, and the date the figures were taken. Fill from OpenRouter
+   seeds the three rates. For a model OpenRouter does not list, enter them from
+   the developer's pricing page. Save refuses a partial or undated set.
 5. Check the result and adjust the wording. A display name is required. Add one
    model id per alias, each paired with the harness family it works with (Claude
    Code, Codex, Antigravity, or Others/OpenRouter) so the run form offers a
@@ -56,27 +55,32 @@ aliases and their harness families, provider, logo, description, OpenRouter
 slug, list price, or provider fields, then Save.
 
 Fill from OpenRouter replaces the name, provider, and description rather than
-filling only the empty fields, and seeds the three list-price rates from the
-official endpoint, so reach for it when you want OpenRouter's wording back.
-Confirm or correct the seeded rates against the developer's pricing page.
+filling only the empty fields, and seeds the three list-price rates, so reach
+for it when you want OpenRouter's wording back.
 
-A run's comparable cost is priced from the model's list price. A model saved
-without one has it filled from the official endpoint's OpenRouter rate when a
-run binding it is first enqueued; confirm or correct the filled rates against
-the developer's pricing page. A model the catalog has no entry for, or one
-OpenRouter lists no rate for, is refused at enqueue with the reason named. The
-backend records the official
-endpoint's per-Mtok rates beside the list price as the billed rate, when the
-model is saved, when a run using it is enqueued, when a run completes, and on a
-24-hour refresh. The model's Stats tab shows the list price and the billed rate
-side by side with the difference, so a discount, a price change, or a listing
-error is visible on the model.
+## Refresh list prices
+
+A run's comparable cost is priced from the model's list price. The backend
+refreshes every curated model's list price from OpenRouter every 24 hours, and
+fills a missing one when a run binding the model is first enqueued. A model the
+catalog has no entry for, or one OpenRouter yields no rate for, is refused at
+enqueue with the reason named.
+
+To refresh on demand, open the Models section and click Refresh, beside Add
+model. The page reports how many models were updated, confirmed unchanged,
+and left as they were. A price entered by hand stands until a refresh resolves
+a rate for that model from OpenRouter.
+
+## Provider fields
 
 The form's provider fields decide the candidate list:
 
 - Developer provider, set where OpenRouter's name for the developer's endpoint
   does not match the model id's author segment (`qwen/…` served by `Alibaba`).
-  Its endpoint's rates are the billed rate the catalog records.
+  Its standard endpoint's rates are the list price whenever it lists a complete
+  set, on every refresh. Without it, a model whose developer OpenRouter spells
+  differently is priced at the model's own price in OpenRouter's models listing
+  (the `pricing` field of its `/models` entry), a third party's rate.
 - Quantization filter, switched off for a model whose precision no provider
   discloses, so that every endpoint passes at whatever level it declares.
 - Native quantization, set where the highest level any endpoint declares is

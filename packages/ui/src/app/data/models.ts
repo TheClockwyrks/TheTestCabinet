@@ -4,7 +4,6 @@ import type {
   Model,
   ModelAlias,
   ModelPrices,
-  PriceObservation,
 } from "../../client/types";
 
 // The model catalog the Models section renders. It is no longer a bundled static
@@ -13,7 +12,7 @@ import type {
 // which is mapped to the display `ModelSummary` below. Any model with at least one
 // recorded run appears — curated or not.
 
-export type { ModelPrices, PriceObservation };
+export type { ModelPrices };
 
 /** One model resolved for display in the Models section. */
 export interface ModelSummary {
@@ -36,18 +35,13 @@ export interface ModelSummary {
   /** The canonical model ids this model claims, each tagged with the harness
    * family it is usable with (seeds the config form and drives run→model matching). */
   aliases: ModelAlias[];
-  /** The billed rate: the latest observed per-token price of the official
-   * OpenRouter endpoint, refreshed by the backend. Null until observed. */
-  prices: ModelPrices | null;
-  /** The curated developer list price (per token) a run's comparable cost is
-   * computed from, or null while the model has none. */
+  /** The list price (per token): the only price a model has, and what a run's
+   * comparable cost is computed from. Null while the model has none. */
   listPrice: ModelPrices | null;
   /** The date (`YYYY-MM-DD`) the list-price figures were taken, or null. */
   listPriceAsOf: string | null;
   /** Where the list price came from, or null while the model has none. */
   listPriceSource: ListPriceSource | null;
-  /** The observed price history, ascending, consecutive-equal deduped. */
-  priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
   contextLength: number | null;
   /** The developer provider: the OpenRouter provider name of the developer's
@@ -88,11 +82,9 @@ export function toModelSummary(model: Model): ModelSummary {
     logoSvg: model.logoSvg,
     modelIds: model.coveredModelIds,
     aliases: model.aliases,
-    prices: model.price,
     listPrice: model.listPrice,
     listPriceAsOf: model.listPriceAsOf,
     listPriceSource: model.listPriceSource,
-    priceHistory: model.priceHistory,
     contextLength: model.contextLength,
     providerPin: model.providerPin,
     providerPinSetByHand: model.providerPinSetByHand,

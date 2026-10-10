@@ -705,7 +705,7 @@ export function useGgAgentSummaries(
         capabilitySet,
         agentForest,
         perAgent,
-        (id) => findModel?.(id)?.prices ?? null,
+        (id) => findModel?.(id)?.listPrice ?? null,
         (id) => findModel?.(id)?.name ?? null,
         modules,
       ),

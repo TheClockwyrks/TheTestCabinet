@@ -1244,45 +1244,72 @@ The model catalog is the list of subjects a run can be attributed to (see
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
 `GET /models` and `GET /models/seed` are open; the rest require a bearer token.
 
-| endpoint                       | does                                                  |
-| ------------------------------ | ----------------------------------------------------- |
-| `GET /models`                  | the merged catalog of curated and run-derived entries |
-| `POST /models`                 | create a curated entry                                |
-| `PUT /models/{slug}`           | update a curated entry                                |
-| `DELETE /models/{slug}`        | remove a curated entry                                |
-| `GET /models/seed?runId=`      | a blank form seeded from a run's model id             |
-| `GET /models/openrouter?slug=` | OpenRouter's facts about a model, for Fill            |
-| `POST /models/logo`            | fetch and sanitize an svgl.app logo                   |
+| endpoint                            | does                                                  |
+| ----------------------------------- | ----------------------------------------------------- |
+| `GET /models`                       | the merged catalog of curated and run-derived entries |
+| `POST /models`                      | create a curated entry                                |
+| `PUT /models/{slug}`                | update a curated entry                                |
+| `DELETE /models/{slug}`             | remove a curated entry                                |
+| `GET /models/seed?runId=`           | a blank form seeded from a run's model id             |
+| `GET /models/openrouter?slug=`      | OpenRouter's facts about a model, for Fill            |
+| `POST /models/list-prices/refresh`  | refresh every curated entry's list price              |
+| `POST /models/logo`                 | fetch and sanitize an svgl.app logo                   |
 
 Each `GET /models` entry carries its display fields, aliases with their harness
 families, OpenRouter slug, developer provider (`providerPin`), and provider
-policy. `listPrice` is the curated list price, per token, with `listPriceAsOf`
-the date the figures were taken and `listPriceSource` where they came from:
-`hand` for a set the operator entered or confirmed, `openrouter` for one filled
-from the official endpoint's rate at enqueue. All three are null until all three
-rates are set. `price` is the latest billed rate, and `priceHistory` the
-billed-rate history.
+policy. `listPrice` is the list price, per token, with `listPriceAsOf` the date
+the figures were taken and `listPriceSource` where they came from: `hand` for a
+set the operator entered on the form, by changing a rate or the date,
+`openrouter` for one
+[resolved from OpenRouter](/components/core/metrics/#list-price-resolution). All
+three are null until all three rates are set. The list price is the only price
+an entry carries.
 
 A write carries the list price per Mtok as `listPriceInputPerMtok`,
 `listPriceCachedInputPerMtok`, and `listPriceOutputPerMtok`, with
 `listPriceAsOf`. The three rates are written together and dated, or the write is
-refused with `422`. A write that omits all four keeps the stored list price.
+refused with `422`. A write that omits all four keeps the stored list price. So
+does a write that carries the stored rates and date back unchanged, which is
+what the form sends when another field is saved: the entry keeps its
+`listPriceSource`. A rate is unchanged when it agrees with the stored one to
+nine significant digits. Any other write stores the set with the source `hand`.
 
 `GET /models/openrouter` answers the display name, provider, and description,
-plus `inputPerMtok`, `cachedInputPerMtok`, and `outputPerMtok` read from the
-official provider's endpoint in the model's `/models/{id}/endpoints` listing.
-Each rate is null when that endpoint lists none. The form seeds its list-price
-fields from them for the operator to confirm or correct against the developer's
-pricing page. A slug OpenRouter does not list is a `404`.
+plus `inputPerMtok`, `cachedInputPerMtok`, and `outputPerMtok`, the rate the
+list price resolution yields for the slug. The optional `providerPin` query
+parameter carries the form's current developer provider, which the resolution
+tries first and whose rate it answers whenever that provider's standard endpoint
+lists a complete one. The models listing is read only when neither that provider
+nor the provider the slug's author segment names yields a rate. The three rates
+are null when the resolution yields none. The form seeds its list-price fields
+from them. A slug OpenRouter does not list is a
+`404`.
+
+`POST /models/list-prices/refresh` runs a
+[list price refresh](/components/core/metrics/#list-price-refresh) over every
+curated entry and queues a snapshot refresh when any rate changed, including
+when the refresh stopped part-way through. It takes no body and answers a
+`ListPriceRefreshOut` when the refresh has finished:
+
+```json
+{ "total": 42, "updated": 3, "unchanged": 36, "unresolved": 3 }
+```
+
+- `total`: the curated entries the refresh covered.
+- `updated`: entries whose rate changed or was set for the first time.
+- `unchanged`: entries whose resolved rate equals the stored one, dated again.
+- `unresolved`: entries OpenRouter yielded no rate for, kept as they were.
 
 A run's [comparable cost](/components/core/metrics/#cost) is priced from the
-list price. Every enqueue path fills a curated entry's missing list price from
-the official endpoint's rate, and refuses a launch naming a model the catalog has
-no entry for, or one OpenRouter lists no rate for, with the reason named; a gg
-launch binding such a model is refused the same way. The billed rate is observed
-from the official endpoint on run completion, on a 24-hour refresh, and
-missing-only at enqueue and on save. An observation never changes the list
-price.
+list price. Every enqueue path fills a curated entry's missing list price by the
+list price resolution, and refuses a launch naming a model the catalog has no
+entry for, or one OpenRouter yields no rate for, with the reason named; a gg
+launch binding such a model is refused the same way.
+
+The catalog facts an entry carries (context window, release date, input
+modalities, and the developer provider OpenRouter lists) are observed from
+OpenRouter on run completion, on the 24-hour periodic task, and missing-only at
+startup, at enqueue, and on save.
 
 ## Model probes
 

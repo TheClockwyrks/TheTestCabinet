@@ -4,8 +4,9 @@
 //! price — input, cached input, and output per token in USD — curated on the
 //! model's catalog entry together with the date the figures were taken
 //! (`list_price_as_of`) and where they came from (`list_price_source`). The
-//! OpenRouter-derived observations in `model_price` become the billed rate; the
-//! list price is the stable figure a run is scored at. All five columns are
+//! OpenRouter-derived rates in `model_price` became a second series beside it,
+//! which `m20261010_000057_drop_model_price_rates` later dropped; the list price is
+//! the figure a run is scored at. All five columns are
 //! nullable and default to `NULL`: every row already recorded reads as "not yet
 //! priced", and a model without a full price set is refused at enqueue.
 

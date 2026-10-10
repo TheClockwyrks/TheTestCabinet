@@ -626,6 +626,31 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
     test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
 }
 
+/// Serve `endpoints` as every model's endpoints listing and a models listing carrying
+/// `pricing` as the model-level price of `z-ai/glm-5.3`, and return a price source pointed
+/// at it. A `pricing` of `None` is a models listing with no entry for the model.
+async fn endpoints_and_models_listing(
+    endpoints: serde_json::Value,
+    pricing: Option<serde_json::Value>,
+) -> test_cabinet_core::OpenRouterPrices {
+    let endpoints =
+        serde_json::json!({ "data": { "name": "Z.AI: GLM 5.3", "endpoints": endpoints } });
+    let entries: Vec<serde_json::Value> = pricing
+        .into_iter()
+        .map(|pricing| serde_json::json!({ "id": "z-ai/glm-5.3", "pricing": pricing }))
+        .collect();
+    let models = serde_json::json!({ "data": entries });
+    let app = Router::new().fallback(move |uri: axum::http::Uri| {
+        let body = if uri.path().ends_with("/endpoints") {
+            endpoints.clone()
+        } else {
+            models.clone()
+        };
+        async move { axum::Json(body) }
+    });
+    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
+}
+
 /// One fp8 endpoint priced per million tokens, with a cache-read price and tool support.
 fn listed(provider: &str, input: f64, output: f64) -> serde_json::Value {
     serde_json::json!({
@@ -747,6 +772,292 @@ async fn a_models_provider_policy_is_checked_on_write() {
     }
     // Nothing was written.
     assert!(harness.db.get_model_config("glm").await.unwrap().is_none());
+}
+
+/// A second curated model body, whose developer provider is set by hand.
+fn pinned_model_body(provider_pin: &str) -> serde_json::Value {
+    let mut body = model_body(serde_json::json!({ "providerPin": provider_pin }));
+    body["slug"] = serde_json::json!("glm-pinned");
+    body["aliases"] = serde_json::json!([
+        { "slug": "z-ai/glm-5.3-pinned", "harnessFamily": "openrouter" },
+    ]);
+    body["openrouterSlug"] = serde_json::json!("z-ai/glm-5.3-pinned");
+    body
+}
+
+/// The per-token list price the catalog read carries for `slug`, with its source.
+async fn listed_price(router: &Router, slug: &str) -> (serde_json::Value, serde_json::Value) {
+    let request = Request::builder()
+        .uri("/models")
+        .body(Body::empty())
+        .unwrap();
+    let (status, catalog) = call(router, request).await;
+    assert_eq!(status, StatusCode::OK, "{catalog}");
+    let model = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["slug"] == slug)
+        .unwrap_or_else(|| panic!("`{slug}` is in the catalog: {catalog}"))
+        .clone();
+    (model["listPrice"].clone(), model["listPriceSource"].clone())
+}
+
+#[tokio::test]
+async fn the_list_price_refresh_needs_a_token_and_answers_with_its_counts() {
+    // Baidu is listed first and undercuts the developer, Z.AI.
+    let prices = endpoints_listing(serde_json::json!([
+        listed("Baidu", 0.56, 1.76),
+        listed("Z.AI", 0.6, 2.2),
+    ]))
+    .await;
+    let harness = harness_with_prices(prices).await;
+    for body in [
+        model_body(serde_json::json!({})),
+        pinned_model_body("baidu"),
+    ] {
+        let (status, body) = call(&harness.router, user_request("POST", "/models", body)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["listPrice"], serde_json::Value::Null);
+    }
+
+    // A write to the catalog, so it is signed-in only, and refused it writes nothing.
+    let request = Request::builder()
+        .method("POST")
+        .uri("/models/list-prices/refresh")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (price, _) = listed_price(&harness.router, "glm").await;
+    assert_eq!(price, serde_json::Value::Null);
+
+    let request = user_request(
+        "POST",
+        "/models/list-prices/refresh",
+        serde_json::Value::Null,
+    );
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({ "total": 2, "updated": 2, "unchanged": 0, "unresolved": 0 })
+    );
+
+    // With no provider set by hand the developer's rate is the list price, although
+    // another provider is listed first; the provider set by hand decides the other's.
+    let (price, source) = listed_price(&harness.router, "glm").await;
+    assert_eq!(source, "openrouter");
+    assert!((price["uncachedInput"].as_f64().unwrap() * 1e6 - 0.6).abs() < 1e-9);
+    assert!((price["cachedInput"].as_f64().unwrap() * 1e6 - 0.06).abs() < 1e-9);
+    assert!((price["output"].as_f64().unwrap() * 1e6 - 2.2).abs() < 1e-9);
+    let (price, source) = listed_price(&harness.router, "glm-pinned").await;
+    assert_eq!(source, "openrouter");
+    assert!((price["uncachedInput"].as_f64().unwrap() * 1e6 - 0.56).abs() < 1e-9);
+    assert!((price["output"].as_f64().unwrap() * 1e6 - 1.76).abs() < 1e-9);
+
+    // The same listing again confirms both rates.
+    let request = user_request(
+        "POST",
+        "/models/list-prices/refresh",
+        serde_json::Value::Null,
+    );
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({ "total": 2, "updated": 0, "unchanged": 2, "unresolved": 0 })
+    );
+}
+
+#[tokio::test]
+async fn a_list_price_entered_by_hand_stands_until_the_next_refresh() {
+    let prices = endpoints_listing(serde_json::json!([listed("Z.AI", 0.6, 2.2)])).await;
+    let harness = harness_with_prices(prices).await;
+    let request = user_request(
+        "POST",
+        "/models",
+        model_body(serde_json::json!({
+            "listPriceInputPerMtok": 9.0,
+            "listPriceCachedInputPerMtok": 0.9,
+            "listPriceOutputPerMtok": 99.0,
+            "listPriceAsOf": "2026-09-01",
+        })),
+    );
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["listPriceSource"], "hand");
+    assert_eq!(body["listPriceAsOf"], "2026-09-01");
+    assert!((body["listPrice"]["output"].as_f64().unwrap() * 1e6 - 99.0).abs() < 1e-9);
+
+    let request = user_request(
+        "POST",
+        "/models/list-prices/refresh",
+        serde_json::Value::Null,
+    );
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["updated"], 1);
+
+    let (price, source) = listed_price(&harness.router, "glm").await;
+    assert_eq!(source, "openrouter");
+    assert!((price["output"].as_f64().unwrap() * 1e6 - 2.2).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn the_openrouter_fill_seeds_the_rate_a_refresh_would_write() {
+    let prices = endpoints_listing(serde_json::json!([
+        listed("Baidu", 0.56, 1.76),
+        listed("Z.AI", 0.6, 2.2),
+    ]))
+    .await;
+    let harness = harness_with_prices(prices).await;
+
+    // A third-party reach, so it is signed-in only.
+    let request = Request::builder()
+        .uri("/models/openrouter?slug=z-ai/glm-5.3")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    for (query, input, output, why) in [
+        // No provider on the form: the developer the model id names.
+        ("slug=z-ai/glm-5.3", 0.6, 2.2, "no provider set"),
+        (
+            "slug=z-ai/glm-5.3&providerPin=",
+            0.6,
+            2.2,
+            "a blank provider",
+        ),
+        // The form's provider decides while it publishes a rate, however it is spelled.
+        (
+            "slug=z-ai/glm-5.3&providerPin=Baidu",
+            0.56,
+            1.76,
+            "a set provider",
+        ),
+        (
+            "slug=z-ai/glm-5.3&providerPin=%20baidu%20",
+            0.56,
+            1.76,
+            "its spelling",
+        ),
+        // A provider that lists nothing falls to the developer.
+        (
+            "slug=z-ai/glm-5.3&providerPin=Nobody",
+            0.6,
+            2.2,
+            "an unlisted provider",
+        ),
+    ] {
+        let request = user_request(
+            "GET",
+            &format!("/models/openrouter?{query}"),
+            serde_json::Value::Null,
+        );
+        let (status, body) = call(&harness.router, request).await;
+        assert_eq!(status, StatusCode::OK, "{why}: {body}");
+        assert_eq!(body["name"], "GLM 5.3", "{why}");
+        assert_eq!(body["provider"], "Z.AI", "{why}");
+        assert!(
+            (body["inputPerMtok"].as_f64().unwrap() - input).abs() < 1e-9,
+            "{why}: {body}"
+        );
+        assert!(
+            (body["cachedInputPerMtok"].as_f64().unwrap() - input / 10.0).abs() < 1e-9,
+            "{why}: {body}"
+        );
+        assert!(
+            (body["outputPerMtok"].as_f64().unwrap() - output).abs() < 1e-9,
+            "{why}: {body}"
+        );
+    }
+}
+
+/// The rates the form fill answers for `z-ai/glm-5.3` with `query` appended, per Mtok.
+async fn filled_rates(router: &Router, query: &str) -> [serde_json::Value; 3] {
+    let request = user_request(
+        "GET",
+        &format!("/models/openrouter?slug=z-ai/glm-5.3{query}"),
+        serde_json::Value::Null,
+    );
+    let (status, body) = call(router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["name"], "GLM 5.3");
+    [
+        body["inputPerMtok"].clone(),
+        body["cachedInputPerMtok"].clone(),
+        body["outputPerMtok"].clone(),
+    ]
+}
+
+#[tokio::test]
+async fn the_openrouter_fill_takes_the_models_listing_price_at_the_last_step() {
+    // The developer lists only a Flex endpoint, behind a third party's standard one.
+    let mut flex = listed("Z.AI", 0.3, 1.1);
+    flex["tag"] = serde_json::json!("z-ai/flex");
+    let prices = endpoints_and_models_listing(
+        serde_json::json!([listed("Baidu", 0.56, 1.76), flex]),
+        Some(serde_json::json!({
+            "prompt": "0.0000007",
+            "completion": "0.0000025",
+            "input_cache_read": "0.0000001",
+        })),
+    )
+    .await;
+    let harness = harness_with_prices(prices).await;
+
+    // Neither the Flex rate nor the first listed endpoint's: the model's own price in
+    // the models listing, with no provider set and with one that lists nothing.
+    for query in ["", "&providerPin=Nobody", "&providerPin=z-ai"] {
+        let rates = filled_rates(&harness.router, query).await;
+        for (rate, expected) in rates.iter().zip([0.7, 0.1, 2.5]) {
+            assert!(
+                (rate.as_f64().unwrap() - expected).abs() < 1e-9,
+                "`{query}`: {rates:?}"
+            );
+        }
+    }
+    // A provider set on the form that publishes a standard rate still decides.
+    let rates = filled_rates(&harness.router, "&providerPin=Baidu").await;
+    assert!(
+        (rates[0].as_f64().unwrap() - 0.56).abs() < 1e-9,
+        "{rates:?}"
+    );
+    assert!(
+        (rates[2].as_f64().unwrap() - 1.76).abs() < 1e-9,
+        "{rates:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_openrouter_fill_leaves_the_rate_blank_for_a_model_with_no_complete_rate() {
+    let mut flex = listed("Z.AI", 0.3, 1.1);
+    flex["tag"] = serde_json::json!("z-ai/flex");
+    let endpoints = serde_json::json!([flex]);
+    let blank = [
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+    ];
+
+    for (pricing, why) in [
+        (None, "no entry in the models listing"),
+        (
+            Some(serde_json::json!({ "prompt": "0.0000007", "completion": "-1" })),
+            "an incomplete models-listing price",
+        ),
+    ] {
+        let prices = endpoints_and_models_listing(endpoints.clone(), pricing).await;
+        let harness = harness_with_prices(prices).await;
+        assert_eq!(filled_rates(&harness.router, "").await, blank, "{why}");
+    }
+
+    // A models listing that cannot be read leaves the rates blank too, and the name,
+    // provider and description still fill.
+    let harness = harness_with_prices(endpoints_listing(endpoints).await).await;
+    assert_eq!(filled_rates(&harness.router, "").await, blank);
 }
 
 #[tokio::test]

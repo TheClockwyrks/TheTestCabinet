@@ -308,9 +308,12 @@ export function ModelConfigPage() {
   // Fill the curated fields in from what OpenRouter publishes for the entered
   // slug, so an operator adding a model doesn't retype a name, a provider, and a
   // blurb that OpenRouter already has, and the list-price block seeds from the
-  // model's official endpoint for confirmation against the developer's pricing
-  // page. The context window and the modalities the backend records for itself,
-  // which is why they are not here.
+  // rate the backend's list-price resolution yields: the developer provider
+  // typed on this form when it lists a complete standard rate, else the model
+  // id's author provider, else the model's own price in OpenRouter's models
+  // listing (the `pricing` field of its `/models` entry). It is the rate the
+  // next refresh would write. The context window and the
+  // modalities the backend records for itself, which is why they are not here.
   //
   // It replaces rather than merges: it runs only on an explicit press, and
   // "replace what's here from OpenRouter" is the one reading of that press that
@@ -322,14 +325,16 @@ export function ModelConfigPage() {
     setFilling(true);
     setFillError(null);
     try {
-      const listing = await config.lookupOpenrouter(slug);
+      const listing = await config.lookupOpenrouter(
+        slug,
+        providerPin.trim() || null,
+      );
       setName(listing.name);
       setProvider(listing.provider);
       if (listing.description) setDescription(listing.description);
-      // Seed the list-price fields from the official endpoint's current rates,
-      // for the operator to confirm or correct against the developer's pricing
-      // page. A figure the endpoint does not list seeds nothing, so the fields
-      // the operator may already have filled are only ever replaced by a real
+      // Seed the list-price fields from the resolved rate. The three arrive
+      // all present or all null; a null seeds nothing, so the fields the
+      // operator may already have filled are only ever replaced by a real
       // figure. The date is set only when blank: an entered date records when
       // *those* figures were taken, and re-dating them to today would assert
       // something the press does not know.
@@ -643,18 +648,19 @@ export function ModelConfigPage() {
           </SettingRow>
         </div>
 
-        {/* The list price: the developer's published figures, per Mtok because
-          that is the unit a pricing page publishes. The save parses them
-          all-or-nothing. */}
+        {/* The list price, per Mtok because that is the unit a pricing page
+          publishes. The save parses the figures all-or-nothing. A set entered
+          here is the operator's own and lasts until the backend's next refresh
+          reads a rate for the model from OpenRouter. */}
         <div className={styles.group}>
           <h2 className={styles.groupTitle}>
             List price
-            <HelpTip text="The developer's published rates in USD per Mtok, which a run's comparable cost is priced from. Saved as a set with their date, or not at all; a blank set on an existing model keeps the stored one." />
+            <HelpTip text="The model's rates in USD per Mtok, which a run's comparable cost is priced from. The backend re-reads them from OpenRouter every 24 hours and on the Models page's Refresh, so a set entered here stands until a refresh finds a rate for the model. Saved as a set with their date, or not at all; a blank set on an existing model keeps the stored one." />
           </h2>
 
           <SettingRow
             label="Input / Mtok"
-            description="From the developer's pricing page."
+            description="Enter by hand for a model OpenRouter does not list."
           >
             {(id) => (
               <Control>
@@ -726,7 +732,7 @@ export function ModelConfigPage() {
           <SettingRow
             label="Developer provider"
             description="OpenRouter's name for the developer's own endpoint."
-            help="Blank takes the provider matching the model id's author segment. Set it where they differ, such as qwen/… served by Alibaba."
+            help="Blank takes the provider matching the model id's author segment. Set it where they differ, such as qwen/… served by Alibaba. The list price is read from this provider's standard endpoint while it lists a complete rate. With neither provider priced, it is the price OpenRouter's models listing reports for the model, a third party's rate."
           >
             {(id) => (
               <Control>

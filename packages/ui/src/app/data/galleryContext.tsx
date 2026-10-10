@@ -419,7 +419,7 @@ export interface GalleryDataInput {
    */
   readCaseVariant?: (ref: CaseVariantRef) => Promise<VariantSummary | null>;
   /** The model catalog: curated configs merged with the models recorded runs
-   * reference, each with its price history. The console fetches it from the
+   * reference, each with its list price. The console fetches it from the
    * backend; the static site reads it from the snapshot. */
   models: ModelSummary[];
   /** The model catalog's load state (see {@link CatalogStatus}). */

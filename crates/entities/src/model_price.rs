@@ -1,13 +1,15 @@
-//! The `model_price` table: the observed comparable-price history for a model.
+//! The `model_price` table: the catalog facts observed for a model.
 //!
-//! A row is one price observation for a **canonical model id** (see
-//! `test_cabinet_core::model_id`), captured when a run completes or a periodic
-//! refresh runs. Observations are appended when the price changes from the
-//! previous one — or when one of the catalog facts riding along on it does (the
-//! context window, the release date, or the accepted input modalities), so a model
-//! whose price has held still still records a newly-observed fact. The price
-//! *series* the catalog shows collapses consecutive-equal price triples, so a
-//! fact-only observation adds no visible price step.
+//! A row is one observation of a **canonical model id** (see
+//! `test_cabinet_core::model_id`) on OpenRouter: its context window, its release
+//! date, the input modalities it accepts, and its developer's provider. It is
+//! captured when the catalog first meets a model, when a run completes, and on the
+//! periodic refresh, and appended only when a fact differs from the previous
+//! observation's. The newest row is what the catalog serves and a launch is told.
+//!
+//! Despite its name the table holds no price: it once carried a rate beside the
+//! facts, and kept its name when the rate columns were dropped. A model's only
+//! price is the list price on its `model` row.
 
 use sea_orm::entity::prelude::*;
 
@@ -17,19 +19,10 @@ pub struct Model {
     /// Surrogate auto-incrementing id; the primary key.
     #[sea_orm(primary_key)]
     pub id: i32,
-    /// The canonical model id this observation prices.
+    /// The canonical model id this observation is of.
     pub model_id: String,
-    /// RFC 3339 of when this price was observed.
+    /// RFC 3339 of when the facts were observed.
     pub observed_at: String,
-    /// USD per uncached input token, or `NULL` when OpenRouter lists no price.
-    #[sea_orm(nullable)]
-    pub uncached_input: Option<f64>,
-    /// USD per cached input token, or `NULL`.
-    #[sea_orm(nullable)]
-    pub cached_input: Option<f64>,
-    /// USD per output token, or `NULL`.
-    #[sea_orm(nullable)]
-    pub output: Option<f64>,
     /// Maximum context window in tokens OpenRouter reported at observation time,
     /// or `NULL`.
     #[sea_orm(nullable)]

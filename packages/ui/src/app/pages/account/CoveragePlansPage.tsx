@@ -1,18 +1,19 @@
 import type { CoveragePlanSummary } from "@clockwyrks/backend-api/coverage";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
+
+import { AccountTabs } from "./AccountTabs";
+import styles from "./Coverage.module.scss";
+import { PLAN_ATTENTION_LABEL, PLAN_ATTENTION_TITLE } from "./coveragePlan";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useConfirm } from "../../components/ConfirmDialog";
-import { routes } from "../../routes";
-import { AccountTabs } from "./AccountTabs";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import { routes } from "../../routes";
 import exec from "../runs/RunExec.module.scss";
-import styles from "./Coverage.module.scss";
-import { PLAN_ATTENTION_LABEL, PLAN_ATTENTION_TITLE } from "./coveragePlan";
 
 /** One plan card's progress: run-level counts, the bar's filled fraction, and the
  *  bar's hover text. */

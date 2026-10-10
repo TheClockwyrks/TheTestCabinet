@@ -1,11 +1,18 @@
-//! OpenRouter price lookup: the billed rate, read from the official endpoint.
+//! OpenRouter lookups: a model's list price and its catalog facts.
 //!
-//! See `docs/metrics.md`. A run's comparable cost is priced at the model
-//! developer's published list price, curated on the model's catalog entry and
-//! computed over the run's token classes — it never comes from this module. What
-//! this module fetches is the rate a run is **billed** at: the per-token price
-//! of the model's official endpoint, the provider route belonging to the model's
-//! own developer (see [`official_provider`]), mapped onto [`TokenPrices`].
+//! See `docs/metrics.md`. A run's comparable cost is priced at the model's
+//! **list price**, held on the model's catalog entry and computed over the run's
+//! token classes. This module is where a list price sourced from OpenRouter is
+//! resolved ([`ModelLaunchFacts::list_price`]): the standard endpoint of the
+//! provider the catalog entry names, else of the model's own developer (see
+//! [`official_provider`]), else the model's own price in OpenRouter's models
+//! listing (the `pricing` field of its `/models` entry). A Flex endpoint is never
+//! read. The module also reads the catalog facts
+//! the backend observes about a model: its context window, release date, input
+//! modalities and developer provider.
+
+use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::Deserialize;
 use time::OffsetDateTime;
@@ -21,17 +28,20 @@ pub use test_cabinet_contracts::pricing::{provider_key, same_provider};
 /// The OpenRouter models endpoint listing every model and its pricing.
 const MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
 
-/// Selected OpenRouter metadata for a model: its billed per-token prices plus
-/// the catalog facts the static site surfaces — the context window, the model's
-/// release date, and the input modalities it accepts. Each field beyond the
-/// prices is optional because OpenRouter does not always report it.
-#[derive(Debug, Clone)]
+/// How long one read of OpenRouter may take, from connecting to the end of the
+/// response body, before it fails. A read that stalls is a read that failed, so a
+/// caller that reads many models (the refresh of every list price, the periodic
+/// catalog-fact observation) is never held by one connection that stopped answering.
+pub const READ_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// The catalog facts OpenRouter's models listing reports for a model, which the
+/// static site surfaces: the context window, the model's release date, and the
+/// input modalities it accepts. Each is optional because OpenRouter does not always
+/// report it. The listing's price for the model is not carried here: it is read
+/// through [`ModelsListingPrices`], as the last step of
+/// [`ModelLaunchFacts::list_price`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModelDetails {
-    /// The listing's headline per-token prices, mapped onto [`TokenPrices`]. The
-    /// catalog records the [official endpoint's](ModelLaunchFacts::official_prices)
-    /// prices in their place wherever the model has one, since those are the billed
-    /// rate of a run pinned to the developer's own route.
-    pub prices: TokenPrices,
     /// The maximum context length in tokens, when OpenRouter reports one.
     pub context_length: Option<u64>,
     /// The model's release date as an RFC 3339 UTC timestamp, derived from
@@ -72,11 +82,82 @@ pub struct ModelLaunchFacts {
     /// listing spells its `provider_name`, or `None` when no endpoint belongs to the
     /// model's developer.
     pub provider_pin: Option<String>,
-    /// Each provider route's per-token prices, keyed by the provider as the listing
-    /// spells it: the first priced standard route per provider, in listing order, Flex
-    /// endpoints left out. Read through
-    /// [`official_prices`](Self::official_prices).
-    pub route_prices: Vec<(String, TokenPrices)>,
+    /// Each provider's standard rate, keyed by the provider as the listing spells it:
+    /// the first standard endpoint per provider that publishes a complete rate, in
+    /// listing order, Flex endpoints left out. Read through
+    /// [`list_price`](Self::list_price).
+    pub route_rates: Vec<(String, ListRate)>,
+}
+
+/// A complete per-token rate in USD: all three token classes known.
+///
+/// What a catalog entry's list price holds, as opposed to [`TokenPrices`], whose
+/// classes are each optional.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ListRate {
+    /// USD per token of uncached input.
+    pub uncached_input: f64,
+    /// USD per token of cached input.
+    pub cached_input: f64,
+    /// USD per token of output.
+    pub output: f64,
+}
+
+impl ListRate {
+    /// The rate when `prices` knows all three classes, else `None`.
+    pub fn complete(prices: TokenPrices) -> Option<Self> {
+        Some(Self {
+            uncached_input: prices.uncached_input?,
+            cached_input: prices.cached_input?,
+            output: prices.output?,
+        })
+    }
+
+    /// The rate as the [`TokenPrices`] a run's cost is computed from.
+    pub fn token_prices(self) -> TokenPrices {
+        TokenPrices {
+            uncached_input: Some(self.uncached_input),
+            cached_input: Some(self.cached_input),
+            output: Some(self.output),
+        }
+    }
+}
+
+/// Which step of the [list-price flow](ModelLaunchFacts::list_price) answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListPriceStep {
+    /// The standard endpoint of the provider set by hand on the catalog entry.
+    HandSetProvider,
+    /// The standard endpoint of the provider the model id's author segment names.
+    AuthorProvider,
+    /// The model's own price in OpenRouter's models listing (the `pricing` field of
+    /// its `/models` entry).
+    ListingPrice,
+}
+
+impl ListPriceStep {
+    /// A short name for logs.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ListPriceStep::HandSetProvider => "hand-set-provider",
+            ListPriceStep::AuthorProvider => "author-provider",
+            ListPriceStep::ListingPrice => "model-listing",
+        }
+    }
+}
+
+/// A list price resolved from OpenRouter by the
+/// [list-price flow](ModelLaunchFacts::list_price).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListPriceResolution {
+    /// The rate.
+    pub rate: ListRate,
+    /// The step that answered.
+    pub step: ListPriceStep,
+    /// The provider whose standard endpoint the rate was read from, as the endpoints
+    /// listing spells it. `None` for a rate read from the models listing
+    /// ([`ListPriceStep::ListingPrice`]), which names no provider.
+    pub provider: Option<String>,
 }
 
 /// The descriptive facts OpenRouter publishes about one model — the display name,
@@ -85,7 +166,7 @@ pub struct ModelLaunchFacts {
 ///
 /// These are the *curated* fields of a catalog entry, the ones an operator would
 /// otherwise retype by hand. They are deliberately separate from
-/// [`ModelDetails`] (prices and machine facts, recorded automatically) because
+/// [`ModelDetails`] (machine facts, recorded automatically) because
 /// nothing but the form wants them: the catalog stores a curator's wording, and
 /// this is only ever a starting point for it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -114,18 +195,127 @@ impl ModelLaunchFacts {
         self.input_modalities.iter().any(|m| m == MODALITY_IMAGE)
     }
 
-    /// The billed rate of the model's official endpoint: the prices of the route
-    /// `pin` names, or of the observed [`provider_pin`](Self::provider_pin) when
-    /// `pin` is `None`. A hand-set pin is passed as `pin`, since it names the
-    /// developer where the listing spells it differently from the model id.
+    /// The model's list price as OpenRouter publishes it: the first of these that
+    /// yields a complete rate (input, cached input and output all known).
     ///
-    /// `None` when there is no pin or the pinned provider lists no priced route.
-    pub fn official_prices(&self, pin: Option<&str>) -> Option<TokenPrices> {
-        let provider = pin.or(self.provider_pin.as_deref())?;
-        self.route_prices
-            .iter()
-            .find(|(name, _)| same_provider(name, provider))
-            .map(|(_, prices)| *prices)
+    /// 1. The standard endpoint of `hand_pin`, the developer provider set by hand on
+    ///    the model's catalog entry, when one is set. It is matched as
+    ///    [`same_provider`] matches.
+    /// 2. The standard endpoint of the provider the model id's author segment names
+    ///    (`anthropic` for `anthropic/claude-haiku-5.5`), which is the observed
+    ///    [`provider_pin`](Self::provider_pin).
+    /// 3. `listing_price`: the model's own price in OpenRouter's models listing (the
+    ///    `pricing` field of its `/models` entry), as [`ModelsListingPrices`] reads
+    ///    it. It is the figure OpenRouter's API reports for the model, a third
+    ///    party's rate, and names no provider.
+    ///
+    /// A hand-set provider that lists no standard endpoint with a complete rate falls
+    /// to the second step, and so on. A Flex endpoint is read at no step, and neither
+    /// is the endpoint of a provider that neither `hand_pin` nor the model id names,
+    /// wherever the endpoints listing places it. `None` when no step yields a rate:
+    /// OpenRouter publishes no list price for the model.
+    ///
+    /// This is the one resolution every writer of a list price sourced from
+    /// OpenRouter uses: the fill at enqueue, the refresh of every entry, and the
+    /// model form's fill. Each reaches it through
+    /// [`OpenRouterPrices::list_price`] or
+    /// [`OpenRouterPrices::list_price_sharing`], which read the models listing only
+    /// when [the first two steps](Self::provider_list_price) yield nothing.
+    pub fn list_price(
+        &self,
+        hand_pin: Option<&str>,
+        listing_price: Option<TokenPrices>,
+    ) -> Option<ListPriceResolution> {
+        self.provider_list_price(hand_pin).or_else(|| {
+            listing_price
+                .and_then(ListRate::complete)
+                .map(|rate| ListPriceResolution {
+                    rate,
+                    step: ListPriceStep::ListingPrice,
+                    provider: None,
+                })
+        })
+    }
+
+    /// The first two steps of the [list-price flow](Self::list_price), which the
+    /// model's endpoints listing answers alone: the standard rate of `hand_pin`, else
+    /// of the provider the model id's author segment names. `None` when neither
+    /// yields a complete rate, which is when the flow needs the models listing.
+    pub fn provider_list_price(&self, hand_pin: Option<&str>) -> Option<ListPriceResolution> {
+        let of_provider = |provider: &str, step: ListPriceStep| {
+            self.route_rates
+                .iter()
+                .find(|(name, _)| same_provider(name, provider))
+                .map(|(name, rate)| ListPriceResolution {
+                    rate: *rate,
+                    step,
+                    provider: Some(name.clone()),
+                })
+        };
+        hand_pin
+            .and_then(|pin| of_provider(pin, ListPriceStep::HandSetProvider))
+            .or_else(|| {
+                self.provider_pin
+                    .as_deref()
+                    .and_then(|pin| of_provider(pin, ListPriceStep::AuthorProvider))
+            })
+    }
+}
+
+/// One read of the model-level prices in OpenRouter's models listing (the `pricing`
+/// field of each `/models` entry), made the first time a price is asked for and
+/// answered from memory after that.
+///
+/// The listing is large (most of a megabyte), so a caller resolving many list prices
+/// shares one of these across them through
+/// [`OpenRouterPrices::list_price_sharing`]: the listing is read at most once however
+/// many models reach the [flow](ModelLaunchFacts::list_price)'s last step, at once or
+/// in turn, and is not read at all when none does. A read that failed is kept as the
+/// failure, so it is not tried again.
+#[derive(Debug, Default)]
+pub struct ModelsListingPrices {
+    read: tokio::sync::OnceCell<std::result::Result<HashMap<String, TokenPrices>, String>>,
+}
+
+impl ModelsListingPrices {
+    /// A listing not yet read.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The price the models listing publishes for `model_id`, matched exactly, reading
+    /// the listing from `prices` if this is the first ask. `Ok(None)` for a model the
+    /// listing has no entry for; `Err` when the listing could not be read, now or on
+    /// the earlier ask that tried.
+    pub async fn price_of(
+        &self,
+        prices: &OpenRouterPrices,
+        model_id: &str,
+    ) -> Result<Option<TokenPrices>> {
+        let read = self
+            .read
+            .get_or_init(|| async {
+                prices
+                    .fetch_catalog()
+                    .await
+                    .map(|models| {
+                        models
+                            .into_iter()
+                            .filter_map(|model| {
+                                let price = token_prices_of(model.pricing.as_ref()?);
+                                Some((model.id, price))
+                            })
+                            .collect()
+                    })
+                    .map_err(|err| err.to_string())
+            })
+            .await;
+        match read {
+            Ok(listed) => Ok(listed.get(model_id).copied()),
+            Err(why) => Err(Error::Validation(format!(
+                "OpenRouter's models listing could not be read: {why}"
+            ))),
+        }
     }
 }
 
@@ -138,16 +328,20 @@ pub use candidates::{
 };
 
 /// Fetches model prices from OpenRouter.
+///
+/// Every read is bounded by a timeout ([`READ_TIMEOUT`] unless
+/// [`with_read_timeout`](Self::with_read_timeout) sets another): a read that has not
+/// finished by then is an `Err`, like any other read that failed.
 #[derive(Debug, Clone)]
 pub struct OpenRouterPrices {
     endpoint: String,
+    client: reqwest::Client,
+    read_timeout: Duration,
 }
 
 impl Default for OpenRouterPrices {
     fn default() -> Self {
-        Self {
-            endpoint: MODELS_URL.to_string(),
-        }
+        Self::with_endpoint(MODELS_URL)
     }
 }
 
@@ -165,41 +359,82 @@ impl OpenRouterPrices {
     pub fn with_endpoint(endpoint: impl Into<String>) -> Self {
         Self {
             endpoint: endpoint.into(),
+            client: reqwest::Client::new(),
+            read_timeout: READ_TIMEOUT,
         }
     }
 
-    /// Look up **one** model's official endpoint price: the prices of the route
-    /// belonging to the model's own developer (see [`official_provider`]).
+    /// Bound every read by `read_timeout` instead of [`READ_TIMEOUT`].
     ///
-    /// This is the billed rate of a run pinned to the developer's own route, read
-    /// from the same cheap per-model fetch as
-    /// [`model_launch_facts`](Self::model_launch_facts). An unlisted model is an
-    /// `Err`, as is a listed model with no priced route of its developer's.
-    pub async fn official_prices(&self, model_id: &str) -> Result<TokenPrices> {
-        self.model_launch_facts(model_id)
-            .await?
-            .official_prices(None)
-            .ok_or_else(|| {
-                Error::Validation(format!(
-                    "model `{model_id}` has no official endpoint in OpenRouter's catalog"
-                ))
-            })
+    /// A test seam: it lets a test of a stalled OpenRouter finish in milliseconds.
+    pub fn with_read_timeout(mut self, read_timeout: Duration) -> Self {
+        self.read_timeout = read_timeout;
+        self
     }
 
-    /// Look up the listing's headline prices plus the catalog facts the site
-    /// surfaces (the context window and release date) for `model_id`.
+    /// Start a `GET` of `url`, bounded by the read timeout from connecting to the end
+    /// of the response body.
+    fn get(&self, url: &str) -> reqwest::RequestBuilder {
+        self.client.get(url).timeout(self.read_timeout)
+    }
+
+    /// Look up **one** model's list price by the
+    /// [list-price flow](ModelLaunchFacts::list_price). `hand_pin` is the developer
+    /// provider set by hand on the model's catalog entry, if any.
+    ///
+    /// The model's endpoints listing is read once. The models listing is read only
+    /// when the flow's first two steps yield nothing. A caller resolving several
+    /// models uses [`list_price_sharing`](Self::list_price_sharing), so the models
+    /// listing is read once between them.
+    ///
+    /// `Ok(None)` for a model OpenRouter lists without a complete rate; an unlisted
+    /// model, or a listing the flow needed and could not read, is an `Err`.
+    pub async fn list_price(
+        &self,
+        model_id: &str,
+        hand_pin: Option<&str>,
+    ) -> Result<Option<ListPriceResolution>> {
+        self.list_price_sharing(model_id, hand_pin, &ModelsListingPrices::new())
+            .await
+    }
+
+    /// [`list_price`](Self::list_price), taking the flow's last step from `listing`:
+    /// the one read of the models listing the caller shares across every model it
+    /// resolves. `listing` is read only when the first two steps yield nothing for
+    /// this model, and at most once however many models share it.
+    ///
+    /// When the models listing cannot be read, a model that needed it is an `Err`
+    /// and a model the first two steps answer still resolves.
+    pub async fn list_price_sharing(
+        &self,
+        model_id: &str,
+        hand_pin: Option<&str>,
+        listing: &ModelsListingPrices,
+    ) -> Result<Option<ListPriceResolution>> {
+        let facts = self.model_launch_facts(model_id).await?;
+        // The models listing is the last step's alone, so it is read only when the
+        // endpoints listing answered neither of the first two.
+        let listing_price = match facts.provider_list_price(hand_pin) {
+            Some(_) => None,
+            None => listing.price_of(self, model_id).await?,
+        };
+        Ok(facts.list_price(hand_pin, listing_price))
+    }
+
+    /// Look up the catalog facts the site surfaces (the context window, release date
+    /// and input modalities) for `model_id`.
     ///
     /// The model ID is matched exactly against OpenRouter's catalog.
     pub async fn model_details(&self, model_id: &str) -> Result<ModelDetails> {
         Ok(details_of(self.fetch_model(model_id).await?))
     }
 
-    /// Look up the headline prices plus catalog facts for **every** model
-    /// OpenRouter lists, keyed by OpenRouter id, in one fetch.
+    /// Look up the catalog facts for **every** model OpenRouter lists, keyed by
+    /// OpenRouter id, in one fetch.
     ///
-    /// The periodic price refresher reads the catalog facts of every known model
-    /// from this single download, then each model's official endpoint price from its
-    /// per-model [launch facts](Self::model_launch_facts).
+    /// The periodic refresher reads the catalog facts of every known model from this
+    /// single download, then each model's developer provider from its per-model
+    /// [launch facts](Self::model_launch_facts).
     pub async fn all_model_details(
         &self,
     ) -> Result<std::collections::HashMap<String, ModelDetails>> {
@@ -215,7 +450,7 @@ impl OpenRouterPrices {
     /// the input modalities it accepts — fetching only that model.
     ///
     /// Unlike [`model_details`](Self::model_details) — which serves the completion-time
-    /// price lookup and reads the whole catalog — this hits OpenRouter's per-model
+    /// observation and reads the whole catalog — this hits OpenRouter's per-model
     /// endpoint (`/models/{id}/endpoints`, a few KB rather than the ~half-megabyte
     /// listing). It exists for the launch path, which needs these facts for the one or
     /// two models a run binds and must not pay for the entire catalog to get them. Both
@@ -273,10 +508,11 @@ impl OpenRouterPrices {
     }
 
     /// Fetch one model's `/models/{id}/endpoints` body — the cheap per-model read
-    /// (a few KB) shared by the launch-facts, listing, and official-price lookups.
+    /// (a few KB) shared by the launch-facts, listing, and list-price lookups. A read
+    /// that outlasts the read timeout is an `Err`.
     async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
         let url = format!("{}/{model_id}/endpoints", self.endpoint);
-        let response = reqwest::get(&url).await.map_err(|err| {
+        let response = self.get(&url).send().await.map_err(|err| {
             Error::Validation(format!(
                 "fetching the OpenRouter catalog facts for `{model_id}`: {err}"
             ))
@@ -295,15 +531,17 @@ impl OpenRouterPrices {
         Ok(body.data)
     }
 
-    /// Fetch OpenRouter's full model catalog.
+    /// Fetch OpenRouter's full model catalog. A read that outlasts the read timeout is
+    /// an `Err`.
     async fn fetch_catalog(&self) -> Result<Vec<Model>> {
-        let response = reqwest::get(&self.endpoint)
-            .await
-            .map_err(|err| Error::Validation(format!("fetching OpenRouter prices: {err}")))?;
+        let response =
+            self.get(&self.endpoint).send().await.map_err(|err| {
+                Error::Validation(format!("fetching the OpenRouter catalog: {err}"))
+            })?;
         let catalog: ModelsResponse = response
             .json()
             .await
-            .map_err(|err| Error::Validation(format!("parsing OpenRouter prices: {err}")))?;
+            .map_err(|err| Error::Validation(format!("parsing the OpenRouter catalog: {err}")))?;
         Ok(catalog.data)
     }
 
@@ -440,7 +678,7 @@ fn listing_of(model_id: &str, data: ModelEndpoints) -> ModelListing {
 
 /// Map one model's endpoints response onto its [`ModelLaunchFacts`]: the largest
 /// window any route offers, the model-level modalities, the official provider, and
-/// each provider's route prices.
+/// each provider's standard rate.
 fn launch_facts_of(model_id: &str, data: ModelEndpoints) -> ModelLaunchFacts {
     ModelLaunchFacts {
         context_window: data
@@ -455,14 +693,13 @@ fn launch_facts_of(model_id: &str, data: ModelEndpoints) -> ModelLaunchFacts {
                 .iter()
                 .filter_map(|endpoint| endpoint.provider_name.as_deref()),
         ),
-        route_prices: route_prices_of(&data.endpoints),
+        route_rates: route_rates_of(&data.endpoints),
     }
 }
 
 /// Map one catalog entry onto the [`ModelDetails`] the catalog stores.
 fn details_of(model: Model) -> ModelDetails {
     ModelDetails {
-        prices: token_prices_of(&model.pricing),
         context_length: model.context_length,
         released_at: model.created.and_then(release_date),
         input_modalities: modalities_of(model.architecture.as_ref()),
@@ -492,13 +729,14 @@ fn modalities_of(architecture: Option<&Architecture>) -> Vec<String> {
     out
 }
 
-/// Each provider's route prices, in listing order, keeping the first priced standard
-/// route of a provider that lists several (quantizations, say). A
+/// Each provider's standard rate, in listing order, keeping the first standard endpoint
+/// with a complete rate of a provider that lists several (quantizations, say). A
 /// [Flex](ModelEndpoint::is_flex) endpoint is skipped, so a provider that lists its
 /// discounted Flex tier ahead of its standard endpoint is priced at the standard one,
-/// and a provider that lists only Flex endpoints has no route price.
-fn route_prices_of(endpoints: &[ModelEndpoint]) -> Vec<(String, TokenPrices)> {
-    let mut out: Vec<(String, TokenPrices)> = Vec::new();
+/// and a provider that lists only Flex endpoints has no rate. So is an endpoint missing
+/// any of the three rates, which is no list price.
+fn route_rates_of(endpoints: &[ModelEndpoint]) -> Vec<(String, ListRate)> {
+    let mut out: Vec<(String, ListRate)> = Vec::new();
     for endpoint in endpoints {
         if endpoint.is_flex() {
             continue;
@@ -511,13 +749,16 @@ fn route_prices_of(endpoints: &[ModelEndpoint]) -> Vec<(String, TokenPrices)> {
         if name.is_empty() || out.iter().any(|(seen, _)| seen == name) {
             continue;
         }
-        out.push((name.to_string(), token_prices_of(pricing)));
+        let Some(rate) = ListRate::complete(token_prices_of(pricing)) else {
+            continue;
+        };
+        out.push((name.to_string(), rate));
     }
     out
 }
 
-/// Map an OpenRouter pricing block — a listing entry's headline block or one
-/// endpoint's per-route block, the same shape either way — onto [`TokenPrices`].
+/// Map an OpenRouter pricing block onto [`TokenPrices`]: one endpoint's block or a
+/// models-listing entry's model-level one, the same shape either way.
 fn token_prices_of(pricing: &Pricing) -> TokenPrices {
     let prompt = parse_price(&pricing.prompt);
     TokenPrices {
@@ -562,13 +803,16 @@ struct ModelsResponse {
     data: Vec<Model>,
 }
 
-/// A single model entry with its pricing block and the catalog metadata the
-/// site surfaces. `created` is a unix timestamp in seconds; `context_length` is
-/// the model's maximum context window in tokens.
+/// A single model entry with the catalog metadata the site surfaces. `created` is a
+/// unix timestamp in seconds; `context_length` is the model's maximum context window
+/// in tokens.
 #[derive(Debug, Deserialize)]
 struct Model {
     id: String,
-    pricing: Pricing,
+    /// The model-level price OpenRouter publishes for the model, which names no
+    /// provider: the last step of the [list-price flow](ModelLaunchFacts::list_price).
+    #[serde(default)]
+    pricing: Option<Pricing>,
     #[serde(default)]
     created: Option<i64>,
     #[serde(default)]
@@ -596,7 +840,7 @@ struct ModelEndpointsResponse {
 /// One model's descriptive block, its `architecture` block, and its provider routes.
 /// The context lengths and the input modalities are read here, as are the name and
 /// description the model form offers a curator and each route's per-endpoint pricing
-/// block — the billed rate the [official endpoint](official_provider) charges at.
+/// block, which a [list price](ModelLaunchFacts::list_price) is resolved from.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoints {
     /// The display name, written `Provider: Model`.
@@ -621,8 +865,7 @@ struct ModelEndpoint {
     /// The quantization the route declares. Absent reads as `unknown`.
     #[serde(default)]
     quantization: Option<String>,
-    /// The route's own per-token prices, the same shape as the listing's pricing
-    /// block: what a request routed to this provider is billed at.
+    /// The route's own per-token prices: what this provider publishes for the model.
     #[serde(default)]
     pricing: Option<Pricing>,
     #[serde(default)]
@@ -638,7 +881,7 @@ struct ModelEndpoint {
 impl ModelEndpoint {
     /// Whether this is a provider's Flex endpoint: one whose [`tag`](Self::tag) has a
     /// segment equal to `flex`, in any ASCII case. Flex is a discounted, slower service
-    /// tier a request has to ask for, so its rates are not what a run is billed at, and no
+    /// tier a request has to ask for, so its rates are not the model's list price, and no
     /// price is read from it. An endpoint with no tag is a standard one.
     fn is_flex(&self) -> bool {
         self.tag.as_deref().is_some_and(|tag| {
@@ -648,7 +891,8 @@ impl ModelEndpoint {
     }
 }
 
-/// OpenRouter prices, reported as per-token USD strings.
+/// OpenRouter prices, reported as per-token USD strings: the shape of an endpoint's
+/// pricing block and of a models-listing entry's alike.
 #[derive(Debug, Deserialize)]
 struct Pricing {
     #[serde(default)]

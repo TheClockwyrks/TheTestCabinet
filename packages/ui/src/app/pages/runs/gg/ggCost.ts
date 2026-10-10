@@ -1,10 +1,11 @@
-// Per-class cost for a gg run, reconstructed from the model catalog's prices.
+// Per-class cost for a gg run, reconstructed from the model catalog's list prices.
 //
 // gg records a *total* cost per accounting — a single USD figure, not a class-by-class
 // split (see the run-record `CostMetrics` contract: `comparable` and `actual`, nothing
 // more). To show what the money went to — input vs cached input vs reasoning vs output —
 // and the input-vs-output cost ring, we price each token class against the per-token
-// price of the model that produced it.
+// list price of the model that produced it: the same price the run's comparable cost
+// is computed from, and the only one a model has.
 //
 // A gg run spans several models (one per agent profile), so the pricing is per
 // (profile, model) and summed, never one blanket rate over the run's tokens. gg stamps
@@ -48,8 +49,8 @@ export interface GgCostBreakdown {
   total: number;
 }
 
-// Resolve a run's `modelId` to its per-token prices, or null when the model is
-// unknown to the catalog or carries no price.
+// Resolve a run's `modelId` to its per-token list price, or null when the model is
+// unknown to the catalog or carries no list price.
 export type ModelPriceLookup = (modelId: string) => ModelPrices | null;
 
 // Resolve a run's `modelId` to the catalog's display name for it, or null when the
@@ -126,7 +127,7 @@ export function useGgCostBreakdown(
   const findModel = useFindModelOptional();
   return useMemo(() => {
     if (!findModel) return null;
-    const priceOf: ModelPriceLookup = (id) => findModel(id)?.prices ?? null;
+    const priceOf: ModelPriceLookup = (id) => findModel(id)?.listPrice ?? null;
     return deriveGgCostBreakdown(slots, priceOf);
   }, [findModel, slots]);
 }
@@ -275,7 +276,7 @@ export function useGgSpend(
       deriveGgSpend(
         slotUsage,
         set,
-        (id) => findModel?.(id)?.prices ?? null,
+        (id) => findModel?.(id)?.listPrice ?? null,
         (id) => findModel?.(id)?.name ?? null,
       ),
     [findModel, slotUsage, set],

@@ -5,35 +5,20 @@ import type {
   BlockedCell,
   LaunchPassResult,
 } from "@clockwyrks/backend-api/coverage";
+import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import {
   fireEvent,
   render,
   screen,
-  within,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
+
 import styles from "./Coverage.module.scss";
-import type { BackendClient, WorkerClient } from "../../../client/clients";
-import {
-  BackendProvider,
-  WorkersProvider,
-  type BackendContextValue,
-  type WorkersContextValue,
-} from "../../../client/context";
-import type { GgConfigOption } from "../runs/gg/useGgConfigs";
-import {
-  sectionReturnLabel,
-  sectionReturnTo,
-  useRecordSectionIndex,
-} from "../../components/backReturn";
-import {
-  GalleryDataProvider,
-  type GalleryDataInput,
-} from "../../data/galleryContext";
+import { MatrixSection } from "./CoverageMatrixSection";
 import {
   PLAN_ATTENTION_NOTE,
   buildGroups,
@@ -51,8 +36,24 @@ import { CoveragePlanLayout } from "./CoveragePlanLayout";
 import { CoveragePlanPage } from "./CoveragePlanPage";
 import { CoveragePlanReviewsPage } from "./CoveragePlanReviewsPage";
 import { CoveragePlanTestsPage } from "./CoveragePlanTestsPage";
-import { MatrixSection } from "./CoverageMatrixSection";
 import { CoverageReviewQueue } from "./CoverageReviewQueue";
+import type { BackendClient, WorkerClient } from "../../../client/clients";
+import {
+  BackendProvider,
+  WorkersProvider,
+  type BackendContextValue,
+  type WorkersContextValue,
+} from "../../../client/context";
+import {
+  sectionReturnLabel,
+  sectionReturnTo,
+  useRecordSectionIndex,
+} from "../../components/backReturn";
+import {
+  GalleryDataProvider,
+  type GalleryDataInput,
+} from "../../data/galleryContext";
+import type { GgConfigOption } from "../runs/gg/useGgConfigs";
 
 // The page's app chrome reads contexts (gallery data, notifications) that none of
 // these tests are about; stub it as the other account page tests do.

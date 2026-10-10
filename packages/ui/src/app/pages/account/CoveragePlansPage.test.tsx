@@ -3,13 +3,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
+
+import styles from "./Coverage.module.scss";
+import { PLAN_ATTENTION_TITLE } from "./coveragePlan";
+import { CoveragePlansPage, planProgress } from "./CoveragePlansPage";
 import {
   BackendProvider,
   type BackendContextValue,
 } from "../../../client/context";
-import { CoveragePlansPage, planProgress } from "./CoveragePlansPage";
-import styles from "./Coverage.module.scss";
-import { PLAN_ATTENTION_TITLE } from "./coveragePlan";
 
 // The page's app chrome reads contexts none of these tests are about; stub it as the
 // other account page tests do.

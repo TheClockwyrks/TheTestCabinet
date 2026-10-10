@@ -7,12 +7,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
+
+import ladderStyles from "./Ladder.module.scss";
+import { LaddersPage, ladderCardView } from "./LaddersPage";
 import {
   BackendProvider,
   type BackendContextValue,
 } from "../../../client/context";
-import { LaddersPage, ladderCardView } from "./LaddersPage";
-import ladderStyles from "./Ladder.module.scss";
 
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,

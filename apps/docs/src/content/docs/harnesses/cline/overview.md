@@ -4,7 +4,7 @@ title: Overview
 
 Cline (slug `cline`) is a coding agent driven non-interactively through its
 `cline` CLI. It reaches its model through OpenRouter, so it reports OpenRouter
-model IDs and is priced from the model's curated list price. The harness itself
+model IDs and is priced from the model's list price. The harness itself
 is documented at [cline.bot](https://cline.bot/).
 
 ## Model IDs

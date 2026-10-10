@@ -14,6 +14,21 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { dispatchLive } from "./ladder-dispatch";
+import ladderStyles from "./Ladder.module.scss";
+import {
+  ClimberRow,
+  LADDER_ATTENTION_NOTE,
+  LadderPage,
+  climberCombo,
+  climberStatusLabel,
+  describeClimberBlock,
+  describeLadderStop,
+  describeTally,
+  dispatchStatusLabel,
+  ladderStatusNote,
+} from "./LadderPage";
 import type { BackendClient } from "../../../client/clients";
 import {
   BackendProvider,
@@ -27,21 +42,7 @@ import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../../data/galleryContext";
-import {
-  ClimberRow,
-  LADDER_ATTENTION_NOTE,
-  LadderPage,
-  climberCombo,
-  climberStatusLabel,
-  describeClimberBlock,
-  describeLadderStop,
-  describeTally,
-  dispatchStatusLabel,
-  ladderStatusNote,
-} from "./LadderPage";
 import exec from "../runs/RunExec.module.scss";
-import { dispatchLive } from "./ladder-dispatch";
-import ladderStyles from "./Ladder.module.scss";
 
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,

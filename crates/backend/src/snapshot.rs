@@ -687,7 +687,7 @@ impl SnapshotBuilder {
         }
 
         // models.json — the composed model catalog (curated ⋃ derived-from-runs,
-        // with price history), so the public site renders the Models section from
+        // with each model's list price), so the public site renders the Models section from
         // the snapshot rather than a bundled dataset.
         objects.push(json_object(
             format!("{prefix}/models.json"),

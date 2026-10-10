@@ -1,21 +1,26 @@
-import { Fragment, useMemo, useRef, type ReactNode } from "react";
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
+import { FaSync } from "react-icons/fa";
 import { Link, NavLink } from "react-router";
-import { PageLayout } from "../../components/PageLayout";
-import { LoadingState } from "../../components/LoadingState";
-import { PromptHeader } from "../../components/PromptHeader";
+
+import styles from "./ModelsPage.module.scss";
+import { ProvidersView } from "./ProvidersView";
+import type { ListPriceRefresh } from "../../../client/types";
 import { ColumnMenu, type ColumnMenuHandle } from "../../components/ColumnMenu";
+import { LoadingState } from "../../components/LoadingState";
+import { ModelProviderMark } from "../../components/ModelProviderMark";
+import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { SortableHeaderCell } from "../../components/SortableHeaderCell";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import { useColumnVisibility } from "../../components/useColumnVisibility";
 import { useResizableColumns } from "../../components/useResizableColumns";
 import { sortRows, useTableSort } from "../../components/useTableSort";
 import type { ModelSummary } from "../../data/models";
+import { useModelConfig, type ModelConfigApi } from "../../data/useModelConfig";
 import { useModels } from "../../data/useModels";
-import { useModelConfig } from "../../data/useModelConfig";
-import { ModelProviderMark } from "../../components/ModelProviderMark";
 import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
-import { ProvidersView } from "./ProvidersView";
-import styles from "./ModelsPage.module.scss";
+import { useRunsRuntime } from "../../runtime/runsRuntime";
 import exec from "../runs/RunExec.module.scss";
 // The Models section reuses the Test Cases page's tab-bar styles so the two
 // catalog-style surfaces read identically (the same borrow the Other page makes).
@@ -83,8 +88,8 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     min: 64,
     numeric: true,
     optional: true,
-    // The catalog's headline price is the curated list price — the figure a
-    // run's comparable cost is computed from — not the observed billed rate.
+    // The list price: the only price a model has, and the figure a run's
+    // comparable cost is computed from.
     sortKey: (model) => perMillion(model.listPrice?.uncachedInput ?? null),
     render: (model) => (
       <Price
@@ -160,9 +165,19 @@ interface ModelsPageProps {
 // gg runs and probe evidence.
 export function ModelsPage({ tab = "models" }: ModelsPageProps) {
   const { models, status } = useModels();
-  // The add affordance shows only where curating a model is possible (a signed-in
-  // console with a config-capable backend); it is null (hidden) otherwise.
+  // The add and refresh affordances show only where curating a model is possible
+  // (a signed-in console with a config-capable backend); it is null (hidden)
+  // otherwise.
   const config = useModelConfig();
+  const runtime = useRunsRuntime();
+  // The Refresh press: whether its request is in flight, and what the
+  // last one reported. The outcome is cleared when the next press starts, so a
+  // notice on screen is always the latest press's.
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [priceOutcome, setPriceOutcome] = useState<{
+    tone: "ok" | "error";
+    message: string;
+  } | null>(null);
   const { sort, cycle } = useTableSort("ttc:sort:models");
   const { isVisible, toggle } = useColumnVisibility(
     "ttc:visible:models",
@@ -198,12 +213,37 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
           }
           titleActions={
             tab === "models" && config ? (
-              <Link className={exec.primary} to={routes.modelNew()}>
-                + Add model
-              </Link>
+              <>
+                <button
+                  type="button"
+                  className={[exec.secondary, styles.refreshButton].join(" ")}
+                  onClick={() => void onRefreshPrices(config)}
+                  disabled={refreshingPrices}
+                  aria-busy={refreshingPrices}
+                >
+                  <FaSync
+                    aria-hidden="true"
+                    className={
+                      refreshingPrices
+                        ? [styles.refreshIcon, styles.spin].join(" ")
+                        : styles.refreshIcon
+                    }
+                  />
+                  Refresh
+                </button>
+                <Link className={exec.primary} to={routes.modelNew()}>
+                  + Add model
+                </Link>
+              </>
             ) : undefined
           }
         />
+        {tab === "models" && (
+          <SubmitNotice
+            message={priceOutcome?.message ?? null}
+            tone={priceOutcome?.tone}
+          />
+        )}
 
         <div className={tabStyles.controls}>
           <nav className={tabStyles.tabs} aria-label="Models sections">
@@ -227,6 +267,24 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
       </section>
     </PageLayout>
   );
+
+  // Re-read every curated model's list price from OpenRouter. The backend
+  // rewrites the catalog entries, so the catalog is re-read once it answers,
+  // and the counts it returns are the outcome the page reports. A failure
+  // reports the error and leaves the catalog as it was.
+  async function onRefreshPrices(api: ModelConfigApi) {
+    setRefreshingPrices(true);
+    setPriceOutcome(null);
+    try {
+      const result = await api.refreshListPrices();
+      runtime.requestRefresh();
+      setPriceOutcome({ tone: "ok", message: refreshSummary(result) });
+    } catch (error) {
+      setPriceOutcome({ tone: "error", message: String(error) });
+    } finally {
+      setRefreshingPrices(false);
+    }
+  }
 
   // The catalog tab's body, split out so the tabbed return above stays
   // readable.
@@ -308,6 +366,21 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
       </>
     );
   }
+}
+
+// What a list-price refresh did, as the sentence the page reports: how many
+// models were read, and how they split between a changed rate, a confirmed one
+// and no rate at all. A catalog with no curated model says so rather than
+// reporting three zeroes.
+function refreshSummary(result: ListPriceRefresh): string {
+  if (result.total === 0) return "No models to refresh.";
+  const models = result.total === 1 ? "model" : "models";
+  return (
+    `Refreshed the list price of ${String(result.total)} ${models}: ` +
+    `${String(result.updated)} updated, ` +
+    `${String(result.unchanged)} unchanged, ` +
+    `${String(result.unresolved)} with no rate on OpenRouter.`
+  );
 }
 
 // A per-Mtok price cell, right-aligned to align like printed figures, or a
