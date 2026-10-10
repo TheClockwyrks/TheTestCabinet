@@ -317,9 +317,9 @@ by a relative URL, every image the `azure-pipelines.yml` of that repository's
 `master`, `staging` and `nightly` names. Reading every branch's `.gitmodules`
 is what keeps a repository added on `nightly` safe from a run on `master`,
 where it is not yet a submodule. A repository it cannot read stops the purge,
-so each image job declares every such repository under `resources` and names
-it under `uses:`, which puts it in the job token's scope, and a new submodule
-is added there with it.
+so the image pipeline declares every such repository under `resources` and
+each of its jobs names it under `uses:`, which puts it in the job token's
+scope, and a new submodule is added in both places with it.
 Two rules follow:
 
 - **The merge-up rule.** A repository's image pin moves

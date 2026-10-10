@@ -1430,8 +1430,8 @@ of its runs the image pipeline purges the registry of every CI image tag that
 `azure-pipelines.yml` of a submodule repository's `master`, `staging` or
 `nightly` names. That reaches the repositories of every submodule the
 `.gitmodules` of the checkout or of any of those branches names by a relative
-URL, which each image job declares under
-`resources` and names under `uses:`; see
+URL, which the image pipeline declares under `resources` and each of its jobs
+names under `uses:`; see
 [Repositories](/development/repositories/#a-repositorys-gates-and-pipeline).
 
 A job pulls its CI image from the registry before its first step runs, so a
