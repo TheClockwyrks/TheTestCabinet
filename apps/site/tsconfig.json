@@ -6,5 +6,8 @@
     "types": ["vite/client"]
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/run-record" }]
+  "references": [
+    { "path": "../../contracts/packages/run-record" },
+    { "path": "../../packages/backend-api" }
+  ]
 }

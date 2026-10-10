@@ -2,15 +2,14 @@
 //! decides about a tree.
 //!
 //! The script tests need the host's `node`; they skip with a message when there is
-//! none rather than failing, so a machine without one still runs the rest.
+//! none rather than failing, so a machine without one still runs the rest. Under
+//! `TCAB_REQUIRE_BROWSER=1` a missing `node` fails them instead (see
+//! [`crate::test_browser`]).
 
 use std::path::Path;
 
 use super::*;
-
-fn node_available() -> bool {
-    which::which("node").is_ok()
-}
+use crate::test_browser::{node_available, skip_without_browser};
 
 fn write_lockfile(repo: &Path, packages: serde_json::Value) {
     let lock = serde_json::json!({
@@ -83,7 +82,7 @@ fn anything_but_the_report_reads_as_not_checked() {
 #[tokio::test]
 async fn a_tree_without_a_lockfile_is_not_checked() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -99,7 +98,7 @@ async fn a_tree_without_a_lockfile_is_not_checked() {
 #[tokio::test]
 async fn a_lockfile_without_a_packages_map_is_not_checked() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -135,7 +134,7 @@ async fn wanted_in(repo: &Path, command: &str) -> Vec<String> {
 #[tokio::test]
 async fn the_script_wants_the_packages_the_graph_reaches_that_apply_to_this_host() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -209,7 +208,7 @@ async fn the_script_wants_the_packages_the_graph_reaches_that_apply_to_this_host
 #[tokio::test]
 async fn packages_reachable_only_through_an_excluded_optional_package_are_not_wanted() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -275,7 +274,7 @@ async fn packages_reachable_only_through_an_excluded_optional_package_are_not_wa
 #[tokio::test]
 async fn an_optional_package_that_requires_an_excluded_one_is_not_wanted_either() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -322,7 +321,7 @@ async fn an_optional_package_that_requires_an_excluded_one_is_not_wanted_either(
 #[tokio::test]
 async fn a_workspaces_dependencies_are_wanted_and_the_link_itself_is_not() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");
@@ -357,7 +356,7 @@ async fn a_workspaces_dependencies_are_wanted_and_the_link_itself_is_not() {
 #[tokio::test]
 async fn the_install_commands_flags_decide_which_classes_are_wanted() {
     if !node_available() {
-        eprintln!("skipping: no `node` on PATH");
+        skip_without_browser("no `node` on PATH to run the lockfile check");
         return;
     }
     let repo = tempfile::tempdir().expect("repo");

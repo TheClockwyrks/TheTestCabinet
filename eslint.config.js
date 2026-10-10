@@ -26,26 +26,103 @@ import tseslint from "typescript-eslint";
  * it per file does not make the module reloadable; it only hides the
  * invalidation the development server then reports at runtime. A module that
  * mixes components with anything else is split instead.
+ *
+ * Code that came under the gate after it was written is held to it by a
+ * ratchet rather than exempted from it. `eslint-suppressions.json` records, per
+ * file and per rule, how many errors that code already had; ESLint reports a
+ * file whose count for a rule grows past its record, and any error in a file
+ * the record does not name. A count that shrinks passes, and
+ * `npm run lint:prune` lowers the record to match.
  */
 
+/**
+ * The TypeScript projects this gate lints with type information.
+ *
+ * Each is a folder of browser sources and the `tsconfig.json` that owns them,
+ * which the import resolver reads for the folder's paths and aliases. Every
+ * file set below is derived from this list, so bringing a project under the
+ * gate is one entry here. A project that arrives with violations of its own is
+ * recorded in the ratchet's baseline, `eslint-suppressions.json`, with
+ * `npm run lint:baseline` (see the Linting section of
+ * `apps/docs/src/content/docs/development/building.md`).
+ */
+const PROJECTS = [
+  { sources: "apps/web/src", tsconfig: "apps/web/tsconfig.json" },
+  { sources: "packages/ui/src", tsconfig: "packages/ui/tsconfig.json" },
+  { sources: "apps/site/src", tsconfig: "apps/site/tsconfig.json" },
+  {
+    sources: "apps/lattice-designer/src",
+    tsconfig: "apps/lattice-designer/tsconfig.json",
+  },
+];
+
 /** The sources the type-checked rules read, each inside a project of its own. */
-const SOURCES = ["apps/web/src/**/*.{ts,tsx}"];
+const SOURCES = PROJECTS.map(({ sources }) => `${sources}/**/*.{ts,tsx}`);
 
 /** The tests and their helpers, which the testing rules read as well. */
-const TESTS = [
-  "apps/web/src/**/*.test.{ts,tsx}",
-  "apps/web/src/test/**/*.{ts,tsx}",
-];
+const TESTS = PROJECTS.flatMap(({ sources }) => [
+  `${sources}/**/*.test.{ts,tsx}`,
+  `${sources}/test/**/*.{ts,tsx}`,
+]);
 
 /**
  * The programs that configure a build rather than run in a browser.
  *
  * They are linted without the type-checked rules because a build's
- * configuration is not a member of the project it configures.
+ * configuration is not a member of the project it configures. A Vite plugin a
+ * configuration loads (the gallery's two, the designer's scenario API) is part
+ * of that configuration.
  */
-const CONFIGS = ["eslint.config.js", "apps/web/vite.config.ts"];
+const CONFIGS = [
+  "eslint.config.js",
+  "apps/web/vite.config.ts",
+  "apps/site/vite.config.ts",
+  "apps/site/vite-plugin-*.ts",
+  "apps/lattice-designer/vite.config.ts",
+  "apps/lattice-designer/vitest.config.ts",
+  "apps/lattice-designer/scenario-api.ts",
+];
 
-export default defineConfig([
+/**
+ * The gallery's capture and screenshot tools, which run from a checkout and
+ * belong to no TypeScript project, so they too are linted without type
+ * information. They drive a browser from Node and render a page in it, so both
+ * environments' globals apply.
+ */
+const TOOLS = ["apps/site/scripts/**/*.{mjs,ts,tsx}"];
+
+/**
+ * Raises every rule a preset sets to `warn` to an error.
+ *
+ * The gate has one tier. A warning fails nothing, and the ratchet's baseline
+ * records errors only, so a warning left as one could multiply without the
+ * gate ever saying so. A rule worth adopting is worth an error.
+ */
+function escalate(configs) {
+  const error = (level) => (level === "warn" || level === 1 ? "error" : level);
+  return configs.map((config) =>
+    config.rules === undefined
+      ? config
+      : {
+          ...config,
+          rules: Object.fromEntries(
+            Object.entries(config.rules).map(([rule, entry]) => [
+              rule,
+              Array.isArray(entry)
+                ? [error(entry[0]), ...entry.slice(1)]
+                : error(entry),
+            ]),
+          ),
+        },
+  );
+}
+
+const CONFIG = defineConfig([
+  {
+    // A suppression comment that no longer suppresses anything is an error
+    // too, for the same reason.
+    linterOptions: { reportUnusedDisableDirectives: "error" },
+  },
   globalIgnores([
     "**/node_modules/**",
     "**/dist/**",
@@ -55,8 +132,10 @@ export default defineConfig([
     // gate it answers to.
     "apps/docs/**",
     // Served verbatim rather than compiled. `backend.js` is committed empty and
-    // written by whatever serves a build elsewhere.
+    // written by whatever serves a build elsewhere. The gallery's is its static
+    // assets.
     "apps/web/public/**",
+    "apps/site/public/**",
     // Scratch work, which `.gitignore` keeps out of the repository and the
     // prose and format gates leave alone. It may hold another repository, whose
     // files and whose own configuration are none of this gate's business.
@@ -65,6 +144,8 @@ export default defineConfig([
     // (.markdownlint-cli2.yaml, cspell.json, .prettierignore) leave out too, so no
     // gate reads what the others leave alone.
     "cold-storage/**",
+    // The contracts repository, a submodule with gates of its own.
+    "contracts/**",
     "tasks/**/done/**",
     ".claude/workflows/**",
     ".claude/worktrees/**",
@@ -73,6 +154,7 @@ export default defineConfig([
     "crates/foray-core/schemas/*.json",
     "crates/lattice-core/schemas/*.json",
     "test-cases/performance/hard/lattice/*/cases/*.json",
+    "crates/*/testdata/definitions/**",
     "**/*.hbs",
     "**/.build/**",
     "**/.spago/**",
@@ -114,7 +196,12 @@ export default defineConfig([
       // practice.
       "import-x/resolver": {
         typescript: {
-          project: `${import.meta.dirname}/apps/web/tsconfig.json`,
+          project: PROJECTS.map(
+            ({ tsconfig }) => `${import.meta.dirname}/${tsconfig}`,
+          ),
+          // One project per linted folder is the shape PROJECTS states, not an
+          // oversight the resolver needs to point out on every run.
+          noWarnOnMultipleProjects: true,
         },
       },
     },
@@ -184,4 +271,13 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  {
+    files: TOOLS,
+    extends: [js.configs.recommended, tseslint.configs.recommended],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
 ]);
+
+export default escalate(CONFIG);

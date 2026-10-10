@@ -1,7 +1,7 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { useCallback, useState } from "react";
 import { Link } from "react-router";
 import { Panel } from "@clockwyrks/ui";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import { useAuth } from "../../../client/auth";
 import { useOptionalBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";

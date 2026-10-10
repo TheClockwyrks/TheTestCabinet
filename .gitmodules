@@ -1,3 +1,11 @@
 [submodule "cold-storage"]
 	path = cold-storage
 	url = ../cold-storage
+[submodule "test-suites"]
+	path = test-suites
+	url = ../test-suites
+	branch = master
+[submodule "contracts"]
+	path = contracts
+	url = ../contracts
+	branch = master

@@ -102,6 +102,17 @@ suite has coverage disabled. The static analyzer's walk diagnostics on a run's
 Code tab are headed Analysis notes rather than Coverage, since they describe the
 analysis and measure nothing about the code.
 
+## Debug API
+
+A [test suite](#test-suite)'s debug API is the structured surface an
+implementation exposes so that [validators](#validator) can drive and observe
+it. The suite declares it as data, and an implementation publishes it either
+through a global handle or through the engine's own debug object. Its functions
+are queries, which report state, and commands, which arrange the state a
+[requirement](#requirement) is written against. A validator reaches an
+implementation only through this surface, which keeps its verdict independent of
+how the implementation is written. See [debug APIs](/test-suites/debug-apis/).
+
 ## Dispatcher
 
 The [dispatcher](/components/dispatcher/overview/) is a thin, stateless
@@ -121,6 +132,14 @@ is the worst across that effective set. A [review
 item](#reviewer-checklist) names the domains its failure lowers on a
 [validator-rated](#validator-rated) version, and on a legacy version may roll
 up to a domain or stay general when it applies to every mode.
+
+## Draft
+
+A draft is an editable, possibly incomplete state of a [test suite](#test-suite)
+that The Spec Cabinet authors. A suite holds any number of drafts, and a draft is
+saved whether or not it is complete. The Test Cabinet never ingests a draft; it
+runs the [exported versions](#exported-version) produced from one. See [test
+suites](/test-suites/overview/#drafts).
 
 ## Driver
 
@@ -144,6 +163,13 @@ In the context of The Test Cabinet, "engine" refers to two elements:
 The first is provided to a run and the second is the deliverable of one. A
 performance case's engine is the artifact under test, so it is never selected and
 a performance case supports no engine in the first sense.
+
+## Exported version
+
+An exported version is an immutable, numbered snapshot of a [draft](#draft) that
+satisfies every [test suite](#test-suite) invariant. Exported versions are the
+suite states The Test Cabinet ingests and runs. See [test
+suites](/test-suites/overview/#exported-versions).
 
 ## Failure cap
 
@@ -275,6 +301,15 @@ GUI reporters allow users to interact with test case implementations. The [web
 console](#web-console) is both a reporter and a launcher of
 [runs](#runners).
 
+## Requirement
+
+A requirement is one RFC 2119 statement within a
+[specification](#specification), classified as functional or non-functional. A
+functional requirement names one or more [validators](#validator) that decide
+it, while a non-functional requirement is judged by a human. Behavioral
+requirements are functional and appearance requirements are non-functional. See
+[specifications](/test-suites/specifications/).
+
 ## Review
 
 A review is a person's assessment of a run after playing its build, providing
@@ -388,10 +423,31 @@ A snapshot is the public export the [backend](#backend) produces from its
 published results. The static [public site](/components/site/overview/) is built
 from this snapshot, so the gallery keeps no live dependency on the backend.
 
+## Specification
+
+A specification is one folder of a [test suite](#test-suite) holding a natural
+language explanation of the behavior it covers plus the
+[requirements](#requirement) that state it precisely. Specification folders
+nest, and every file in one belongs to that specification alone. See
+[specifications](/test-suites/specifications/).
+
 ## Test case
 
 Test cases provide the scenarios used for testing. Each test case represents an
 isolated task that a harness and model must perform.
+
+## Test suite
+
+A test suite is one authored project, committed in the test suites repository,
+from which one or more [test cases](#test-case) are drawn. It is authored as
+[drafts](#draft), and The Test Cabinet runs the [exported
+versions](#exported-version) produced from them. It holds the
+[specifications](#specification) an implementation is written against, the
+[validators](#validator) that decide them, the [debug API](#debug-api) those
+validators drive and read, the demonstrations, the reference implementations,
+the showcase, and the assets.
+The Spec Cabinet authors test suites and The Test Cabinet executes the test
+cases they define. See [test suites](/test-suites/overview/).
 
 ## User account
 
@@ -414,6 +470,15 @@ mandated debug-API contract fails automatically. Each validator's pass or fail
 is visible per checklist point on a run's Verdict tab, to every visitor
 including the public gallery. A game's feel and quality are left to a human
 [review](#review).
+
+## Validator
+
+A validator is a function that decides one [requirement](#requirement) and
+returns an assertion result per condition it checks. It drives and observes an
+implementation only through the [debug API](#debug-api), and a
+[test suite](#test-suite) holds one validator project.
+Each validator is claimed by exactly one requirement. See
+[validators](/test-suites/validators/).
 
 ## Validator-rated
 

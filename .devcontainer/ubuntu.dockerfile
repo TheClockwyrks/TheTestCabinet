@@ -117,6 +117,11 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/codex.sh && \
 	bash /tmp/scripts/post-install.sh
 
+# The browser engines Playwright launches: the web app's browser tests, and the
+# Chromium the case-harness suite, the validator's browser driver and the Rust
+# suite's served validator-project tests use. `npm ci` installs Playwright but
+# downloads no browser, so these two layers are what make those tests runnable.
+#
 # The browser engines' system libraries. They are apt's, so they need root, and
 # Playwright resolves which ones they are by running `npx`, so this sits after
 # the Node install above rather than beside the rest of the apt work at the top

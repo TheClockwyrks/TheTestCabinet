@@ -68,43 +68,19 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
-import type { AssetSheet, ModelSpec, RunRecord } from "@clockwyrks/run-record";
-import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
+  StoredSuiteCoordinate,
+  SuiteOut,
+  SuitesResponse,
+  SuiteVersionResponse,
   TestCaseGroupOut,
   TestCaseGroupsResponse,
-} from "@clockwyrks/run-record/backend-api";
+} from "@clockwyrks/backend-api";
 import type {
-  BulkCancelOut,
-  GgRunRequest,
-  LaunchAck,
-  LaunchBody,
-  StreamOpened,
-} from "@clockwyrks/run-record/jobs-api";
-import type {
-  GgConfig,
-  GgConfigInput,
-  GgSavedAgent,
-  GgSavedAgentInput,
-  GgProgramLanguage,
-} from "@clockwyrks/run-record/gg";
-import type {
-  GgReference,
-  GgReferenceApi,
-} from "@clockwyrks/run-record/gg-reference";
-import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type {
-  GgDashboard,
-  GgDashboardInput,
-  GgFieldCatalog,
-  GgQuery,
-  GgQueryBatch,
-  GgQueryBatchResponse,
-  GgQueryResponse,
-  GgSavedQuery,
-  GgSavedQueryInput,
-} from "@clockwyrks/run-record/gg-query";
+  Comparison,
+  ComparisonInput,
+} from "@clockwyrks/backend-api/comparison";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -119,11 +95,28 @@ import type {
   HaltResult,
   LaunchPassResult,
   PlanCellRetryInput,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
 import type {
-  Comparison,
-  ComparisonInput,
-} from "@clockwyrks/run-record/comparison";
+  GgConfig,
+  GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
+} from "@clockwyrks/backend-api/gg";
+import type {
+  GgDashboard,
+  GgDashboardInput,
+  GgQueryBatch,
+  GgQueryBatchResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
+} from "@clockwyrks/backend-api/gg-query";
+import type {
+  BulkCancelOut,
+  GgRunRequest,
+  LaunchAck,
+  LaunchBody,
+  StreamOpened,
+} from "@clockwyrks/backend-api/jobs-api";
 import type {
   Ladder,
   LadderInput,
@@ -133,7 +126,20 @@ import type {
   LadderRungOrderInput,
   LadderStopInput,
   LadderSummary,
-} from "@clockwyrks/run-record/ladders";
+} from "@clockwyrks/backend-api/ladders";
+import type { RunScoreOut, RunSummary } from "@clockwyrks/backend-api/snapshot";
+import type { AssetSheet, ModelSpec, RunRecord } from "@clockwyrks/run-record";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type {
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryResponse,
+} from "@clockwyrks/run-record/gg-query";
 import {
   delJson,
   delVoid,
@@ -253,6 +259,9 @@ interface ResolvedVersion {
   // engineless run. The range is the host's business, so only the slug is carried
   // any further.
   engines: { slug: string }[];
+  // The test suite coordinate the version was lowered from. Absent on an authored
+  // case.
+  suite?: StoredSuiteCoordinate | null;
   // The asset shape an asset-generation case produces (camelCase `AssetKind`),
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
@@ -539,6 +548,35 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return groups;
     },
 
+    async listTestSuites(): Promise<SuiteOut[]> {
+      // Served already filtered by the deployment's experimental setting and
+      // ordered oldest version first; unwrapped from the `testSuites` envelope
+      // and consumed as-is, the way the case-group listing is.
+      const { testSuites } = await getJson<SuitesResponse>(
+        baseUrl,
+        "/test-suites",
+      );
+      return testSuites;
+    },
+
+    async getTestSuite(
+      slug: string,
+      version: string,
+    ): Promise<SuiteVersionResponse> {
+      // The stored record is the response body, so it is consumed as served —
+      // there is no second shape here for the two to drift apart on. Only the
+      // uploaded reference builds' backend-relative URLs are resolved, so the
+      // console can play them from another origin.
+      const response = await getJson<SuiteVersionResponse>(
+        baseUrl,
+        `/test-suites/${encodeURIComponent(slug)}/${encodeURIComponent(version)}`,
+      );
+      return {
+        ...response,
+        referenceBuilds: resolveBuildUrls(baseUrl, response.referenceBuilds),
+      };
+    },
+
     async listVersions(slug: string): Promise<string[]> {
       const { versions } = await getJson<VersionsResponse>(
         baseUrl,
@@ -574,6 +612,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         // The engines this version supports, which is exactly what the run form's
         // engine picker offers.
         engines: r.engines.map((engine) => engine.slug),
+        // The suite coordinate of a suite-defined version; null on an authored one.
+        suite: r.suite ?? null,
         assetKind: r.assetKind ?? null,
         // Case-level runtime packages (shared by every variant), each with a
         // UI-only description. Absent on a backend that predates the field.
@@ -616,11 +656,12 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
           domains: [...(r.domains ?? []), ...(v.domains ?? [])],
-          // The variant's reference-implementation build URLs, one per engine,
-          // carried through verbatim (each already an absolute Cloudflare Pages URL
-          // — the backend records exactly what `tcab publish-reference` deployed).
-          // Empty when the variant declares none.
-          referenceBuilds: v.referenceBuilds ?? {},
+          // The variant's reference-implementation build URLs, one per engine.
+          // An authored case's are absolute Cloudflare Pages URLs, recorded exactly
+          // as `tcab publish-reference` deployed them; a suite-defined case's are
+          // the builds uploaded for its suite version, served by the backend at a
+          // backend-relative URL resolved here. Empty when the variant has none.
+          referenceBuilds: resolveBuildUrls(baseUrl, v.referenceBuilds ?? {}),
           // An asset-generation variant's published reference frames. Carried as
           // indices only — the frame images and action logs live in the public
           // snapshot bucket, addressed by key (see `referenceMediaKey`). Null on a
@@ -2747,4 +2788,19 @@ async function streamPublish(
     throw new Error("publish stream ended before reporting a result");
   }
   return terminal;
+}
+
+// Resolve reference build URLs against the backend: a backend-relative URL (a
+// suite reference build the backend serves) is joined onto the backend's base,
+// and an absolute one (a deployed legacy build) is kept as it is.
+function resolveBuildUrls(
+  baseUrl: string,
+  builds: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(builds).map(([engine, url]) => [
+      engine,
+      url.startsWith("/") ? joinUrl(baseUrl, url) : url,
+    ]),
+  );
 }

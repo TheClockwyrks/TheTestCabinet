@@ -6,7 +6,8 @@
 // in-memory document index. The public static site has no backend at all: it ships the
 // snapshot's `gg-runs.json` and evaluates the *same* compiled query in the browser with
 // the mirrored TypeScript evaluator. Same language, same compiler, same semantics —
-// pinned by the shared `gg_query.conformance.json` fixture both suites execute.
+// pinned by the shared `contracts/crates/contracts/fixtures/gg_query.conformance.json` fixture
+// both suites execute.
 //
 // Every page above this hook is written once and knows which host it is on only through
 // two fields: {@link GgSource.live} (may this host save things?) and

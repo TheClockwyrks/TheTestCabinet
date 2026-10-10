@@ -26,18 +26,19 @@
 
 # ── Build stage ──────────────────────────────────────────────────────────────
 # Build the SPA from the repo root so the npm workspace resolves: Vite bundles the
-# console's workspace deps (@clockwyrks/ui, @clockwyrks/run-record) from their
-# TypeScript sources, so the whole workspace must `npm ci` against the root
-# lockfile. The .dockerignore re-includes exactly the slice this needs (the root
-# manifests, every member's package.json, and the three packages' sources).
+# console's workspace deps (@clockwyrks/ui, @clockwyrks/run-record,
+# @clockwyrks/backend-api) from their TypeScript sources, so the whole workspace
+# must `npm ci` against the root lockfile. The .dockerignore re-includes exactly the
+# slice this needs (the root manifests, every member's package.json, and the
+# packages' sources).
 FROM docker.io/library/node:24-bookworm-slim AS build
 WORKDIR /src
 COPY . .
 # Deterministic, lockfile-pinned install of the whole workspace, then build the
-# web console. run-record, run-stats, voxel-runtime and particle-runtime are built
-# first: the console's `tsc -b` needs run-record's compiled types, and the
-# @clockwyrks/ui library it bundles from source imports run-stats' `.`/`./rollup`
-# subpaths and voxel-runtime's and particle-runtime's `./three` subpaths, whose
+# web console. run-record, backend-api, run-stats, voxel-runtime and particle-runtime
+# are built first: the console's `tsc -b` needs the two contract packages' compiled
+# types, and the @clockwyrks/ui library it bundles from source imports run-stats'
+# `.`/`./rollup` subpaths and voxel-runtime's and particle-runtime's `./three` subpaths, whose
 # typings only resolve once each package's dist/ exists (none of the three is a tsc
 # project reference of the console, so they must be built explicitly). The npm
 # cache is a BuildKit cache mount so re-installs reuse the downloaded tarballs
@@ -45,6 +46,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci \
     && npm run build -w @clockwyrks/run-record \
+    && npm run build -w @clockwyrks/backend-api \
     && npm run build -w @clockwyrks/run-stats \
     && npm run build -w @clockwyrks/voxel-runtime \
     && npm run build -w @clockwyrks/particle-runtime \

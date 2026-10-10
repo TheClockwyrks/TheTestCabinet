@@ -1,0 +1,10 @@
+# Cloudflare Pages redirects, copied verbatim into dist/ by Astro.
+#
+# The backend's five JSON Schema documents that sat in the data contract's
+# directories (core/, gg/) moved to backend-api/, beside the backend's others, so
+# each generator owns its directories. Their old URLs keep resolving here.
+/schema/core/tournament.schema.json /schema/backend-api/tournament.schema.json 301
+/schema/gg/query-batch-request.schema.json /schema/backend-api/gg-query-batch-request.schema.json 301
+/schema/gg/query-batch-response.schema.json /schema/backend-api/gg-query-batch-response.schema.json 301
+/schema/gg/saved-query.schema.json /schema/backend-api/gg-saved-query.schema.json 301
+/schema/gg/dashboard.schema.json /schema/backend-api/gg-dashboard.schema.json 301

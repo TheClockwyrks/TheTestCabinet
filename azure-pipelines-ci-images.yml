@@ -84,11 +84,14 @@ trigger:
       - .devcontainer/tools/kubectl.sh
       - .devcontainer/tools/uv.sh
       - ci/images/build-args.sh
+      - ci/images/rust-browser.Dockerfile
+      - ci/images/rust-browser.Dockerfile.dockerignore
       - ci/images/rust.Dockerfile
       - ci/images/rust.Dockerfile.dockerignore
       - ci/images/web.Dockerfile
       - ci/images/web.Dockerfile.dockerignore
       - scripts/ci/ci-image.sh
+      - scripts/ci/install-playwright-chromium.sh
 
 # Stated, though Azure Repos does not read it. See the first paragraph of the
 # section above.
@@ -97,10 +100,33 @@ pr: none
 pool:
   vmImage: ubuntu-24.04
 
+# The repositories each job's purge reads beside this one: every submodule the
+# .gitmodules of the checkout or of a live branch names by a relative URL, so a
+# branch's job reaches the submodules `nightly` added before they reach it.
+# scripts/ci/ci-image-purge.sh keeps the CI images the live branches of each
+# pin in their own azure-pipelines.yml, and refuses to purge when one cannot be
+# read. No job checks one out; each names
+# them under `uses:`, which is what puts them in the scope of the job's access
+# token. A submodule added to .gitmodules is added here too, or every purge
+# stops.
+resources:
+  repositories:
+    - repository: cold-storage
+      type: git
+      name: the-test-cabinet/cold-storage
+    - repository: contracts
+      type: git
+      name: the-test-cabinet/contracts
+    - repository: test-suites
+      type: git
+      name: the-test-cabinet/test-suites
+
 jobs:
-  # One job per image, with no `dependsOn` between them: none reads what
-  # another writes and they push to different repositories, so running them at
-  # once makes the pipeline cost the slowest of them rather than their sum.
+  # One job per image, with no `dependsOn` between them but one: none reads
+  # what another writes and they push to different repositories, so running
+  # them at once makes the pipeline cost the slowest of them rather than their
+  # sum. The exception is the rust-browser image, which is built on the Rust
+  # image this run pushes and so waits for it.
   #
   # None declares a `container:`. These jobs build images; they do not run
   # inside one. They need the hosted agent's own docker and buildx, which is
@@ -112,6 +138,12 @@ jobs:
     # of an image is a few minutes; the ceiling is for the first build after a
     # base image moves, when nothing is taken from the layer cache.
     timeoutInMinutes: 60
+    # The submodule repositories the purge reads (see `resources` above).
+    uses:
+      repositories:
+        - cold-storage
+        - contracts
+        - test-suites
     steps:
       # One commit is enough. The tag is the commit Azure names in
       # BUILD_SOURCEVERSION, and nothing here reads the history.
@@ -148,6 +180,11 @@ jobs:
   - job: webImage
     displayName: Web CI image
     timeoutInMinutes: 60
+    uses:
+      repositories:
+        - cold-storage
+        - contracts
+        - test-suites
     steps:
       - checkout: self
         fetchDepth: 1
@@ -168,3 +205,38 @@ jobs:
       - template: .azure/project/ci-image-steps.yml
         parameters:
           image: web
+
+  # The Rust image plus Node and Playwright's Chromium, which the gates
+  # pipeline's `rust` job runs in, so that the tests driving a browser run
+  # rather than skip (ci/images/rust-browser.Dockerfile). It is built FROM the
+  # Rust image of this run's commit, which ci-image.sh passes in, so it waits
+  # for that image to be pushed and is skipped when it was not.
+  - job: rustBrowserImage
+    displayName: Rust browser CI image
+    dependsOn: rustImage
+    timeoutInMinutes: 60
+    uses:
+      repositories:
+        - cold-storage
+        - contracts
+        - test-suites
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - script: scripts/ci/free-disk.sh
+        displayName: Free disk space on the agent
+
+      - task: Docker@2
+        displayName: Sign in to the registry
+        inputs:
+          command: login
+          containerRegistry: the-test-cabinet-acr
+
+      - script: scripts/ci/ci-image.sh build rust-browser
+        displayName: Build and push the Rust browser CI image
+
+      # As on the Rust image job.
+      - template: .azure/project/ci-image-steps.yml
+        parameters:
+          image: rust-browser

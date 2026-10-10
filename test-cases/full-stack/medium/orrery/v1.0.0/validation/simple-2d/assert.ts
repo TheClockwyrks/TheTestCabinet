@@ -29,7 +29,7 @@
 // re-exports of one file satisfy that better than three copies of it could. The
 // package is staged into EVERY engine's validator project, not only into an
 // engineless one: `stage_case_harness` is called unconditionally from
-// `stage_project` in `crates/core/src/vitest_validator.rs`, so
+// `stage_project` in `contracts/crates/suites/src/vitest_validator.rs`, so
 // `./case-harness/assert` resolves here exactly as it does under `none`.
 //
 // Every helper takes an optional trailing `context`: what a check that runs the

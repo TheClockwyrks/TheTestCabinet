@@ -26,6 +26,42 @@ describe("isKnownRoute", () => {
     expect(isKnownRoute(routes.modelStats("claude-opus-5"))).toBe(true);
   });
 
+  it("addresses the Test Suites tab without shadowing a case slug", () => {
+    // `/test-cases/suites` is a literal beside `/test-cases/:slug`. Both are
+    // known, and neither answer depends on declaration order — the same check
+    // `/runs/failures` gets beside `/runs/:runId`.
+    expect(isKnownRoute(routes.testCasesSuites())).toBe(true);
+    expect(isKnownRoute(routePatterns.testCasesSuites)).toBe(true);
+    expect(isKnownRoute(routes.testCaseDetail("suites-of-armor"))).toBe(true);
+    expect(isKnownRoute(routes.testCaseDetail("carom"))).toBe(true);
+  });
+
+  it("addresses every suite detail tab under the listing", () => {
+    // Each tab is its own route under `/test-cases/suites/:suiteSlug`, which is
+    // itself under the listing's literal segment — so a suite slug can never be
+    // read as a case slug, whatever it spells.
+    const slug = "carom-suite";
+    expect(isKnownRoute(routes.testSuiteDetail(slug))).toBe(true);
+    expect(isKnownRoute(routes.testSuiteSpecifications(slug))).toBe(true);
+    expect(isKnownRoute(routes.testSuiteDefinitions(slug))).toBe(true);
+    expect(isKnownRoute(routes.testSuiteAssets(slug))).toBe(true);
+    expect(isKnownRoute(routes.testSuiteDemos(slug))).toBe(true);
+    expect(isKnownRoute(routes.testSuiteReferences(slug))).toBe(true);
+    expect(isKnownRoute(routes.testSuiteChangelog(slug))).toBe(true);
+  });
+
+  it("anchors a suite link to a version in the query string", () => {
+    // The version rides the query string rather than the path, so the path a
+    // versioned link addresses is the tab's own route.
+    expect(routes.testSuiteDetail("carom-suite", "v1.0.0")).toBe(
+      "/test-cases/suites/carom-suite?version=v1.0.0",
+    );
+    expect(routes.testSuiteAssets("carom-suite", "v1.0.0")).toBe(
+      "/test-cases/suites/carom-suite/assets?version=v1.0.0",
+    );
+    expect(isKnownRoute("/test-cases/suites/carom-suite/assets")).toBe(true);
+  });
+
   it("rejects a path no pattern addresses", () => {
     expect(isKnownRoute("/nonsense")).toBe(false);
     expect(isKnownRoute("/runs/abc123/nonsense")).toBe(false);

@@ -208,6 +208,18 @@ files, created from your secret manager rather than committed. The set is:
   `OPENROUTER_API_KEY`, so runs and probes spend one credit pool.
 - The publisher's `GH_TOKEN` and `CLOUDFLARE_API_TOKEN`, in the Secret named by
   `TCAB_DISPATCHER_PUBLISHER_SECRETS`.
+- The read-only test suites credential, in the `tcab-test-suites-credential`
+  Secret under the key `token`. The backend pod's ingest sidecar fetches the test
+  suites submodule with it, so it is a token that can only read the test suites
+  repository. `deployments/k8s/secrets/upload-test-suites-credential.sh --env
+  <env>` stores it in the environment's secret manager, from which the Secret is
+  created. It is synced through its own `SecretProviderClass` and mounter,
+  `tcab-keyvault-sync-test-suites`, rather than the shared one: the Key Vault
+  provider fails a whole mount when one listed secret is missing, so a token not
+  yet uploaded holds back only this Secret, and the backend, whose volume of it is
+  optional, ingests without the suites. Run the script before the first deploy that
+  carries the test suites, or that deploy's settle step reports the mounter as not
+  ready.
 
 The auth service holds no third-party secret; it stores only password hashes in
 its own database. Every file under `deployments/k8s/` carries placeholder

@@ -1,17 +1,17 @@
 //! `tcab validate` — run validation over a produced implementation.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::Context;
+use test_cabinet_core::test_suite::{RequirementOutcome, RequirementStatus, SuiteRequirementKind};
 use test_cabinet_core::validation::Inconclusive;
 use test_cabinet_core::{
     AdversarialOutcome, AdversarialTeam, ArtifactCollection, BrowserRenderer, DebugScriptResult,
-    DispatchValidator, ReferenceRenderer, StepResult, TestCaseCatalog, TestType, ValidationSummary,
-    Validator,
+    DispatchValidator, ReferenceRenderer, StepResult, TestType, ValidationSummary, Validator,
 };
 
+use crate::catalog;
 use crate::cli::ValidateArgs;
 use crate::commands::engines;
 
@@ -42,10 +42,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
         args.variant,
     );
 
-    let catalog = TestCaseCatalog::new(catalog_root());
-    let test_case = catalog
-        .resolve(&args.test_case, &args.version)
-        .with_context(|| format!("resolving {}@{}", args.test_case, args.version))?;
+    let test_case = resolve_case(&catalog::resolver(), &args.test_case, &args.version)?;
     let variant = test_case
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
@@ -167,6 +164,9 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
                 );
             }
         }
+    }
+    if !summary.requirements.is_empty() {
+        print_requirements(&summary.requirements);
     }
     if let Some(asset) = &summary.asset {
         let kind = if asset.sheet.is_some() {
@@ -364,6 +364,35 @@ fn faults(summary: &ValidationSummary, test_type: TestType) -> Vec<String> {
         faults.push(format!("{} verdict(s) failed: {list}", failed.len()));
     }
 
+    // A suite-defined case is decided by requirements rather than checklist points.
+    // A failed requirement is a fault the tree earned; an undecided *functional* one
+    // is a requirement the case declares and nothing satisfied, which is the same
+    // gap an inconclusive validator leaves. A non-functional requirement is judged
+    // by review and is undecided by design, so it costs nothing.
+    let failed_requirements = named(
+        summary
+            .requirements
+            .iter()
+            .filter(|outcome| outcome.status == RequirementStatus::Failed)
+            .map(|outcome| &outcome.id),
+    );
+    if let Some(list) = failed_requirements {
+        faults.push(format!("requirement(s) failed: {list}"));
+    }
+    let undecided_requirements = named(
+        summary
+            .requirements
+            .iter()
+            .filter(|outcome| {
+                outcome.kind == SuiteRequirementKind::Functional
+                    && outcome.status == RequirementStatus::Undecided
+            })
+            .map(|outcome| &outcome.id),
+    );
+    if let Some(list) = undecided_requirements {
+        faults.push(format!("requirement(s) undecided: {list}"));
+    }
+
     if summary
         .adversarial
         .as_ref()
@@ -453,6 +482,54 @@ fn named<'a>(names: impl Iterator<Item = &'a String>) -> Option<String> {
     (!joined.is_empty()).then_some(joined)
 }
 
+/// Print every requirement outcome, each with the validators that decided it and
+/// every assertion they returned.
+///
+/// The assertions are printed under the requirement that claims them rather than
+/// under the validator module that produced them, because the requirement is what
+/// the specification states and what a reader is checking: a validator path is how
+/// it was decided, not what was decided.
+fn print_requirements(outcomes: &[RequirementOutcome]) {
+    let passed = outcomes
+        .iter()
+        .filter(|outcome| outcome.status == RequirementStatus::Passed)
+        .count();
+    let failed = outcomes
+        .iter()
+        .filter(|outcome| outcome.status == RequirementStatus::Failed)
+        .count();
+    println!(
+        "  requirements: {} ({passed} passed, {failed} failed)",
+        outcomes.len(),
+    );
+    for outcome in outcomes {
+        let status = match outcome.status {
+            RequirementStatus::Passed => "passed",
+            RequirementStatus::Failed => "failed",
+            RequirementStatus::Undecided => "undecided",
+        };
+        println!("    {}: {status}", outcome.id);
+        if !outcome.validators.is_empty() {
+            println!("      validators: {}", outcome.validators.join(", "));
+        }
+        for assertion in &outcome.assertions {
+            println!(
+                "      [{}] {}{}",
+                if assertion.passed { "pass" } else { "fail" },
+                assertion.name,
+                assertion
+                    .detail
+                    .as_deref()
+                    .map(|detail| format!(" — {detail}"))
+                    .unwrap_or_default(),
+            );
+        }
+        if let Some(detail) = &outcome.detail {
+            println!("      {detail}");
+        }
+    }
+}
+
 /// Print the outcome of a required build step (install or build), or that it was
 /// never reached.
 fn print_step(label: &str, step: Option<&StepResult>) {
@@ -466,11 +543,16 @@ fn print_step(label: &str, step: Option<&StepResult>) {
     }
 }
 
-/// Locate the test case catalog root (see `tcab run`).
-fn catalog_root() -> PathBuf {
-    std::env::var_os("TCAB_TEST_CASES_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("test-cases"))
+/// Resolve the case `tcab validate` names, authored or suite-defined, through
+/// `resolver`.
+fn resolve_case(
+    resolver: &test_cabinet_core::TestCaseResolver,
+    test_case: &str,
+    version: &str,
+) -> anyhow::Result<test_cabinet_core::test_case::TestCaseVersion> {
+    resolver
+        .resolve(test_case, version)
+        .with_context(|| format!("resolving {test_case}@{version}"))
 }
 
 #[cfg(test)]

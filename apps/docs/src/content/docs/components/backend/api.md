@@ -95,12 +95,32 @@ no-op unless re-ingestion is forced. A whole-catalog scan also prunes any
 `(slug, version)` the checkout no longer declares, keeping the ones a stored run
 still references.
 
+The scan covers the [test suites](/test-suites/overview/) tree beside the
+authored catalog. Every definition a suite version offers is lowered into the
+same store as an ordinary test case version, carrying the suite coordinate it
+came from, and the suite's own entities are stored for the [suite
+reads](#test-suites). A whole-catalog scan enumerates both trees, so it prunes a
+suite version the checkout no longer declares along with the versions it
+defined.
+
+A whole-catalog scan refuses a prune that an empty tree would cause: it keeps
+the stored authored test-case versions when it finds no version under
+`test-cases/`, the stored game jams when it finds none under `game-jams/`, the
+stored suite versions and the case versions they defined when it finds no suite
+version, and the stored [test-case groups](#test-case-groups) when it accepts no
+group. Each tree answers for its own kind only, so a populated `game-jams/` does
+not let an empty `test-cases/` prune. A refused prune is logged and reported
+under `refusedPrunes`, one sentence per refusal naming what was kept. A refusal
+is reported only when the store held something the prune would have removed.
+`force` does not lift the refusal.
+
 The request body is optional JSON:
 
 ```jsonc
 {
   "testCases": ["carom", "coil@v1.1.0"], // restrict the scan (default: all)
   "force": true, // re-ingest even versions already in the store
+  "mode": "changed", // ingest only versions whose content differs from the store
   "catalogVersion": "a1b2c3", // tag a whole-catalog ingest with its content version
 }
 ```
@@ -111,14 +131,38 @@ expanding to every version the case declares (`"carom"`), or a version-qualified
 version-qualified form re-ingests a single edited version without re-rendering
 the case's others.
 
+An entry the authored catalog does not know is resolved against the suites tree
+in the same two spellings. A suite slug expands to every definition of every
+version that suite declares, and `<suite>@<version>` to every definition of that
+one version.
+
 `force` overwrites a version already stored and re-renders its references, for
 development iteration on a version no run has been published against. A version
 that published runs reference is immutable and is revised by adding a new
 version.
 
+Ingest computes a digest for each version it scans, and the stored version
+record keeps the digest it was ingested from. The digest is SHA-256 over the
+version folder's files, visiting relative paths in sorted order and hashing each
+path followed by its bytes. A suite version's digest also covers the suite's
+`suite.toml`, since the display name every lowered definition reports comes from
+it. A legacy case's digest also covers
+`test-cases/reference-builds.lock.json`.
+
+`"mode": "changed"` ingests a target when the store holds no record for it, when
+its stored digest differs from the checkout's, or when the stored record's
+catalog version differs from the backend's. Every other target reports
+`ingested: false` with `reason: "unchanged"`. A whole-catalog `changed` scan
+prunes as any whole-catalog scan does. When `/healthz` would report
+`storeReady: false`, a `changed` scan ingests every target, since no stored
+record is servable. `force` rewrites every target in
+either mode.
+
 A scan against a store stamped with another record format is promoted to a
 forced whole-catalog scan, whatever the request asked for. This repairs a store
-after a backend upgrade that changed the record shapes.
+after a backend upgrade that changed the record shapes. Its prune of versions
+and suite versions is exempt from the empty-tree refusal, since this build can
+read nothing the store holds.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it
@@ -127,7 +171,8 @@ versions instead of re-rendering them. A changed or first-seen token forces a
 full re-ingest and advances the recorded marker, so content that changed under
 an unchanged version string is still picked up. The marker lives in the store,
 so a fresh store re-ingests unconditionally. A partial scan ignores
-`catalogVersion` and leaves the marker untouched.
+`catalogVersion` and leaves the marker untouched, and so does a scan that
+refused a prune, so the next scan carrying the same token is forced.
 
 A full re-render can take a minute or more, so the response shape is content
 negotiated. By default the call answers once with the full JSON report. A client
@@ -141,9 +186,26 @@ discriminated by an `event` tag:
 { "event": "version", "index": 1, "total": 31,     // one per completed version
   "slug": "carom", "version": "v1.0.0",
   "ingested": true, "renderedReferences": 3 }
+{ "event": "version", "index": 2, "total": 31,     // a version a `changed` scan skipped
+  "slug": "coil", "version": "v1.1.0",
+  "ingested": false, "renderedReferences": 0, "reason": "unchanged" }
+{ "event": "version", "index": 3, "total": 31,     // a version that failed to resolve
+  "slug": "carom-efficiency", "version": "v1.0.0",
+  "ingested": false, "renderedReferences": 0,
+  "problem": "test suite `carom@v1.0.0` is invalid: test-cases/efficiency.toml: …" }
 { "event": "done", "total": 31, "ingested": 25, "skipped": 6 } // closing summary
+{ "event": "done", "total": 2, "ingested": 0, "skipped": 2,      // a summary with a
+  "refusedPrunes": ["kept 189 stored authored version(s): …"] } // refused prune
 { "event": "error", "message": "…" }               // closing line if the scan aborts
 ```
+
+A suite version or definition that fails to resolve is a `version` line carrying
+`ingested: false` and a `problem` naming the file and the failure, and it counts
+toward `skipped`.
+
+The default JSON report carries `testCaseVersions`, `testSuites` and, when a
+prune was refused, `refusedPrunes`. The closing `done` line carries
+`refusedPrunes` the same way, and both omit it when nothing was refused.
 
 The stream has already sent a `200` by the time it knows the outcome, so a late
 failure arrives as a closing `error` line rather than an HTTP error status.
@@ -182,6 +244,12 @@ description rides the resolved version's variant.
       "difficulty": "easy",
       "tags": ["arcade"],
       "summary": "A duel of angles.",
+      // The suite coordinate, present only on a case a test suite defines.
+      "suite": {
+        "suite": "carom",
+        "suiteVersion": "v1.0.0",
+        "definition": "end-to-end",
+      },
       // The showcase preview, or null when no variant of the latest visible
       // version declares a showcase.
       "showcase": {
@@ -206,6 +274,11 @@ heavier, the description, the variants with their prompts, seeded specs,
 references and checklists, plus the changelog and errata, lives on [`GET
 /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion) and
 is fetched only for the case a visitor opens.
+
+A case a [test suite](/test-suites/overview/) defines carries the `suite`
+coordinate it was lowered from: the suite, the suite version, and the definition
+inside it. An authored case carries none, which is how a client tells the two
+apart and groups the suite-defined ones under their suite.
 
 A case whose latest manifest cannot be read is omitted from this listing rather
 than failing it.
@@ -250,6 +323,12 @@ A representative response:
   "testType": "end-to-end",
   "tags": ["arcade", "2d"],
   "summary": "A two-paddle rally game.",
+  // Present only on a version a test suite defines; see `GET /test-cases`.
+  "suite": {
+    "suite": "carom",
+    "suiteVersion": "v1.0.0",
+    "definition": "end-to-end",
+  },
   "description": "## Carom\n…",
   "changelog": "…",
   "maxRuntimeSeconds": 1800,
@@ -333,6 +412,11 @@ A representative response:
 }
 ```
 
+A version a test suite defines carries on each variant the `referenceBuilds` of
+its suite version: each engine the version supports with an [uploaded reference
+build](#put-suitesslugversionsversionreference-buildsengine), mapped to the URL it
+is played at, relative to the backend.
+
 The response also carries the type-specific manifest blocks the case declares,
 such as an asset case's `tool`, `output`, and per-kind spec, and a simulation,
 match, or replay block. `404` if the version has not been ingested. Schema:
@@ -384,6 +468,18 @@ the [validator](/components/core/validation/) runs it. These files are
 reporter-side and are never seeded into the model's run container. The array is
 empty for a version that declares no scripted items.
 
+### `GET /test-cases/{slug}/versions/{version}/suite-files`
+
+List the store-relative keys of the suite version a suite-defined version was
+lowered from, as a sorted JSON string array: its suite manifest and `version.toml`, its specification
+folders, its definition files, its validator project, and its debug API
+declaration. A run of a suite-defined case is judged against its suite, so a
+backend-driven run fetches the whole set through the artifacts route and rebuilds
+the version folder in its definition store. The prompt the harness receives is
+rendered from that model, and the [requirement
+outcomes](/test-suites/validators/) are recorded against the requirements it
+declares. The array is empty for an authored version.
+
 ### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
 
 Fetch one reference build's committed baseline validation media
@@ -412,6 +508,103 @@ jam](/testing/game-jam/overview/) built by the required `model`, oldest first,
 across every harness. The driver reads this before seeding a repeated jam run so
 the run can be briefed on earlier entries. Earlier runs count whether or not
 they were published; only those that captured a README appear.
+
+## Test suites
+
+These endpoints present the [test suites](/test-suites/overview/) the backend has
+ingested. They read the definition store rather than the checkout, so a
+deployment whose checkout is absent still serves what it ingested. The test cases
+a suite defines are resolved through the `/test-cases` family above like any
+other case, addressed by the catalog identity each definition was ingested under.
+
+### `GET /test-suites`
+
+Every ingested suite, under `testSuites`, with the versions it holds oldest
+first. Each version carries the identity a listing renders: its name, summary,
+tags, and whether it is experimental. Experimental versions are included only
+when the backend is configured to offer them, and a suite left with no visible
+version is omitted with them.
+
+```jsonc
+{
+  "testSuites": [
+    {
+      "slug": "carom",
+      "versions": [
+        {
+          "version": "v1.0.0",
+          "name": "Carom",
+          "summary": "A pool-table arcade game.",
+          "tags": ["arcade", "2d"],
+          "experimental": false,
+        },
+      ],
+    },
+  ],
+}
+```
+
+A version whose stored record cannot be read is omitted from this listing rather
+than failing it.
+
+### `GET /test-suites/{slug}/{version}`
+
+One suite version resolved: its [manifest](/test-suites/suite-manifest/) with the
+described prose and changelog inlined, the
+[specifications](/test-suites/specifications/) with their requirements and the
+[validator](/test-suites/validators/) modules each requirement claims, the [test
+case definitions](/test-suites/test-case-definition/), the
+[demonstrations](/test-suites/demonstrations/), the engines the version ships a
+[reference implementation](/test-suites/reference-implementations/) for, the
+bundled [assets](/test-suites/assets/), and the
+[showcase](/test-suites/showcase/).
+
+Each definition carries the catalog identity it was ingested under, so a reader
+moves from a definition to the test case it became in one step. Beside the
+record, `referenceBuilds` maps each engine with an [uploaded reference
+build](#put-suitesslugversionsversionreference-buildsengine) to the URL the build
+is played at, relative to the backend. An experimental
+version resolves only when the backend is configured to offer experimental
+versions; otherwise it answers `404` as if it were not ingested.
+
+### `GET /test-suites/{slug}/{version}/showcase/{path...}`
+
+Fetch one media file of the version's showcase, where `{path}` is the plain file
+name its carousel declares. The content type follows the extension.
+
+### `GET /test-suites/{slug}/{version}/assets/{path...}`
+
+Fetch one file of one bundled asset, addressed as `<asset id>/<file>`. The
+content type follows the extension.
+
+Both byte routes resolve the path inside the stored suite version and refuse one
+that leaves it.
+
+### `PUT /suites/{slug}/versions/{version}/reference-builds/{engine}`
+
+Upload the static build of the version's
+[reference implementation](/test-suites/reference-implementations/) for one
+engine, as a gzipped tar whose root is the build's root and holds its
+`index.html`. The backend unpacks it into the definition store beside the suite
+record at `suites/<slug>/<version>/reference-builds/<engine>/`, replacing any
+previous upload for that engine atomically. It answers `201` for a first upload
+and `200` for a replacement, with the `engine` and the `url` the build is played
+at.
+
+The backend refuses a version it has not ingested with `404` and an engine none
+of the version's definitions declare with `422`, each naming the reason. Uploads
+to preview versions are accepted, so a reference implementation can be played
+from a preview. The route takes the same authorization as `POST /ingest`.
+
+A whole-catalog prune that drops a suite version drops its reference builds with
+it.
+
+### `GET /suites/{slug}/versions/{version}/reference-builds/{engine}/{path...}`
+
+Serve one file of an uploaded reference build, with the content types and index
+fallback the [artifact service](/components/artifacts/overview/) uses for a run's
+`build/`. The build's root, with or without the trailing slash, serves its
+`index.html`.
 
 ## Test case groups
 

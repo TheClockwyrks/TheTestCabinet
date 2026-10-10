@@ -18,6 +18,7 @@ use super::*;
 fn clean() -> ValidationSummary {
     ValidationSummary {
         loaded: true,
+        requirements: Vec::new(),
         install: Some(step("npm ci", true)),
         build: Some(step("npm run build", true)),
         ..Default::default()
@@ -87,6 +88,7 @@ fn a_clean_pass_has_no_faults() {
 fn a_tree_that_did_not_load_fails() {
     let summary = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some("uncaught TypeError on load".to_string()),
         ..clean()
     };
@@ -128,6 +130,7 @@ fn a_type_that_never_runs_the_build_steps_does_not_fail_on_their_absence() {
     // fail every adversarial pass ever run.
     let summary = ValidationSummary {
         loaded: true,
+        requirements: Vec::new(),
         install: None,
         build: None,
         ..Default::default()
@@ -477,6 +480,7 @@ fn every_fault_is_reported_together() {
     // everything to fix rather than one thing per re-run.
     let mut summary = ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some("build produced no dist/build/out directory".to_string()),
         build: Some(step("npm run build", false)),
         ..clean()
@@ -516,5 +520,160 @@ fn match_result(outcome: AdversarialOutcome) -> AdversarialResult {
         detail: None,
         controller_module: "dist/controller.wasm".to_string(),
         replays: Vec::new(),
+    }
+}
+
+// --- Suite-defined requirements ---------------------------------------------
+
+/// One requirement outcome, in the shape the suite's validator runner records it.
+fn requirement(
+    id: &str,
+    kind: SuiteRequirementKind,
+    status: RequirementStatus,
+) -> RequirementOutcome {
+    let (specification, requirement) = id.split_once('/').expect("a `<spec>/<requirement>` id");
+    RequirementOutcome {
+        id: id.to_string(),
+        specification: specification.to_string(),
+        requirement: requirement.to_string(),
+        kind,
+        status,
+        validators: vec![format!("{requirement}.ts")],
+        assertions: Vec::new(),
+        detail: None,
+    }
+}
+
+#[test]
+fn a_passing_requirement_is_not_a_fault() {
+    let summary = ValidationSummary {
+        requirements: vec![requirement(
+            "ball-physics/constant-speed",
+            SuiteRequirementKind::Functional,
+            RequirementStatus::Passed,
+        )],
+        ..clean()
+    };
+    assert!(end_to_end(&summary).is_empty());
+}
+
+#[test]
+fn a_failed_requirement_fails_the_pass() {
+    let summary = ValidationSummary {
+        requirements: vec![requirement(
+            "ball-physics/constant-speed",
+            SuiteRequirementKind::Functional,
+            RequirementStatus::Failed,
+        )],
+        ..clean()
+    };
+    let faults = end_to_end(&summary);
+    assert_eq!(faults.len(), 1, "unexpected faults: {faults:?}");
+    assert!(
+        faults[0].contains("ball-physics/constant-speed"),
+        "unexpected fault: {}",
+        faults[0]
+    );
+}
+
+#[test]
+fn an_undecided_functional_requirement_fails_the_pass() {
+    // Nothing decided a requirement the case declares, so the tree has not been shown
+    // to satisfy everything the case declares — the same rule an inconclusive
+    // validator falls under.
+    let summary = ValidationSummary {
+        requirements: vec![requirement(
+            "ball-physics/constant-speed",
+            SuiteRequirementKind::Functional,
+            RequirementStatus::Undecided,
+        )],
+        ..clean()
+    };
+    let faults = end_to_end(&summary);
+    assert_eq!(faults.len(), 1, "unexpected faults: {faults:?}");
+    assert!(
+        faults[0].contains("undecided"),
+        "unexpected fault: {}",
+        faults[0]
+    );
+}
+
+#[test]
+fn a_non_functional_requirement_is_never_a_fault() {
+    // A non-functional requirement declares no validator and is judged by review, so
+    // being undecided is what it always is rather than a gap in the tree.
+    let summary = ValidationSummary {
+        requirements: vec![RequirementOutcome {
+            validators: Vec::new(),
+            ..requirement(
+                "ui/readable",
+                SuiteRequirementKind::NonFunctional,
+                RequirementStatus::Undecided,
+            )
+        }],
+        ..clean()
+    };
+    assert!(end_to_end(&summary).is_empty());
+}
+
+/// A checkout holding an empty authored catalog and the committed fixture suite,
+/// laid out as a suite folder with one exported version and one draft.
+fn suite_checkout() -> tempfile::TempDir {
+    fn copy(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).expect("the destination is created");
+        for entry in std::fs::read_dir(from).expect("the source is readable") {
+            let entry = entry.expect("the entry is readable");
+            let target = to.join(entry.file_name());
+            if entry.path().is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), &target).expect("the file is copied");
+            }
+        }
+    }
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir_all(dir.path().join("test-cases")).expect("the authored tree");
+    copy(
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../contracts/crates/contracts/fixtures/test-suite"),
+        &dir.path().join("test-suites"),
+    );
+    dir
+}
+
+// `tcab validate` names a suite-defined case the way it names an authored one, and
+// resolves it out of the exported version at `test-suites/<slug>/versions/v<x.y.z>/`
+// with the variant and engine the command selects next.
+#[test]
+fn a_suite_case_resolves_from_its_exported_version() {
+    let checkout = suite_checkout();
+    let resolver = catalog::resolver_at(&checkout.path().join("test-cases"));
+
+    let test_case =
+        resolve_case(&resolver, "carom-end-to-end", "v1.0.0").expect("the suite case resolves");
+
+    assert_eq!(test_case.slug, "carom-end-to-end");
+    assert_eq!(
+        test_case.root,
+        checkout.path().join("test-suites/carom/versions/v1.0.0")
+    );
+    assert!(test_cabinet_core::test_suite::is_suite_defined(&test_case));
+    test_case
+        .variant(test_cabinet_core::test_suite::SUITE_VARIANT_SLUG)
+        .expect("the implicit variant is selectable");
+    engines::resolve_for_case("none", &test_case).expect("the engineless run is supported");
+}
+
+// A draft is authored state rather than an exported version, so nothing in it is a
+// case `tcab validate` can name.
+#[test]
+fn a_draft_definition_does_not_resolve() {
+    let checkout = suite_checkout();
+    let resolver = catalog::resolver_at(&checkout.path().join("test-cases"));
+
+    for version in ["v1.0.0", "main"] {
+        let error = resolve_case(&resolver, "carom-sketch", version)
+            .expect_err("a draft's definition is not a case");
+        assert!(format!("{error:#}").contains("carom-sketch"), "{error:#}");
     }
 }

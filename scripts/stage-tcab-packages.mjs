@@ -17,16 +17,22 @@
 //   - apps/docs/.../testing/end-to-end/overview.md (Packages)
 //
 // Each package is staged as a publish-shaped copy: its `package.json` (with
-// dev-only fields dropped) plus the files its `files` field publishes (its built
-// `dist/`). Any dependency on ANOTHER @clockwyrks package is rewritten to a
+// dev-only and registry fields dropped) plus the files its `files` field publishes
+// (its built `dist/`). Any dependency on ANOTHER @clockwyrks package is rewritten to a
 // relative `file:` path within the output, and every peer dependency is marked
 // optional — so the staged set installs entirely offline, and a 2D consumer is
 // never forced to pull a 3D peer (e.g. `three`) it does not import.
 //
-// Usage: node scripts/stage-tcab-packages.mjs [outDir]   (default /opt/tcab-packages)
+// Usage: node scripts/stage-tcab-packages.mjs [--manifests-only] [outDir]
+//        (outDir defaults to /opt/tcab-packages)
+//
+// `--manifests-only` stages each package's rewritten `package.json` alone, without
+// building the workspace or copying what it publishes. It is how
+// stage-tcab-packages.test.mjs checks the staged manifests of the real closure
+// without a build.
 //
 // The SHIPPABLE list below is the superset of the SHIPPABLE_PACKAGES allowlist in
-// crates/core/src/test_case.rs. That allowlist is what a case's manifest `packages`
+// contracts/crates/contracts/src/test_case.rs. That allowlist is what a case's manifest `packages`
 // names are validated against, so every name a case may request must appear in both
 // lists. The extra entries here are ENGINE runtimes (@clockwyrks/simple-2d,
 // @clockwyrks/structured-2d, @clockwyrks/simple-3d, @clockwyrks/structured-3d) and the shared validator harness
@@ -59,7 +65,7 @@ import { fileURLToPath } from "node:url";
 /**
  * Everything staged into the package store. The first two are the packages a test
  * case may request via its manifest `packages` key, and those two MUST also appear
- * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The rest are engine
+ * in SHIPPABLE_PACKAGES in contracts/crates/contracts/src/test_case.rs. The rest are engine
  * runtimes and the shared validator harness: never nameable by a case — so they are
  * staged from here and are deliberately absent from that Rust allowlist.
  *
@@ -84,18 +90,31 @@ const SHIPPABLE = [
 ];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const outDir = resolve(process.argv[2] ?? "/opt/tcab-packages");
-const packagesDir = join(repoRoot, "packages");
+const args = process.argv.slice(2);
+const manifestsOnly = args.includes("--manifests-only");
+const positional = args.filter((arg) => arg !== "--manifests-only");
+const outDir = resolve(positional[0] ?? "/opt/tcab-packages");
+// The package directories of the npm workspace: this repository's own, and the
+// contracts repository's (the `contracts/` submodule), which holds
+// @clockwyrks/asset-contract, a dependency of the voxel and particle runtimes.
+const packagesDirs = [
+  join(repoRoot, "packages"),
+  join(repoRoot, "contracts", "packages"),
+];
 
-// Map every in-repo package name -> { dir, pkg } by reading packages/*/package.json.
+// Map every in-repo package name -> { dir, pkg } by reading each directory's
+// */package.json.
 const byName = new Map();
-for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-  if (!entry.isDirectory()) continue;
-  const dir = join(packagesDir, entry.name);
-  const manifestPath = join(dir, "package.json");
-  if (!existsSync(manifestPath)) continue;
-  const pkg = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (pkg?.name) byName.set(pkg.name, { dir, pkg });
+for (const packagesDir of packagesDirs) {
+  if (!existsSync(packagesDir)) continue;
+  for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(packagesDir, entry.name);
+    const manifestPath = join(dir, "package.json");
+    if (!existsSync(manifestPath)) continue;
+    const pkg = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (pkg?.name) byName.set(pkg.name, { dir, pkg });
+  }
 }
 
 // The transitive closure of the shippable packages over their @clockwyrks
@@ -105,7 +124,10 @@ const visit = (name) => {
   if (closure.has(name)) return;
   const entry = byName.get(name);
   if (!entry)
-    throw new Error(`shippable package ${name} not found under packages/`);
+    throw new Error(
+      `shippable package ${name} not found under packages/ or contracts/packages/` +
+        " (is the contracts submodule checked out?)",
+    );
   closure.add(name);
   for (const dep of Object.keys(entry.pkg.dependencies ?? {})) {
     if (dep.startsWith("@clockwyrks/")) visit(dep);
@@ -116,15 +138,17 @@ const members = [...closure];
 
 // Build each package (its `build` script is `tsc -b`, which also builds the
 // project references it depends on), so `dist/` is present to stage.
-console.log(`building ${members.join(", ")}`);
-execFileSync(
-  "npm",
-  ["run", "build", ...members.flatMap((n) => ["-w", n]), "--if-present"],
-  {
-    cwd: repoRoot,
-    stdio: "inherit",
-  },
-);
+if (!manifestsOnly) {
+  console.log(`building ${members.join(", ")}`);
+  execFileSync(
+    "npm",
+    ["run", "build", ...members.flatMap((n) => ["-w", n]), "--if-present"],
+    {
+      cwd: repoRoot,
+      stdio: "inherit",
+    },
+  );
+}
 
 // Stage each package into outDir/<name> (the name carries its @scope).
 rmSync(outDir, { recursive: true, force: true });
@@ -136,10 +160,24 @@ for (const name of members) {
   // Rewrite the manifest for offline consumption: drop dev-only fields, repoint
   // each @clockwyrks dependency at its staged sibling via a relative `file:`
   // path, and make every peer optional (a game provides its own three, etc.).
+  //
+  // The registry fields go too. A package published to the project's feed carries
+  // `publishConfig` (the feed's URL) and `repository`, `homepage` and `bugs` (the
+  // project's), and a staged manifest is vendored into a model's workspace, where
+  // those would name the project. Nothing installs the staged copy from a
+  // registry, so nothing reads them there.
   const staged = { ...pkg };
-  delete staged.private;
-  delete staged.scripts;
-  delete staged.devDependencies;
+  for (const field of [
+    "private",
+    "scripts",
+    "devDependencies",
+    "publishConfig",
+    "repository",
+    "homepage",
+    "bugs",
+  ]) {
+    delete staged[field];
+  }
   if (staged.dependencies) {
     staged.dependencies = Object.fromEntries(
       Object.entries(staged.dependencies).map(([dep, spec]) => {
@@ -167,7 +205,7 @@ for (const name of members) {
   );
 
   // Copy the files the package publishes (default ["dist"]).
-  for (const file of pkg.files ?? ["dist"]) {
+  for (const file of manifestsOnly ? [] : (pkg.files ?? ["dist"])) {
     const src = join(dir, file);
     if (!existsSync(src)) {
       throw new Error(

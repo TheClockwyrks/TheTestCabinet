@@ -22,6 +22,7 @@ there, and that template is what keeps this suite's six runs of one file six
 distinct tests in the metrics rather than one.
 """
 
+import json
 import re
 
 from the_test_cabinet_ci import artifacts_dir, enter_repo_root, fail, run, succeeded
@@ -60,6 +61,24 @@ if image_pin != client_pin:
         "Move both to the same version, then reinstall the engines:",
         "    bash .devcontainer/tools/browsers.sh",
     )
+
+# The contracts submodule pins a third: its own `playwright`, which its Rust
+# browser tests drive the engines of the same image through. Its pipeline runs
+# in the image this checkout names, and moving the image is this repository's
+# change, so this is where the three are held to one version. A checkout that
+# has not initialized the submodule has nothing to compare.
+CONTRACTS = root / "contracts" / "package.json"
+if CONTRACTS.is_file():
+    contracts_manifest = json.loads(CONTRACTS.read_text(encoding="utf-8"))
+    contracts_pin = contracts_manifest.get("devDependencies", {}).get("playwright")
+    if contracts_pin != image_pin:
+        fail(
+            "The contracts submodule's Playwright pin disagrees with the image's:",
+            f"    {COMPOSE} names {image_pin}, which is what installs the engines",
+            f"    contracts/package.json names {contracts_pin}, which is what its tests drive them with",
+            "Move contracts' pin in the contracts repository (scripts/repos/render.py --update contracts),",
+            "then bump the submodule pin here with it.",
+        )
 
 # The engines belong to the image this suite runs in, not to the npm workspace:
 # they are downloaded when that image is built, so `npm ci` leaves them absent

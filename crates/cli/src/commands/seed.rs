@@ -6,13 +6,12 @@
 //! step and leaves the result on disk, so the inputs — the specification, the
 //! seeded assets, and the fresh git history — can be examined directly.
 
-use std::path::PathBuf;
-
 use anyhow::Context;
 use test_cabinet_core::{
-    BrowserRenderer, FsRepoSeeder, ReferenceRenderer, RepoSeeder, SeedRequest, TestCaseCatalog,
+    BrowserRenderer, FsRepoSeeder, ReferenceRenderer, RepoSeeder, SeedRequest,
 };
 
+use crate::catalog;
 use crate::cli::SeedArgs;
 use crate::commands::engines;
 
@@ -33,8 +32,7 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
         args.out_dir.display(),
     );
 
-    let catalog = TestCaseCatalog::new(catalog_root());
-    let test_case = catalog
+    let test_case = catalog::resolver()
         .resolve(&args.test_case, &args.version)
         .with_context(|| format!("resolving {}@{}", args.test_case, args.version))?;
     let variant = test_case
@@ -143,11 +141,4 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-/// Locate the test case catalog root (see `tcab run`).
-fn catalog_root() -> PathBuf {
-    std::env::var_os("TCAB_TEST_CASES_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("test-cases"))
 }

@@ -52,12 +52,14 @@ mod models;
 mod publish_jobs;
 mod runs;
 mod stats;
+mod suite_reference_builds;
 mod test_case_groups;
 mod test_cases;
+mod test_suites;
 mod tournaments;
 
-// Re-export the HTTP response contract types so the `contract-codegen` generator
-// can name them (the handler modules themselves stay private).
+// Re-export the HTTP response contract types so the `api-codegen` generator can
+// name them (the handler modules themselves stay private).
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
@@ -102,11 +104,13 @@ pub use models::{
     AliasInput, AliasOut, ListPriceRefreshOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse,
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
+pub use suite_reference_builds::ReferenceBuildOut;
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
 pub use test_cases::{
     CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
     VersionsResponse,
 };
+pub use test_suites::{SuiteOut, SuiteVersionResponse, SuitesResponse};
 // The `/stats` response contract lives beside its folds in `crate::stats`
 // (the handlers in `api::stats` own only the corpus); re-exported here so the
 // generator names it the way it names every other response envelope.
@@ -274,6 +278,10 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/validation-files",
             get(test_cases::validation_files),
         )
+        .route(
+            "/test-cases/{slug}/versions/{version}/suite-files",
+            get(test_cases::suite_files),
+        )
         // One reference build's committed baseline validation media
         // (`<item>__<output>.<ext>`), synthesized once at capture-baselines time from
         // the reference implementation and served case-scoped — the invariant
@@ -291,6 +299,41 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}",
             get(test_cases::case_showcase),
+        )
+        // The test suites the backend has ingested: the listing, one version's
+        // resolved record, and the bytes that record points at. They read the
+        // definition store rather than the checkout, so a deployment whose checkout
+        // is absent still serves what it ingested. The test cases a suite defines
+        // are served through the `/test-cases` family above like any other case,
+        // carrying the suite coordinate they were lowered from.
+        .route("/test-suites", get(test_suites::list))
+        .route("/test-suites/{slug}/{version}", get(test_suites::version))
+        .route(
+            "/test-suites/{slug}/{version}/showcase/{*path}",
+            get(test_suites::showcase_file),
+        )
+        .route(
+            "/test-suites/{slug}/{version}/assets/{*path}",
+            get(test_suites::asset_file),
+        )
+        // A suite version's reference builds. The Spec Cabinet uploads each
+        // engine's verified static build (with the authorization `POST /ingest`
+        // carries), and the console plays it from the reads below, which serve it the
+        // way the artifact service serves a run's `build/`. Both the bare and
+        // trailing-slash roots serve the build's `index.html`, since `{*path}` does
+        // not match an empty path. No `DefaultBodyLimit` layer: `upload` takes the
+        // raw `Body` and caps it as it spools.
+        .route(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}",
+            put(suite_reference_builds::upload).get(suite_reference_builds::build_root),
+        )
+        .route(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}/",
+            get(suite_reference_builds::build_root),
+        )
+        .route(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}/{*path}",
+            get(suite_reference_builds::build_path),
         )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same
         // harness + model), oldest first. The driver reads this before seeding a

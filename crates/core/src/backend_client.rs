@@ -195,6 +195,21 @@ pub trait BackendClient: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// The store-relative keys of every file of the suite version a suite-defined
+    /// version was lowered from — its `suite.toml`, its specification folders, its
+    /// definition files, its `validators/` project and its debug API declaration.
+    /// (`GET …/suite-files`)
+    ///
+    /// [`materialize_version`] fetches this whole set (via [`Self::artifact`]) into the
+    /// definition store, which rebuilds the version folder there: the prompt a
+    /// suite-defined run hands the harness is rendered from that model, and one
+    /// requirement outcome per requirement is recorded against it. Empty for an
+    /// authored version — it was lowered from no suite — and for clients that serve no
+    /// suites at all.
+    async fn suite_files(&self, _slug: &str, _version: &str) -> Result<Vec<PathBuf>> {
+        Ok(Vec::new())
+    }
+
     /// Fetch the backend-rendered reference screenshots for a variant: the common
     /// references plus that variant's own.
     /// (`GET …/references/{scope}/{view}.png`)
@@ -574,8 +589,22 @@ pub async fn materialize_version(
         workspace.insert(file.source_path.clone());
     }
     for key in sources.iter().chain(assets.iter()).chain(workspace.iter()) {
-        let artifact = client.artifact(slug, version, key).await?;
-        write_at(&root.join(key), &artifact.bytes)?;
+        fetch_into(client, slug, version, key, &root).await?;
+    }
+
+    // The suite a suite-defined version was lowered from. A run of one is judged
+    // against its suite rather than only seeded from it: the prompt handed to the
+    // harness is rendered from the definition and the specifications it selects, and
+    // one requirement outcome is recorded per requirement those specifications
+    // declare, decided by the suite's `validators/` project. None of that is
+    // reachable from the lowered manifest, so the version folder is rebuilt here out
+    // of the keys the store lists — `suite.toml`, the specification folders, the
+    // definition files, the validator project and the debug API declaration — and the
+    // suite model is read back out of the store directory, exactly as it is read out
+    // of a local checkout. An authored version lists none of this and the loop is
+    // empty.
+    for key in &client.suite_files(slug, version).await? {
+        fetch_into(client, slug, version, key, &root).await?;
     }
 
     // Reference screenshots: the backend renders them at ingest. Write each PNG
@@ -620,8 +649,7 @@ pub async fn materialize_version(
     if resolved.test_type == TestType::Adversarial {
         for id in ARENA_OPPONENT_IDS {
             let key = PathBuf::from("references").join(format!("{id}.wasm"));
-            let artifact = client.artifact(slug, version, &key).await?;
-            write_at(&root.join(&key), &artifact.bytes)?;
+            fetch_into(client, slug, version, &key, &root).await?;
         }
     }
 
@@ -633,8 +661,7 @@ pub async fn materialize_version(
     // exactly as a local checkout already ships them.
     for case in &resolved.cases {
         for key in [&case.input, &case.expected] {
-            let artifact = client.artifact(slug, version, key).await?;
-            write_at(&root.join(key), &artifact.bytes)?;
+            fetch_into(client, slug, version, key, &root).await?;
         }
     }
 
@@ -689,8 +716,7 @@ pub async fn materialize_version(
         }
     }
     for key in &scripts {
-        let artifact = client.artifact(slug, version, key).await?;
-        write_at(&root.join(key), &artifact.bytes)?;
+        fetch_into(client, slug, version, key, &root).await?;
     }
 
     // Rewrite path fields from store-relative keys to materialized host paths.
@@ -750,6 +776,30 @@ pub async fn materialize_version(
     }
 
     Ok((resolved, rendered))
+}
+
+/// Fetch one store-relative key into the definition store, naming the key when the
+/// store cannot serve it.
+///
+/// A version that references a file the store does not hold fails the run in setup,
+/// and the one thing that failure has to say is which key was missing: the transport
+/// error alone names a percent-encoded URL, which is not the key a definition
+/// declares.
+async fn fetch_into(
+    client: &dyn BackendClient,
+    slug: &str,
+    version: &str,
+    key: &Path,
+    root: &Path,
+) -> Result<()> {
+    let artifact = client.artifact(slug, version, key).await.map_err(|err| {
+        Error::Seeding(format!(
+            "the definition store cannot serve `{}` of `{slug}@{version}`: {err}",
+            forward_slash(key)
+        ))
+    })?;
+    write_at(&root.join(key), &artifact.bytes)?;
+    Ok(())
 }
 
 /// A [`crate::ReferenceRenderer`] that returns references already rendered by the
@@ -948,6 +998,17 @@ impl BackendClient for HttpBackendClient {
         let keys: Vec<String> = self
             .get_json(&format!(
                 "/test-cases/{}/versions/{}/validation-files",
+                encode(slug),
+                encode(version),
+            ))
+            .await?;
+        Ok(keys.into_iter().map(PathBuf::from).collect())
+    }
+
+    async fn suite_files(&self, slug: &str, version: &str) -> Result<Vec<PathBuf>> {
+        let keys: Vec<String> = self
+            .get_json(&format!(
+                "/test-cases/{}/versions/{}/suite-files",
                 encode(slug),
                 encode(version),
             ))
@@ -1593,6 +1654,191 @@ fn unknown_event(raw: &str) -> HarnessEvent {
             raw: serde_json::Value::String(raw.to_string()),
         },
     }
+}
+
+// The ingest API's request body, report and feed lines are its contract, which the
+// backend serves with too, so they live in `test_cabinet_contracts::ingest` and are
+// re-exported here; the HTTP client and the feed reader, which answers with core's
+// `Error`, stay.
+pub use test_cabinet_contracts::ingest::*;
+
+impl HttpBackendClient {
+    /// Trigger an ingest scan of the backend's checkout, reporting each line of the
+    /// streamed progress feed to `on_progress` as it arrives.
+    ///
+    /// `targets` restricts the scan: each entry is a bare id (a test case slug or
+    /// folder name, or a suite slug) or an `id@version`. An empty list scans the
+    /// whole checkout. `force` asks the backend to overwrite every target, and
+    /// `mode` decides which already-stored targets a scan without `force` rewrites
+    /// (see [`IngestMode`]).
+    ///
+    /// The endpoint is open — reading and writing definitions is gated at the
+    /// network layer rather than by an account — so no bearer token is sent.
+    ///
+    /// A scan that aborts reports it in band, on the stream that already answered
+    /// 200; that line is returned as the error it is, after being reported to
+    /// `on_progress` like every other line. A stream that ends without a closing
+    /// line is likewise a failure rather than a silent success.
+    #[instrument(
+        skip(self, on_progress),
+        fields(otel.kind = "client", http.request.method = "POST", ingest.targets = targets.len()),
+        err,
+    )]
+    pub async fn ingest(
+        &self,
+        targets: &[String],
+        force: bool,
+        mode: IngestMode,
+        on_progress: &mut (dyn FnMut(&IngestProgress) + Send),
+    ) -> Result<IngestSummary> {
+        let url = self.url("/ingest");
+        let body = ingest_body(targets, force, mode);
+        let response = self
+            .http
+            .post(&url)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .header(http::header::ACCEPT, "application/x-ndjson")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| ingest_err(&url, &err))?;
+        let mut response = error_for_status(&url, response)
+            .await
+            .map_err(|err| Error::Ingest(err.to_string()))?;
+
+        // NDJSON: accumulate bytes and emit one item per `\n`-terminated line,
+        // mirroring the job and publish watches.
+        let mut feed = IngestFeed::default();
+        let mut buffer = String::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|err| ingest_err(&url, &err))?
+        {
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(newline) = buffer.find('\n') {
+                let line: String = buffer.drain(..=newline).collect();
+                if let Some(progress) = feed.line(line.trim()) {
+                    on_progress(&progress);
+                }
+            }
+        }
+        // A final line the stream closed without a trailing newline on.
+        if let Some(progress) = feed.line(buffer.trim()) {
+            on_progress(&progress);
+        }
+        feed.finish(&format!("`{url}`"))
+    }
+}
+
+/// The ingest feed read one line at a time, wherever the lines come from: the
+/// streamed answer of `POST /ingest`, or the logs of a command that made that
+/// request inside a cluster.
+///
+/// A line that is not an event of the feed is answered with `None`. What the feed
+/// came to is read with [`finish`](Self::finish) once every line has been handed
+/// over.
+#[derive(Debug, Default)]
+pub struct IngestFeed {
+    summary: Option<IngestSummary>,
+    failure: Option<String>,
+}
+
+impl IngestFeed {
+    /// Read one line, answering with the event it is.
+    pub fn line(&mut self, line: &str) -> Option<IngestProgress> {
+        let progress = parse_ingest_line(line)?;
+        match &progress {
+            IngestProgress::Done {
+                total,
+                ingested,
+                skipped,
+                ..
+            } => {
+                self.summary = Some(IngestSummary {
+                    total: *total,
+                    ingested: *ingested,
+                    skipped: *skipped,
+                });
+            }
+            IngestProgress::Error { message } => self.failure = Some(message.clone()),
+            _ => {}
+        }
+        Some(progress)
+    }
+
+    /// What the feed came to: the summary its closing line carried, the failure an
+    /// `error` line reported, or a failure naming `source` when it ended without a
+    /// closing line, since a scan that did not say it finished did not finish.
+    pub fn finish(self, source: &str) -> Result<IngestSummary> {
+        if let Some(message) = self.failure {
+            return Err(Error::Ingest(message));
+        }
+        self.summary.ok_or_else(|| {
+            Error::Ingest(format!(
+                "the stream from {source} ended without a summary, so the scan did not finish"
+            ))
+        })
+    }
+}
+
+/// What the backend answered an uploaded suite reference build with.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceBuildUpload {
+    /// The engine the build was stored for.
+    pub engine: String,
+    /// The URL the build is played at, relative to the backend.
+    pub url: String,
+}
+
+impl HttpBackendClient {
+    /// Upload the static build of one suite version's reference implementation for
+    /// `engine`, as a gzipped tar whose root holds the build's `index.html`,
+    /// replacing any build the backend already holds for that engine.
+    ///
+    /// The backend refuses a version it has not ingested and an engine none of the
+    /// version's definitions declare, and that refusal is returned as the error
+    /// naming its reason. The route carries the authorization `POST /ingest` does,
+    /// so no bearer token is sent.
+    #[instrument(
+        name = "backend.upload_suite_reference_build",
+        skip(self, archive),
+        fields(otel.kind = "client", http.request.method = "PUT", archive.bytes = archive.len()),
+        err,
+    )]
+    pub async fn upload_suite_reference_build(
+        &self,
+        slug: &str,
+        version: &str,
+        engine: &str,
+        archive: Vec<u8>,
+    ) -> Result<ReferenceBuildUpload> {
+        let url = self.url(&format!(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}"
+        ));
+        let response = self
+            .http
+            .put(&url)
+            .headers(self.headers())
+            .header(http::header::CONTENT_TYPE, "application/gzip")
+            .body(archive)
+            .send()
+            .await
+            .map_err(|err| Error::Publish(format!("the upload to `{url}` failed: {err}")))?;
+        let response = error_for_status(&url, response).await?;
+        response
+            .json::<ReferenceBuildUpload>()
+            .await
+            .map_err(|err| {
+                Error::Publish(format!("the answer from `{url}` could not be read: {err}"))
+            })
+    }
+}
+
+/// An ingest request that never reached the backend, or whose stream broke.
+fn ingest_err(url: &str, err: &reqwest::Error) -> Error {
+    Error::Ingest(format!("the request to `{url}` failed: {err}"))
 }
 
 impl HttpBackendClient {

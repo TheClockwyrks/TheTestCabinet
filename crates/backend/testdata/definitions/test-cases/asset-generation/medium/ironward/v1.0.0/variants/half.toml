@@ -1,0 +1,11 @@
+# The half-size variant: the same tank sculpted in a volume with each extent
+# ~halved (rounded) from the case's base 40x30x80. Its `[voxel]` OVERRIDES the case
+# volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 20
+height = 15
+depth = 40
+background = "transparent"

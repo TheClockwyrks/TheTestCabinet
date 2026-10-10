@@ -38,6 +38,13 @@ spec:
             # staging and production and are never run or published.
             - name: TCAB_BACKEND_ALLOW_EXPERIMENTAL
               value: "true"
+            # Also ingest the test suite previews The Spec Cabinet writes to the
+            # suites checkout's `.previews/` folder. The repository mount below is
+            # live, so a preview written on the host is visible to the next ingest
+            # without a pod restart. Previews are experimental and exist only in the
+            # checkout they were written to, so no other overlay sets this.
+            - name: TCAB_BACKEND_INGEST_PREVIEWS
+              value: "true"
             # Export to the in-cluster Grafana LGTM stack (the observability
             # component). In-namespace Service DNS; the same value in every overlay.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

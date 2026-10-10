@@ -64,6 +64,26 @@ pub enum Error {
         detail: String,
     },
 
+    /// A [test suite](crate::test_suite) version could not be resolved into a
+    /// runnable test case: a file it declares is missing, disagrees with the folder
+    /// that holds it, or carries something resolution cannot lower.
+    ///
+    /// The suite counterpart of [`Self::InvalidTestCase`]. A suite is many files, so
+    /// this names the one that caused the failure alongside the suite coordinate —
+    /// "the suite is invalid" is not something an author can act on.
+    #[error("test suite `{suite}@{version}` is invalid: {file}: {detail}")]
+    InvalidTestSuite {
+        /// The suite slug.
+        suite: String,
+        /// The suite version, as the version folder names it (carrying its
+        /// leading `v`).
+        version: String,
+        /// The file that caused the failure, relative to the version folder.
+        file: String,
+        /// Human-readable explanation of what was wrong.
+        detail: String,
+    },
+
     /// A requested variant did not exist for a resolved test case version.
     #[error("variant `{variant}` of test case `{slug}@{version}` not found")]
     VariantNotFound {
@@ -278,6 +298,12 @@ pub enum Error {
     #[error("publishing the run: {0}")]
     Publish(String),
 
+    /// Ingesting a checkout into a backend's definition store failed: the backend
+    /// could not be reached, refused the request, or reported the scan aborted on
+    /// the progress feed it had already answered 200 on.
+    #[error("ingesting the checkout: {0}")]
+    Ingest(String),
+
     /// An R2 request failed: the object store could not be reached, or it
     /// rejected a signed `PutObject`/`ListObjectsV2`. Carries the key or prefix
     /// and the store's own explanation.
@@ -471,6 +497,42 @@ pub enum Error {
     Io(#[from] io::Error),
 }
 
+/// The suite runtime's errors are a subset of this crate's, variant for variant: the
+/// same fields and the same message, so a failure raised in `test_cabinet_suites`
+/// reads exactly as it did when that code was core's, and `?` in core converts it.
+/// The match is exhaustive, so a variant the suite runtime gains does not compile
+/// until it is mapped here.
+impl From<test_cabinet_suites::Error> for Error {
+    fn from(err: test_cabinet_suites::Error) -> Self {
+        use test_cabinet_suites::Error as Suites;
+        match err {
+            Suites::InvalidTestSuite {
+                suite,
+                version,
+                file,
+                detail,
+            } => Self::InvalidTestSuite {
+                suite,
+                version,
+                file,
+                detail,
+            },
+            Suites::PromptRender {
+                slug,
+                version,
+                detail,
+            } => Self::PromptRender {
+                slug,
+                version,
+                detail,
+            },
+            Suites::Engine(detail) => Self::Engine(detail),
+            Suites::Seeding(detail) => Self::Seeding(detail),
+            Suites::Io(err) => Self::Io(err),
+        }
+    }
+}
+
 /// Render a supporting detail as a trailing parenthetical, or nothing at all when there
 /// is none.
 ///
@@ -486,3 +548,7 @@ fn parenthesized(detail: &str) -> String {
         format!(" ({detail})")
     }
 }
+
+#[cfg(test)]
+#[path = "error.test.rs"]
+mod tests;

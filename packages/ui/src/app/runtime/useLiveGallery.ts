@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { RunSubject } from "@clockwyrks/run-record";
 import {
   NotSupportedError,
@@ -226,6 +226,9 @@ async function toVariantSummary(
     // case-detail Reference tab appears for the selected variant, and what its
     // engine switch offers.
     referenceBuilds: v.referenceBuilds ?? {},
+    // The suite coordinate of a suite-defined version, which is what tells the
+    // Play tab to list the suite's uploaded builds one entry per engine.
+    suite: info.suite ?? null,
     // An asset-generation variant's published reference frames (indices only —
     // the images and action logs live in the snapshot bucket). Null on a backend
     // that predates the field, so the tab simply never appears.
@@ -582,6 +585,44 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
         `/${encodeURIComponent(file)}`;
       return joinPath(backendUrl, path);
     },
+    [backendUrl],
+  );
+
+  // An ingested SUITE version's showcase media, and its bundled asset files.
+  // Suite-scoped for the same reason the case showcase above is case-scoped: a
+  // suite's showcase and assets are authored material committed with the version
+  // rather than run output, so the backend's suite byte routes — which read the
+  // stored suite version — are the single source, and a host with no backend
+  // resolves null.
+  const suiteShowcaseMediaUrl = useCallback(
+    (slug: string, version: string, file: string): string | null =>
+      backendUrl
+        ? joinPath(
+            backendUrl,
+            suiteFilePath(slug, version, "showcase", encodePath(file)),
+          )
+        : null,
+    [backendUrl],
+  );
+
+  const suiteAssetMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      asset: string,
+      file: string,
+    ): string | null =>
+      backendUrl
+        ? joinPath(
+            backendUrl,
+            suiteFilePath(
+              slug,
+              version,
+              "assets",
+              `${encodeURIComponent(asset)}/${encodePath(file)}`,
+            ),
+          )
+        : null,
     [backendUrl],
   );
 
@@ -1052,6 +1093,8 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
       validationMediaUrl,
       showcaseMediaUrl,
       caseShowcaseMediaUrl,
+      suiteShowcaseMediaUrl,
+      suiteAssetMediaUrl,
       validationBaselineUrl,
       referenceMediaUrl,
       runArchiveUrl,
@@ -1082,6 +1125,8 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
       validationMediaUrl,
       showcaseMediaUrl,
       caseShowcaseMediaUrl,
+      suiteShowcaseMediaUrl,
+      suiteAssetMediaUrl,
       validationBaselineUrl,
       referenceMediaUrl,
       runArchiveUrl,
@@ -1095,6 +1140,31 @@ function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   if (a.size !== b.size) return false;
   for (const id of a) if (!b.has(id)) return false;
   return true;
+}
+
+// A version-relative file path, each segment encoded but the separators kept: an
+// asset declares its files relative to its own folder, so a declared name may sit
+// in a subdirectory of it.
+function encodePath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+// One byte route of a stored suite version: the showcase directory or the assets
+// tree, then the caller's already-encoded path inside it. Spelled once so the two
+// resolvers above cannot disagree about the shape the backend serves.
+function suiteFilePath(
+  slug: string,
+  version: string,
+  directory: "showcase" | "assets",
+  path: string,
+): string {
+  return (
+    `/test-suites/${encodeURIComponent(slug)}` +
+    `/${encodeURIComponent(version)}/${directory}/${path}`
+  );
 }
 
 /** Join a base URL and an absolute path, collapsing the boundary slash. */

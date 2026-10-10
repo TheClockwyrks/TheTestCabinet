@@ -14,12 +14,9 @@
 // 3. gg must still be handed a whole agent. The resolution happens here; nothing
 //    downstream of it knows an import ever existed.
 
+import type { GgConfig, GgSavedAgent } from "@clockwyrks/backend-api/gg";
 import { describe, expect, it } from "vitest";
-import type {
-  GgAgentConfig,
-  GgConfig,
-  GgSavedAgent,
-} from "@clockwyrks/run-record/gg";
+import type { GgAgentConfig } from "@clockwyrks/run-record/gg";
 import {
   agentOverrides,
   agentSourcesFromDraft,

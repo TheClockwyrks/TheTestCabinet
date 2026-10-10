@@ -1,0 +1,23 @@
+[package]
+name = "test-cabinet-engines"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The built-in engine manifests, as data: the `engines/<slug>/engine.toml` files
+# baked into the binary, keyed by slug. The catalog that parses and resolves them
+# is `test-cabinet-suites`' `EngineCatalog`, which takes a manifest table as an
+# input; `test-cabinet-core` builds its default catalog over this one. The crate
+# depends on nothing, so the table can move with the manifests into the engines
+# repository without taking any code along.
+[lib]
+name = "test_cabinet_engines"
+path = "src/lib.rs"
+
+[dev-dependencies]
+# The slug-order test holds the table to the contract's `BUILT_IN_SLUGS`.
+test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+
+[lints]
+workspace = true

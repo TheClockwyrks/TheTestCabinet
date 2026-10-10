@@ -284,6 +284,10 @@ tmp/
 
 # What this repository alone ignores.
 !/apps/docs/public/schema/coverage/
+# The data contract's schemas, copied from the contracts submodule by the docs
+# site's prebuild (scripts/copy-contract-schemas.mjs).
+/apps/docs/public/schema/core/
+/apps/docs/public/schema/gg/
 !/crates/backend/src/coverage/
 !/packages/case-harness/test/host/root/dist/
 !/apps/web/.env.development
@@ -315,7 +319,6 @@ tcab-backend.sqlite*
 /.tcab-driver/
 /tcab-artifacts/
 .vendor/
-/.reingest-timestamp
 *.pyo
 *.pyd
 .pytest_cache/

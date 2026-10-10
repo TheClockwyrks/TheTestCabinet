@@ -171,7 +171,7 @@
       "type": "object"
     },
     "TokenPrices": {
-      "description": "Per-token prices (USD) used to compute the comparable cost.\n\nThese are the model's list prices, held on the model's catalog entry — not\nwhat whichever endpoint served the run charged for it. Reasoning tokens are\npriced at the output rate, so no separate field is needed.\n\nEach price is optional: `None` means the price is **unknown** (OpenRouter\ndoes not list one, or lists a nonsensical value such as a negative sentinel),\nwhich is distinct from `Some(0.0)` (a genuinely free class). A class priced\n`None` poisons any cost it contributes to rather than being silently treated\nas free — see [`Cost::comparable_from`].",
+      "description": "Per-token prices (USD) used to compute the comparable cost.\n\nThese are the model developer's published list prices, curated on the\nmodel's catalog entry — not the billed rate of whichever endpoint served the\nrun. Reasoning tokens are priced at the output rate, so no separate field is\nneeded.\n\nEach price is optional: `None` means the price is **unknown** (OpenRouter\ndoes not list one, or lists a nonsensical value such as a negative sentinel),\nwhich is distinct from `Some(0.0)` (a genuinely free class). A class priced\n`None` poisons any cost it contributes to rather than being silently treated\nas free — see [`Cost::comparable_from`].",
       "properties": {
         "cachedInput": {
           "default": null,

@@ -107,6 +107,7 @@ fn carom_manifest() -> StoredManifest {
         domains: vec![],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 

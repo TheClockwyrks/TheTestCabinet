@@ -3,7 +3,7 @@ title: Showcases
 ---
 
 A showcase is a curated presentation of a game: a player-facing description plus
-a short, ordered carousel of media. Two showcases exist, and they share one
+a short, ordered carousel of media. Three showcases exist, and they share one
 on-disk format:
 
 - The run showcase is the model's own presentation of the game it built. The
@@ -12,10 +12,14 @@ on-disk format:
 - The case showcase is the authored presentation of a test-case variant,
   committed with the version and captured from the [reference
   implementation](/components/core/results/#reference-implementations).
+- The suite showcase is the authored presentation of a
+  [test suite](/test-suites/showcase/), declared as the `showcase/` directory of
+  the suite's version folder and captured from the suite's reference
+  implementations.
 
 ## The showcase directory
 
-Either showcase is a directory holding exactly three things, with no
+Each showcase is a directory holding exactly three things, with no
 subdirectories:
 
 - `showcase.md`, the description: player-facing markdown in the style of a store
@@ -39,7 +43,7 @@ Replays are the preferred moving footage. The engine records them itself through
 its recording bracket, and they are far smaller than video. Video is supported
 through the whole pipeline but discouraged.
 
-Shared bounds apply to both showcases: the description is capped at 64 KiB, the
+Shared bounds apply to every showcase: the description is capped at 64 KiB, the
 carousel at 10 entries, and each media file at 25 MiB.
 
 ## The run showcase

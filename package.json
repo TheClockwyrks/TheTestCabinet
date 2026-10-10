@@ -6,31 +6,35 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "contracts/packages/*"
   ],
   "overrides": {
     "three": "~0.185.0"
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:packages": "npm run build -w @clockwyrks/run-record -w @clockwyrks/run-stats -w @clockwyrks/simple-2d -w @clockwyrks/structured-2d -w @clockwyrks/simple-3d -w @clockwyrks/structured-3d -w @clockwyrks/voxel-runtime -w @clockwyrks/particle-runtime",
+    "build:packages": "npm run build -w @clockwyrks/run-record -w @clockwyrks/backend-api -w @clockwyrks/run-stats -w @clockwyrks/simple-2d -w @clockwyrks/structured-2d -w @clockwyrks/simple-3d -w @clockwyrks/structured-3d -w @clockwyrks/voxel-runtime -w @clockwyrks/particle-runtime",
     "build:site": "npm run build:packages && npm run build -w @clockwyrks/site",
     "dev": "npm run dev --workspaces --if-present",
     "format": "node scripts/format-check.mjs --write",
     "format:check": "node scripts/format-check.mjs",
     "gen:contract": "node scripts/gen-contract.mjs",
-    "lint": "eslint --config eslint.config.js .",
+    "lint": "eslint --config eslint.config.js --pass-on-unpruned-suppressions .",
+    "lint:baseline": "rm -f eslint-suppressions.json && eslint --config eslint.config.js --suppress-all .",
     "lint:docs": "npm run lint:md && npm run spell",
     "lint:md": "markdownlint-cli2",
+    "lint:prune": "eslint --config eslint.config.js --prune-suppressions .",
     "lint:specs": "uv run --quiet --project ci gate run spec-prose",
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
-    "test:scripts": "node --test scripts/lib/*.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs scripts/lib/*.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:validators": "node scripts/typecheck-validators.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@vitest/browser-playwright": "5.0.0",
     "@vitest/eslint-plugin": "1.6.27",
     "cspell": "10.2.2",
     "eslint": "10.10.0",

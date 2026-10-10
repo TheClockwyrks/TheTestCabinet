@@ -15,11 +15,11 @@
 //    offers exactly one of them — and a saved agent written back under a fresh id would
 //    silently detach every configuration following it.
 
+import type { GgSavedAgent } from "@clockwyrks/backend-api/gg";
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import {
   BackendProvider,
   type BackendContextValue,

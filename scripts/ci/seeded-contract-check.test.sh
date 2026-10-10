@@ -2,12 +2,12 @@
 # Table test for seeded-contract-check.sh. Run it directly:
 # scripts/ci/seeded-contract-check.test.sh
 #
-# A copy of the script runs in a throwaway git repository holding a small
-# asset-contract package, a staging script whose SHIPPABLE list names it and
-# two more packages, and those packages' manifests and sources. It runs the
-# real `node`, which it needs; without one the test is skipped. The subject is
-# each of its three checks: the generated contract's wording, the seeded
-# packages' wording, and that no seeded package reaches the run-record contract.
+# A copy of the script runs in a throwaway git repository holding a staging
+# script whose SHIPPABLE list names three packages, those packages' manifests and
+# sources, and the contracts submodule's two packages under contracts/packages/.
+# It runs the real `node`, which it needs; without one the test is skipped. The
+# subject is each of its two checks: the seeded packages' wording, and that no
+# seeded package reaches the run-record contract.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +79,7 @@ manifest() { # dir name dependencies-json
 fresh_repo() {
 	local repo
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
-	mkdir -p "$repo/scripts/ci" "$repo/packages/asset-contract/src" "$repo/packages/engine/src/testing" \
+	mkdir -p "$repo/scripts/ci" "$repo/contracts/packages/asset-contract/src" "$repo/packages/engine/src/testing" \
 		"$repo/packages/case-harness/src"
 	cp "$CI_DIR/seeded-contract-check.sh" "$repo/scripts/ci/"
 	cat >"$repo/scripts/stage-tcab-packages.mjs" <<'MJS'
@@ -90,13 +90,13 @@ const SHIPPABLE = [
 ];
 export default SHIPPABLE;
 MJS
-	manifest "$repo/packages/asset-contract" @clockwyrks/asset-contract '{}'
-	manifest "$repo/packages/engine" @clockwyrks/engine '{ "@clockwyrks/asset-contract": "file:../asset-contract" }'
-	manifest "$repo/packages/case-harness" @clockwyrks/case-harness '{ "@clockwyrks/run-record": "file:../run-record" }'
-	manifest "$repo/packages/run-record" @clockwyrks/run-record '{}'
-	manifest "$repo/packages/util" @clockwyrks/util '{ "@clockwyrks/run-record": "file:../run-record" }'
-	echo '/** A rig: the bones a model is posed by. */ export interface Rig { bones: string[] }' \
-		>"$repo/packages/asset-contract/src/index.ts"
+	manifest "$repo/contracts/packages/asset-contract" @clockwyrks/asset-contract '{}'
+	manifest "$repo/packages/engine" @clockwyrks/engine '{ "@clockwyrks/asset-contract": "*" }'
+	manifest "$repo/packages/case-harness" @clockwyrks/case-harness '{ "@clockwyrks/run-record": "*" }'
+	manifest "$repo/contracts/packages/run-record" @clockwyrks/run-record '{ "@clockwyrks/asset-contract": "^0.1.0" }'
+	manifest "$repo/packages/util" @clockwyrks/util '{ "@clockwyrks/run-record": "*" }'
+	echo '/** Used by the leaderboard: checked in the contracts repository. */ export interface Rig { bones: string[] }' \
+		>"$repo/contracts/packages/asset-contract/src/index.ts"
 	echo '/** Steps the game world one tick. */ export function step() {}' >"$repo/packages/engine/src/index.ts"
 	echo '// the leaderboard fixture a test reads' >"$repo/packages/engine/src/testing/fixture.ts"
 	echo '// asserts the run record is not imported' >"$repo/packages/engine/src/index.test.ts"
@@ -112,14 +112,6 @@ check_equal "clean seeded packages pass" "0" "$?"
 check_equal "naming the seeded packages, case-harness excepted" \
 	"Seeded packages (asset-contract engine) name nothing about evaluation and none reaches the contract." "$out"
 
-for word in leaderboard benchmark "run record" harness "https://testcabinet.ai" reviewed scoring; do
-	repo="$(fresh_repo)"
-	echo "/** Used by the $word. */ export type X = 1;" >>"$repo/packages/asset-contract/src/index.ts"
-	out="$(run "$repo")"
-	check_equal "the generated contract naming '$word' fails" "1" "$?"
-	check_contains "saying so ('$word')" "The seeded contract package names what a model must not learn" "$out"
-done
-
 for word in leaderboard "run record" "the review UI" TestCabinet; do
 	repo="$(fresh_repo)"
 	echo "// shown on the $word" >>"$repo/packages/engine/src/index.ts"
@@ -134,28 +126,22 @@ out="$(run "$repo")"
 check_equal "a seeded package naming a reviewer passes" "0" "$?"
 
 repo="$(fresh_repo)"
-manifest "$repo/packages/engine" @clockwyrks/engine '{ "@clockwyrks/run-record": "file:../run-record" }'
+manifest "$repo/packages/engine" @clockwyrks/engine '{ "@clockwyrks/run-record": "*" }'
 out="$(run "$repo")"
 check_equal "a seeded package depending on the run record fails" "1" "$?"
 check_contains "with the trail" "@clockwyrks/engine -> @clockwyrks/run-record" "$out"
 
 repo="$(fresh_repo)"
-manifest "$repo/packages/engine" @clockwyrks/engine '{ "@clockwyrks/util": "file:../util" }'
+manifest "$repo/packages/engine" @clockwyrks/engine '{ "@clockwyrks/util": "*" }'
 out="$(run "$repo")"
 check_equal "one reaching it through another package fails" "1" "$?"
 check_contains "with the whole trail" "@clockwyrks/engine -> @clockwyrks/util -> @clockwyrks/run-record" "$out"
 
 repo="$(fresh_repo)"
-rm "$repo/packages/asset-contract/src/index.ts"
+rm -r "$repo/contracts"
 out="$(run "$repo")"
-check_equal "a contract package holding no TypeScript fails" "1" "$?"
-check_contains "saying how to generate it" "Run \`npm run gen:contract\`." "$out"
-
-repo="$(fresh_repo)"
-rm -r "$repo/packages/asset-contract/src"
-out="$(run "$repo")"
-check_equal "a missing contract package fails" "1" "$?"
-check_contains "saying not to delete the gate" "If the package moved, update this gate" "$out"
+check_equal "a closure through an absent contracts checkout fails" "1" "$?"
+check_contains "saying how to check it out" "git submodule update --init contracts" "$out"
 
 repo="$(fresh_repo)"
 printf 'export default [];\n' >"$repo/scripts/stage-tcab-packages.mjs"

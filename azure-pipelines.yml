@@ -103,6 +103,17 @@ trigger:
 # never used, so a reference names one image for as long as the registry keeps
 # it. The forty zeros are the placeholder a render carries; see the header.
 
+# The repositories the jobs read beside this one: the contracts repository, the
+# `contracts/` submodule every build compiles against. No job checks it out. A
+# job that builds names it under `uses:`, which puts it in the scope of the job's
+# access token, and runs `scripts/ci/submodules.sh init contracts` after its own
+# checkout, which fetches the commit the superproject pins.
+resources:
+  repositories:
+    - repository: contracts
+      type: git
+      name: the-test-cabinet/contracts
+
 pool:
   vmImage: ubuntu-24.04
 
@@ -148,7 +159,9 @@ stages:
     displayName: Gates
     jobs:
       # The Rust track: every check that compiles the workspace, and nothing
-      # else. The image carries no Node, so nothing here may reach for one.
+      # else. It runs in the rust-browser image, the Rust image with Node and
+      # Playwright's Chromium on top, so the Rust tests that drive a browser
+      # run here rather than skip.
       - job: rust
         displayName: Rust
         # Every step of this job runs inside the Rust CI image, at the commit
@@ -160,7 +173,7 @@ stages:
         # says so with `target: host`, and the disk cleanup below is the one
         # that does.
         container:
-          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         # A warm run takes about 45 minutes and a cold one, after the
         # branch's build-output cache expired, about 65: Azure scopes a
@@ -170,6 +183,9 @@ stages:
         # free tier, and the organisation's purchased parallel jobs lift that
         # cap to 360.
         timeoutInMinutes: 120
+        uses:
+          repositories:
+            - contracts
         variables:
           # The registry and the git checkouts, under the directory the cache
           # task saves, which is the whole reason CARGO_HOME moves at all.
@@ -186,10 +202,20 @@ stages:
           # it. Cargo.toml's dev profile already keeps the debug information to
           # line tables, so a failed test's backtrace still names its lines.
           CARGO_INCREMENTAL: 0
+          # The image carries the browser toolchain, so a Rust test that would
+          # skip for want of it fails instead (contracts/crates/suites/src/test_browser.rs).
+          TCAB_REQUIRE_BROWSER: 1
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
+
+          # The contracts submodule, at the pinned commit; the job's `uses:`
+          # puts its repository in the token's scope.
+          - script: scripts/ci/submodules.sh init contracts
+            displayName: Initialize the contracts submodule
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
           # On the agent, not in the container, which is what `target: host`
           # says. The SDKs it removes are the hosted image's own and are in no
@@ -213,12 +239,18 @@ stages:
                 cargo-home | v1 | "$(Agent.OS)" | rust-toolchain.toml
               path: $(ciCache)
 
+          # The version moves when the restored output stops matching what the
+          # build produces under the same names, so that a restore from an
+          # earlier lock would leave two builds side by side. v2: the contracts
+          # crates moved under contracts/, which gave them and every crate above
+          # them new artifact names; the v1 output plus the rebuild outgrew the
+          # disk the cache save needs.
           - task: Cache@2
             displayName: Restore the build output
             inputs:
-              key: 'cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
+              key: 'cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
               restoreKeys: |
-                cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml
+                cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml
               path: target
 
           # The build output cache restores `target/` whole, the reports the
@@ -328,10 +360,20 @@ stages:
           image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         timeoutInMinutes: 60
+        uses:
+          repositories:
+            - contracts
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
+
+          # The contracts submodule, at the pinned commit; the job's `uses:`
+          # puts its repository in the token's scope.
+          - script: scripts/ci/submodules.sh init contracts
+            displayName: Initialize the contracts submodule
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
           - script: scripts/ci/free-disk.sh
             displayName: Free disk space on the agent
@@ -562,6 +604,10 @@ stages:
 
           - script: uv run --quiet --project ci gate run ci-image-pins
             displayName: "project jobs pin the Rust CI image"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run dependency-graph
+            displayName: "dependency graph (edges, patch table, package links)"
             condition: eq(variables['checksReady'], 'true')
 
           # As the web tests do, the two test gates below name an artifact

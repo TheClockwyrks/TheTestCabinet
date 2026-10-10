@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -180,6 +180,46 @@ describe("TestCaseOverviewPage", () => {
     // …and the prev/next steppers walk the same order.
     fireEvent.click(screen.getByRole("button", { name: "Previous media" }));
     expect(screen.getByRole("img", { name: "Title screen" })).toBeTruthy();
+  });
+
+  it("lists a suite-defined version's uploaded builds one entry per engine", async () => {
+    const url =
+      "https://backend.test/suites/carom/versions/v1.0.0/reference-builds/simple-2d/";
+    catalog.mockReturnValue({
+      testCases: [
+        testCase({ enginesByVersion: { "v1.0.0": ["none", "simple-2d"] } }),
+      ],
+      status: "ready",
+    });
+    seedGalleryData(
+      variant({
+        referenceBuilds: { "simple-2d": url },
+        suite: {
+          suite: "carom",
+          suiteVersion: "v1.0.0",
+          definition: "end-to-end",
+        },
+      }),
+    );
+    renderOverview();
+
+    await screen.findByRole("heading", {
+      name: "Play the reference implementation",
+    });
+    const entries = screen.getAllByRole("listitem");
+    expect(entries).toHaveLength(2);
+    // The anchored engine (`none`) has no upload, so it is listed without a play
+    // action and the engine that has one plays.
+    const none = entries.find((entry) =>
+      within(entry).queryByText("none", { exact: true }),
+    );
+    if (none === undefined) throw new Error("no entry lists none");
+    expect(within(none).getByText("No build uploaded")).toBeInTheDocument();
+    expect(within(none).queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByTitle(/^Reference implementation for /)).toHaveAttribute(
+      "src",
+      url,
+    );
   });
 
   it("renders the reference launch panel with the pinned copy and the inline embed", async () => {

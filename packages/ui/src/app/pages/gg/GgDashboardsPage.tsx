@@ -14,13 +14,13 @@
 // The editor is deliberately a plain form rather than a drag-and-drop canvas. A panel is a
 // title, a query and a width; a grid position that is not a width is a thing to maintain,
 // and the twelve-column flow already lays a board out sensibly from widths alone.
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
 import type {
   GgDashboard,
   GgDashboardInput,
   GgDashboardPanel,
-} from "@clockwyrks/run-record/gg-query";
+} from "@clockwyrks/backend-api/gg-query";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";

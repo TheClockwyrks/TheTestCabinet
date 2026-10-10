@@ -318,13 +318,13 @@ async fn a_published_run_this_build_cannot_read_is_deletable() {
 // The generation's pin to the contract
 // ---------------------------------------------------------------------------
 
-/// The published schema root the generated contract schemas live under, relative to
-/// this crate.
+/// The root the generated contract schemas live under, relative to this crate: the
+/// contracts repository's `schema/`, which the docs site publishes.
 ///
 /// A schema is the contract's structural form: it is generated from the very types
 /// this build deserializes stored records into, and CI regenerates and diffs it, so
 /// a Rust change that has not reached it fails there rather than here.
-const SCHEMA_ROOT: &str = "../../apps/docs/public/schema";
+const SCHEMA_ROOT: &str = "../../contracts/schema";
 
 /// The run record's own schema, relative to [`SCHEMA_ROOT`]. The pin starts here and
 /// follows every published schema it references.
@@ -353,16 +353,30 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when gg's agent
-/// profile gained `reasoning`, gg's run limits gained `modelStreamIdleSecs`, the gg
-/// session summary gained its two cost figures, `cost` and `workCost`, on each slot
-/// and in the run-wide rollup, and the `usage` telemetry event gained `wire`,
-/// `reconciled` and the `figure` naming which cost figure its turn fed, the run
-/// limits gained `providerCacheMissLimit`, gg's per-provider health slice gained
-/// `stalls` and `cacheMisses`, and the gg session summary gained
-/// `loopAbortUnpriced`: every one of them is optional and absent on the
-/// records stored before it, so stored records go on reading and the generation does
-/// not move. The same holds for the cost figures' descriptions rewritten when the
+/// lacks both keys and no longer reads. Its digest last moved when the branch that
+/// brought test suites met the one that grew gg's run record, and holds both sides'
+/// changes, each of which stored records survive.
+///
+/// On the test suites side, the suite test case definition gained the optional
+/// `init`, a change stored records survive because a record never embeds a
+/// definition. Before that the suite schema split its manifest into the suite
+/// manifest and the version manifest, which stored records survive because a record
+/// embeds only the suite's requirement outcomes and never a manifest. Before that
+/// the validation summary gained the
+/// [requirement outcomes](tcab_core::test_suite::RequirementOutcome) a suite-defined
+/// run records — which also drew the suite schema into the reference set the digest
+/// spans — a change stored records survive because the field defaults to empty on a
+/// record that carries none.
+///
+/// On gg's side, gg's agent profile gained `reasoning`, gg's run limits gained
+/// `modelStreamIdleSecs`, the gg session summary gained its two cost figures, `cost`
+/// and `workCost`, on each slot and in the run-wide rollup, and the `usage` telemetry
+/// event gained `wire`, `reconciled` and the `figure` naming which cost figure its
+/// turn fed, the run limits gained `providerCacheMissLimit`, gg's per-provider health
+/// slice gained `stalls` and `cacheMisses`, and the gg session summary gained
+/// `loopAbortUnpriced`: every one of them is optional and absent on the records
+/// stored before it, so stored records go on reading and the generation does not
+/// move. The same holds for the cost figures' descriptions rewritten when the
 /// comparable cost moved to the curated list price, which change no shape a stored
 /// record is read against.
 ///
@@ -385,7 +399,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "2e42b9587df326b15ae2f1665f33e5fdfe075c1e8dfdfa36329626ef65398040",
+        "3dbaeea9e26f39ebff18ae21a9acdcf3d1acacb0c32f9adc699e944fb674f7f3",
     ),
 ];
 

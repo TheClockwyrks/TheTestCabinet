@@ -35,7 +35,7 @@
 //!    (`test-cases/reference-builds.lock.json`), under the `--env` key. This is the
 //!    **pull** model: the backend is private (VPN-only) and cannot be pushed to, so
 //!    it ingests this file from its own git checkout instead — commit the lockfile,
-//!    push, and run `scripts/reingest-cluster.sh --env <env>` to have the backend
+//!    push, and run `tcab ingest --env <env>` to have the backend
 //!    reconcile its `case_reference_build` table (the site's Reference tab source).
 //!
 //! Building and deploying require `wrangler` (with `CLOUDFLARE_API_TOKEN`). This
@@ -45,14 +45,13 @@
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    ColdStorage, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType,
-    deploy_pages_build,
+    ColdStorage, SystemCommandRunner, TestCaseVersion, TestType, deploy_pages_build,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
 use super::capture_baselines::{
-    Target, baseline_dir, build_reference, capture_variant_baseline, catalog_root,
-    ensure_cold_storage, resolve_version, select_targets,
+    Target, baseline_dir, build_reference, capture_variant_baseline, ensure_cold_storage,
+    resolve_version, select_targets,
 };
 use crate::cli::{DeployEnv, PublishReferenceArgs};
 
@@ -81,7 +80,7 @@ fn references_pages_project(env: DeployEnv) -> &'static str {
 pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // Resolve the case at the requested version — or its newest version when the
     // positional `<version>` is omitted — from the local catalog.
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = crate::catalog::catalog();
     let cold = ColdStorage::for_catalog(catalog.root());
     let version = resolve_version(&catalog, &args.slug, args.version.as_deref())?;
     let test_case = catalog
@@ -125,7 +124,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
         targets.len(),
     );
 
-    let lock_path = catalog_root().join(REFERENCE_LOCK_FILENAME);
+    let lock_path = crate::catalog::root().join(REFERENCE_LOCK_FILENAME);
 
     if args.dry_run {
         println!("\n--dry-run: nothing was built, deployed, or recorded.");
@@ -230,7 +229,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             deployed.len(),
         );
         println!("next: commit it, push, then refresh the backend from its own checkout:");
-        println!("  scripts/reingest-cluster.sh --env {env}");
+        println!("  tcab ingest --env {env}");
     }
 
     if failures > 0 {

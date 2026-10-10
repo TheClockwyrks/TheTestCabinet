@@ -166,6 +166,7 @@ boardable
 Bombard
 bondsnap
 bottombar
+boxel
 bpanel
 bpy
 Bresenham
@@ -222,6 +223,7 @@ colouring
 colours
 comborecipe
 comboupgrade
+conftest
 Consolas
 cooldown
 cooldowns
@@ -385,6 +387,7 @@ ggmodule
 ggop
 gifenc
 Gini
+gitlink
 gitrun
 GIVEUP
 glimmerfin
@@ -392,6 +395,7 @@ glissandos
 gloamfin
 gloamfins
 gltf
+goldens
 granularities
 grayscale
 greebles
@@ -618,6 +622,7 @@ nslookup
 nullcore
 numpad
 nvcc
+nyxsis
 offence
 offsuit
 OPENCODE
@@ -683,6 +688,8 @@ poseless
 postconditions
 powerup
 practise
+prebuild
+predev
 preflighted
 premultiplies
 preopen
@@ -908,6 +915,7 @@ Sunhawk
 supercover
 superproject
 superproject's
+superrepo
 svgl
 swiftc
 swiftmodule
@@ -937,6 +945,8 @@ terraforming
 teslaprime
 testcabinet
 testcabinetartifacts
+testdata
+testpaths
 tfsgit
 thiserror
 tiktoken

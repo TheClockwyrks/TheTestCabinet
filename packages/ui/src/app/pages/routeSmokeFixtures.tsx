@@ -1,5 +1,8 @@
+import type { SuiteOut, SuiteVersionResponse } from "@clockwyrks/backend-api";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type { ReactNode } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+
+import { AuthProvider } from "../../client/auth";
 import type { BackendClient, WorkerClient } from "../../client/clients";
 import {
   BackendProvider,
@@ -7,15 +10,14 @@ import {
   type BackendContextValue,
   type WorkersContextValue,
 } from "../../client/context";
-import { AuthProvider } from "../../client/auth";
 import type { StoredReview } from "../../client/types";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
   type RunDetail,
 } from "../data/galleryContext";
-import { runSummaryPage } from "../data/runQuery";
 import type { ModelSummary } from "../data/models";
+import { runSummaryPage } from "../data/runQuery";
 import type {
   TestCaseDetail,
   TestCaseGroupSummary,
@@ -38,6 +40,7 @@ import { RunsRuntimeProvider } from "../runtime/runsRuntime";
 export const FIXTURE_IDS = {
   slug: "carom",
   jamSlug: "well-well-well",
+  suiteSlug: "carom-suite",
   runId: "run-1",
   modelId: "claude-opus-5",
   reviewerId: "reviewer-1",
@@ -216,6 +219,146 @@ function cabinetStats() {
       { weekStart: "2026-07-27", runs: 1 },
       { weekStart: "2026-08-03", runs: 1 },
     ],
+  };
+}
+
+// The one test suite the console fixture's backend serves: two versions, so the
+// listing renders a row describing the newest and links to both. The read-only
+// gallery deliberately gets none — it mounts no backend provider at all, which is
+// precisely the host whose tab bar must omit the Test Suites entry.
+function testSuites(): SuiteOut[] {
+  return [
+    {
+      slug: FIXTURE_IDS.suiteSlug,
+      // Oldest first, the order the backend serves.
+      versions: [
+        {
+          version: "v1.0.0",
+          name: "Carom Suite",
+          summary: "A suite the smoke test renders.",
+          tags: ["fixture"],
+          experimental: false,
+        },
+        {
+          version: "v2.0.0",
+          name: "Carom Suite",
+          summary: "A suite the smoke test renders.",
+          tags: ["fixture"],
+          experimental: true,
+        },
+      ],
+    },
+  ];
+}
+
+// The one suite version the console fixture resolves in full: every entity group
+// the detail tabs render, one entry apiece, so the walk exercises each tab's
+// populated body rather than only its empty state.
+function storedSuite(version: string): SuiteVersionResponse {
+  return {
+    slug: FIXTURE_IDS.suiteSlug,
+    version,
+    digest: "9f2c4e1a7b3d5f60819a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+    suite: {
+      slug: FIXTURE_IDS.suiteSlug,
+      name: "Carom Suite",
+    },
+    manifest: {
+      version: version.replace(/^v/, ""),
+      tags: ["fixture"],
+      summary: "A suite the smoke test renders.",
+      description: "description.md",
+      changelog: "changelog.md",
+    },
+    description: "The suite, **described**.",
+    changelog: "- Everything, at once.",
+    specifications: [
+      {
+        dir: "specifications/ball-physics",
+        manifest: {
+          id: "ball-physics",
+          name: "Ball Physics",
+          summary: "How the ball moves.",
+          path: "ball-physics.md",
+          requirement: [
+            {
+              id: "constant-speed",
+              kind: "functional",
+              text: "The ball MUST travel at a constant speed between collisions.",
+              validators: ["ball/constant-speed.ts"],
+            },
+            {
+              id: "looks-right",
+              kind: "non-functional",
+              text: "The ball SHOULD read as a ball.",
+            },
+          ],
+        },
+        prose: "The ball is a ball.",
+      },
+    ],
+    testCases: [
+      {
+        slug: "end-to-end",
+        id: `${FIXTURE_IDS.suiteSlug}-end-to-end`,
+        definition: {
+          name: "Carom, end to end",
+          type: "end-to-end",
+          difficulty: "easy",
+          engines: ["none"],
+          prompt: "prompts/end-to-end.hbs",
+        },
+      },
+      {
+        slug: "player-ship",
+        id: `${FIXTURE_IDS.suiteSlug}-player-ship`,
+        definition: {
+          name: "Carom, player ship",
+          type: "sprite",
+          difficulty: "medium",
+          prompt: "prompts/sprite.hbs",
+          specifications: ["ball-physics"],
+          sprite: { id: "player-ship", sheet: true },
+        },
+      },
+    ],
+    assets: [
+      {
+        dir: "assets/player-ship",
+        manifest: {
+          id: "player-ship",
+          name: "Player Ship",
+          kind: "sprite",
+          specification: "ball-physics",
+          files: ["player-ship.png"],
+        },
+      },
+    ],
+    demos: [
+      {
+        dir: "demos/ball-bounce",
+        manifest: {
+          id: "ball-bounce",
+          name: "Ball Bounce",
+          summary: "The ball, bouncing.",
+          specification: "ball-physics",
+        },
+      },
+    ],
+    referenceImplementations: ["none"],
+    referenceBuilds: {
+      none: `https://backend.test/suites/${FIXTURE_IDS.suiteSlug}/versions/${version}/reference-builds/none/`,
+    },
+    showcase: {
+      manifest: {
+        media: [
+          { file: "title.png", name: "Title screen" },
+          { file: "rally.json.gz", name: "A rally" },
+        ],
+      },
+      description: "A **suite** showcase, with ![Title](title.png).",
+      media: ["title.png", "rally.json.gz"],
+    },
   };
 }
 
@@ -423,6 +566,12 @@ export function stockedGallery(runId: string): GalleryDataInput {
     showcaseMediaUrl: (id, file) => showcaseUrls[id]?.[file] ?? null,
     caseShowcaseMediaUrl: (slug, version, variant, file) =>
       caseShowcaseUrls[`${slug}/${version}/${variant}`]?.[file] ?? null,
+    // The suite-side resolvers, shaped the way a console wires them: every file
+    // of a stored suite version is served under the version's own prefix.
+    suiteShowcaseMediaUrl: (slug, version, file) =>
+      `https://backend.test/test-suites/${slug}/${version}/showcase/${file}`,
+    suiteAssetMediaUrl: (slug, version, asset, file) =>
+      `https://backend.test/test-suites/${slug}/${version}/assets/${asset}/${file}`,
     testCaseGroups: testCaseGroups(),
     getCabinetStats: () => Promise.resolve(cabinetStats()),
   };
@@ -485,6 +634,18 @@ function backendClient(): BackendClient {
     listModelProbes: () => Promise.resolve([]),
     getModelProbe: () => Promise.reject(new Error("no probes in the fixture")),
     listTestCases: () => Promise.resolve([]),
+    // The suite reads are optional on `BackendClient`, and the console fixture
+    // implements them: their presence is what mounts the Test Suites tab, so a
+    // stub without them would walk the route on no host at all.
+    listTestSuites: () => Promise.resolve(testSuites()),
+    // The per-version record every suite detail tab renders from. Resolved for
+    // the versions the listing above holds and refused for anything else, which
+    // is what a deployment does with a coordinate it never ingested.
+    getTestSuite: (slug: string, version: string) =>
+      slug === FIXTURE_IDS.suiteSlug &&
+      testSuites()[0]?.versions.some((entry) => entry.version === version)
+        ? Promise.resolve(storedSuite(version))
+        : Promise.reject(new Error(`no suite ${slug}@${version}`)),
     listVersions: () => Promise.resolve(["v2.0.0"]),
     resolveVersion: () => Promise.resolve(null),
     readSpecs: () => Promise.resolve([]),

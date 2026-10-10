@@ -4,7 +4,7 @@ use super::{
     FsRepoSeeder, JsonNode, init_repo, reserve_unique_dir, run_timestamp,
     seed_prior_game_jam_entries,
 };
-use crate::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
+use crate::engine::{EngineCatalog, EngineCatalogExt as _, EngineSelection, ResolvedEngine};
 use crate::run_record::PriorGameJamEntry;
 
 /// The run timestamp is a fixed-width `YYYYMMDD-HHMMSS` stamp: eight digits, a

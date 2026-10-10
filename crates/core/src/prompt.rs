@@ -36,11 +36,20 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::engine::{NONE_SLUG, ResolvedEngine};
+use crate::engine::ResolvedEngine;
 use crate::error::{Error, Result};
 use crate::execution::{GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
 use crate::run_record::PriorGameJamEntry;
 use crate::test_case::{AssetDimension, TestCaseVersion, TestType, Variant, VoxelSpec};
+
+// The helpers an authored case's prompt and a suite definition's share — the strict
+// registry, the engine's template view, a seeded spec's prompt-facing form — and the
+// suite definition's prompt itself live in `test_cabinet_suites::prompt`.
+use test_cabinet_suites::prompt::{
+    PromptSpec, TemplateEngine, engine_docs_dir, engine_docs_path, format_hours,
+    handlebars_registry, prompt_spec, unix_path,
+};
+pub use test_cabinet_suites::prompt::{SuiteSpecification, render_suite_prompt};
 
 /// A standing quality directive prepended to every asset-generation case's
 /// rendered prompt.
@@ -150,32 +159,6 @@ const fn full_stack_preamble(asset_dimension: AssetDimension) -> &'static str {
         AssetDimension::ThreeD => FULL_STACK_3D_PREAMBLE,
     }
 }
-
-/// The workspace-relative directory the selected engine's own documentation is
-/// seeded into, and so the tail of the `{{engine.docs}}` path a prompt points the
-/// model at.
-///
-/// The engine's manifest names the documentation directory *inside its package*
-/// (`docs`, for `@clockwyrks/simple-2d`), but seeding flattens it to this one
-/// fixed place in the run workspace, so every engine's documentation is found at
-/// the same path and a template never has to know the package's internal layout.
-/// The path a template sees therefore depends only on *whether* the engine
-/// declares documentation, never on what it called the directory.
-pub(crate) const ENGINE_DOCS_DIR: &str = "engine";
-
-/// The display name of the sentinel [`NONE_SLUG`] engine, mirroring the `name` in
-/// `engines/none/engine.toml`.
-///
-/// A run that selected no engine still renders an `engine` context (see
-/// [`TemplateEngine`]), and it renders this name rather than resolving the
-/// catalogue for it. Rendering is pure and infallible, and its callers include
-/// ones that hold no engine at all — the backend catalog API renders
-/// a case's prompt for the gallery from stored manifest fields — so making them
-/// carry an [`EngineCatalog`](crate::engine::EngineCatalog) just to name the
-/// absence of an engine would be a resolution step with exactly one possible
-/// answer. `engineless_context_matches_the_none_engine` in the tests is what
-/// keeps this in step with the manifest.
-const NONE_NAME: &str = "None";
 
 /// The Handlebars context exposed to a test case's `prompt.hbs`.
 ///
@@ -302,96 +285,27 @@ struct TemplateVariant<'a> {
     description: Option<&'a str>,
 }
 
-/// The selected engine, as exposed to a prompt or spec template.
+/// Render the prompt a run hands the harness for any resolved test case version,
+/// authored or suite-defined.
 ///
-/// Unlike every other optional piece of context this is never omitted: see the
-/// module documentation. An engineless run renders the sentinel values
-/// `{ slug: "none", name: "None", docs: "" }`, which is exactly what the built-in
-/// `none` engine resolves to, so a template needs one branch — on the slug — and
-/// not two.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TemplateEngine<'a> {
-    /// The engine's slug (for example `simple-2d`), or [`NONE_SLUG`] when the run
-    /// selected no engine. This is what a template branches on.
-    slug: &'a str,
-    /// The engine's display name (for example `Simple 2D`), for prose.
-    name: &'a str,
-    /// The absolute in-container path of the engine's seeded documentation (for
-    /// example `/work/engine`), or the empty string when there is none to read —
-    /// which is every engineless run, and any engine that ships no documentation
-    /// tree. Derived exactly as a spec's `path` is, from the workspace root and
-    /// the seeded destination.
-    docs: &'a str,
-}
-
-impl<'a> TemplateEngine<'a> {
-    /// Build the template view of the run's selected engine.
-    ///
-    /// `docs` is passed in rather than derived here because it is an owned path
-    /// built by [`engine_docs_path`], and the borrow has to outlive the context
-    /// this is embedded in.
-    fn new(engine: Option<&'a ResolvedEngine>, docs: &'a str) -> Self {
-        match engine {
-            Some(engine) => Self {
-                slug: engine.slug(),
-                name: &engine.manifest.name,
-                docs,
-            },
-            // No engine selected. This is deliberately identical to what the
-            // built-in `none` engine resolves to, so a run that named `none`
-            // explicitly and a run that named nothing render the same prompt.
-            None => Self {
-                slug: NONE_SLUG,
-                name: NONE_NAME,
-                docs,
-            },
-        }
+/// The two shapes of test case expose different contexts to their templates — an
+/// authored case's variant, bounding volume and time budget against a suite
+/// definition's covered specifications — so the context a template is rendered
+/// against follows the case it came from. This is the one entry point a caller
+/// that merely holds a resolved version reaches for; the arguments a suite
+/// definition has no counterpart for are simply unused for one.
+pub fn render_case_prompt(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    prior_game_jam_entries: &[PriorGameJamEntry],
+    engine: Option<&ResolvedEngine>,
+) -> Result<String> {
+    if crate::test_suite::is_suite_defined(test_case) {
+        return Ok(crate::test_suite::render_definition_prompt(
+            test_case, engine,
+        )?);
     }
-}
-
-/// The absolute in-container path of the selected engine's seeded documentation,
-/// or the empty string when there is nothing seeded to point at.
-///
-/// Built the same way [`prompt_spec`] builds a spec's `path` — the workspace root
-/// joined to the workspace-relative destination seeding wrote — so the two can
-/// never disagree about where the run's files live. An engine that declares no
-/// `docs` directory (and the absence of an engine altogether) seeds nothing, and
-/// the empty string is what a template sees; it should be guarding on
-/// `engine.slug` rather than on this, which is why the empty value is left as a
-/// blank rather than an invented path.
-fn engine_docs_path(engine: Option<&ResolvedEngine>) -> String {
-    match engine {
-        Some(engine) if engine.docs().is_some() => format!("{WORKSPACE_DIR}/{ENGINE_DOCS_DIR}"),
-        _ => String::new(),
-    }
-}
-
-/// The selected engine's seeded documentation directory relative to the workspace,
-/// or the empty string when there is nothing seeded to point at.
-///
-/// What a spec gets in place of [`engine_docs_path`]. A spec is rendered into a
-/// file that sits beside the build, and a container path written into it would be
-/// the one absolute path in a document otherwise entirely about the build's own
-/// tree — which is why [`SpecContext`] is handed no workspace path at all.
-fn engine_docs_dir(engine: Option<&ResolvedEngine>) -> String {
-    match engine {
-        Some(engine) if engine.docs().is_some() => format!("{ENGINE_DOCS_DIR}/"),
-        _ => String::new(),
-    }
-}
-
-/// A single seeded spec, as exposed to a prompt template.
-#[derive(Debug, Serialize)]
-struct PromptSpec {
-    /// The spec's destination relative to the workspace (for example
-    /// `specs/overview.md`).
-    dest: String,
-    /// The spec's absolute in-container path (for example
-    /// `/work/specs/overview.md`).
-    path: String,
-    /// The destination file stem (for example `overview`), handy for labeling.
-    name: String,
+    render_prompt(test_case, variant, prior_game_jam_entries, engine)
 }
 
 /// Render a test case's prompt template for the selected variant into the
@@ -656,64 +570,6 @@ pub fn render_spec_from_template(
             spec: spec.to_string(),
             detail: err.to_string(),
         })
-}
-
-/// A Handlebars registry configured the way every test case template is
-/// rendered: strict mode so referencing an undefined variable is an error rather
-/// than a silent empty value, and HTML escaping disabled because the rendered
-/// output (a prompt or a spec) is plain text, not HTML.
-///
-/// Named for the registry rather than "the template engine" because *engine* now
-/// names a run dimension in this module — the runtime a produced game is built on
-/// — and the two have nothing to do with each other.
-fn handlebars_registry() -> handlebars::Handlebars<'static> {
-    let mut handlebars = handlebars::Handlebars::new();
-    handlebars.set_strict_mode(true);
-    handlebars.register_escape_fn(handlebars::no_escape);
-    // Value-equality helpers so a template can branch on a value rather than only
-    // on truthiness — most often a variant slug, as in
-    // `{{#if (eq variant.slug "multi")}}`. Handlebars ships no equality helper, and
-    // strict mode rules out the usual truthy workarounds, so register the pair here.
-    // They compare the raw JSON values and so work for the strings, numbers, and
-    // booleans a template context carries.
-    handlebars::handlebars_helper!(eq: |a: Json, b: Json| a == b);
-    handlebars::handlebars_helper!(ne: |a: Json, b: Json| a != b);
-    handlebars.register_helper("eq", Box::new(eq));
-    handlebars.register_helper("ne", Box::new(ne));
-    handlebars
-}
-
-/// Turn a seeded spec's workspace-relative dest into its prompt-facing form: the
-/// dest (unix-normalized), its absolute in-container path, and its file stem as a
-/// label.
-fn prompt_spec(dest: &str) -> PromptSpec {
-    let dest = unix_path(Path::new(dest));
-    let path = format!("{WORKSPACE_DIR}/{dest}");
-    let name = Path::new(&dest)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or_default()
-        .to_string();
-    PromptSpec { dest, path, name }
-}
-
-/// Format a wall-clock cap in seconds as a human hours string for a prompt: whole
-/// hours render without a decimal (`8`), fractional hours keep the smallest needed
-/// precision (`1.5`, `0.5`). Used for `{{time_limit_hours}}`.
-fn format_hours(seconds: u64) -> String {
-    let hours = seconds as f64 / 3600.0;
-    let formatted = format!("{hours:.2}");
-    let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
-    trimmed.to_string()
-}
-
-/// Render a relative path with forward slashes so in-container paths are stable
-/// regardless of the host that resolved them.
-fn unix_path(path: &std::path::Path) -> String {
-    path.components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 #[cfg(test)]

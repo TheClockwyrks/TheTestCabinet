@@ -1,3 +1,4 @@
+import type { GgDashboard } from "@clockwyrks/backend-api/gg-query";
 // The **built-in overview board** — the eight questions a gg corpus is opened to answer.
 //
 // It is an ordinary `GgDashboard` value, defined as **ordinary TCQ source text**, run
@@ -12,7 +13,6 @@
 // id in the `gg_dashboard` table, and it cannot be edited in place. Duplicating it into
 // an account's own board is how an operator makes it theirs — the same relationship the
 // built-in gg configurations have to the saved ones.
-import type { GgDashboard } from "@clockwyrks/run-record/gg-query";
 
 /**
  * The id the built-in board answers to in the URL.

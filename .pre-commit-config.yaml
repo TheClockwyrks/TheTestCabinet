@@ -19,6 +19,15 @@
 # intra-doc links resolve, which no other gate sees, and rust-doctest runs the
 # examples in those comments, which nextest cannot.
 #
+# The hooks run at one of two moments, and which one a hook gets is decided by
+# its cost. Everything else runs on every `git commit`; rust-clippy and rust-doc
+# run on `git push` instead (`stages: [pre-push]`), so the commit stays
+# interactive and the lint verdict still arrives before anything leaves the
+# machine. A pre-push hook sees the files that differ across the range being
+# pushed, not the ones in the last commit, so a `files:` pattern keeps its
+# meaning: touch any Rust source anywhere in the push and the Rust gates run.
+# rust-test and rust-doctest have no hook at all (see below).
+#
 # The web and documentation hooks (web-lint, web-typecheck, web-test,
 # web-browser-test, web-build, markdownlint, cspell, format, docs-typecheck,
 # docs-build) run the npm workspace's own locked tools, so they need `npm ci` to
@@ -29,14 +38,20 @@
 # build, which is what the server's image embeds.
 #
 # Setup is a single idempotent command: `scripts/setup-hooks.sh`, which the
-# devcontainer runs when it is created. If a hook ever blocks a commit you know
-# is fine, `git commit --no-verify` bypasses it.
+# devcontainer runs when it is created. It installs both hook types;
+# `default_install_hook_types` below is what makes a plain `pre-commit install`
+# wire up the pre-push hook too, so a clone that never gets the pre-push hook
+# installed silently loses the heavy gates entirely. If a hook ever blocks work
+# you know is fine, `git commit --no-verify` and `git push --no-verify` bypass
+# the respective stage.
 #
 # Revisions are pinned; refresh them with `pre-commit autoupdate`. The version
 # below is the framework's own, and .devcontainer/tools/uv.sh is where it is
 # decided: bump it there first and match this floor and scripts/setup-hooks.sh's
 # fallback install to it.
 minimum_pre_commit_version: "4.6.0"
+
+default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -48,8 +63,9 @@ repos:
         # several megabytes, a performance case's oracle output over one, and
         # a full spec over the 500 kB default. None of those is a mistake this
         # hook should stop, and a new version is a copy of the last, so every
-        # version directory is left out, as it is for end-of-file-fixer below.
-        exclude: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
+        # version directory is left out, as it is for end-of-file-fixer below,
+        # and so are the copies of versions the Rust tests read.
+        exclude: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^crates/[^/]+/testdata/definitions/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -65,7 +81,10 @@ repos:
         # and game-jam version: a frozen version is immutable (the
         # `frozen-paths` gate refuses a change to it), and some of them hold
         # files that end without a newline, which this hook would rewrite.
-        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
+        # ESLint writes the lint ratchet's baseline, `eslint-suppressions.json`,
+        # without one and rewrites it on every prune, so it is left alone too. The
+        # copies of versions the Rust tests read keep their source's bytes.
+        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^crates/[^/]+/testdata/definitions/|^eslint-suppressions\.json$'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
@@ -152,6 +171,9 @@ repos:
         description: Run Clippy across the workspace with warnings denied.
         entry: uv run --quiet --project ci gate run rust-clippy
         language: system
+        # One of the two heavy gates: it compiles the workspace, so it runs on
+        # push rather than on every commit (see the header).
+        stages: [pre-push]
         # The manifests and the lockfile are here because a lint policy in
         # Cargo.toml or a `--locked` mismatch changes the verdict for every
         # source.
@@ -163,6 +185,9 @@ repos:
         description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
         entry: uv run --quiet --project ci gate run rust-doc
         language: system
+        # The other heavy gate, and it pairs with clippy: run on push, where it
+        # reuses the `cargo check` artifacts clippy just built.
+        stages: [pre-push]
         files: '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^ci/gates/rust-doc\.py$'
         pass_filenames: false
 
@@ -315,7 +340,7 @@ repos:
         description: Lint and check the formatting of the Python every uv project is written in.
         entry: uv run --quiet --project ci gate run python-lint
         language: system
-        files: '^ci/.*\.py$|^ci/pyproject\.toml$'
+        files: '^ci/.*\.py$|^ci/pyproject\.toml$|^scripts/repos/.*\.(py|toml)$|^templates/repository/.*\.(py|toml)$'
         pass_filenames: false
 
       - id: ci-tests
@@ -326,7 +351,10 @@ repos:
         # The pipeline and this file are inputs too: ci/tests/test_wiring.py
         # reads both, with ci/images/tags.yml, and holds the gates, the hooks,
         # the pipeline steps and the images the jobs pull to one another.
-        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$'
+        # The repository scripts' tests run here too, and render the kit, so the
+        # kit, its declaration and the patch and link tables they hold current
+        # are inputs as well.
+        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$|^scripts/repos/|^templates/repository/|^copier\.yml$|^\.cargo/config\.toml$|^\.package-links\.json$'
         pass_filenames: false
 
       # This project's own gates, each a script under ci/gates/. The ones too
@@ -392,9 +420,20 @@ repos:
         files: '^\.azure/|^azure-pipelines-release\.yml$|^ci/gates/ci-image-pins\.py$'
         pass_filenames: false
 
+      - id: dependency-graph
+        name: "dependency graph (edges, patch table, package links)"
+        entry: uv run --quiet --project ci gate run dependency-graph
+        language: system
+        # The submodules, the two tables joining them, the kit's tables the
+        # check judges by, and every checked-out repository's manifests.
+        files: '^\.gitmodules$|^\.cargo/config\.toml$|^\.package-links\.json$|^templates/repository/ci/src/the_test_cabinet_ci/(edges|links)\.py$|^scripts/repos/render\.py$|^ci/images/tags\.yml$|^ci/src/the_test_cabinet_ci/graph\.py$|^ci/gates/dependency-graph\.py$'
+        pass_filenames: false
+
       - id: scripts-test
         name: "script library tests (node --test)"
         entry: uv run --quiet --project ci gate run scripts-test
         language: system
-        files: '^scripts/lib/.*\.m?js$|^ci/gates/scripts-test\.py$'
+        # The library, the staging script and its test, the gate whose STRICT list
+        # that test reads, and the manifests the staging script writes from.
+        files: '^scripts/lib/.*\.m?js$|^scripts/[^/]+\.test\.mjs$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/seeded-contract-check\.sh$|^packages/[^/]+/package\.json$|^ci/gates/scripts-test\.py$'
         pass_filenames: false

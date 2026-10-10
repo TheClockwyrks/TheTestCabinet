@@ -23,11 +23,8 @@
 //   Only the *first* group key is retuned: it is the one a line chart binds its x-axis
 //   to, and a second bucketed key is a deliberate cross-tabulation whose width the
 //   author chose.
-import type {
-  GgDashboardPanel,
-  GgGroupKey,
-  GgQuery,
-} from "@clockwyrks/run-record/gg-query";
+import type { GgDashboardPanel } from "@clockwyrks/backend-api/gg-query";
+import type { GgGroupKey, GgQuery } from "@clockwyrks/run-record/gg-query";
 import { compileQuery, parseQuery } from "../query";
 import { GG_DATE_FIELDS } from "../query/values";
 import { rangeFilter, type TimeRange } from "../discover/TimeRangePicker";

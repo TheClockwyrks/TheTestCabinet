@@ -42,7 +42,7 @@ tcab publish-reference --env prod <slug> <version> --variant base  # exactly one
 git add test-cases/reference-builds.lock.json
 git commit -m "chore(references): record <slug>"
 git push
-scripts/reingest-cluster.sh --env prod
+tcab ingest --env prod --changed
 ```
 
 `--env` accepts `prod` or `staging` and is required, so a publish never silently
@@ -75,7 +75,7 @@ than Cloudflare Pages access:
 # TCAB_R2_ACCOUNT_ID  TCAB_R2_BUCKET  TCAB_R2_ACCESS_KEY_ID  TCAB_R2_SECRET_ACCESS_KEY
 tcab publish-reference --env prod <slug> --dry-run   # show the plan and the object keys
 tcab publish-reference --env prod <slug>
-scripts/reingest-cluster.sh --env prod
+tcab ingest --env prod --changed
 ```
 
 It seeds a scratch workspace from the case manifest, runs each variant's
@@ -89,7 +89,7 @@ Two differences matter:
 - The frames stay out of version control. The object keys are deterministic, so
   the backend discovers what exists by listing that prefix at ingest. Re-running
   the command after editing a script overwrites the objects in place, and
-  `reingest-cluster.sh` still follows.
+  `tcab ingest --env` still follows.
 - The drawing binary comes from your machine. It is resolved from
   `TCAB_ASSET_BIN_DIR`, then the cargo target directory's `release/`, then
   `PATH`. Build it first, for example

@@ -9,7 +9,7 @@ export const RUN_STATE_DOCS_URL =
   "https://docs.testcabinet.ai/components/core/run-records/#status";
 
 // How a run's terminal state reads in the UI. The Rust contract
-// (`crates/core/src/run_record.rs`) is the source of truth for the states
+// (`contracts/crates/contracts/src/run_record.rs`) is the source of truth for the states
 // themselves; this is the single place the gallery turns one into user-facing
 // copy and the flags the cards, banner, and publish-failures affordance branch on.
 export interface RunStatePresentation {

@@ -268,7 +268,8 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
   // The developer provider typed on the form decides whose rate the fill reads,
   // exactly as it decides the rate a refresh writes once the entry is saved.
   it("passes the form's developer provider to the lookup", async () => {
-    const lookup = renderPage();
+    const lookup = vi.fn().mockResolvedValue(LISTING);
+    renderPage(lookup);
     typeSlug("qwen/qwen3-coder");
     fireEvent.change(screen.getByLabelText("Developer provider"), {
       target: { value: "  Alibaba " },

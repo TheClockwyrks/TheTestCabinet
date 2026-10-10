@@ -48,7 +48,7 @@ import { defineValidationConfig } from "./case-harness/vitest-config";
 // The package's default is five minutes, set against that measured worst case
 // rather than against a healthy machine, and against the one ceiling a validator
 // project cannot move: the runner caps the WHOLE suite run at forty-five minutes
-// (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`). At load average ~650
+// (`VITEST_TIMEOUT`, `contracts/crates/suites/src/vitest_validator.rs`). At load average ~650
 // the slowest file here measured 170 s and the whole run 1 059 s of those 2 700,
 // so five minutes — a ninth of the cap — can only be crossed by a file on a host
 // where the run was already lost. The hook ceiling is the same figure for the

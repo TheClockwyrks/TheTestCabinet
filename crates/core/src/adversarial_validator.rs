@@ -208,6 +208,7 @@ impl Validator for AdversarialValidator {
             // signal is positive even when the submission forfeited (it presented a
             // controller; how it played is the `outcome`, not the load).
             loaded: true,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -290,6 +291,7 @@ fn team_to(team: Team) -> AdversarialTeam {
 fn failed(detail: &str, proofs: Vec<crate::validation::ProofResult>) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some(detail.to_string()),
         install: None,
         build: None,
@@ -319,6 +321,7 @@ fn forfeit_loss(
 ) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some(detail.clone()),
         install: None,
         build: None,

@@ -11,6 +11,12 @@ and teardown work bracketing a harness session.
 
 This page is the authoritative definition of the normalized event types.
 
+The event types are defined in the
+[contracts crate](/components/core/overview/#the-contracts-crate)
+(`test_cabinet_contracts::event`), because a run records them and the backend and
+console read them. The per-harness translation, the sinks and the constructor of a
+system event live in the core's `event` module, which re-exports the types.
+
 ## Event stream
 
 A harness invocation produces an ordered stream of events as the harness runs.

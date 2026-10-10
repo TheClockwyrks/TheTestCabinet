@@ -179,7 +179,7 @@ one that pays a browser crossing per tick: 820 suites, each loading the built
 site into its own page. It is configured at eight workers rather than the shared
 default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in
-`crates/core/src/vitest_validator.rs`) — at four it measured 39 minutes, which
+`contracts/crates/suites/src/vitest_validator.rs`) — at four it measured 39 minutes, which
 the runner stops, and a stopped suite decides no point at all. The two engine
 projects run the 814 points they share in about half a minute each.
 

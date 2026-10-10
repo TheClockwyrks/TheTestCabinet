@@ -40,18 +40,29 @@ own machine is covered by [Running](/development/running/).
 ## Cloning
 
 The repository lives on Azure Repos and is mirrored to GitHub, and a clone from
-either host works the same way. Each submodule is a separate repository, such as
-[`cold-storage`](#cold-storage).
+either host works the same way. Each submodule is a separate repository:
+[`contracts`](#the-contracts-submodule), the data contracts the workspace builds
+against, [`cold-storage`](#cold-storage) and `test-suites`, the
+[test suites](/test-suites/overview/) checkout.
 
 A plain clone downloads the superproject alone and leaves each submodule
-directory empty. It builds and passes every gate, because nothing in the build,
-the tests, or CI reads a submodule's contents. Fetch a submodule into it later
-when a task needs one:
+directory empty. `contracts` is a build input: the Cargo and npm workspaces
+depend on its crates and packages by path, so a clone initializes it before it
+builds anything. The other two are read by no build, test or gate. Fetch one
+when a task needs it:
 
 ```sh
 git clone <superproject-url>
+git submodule update --init contracts
 git submodule update --init --depth 1 cold-storage
+git submodule update --init test-suites
 ```
+
+The devcontainer populates `contracts/` and `test-suites/` when it creates a
+container, the second because a local backend ingests its suites from that
+checkout. `.gitmodules` sets the tracked branch of both to `master`, so
+`git submodule update --remote test-suites` moves that checkout to the branch's
+tip.
 
 A recursive clone also downloads every submodule at the commit the superproject
 pins, which for `cold-storage` is about 2 GB of media. `--shallow-submodules`
@@ -73,28 +84,74 @@ superproject's name may differ.
 ### Mirrors and pins
 
 Each submodule repository carries its own Azure pipeline,
-`.azure-pipelines/mirror.yml`, whose one job force-pushes `master` to the GitHub
-repository of the same name. That job is the only writer of the mirror.
+`.azure-pipelines/mirror.yml`, whose one job pushes to the GitHub repository of
+the same name. That job is the only writer of the mirror. cold-storage's pushes
+`master` alone today.
 
-A submodule commit may be pinned once it is on that submodule's `master`. Push
-the submodule commit to `master` first, then commit the moved pointer here.
+A pin on superproject branch B must be on the submodule's branch B or on its
+`master`. On `master` that is the submodule's `master` alone, and a submodule
+with no branch B is held to its `master`. Push the submodule commit to one of
+those branches first, then commit the moved pointer here.
 `scripts/ci/submodule-pins.sh` checks this, and the pipeline's `submodule_pins`
-job runs it on every push: it fails when a pinned commit is not an ancestor of
-the submodule's `master` on the host the superproject was cloned from. A
-superproject commit that reaches the GitHub mirror therefore names only
-submodule commits the mirror already holds. The check
-fetches commits without trees or blobs, so it finishes in seconds, and
-`scripts/ci/submodule-pins.test.sh` is its offline table test.
+job runs it on every push. It fails when a pinned commit is not an ancestor of
+either branch on the host the superproject was cloned from.
+
+The script decides B for itself. A pull request is checked against the branch
+it merges into, because that is where its pins land, and any other pipeline run
+against the branch it built. Off an agent, B is the branch checked out, and
+`--branch <b>` names another. A tag or a detached HEAD is held to `master`.
+
+The rule keeps a clone of the GitHub mirror able to fetch its submodules: a
+superproject commit on branch B names only submodule commits the mirror's B or
+`master` holds, provided each submodule's mirror pushes B. Until a submodule's
+mirror job pushes `staging` and `nightly` as well as `master`, pin it to
+`master` there. The check fetches commits without trees or blobs, so it
+finishes in seconds, and `scripts/ci/submodule-pins.test.sh` is its offline
+table test.
 
 ### Submodules in CI
 
-No gate reads a submodule, so the template's gate jobs check out none, which
-also keeps the baseline media out of every devcontainer start. The one job that
-reads `cold-storage` is
-`submodule_pins`. It checks this repository out without submodules and adds an
-inline checkout of `cold-storage`, which is what puts that repository in the
-scope of the job's access token, then runs `scripts/ci/submodule-pins.sh` with
-the token in `SYSTEM_ACCESSTOKEN`.
+Every checkout in the pipeline is made with `submodules: false`, and nothing
+initializes submodules recursively, which keeps the baseline media out of every
+job. A job that needs a submodule's files names it and runs
+`scripts/ci/submodules.sh init <path>...`, which initializes exactly those
+submodules at their pinned commits, one commit deep, without their own
+submodules. `submodules.sh list` prints what `init` would initialize and
+touches nothing.
+
+Every job that builds from the checkout initializes `contracts` right after its
+own checkout: the template's `rust` and `web` gate jobs, every job on
+`.azure/tcab/rust-job-steps.yml` (`rust_build`, the `gg_tests_<k>_of_<N>`
+partitions, `binary_linux`, `gg_amd64`), `binary_windows` (in Git Bash),
+`gg_arm64` and the `docs` job. The jobs that build nothing from the workspace
+(`paths`, the mirror, `gg_publish`, the manifest fuses and the deploys)
+initialize none.
+
+`submodules.sh init --build-context` initializes every submodule the root
+`.dockerignore` re-includes any part of, as `scripts/ci/build-context.sh
+--submodules` prints them, which is `contracts`. The image jobs
+(`audiostore_<arch>`, `runimages_<arch>`, `services_<arch>`) run it after their
+checkout. A path in a submodule enters the context the way any path does, by a
+re-inclusion that names it, and the `build-context` gate checks it against that
+submodule's checkout. When the checkout has not initialized the submodule, the
+gate lists the path as unverified rather than failing.
+
+The project scopes the job's access token to the repositories a job names. Both
+pipelines declare `contracts` under `resources.repositories`, and every job
+that initializes it names it under the job's `uses: repositories:`, which puts
+the repository in the token's scope without checking it out. The script sends
+the token in `SYSTEM_ACCESSTOKEN` to `dev.azure.com` alone. The repository is
+authorized for the `the-test-cabinet` and `the-test-cabinet-release` pipeline
+definitions once, in the project's pipeline permissions.
+
+`submodule_pins` checks every submodule's repository out instead:
+`.azure/project/jobs.yml` lists them in its `submodules` parameter, with each
+one's path and repository, and the job checks each repository out beside this
+one before it runs `scripts/ci/submodule-pins.sh` with the token in
+`SYSTEM_ACCESSTOKEN`. `scripts/ci/submodules.sh check` holds that list to
+`.gitmodules`, and `scripts/ci/submodules.test.sh` runs the check against the
+repository, so the `shell-tests` gate fails on a submodule added to one and not
+the other.
 
 ## Layout
 
@@ -119,6 +176,11 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 
 ### Rust (Cargo workspace)
 
+- `crates/engines`: `test-cabinet-engines` (lib `test_cabinet_engines`). The
+  built-in [engine](/components/core/engines/) manifests as data: `BUILT_IN`, every
+  `engines/*/engine.toml` keyed by slug. Only its test depends on another crate
+  (the contracts crate, for `BUILT_IN_SLUGS`); the core builds its
+  default engine catalog over it.
 - `crates/core`: `test-cabinet-core` (lib `test_cabinet_core`). The headless
   [core](/components/core/overview/) that owns all orchestration: resolving a
   test case version, seeding a run's repository, executing the run in a
@@ -150,6 +212,8 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/telemetry`: `test-cabinet-telemetry`. The shared
   [OpenTelemetry](/development/observability/) wiring every long-lived binary
   initializes at startup.
+- `crates/api-codegen`: the [generator](#generating-the-data-contract) of the
+  backend API's committed TypeScript bindings and JSON Schemas.
 
 The remaining members are the asset-generation tools (`draw`, `voxel`, `mc`,
 `sn`, `dc`, `paint`, `particle-*`, `sfx-*`, `music` and the libraries they
@@ -160,23 +224,20 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 
 ### TypeScript (npm workspace)
 
-- `packages/run-record`: `@clockwyrks/run-record`. Shared TypeScript types
-  and JSON Schema for the [run record](/components/core/run-records/), the
-  central data contract.
-- `packages/asset-contract`: `@clockwyrks/asset-contract`. The rig and F-curve
-  shapes a produced model is described by, generated in the same pass from the
-  same Rust types. Its own package because it is the only slice of the contract
-  that may be **seeded**: the voxel and particle runtimes depend on it and are
-  vendored into a model's workspace, so whatever they depend on travels with
-  them. `run-record` re-exports these types, so a console keeps importing them
-  from there. The `seeded-contract` gate (`ci/gates/seeded-contract.py`, which
-  runs `scripts/ci/seeded-contract-check.sh`) keeps the evaluation half out of
-  a run.
+- `packages/backend-api`: `@clockwyrks/backend-api`. The TypeScript types of the
+  [backend's API](/components/backend/api/): its request and response shapes,
+  the run queue, coverage plans and ladders, accounts, comparisons, the
+  published snapshot documents, the saved gg configurations, agents, queries and
+  dashboards, the persisted tournament, and the `Review` document. Generated
+  from `crates/backend` and `crates/core`, and built on `run-record`, whose types
+  it imports.
 - `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
-  frozen at one moment comparable with the same figure recomputed later. It has
-  no runtime dependencies and imports only types from `run-record`, so it runs in
+  frozen at one moment comparable with the same figure recomputed later. The
+  [scoring goldens](#the-scoring-goldens) hold each mirror to its counterpart. It has
+  no runtime dependencies and imports only types from `run-record` and
+  `backend-api`, so it runs in
   a bundle, a build script, or a worker alike. `packages/ui`'s `ratings` module
   re-exports the scoring half alongside its display metadata.
 - `packages/browser-driver`: `@clockwyrks/browser-driver`. The Playwright
@@ -220,6 +281,62 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `apps/docs`: `@the-test-cabinet/docs`. This Astro Starlight documentation
   site. The workspace template renders its `package.json`, which pins the
   site's dependencies; the pages are the project's.
+
+### The contracts submodule
+
+`contracts/` at the root is a git submodule holding the
+[contracts repository](/development/repositories/#the-repositories), the shapes more
+than one party reads or writes. The workspaces build against its checkout:
+`crates/core`, `crates/engines` and `crates/api-codegen` depend on its crates by
+`path`, the root `Cargo.toml` excludes `contracts` from its own members, and the
+root `package.json` lists `contracts/packages/*` among its workspaces. Its own
+pipeline runs its gates, so this repository's prose, format and lint gates leave
+it out. It keeps the layout it had inside this repository:
+
+- `contracts/crates/contracts`: `test-cabinet-contracts` (lib
+  `test_cabinet_contracts`). The
+  [contract](/components/core/overview/#the-contracts-crate) shapes more than one
+  party agrees on: the run record and its parts (events, validation summary,
+  metrics, toolchain and code analysis), the review shapes, a resolved test case
+  version, the test suite format and its rules, gg's configuration, telemetry and
+  session record, the TCQ query shapes, the engine identity a run names, the
+  ingest feed, and the layout of a run tree. Data and pure functions only; core
+  re-exports every module at its old path. Its `fixtures/` holds the test suite
+  fixture the format's tests and the suite runtime's tests read (`test-suite/`),
+  the TCQ conformance fixture the Rust and TypeScript evaluators both execute
+  (`gg_query.conformance.json`), and the
+  [scoring goldens](#the-scoring-goldens) both scoring implementations execute
+  (`scoring/`).
+- `contracts/crates/suites`: `test-cabinet-suites` (lib `test_cabinet_suites`).
+  The [test-suite runtime](/components/core/overview/#the-suites-crate): the
+  suite catalog and lowering, previews, a definition's prompt and the validator
+  runners, with the engine catalog, the vitest runner, the browser driver and the
+  content digests they share with the core. Core re-exports every module at its
+  old path. The `test-support` feature exposes `test_browser` to another crate's
+  tests.
+- `contracts/crates/contract-codegen`: the
+  [generator](#generating-the-data-contract) of the data contract's TypeScript
+  bindings and JSON Schemas.
+- `contracts/packages/run-record`: `@clockwyrks/run-record`. Shared TypeScript
+  types for the [run record](/components/core/run-records/), the central data
+  contract.
+- `contracts/packages/asset-contract`: `@clockwyrks/asset-contract`. The rig and
+  F-curve shapes a produced model is described by, generated in the same pass
+  from the same Rust types. Its own package because it is the only slice of the
+  contract that may be **seeded**: the voxel and particle runtimes depend on it
+  and are vendored into a model's workspace, so whatever they depend on travels
+  with them. `run-record` re-exports these types, so a console keeps importing
+  them from there. The contracts repository's tests hold its wording to the
+  seeded vocabulary, and this repository's `seeded-contract` gate
+  (`scripts/ci/seeded-contract-check.sh`) keeps every seeded package's closure
+  from reaching `run-record`.
+- `contracts/schema/core/` and `contracts/schema/gg/`: the data contract's JSON
+  Schemas, which the docs site publishes.
+
+A commit that moves the `contracts` pin carries what the pin moves with it: the
+regenerated `Cargo.lock` and `package-lock.json`, and the CI image pin when the
+contracts pipeline's moved. [Bumping a pin](/development/repositories/#bumping-a-pin)
+states the steps.
 
 ### Cold storage
 
@@ -288,6 +405,10 @@ image's gg layer and apt packages, the project's skills and hooks under
 `.claude/`, and the project's pipeline work in `.azure/project/*.yml`, which
 the template's pipeline includes.
 
+`copier.yml` at the root is a second copier template, the repository kit this
+project renders its own repositories from; see
+[Repositories](/development/repositories/#the-kit).
+
 ## The gates
 
 One command runs every check a commit runs, over the whole tree:
@@ -316,14 +437,14 @@ The template's gates:
 | --- | --- |
 | `no-nul-bytes` | No NUL byte in a file `.gitattributes` does not declare binary |
 | `devcontainer-declaration` | The checkout is mounted at the folder the container works in |
-| `shell-tests` | Every `*.test.sh` under `scripts/` and `scripts/ci/` |
+| `shell-tests` | Every `*.test.sh` under `scripts/`, `scripts/ci/` and `scripts/repos/` |
 | `rust-fmt` | `cargo fmt --all -- --check` |
 | `rust-clippy` | `cargo clippy --locked --workspace --all-targets -- -D warnings` |
 | `rust-doc` | `cargo doc --locked --workspace --no-deps`, with private items (see below) |
 | `rust-test` | `cargo nextest run --locked --workspace`, which skips gg's unit tests; no hook |
 | `rust-doctest` | `cargo test --locked --workspace --doc`; no hook |
 | `k8s-manifests` | The template's render of every overlay; see [Kubernetes](/deployment/kubernetes/overview/) |
-| `web-lint` | `npm run lint`: ESLint over the TypeScript |
+| `web-lint` | `npm run lint`: ESLint over the TypeScript, ratcheted by `eslint-suppressions.json`; see [Linting](#linting) |
 | `web-typecheck` | The web console's `tsc -b` |
 | `web-test` | The web console's Vitest run, under jsdom |
 | `web-browser-test` | The web console's Vitest run, in real browser engines |
@@ -333,34 +454,43 @@ The template's gates:
 | `format` | Prettier, with `.prettierignore` as its scope (plus the k8s manifests and the case-harness fixture page) and the frozen versions left out |
 | `docs-typecheck` | This site's `astro check` |
 | `docs-build` | This site's build |
-| `python-lint` | ruff over `ci/` |
-| `ci-tests` | pytest over `ci/` |
+| `python-lint` | ruff over `ci/`, `scripts/repos/` and the repository kit's `templates/repository/` |
+| `ci-tests` | pytest over `ci/` and `scripts/repos/`, the latter rendering the repository kit for each kind |
 
 The project's own gates, wired the same way:
 
 | Id | What it checks |
 | --- | --- |
 | `frozen-paths` | No change to a [frozen](/development/frozen-versions/) test-case version |
-| `seeded-contract` | No evaluation vocabulary in the packages seeded into a model's workspace |
+| `seeded-contract` | No evaluation vocabulary in the packages seeded into a model's workspace, and no seeded closure reaching `@clockwyrks/run-record` |
 | `spec-vocabulary` | No evaluation vocabulary in a non-frozen version's seeded specs |
 | `spec-prose` | markdownlint and cspell over the test-case, game-jam and group prose |
 | `audio-packs` | Every version's `[audio] packs` resolves against the pack registry |
 | `build-context` | Every project Dockerfile's `COPY` sources, and the `containers/` Rust pins |
 | `k8s-deploy-sets` | The staging and prod deploy sets, pinned to a commit |
 | `ci-image-pins` | The root pipelines name every CI image as `<repository>:${{ variables.ciImageTag }}` and include `ci/images/tags.yml`, `azure-pipelines.yml` passes the Rust one to `.azure/project/jobs.yml` as `rustImage`, and no file under `.azure/` names one |
-| `scripts-test` | `node --test` over `scripts/lib` |
+| `dependency-graph` | The submodules, the patch table and the package links against the repositories' [edges](/development/repositories/#the-edges), and `Cargo.lock` against the checked-out crates |
+| `scripts-test` | `node --test` over `scripts/lib` and `scripts/*.test.mjs` |
 | `workspace-test` | Every npm workspace's Vitest run but the console's and this site's; no hook |
 | `validators-typecheck` | `tsc` over every test case's validator projects; no hook |
 | `site-build` | The gallery's build; no hook |
-| `contract-drift` | The generated data contract is current; no hook |
+| `contract-drift` | The generated backend API contract is current; no hook |
 
-`.pre-commit-config.yaml` runs each gate on every commit as one hook, triggered
-by the files it judges, except the ones marked "no hook", which build the
-workspace packages or the Rust workspace before they check anything and so run
-in `make gate` and the pipeline only; `HOOKLESS` in `ci/tests/test_wiring.py`
-names them, and a gate added without a hook fails there until it is either
-given one or named too slow for a commit. `scripts/setup-hooks.sh` installs the
-hook, and the dev container runs it when the container is created.
+`.pre-commit-config.yaml` runs each gate as one hook, triggered by the files it
+judges, except the ones marked "no hook", which build the workspace packages or
+the Rust workspace before they check anything and so run in `make gate` and the
+pipeline only; `HOOKLESS` in `ci/tests/test_wiring.py` names them, and a gate
+added without a hook fails there until it is either given one or named too slow
+for a commit.
+
+Every hook runs on each commit except `rust-clippy` and `rust-doc`, which compile
+the whole workspace and so run on each push (`stages: [pre-push]`). A pre-push
+hook judges the files that differ across the pushed range, so a change to any
+Rust source in the push runs both. `scripts/setup-hooks.sh` installs both hook
+types, and the dev container runs it when the container is created. Re-run it on
+a clone set up before the pre-push hook existed, or the clippy and doc gates
+never run locally. `git commit --no-verify` and `git push --no-verify` bypass the
+respective stage.
 
 The same file carries the checks the hook framework brings from its pinned
 upstream repositories, the file checks of `pre-commit-hooks` and `shellcheck`;
@@ -414,6 +544,90 @@ scripts/ci/gg-test.sh [k/N]   # gg's unit tests, whole or one hash partition
 
 gg's unit tests are the one part of the suite no gate runs; see
 [Testing gg](#testing-gg).
+
+### The scoring goldens
+
+A run's score and rating are computed twice: by the core in Rust, where the backend
+scores a stored review, and by `@clockwyrks/run-stats` in TypeScript, where the
+consoles, the gallery and the public read edge score the same run. The goldens under
+`contracts/crates/contracts/fixtures/scoring/` are the cases both must agree on, one
+file per pair of functions that exists on both sides: `score_checklist`, the toolchain gate
+(`gated`), the review aggregations (`aggregate`), the validator-decided domain ratings
+(`validator_domain`), `merge_review_items`, the errata's `score_exclusions`, and the
+automated-only score with the verdicts and the covered score it is built on
+(`automated`). Each case gives its `name`, `why` it exists, the `input` and what to
+`expect`.
+
+`crates/core/src/review.goldens.test.rs` executes them in the `rust-test` gate and
+`packages/run-stats/src/scoring.goldens.test.ts` in `workspace-test`, both reading the
+files off the contracts submodule's checkout, so a case added on either side runs on
+both, and each fails when the directory holds a file it executes no test for. Each
+rejects a key it does not know, since a misspelled key would otherwise fall back to
+its default and assert less than it reads as asserting. The expectations are the Rust
+output: a change to a scoring rule changes the goldens, and the other side then has
+to follow. The writeup-based `review::score` has no golden, being a thin wrapper over
+`score_checklist` with no TypeScript counterpart.
+
+### Tests that read case versions
+
+A Rust test that resolves a named case version reads a copy of it under its
+crate's `testdata/definitions/`, laid out like the repository root
+(`test-cases/<type>/<difficulty>/<slug>/<version>/`, `game-jams/`,
+`test-case-groups/`). A copy holds the version's tracked files without its
+`.frozen` marker, so the [frozen-paths](/development/frozen-versions/) gate
+guards the original alone. The tests read no other tree, so they pass wherever
+the catalog itself lives, and a missing copy fails the test that resolves it.
+The format, prose and lint gates and the image build context leave the
+copies out.
+
+The tests that hold every committed version to a rule read the catalog itself:
+`crates/core/tests/committed_catalog.rs`, the group membership check in
+`crates/core/tests/manifests_are_valid.rs`, and the backend's
+`every_stored_manifest_preserves_its_asset_shape`. They read it from
+`TCAB_DEFINITIONS_ROOT`, the directory holding `test-cases/`, `game-jams/` and
+`test-case-groups/`, which defaults to the repository root, and they fail where
+it holds no catalog.
+
+### Tests that need a browser
+
+A few of the core's and the suites crate's tests run a real toolchain rather than a
+stand-in for one: the
+lockfile check's script under the host's `node`, and Playwright's Chromium
+launched through the npm workspace, which is how a validator project runs under
+Vitest's browser mode. A machine without that toolchain prints `skipped:` and
+what is missing, and the test passes, so the rest of the suite still runs on a
+laptop with no browser. `contracts/crates/suites/src/test_browser.rs` holds the
+helpers such a test uses, which the suites crate's `test-support` feature exposes to
+the core's tests, and `test_browser::tests::the_repository_workspace_launches_chromium`
+in the suites crate, which the contracts repository's pipeline runs, checks the
+toolchain on its own.
+
+Where the toolchain is meant to be present, a skip is a pass nobody earned.
+`TCAB_REQUIRE_BROWSER=1` names such a place: with it set, a missing `node`, a
+workspace without the packages a test names, or a Chromium that does not
+launch fails the test instead. The `rust` gate job is such a place: it runs in
+the [rust-browser CI image](#ci-images), which carries Node and Chromium, and
+sets the variable, so these tests run in CI and a missing toolchain fails them.
+To hold a local run to the same standard:
+
+```sh
+npm ci                                   # the workspace: Vitest, Playwright
+scripts/ci/install-playwright-chromium.sh  # Chromium and its libraries (as root)
+TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-core
+```
+
+The suites crate is a path dependency here rather than a member of the workspace,
+and cargo tests no package outside the workspace, so its own browser tests run in
+the `contracts/` checkout, as its pipeline runs them:
+
+```sh
+cd contracts && npm ci && TCAB_REQUIRE_BROWSER=1 cargo nextest run -p test-cabinet-suites
+```
+
+The dev container already carries Chromium. A test finds the npm workspace from
+its crate's `CARGO_MANIFEST_DIR`, as the nearest ancestor holding a
+`package.json` and a `node_modules`, and stops at the repository's root, so a
+checkout inside another repository never borrows that repository's install.
 
 ```sh
 uv run --quiet --project ci gate run audio-packs
@@ -490,7 +704,7 @@ exactly those five and ignores everything else in that directory.
 
 Anything that compiles `crates/gg` needs those toolchains present. That is
 `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`,
-`scripts/build-gg-static.sh`, and
+the pre-push clippy and doc hooks, `scripts/build-gg-static.sh`, and
 `scripts/gg-reference.sh`. Nothing else in the workspace depends on
 `test-cabinet-gg`, so a package-scoped build such as `-p test-cabinet-cli` and the
 release binaries need none of it.
@@ -665,12 +879,67 @@ npm run build
 
 The other root scripts delegate to each workspace that defines them:
 `npm run dev`, `npm run test`, and `npm run typecheck`. `npm run lint` is ESLint
-over the whole workspace from the root `eslint.config.js` (the `web-lint` gate).
+over the whole workspace from the root `eslint.config.js` (the `web-lint` gate);
+see [Linting](#linting).
 
 `npm run test` runs `vitest` in each workspace. Iterate on the gallery's own
 suite with `npm run test -w @clockwyrks/ui`. On a clean checkout, build the
 workspace runtime packages first with `npm run build:packages`, since the tests
 import them from a built `dist/`.
+
+### Linting
+
+ESLint lints the hand-written TypeScript of four projects with type information:
+`apps/web/src`, `packages/ui/src`, `apps/site/src` and `apps/lattice-designer/src`.
+It also lints the build configurations beside them (each Vite configuration and
+the plugins it loads) and the gallery's `apps/site/scripts/` without type
+information. The `PROJECTS` list at the top of `eslint.config.js` names each
+project with the `tsconfig.json` that owns it. Every file set is derived from
+that list, so a new project is brought under the gate by adding one entry to it.
+
+The gate has one tier. The configuration raises every rule a preset leaves at
+`warn` to an error, and an `eslint-disable` comment that suppresses nothing is an
+error too.
+
+Most of that code was written before the gate covered it, so the gate is a
+ratchet over it rather than a demand that it be clean.
+`eslint-suppressions.json` at the repository root records, for each file, how
+many errors of each rule the file had when it was recorded. It is ESLint's own
+[bulk suppressions](https://eslint.org/docs/latest/use/suppressions) file, and
+`npm run lint` reads it:
+
+- A file whose count for a rule is at or under its record passes, and its
+  recorded errors are not printed.
+- A file whose count for a rule grows past its record fails, and ESLint prints
+  every error of that rule in the file, since it cannot tell which one is new.
+- A file the record does not name, or a rule it does not name for that file,
+  fails on its first error. New code is held to the whole gate.
+- An error ESLint cannot attribute to a rule is never recorded: a file that does
+  not parse, or a file outside every project's `tsconfig.json`, fails as it is,
+  and so does an `eslint-disable` comment that suppresses nothing.
+- A count that shrinks passes. Record the shrink with `npm run lint:prune`,
+  which lowers each count to what the code now has and drops what reached zero,
+  so the shrink cannot be spent again.
+
+| Command | What it does |
+| --- | --- |
+| `npm run lint` | The gate: ESLint, with the baseline applied |
+| `npm run lint:prune` | Lowers the baseline to the current counts; never raises one |
+| `npm run lint:baseline` | Rewrites the baseline from scratch to the current errors |
+| `npm run lint -- --fix` | Applies ESLint's automatic fixes, then checks as the gate does |
+
+`npm run lint:baseline` accepts every error the code has now, new ones included.
+It is for widening the gate: adding a project to `PROJECTS`, or adopting a rule
+set the existing code does not yet meet. A diff that raises a count in
+`eslint-suppressions.json` is the visible record that it was run, and fixing the
+new error is the usual answer instead. ESLint writes the file in its own
+formatting, with no final newline, so `.prettierignore` leaves it out of the
+`format` gate and the `end-of-file-fixer` hook leaves it alone.
+
+A file moved or renamed loses its record, because the record is keyed by path.
+Move its entry in `eslint-suppressions.json` to the new path with it, or run
+`npm run lint:baseline` in the same change and check that the diff only moves
+counts.
 
 ### Every page loads
 
@@ -744,26 +1013,60 @@ gate.
 
 ## Generating the data contract
 
-The run-record (and arena, job-API, backend) data contract has a single source of
-truth: the Rust types that derive `ts_rs::TS` and `schemars::JsonSchema` behind
-their `contract` feature, in `crates/core` and `crates/backend`. The TypeScript
-bindings under `packages/run-record/src/` and `packages/asset-contract/src/` —
-one generator, two packages, because only the latter may be seeded into a run —
-and the JSON Schemas under `apps/docs/public/schema/` are generated from those
-types by `crates/contract-codegen`. After changing any contract type, regenerate
-and commit:
+The run-record data contract and the backend API built on it have a single
+source of truth: the Rust types that derive `ts_rs::TS` and
+`schemars::JsonSchema` behind their `contract` feature, in
+`contracts/crates/contracts`, `crates/core` and `crates/backend` (core's feature
+turns on the contracts crate's). Two generators turn them into committed
+TypeScript bindings and JSON Schemas:
+
+- `contract-codegen`, in the contracts repository, writes the data contract
+  from its contracts crate: `packages/run-record/src/` and
+  `packages/asset-contract/src/` (two packages, because only the latter may be
+  seeded into a run) and their schemas under `schema/core/` and `schema/gg/`.
+  It runs there, with that repository's own `npm run gen:contract`, and that
+  repository's `contract-drift` gate holds its output current.
+- `crates/api-codegen` writes the backend's API from `crates/backend` and
+  `crates/core`: `packages/backend-api/src/` and its schemas under
+  `apps/docs/public/schema/`. It reads the first generator's modules and
+  documents without writing them, so a backend type that refers to a contract
+  type imports it from `@clockwyrks/run-record` and references it at the
+  contract document's URL. Nothing in the data contract refers back to the
+  backend API.
+
+The docs site publishes every schema under `/schema/`. The backend's
+directories are `backend-api/`, `coverage/`, `jobs-api/` and `snapshot/`,
+committed under `apps/docs/public/schema/`. The data contract's `core/` and
+`gg/` are copies: the docs site's `prebuild` and `predev` run
+`scripts/copy-contract-schemas.mjs`, which copies them out of
+`contracts/schema/` into `apps/docs/public/schema/`, where `.gitignore` lists
+them, and fails when the submodule is not checked out. Each generator resolves
+the workspace root from its own crate, so each writes where its own workspace
+keeps its outputs. Five of the
+backend's documents once sat in the contract's directories and moved to
+`backend-api/`: `tournament.schema.json`, `gg-query-batch-request.schema.json`,
+`gg-query-batch-response.schema.json`, `gg-saved-query.schema.json` and
+`gg-dashboard.schema.json`. Their old URLs under `/schema/core/` and
+`/schema/gg/` redirect to the new ones with a 301, from
+`apps/docs/public/_redirects`, which the docs site's Cloudflare Pages project
+reads. After changing a backend API type, regenerate and commit:
 
 ```sh
 npm run gen:contract
 ```
 
-It runs the generator, formats the output with Prettier, mirrors gg's built-in
-system-prompt templates into the TypeScript contract, and compiles the
-regenerated package. The `contract-drift` gate regenerates and fails on any
-diff, so the Rust, TypeScript, and JSON Schema representations stay in step.
+It runs `api-codegen`, mirrors gg's built-in system-prompt templates into
+`packages/backend-api/src/gg-system-prompt.ts` (the backend API's package, not the
+data contract's, because the data contract depends on nothing of gg's), formats
+the output with Prettier, and compiles `@clockwyrks/backend-api` with the
+`run-record` it references. The `contract-drift` gate regenerates and fails on
+any diff, or on a generated file that was never committed, so the Rust,
+TypeScript, and JSON Schema representations stay in step. A change to a data
+contract type is made, regenerated and committed in the contracts repository,
+and reaches this one by a [pin bump](/development/repositories/#bumping-a-pin).
 
-It compiles `test-cabinet-core` and `test-cabinet-backend` only, so it needs none
-of gg's program-language toolchains.
+`api-codegen` compiles `test-cabinet-core` and `test-cabinet-backend`, so it
+needs none of gg's program-language toolchains.
 
 ## Projecting gg's reference
 
@@ -908,7 +1211,8 @@ The project adds steps to both through `.azure/project/setup-steps.yml` and
 - In `rust`: `scripts/ci/free-disk-linux.sh`, which reclaims what the
   template's own reclaim leaves; the gg toolchains, restored from the
   `gg-toolchains` cache and completed by `scripts/ci/gg-ci-toolchains.sh`, since
-  the Rust CI image carries no Node and no gg toolchains; and, last,
+  the CI images carry no gg toolchains, with the npm workspace the browser
+  tests run under; and, last,
   `scripts/ci/cargo-target-prune.sh`, which removes the executables cargo linked
   before the template saves its `target/` cache, so the cache holds the compiled
   libraries and fits beside the tree on the agent's disk.
@@ -934,9 +1238,12 @@ off it.
 in `.azure/tcab/`, shared with the release pipeline. The amd64 jobs that
 compile Rust run as container jobs in the template's Rust CI image, with the
 template `rust` job's paths, variables and cargo cache, so they share its caches
-and seed them. A template cannot read the pin itself (a `${{ variables.* }}`
-inside an included jobs template expands to nothing), so `azure-pipelines.yml`
-names the image the way its `rust` job does,
+and seed them. The rust-browser image the `rust` job is to move into is built
+on that image, so the toolchain and its paths are the same in both and a
+compile in one is a cache hit in the other. A template cannot read the pin itself (a
+`${{ variables.* }}` inside an included jobs template expands to nothing), so
+`azure-pipelines.yml` names the image with the expression its `rust` job names
+its own with,
 `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}`,
 and passes it to `jobs.yml` as its `rustImage` parameter; the release
 pipeline, a root file itself, names it the same way. The `ci-image-pins` gate
@@ -950,10 +1257,10 @@ passing anything else, and on a file under `.azure/` naming an image at all.
 | `rust_build` | every push; a pull request that reaches the Rust workspace | `rust-build.sh`, the link of every target. When no seed exists for this `Cargo.lock`, it also runs the template gates' clippy, doc and test builds and saves `target/` under a key the template `rust` job restores |
 | `binary_linux` | every push; a pull request that reaches the Rust workspace | The release build and tests of `tcab`, its doctests, and the binary smoke |
 | `binary_windows` | every push; a pull request that reaches the Rust workspace | The same on `windows-2022` |
-| `submodule_pins` | every push; a pull request that touches a submodule pin | `submodule-pins.sh`; see [Submodules in CI](#submodules-in-ci) |
+| `submodule_pins` | every push; a pull request that touches a submodule pin | `submodule-pins.sh`: every pin is on the submodule's branch of the same name or on its `master`; see [Mirrors and pins](#mirrors-and-pins) and [Submodules in CI](#submodules-in-ci) |
 | `gg_amd64`, `gg_arm64` | `master`, `staging` | The static gg binary per architecture (`gg-dist.sh`) |
 | `audiostore_<arch>`, `runimages_<arch>`, `services_<arch>` and their manifests | `master`, `staging` | Every image, built natively per architecture and fused by `manifest.sh`; the eight service images of an architecture on one builder, so their Rust compile happens once |
-| `mirror` | `master`, `staging`, `nightly` | Force-pushes the branch to GitHub, after every check job |
+| `mirror` | `master`, `staging`, `nightly` | Pushes the branch to GitHub, after every check job; see [The GitHub mirror](#the-github-mirror) |
 
 ### Which check jobs a pull request runs
 
@@ -972,10 +1279,12 @@ for runs everything. The `rust` group (`rust_build`, `binary_linux`,
 `binary_windows`) leaves out the documentation site, the web app and gallery,
 the issue board, the deployment manifests, the run-container definitions, the
 gates' own sources under `ci/`, Markdown outside `crates/`, every shell test,
-and the scripts only the image, deploy and release jobs run. The `gg` group
+the scripts only the image, deploy and release jobs run, and every submodule pin
+but `contracts`'. A `contracts` pin reaches it, since the workspace depends on
+that repository's crates by path. The `gg` group
 (the gg test partitions) leaves out those and the test cases and game jams,
 which gg's suite never reads. The `submodules` group (`submodule_pins`) is the
-one allowlist: `.gitmodules`, a submodule's pin, and the script itself. A change
+one allowlist: `.gitmodules`, a submodule's pin, and the pin script. A change
 under `.azure/`, to `ci/images/`, to `rust-toolchain.toml` or to
 `changed-paths.sh` reaches every group.
 
@@ -1006,10 +1315,48 @@ one job on one builder (`service-images.sh`), because seven of them share one
 seven times over. The 27 `-gg` run images share one `/opt/gg` layer, so the
 registry stores it once and each push after the first mounts it.
 
-The `mirror` job force-pushes the branch with its tags to
-`github.com/TheClockwyrks/TheTestCabinet`, with the deploy key held in the
-secure file `github-mirror-key`. It is the only thing that pushes there, so the
-mirror holds gated commits only.
+### The GitHub mirror
+
+The `mirror` job runs `scripts/ci/mirror.sh`, which pushes the branch with
+every tag it contains, or the tag a release built, to the repository's GitHub
+mirror over ssh, with the deploy key held in a secure file. It is the only
+thing that pushes there, so the mirror holds gated commits only.
+
+The target is the one the repository declares in `.nyxsis/mirrors.toml`, the
+file the fleet that manages the repository reads its mirrors from, here
+`https://github.com/TheClockwyrks/TheTestCabinet`. The job template,
+`.azure/tcab/mirror-job.yml`, takes it as its `url` parameter, which
+`.azure/project/jobs.yml` and the release pipeline pass, and the script refuses
+a `url` the file does not declare, so the two cannot drift apart. The template's
+`secureFile` parameter names the key, `github-mirror-key` by default; GitHub
+refuses one deploy key on two repositories, so each mirror has a key of its
+own. A pipeline that passes no `url` has no `mirror` job at all, so a pipeline
+copied into another repository pushes nowhere, and asks for no key, until its
+own target is written in. Run directly with neither a `url` nor a declared
+mirror, the script says so and pushes nothing.
+
+Before it pushes, the script reads the mirror's refs and refuses the push when:
+
+- the target branch exists on the mirror and its head is not an ancestor of the
+  commit being pushed, or is a commit the clone does not hold; or
+- a tag it would push already names a different object on the mirror.
+
+Either means the mirror holds history this repository does not, such as another
+repository's history pushed by a copied pipeline, or a history rewritten under
+it. The push itself is not forced, so a mirror that moved between the check and
+the push is refused by GitHub too. When replacing the mirror's history is
+meant, queue a run with the pipeline variable `mirrorAllowRewrite` set to
+`true`, which skips the check and forces the push; locally, `--allow-rewrite`
+or `MIRROR_ALLOW_REWRITE=true` does the same.
+
+In the main pipeline the `mirror` job sits in the gates stage, which the
+staging publish and deploy stages wait on, but the mirror is not an input to
+either. Its push step therefore continues on error: a refused or failed push
+ends the job with issues, the run shows the warning, and the stage still
+succeeds, so a re-run of an older run, a branch rewritten here or a tag moved
+after it was mirrored never holds back a deploy of a commit that passed every
+check. The release pipeline's `mirror` job has nothing after it and fails
+outright.
 
 ### The release pipeline
 
@@ -1032,6 +1379,7 @@ template's CI images:
 | Image | Jobs |
 | --- | --- |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | `rust`, `gg_tests_<k>_of_4`, `rust_build`, `binary_linux`, `gg_amd64` |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd` | none yet; `rust`, once `ciImageTag` pins a run that built it |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | `web` |
 
 `ci/images/README.md` describes each. The Rust image carries the pinned
@@ -1040,10 +1388,26 @@ need beyond a compile's, which `ci/images/rust.Dockerfile` installs (`cmake`,
 `ffmpeg`, `libicu-dev`, `python3`, `ruby`, `zip`); gg's toolchains and Node
 come from the `gg-toolchains` cache.
 
+The rust-browser image is the project's own. It is the Rust image of the same
+commit with Node and Playwright's Chromium on top
+(`ci/images/rust-browser.Dockerfile`, which installs the browser with
+`scripts/ci/install-playwright-chromium.sh`). The `rust` job runs in it with
+`TCAB_REQUIRE_BROWSER=1`, so the Rust tests that drive a browser run there and
+fail rather than skip when it is missing (see
+[Tests that need a browser](#tests-that-need-a-browser)). The project's other
+Rust jobs need no browser and stay on the Rust image.
+
+The repository split plans an `android` track, which the template renders only
+once the `tauri_desktop` and `tauri_android` answers are both true, and a
+`base` track. Neither is here yet; `ci/images/README.md` says what each waits
+on. The split keeps the commit tag: every repository's images are tagged by the
+commit of the image run that built them.
+
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an
-image is built from and on nothing else, and every run builds both tracks and
+image is built from and on nothing else, and every run builds every track and
 pushes each as `<repository>:<commit>`, the commit its run is on, from the
-layer cache. `ci/images/tags.yml` holds one variable, `ciImageTag`, as a
+layer cache. The rust-browser job waits for the Rust one, since it builds on
+the image that job pushed. `ci/images/tags.yml` holds one variable, `ciImageTag`, as a
 variables template both pipelines include: the full commit whose image
 pipeline run built the images every gates job pulls, so a commit's diff says
 which images it ran in. The template renders the file with forty zeros, which
@@ -1062,7 +1426,13 @@ one for taking an image whose base moved under a floating tag: queue the image
 pipeline by hand on the branch's head and pin the commit it ran on. After each
 of its runs the image pipeline purges the registry of every CI image tag that
 `master`, `staging`, `nightly` and the checkout do not pin
-(`scripts/ci/ci-image-purge.sh`).
+(`scripts/ci/ci-image-purge.sh`), keeping as well every tag the
+`azure-pipelines.yml` of a submodule repository's `master`, `staging` or
+`nightly` names. That reaches the repositories of every submodule the
+`.gitmodules` of the checkout or of any of those branches names by a relative
+URL, which the image pipeline declares under `resources` and each of its jobs
+names under `uses:`; see
+[Repositories](/development/repositories/#a-repositorys-gates-and-pipeline).
 
 A job pulls its CI image from the registry before its first step runs, so a
 registry answer that times out would fail the job before it has checked
@@ -1087,14 +1457,16 @@ variables:
 | `the-test-cabinet-acr` | Docker Registry connection | `AcrPush` and `AcrDelete` on `testcabinet.azurecr.io`: pulls the CI images, pushes them from the image pipeline and purges the stale ones, and pushes every image |
 | `tcab-deploy` | Azure Resource Manager | The publish stage's registry sign-in (`AcrPush`), the registry purge after each deployment (`AcrDelete`) and the cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
 | `tcab-gg-publish` | Azure Resource Manager | Storage Blob Data Contributor on `testcabinetartifacts` |
-| `github-mirror-key` | Secure file | The GitHub mirror's write deploy key |
+| `github-mirror-key` | Secure file | The GitHub mirror's write deploy key, one per mirror |
+| `contracts` | Repository | The [contracts submodule](#the-contracts-submodule), which every building job initializes through its job token |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Secret pipeline variables | The docs deploy |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | Secret pipeline variables | Staging the audio store out of the audio object store (read-only) |
 
 The secret variables must be set on the pipeline before `master` or `staging`
 builds can complete their images and deploy stages. The release pipeline needs
-`the-test-cabinet-acr`, `tcab-gg-publish` and `github-mirror-key` authorized for
-it, and its build identity allowed to view and queue runs of the main pipeline.
+`the-test-cabinet-acr`, `tcab-gg-publish`, `github-mirror-key` and the
+`contracts` repository authorized for it, and its build identity allowed to view
+and queue runs of the main pipeline.
 
 ### Creating the pipelines
 

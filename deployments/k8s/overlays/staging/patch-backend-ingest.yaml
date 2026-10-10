@@ -14,11 +14,26 @@
 # replaced disk) this is what fills the store, and /readyz holds the pod out of its
 # Service until it lands.
 #
-# BRANCH: ingest the `staging` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
-# pick up pushed test-case edits and reference-build lockfile updates on demand — that
-# on-demand catalog refresh (no roll) is the whole point of the ingest. It is a stable
-# BRANCH, never a release tag like `v0.5.0`, which does not exist while that release is
-# still being tested on staging. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
+# SUBMODULES: after the superproject, the sidecar updates its two submodules, each in
+# its own step: cold-storage shallowly (the baseline media), and the test suites at the
+# commit the branch names. .gitmodules names the test suites repository relative to
+# the superproject (`../test-suites`), so against the GitHub mirror this clones from it
+# resolves to the mirror's sibling repository. The sidecar rewrites that address to the
+# Azure Repos HTTPS one and answers git's credential request from the read-only token
+# mounted out of the `tcab-test-suites-credential` Secret (keyvault-csi, uploaded by
+# deployments/k8s/secrets/upload-test-suites-credential.sh). The rewrite and the helper
+# live in this container's global git config, so the on-demand refresh `tcab ingest
+# --env staging` runs through `kubectl exec` authenticates the same way.
+#
+# BRANCH: ingest the `staging` branch TIP, so a fresh pod, `tcab ingest --env staging`,
+# and a publish to staging from The Spec Cabinet pick up pushed catalog, test suite, and
+# reference-build lockfile updates on demand. It is a stable BRANCH, never a release tag
+# like `v0.5.0`, which does not exist while that release is still being tested on
+# staging. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
+#
+# The refresh commands below are the ones crates/core/src/remote_backend.rs
+# (`refresh_commands`) runs on demand; keep the two in step. Both let the test suites
+# update fail with the same message; on demand, every other step is fatal.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,37 +49,55 @@ spec:
           args:
             - |
               set -u
-              # Keep == TCAB_INGEST_BRANCH in scripts/lib/env.sh (the branch reingest fetches).
+              # Keep == TCAB_INGEST_BRANCH in scripts/lib/env.sh (the branch a refresh fetches).
               BRANCH=staging
               until apk add --no-cache git curl; do
                 echo "ingest: apk add failed, retrying in 5s"; sleep 5
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              # One-shot: check out the catalog branch tip, then trigger a single forced ingest.
-              # No periodic loop. Refresh the live checkout if one survives a lone sidecar
-              # restart, else clone the branch fresh.
+              # The test suites submodule's address as `../test-suites` resolves against
+              # REPO, and the Azure Repos HTTPS address the read-only token authenticates to.
+              SUITES_MIRROR=https://github.com/TheClockwyrks/test-suites
+              SUITES_HTTPS=https://dev.azure.com/genyume/the-test-cabinet/_git/test-suites
+              TOKEN_FILE=/var/run/secrets/test-suites/token
+              export GIT_TERMINAL_PROMPT=0
+              git config --global url."$SUITES_HTTPS".insteadOf "$SUITES_MIRROR"
+              git config --global credential."https://dev.azure.com".helper \
+                "!f() { if [ \"\$1\" = get ]; then echo username=tcab; printf 'password=%s\n' \"\$(cat $TOKEN_FILE)\"; fi; }; f"
+              [ -s "$TOKEN_FILE" ] || echo "ingest: $TOKEN_FILE is empty or absent; the test suites submodule cannot be fetched"
+              # One-shot: check out the catalog branch tip and its submodules, then
+              # trigger a single forced ingest. No periodic loop. Refresh the live checkout
+              # if one survives a lone sidecar restart, else clone the branch fresh.
               if [ -d "$CHECKOUT/.git" ]; then
-                echo "ingest: refreshing checkout ($BRANCH)"
+                echo "ingest: refreshing $CHECKOUT to origin/$BRANCH"
                 git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
                   && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
-                  || echo "ingest: fetch failed"
+                  || echo "ingest: refresh failed"
               else
                 echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
                 rm -rf "$CHECKOUT" \
                   && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
                   || echo "ingest: clone failed"
               fi
+              # Sync first so a moved submodule URL reaches the persistent checkout.
+              git -C "$CHECKOUT" submodule sync --recursive \
+                || echo "ingest: submodule sync failed"
               # The cold-storage submodule holds every version's baseline validation
               # media, which ingest copies into the store. Fetch the pinned commit
               # shallowly on every refresh. `.gitmodules` names it relative to the
-              # superproject, so it resolves to the mirror's sibling repository; sync
-              # first so a moved URL reaches the persistent checkout. A failure still
-              # ingests, with no baseline media, rather than leaving the store empty.
+              # superproject, so it resolves to the mirror's sibling repository. A
+              # failure still ingests, with no baseline media, rather than leaving the
+              # store empty.
               echo "ingest: updating the cold-storage submodule"
-              git -C "$CHECKOUT" submodule sync \
-                && git -C "$CHECKOUT" submodule update --init --depth 1 \
-                || echo "ingest: submodule update failed; ingesting without baselines"
+              git -C "$CHECKOUT" submodule update --init --depth 1 cold-storage \
+                || echo "ingest: cold-storage update failed; ingesting without baselines"
+              # The test suites submodule, at the commit the branch names. Its own step,
+              # so a missing token costs the suites and not the baselines or the catalog.
+              echo "ingest: updating the test suites submodule"
+              git -C "$CHECKOUT" submodule update --init --recursive --force test-suites \
+                || echo "ingest: test suites update failed; ingesting without them"
+              git -C "$CHECKOUT" submodule status --recursive || true
               # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
               # store is populated, which is what the POST below is about to do, so
               # gating on it would deadlock the sidecar against itself.
@@ -75,7 +108,7 @@ spec:
                      -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
                 n=$((n + 1))
                 if [ "$n" -ge 10 ]; then
-                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env staging)"
+                  echo "ingest: POST /ingest failed 10x; giving up (run tcab ingest --env staging)"
                   break
                 fi
                 echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
@@ -85,6 +118,9 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /state
+            - name: test-suites-credential
+              mountPath: /var/run/secrets/test-suites
+              readOnly: true
           resources:
             # MEMORY REQUEST == LIMIT, and the ceiling raised from 128Mi to 256Mi —
             # same reasoning as the prod overlay's copy of this patch, and staging is
@@ -95,3 +131,10 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+      volumes:
+        # Optional, so a backend whose credential has not been uploaded yet still starts
+        # and ingests the rest of the catalog; the sidecar names the missing token.
+        - name: test-suites-credential
+          secret:
+            secretName: tcab-test-suites-credential
+            optional: true

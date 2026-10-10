@@ -1,3 +1,8 @@
+import type {
+  ControllerRef,
+  MatchSummary,
+  TournamentRecord,
+} from "@clockwyrks/backend-api/tournament";
 // The ArenaApi over HTTP, split across two hosts. The four RUN methods — list
 // pittable controllers, run a head-to-head match, submit a tournament, and stream
 // its live progress (including the terminal JOB status read) — target the dedicated
@@ -7,11 +12,6 @@
 // backend reports the arena's base URL at `GET /config` (see `fetchArenaUrl`); when
 // no arena service is configured (`arenaUrl` null) the gallery degrades the
 // adversarial run UI.
-import type {
-  ControllerRef,
-  MatchSummary,
-  TournamentRecord,
-} from "@clockwyrks/run-record";
 import type { ArenaApi, ArenaWorkerOption } from "../app/data/galleryContext";
 import { getJson, joinUrl, postJson } from "./http";
 

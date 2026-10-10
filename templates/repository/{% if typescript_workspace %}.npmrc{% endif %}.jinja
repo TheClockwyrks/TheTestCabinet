@@ -1,0 +1,6 @@
+# The project's packages install from its private feed, the `the-test-cabinet`
+# feed of the Azure DevOps project's Artifacts; every other package from the
+# public registry. A pipeline authenticates with scripts/ci/npm-feed.sh before
+# its first install, and a developer with a personal access token written the
+# same way into the user's npm configuration, never into this file.
+@clockwyrks:registry={{feed_registry}}

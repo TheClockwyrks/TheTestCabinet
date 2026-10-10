@@ -1,0 +1,108 @@
+# The repository kit as a copier template. The superrepo is the template's
+# repository, which is why this file sits at its root: copier reads a
+# template's configuration from the root of its git repository and records the
+# repository's commit as the version a rendered repository was made from. The
+# tree it renders is `templates/repository/`, and `scripts/repos/render.py` is
+# the one way it is rendered or updated; see the Repositories development page
+# and scripts/repos/README.md.
+#
+# The superrepo's own `.copier-answers.yml` records the template the superrepo
+# itself was generated from (the fleet's workspace template) and has nothing to
+# do with this file: the superrepo is a copier subproject and a copier template
+# at once, and `copier update` of the superrepo reads its template from that
+# file's `_src_path`, never from here.
+_min_copier_version: "9.18"
+_subdirectory: templates/repository
+
+# A file whose name ends in `.jinja` is a Jinja template; every other file is
+# copied as it is. Every path is rendered, which is how a file one kind carries
+# and another does not gets a conditional name that renders to nothing.
+_templates_suffix: .jinja
+
+# A block tag takes the newline after it and the indentation before it with
+# it, so a conditional block wrapped around a line leaves no blank line behind
+# when it renders to nothing.
+_envops:
+  trim_blocks: true
+  lstrip_blocks: true
+
+# What a render never copies: copier's defaults, then the caches a tool leaves
+# in the kit after a gate has run over it. They are ignored by git, so a
+# checkout never carries them, but a working tree the gates have run in does.
+_exclude:
+  - copier.yml
+  - copier.yaml
+  - "~*"
+  - "*.py[co]"
+  - __pycache__
+  - .git
+  - .DS_Store
+  - .svn
+  - .ruff_cache
+  - .pytest_cache
+  - .venv
+  - node_modules
+  - target
+  # A kind carrying no Rust crate (a site, a content repository) is rendered
+  # no workspace, no Rust configuration and no Rust gate. `rust_crate` is a
+  # value the context extension derives from the kind.
+  - |-
+    {% if not rust_crate %}
+    Cargo.toml
+    crates
+    .cargo
+    .config
+    rustfmt.toml
+    rust-toolchain.toml
+    ci/gates/rust-*.py
+    scripts/ci/prune-target.sh
+    scripts/ci/prune-target.test.sh
+    scripts/ci/git-sources.sh
+    scripts/ci/git-sources.test.sh
+    scripts/ci/install-nextest.sh
+    scripts/ci/install-nextest.test.sh
+    {% endif %}
+
+# The crate's source files are written once and then belong to the repository:
+# a merge of template scaffolding into a grown crate has no right answer.
+# Everything else, README and manifests included, is merged on update.
+_skip_if_exists:
+  - crates/*/src/lib.rs
+  - crates/*/src/main.rs
+
+# Every derived value (the crate, the workspace's dependencies, the pipeline's
+# resources and images) is computed by the context extension from the tables
+# `scripts/repos/render.py` and the kit's edge table hold, so the answers below
+# are the whole record and a derived value is never recorded as one, where a
+# hand edit to it would be silently overwritten.
+# `TemplateExtensionLoader` is what lets the extension be named by its path in
+# this repository rather than as an installed package.
+_jinja_extensions:
+  - copier_template_extensions.TemplateExtensionLoader
+  - scripts/repos/context.py:CabinetContext
+
+name:
+  type: str
+  help: The repository, such as contracts.
+  validator: >-
+    {% if not (name | regex_search('^[a-z][a-z0-9.-]*[a-z0-9]$')) %}
+    A repository is named in lower-case letters, digits, hyphens and dots.
+    {% endif %}
+
+kind:
+  type: str
+  help: The repository's kind, which decides its shape (a Rust crate, a lock file, an npm workspace).
+  # The kinds of templates/repository/ci/src/the_test_cabinet_ci/edges.py:
+  # the context extension derives the list from that table, and
+  # scripts/repos/test_render.py holds the two to each other.
+  choices: "{{ project_kinds }}"
+
+description:
+  type: str
+  help: One line saying what the repository holds.
+  validator: >-
+    {% if not description.strip() %}
+    A description is required.
+    {% elif '"' in description or '\\' in description %}
+    A description holds no double quote or backslash: it is written into TOML strings.
+    {% endif %}

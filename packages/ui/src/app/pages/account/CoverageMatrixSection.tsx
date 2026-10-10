@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { Link } from "react-router";
 import type {
   CoverageAxis,
   CoverageCell,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
+import { useState } from "react";
+import { Link } from "react-router";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import {
   barWidths,

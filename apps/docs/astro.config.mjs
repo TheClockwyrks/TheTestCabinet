@@ -391,6 +391,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             "development/building",
+            "development/repositories",
             "development/running",
             "development/releasing",
             "development/observability",
@@ -1069,6 +1070,27 @@ export default defineConfig({
             "comparisons/diagnostics",
             "comparisons/statistics",
             "comparisons/publishing",
+          ],
+        },
+        // Test suite definitions — the authored projects a test case is drawn
+        // from. The overview covers what a suite is; the siblings cover each
+        // part a suite declares, from the test cases it exposes down to the
+        // specifications, validators, and debug APIs those test cases are
+        // evaluated against.
+        {
+          label: "Test Suites",
+          collapsed: true,
+          items: [
+            "test-suites/overview",
+            "test-suites/suite-manifest",
+            "test-suites/test-case-definition",
+            "test-suites/specifications",
+            "test-suites/validators",
+            "test-suites/debug-apis",
+            "test-suites/demonstrations",
+            "test-suites/assets",
+            "test-suites/reference-implementations",
+            "test-suites/showcase",
           ],
         },
         // The test types The Test Cabinet evaluates models and harnesses with.

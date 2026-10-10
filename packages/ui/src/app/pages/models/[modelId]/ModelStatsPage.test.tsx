@@ -341,9 +341,8 @@ describe("the Stats tab's list price", () => {
       listPriceSource: "hand",
     });
 
-    const listSection = (await screen.findByText("List price")).closest(
-      "section",
-    )!;
+    const listHeading = await screen.findByText("List price");
+    const listSection = listHeading.closest("section")!;
     expect(within(listSection).getByText("$3.00")).toBeTruthy();
     expect(within(listSection).getByText("$0.30")).toBeTruthy();
     expect(within(listSection).getByText("$15.00")).toBeTruthy();

@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@clockwyrks/particle-runtime": "file:../../../../../../../../packages/particle-runtime",
-    "@clockwyrks/run-record": "file:../../../../../../../../packages/run-record",
+    "@clockwyrks/run-record": "file:../../../../../../../../contracts/packages/run-record",
     "@clockwyrks/structured-2d": "file:../../../../../../../../packages/structured-2d"
   },
   "devDependencies": {

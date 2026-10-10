@@ -38,12 +38,60 @@ screenshots as it goes. The repository is the editing source and the store is
 the distribution source a runner resolves at run time. Ingest caches a version
 rather than transforming it.
 
+The scan also reads the [test suites](/test-suites/overview/) tree. Every
+definition a suite version offers is lowered into the same store as an ordinary
+test case version, recording the suite coordinate it came from, so a runner
+resolves a suite-defined case through the routes it resolves an authored one
+through. The suite's own entities are stored beside them and served by the suite
+read endpoints, which is what lets a console present a suite and the cases it
+defines.
+
+The scan reads each suite's exported versions and skips its drafts. A backend
+with `TCAB_BACKEND_INGEST_PREVIEWS` set also reads the
+[previews](/test-suites/overview/#previews) The Spec Cabinet writes to
+the suites tree's `.previews/` folder. Previews are experimental and exist only
+in the checkout they were written to, so the setting is enabled for the local
+development stack alone.
+
 A version's baseline validation media lives in the checkout's `cold-storage`
 submodule rather than in its folder. Ingest copies it into the stored version's
 `validation-baseline/`, where the API serves it and the snapshot publishes it
 (see [where baselines live](/components/core/validation/#where-baselines-live)).
 The deployed ingest sidecar fetches the submodule shallowly on every refresh of
 its checkout.
+
+Ingest reads three trees, each from its own root. The definitions root holds
+`test-cases/`, `game-jams/`, `test-case-groups/` and
+`test-cases/reference-builds.lock.json`. The suites root is the test suites tree
+itself, and the cold-storage root holds the baseline media, laid out like the
+definitions root it mirrors. Each root defaults to its place in the repository
+checkout, so a backend given only `TCAB_BACKEND_CHECKOUT` reads the checkout's
+own trees, and each can be pointed at a separate checkout (see
+[Configuration](#configuration)).
+
+A whole-catalog scan prunes what its trees no longer declare, and it refuses a
+prune that an empty tree would cause. When the scan finds no version under
+`test-cases/`, it keeps every stored authored test-case version, and when it
+finds none under `game-jams/`, every stored game jam. Each tree answers for its
+own kind, although one catalog reads both, so a jam that came through does not
+vouch for an emptied case tree. When it finds no suite version while the store
+holds suites, it keeps every stored suite version and the case versions they
+defined. When it accepts no test-case group while the store holds groups, it
+keeps the stored set. The scan still ingests everything it did find, logs each
+refusal, and reports it to the caller (see
+[`POST /ingest`](/components/backend/api/#post-ingest)). It does not record its
+catalog token, so the next scan carrying the same token rewrites every version
+rather than skipping the ones the store kept. An empty suites tree on a store
+that holds no suites is an ordinary state, since a checkout may leave the test
+suites tree uninitialized.
+
+The guard is the reason ingest never applies a catalog that retires every
+version of a kind, or every group: no request lifts it, `force` included. Such
+a retirement is applied to the definition store by hand, by removing the
+retired `test-cases/<slug>/` directories under `TCAB_BACKEND_STORE`, or its
+`test-case-groups/test-case-groups.json` for the groups. A scan against a store
+written in another record format is exempt, since this build can read nothing
+it would keep.
 
 Ingest writes each version as a resolved record whose shape the backend build
 defines, so a store is readable only by a build that agrees on that shape. The
@@ -235,13 +283,17 @@ layout is specified in [Public Snapshot](/components/backend/snapshot/).
 ## Configuration
 
 The backend is configured entirely through environment variables.
-`TCAB_BACKEND_CHECKOUT` is the only required one. With the R2 and deploy-hook
+`TCAB_BACKEND_CHECKOUT` is the only required one. A relative root resolves
+against the working directory. With the R2 and deploy-hook
 variables omitted the backend still ingests, records reviews and publishes, and
 regenerates the snapshot, skipping the upload and the rebuild.
 
 | Variable                             | Purpose                                                                                                                                                                                                            | Default                                   |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
 | `TCAB_BACKEND_CHECKOUT`              | The repository checkout ingest scans. Required.                                                                                                                                                                    | —                                         |
+| `TCAB_DEFINITIONS_ROOT`              | The directory holding `test-cases/`, `game-jams/` and `test-case-groups/` that ingest scans.                                                                                                                       | `<checkout>`                              |
+| `TCAB_SUITES_ROOT`                   | The test suites tree ingest scans.                                                                                                                                                                                 | `<checkout>/test-suites`                  |
+| `TCAB_COLD_STORAGE_ROOT`             | The cold-storage tree ingest reads baseline media from. `TCAB_COLD_STORAGE_DIR` is read when it is unset.                                                                                                          | `<checkout>/cold-storage`                 |
 | `TCAB_BACKEND_BIND`                  | Bind address.                                                                                                                                                                                                      | `127.0.0.1:8787`                          |
 | `TCAB_BACKEND_DATABASE_URL`          | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                  | `sqlite://./tcab-backend.sqlite?mode=rwc` |
 | `TCAB_BACKEND_DB_AZURE_AD`           | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                          | `false`                                   |
@@ -249,6 +301,7 @@ regenerates the snapshot, skipping the upload and the rebuild.
 | `TCAB_BACKEND_AUTH_URL`              | The auth service bearer tokens are verified against.                                                                                                                                                               | `http://127.0.0.1:8789`                   |
 | `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                  | —                                         |
 | `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                        | `false`                                   |
+| `TCAB_BACKEND_INGEST_PREVIEWS`       | Also ingest the test suite previews The Spec Cabinet writes. Enabled for the local development stack.                                                                                                              | `false`                                   |
 | `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                    | `local`                                   |
 | `TCAB_SNAPSHOT_COALESCE_MS`          | Sliding debounce a burst of publishes is coalesced over.                                                                                                                                                           | `60000`                                   |
 | `TCAB_SNAPSHOT_RETENTION_HOURS`      | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                             | `24`                                      |

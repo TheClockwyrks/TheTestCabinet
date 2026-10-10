@@ -1,12 +1,14 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import {
   render,
   screen,
-  waitForElementToBeRemoved,
   within,
+  waitForElementToBeRemoved,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+
+import { HomePage } from "./HomePage";
 import type { CabinetStats } from "../../data/cabinetStats";
 import {
   GalleryDataProvider,
@@ -16,7 +18,6 @@ import {
 import type { ModelSummary } from "../../data/models";
 import { runSummaryPage, type RunQuery } from "../../data/runQuery";
 import type { TestCaseGroupSummary } from "../../data/testCases";
-import { HomePage } from "./HomePage";
 
 // The replay player fetches and decodes a recording; the page's contract is
 // that a replay showcase entry mounts it on the resolved URL, in the

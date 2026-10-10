@@ -23,7 +23,7 @@
     "**/dist/**",
     "**/build/**",
     "**/target/**",
-    "**/tmp/**",
+    "/tmp/**",
     "**/reference/screenshots/**",
     "**/*.png",
     "**/vendor/**",

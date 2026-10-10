@@ -3,9 +3,9 @@
 // It exists twice because it runs in two places: on the backend for the console, and in
 // the browser for the public static site, which has no backend at all. Rust is
 // authoritative; every rule below is a transcription, and the shared
-// `gg_query.conformance.json` fixture (executed by both suites — see
-// `conformance.test.ts`) is the only thing standing between two independent evaluators
-// and two different published numbers.
+// `contracts/crates/contracts/fixtures/gg_query.conformance.json` fixture (executed by both
+// suites — see `conformance.test.ts`) is the only thing standing between two independent
+// evaluators and two different published numbers.
 //
 // **A change to any rule here must arrive with a fixture case that would have caught
 // the drift.**

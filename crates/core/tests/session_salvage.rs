@@ -30,18 +30,19 @@ use test_cabinet_core::gg_session_record::GG_SESSION_FORMAT_VERSION;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
-    EngineSelection, Error as CoreError, EventFormat, ExecOutput, FsRepoSeeder, HarnessInvocation,
-    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
-    OrchestratorCatalog, OrchestratorSelection, OutputSink, PrerenderedReferenceRenderer,
-    ProofFile, RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
-    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, Usage, ValidationSummary, Validator,
-    Variant,
+    EngineCatalogExt as _, EngineSelection, Error as CoreError, EventFormat, ExecOutput,
+    FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds,
+    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink,
+    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
+    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
+    Usage, ValidationSummary, Validator, Variant,
 };
 
-/// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
-/// a real case exactly as a `tcab run` would be.
+/// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
+/// run is seeded from a real case exactly as a `tcab run` would be, without depending on
+/// where the repository's catalog lives.
 fn catalog_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases")
 }
 
 /// The lifecycle steps the fakes record, in order. Proving the salvage happens while the
@@ -280,7 +281,7 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
         // version built against an engine refuses `EngineSelection::default()`
         // before any of the ordering below happens.
         .resolve("carom", "v2.1.0")
-        .expect("resolve the bundled carom case");
+        .expect("the fixture copy of carom v2.1.0 resolves");
     let variant = test_case.variant("base").expect("carom's base variant");
 
     let steps: Steps = Arc::new(Mutex::new(Vec::new()));

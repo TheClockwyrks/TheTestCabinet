@@ -42,7 +42,7 @@ use test_cabinet_core::test_case::TestType;
 // Rust clients live in `core` (so neither must depend on this crate) — both the
 // request shapes the driver/dispatcher speak and the server **output** shapes a
 // client deserializes. Re-export them so this module — and `api.rs`'s public
-// re-export, which the `contract-codegen` generator names — keep referring to
+// re-export, which the `api-codegen` generator names — keep referring to
 // them as `jobs::{LaunchBody, …}`.
 pub use test_cabinet_core::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,

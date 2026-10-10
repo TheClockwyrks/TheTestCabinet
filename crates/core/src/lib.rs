@@ -18,25 +18,22 @@ pub mod backend_client;
 pub mod browser;
 pub mod cancel;
 pub mod clock;
-pub mod code_analysis;
-pub mod cold_storage;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
 pub mod container;
-pub mod content_labels;
+// The file is not `engine.rs`: `crates/core/src/engine.rs` is an earlier path of the
+// suites crate's engine module, and a new file there would carry core's history into
+// an extraction of that crate.
+#[path = "engine_catalog.rs"]
 pub mod engine;
 pub mod error;
 pub mod event;
 pub mod exec_stream;
 pub mod execution;
-pub mod gg;
 pub mod gg_exec;
 pub mod gg_query;
-pub mod gg_reference;
 pub mod gg_session_assembly;
-pub mod gg_session_journal;
-pub mod gg_session_record;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
@@ -44,7 +41,6 @@ pub mod install;
 pub mod job_api;
 pub mod lockfile_check;
 pub mod match_play;
-pub mod metrics;
 pub mod model_id;
 pub mod orchestrator;
 pub mod performance_validator;
@@ -59,22 +55,50 @@ pub mod r2;
 pub mod redact;
 pub mod reference;
 pub mod reference_lock;
+pub mod remote_backend;
+pub mod resolver;
 pub mod review;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
 pub mod test_case;
 pub mod test_case_group;
-pub mod toolchain;
+pub mod test_suite;
 pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
-pub mod vitest_validator;
+
+// The contract modules that moved whole into `test-cabinet-contracts`, re-exported at
+// their old paths so `test_cabinet_core::gg::GgRunLimits` and the rest name the same
+// items they always did.
+pub use test_cabinet_contracts::{
+    code_analysis, cold_storage, gg, gg_reference, gg_session_journal, gg_session_record, metrics,
+    showcase, toolchain,
+};
+
+// The suite runtime's modules that moved whole into `test-cabinet-suites`, re-exported
+// at their old paths in the same way.
+// `browser` is the exception: a module of the core's own that re-exports the suites
+// crate's and supplies the trace context its driver calls take.
+pub use test_cabinet_suites::{content_digest, content_labels, vitest_validator};
 
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+mod test_support;
+
+/// What a test driving a real browser needs, and the `TCAB_REQUIRE_BROWSER`
+/// rule for when it is missing: `test_cabinet_suites::test_browser`, which the
+/// suites crate exposes to this crate's tests through its `test-support` feature.
+#[cfg(test)]
+pub(crate) use test_cabinet_suites::test_browser;
+
+#[cfg(test)]
+#[path = "vitest_validator.core.test.rs"]
+mod vitest_validator_tests;
 
 /// The Test Cabinet commit this build was produced from, stamped at compile time
 /// by `build.rs` into the `TEST_CABINET_COMMIT` environment variable and suffixed
@@ -102,8 +126,9 @@ pub use auth::{
     SubscriptionSpec, api_key_override_var, auth_readiness, resolve_auth, resolve_auth_with,
 };
 pub use backend_client::{
-    BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
-    PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
+    BackendClient, HttpBackendClient, IngestFeed, IngestMode, IngestProgress, IngestSummary,
+    PrerenderedReferenceRenderer, PublishAck, PublishedReview, PublishedRun, ReferenceBuildUpload,
+    ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use cancel::RunCancellation;
 pub use clock::{Clock, ManualClock, SystemClock};
@@ -118,12 +143,12 @@ pub use code_analysis::{
 pub use cold_storage::{COLD_STORAGE_DIR, COLD_STORAGE_DIR_ENV, ColdStorage};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use engine::{
-    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineManifest, EngineSelection,
-    NONE_SLUG, ResolvedEngine,
+    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineCatalogExt, EngineManifest,
+    EngineSelection, NONE_SLUG, ResolvedEngine, built_in_catalog,
 };
 pub use error::{Error, Result};
 pub use event::{
-    EventFormat, EventKind, EventParser, EventSink, HarnessEvent, NoopEventSink,
+    EventFormat, EventKind, EventParser, EventSink, HarnessEvent, HarnessEventExt, NoopEventSink,
     OrchestrationAction, SystemStage, SystemStatus,
 };
 pub use execution::{
@@ -164,7 +189,9 @@ pub use pricing::{
     ListPriceResolution, ListPriceStep, ListRate, MODALITY_IMAGE, ModelDetails, ModelLaunchFacts,
     ModelListing, ModelsListingPrices, OpenRouterPrices, ProviderRoute,
 };
-pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
+pub use prompt::{
+    render_case_prompt, render_prompt, render_prompt_from_template, render_spec_from_template,
+};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
     SystemCommandRunner, deploy_pages_build, implementation_dir, parse_wrangler_url, run_slug,
@@ -173,6 +200,7 @@ pub use publish_job_api::{
     PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
+pub use resolver::{SuiteDefinitionRef, TestCaseResolver};
 pub use review::{
     AestheticRating, DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup,
     effective_verdicts, missing_ratings, missing_verdicts, needs_aesthetic, parse_writeup, score,
@@ -181,16 +209,19 @@ pub use review::{
 };
 pub use run_record::{
     AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunShowcase,
-    RunState, RunStatus, RunSubject, RunTooling, ShowcaseMedia,
+    RunState, RunStateExt, RunStatus, RunSubject, RunTooling, RunToolingExt, ShowcaseMedia,
 };
 pub use seeding::FsRepoSeeder;
+pub use test_cabinet_contracts::layout::{
+    MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
+};
 pub use test_case::{
-    AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
-    EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile,
-    ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
-    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
-    TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
-    WorkspaceFile, shippable_package_description,
+    AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, DeclaredTrees, Domain,
+    EngineSupport, EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec,
+    ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput,
+    ReviewValidation, SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind,
+    SubReviewItem, TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant,
+    VoxelSpec, WorkspaceFile, runtime_hours_to_seconds, shippable_package_description,
 };
 pub use test_case_group::{TestCaseGroup, TestCaseGroupCatalog};
 pub use toolchain::{
@@ -548,16 +579,6 @@ pub fn ensure_engine_supported(test_case: &TestCaseVersion, engine: &ResolvedEng
             range: support.range_display(),
         }),
     }
-}
-
-/// Convert a runtime cap expressed in **hours** — the unit test-case manifests
-/// (`max_runtime_hours`) and the `--max-runtime` CLI flag are authored in — into
-/// whole seconds, the unit the run pipeline (job API, backend, timeouts) carries
-/// internally. Callers author durations in fractional hours (for example `0.5`)
-/// because every cap is long enough that seconds add no useful precision; this
-/// rounds to the nearest second at the single edge where the two units meet.
-pub fn runtime_hours_to_seconds(hours: f64) -> u64 {
-    (hours * 3600.0).round() as u64
 }
 
 /// Drives a single run through its full lifecycle.
@@ -1247,7 +1268,11 @@ where
         // runtime the build is written against and points at the documentation
         // seeded from its package, and a template branches on the slug — so the
         // engineless run renders the prompt it always did.
-        let base_prompt = render_prompt(
+        // `render_case_prompt` rather than `render_prompt`: a suite-defined case's
+        // template sees the specifications its definition covers rather than a
+        // variant, so which context the template renders against follows the case the
+        // run resolved. Everything else about the hand-off is identical.
+        let base_prompt = render_case_prompt(
             test_case,
             variant,
             &self.prior_game_jam_entries,
@@ -2145,46 +2170,17 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
     Some(format!("{}\n\n…(README truncated)", &readme[..end]))
 }
 
-/// The largest showcase description, in bytes. The description is a store-page
-/// blurb; this cap keeps a pathological one from bloating every store downstream.
-/// The run-side capture truncates a longer one on a char boundary with a trailing
-/// marker; the case-side resolution (an authored, committed showcase — see
-/// `test_case::Variant::showcase`) hard-fails instead.
-pub(crate) const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
-
-/// The most media entries a showcase carousel may hold. The run-side capture
-/// drops the excess with a warning — the carousel is a highlight reel, not an
-/// archive — while the case-side resolution hard-fails on it.
-pub(crate) const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
-
-/// The largest media file a showcase carousel entry may name, in bytes. An entry
-/// naming a larger file is dropped with a warning, since the file travels the
-/// per-run media path and a pathological one would bloat every store downstream.
-/// Public because the driver's backend-store mirror applies the same cap to the
-/// directory it uploads, so a file the capture refused never ships either.
-pub const MAX_SHOWCASE_MEDIA_FILE_BYTES: u64 = 25 * 1024 * 1024;
-
 /// The shape of a `showcase.toml`: the ordered carousel, one `[[media]]` table
-/// per entry. Shared by the run-side capture (a model-written
-/// `showcase/showcase.toml` in the produced tree) and the case-side resolution
-/// (an authored showcase directory a variant declares — see
-/// `test_case::Variant::showcase`), so the two showcases stay one format.
-/// Deliberately lenient about unknown keys — the run-side manifest is
-/// model-written, and a stray extra key is not worth losing the whole showcase.
-#[derive(serde::Deserialize)]
-pub(crate) struct ShowcaseManifest {
-    #[serde(default)]
-    pub(crate) media: Vec<ShowcaseManifestEntry>,
-}
-
-/// One `[[media]]` table of a `showcase.toml`.
-#[derive(serde::Deserialize)]
-pub(crate) struct ShowcaseManifestEntry {
-    /// The media file's name in the showcase directory itself (no subdirectories).
-    pub(crate) file: String,
-    /// The short caption for the entry.
-    pub(crate) name: String,
-}
+/// per entry. One type for all three showcases — the run-side capture (a
+/// model-written `showcase/showcase.toml` in the produced tree), the case-side
+/// resolution (an authored showcase directory a variant declares — see
+/// `test_case::Variant::showcase`), and the suite-side
+/// [showcase](test_suite::SuiteShowcase) — so they cannot drift into three
+/// formats. It lives with the suite model because that is the one place the
+/// format is also *written*.
+/// Its entries are [`test_suite::ShowcaseMediaEntry`], one per `[[media]]`
+/// table.
+pub(crate) use test_suite::ShowcaseManifest;
 
 /// Capture a run's [showcase](RunShowcase) from the collected tree's `showcase/`
 /// directory, or `None` when none was produced or it could not be parsed.
@@ -2869,62 +2865,14 @@ fn parse_pretty_name(os_release: &str) -> Option<String> {
     })
 }
 
-/// Directory names that are never part of a run's collected implementation.
-///
-/// `node_modules` is regenerated from the lockfile by a fresh install, so
-/// keeping it only bloats the artifact and risks shipping platform-specific
-/// binaries — or the broken tool shims a dereferencing copy would leave behind,
-/// since a package manager's `.bin/*` entries are symlinks whose relative
-/// imports only resolve from their real location.
-///
-/// This list is applied twice, for the same reason: `copy_tree` omits these
-/// directories when copying the collected tree into the published
-/// implementation, and the Kubernetes artifact collector excludes them at
-/// `tar` pack time so they never enter the streamed archive in the first place
-/// — packing then unpacking a `node_modules` full of native binaries and
-/// `.bin/*` symlinks is both wasteful and a source of host-side unpack
-/// failures, given the tree is dropped by `copy_tree` immediately afterward.
-pub const SKIPPED_DIRS: &[&str] = &["node_modules"];
+// The directories a collected tree never carries, and the copy that leaves them out,
+// are shared with the suite runtime's validator staging, so they live in
+// `test_cabinet_suites::fs`.
+pub use test_cabinet_suites::fs::SKIPPED_DIRS;
 
-/// Recursively copy a directory tree from `from` to `to`.
-///
-/// Symlinks are recreated as symlinks rather than dereferenced, so any links the
-/// run produced keep pointing at their original targets instead of being
-/// flattened into copies of the target's contents. Dependency directories listed
-/// in [`SKIPPED_DIRS`] are omitted entirely.
+/// Recursively copy a directory tree from `from` to `to`, leaving out
+/// [`SKIPPED_DIRS`] and recreating symlinks as symlinks:
+/// `test_cabinet_suites::fs::copy_tree`, reporting its failure as this crate's error.
 fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if SKIPPED_DIRS.contains(&name.to_str().unwrap_or_default()) {
-            continue;
-        }
-        let dest = to.join(&name);
-        let file_type = entry.file_type()?;
-        if file_type.is_symlink() {
-            copy_symlink(&entry.path(), &dest)?;
-        } else if file_type.is_dir() {
-            copy_tree(&entry.path(), &dest)?;
-        } else {
-            std::fs::copy(entry.path(), &dest)?;
-        }
-    }
-    Ok(())
-}
-
-/// Recreate the symlink at `from` at the new location `to`, preserving its
-/// target verbatim. The target is kept as-is (typically relative to the link's
-/// own directory) so the recreated link resolves the same way the original did.
-fn copy_symlink(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
-    let target = std::fs::read_link(from)?;
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&target, to)?;
-    #[cfg(windows)]
-    if from.is_dir() {
-        std::os::windows::fs::symlink_dir(&target, to)?;
-    } else {
-        std::os::windows::fs::symlink_file(&target, to)?;
-    }
-    Ok(())
+    Ok(test_cabinet_suites::fs::copy_tree(from, to)?)
 }

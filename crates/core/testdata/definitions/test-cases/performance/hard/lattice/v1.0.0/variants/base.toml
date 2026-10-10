@@ -1,0 +1,7 @@
+# The default Lattice variant: the shipped base ruleset and prototype table,
+# scored on the held-out small/medium/large scenarios for correctness then fuel.
+# Listed first in the case manifest's `variants`, so it is the default. Every path
+# here resolves against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The shipped base ruleset and prototype table, scored on the held-out small/medium/large scenarios for correctness then fuel."

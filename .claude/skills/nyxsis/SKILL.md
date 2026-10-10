@@ -169,6 +169,12 @@ TOML, one holding a key other than `mirror` and `url`, one naming more than 16
 mirrors, an empty `url`, a `url` carrying a credential or one repository named
 twice is malformed and declares no mirrors, its reason naming the rule broken.
 
+This repository's pipeline pushes to the mirror declared here too:
+`scripts/ci/mirror.sh` refuses a target the file does not declare, so moving the
+mirror means changing its `url` here and the `url` that `.azure/project/jobs.yml`
+and `azure-pipelines-release.yml` pass to `.azure/tcab/mirror-job.yml` together
+(see the GitHub mirror section of `development/building.md`).
+
 ## `.copier-answers.yml`
 
 Copier writes this file on every render and update; edit it only to resolve an

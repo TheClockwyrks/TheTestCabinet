@@ -35,6 +35,7 @@ import {
 // separately.
 const PARAM_VALUES: Record<string, string> = {
   slug: FIXTURE_IDS.slug,
+  suiteSlug: FIXTURE_IDS.suiteSlug,
   modelId: FIXTURE_IDS.modelId,
   reviewerId: FIXTURE_IDS.reviewerId,
   planId: FIXTURE_IDS.planId,

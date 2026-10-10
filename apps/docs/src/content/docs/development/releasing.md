@@ -136,7 +136,7 @@ Pages project under its own domain; they differ in how they are built.
 
 | Site                                                                             | Project                   | Address                         | Built by                                                                     |
 | -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ---------------------------------------------------------------------------- |
-| [Gallery](/components/site/overview/) (`apps/site`)                              | `test-cabinet-site`       | `testcabinet.ai` (apex)         | Cloudflare (git-connected)                                                   |
+| [Gallery](/components/site/overview/) (`apps/site`)                              | `the-test-cabinet`        | `testcabinet.ai` (apex)         | Cloudflare (git-connected)                                                   |
 | [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | the Azure pipeline's `docs` stage → `wrangler` (`scripts/ci/deploy-docs.sh`) |
 | Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                                                  |
 | [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`                                        |
@@ -160,13 +160,16 @@ a subpath keeps it playable exactly as the test case's
 
 Cloudflare clones the GitHub mirror and builds `apps/site` itself, on every push
 to the production branch and whenever the deploy hook is fired. The pipeline's
-`mirror` job pushes each `master` commit that passed the gates to the mirror, so
-a gallery code change reaches Cloudflare through the same pipeline that deploys
-the services. The test-case and run data the gallery shows come from the
+`mirror` job pushes each `master`, `staging` and `nightly` commit that passed the
+gates to the mirror, so a gallery code change reaches Cloudflare through the same
+pipeline that deploys the services. Staging has a gallery project of its own,
+`the-test-cabinet-staging`, set up the same way with `staging` as its production
+branch and `staging.testcabinet.ai` as its domain. The test-case and run data
+the gallery shows come from the
 [backend's public R2 snapshot](/components/backend/snapshot/), fetched at build
 time. Cloudflare's git integration is the whole pipeline.
 
-In the Cloudflare dashboard, create a Pages project named `test-cabinet-site`
+In the Cloudflare dashboard, create a Pages project named `the-test-cabinet`
 connected to the GitHub mirror:
 
 - Set the production branch to `master`.
@@ -236,7 +239,7 @@ is a test-case variant's authored, correct static build, deployed out-of-band by
 written into a committed lockfile (`test-cases/reference-builds.lock.json`)
 rather than pushed to the backend, because the backends are VPN-only; the backend
 ingests it from its own checkout on the next
-[`scripts/reingest-cluster.sh`](/deployment/overview/). The operator workflow,
+[`tcab ingest --env <env>`](/components/cli/overview/#definitions). The operator workflow,
 prerequisites, and the release gate live in the
 [reference-implementation guide](/guides/devops/publishing-a-reference-implementation/).
 
@@ -250,8 +253,8 @@ prerequisites, and the release gate live in the
 - Both reuse the same `CLOUDFLARE_API_TOKEN` ("Cloudflare Pages: Edit") and
   `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. They are the only secrets involved,
   since there is no backend push. After committing the updated lockfile, an
-  operator runs `scripts/reingest-cluster.sh --env <env>` from a VPN-connected
-  machine.
+  operator runs `tcab ingest --env <env> --changed` from a machine with an
+  authenticated `az`.
 
 The lockfile holds a URL per environment, keyed by environment first. Each
 backend reads only its own environment's entries, selected by its `TCAB_ENV`, so

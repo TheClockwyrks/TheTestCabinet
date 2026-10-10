@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
 	"crates/core",
+	"crates/engines",
 	"crates/code-analysis",
 	"crates/cli",
 	"crates/gg",
@@ -30,7 +31,7 @@ members = [
 	"crates/gg-sandbox-artifacts/swift",
 	"crates/gg-sandbox-artifacts/cpp",
 	"crates/gg-sandbox-artifacts/csharp",
-	"crates/contract-codegen",
+	"crates/api-codegen",
 	"crates/draw",
 	"crates/model-core",
 	"crates/voxel",
@@ -80,6 +81,10 @@ members = [
 	"crates/entities",
 	"crates/migration",
 ]
+# The contracts repository, a submodule, is a workspace of its own: its crates are
+# path dependencies of this one, built from the checkout at the commit the
+# superrepo pins.
+exclude = ["contracts"]
 
 [workspace.package]
 edition = "2024"
@@ -244,6 +249,14 @@ cuid2 = "0.1"
 dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 toml = "0.8"
+# Format-preserving TOML *writing*, for the test suite model's canonical emitter
+# (`crates/core`'s `test_suite`). A suite's write model is a whole-file rewrite of
+# canonically formatted TOML, so the emitter has to control table order, array
+# layout and string quoting directly rather than accept whatever a plain
+# serializer produces — which means building a `DocumentMut` and rewriting its
+# formatting before rendering it. `serde` carries the serializer that turns the
+# model into that document.
+toml_edit = { version = "0.25", features = ["serde"] }
 # Semantic-version parsing and ordering. A test case declares, per engine it
 # supports, the range of engine versions it was written against (`[[engine]]`'s
 # `min_version`/`max_version`), and the run gate compares the catalogue's staged
@@ -302,12 +315,14 @@ base64 = "0.22"
 # builds never compile it: the `schema` feature of `foray-core`/`lattice-core`
 # emits the per-tick contract schemas each adversarial/performance test case seeds
 # verbatim (a drift test asserts the on-disk copies never diverge from the engine
-# types), and the `contract` feature of `core`/`backend` (driven by the
-# `contract-codegen` generator) emits the published API/run-record JSON Schemas.
+# types), and the `contract` feature of `contracts`/`core`/`backend` (driven by the
+# `contract-codegen` and `api-codegen` generators) emits the published API/run-record
+# JSON Schemas.
 schemars = "1"
 # TypeScript binding generation from Rust types. Pulled in only behind the
-# `contract` feature of `core`/`backend` (and the `contract-codegen`
-# generator that drives them), so normal/CLI/wasm builds never compile it.
+# `contract` feature of `contracts`/`core`/`backend` (and the `contract-codegen`
+# and `api-codegen` generators that drive them), so normal/CLI/wasm builds never
+# compile it.
 # Paired with `schemars` on the same types so the TS bindings and the JSON Schemas
 # are generated from one source of truth and can never drift apart.
 #
@@ -316,7 +331,7 @@ schemars = "1"
 # only the keys that can change the emitted TypeScript (`rename`, `rename_all`,
 # `tag`, `content`, `untagged`, `skip`, `flatten`, `default`,
 # `skip_serializing_if`, ...); anything else it ignores, and then says so. Two
-# attribute shapes in `crates/core/src/gg.rs` trip it: field-level
+# attribute shapes in `contracts/crates/contracts/src/gg.rs` trip it: field-level
 # `deserialize_with` (the `count::option_u64` leniency on `GgLoopDetection` and
 # `GgRunLimits`) and container-level `deny_unknown_fields` on an *enum*
 # (`GgHookAction`) — ts-rs has an arm for the latter on structs but not on enums.

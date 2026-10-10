@@ -80,8 +80,8 @@ export function useModelConfig(): ModelConfigApi | null {
       fetchModelLogo,
       seedModelFromRun,
       lookupOpenrouterModel,
-      refreshListPrices,
     } = client;
+    const refreshListPrices = client.refreshListPrices.bind(client);
     return {
       createModel: (input) => createModel(input, token),
       updateModel: (slug, input) => updateModel(slug, input, token),

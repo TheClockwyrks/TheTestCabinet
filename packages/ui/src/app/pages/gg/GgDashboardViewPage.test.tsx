@@ -11,14 +11,12 @@
 // scopes every panel, the built-in overview needs no fetch at all, and a broken panel is
 // reported in place rather than dropped (render order is the only binding between a panel
 // and its answer in a batched response).
+import type { GgQueryBatch } from "@clockwyrks/backend-api/gg-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  GgQueryBatch,
-  GgQueryResponse,
-} from "@clockwyrks/run-record/gg-query";
+import type { GgQueryResponse } from "@clockwyrks/run-record/gg-query";
 import {
   BackendProvider,
   type BackendContextValue,

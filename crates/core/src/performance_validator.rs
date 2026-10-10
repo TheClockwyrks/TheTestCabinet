@@ -254,6 +254,7 @@ impl Validator for PerformanceValidator {
             // positive even when an answer was wrong (it presented an engine; whether
             // it is correct is the `performance.correct` gate, not the load).
             loaded,
+            requirements: Vec::new(),
             detail: None,
             install: None,
             build: None,
@@ -584,6 +585,7 @@ fn case_stem(case: &PerformanceCase) -> String {
 fn failed(detail: &str, proofs: Vec<ProofResult>) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some(detail.to_string()),
         install: None,
         build: None,
@@ -612,6 +614,7 @@ fn incorrect(
 ) -> ValidationSummary {
     ValidationSummary {
         loaded: false,
+        requirements: Vec::new(),
         detail: Some(detail.clone()),
         install: None,
         build: None,

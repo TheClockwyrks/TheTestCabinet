@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { describe, expect, it, vi } from "vitest";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { drainCaseSummaries } from "./useRuns";
 import type { RunQuery, RunQueryResult } from "./runQuery";
 

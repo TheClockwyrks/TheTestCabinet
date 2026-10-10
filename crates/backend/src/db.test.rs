@@ -180,6 +180,7 @@ pub(crate) fn record(id: &str) -> RunRecord {
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
             loaded: true,
+            requirements: Vec::new(),
             ..ValidationSummary::default()
         },
         links: RunLinks::default(),
@@ -8504,6 +8505,7 @@ pub(crate) fn validator_manifest() -> crate::store::StoredManifest {
         domains: vec![domain("single-player")],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 

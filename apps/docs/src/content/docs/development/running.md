@@ -120,7 +120,7 @@ make -C deployments/local local-forward   # hold the data plane open on localhos
 # … develop …
 make -C deployments/local local-rebuild   # rebuild the service images + restart
 make -C deployments/local local-status    # pods, services, and volumes
-make -C deployments/local local-ingest    # re-ingest after editing a case
+make -C deployments/local local-ingest    # refresh the whole catalog
 make -C deployments/local secrets         # re-create the Secrets after a rotation
 make -C deployments/local local-down      # delete the cluster and everything in it
 ```
@@ -131,6 +131,10 @@ the run-container images from `containers/`, loads both sets with
 `k3d image import`, creates the cluster Secrets from your environment, applies
 the `deployments/k8s/overlays/local` kustomize overlay, and force-ingests the
 catalog from a read-only mount of this repository.
+
+After editing a test case or suite, run `tcab ingest --changed` against the
+forwarded backend. `local-ingest` force-ingests the whole catalog. See
+[Starting the backend](#starting-the-backend) for the `tcab ingest` forms.
 
 `local-rebuild` rebuilds the long-lived service images only. Tooling baked into
 a run image, such as `voxel-anim`, `draw`, the core modeling library, or the
@@ -265,6 +269,8 @@ TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
 # TCAB_BACKEND_BIND defaults to 127.0.0.1:8787.
 # TCAB_BACKEND_DATABASE_URL unset uses the default local SQLite file.
 # TCAB_BACKEND_AUTH_URL defaults to http://127.0.0.1:8789, the local auth service.
+# TCAB_DEFINITIONS_ROOT, TCAB_SUITES_ROOT and TCAB_COLD_STORAGE_ROOT default to
+# the checkout's own test-cases/, test-suites/ and cold-storage/ trees.
 # With the R2 and deploy-hook variables blank, the backend still records to its
 # database and regenerates the snapshot on disk.
 ```
@@ -312,34 +318,35 @@ git submodule update --init --depth 1 cold-storage
 ```
 
 Without it every version ingests with no baseline media, and a review shows only
-the build's half of each side-by-side. `TCAB_COLD_STORAGE_DIR` in `.env.backend`
-points the backend at a copy kept elsewhere. The same applies to the k3d stack,
-which ingests the checkout it mounts.
+the build's half of each side-by-side. `TCAB_COLD_STORAGE_ROOT` in `.env.backend`
+points the backend at a copy kept elsewhere; when it is unset the backend reads
+`TCAB_COLD_STORAGE_DIR`, the override the capture commands also read. The same
+applies to the k3d stack, which ingests the checkout it mounts.
 
 Re-ingest after editing a test case, so the backend serves the change. A plain
 scan skips any version it already holds, because the store is immutable per
-`(slug, version)`, so the re-ingest forces the overwrite. `scripts/reingest.sh`
-forces it and streams the endpoint's per-case progress. By default it re-ingests
-only the versions whose files changed since its last successful run, recorded in
-a gitignored `.reingest-timestamp` marker:
+`(slug, version)`.
+
+`tcab ingest --changed` brings the backend in line with the checkout from the
+command line. It reads `TCAB_BACKEND_URL`, ingests exactly the versions whose
+content differs from what the store holds, and prints the endpoint's streamed
+per-version progress, naming the reason for each skip. It closes with the
+ingested and skipped counts:
 
 ```sh
-scripts/reingest.sh             # only versions changed since the last run
-scripts/reingest.sh carom       # scope to one case (still skipped if unchanged)
-scripts/reingest.sh --force     # re-ingest every case, ignoring change detection
+tcab ingest --changed             # every version whose content changed
+tcab ingest carom --changed       # one case or suite, when it changed
+tcab ingest carom --force         # one case or suite, overwriting what is stored
+tcab ingest carom@v1.2.0 --force  # exactly one version
 ```
 
-The first run, or one after `rm .reingest-timestamp`, has no baseline and
-re-ingests everything. So does a run against a backend reporting an unservable
-store on `/healthz`, which is what a rebuilt backend reports when its record
-shapes changed: change detection watches the test cases, and the store went
-stale from a code change no test-case mtime records. The script wraps the endpoint's streamed
-(`Accept: application/x-ndjson`) progress feed; the raw call is:
+It wraps the endpoint's streamed (`Accept: application/x-ndjson`) progress
+feed; the raw call is:
 
 ```sh
 curl -X POST http://127.0.0.1:8787/ingest \
   -H 'content-type: application/json' \
-  -d '{"testCases": ["carom"], "force": true}'
+  -d '{"testCases": ["carom"], "mode": "changed"}'
 ```
 
 Backend-driven runs resolve their definition from the backend, so until a

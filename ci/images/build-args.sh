@@ -2,7 +2,7 @@
 # Prints the version pins one CI image consumes, as `NAME=VALUE` lines, for
 # scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg`.
 #
-# Usage: ci/images/build-args.sh <rust|web>
+# Usage: ci/images/build-args.sh <rust|rust-browser|web>
 #
 # There is one place a version is decided in this workspace and it is the
 # `x-devcontainer-build-args` anchor in .devcontainer/docker-compose.yml. A CI
@@ -41,9 +41,9 @@ readonly COMPOSE="$ROOT/.devcontainer/docker-compose.yml"
 
 readonly TRACK="${1:-}"
 case "$TRACK" in
-	rust | web) ;;
+	rust | rust-browser | web) ;;
 	*)
-		echo "build-args.sh: usage: build-args.sh <rust|web>" >&2
+		echo "build-args.sh: usage: build-args.sh <rust|rust-browser|web>" >&2
 		exit 2
 		;;
 esac

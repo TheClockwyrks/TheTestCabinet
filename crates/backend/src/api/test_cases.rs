@@ -12,7 +12,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::content_labels::{self, ContentLabels};
-use test_cabinet_core::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
+use test_cabinet_core::engine::{
+    EngineCatalog, EngineCatalogExt as _, EngineSelection, ResolvedEngine,
+};
 use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
@@ -24,7 +26,9 @@ use test_cabinet_core::{
 use crate::error::ApiError;
 use crate::store::{
     StoredContract, StoredManifest, StoredMatch, StoredReplay, StoredSandbox, StoredSimulation,
+    StoredSuiteCoordinate,
 };
+use crate::suite_store::StoredSuite;
 
 use super::AppState;
 
@@ -116,6 +120,7 @@ fn catalog_case(slug: String, versions: Vec<String>, manifest: &StoredManifest) 
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),
         showcase,
+        suite: manifest.suite.clone(),
     }
 }
 
@@ -207,11 +212,14 @@ pub async fn resolve_version(
     // live in the database, not the resolved manifest. Fold them onto each variant
     // so the console's "Reference" tab can embed the correct build. A variant with
     // no deployed reference simply resolves to `None`.
-    let reference_builds = state
+    let mut reference_builds = state
         .db
         .reference_builds_for_version(&slug, &version)
         .await
         .map_err(ApiError::from)?;
+    // A suite-defined version's builds are uploaded against its suite version
+    // instead, so they are read from the store beside the suite record.
+    fold_suite_reference_builds(&state.store, &manifest, &mut reference_builds)?;
     // The asset-generation counterpart: which frames of each variant's reference the
     // public snapshot bucket holds. Stored out-of-band too — discovered by listing the
     // bucket at ingest, never resolved from the manifest — so it is read from the
@@ -222,8 +230,15 @@ pub async fn resolve_version(
         .reference_sheets_for_version(&slug, &version)
         .await
         .map_err(ApiError::from)?;
+    // A suite-defined version's prompt renders against the specifications its suite
+    // version declares, exactly as a run of it does.
+    let suite = state
+        .store
+        .read_suite_of(&manifest)
+        .map_err(ApiError::from)?;
     Ok(Json(version_response(
         &manifest,
+        suite.as_ref(),
         &reference_builds,
         &reference_sheets,
         engine.as_ref(),
@@ -332,6 +347,27 @@ pub async fn validation_files(
     let keys = state
         .store
         .list_validation_files(&slug, &version)
+        .map_err(ApiError::from)?;
+    Ok(Json(keys))
+}
+
+/// `GET /test-cases/{slug}/versions/{version}/suite-files` — the store-relative keys
+/// of every file of the suite version a suite-defined version was lowered from: its
+/// `version.toml` and `suite.toml`, its specification folders, its definition files, its `validators/`
+/// project and its debug API declaration, as a sorted JSON string array. A
+/// backend-driven run fetches the whole set into its definition store, rebuilds the
+/// version folder there, and reads the suite model back out of it to render the
+/// prompt and to record one outcome per requirement. Reporter-side and seed-side
+/// both: the validator project is never seeded, while the specifications are seeded
+/// as the rendered documents keyed under `specs/`. The array is empty for an
+/// authored version, which was lowered from no suite.
+pub async fn suite_files(
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let keys = state
+        .store
+        .list_suite_files(&slug, &version)
         .map_err(ApiError::from)?;
     Ok(Json(keys))
 }
@@ -613,11 +649,47 @@ pub async fn put_run_code_analysis(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// Fold the reference builds uploaded for the suite version a suite-defined version
+/// was lowered from onto each of its variants, keyed by engine with the
+/// backend-relative URL each is played at. Only the engines the version supports
+/// are folded, and an authored version is left as it is.
+fn fold_suite_reference_builds(
+    store: &crate::store::DefinitionStore,
+    manifest: &StoredManifest,
+    reference_builds: &mut std::collections::HashMap<
+        String,
+        std::collections::BTreeMap<String, String>,
+    >,
+) -> Result<(), ApiError> {
+    let Some(coordinate) = &manifest.suite else {
+        return Ok(());
+    };
+    let builds = super::suite_reference_builds::reference_builds_among(
+        store,
+        &coordinate.suite,
+        &coordinate.suite_version,
+        manifest.engines.iter().map(|engine| engine.slug.as_str()),
+    )?;
+    if builds.is_empty() {
+        return Ok(());
+    }
+    for variant in &manifest.variants {
+        reference_builds
+            .entry(variant.slug.clone())
+            .or_default()
+            .extend(builds.clone());
+    }
+    Ok(())
+}
+
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
-/// prompt the way a run on `engine` receives it.
+/// prompt the way a run on `engine` receives it. `suite` is the record of the suite
+/// version a suite-defined manifest was lowered from, which its prompt renders
+/// against; `None` for an authored one.
 fn version_response(
     manifest: &StoredManifest,
+    suite: Option<&StoredSuite>,
     reference_builds: &std::collections::HashMap<
         String,
         std::collections::BTreeMap<String, String>,
@@ -642,7 +714,7 @@ fn version_response(
                 slug: v.slug.clone(),
                 name: v.name.clone(),
                 description: v.description.clone(),
-                prompt: render_variant_prompt(manifest, v, engine)?,
+                prompt: render_variant_prompt(manifest, v, suite, engine)?,
                 specs: v.specs.iter().map(spec_out).collect(),
                 workspace: v.workspace.as_ref().map(workspaces_out),
                 references: v
@@ -781,50 +853,24 @@ fn version_response(
             }
         }),
         errata: manifest.errata.iter().map(erratum_out).collect(),
+        suite: manifest.suite.clone(),
     })
 }
 
-/// Render a variant's prompt the way a real run receives it: the version's
-/// `prompt.hbs` template rendered against the variant, its seeded specs (the
-/// common specs followed by the variant's own, matching seed order), and the
-/// selected `engine`. The in-container workspace path is the engine's fixed
-/// default, so this rendering is identical to the run-time instruction. A template
-/// error is exceptional (the same template renders at run time), so surface it as
-/// an internal error rather than silently dropping the prompt.
+/// Render a variant's prompt the way a real run on `engine` receives it (see
+/// [`crate::prompt::render_stored_prompt`]): an authored version against its
+/// variant and seeded specs, a suite-defined one against the specifications its
+/// definition covers in `suite`. A template error is exceptional (the same template
+/// renders at run time), so surface it as an internal error rather than silently
+/// dropping the prompt.
 fn render_variant_prompt(
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    suite: Option<&StoredSuite>,
     engine: Option<&ResolvedEngine>,
 ) -> Result<String, ApiError> {
-    let spec_dests: Vec<String> = manifest
-        .common_specs
-        .iter()
-        .chain(variant.specs.iter())
-        .map(|spec| spec.dest.clone())
-        .collect();
-    test_cabinet_core::render_prompt_from_template(
-        &manifest.slug,
-        &manifest.version,
-        &manifest.prompt_template,
-        &variant.slug,
-        &variant.name,
-        variant.description.as_deref(),
-        &spec_dests,
-        manifest.test_type,
-        // The dimension decides which asset-generation binaries the full-stack
-        // directive names, so the gallery shows the tools the run really gets.
-        manifest.asset_dimension,
-        manifest.max_runtime_seconds,
-        // The variant's own volume overrides the case's for its prompt, so the
-        // gallery renders each size variant's brief at its actual dimensions.
-        variant.voxel.as_ref().or(manifest.voxel.as_ref()),
-        // A version's prompt is the standing one, with no prior game-jam entries in
-        // play, so it never carries the distinctness section. Those are a property of
-        // the run, seeded from earlier entries by the same model.
-        0,
-        engine,
-    )
-    .map_err(|err| ApiError::internal(err.to_string()))
+    crate::prompt::render_stored_prompt(manifest, variant, suite, engine)
+        .map_err(|err| ApiError::internal(err.to_string()))
 }
 
 /// Map a stored reviewer checklist item to its wire shape, carrying the optional
@@ -986,7 +1032,7 @@ fn workspaces_out(
 /// is labelled as such, so a browser inflates it before any script sees it; every
 /// other name describes bytes that are already the resource (see
 /// [`labels_for`]).
-fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
+pub(super) fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
     labelled_response(labels_for(path), bytes)
 }
 
@@ -1176,6 +1222,13 @@ pub struct CatalogCase {
     /// media file is fetched from
     /// `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
     pub showcase: Option<CatalogShowcaseOut>,
+    /// The [test suite](crate::suite_store) coordinate this case was lowered from,
+    /// read from its latest visible version. Absent for an authored case, which is
+    /// how a listing tells the two apart and groups the suite-derived ones under
+    /// the suite that offers them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub suite: Option<StoredSuiteCoordinate>,
 }
 
 /// A case's catalog showcase preview: which version and variant the media
@@ -1309,6 +1362,12 @@ pub struct VersionResponse {
     /// shown on the case's Errata tab and, where relevant, to reviewers scoring a
     /// run of the version. Empty when the version has none.
     errata: Vec<ErratumOut>,
+    /// The [test suite](crate::suite_store) coordinate this version was lowered
+    /// from: the suite, the suite version, and the definition inside it. Absent for
+    /// an authored case, so a client that finds one here knows the version is
+    /// served out of a suite and can reach the suite's own read endpoints with it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suite: Option<StoredSuiteCoordinate>,
 }
 
 #[derive(Serialize)]
@@ -1497,7 +1556,8 @@ struct VariantOut {
     /// `reference_implementation`, or has one that has not been deployed yet.
     /// Written out-of-band by `tcab publish-reference` and read from the
     /// `case_reference_build` table — never resolved from the manifest and never
-    /// seeded into a run.
+    /// seeded into a run. A suite-defined version carries instead the builds
+    /// uploaded for its suite version, each URL relative to the backend.
     #[serde(default)]
     reference_builds: std::collections::BTreeMap<String, String>,
     /// This variant's published **reference sheet** — the asset-generation analogue of

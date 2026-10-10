@@ -1,8 +1,11 @@
+import type {
+  ControllerRef,
+  MatchSummary,
+} from "@clockwyrks/backend-api/tournament";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Panel } from "@clockwyrks/ui";
 import { Button, Select } from "../../../../primitives";
-import type { ControllerRef, MatchSummary } from "@clockwyrks/run-record";
 import { useGalleryData, type ArenaApi } from "../../../data/galleryContext";
 import { useControllerName } from "../../../data/useControllerName";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";

@@ -34,6 +34,10 @@ use test_cabinet_core::review::FailureCap;
 use test_cabinet_core::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
+use test_cabinet_core::test_suite::{
+    DEBUG_API_DIR, DEBUG_API_FILE, SPECIFICATIONS_DIR, SUITE_MANIFEST_FILE,
+    TEST_CASES_DIR as SUITE_TEST_CASES_DIR, VALIDATORS_DIR, VERSION_MANIFEST_FILE,
+};
 use test_cabinet_core::{
     AssetDimension, AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec,
 };
@@ -42,7 +46,7 @@ use crate::error::{BackendError, Result};
 
 /// The sidecar directory holding backend-generated metadata inside a keyed
 /// definition directory.
-const SIDECAR: &str = ".tcab";
+pub(crate) const SIDECAR: &str = ".tcab";
 
 /// The version of the record shapes this build writes into the store, stamped on
 /// the store by every ingest scan and checked against on startup.
@@ -60,7 +64,30 @@ const SIDECAR: &str = ".tcab";
 /// type-level signal is absent, ingest returns early for a version it already holds,
 /// and without a bump every stored version would keep an empty pack list, staging no
 /// audio into any run and silencing the frozen full-stack cases outright.
-pub const STORE_FORMAT: u32 = 2;
+///
+/// `3` adds [`StoredManifest::suite`], the [test
+/// suite](crate::suite_store::StoredSuite) coordinate a suite-defined version is
+/// lowered from, and the sibling `test-suites/` key space the suite's own record
+/// lives in. Both are additive, so a record written at `2` still parses — and both
+/// are exactly what a store written before them cannot produce: every stored
+/// version would keep an absent coordinate and no suite would be served at all,
+/// because ingest returns early for a version it already holds.
+///
+/// `4` stores the suite's own declaration — `suite.toml`, the specification
+/// folders and the definition files — inside each suite-derived version, so a
+/// driver materializing one rebuilds the version folder it was lowered from and
+/// reads the suite model back out of it. A store written at `3` holds the seeded
+/// materials but none of that declaration, and a run resolved out of it would read
+/// as an authored case: the wrong prompt, and no requirement outcome recorded at
+/// all. Nothing in the record changed shape, so only the bump makes
+/// [`DefinitionStore::needs_reingest`] fire.
+///
+/// `5` splits a suite's identity from its version: a stored suite record carries
+/// the `suite.toml` manifest beside the `version.toml` one, and each suite-derived
+/// version stores `version.toml` with a copy of the `suite.toml` it belongs to. A
+/// record written at `4` holds one combined manifest and a suite-derived version
+/// holds no `version.toml`, which this build reads as an authored case.
+pub const STORE_FORMAT: u32 = 5;
 
 /// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
 /// session record. One constant, because the same string is the store slot
@@ -340,6 +367,30 @@ pub struct StoredManifest {
     /// manifests stored before the field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errata: Vec<StoredErratum>,
+    /// The [test suite](crate::suite_store) coordinate this version was lowered
+    /// from, when it was: the suite, the suite version, and the definition inside
+    /// it. Absent on an authored case, which is how a client tells the two apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<StoredSuiteCoordinate>,
+}
+
+/// Where a suite-defined test-case version came from: the
+/// [suite](crate::suite_store::StoredSuite) that offers it, the suite version that
+/// declares it, and the definition file it was lowered from.
+///
+/// A version carrying one is served out of the same key space an authored version
+/// is, so this is the only thing that distinguishes the two on the wire — which is
+/// what lets a console group suite-derived cases under their suite.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct StoredSuiteCoordinate {
+    /// The suite's slug, which is its directory in the suites checkout.
+    pub suite: String,
+    /// The suite version folder name, carrying its leading `v`.
+    pub suite_version: String,
+    /// The definition's slug, which is its file stem under `test-cases/`.
+    pub definition: String,
 }
 
 impl StoredManifest {
@@ -948,12 +999,17 @@ impl DefinitionStore {
         self.manifest_path(slug, version).is_file()
     }
 
+    /// The [ingest stamp](IngestStamp) of a stored `(slug, version)`, if it has one.
+    pub fn version_stamp(&self, slug: &str, version: &str) -> Option<IngestStamp> {
+        read_ingest_stamp_in(&self.version_dir(slug, version))
+    }
+
     /// The root under which version builds are staged before being swapped into the
     /// served `test-cases/` tree. It lives inside the store's sidecar so it shares
     /// the store's filesystem (the swap is then a plain rename) and stays off the
     /// `test-cases/` tree that `list_versions` walks, so a half-built staging dir is
     /// never mistaken for an ingested version.
-    fn staging_root(&self) -> PathBuf {
+    pub(crate) fn staging_root(&self) -> PathBuf {
         self.root.join(SIDECAR).join("staging")
     }
 
@@ -978,30 +1034,60 @@ impl DefinitionStore {
     /// move rather than a copy.
     pub fn publish_staged_version(&self, slug: &str, version: &str, staged: &Path) -> Result<()> {
         let dest = self.version_dir(slug, version);
+        self.swap_into_place(&dest, staged, &format!("retired-{slug}-{version}"))
+    }
+
+    /// Move `staged` onto `dest`, replacing whatever `dest` holds, so a concurrent
+    /// reader sees either the previous tree or the new one and never a half-written
+    /// one. `label` names the retired copy in the staging area, for a human reading
+    /// the directory during an ingest.
+    ///
+    /// The swap discipline both keyed trees are published through — a test-case
+    /// version and a [suite version](crate::suite_store) — so neither can grow a
+    /// destructive in-place rebuild of its own.
+    pub(crate) fn swap_into_place(&self, dest: &Path, staged: &Path, label: &str) -> Result<()> {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
         if !dest.exists() {
-            std::fs::rename(staged, &dest)?;
+            std::fs::rename(staged, dest)?;
             return Ok(());
         }
-        // Two-step swap: move the live version aside, move the staged one in, then
+        // Two-step swap: move the live tree aside, move the staged one in, then
         // drop the retired copy. The window where `dest` is briefly absent is two
         // rename syscalls wide (microseconds) rather than the seconds-to-minutes a
         // destructive in-place rebuild (remove → copy → render → write manifest)
         // left it manifest-less.
         let retired = self
             .staging_root()
-            .join(format!("retired-{slug}-{version}-{}", cuid2::create_id()));
+            .join(format!("{label}-{}", cuid2::create_id()));
         if let Some(parent) = retired.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::rename(&dest, &retired)?;
-        if let Err(err) = std::fs::rename(staged, &dest) {
-            // Roll the live version back so a failed swap is not a lost version.
-            let _ = std::fs::rename(&retired, &dest);
+        std::fs::rename(dest, &retired)?;
+        if let Err(err) = std::fs::rename(staged, dest) {
+            // Roll the live tree back so a failed swap is not a lost version.
+            let _ = std::fs::rename(&retired, dest);
             return Err(err.into());
         }
+        let _ = std::fs::remove_dir_all(&retired);
+        Ok(())
+    }
+
+    /// Remove a keyed tree by renaming it aside into the staging area and deleting
+    /// it there, so a concurrent reader sees it wholly present or wholly gone. A
+    /// tree that is already absent is a no-op.
+    pub(crate) fn retire_dir(&self, dir: &Path, label: &str) -> Result<()> {
+        if !dir.exists() {
+            return Ok(());
+        }
+        let retired = self
+            .staging_root()
+            .join(format!("{label}-{}", cuid2::create_id()));
+        if let Some(parent) = retired.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(dir, &retired)?;
         let _ = std::fs::remove_dir_all(&retired);
         Ok(())
     }
@@ -1019,17 +1105,7 @@ impl DefinitionStore {
     /// absent is a no-op.
     pub fn remove_version(&self, slug: &str, version: &str) -> Result<()> {
         let dir = self.version_dir(slug, version);
-        if !dir.exists() {
-            return Ok(());
-        }
-        let retired = self
-            .staging_root()
-            .join(format!("pruned-{slug}-{version}-{}", cuid2::create_id()));
-        if let Some(parent) = retired.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::rename(&dir, &retired)?;
-        let _ = std::fs::remove_dir_all(&retired);
+        self.retire_dir(&dir, &format!("pruned-{slug}-{version}"))?;
         // Drop the slug directory once its last version is gone. `remove_dir` only
         // succeeds on an empty directory, so a slug that still has other versions is
         // left untouched.
@@ -1577,6 +1653,46 @@ impl DefinitionStore {
         Ok(keys)
     }
 
+    /// List the files of the suite version a suite-defined version was lowered from,
+    /// as store-relative keys (forward-slashed, e.g. `suite.toml`, `version.toml`,
+    /// `specifications/ball-physics/specification.toml`,
+    /// `validators/ball/constant-speed.ts`), sorted.
+    ///
+    /// A run of a suite-defined case is judged against its suite: the prompt is
+    /// rendered from the definition and the specifications it selects, and one
+    /// requirement outcome is recorded per requirement those specifications declare,
+    /// with the suite's `validators/` project deciding the functional ones. None of
+    /// that is reachable from the lowered manifest's keys, so a backend-driven run
+    /// fetches this whole set into its definition store (see
+    /// `test_cabinet_core::materialize_version`), which rebuilds the version folder
+    /// there and reads the suite model back out of it.
+    ///
+    /// An authored version yields an empty list: it was lowered from no suite, which
+    /// is exactly what the absent `version.toml` says.
+    pub fn list_suite_files(&self, slug: &str, version: &str) -> Result<Vec<String>> {
+        let base = self.version_dir(slug, version);
+        if !base.join(VERSION_MANIFEST_FILE).is_file() {
+            return Ok(Vec::new());
+        }
+        let mut keys = vec![VERSION_MANIFEST_FILE.to_string()];
+        if base.join(SUITE_MANIFEST_FILE).is_file() {
+            keys.push(SUITE_MANIFEST_FILE.to_string());
+        }
+        if base.join(DEBUG_API_FILE).is_file() {
+            keys.push(DEBUG_API_FILE.to_string());
+        }
+        for dir in [
+            SPECIFICATIONS_DIR,
+            SUITE_TEST_CASES_DIR,
+            VALIDATORS_DIR,
+            DEBUG_API_DIR,
+        ] {
+            collect_files_relative(&base, &base.join(dir), &mut keys)?;
+        }
+        keys.sort();
+        Ok(keys)
+    }
+
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under
@@ -2008,7 +2124,7 @@ impl DefinitionStore {
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.
-fn sorted_dir_names(dir: &Path) -> Result<Vec<String>> {
+pub(crate) fn sorted_dir_names(dir: &Path) -> Result<Vec<String>> {
     let mut names = raw_dir_names(dir)?;
     names.sort();
     Ok(names)
@@ -2016,7 +2132,7 @@ fn sorted_dir_names(dir: &Path) -> Result<Vec<String>> {
 
 /// Read a directory's immediate subdirectory names, ignoring files and hidden
 /// entries. A missing directory yields an empty list (an empty store is valid).
-fn raw_dir_names(dir: &Path) -> Result<Vec<String>> {
+pub(crate) fn raw_dir_names(dir: &Path) -> Result<Vec<String>> {
     let mut names = Vec::new();
     let read = match std::fs::read_dir(dir) {
         Ok(read) => read,
@@ -2065,7 +2181,7 @@ fn collect_files_relative(base: &Path, dir: &Path, keys: &mut Vec<String>) -> Re
 
 /// Join a forward-slash relative key onto a base directory, rejecting any key
 /// that is absolute or escapes the base via `..`. Returns the resolved path.
-fn safe_join(base: &Path, key: &str) -> Result<PathBuf> {
+pub(crate) fn safe_join(base: &Path, key: &str) -> Result<PathBuf> {
     let rel = Path::new(key);
     let mut depth: i32 = 0;
     for component in rel.components() {
@@ -2091,7 +2207,7 @@ fn safe_join(base: &Path, key: &str) -> Result<PathBuf> {
 }
 
 /// Whether a key's first path component is the reserved `.tcab` sidecar.
-fn first_component_is_sidecar(key: &str) -> bool {
+pub(crate) fn first_component_is_sidecar(key: &str) -> bool {
     Path::new(key)
         .components()
         .find_map(|c| match c {
@@ -2106,6 +2222,48 @@ fn first_component_is_sidecar(key: &str) -> bool {
 /// [`DefinitionStore::manifest_path`] and the staging build path.
 pub fn manifest_in(version_dir: &Path) -> PathBuf {
     version_dir.join(SIDECAR).join("manifest.json")
+}
+
+/// What a stored version record was ingested from, kept in the record's sidecar
+/// beside it and published in the same atomic swap.
+///
+/// A [`changed`](test_cabinet_core::IngestMode::Changed) scan compares it against the
+/// checkout: the record is rewritten when its content digest, the record format it
+/// was written in, or the catalog version the store was at differs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestStamp {
+    /// The [content digest](crate::ingest) of the checkout files the record was
+    /// built from, as lowercase hex SHA-256.
+    pub digest: String,
+    /// The [`STORE_FORMAT`] the record was written in.
+    pub format: u32,
+    /// The catalog version the store was at when the record was written, if any
+    /// ingest has recorded one (see [`DefinitionStore::catalog_version`]).
+    #[serde(default)]
+    pub catalog_version: Option<String>,
+}
+
+/// The ingest stamp path inside a stored version directory (canonical or staging).
+pub fn ingest_stamp_in(version_dir: &Path) -> PathBuf {
+    version_dir.join(SIDECAR).join("ingest.json")
+}
+
+/// Write an ingest stamp into a stored version directory, creating its sidecar.
+pub fn write_ingest_stamp_in(version_dir: &Path, stamp: &IngestStamp) -> Result<()> {
+    let path = ingest_stamp_in(version_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_vec_pretty(stamp)?)?;
+    Ok(())
+}
+
+/// Read the ingest stamp of a stored version directory. An absent or unreadable
+/// stamp reads as none, which a `changed` scan treats as a record to rewrite.
+pub fn read_ingest_stamp_in(version_dir: &Path) -> Option<IngestStamp> {
+    let bytes = std::fs::read(ingest_stamp_in(version_dir)).ok()?;
+    serde_json::from_slice(&bytes).ok()
 }
 
 /// A stored reference media path relative to a version directory. `scope` is

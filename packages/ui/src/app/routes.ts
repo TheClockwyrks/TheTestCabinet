@@ -20,11 +20,43 @@ export type CatalogTab =
   | "adversarial"
   | "performance";
 
+// One suite detail route: the suite's path with the tab's tail, anchored to a
+// version in the query string when the caller names one. Kept here so every
+// suite builder below spells the path exactly once.
+function suitePath(slug: string, tail: string, version?: string): string {
+  const path = `/test-cases/suites/${encodeURIComponent(slug)}${tail}`;
+  return version ? `${path}?version=${encodeURIComponent(version)}` : path;
+}
+
 export const routes = {
   home: (): string => "/",
   testCases: (): string => "/test-cases",
   // The catalog scoped to one type tab (e.g. `/test-cases/2d`).
   testCasesCatalog: (tab: CatalogTab): string => `/test-cases/${tab}`,
+  // The Test Suites tab — the section's first tab where the host's transport
+  // exposes the suite reads. Test suites are not test cases, so this is a literal
+  // segment beside the type tabs and the `:slug` detail (which it outranks, and
+  // which no case slug spells) rather than a `CatalogTab`.
+  testCasesSuites: (): string => "/test-cases/suites",
+  // One suite, under the listing: its detail surfaces, anchored to a version in
+  // the query string the way a case detail anchors its coordinate. Every tab is
+  // its own route under the suite's path, so a tab is linkable, and each builder
+  // takes the optional version so a link names the coordinate it means.
+  testSuiteDetail: (slug: string, version?: string): string =>
+    suitePath(slug, "", version),
+  testSuiteSpecifications: (slug: string, version?: string): string =>
+    suitePath(slug, "/specifications", version),
+  // The definitions the version declares — the test cases the suite offers.
+  testSuiteDefinitions: (slug: string, version?: string): string =>
+    suitePath(slug, "/definitions", version),
+  testSuiteAssets: (slug: string, version?: string): string =>
+    suitePath(slug, "/assets", version),
+  testSuiteDemos: (slug: string, version?: string): string =>
+    suitePath(slug, "/demonstrations", version),
+  testSuiteReferences: (slug: string, version?: string): string =>
+    suitePath(slug, "/reference-implementations", version),
+  testSuiteChangelog: (slug: string, version?: string): string =>
+    suitePath(slug, "/changelog", version),
   testCaseDetail: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}`,
   testCaseInputs: (slug: string): string =>
@@ -378,6 +410,22 @@ export const routePatterns = {
   testCasesAudio: "/test-cases/audio",
   testCasesAdversarial: "/test-cases/adversarial",
   testCasesPerformance: "/test-cases/performance",
+  // The Test Suites tab. Another literal sibling of `:slug` below, mounted only
+  // where the host's transport exposes the suite reads (see
+  // `pages/testcases/router.tsx`) — the same shape the console-only patterns
+  // already have, which `isKnownRoute` deliberately ignores.
+  testCasesSuites: "/test-cases/suites",
+  // One suite's detail surfaces, one route per tab, under the listing's literal
+  // segment. The parameter is `:suiteSlug` rather than `:slug` because a suite
+  // slug is not a case slug — nothing that fills one may fill the other.
+  testSuiteDetail: "/test-cases/suites/:suiteSlug",
+  testSuiteSpecifications: "/test-cases/suites/:suiteSlug/specifications",
+  testSuiteDefinitions: "/test-cases/suites/:suiteSlug/definitions",
+  testSuiteAssets: "/test-cases/suites/:suiteSlug/assets",
+  testSuiteDemos: "/test-cases/suites/:suiteSlug/demonstrations",
+  testSuiteReferences:
+    "/test-cases/suites/:suiteSlug/reference-implementations",
+  testSuiteChangelog: "/test-cases/suites/:suiteSlug/changelog",
   testCaseDetail: "/test-cases/:slug",
   testCaseInputs: "/test-cases/:slug/inputs",
   testCaseReviewing: "/test-cases/:slug/reviewing",

@@ -1,6 +1,6 @@
+import type { CoverageQueue } from "@clockwyrks/backend-api/coverage";
 import { Link } from "react-router";
 import { Panel } from "@clockwyrks/ui";
-import type { CoverageQueue } from "@clockwyrks/run-record/coverage";
 import { claimSectionReturn } from "../../components/backReturn";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { formatTimeAgo } from "../../format";

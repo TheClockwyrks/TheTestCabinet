@@ -1,6 +1,6 @@
 # CI images
 
-Two container images, one per pipeline track, holding what the checks in
+Three container images, one per pipeline track, holding what the checks in
 [`azure-pipelines.yml`](../../azure-pipelines.yml) execute and nothing else.
 [`scripts/ci/ci-image.sh`](../../scripts/ci/ci-image.sh) builds and pushes them,
 and [`azure-pipelines-ci-images.yml`](../../azure-pipelines-ci-images.yml) is
@@ -8,8 +8,13 @@ the pipeline of its own that runs it.
 
 | Image | Track |
 | --- | --- |
-| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | The `rust` job |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | The project's Rust jobs |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd` | The `rust` job, once [`tags.yml`](tags.yml) pins a commit that built it |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | The `web` job |
+
+The Rust and web images are the template's. The rust-browser image is this
+project's: the Rust image with Node and Chromium on top, so that the Rust tests
+that drive a browser run in the `rust` job rather than skip.
 
 The gates pipeline builds none of them. Each job names its image at the commit
 [`tags.yml`](tags.yml) pins and lets Azure pull it, through the
@@ -31,7 +36,8 @@ half.
 
 ## What each image holds
 
-All of them are `ubuntu:26.04`, built as root, with no `USER` line and no
+All of them are `ubuntu:26.04` (the rust-browser image by way of the Rust
+image it is built on), built as root, with no `USER` line and no
 entrypoint. Azure runs a container job's steps as uid 1001, a user it adds to
 the container, whatever the image's default user is, while `HOME` stays
 `/root`, where uv's, pre-commit's and npm's caches all resolve. Each image
@@ -71,6 +77,33 @@ first run.
 
 The image carries no Node. Nothing on this track builds a bundle.
 
+### Rust browser
+
+[`rust-browser.Dockerfile`](rust-browser.Dockerfile) starts `FROM` the Rust
+image of the same commit, so everything above holds in it unchanged, and adds:
+
+- Node and npm, at the pin the web image installs, under `/usr/local`.
+- Chromium and the system libraries it links against, at
+  `/opt/ms-playwright` through `PLAYWRIGHT_BROWSERS_PATH`, installed and started
+  once by
+  [`scripts/ci/install-playwright-chromium.sh`](../../scripts/ci/install-playwright-chromium.sh)
+  at the Playwright version the anchor pins. `web-browser-test` holds the
+  workspace's `playwright` package to the same pin, so the workspace's
+  Playwright finds this build. Firefox and WebKit are absent: no Rust test
+  launches them.
+
+The `rust` job runs in it with `TCAB_REQUIRE_BROWSER=1`, which turns a Rust test
+that would skip for want of Node, the npm workspace or Chromium into a failure
+(`contracts/crates/suites/src/test_browser.rs`). The job's npm
+workspace comes from its setup steps, as before. The project's other Rust jobs
+stay on the Rust image.
+
+The image pipeline builds this image after the Rust one, in a job that depends
+on it, and `scripts/ci/ci-image.sh build rust-browser` passes the Rust image's
+reference at the run's commit as the `RUST_CI_IMAGE` build argument. Its
+Dockerfile gives that argument an empty default, so a build without it fails
+rather than pulling some other base.
+
 ### Web
 
 - Chromium, Firefox and WebKit with their system libraries, which
@@ -105,6 +138,7 @@ a declared `ARG` has no pin behind it.
 
 ```sh
 ci/images/build-args.sh rust   # NAME=VALUE per line, sorted
+ci/images/build-args.sh rust-browser
 ci/images/build-args.sh web
 ```
 
@@ -183,6 +217,31 @@ one, and would land a commit nobody reviewed on a developer's branch. A
 reference resolved at run time from the newest image run would test a branch
 that changes a Dockerfile in the old image until it merged, and the diff would
 no longer name the image a commit ran in.
+
+## Tracks still to come
+
+The repository split plans more tracks than these three. None is here yet, and
+each waits on the step that brings it:
+
+- **`android`.** The template renders an Android image track only where both
+  its `tauri_desktop` and `tauri_android` answers are true, and this
+  repository answers `tauri_desktop: false`, with no Tauri app to build. The
+  track arrives with those answers, when the superrepo sets them and copier
+  renders the track's Dockerfile, its `.dockerignore` and the pipeline's job; a
+  hand-written track now would build an image no job pulls, and would collide
+  with that render.
+- **`base`.** No template version ships a base track (v0.33.0, the latest, has
+  `rust`, `web` and the conditional `android`), so it is a project track like
+  `rust-browser`, added when the first image that builds on it does.
+- **`spec-cabinet`.** Built on `rust-browser` for the Spec Cabinet's sandbox
+  toolchains, it lives on the branch that carries the Spec Cabinet.
+
+The tag stays the commit an image run is on, as described above, in the split
+too: each repository's images are tagged by the commit of the image run that
+built them. That is the template's scheme, written into the files it renders
+(`scripts/ci/ci-image.sh`, `tags.yml`, the image pipeline) and into the
+repository kit's pins (`scripts/repos/render.py` reads `ciImageTag` as a
+commit). A digest of each track's inputs was considered and not taken.
 
 ## Architecture
 

@@ -81,6 +81,14 @@ The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`,
 populated by `POST /ingest`. There are two shapes for driving that, and an
 overlay uses one of them.
 
+Ingest reads the definitions, the test suites and the cold-storage media from
+`TCAB_DEFINITIONS_ROOT`, `TCAB_SUITES_ROOT` and `TCAB_COLD_STORAGE_ROOT`. The
+overlays leave all three unset, so each resolves to its place in the checkout.
+An overlay that clones those trees as separate checkouts sets each one to the
+directory its clone is written to, and the [prune
+guard](/components/backend/overview/#test-case-definitions) keeps the store
+intact when a variable names a directory the clone has not filled.
+
 - A `CronJob` (`deployments/k8s/base/ingest-cronjob.yaml`) that clones the
   repository and calls `POST /ingest` over the cluster network. It fits a
   deployment whose backend serves its checkout from a shared volume the job can
@@ -89,18 +97,27 @@ overlay uses one of them.
   patch in (`patch-backend-ingest.yaml`).
   It shares the backend's `state` volume, writes the checkout the backend
   reads, and calls `POST /ingest` over localhost, so intra-pod traffic bypasses
-  the `NetworkPolicy` and no service token is needed. It runs one forced ingest
-  of the branch tip on backend start, then idles. Those overlays suspend the
-  base `CronJob`.
+  the `NetworkPolicy` and no service token is needed. Each refresh of the
+  checkout then updates its two submodules to the commits the branch names:
+  `cold-storage` shallowly, and `test-suites` authenticated with the read-only
+  credential in the
+  [`tcab-test-suites-credential` Secret](/deployment/overview/#secrets). It runs
+  one forced ingest of the branch tip on backend start, then idles. Those
+  overlays suspend the base `CronJob`.
 
 Every pipeline deploy changes the backend's image tag, so every deploy restarts
 the backend pod, and the sidecar re-ingests the catalog that shipped with the
 commit. It ingests once rather than on a schedule: a periodic forced re-ingest
 rewrites every version and briefly leaves each one without a manifest, which
 fails any run resolving that version mid-cycle. Publish catalog changes between
-deploys with `scripts/reingest-cluster.sh --env <env>`, which fetches the branch
-tip into the live checkout and forces one re-ingest. The backend swaps each
-version into place atomically, so it is safe to run while runs execute.
+deploys with `tcab ingest --env <env>`, which refreshes the live checkout to the
+branch tip through `az aks command invoke` and ingests it. The backend swaps
+each version into place atomically, so it is safe to run while runs execute.
+Both paths treat the `test-suites` update as the one step allowed to fail: when the
+credential is absent, expired or refused, the refresh prints
+`ingest: test suites update failed; ingesting without them` and ingests the test
+cases and the reference-build lockfile without the suites' changes. Every other
+step of `tcab ingest --env <env>` fails it before anything is ingested.
 
 ## Auth service
 

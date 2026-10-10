@@ -3,8 +3,8 @@
 // its data rows would look correct in every unit test and still draw the bars
 // alphabetically. These render the real figures and read the axis back.
 
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { render, screen } from "@testing-library/react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import { MetricChartWidget } from "./MetricChartWidget";
 import { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";

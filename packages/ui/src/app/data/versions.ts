@@ -4,7 +4,7 @@
 //
 // A version is a `v<major>.<minor>.<revision>` directory name (e.g. `v1.2.0`).
 // There is no semver dependency on purpose — these mirror the catalog's own
-// `version_key` in `crates/core/src/test_case.rs`, so a version orders the same way
+// `version_key` in `contracts/crates/contracts/src/test_case.rs`, so a version orders the same way
 // on the filesystem, in the backend's SQL-backed listings, and in the browser.
 
 /** A version's numeric parts, as {@link parseVersion} reads them. */

@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@clockwyrks/particle-runtime": "file:../../../../../../../../packages/particle-runtime",
-    "@clockwyrks/run-record": "file:../../../../../../../../packages/run-record",
+    "@clockwyrks/run-record": "file:../../../../../../../../contracts/packages/run-record",
     "@clockwyrks/simple-2d": "file:../../../../../../../../packages/simple-2d",
     "ts-essentials": "^10.2.1"
   },

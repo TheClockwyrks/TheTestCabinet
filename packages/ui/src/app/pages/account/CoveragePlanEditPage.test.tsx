@@ -1,3 +1,8 @@
+import type {
+  CoverageGroup,
+  CoveragePlanInput,
+  CoveragePlanOut,
+} from "@clockwyrks/backend-api/coverage";
 import {
   act,
   render,
@@ -8,11 +13,8 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  CoverageGroup,
-  CoveragePlanInput,
-  CoveragePlanOut,
-} from "@clockwyrks/run-record/coverage";
+
+import { CoveragePlanEditPage } from "./CoveragePlanEditPage";
 import { retryLimitHelp } from "./retry-limit";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
@@ -20,7 +22,6 @@ import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../../data/galleryContext";
-import { CoveragePlanEditPage } from "./CoveragePlanEditPage";
 
 // The page's app chrome reads contexts none of these tests are about; stub it as the
 // other account page tests do.

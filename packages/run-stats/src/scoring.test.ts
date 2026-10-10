@@ -177,7 +177,7 @@ describe("verdict id helpers", () => {
   });
 });
 
-// Mirrors the Rust core's `merge_review_items` (crates/core/src/test_case.rs); the
+// Mirrors the Rust `merge_review_items` (contracts/crates/contracts/src/test_case.rs); the
 // two must agree so the effective checklist is the same everywhere it's assembled.
 describe("mergeReviewItems", () => {
   it("appends a variant item with a fresh id, common first", () => {
@@ -222,8 +222,8 @@ describe("mergeReviewItems", () => {
   });
 });
 
-// Mirrors the Rust core's `TestCaseVersion::review_items_for_engine`
-// (crates/core/src/test_case.rs): a point whose validator names a set of engines is
+// Mirrors the Rust `TestCaseVersion::review_items_for_engine`
+// (contracts/crates/contracts/src/test_case.rs): a point whose validator names a set of engines is
 // decided only under those, and a run built on any other engine does not carry it.
 describe("reviewItemsForEngine", () => {
   it("keeps a point whose validator names no engines", () => {
@@ -300,8 +300,8 @@ describe("reviewItemsForEngine", () => {
   });
 });
 
-// Mirrors the Rust core's `TestCaseVersion::excluded_verdict_ids` and
-// `apply_score_exclusions` (crates/core/src/test_case.rs) plus the exclusion skip in
+// Mirrors the Rust `TestCaseVersion::excluded_verdict_ids` and
+// `apply_score_exclusions` (contracts/crates/contracts/src/test_case.rs) plus the exclusion skip in
 // `score_checklist`: a version's errata can drop a review point from scoring without a
 // version bump, and every layer that scores must agree.
 describe("score exclusions (errata excludeFromScore)", () => {

@@ -1,3 +1,10 @@
+import type {
+  CoverageCell,
+  CoverageMatrix,
+  CoveragePlanOut,
+  CoverageQueue,
+  HaltResult,
+} from "@clockwyrks/backend-api/coverage";
 import {
   createContext,
   useCallback,
@@ -9,13 +16,6 @@ import {
 } from "react";
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router";
 import { Panel } from "@clockwyrks/ui";
-import type {
-  CoverageCell,
-  CoverageMatrix,
-  CoveragePlanOut,
-  CoverageQueue,
-  HaltResult,
-} from "@clockwyrks/run-record/coverage";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";

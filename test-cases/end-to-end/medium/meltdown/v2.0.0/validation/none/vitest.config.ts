@@ -31,7 +31,7 @@
 // also running a model's build. The package's eight were measured against exactly
 // that, and against the one ceiling this project cannot move: the runner caps the
 // WHOLE suite run at forty-five minutes (`VITEST_TIMEOUT`,
-// `crates/core/src/vitest_validator.rs`).
+// `contracts/crates/suites/src/vitest_validator.rs`).
 //
 // WHAT THE 376-POINT CHECKLIST ACTUALLY COSTS, MEASURED AGAINST THE CONFORMANT
 // REFERENCE. Every figure below is this project's own, taken on this

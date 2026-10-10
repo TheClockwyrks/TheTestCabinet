@@ -7,9 +7,11 @@
 # configuration of the case's own. The curl stub answers the token endpoint,
 # serves each repository's catalogue from a fixture, and records every DELETE
 # with the status a variable names; the git stub fetches a branch when a
-# fixture holds its ci/images/tags.yml and shows that file. The subject is
-# which tags are kept (the three live branches' pins plus the checkout's),
-# what goes, the cache repository, the credential forms, and the refusals.
+# fixture holds its ci/images/tags.yml and shows that file. A submodule's
+# repository is a real one on disk, which the stub hands to git itself. The
+# subject is which tags are kept (the three live branches' pins, the
+# checkout's and the submodule repositories' live branches'), what goes, the
+# cache repository, the credential forms, and the refusals.
 set -uo pipefail
 
 # Azure sets BUILD_SOURCEVERSION for every step, and the script keeps the image
@@ -67,7 +69,9 @@ repo="$tmp/repo"
 stub="$tmp/stub"
 docker="$tmp/docker"
 mkdir -p "$repo/scripts/ci" "$repo/bin" "$repo/ci/images" "$stub" "$docker"
-cp "$CI_DIR/ci-image-purge.sh" "$repo/scripts/ci/"
+cp "$CI_DIR/ci-image-purge.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+REAL_GIT="$(command -v git)"
+readonly REAL_GIT
 
 readonly REGISTRY="testcabinet.azurecr.io"
 readonly REPOSITORY="ubuntu-the-test-cabinet-rust-cicd"
@@ -79,6 +83,8 @@ readonly STAGING="c0ffee0000000000000000000000000000000003"
 readonly NIGHTLY="c0ffee0000000000000000000000000000000004"
 readonly STALE="c0ffee0000000000000000000000000000000005"
 readonly OWN="c0ffee0000000000000000000000000000000006"
+# The image a submodule repository's master pins and no superrepo branch does.
+readonly SUBMODULE="c0ffee0000000000000000000000000000000007"
 
 # curl: the URL is the one argument that names the registry. A DELETE is
 # answered with the status STUB_DELETE_STATUS names and logged; a GET of a
@@ -145,16 +151,29 @@ esac
 STUB
 
 # git: a branch fetches when branch-<name>.yml exists, and FETCH_HEAD's
-# ci/images/tags.yml is that file until the next fetch.
+# ci/images/tags.yml is that file until the next fetch, as its .gitmodules is
+# gitmodules-<name> when that exists (and cannot be read when
+# STUB_UNREADABLE_GITMODULES_ON names the branch). `origin` is
+# STUB_ORIGIN, against which the relative URLs of .gitmodules resolve. What
+# reads .gitmodules or a submodule's repository (`config -f`, `ls-remote`,
+# `init`, and anything run with `-C`) is real git's.
 cat >"$repo/bin/git" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+all=("$@")
 while [[ "${1:-}" == -c ]]; do
 	printf 'config %s\n' "$2" >>"$STUB_DIR/git.log"
 	shift 2
 done
 printf '%s\n' "$*" >>"$STUB_DIR/git.log"
 case "$1" in
+	-C | config | ls-remote | init) exec "$REAL_GIT" "${all[@]}" ;;
+esac
+case "$1" in
+	remote)
+		[ "$2 $3" = "get-url origin" ] && [ -n "${STUB_ORIGIN:-}" ] || exit 2
+		echo "$STUB_ORIGIN"
+		;;
 	rev-parse)
 		case "$2" in
 			--is-shallow-repository) echo "${STUB_SHALLOW:-false}" ;;
@@ -173,12 +192,23 @@ case "$1" in
 		;;
 	ls-tree)
 		branch="$(cat "$STUB_DIR/fetched")"
-		[ "$2" = "FETCH_HEAD" ] && [ "$3" = "ci/images/" ] || exit 128
+		[ "$2" = "FETCH_HEAD" ] || exit 128
+		if [ "$3" = ".gitmodules" ]; then
+			[ ! -f "$STUB_DIR/gitmodules-$branch" ] ||
+				echo "100644 blob 0000000000000000000000000000000000000000	.gitmodules"
+			exit 0
+		fi
+		[ "$3" = "ci/images/" ] || exit 128
 		[ -z "${STUB_NO_IMAGES_ON:-}" ] || [ "$branch" != "$STUB_NO_IMAGES_ON" ] || exit 0
 		echo "040000 tree 0000000000000000000000000000000000000000	ci/images"
 		;;
 	show)
 		branch="$(cat "$STUB_DIR/fetched")"
+		if [ "$2" = "FETCH_HEAD:.gitmodules" ]; then
+			[ "${STUB_UNREADABLE_GITMODULES_ON:-}" != "$branch" ] || exit 128
+			cat "$STUB_DIR/gitmodules-$branch"
+			exit 0
+		fi
 		[ "$2" = "FETCH_HEAD:ci/images/tags.yml" ] || exit 128
 		[ -z "${STUB_NO_PINS_ON:-}" ] || [ "$branch" != "$STUB_NO_PINS_ON" ] || exit 128
 		cat "$STUB_DIR/branch-$branch.yml"
@@ -218,6 +248,7 @@ basic_config() { # user password
 write_fixtures() {
 	rm -rf "$stub"
 	mkdir -p "$stub"
+	rm -f "$repo/.gitmodules"
 	pins "$CHECKOUT" >"$repo/ci/images/tags.yml"
 	pins "$MASTER" >"$stub/branch-master.yml"
 	pins "$STAGING" >"$stub/branch-staging.yml"
@@ -265,7 +296,7 @@ write_fixtures() {
 }
 
 run() {
-	(cd / && env PATH="$repo/bin:$PATH" STUB_DIR="$stub" DOCKER_CONFIG="$docker" HOME="$tmp" \
+	(cd / && env PATH="$repo/bin:$PATH" STUB_DIR="$stub" DOCKER_CONFIG="$docker" HOME="$tmp" REAL_GIT="$REAL_GIT" \
 		"$repo/scripts/ci/ci-image-purge.sh" "$@" 2>&1)
 }
 deleted() { cat "$stub/deleted.log" 2>/dev/null; }
@@ -334,6 +365,17 @@ check_contains "keeps the same pins, which name both tracks' images" \
 check_contains "and deletes the web repository's unkept tag" "ubuntu-the-test-cabinet-web-cicd@sha256:stale" "$(deleted)"
 check_lacks "keeping master's" "ubuntu-the-test-cabinet-web-cicd@sha256:master" "$(deleted)"
 
+echo "--- the rust-browser track ---"
+write_fixtures
+cp "$stub/$REPOSITORY.manifests.json" "$stub/ubuntu-the-test-cabinet-rust-browser-cicd.manifests.json"
+cp "$stub/$REPOSITORY-cache.manifests.json" "$stub/ubuntu-the-test-cabinet-rust-browser-cicd-cache.manifests.json"
+out="$(run rust-browser)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps the same pins, which name every track's image" \
+	"ubuntu-the-test-cabinet-rust-browser-cicd: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY" "$out"
+check_contains "and deletes its repository's unkept tag" "ubuntu-the-test-cabinet-rust-browser-cicd@sha256:stale" "$(deleted)"
+check_lacks "keeping master's" "ubuntu-the-test-cabinet-rust-browser-cicd@sha256:master" "$(deleted)"
+
 echo "--- --dry-run ---"
 write_fixtures
 out="$(run --dry-run rust)"
@@ -387,6 +429,100 @@ check_equal "exits 0" "0" "$?"
 check_contains "keeps this track's old tag in place of its ciImageTag" \
 	"${REPOSITORY}: keeping $CHECKOUT $MASTER $NIGHTLY v1-e9e53ee1c4db" "$out"
 check_lacks "and not the other track's" "v1-ffe3b49d464e" "$out"
+
+echo "--- the submodule repositories' pins ---"
+remotes="$tmp/remotes"
+# remote <name> <branch> <azure-pipelines.yml text, or - for none>...: a
+# repository on disk serving partial fetches, one commit per branch.
+remote() {
+	local name="$1" dir="$remotes/$1" work="$tmp/work-$1"
+	shift
+	rm -rf "$dir" "$work"
+	git init --quiet --bare "$dir"
+	git -C "$dir" config uploadpack.allowFilter true
+	git init --quiet "$work"
+	while [ $# -gt 0 ]; do
+		git -C "$work" checkout --quiet --orphan "$1"
+		git -C "$work" rm -rf --quiet . 2>/dev/null || true
+		echo "$name" >"$work/README.md"
+		[ "$2" = - ] || printf '%s\n' "$2" >"$work/azure-pipelines.yml"
+		git -C "$work" add -A
+		git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -m "$1"
+		git -C "$work" push --quiet "$dir" "HEAD:refs/heads/$1"
+		shift 2
+	done
+}
+submodules() { # name url...
+	: >"$repo/.gitmodules"
+	while [ $# -gt 0 ]; do
+		printf '[submodule "%s"]\n\tpath = %s\n\turl = %s\n' "$1" "$1" "$2" >>"$repo/.gitmodules"
+		shift 2
+	done
+}
+remote contracts \
+	master "container: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${SUBMODULE}
+other: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd:${OWN}
+web: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${OWN}" \
+	nightly "container: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${STALE}" \
+	feature "container: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${OWN}"
+remote test-suites master "trigger: none"
+remote media master -
+write_fixtures
+submodules contracts ../contracts test-suites ../test-suites media ./../media elsewhere https://example.invalid/elsewhere
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" run rust)"
+check_equal "exits 0" "0" "$?"
+check_contains "keeps what the submodule's live branches pin as well" \
+	"${REPOSITORY}: keeping $CHECKOUT $MASTER $STAGING $NIGHTLY $STALE $SUBMODULE " "$out"
+check_contains "naming where each came from" "contracts/nightly pins $STALE" "$out"
+check_lacks "so a tag only the submodule pins stays" "@sha256:stale" "$(deleted)"
+check_lacks "and no other track's image, nor a branch that is not live, is kept" "$OWN" "$(grep keeping <<<"$out")"
+check_contains "while what nothing pins still goes" "${REPOSITORY}@sha256:own" "$(deleted)"
+check_lacks "a repository without the image, or without a pipeline, names nothing" "test-suites/" "$out"
+check_lacks "and neither does media" "media/" "$out"
+check_lacks "an absolute URL is not this project's, and is not read" "example.invalid" "$(cat "$stub/git.log")"
+
+# The checkout names no submodule, as `master` did before contracts reached it,
+# while `nightly` names contracts and `staging` names it too, by the same URL
+# spelled another way; a branch predating ci/images/ is still read.
+write_fixtures
+printf '[submodule "contracts"]\n\tpath = contracts\n\turl = ../contracts\n' >"$stub/gitmodules-nightly"
+printf '[submodule "c"]\n\tpath = c\n\turl = ../contracts\n' >"$stub/gitmodules-staging"
+cp "$stub/gitmodules-nightly" "$stub/gitmodules-master"
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" STUB_NO_IMAGES_ON=master STUB_NO_PINS_ON=master run rust)"
+check_equal "a submodule only a live branch names exits 0" "0" "$?"
+check_contains "and its pins are kept" \
+	"${REPOSITORY}: keeping $CHECKOUT $STAGING $NIGHTLY $STALE $SUBMODULE " "$out"
+check_lacks "so a tag only that submodule pins stays" "@sha256:stale" "$(deleted)"
+check_equal "a repository several branches name is read once" "1" \
+	"$(grep -c "contracts/nightly pins" <<<"$out")"
+
+write_fixtures
+printf '[submodule "contracts"]\n\tpath = contracts\n\turl = ../contracts\n' >"$stub/gitmodules-nightly"
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" STUB_UNREADABLE_GITMODULES_ON=nightly run rust)"
+check_equal "a live branch's .gitmodules that cannot be read refuses" "1" "$?"
+check_contains "naming the branch" "cannot read origin/nightly's .gitmodules; refusing to purge" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
+
+write_fixtures
+printf '[submodule "missing"]\n\tpath = missing\n\turl = ../missing\n' >"$stub/gitmodules-staging"
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" run rust)"
+check_equal "a repository only another branch names, which this job cannot reach, refuses" "1" "$?"
+check_contains "naming it" "cannot list the branches of missing" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
+
+write_fixtures
+submodules contracts ../contracts missing ../missing
+out="$(STUB_ORIGIN="$remotes/the-test-cabinet" run rust)"
+check_equal "a submodule repository that cannot be listed refuses" "1" "$?"
+check_contains "naming it" "cannot list the branches of missing" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
+
+write_fixtures
+submodules contracts ../contracts
+out="$(run rust)"
+check_equal "a checkout without an origin to resolve against refuses" "1" "$?"
+check_contains "saying so" "has no origin to resolve the submodules' URLs against" "$out"
+check_equal "and deletes nothing" "" "$(deleted)"
 
 echo "--- a checkout whose file pins nothing ---"
 write_fixtures
@@ -448,7 +584,7 @@ echo "--- usage ---"
 write_fixtures
 out="$(run gates)"
 check_equal "an unknown track is a usage error" "1" "$?"
-check_contains "which says how to call it" "usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|web>" "$out"
+check_contains "which says how to call it" "usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>" "$out"
 out="$(run)"
 check_equal "as is no track" "1" "$?"
 check_equal "and neither touched the registry" "" "$(cat "$stub/curl.log" 2>/dev/null)"

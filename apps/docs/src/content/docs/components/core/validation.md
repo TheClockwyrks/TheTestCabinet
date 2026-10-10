@@ -281,7 +281,10 @@ cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline
 Core's `ColdStorage::validation_baseline_dir` is the one resolver from a version
 folder to that directory. The cold-storage root defaults to
 `<checkout>/cold-storage`, and `TCAB_COLD_STORAGE_DIR` replaces it. The capture
-commands write through the resolver and backend ingest reads through it.
+commands write through the resolver and backend ingest reads through it. The
+backend's `TCAB_COLD_STORAGE_ROOT` takes precedence over `TCAB_COLD_STORAGE_DIR`
+for ingest, and the root mirrors the backend's definitions root rather than the
+checkout (see [backend configuration](/components/backend/overview/#configuration)).
 
 Ingest copies each version's baselines into the stored version under
 `validation-baseline/`, and the backend serves and snapshots them from the store.
@@ -501,3 +504,14 @@ implementation loaded. It also carries:
   end-to-end checks. An [asset-generation](/testing/asset-generation/overview/)
   run records the produced media, the recorded action log, and the operation
   count for its [asset kind](/testing/asset-generation/overview/#asset-kinds).
+
+The summary's types are defined in the
+[contracts crate](/components/core/overview/#the-contracts-crate)
+(`test_cabinet_contracts::validation`), because the run record carries it. The
+validators that produce it, and the `Validator` seam they implement, live in the
+core. The runners a validator project runs through, a case's vitest runner and a
+suite's validator runner, live in the
+[suites crate](/components/core/overview/#the-suites-crate) beside the static server
+and browser driver they share with the core's browser drive. A suite-defined case's
+per-requirement outcomes are part of the [test suite format](/test-suites/overview/),
+which is defined in the contracts crate.

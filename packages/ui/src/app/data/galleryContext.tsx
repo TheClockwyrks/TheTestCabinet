@@ -1,3 +1,10 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import type {
+  ControllerRef,
+  MatchSummary,
+  TournamentRecord,
+} from "@clockwyrks/backend-api/tournament";
 import {
   createContext,
   useCallback,
@@ -10,8 +17,6 @@ import {
 import type {
   AdversarialResult,
   AssetSheet,
-  ControllerRef,
-  MatchSummary,
   MediaKind,
   ModelSpec,
   NineSlice,
@@ -19,11 +24,8 @@ import type {
   RunRecord,
   RunShowcase,
   RunSubject,
-  TournamentRecord,
 } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import {
   parseGlb,
@@ -617,6 +619,42 @@ export interface GalleryDataInput {
     slug: string,
     version: string,
     variant: string,
+    file: string,
+  ) => string | null;
+  /**
+   * Resolve the loadable URL for one media file of an ingested **test suite
+   * version's** showcase — the suite-side counterpart of
+   * {@link caseShowcaseMediaUrl}. Suite-scoped (slug + version), because a
+   * suite's showcase is authored material committed with the version: the
+   * consoles point at the backend's
+   * `/test-suites/{slug}/{version}/showcase/{file}` route, which reads the
+   * stored suite version, so a deployment serves what it ingested without the
+   * browser reaching the suites checkout. `file` is the plain name the
+   * carousel (or the description's bare relative reference) carries.
+   *
+   * Omitted (or returning null) by a host that serves no suite media, and the
+   * surfaces degrade exactly like the run showcase ("not available here").
+   */
+  suiteShowcaseMediaUrl?: (
+    slug: string,
+    version: string,
+    file: string,
+  ) => string | null;
+  /**
+   * Resolve the loadable URL for one file of a suite version's bundled **asset**
+   * — a sprite's `.png`, say — from the backend's
+   * `/test-suites/{slug}/{version}/assets/{asset-id}/{file}` route. `asset` is
+   * the asset's id (the last segment of its stored `dir`) and `file` one of the
+   * names its manifest declares.
+   *
+   * Wired and degraded exactly like {@link suiteShowcaseMediaUrl}: a host that
+   * cannot serve suite bytes omits it, and the asset is presented without its
+   * preview rather than as a broken image.
+   */
+  suiteAssetMediaUrl?: (
+    slug: string,
+    version: string,
+    asset: string,
     file: string,
   ) => string | null;
   /**

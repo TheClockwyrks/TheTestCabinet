@@ -1,4 +1,4 @@
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   LadderClimber,
   LadderProgressRung,
   LadderSlot,
-} from "@clockwyrks/run-record/ladders";
+} from "@clockwyrks/backend-api/ladders";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import { useEffect, useMemo, useState } from "react";
 import { canonicalModelId } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";

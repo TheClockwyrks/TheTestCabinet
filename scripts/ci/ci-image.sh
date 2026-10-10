@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the image one of CI's gate tracks runs inside, and pushes it.
 #
-#   scripts/ci/ci-image.sh build <rust|web>
+#   scripts/ci/ci-image.sh build <rust|rust-browser|web>
 #
 # There is one image per gate track, because the tracks need disjoint
 # toolchains: the Rust track wants a Rust toolchain, the web track wants
@@ -10,6 +10,11 @@
 # as its context, since those files install with the same .devcontainer/
 # scripts a developer's image is built with. See ci/images/README.md for what is
 # in each one and why.
+#
+# `rust-browser` is the one track built on another: the Rust image plus Node and
+# Chromium, for the Rust gate job's browser tests. Its Dockerfile starts
+# `FROM ${RUST_CI_IMAGE}`, and this script passes the Rust image of the same
+# commit as that argument, so the image pipeline builds the Rust image first.
 #
 # ## The tag
 #
@@ -70,16 +75,16 @@ readonly BUILDER="the-test-cabinet-ci-images"
 readonly COMMIT_PATTERN='^[0-9a-f]{40}$'
 
 usage() {
-	echo "usage: scripts/ci/ci-image.sh build <rust|web>" >&2
+	echo "usage: scripts/ci/ci-image.sh build <rust|rust-browser|web>" >&2
 	exit 1
 }
 
 # The repository a track's image is pushed to.
 image() {
 	case "$1" in
-	rust | web) echo "${REGISTRY}/ubuntu-the-test-cabinet-$1-cicd" ;;
+	rust | rust-browser | web) echo "${REGISTRY}/ubuntu-the-test-cabinet-$1-cicd" ;;
 	*)
-		echo "ci-image.sh: unknown track '$1'; expected 'rust' or 'web'" >&2
+		echo "ci-image.sh: unknown track '$1'; expected 'rust', 'rust-browser' or 'web'" >&2
 		return 1
 		;;
 	esac
@@ -129,6 +134,11 @@ build() {
 		[[ -n "$pin" ]] || continue
 		build_args+=(--build-arg "$pin")
 	done
+	# The image a track is built on, where it is built on another track's: the
+	# one this run pushed under the same commit, never one from another run.
+	if [[ "$track" == rust-browser ]]; then
+		build_args+=(--build-arg "RUST_CI_IMAGE=$(image rust):${tag}")
+	fi
 
 	local reference="${repository}:${tag}"
 	echo "Building ${reference}"

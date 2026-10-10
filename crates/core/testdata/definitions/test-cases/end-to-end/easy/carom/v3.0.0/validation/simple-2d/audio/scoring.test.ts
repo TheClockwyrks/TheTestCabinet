@@ -1,0 +1,78 @@
+// Carom — audio/scoring: the `score` cue plays on the frame a point is scored.
+//
+// A real ball is driven out of the right goal, so the point is scored by the
+// build's own scoring code rather than posed. The frame player one's score goes
+// up is the frame the cue must carry.
+//
+// Nothing else may sound on the way, and that is the field's doing rather than
+// the aim's: both obstacles are REMOVED and the field holds this ball alone, so
+// the mid-field lane the shot crosses is genuinely empty and the paddles are
+// driven clear of it. The cues this collects are therefore the point's alone,
+// which is what tells a build that announces the point apart from one that plays
+// a bounce blip as the ball leaves the field.
+//
+// Live play is posed rather than served into: a cue on a scored point is no part
+// of the countdown or the serve, so `enterPlaying` reaches the playing screen
+// without running either.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { CUES } from "../constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import {
+  arrangeGoal,
+  captureReplay,
+  createHarness,
+  enterPlaying,
+  watchCues,
+  type Harness,
+} from "../harness";
+
+/**
+ * Frames recorded after the point lands.
+ *
+ * The sweep stops on the frame the score changes, which is the frame the cue must
+ * have played on and therefore where every reading has to be taken. A recording
+ * that stopped there would cut on the goal itself: the review item promises "the
+ * scored point whose cue is checked", and what tells a reviewer a point was
+ * scored is the scoreboard turning over and the next countdown opening.
+ */
+const AFTERMATH_TICKS = 60; // 0.5 s
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("plays the score cue on the frame the point lands", async () => {
+  enterPlaying(h, "versus");
+  arrangeGoal(h, "right");
+
+  const played = watchCues(h);
+  const point = await captureReplay(h, "score", async () => {
+    const scored = await h.until((s) => s.score.p1 > 0, { maxFrames: 360 });
+    // Read HERE, on the frame the sweep stopped: the frame number and the cues
+    // that had sounded by then are exactly what the assertions read before the
+    // aftermath below was recorded.
+    const measured = {
+      scored,
+      frame: h.engine.frame().count,
+      cues: [...played],
+    };
+    await h.advance(AFTERMATH_TICKS);
+    return measured;
+  });
+
+  assertEqual(point.scored.hit, true);
+  assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
+  assertDeepEqual(
+    point.cues.map((cue) => cue.cue),
+    [CUES.score],
+  );
+  assertEqual(point.cues[0].frame, point.frame);
+  assertGreaterThan(point.cues[0].gain, 0);
+});

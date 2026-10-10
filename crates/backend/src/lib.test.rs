@@ -36,7 +36,12 @@ async fn a_restart_leaves_every_job_in_flight_alone() {
         }
     }
 
-    let backend = build(Config::from_env().unwrap()).await.unwrap();
+    // Port 0 is never connectable, so startup's price seeding fails fast instead of
+    // waiting on OpenRouter's public catalog.
+    let prices = test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models");
+    let backend = build_with_prices(Config::from_env().unwrap(), prices)
+        .await
+        .unwrap();
     let db = Db::connect(&url).await.unwrap();
     for state in states {
         let job = db.get_job(state).await.unwrap().unwrap();

@@ -19,8 +19,8 @@
 # It drives the cluster with `az aks command invoke` (only an authenticated `az` is
 # needed — no local kubeconfig or port-forward). The Node script is base64-encoded
 # and passed as a positional arg, then decoded and piped to `node -` inside the
-# backend container — the same robust "arg, not stdin redirect" shape reingest-cluster.sh
-# uses (az does not run --command through a shell, so `< file`/`|` in --command do not
+# backend container — the robust "arg, not stdin redirect" shape
+# (az does not run --command through a shell, so `< file`/`|` in --command do not
 # work; a pipe inside the container's own `sh -c` does).
 #
 # Usage (the target environment is REQUIRED):

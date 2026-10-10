@@ -12,11 +12,20 @@ export function prefersReducedMotion(): boolean {
   );
 }
 
-/** Whether the browser can create a WebGL (or WebGL2) context. */
+/**
+ * Whether the browser can create a WebGL (or WebGL2) context.
+ *
+ * The probe's own context is released as soon as it has answered. A browser keeps
+ * only a handful of live contexts and drops the oldest past that, so a page asking
+ * once per viewer — a list of previews — would otherwise blank its own viewers.
+ */
 export function supportsWebGL(): boolean {
   try {
     const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+    const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+    if (!context) return false;
+    context.getExtension("WEBGL_lose_context")?.loseContext();
+    return true;
   } catch {
     return false;
   }

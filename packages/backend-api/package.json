@@ -1,0 +1,72 @@
+{
+  "name": "@clockwyrks/backend-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./account": {
+      "types": "./dist/account.d.ts",
+      "default": "./dist/account.js"
+    },
+    "./comparison": {
+      "types": "./dist/comparison.d.ts",
+      "default": "./dist/comparison.js"
+    },
+    "./coverage": {
+      "types": "./dist/coverage.d.ts",
+      "default": "./dist/coverage.js"
+    },
+    "./gg": {
+      "types": "./dist/gg.d.ts",
+      "default": "./dist/gg.js"
+    },
+    "./gg-system-prompt": {
+      "types": "./dist/gg-system-prompt.d.ts",
+      "default": "./dist/gg-system-prompt.js"
+    },
+    "./gg-query": {
+      "types": "./dist/gg-query.d.ts",
+      "default": "./dist/gg-query.js"
+    },
+    "./jobs-api": {
+      "types": "./dist/jobs-api.d.ts",
+      "default": "./dist/jobs-api.js"
+    },
+    "./ladders": {
+      "types": "./dist/ladders.d.ts",
+      "default": "./dist/ladders.js"
+    },
+    "./review": {
+      "types": "./dist/review.d.ts",
+      "default": "./dist/review.js"
+    },
+    "./snapshot": {
+      "types": "./dist/snapshot.d.ts",
+      "default": "./dist/snapshot.js"
+    },
+    "./tournament": {
+      "types": "./dist/tournament.d.ts",
+      "default": "./dist/tournament.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "typescript": "^6"
+  },
+  "dependencies": {
+    "@clockwyrks/run-record": "*"
+  }
+}

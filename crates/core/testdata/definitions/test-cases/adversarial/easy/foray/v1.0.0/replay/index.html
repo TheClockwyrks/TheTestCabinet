@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foray — replay</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #14100c;
+        --panel: #1f1812;
+        --ink: #e8dcc8;
+        --muted: #9a8a72;
+        --red: #e8635a;
+        --blue: #5a8fe8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.4 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 4px 0;
+        letter-spacing: 0.08em;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      #stage {
+        background: #0b0805;
+        border: 1px solid #3a2a1c;
+        image-rendering: pixelated;
+        max-width: 100%;
+      }
+      .scoreboard {
+        display: flex;
+        gap: 24px;
+        align-items: center;
+        font-size: 15px;
+      }
+      .score-red {
+        color: var(--red);
+      }
+      .score-blue {
+        color: var(--blue);
+      }
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+        background: var(--panel);
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #3a2a1c;
+      }
+      button {
+        background: #2a2018;
+        color: var(--ink);
+        border: 1px solid #4a3a28;
+        border-radius: 6px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font: inherit;
+      }
+      button:hover {
+        background: #3a2c20;
+      }
+      input[type="range"] {
+        width: 320px;
+        accent-color: var(--seed, #e8c14a);
+      }
+      select {
+        background: #2a2018;
+        color: var(--ink);
+        border: 1px solid #4a3a28;
+        border-radius: 6px;
+        padding: 5px;
+      }
+      .result {
+        font-size: 14px;
+        min-height: 1.4em;
+      }
+      .result.win-red {
+        color: var(--red);
+      }
+      .result.win-blue {
+        color: var(--blue);
+      }
+      label {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>FORAY</h1>
+    <div class="sub" id="provenance"></div>
+    <div class="scoreboard">
+      <span class="score-red">RED <b id="red-score">0</b></span>
+      <span id="tick-label" class="sub">tick 0 / 0</span>
+      <span class="score-blue">BLUE <b id="blue-score">0</b></span>
+    </div>
+    <canvas id="stage" width="640" height="320"></canvas>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="restart">⟲ Restart</button>
+      <label>tick</label>
+      <input id="scrub" type="range" min="0" max="0" value="0" step="1" />
+      <label>speed</label>
+      <select id="speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </div>
+    <div class="result" id="result"></div>
+
+    <script type="module">
+      import { Engine, loadSheet, Renderer } from "./renderer.mjs";
+
+      // Simulation ticks advanced per real second at speed 1×. Deliberately
+      // slow: agents are drawn at INTERPOLATED positions between ticks, so a
+      // modest tick rate reads as smooth motion that is easy to follow, not a blur.
+      const TICKS_PER_SEC = 8;
+
+      async function main() {
+        const [replay, atlas, palette] = await Promise.all([
+          fetch("./replay.json").then((r) => r.json()),
+          fetch("./assets/sheet.json").then((r) => r.json()),
+          fetch("./assets/palette.json").then((r) => r.json()),
+        ]);
+
+        const engine = await Engine.instantiate("./assets/foray-core.wasm");
+        if (!engine.load(replay))
+          throw new Error("foray-core rejected the replay");
+        const board = engine.board();
+        const sheet = await loadSheet("./assets/sheet.png", atlas, palette);
+
+        // Reconstruct every frame up front. The canonical match is bounded, so we
+        // buffer the snapshots — this makes scrubbing instant and lets the result
+        // overlay show as soon as the match decides.
+        const frames = [];
+        let snap;
+        while ((snap = engine.step()) !== null) frames.push(snap);
+
+        const stage = document.getElementById("stage");
+        const renderer = new Renderer(stage, sheet, board, 2);
+
+        document.getElementById("provenance").textContent =
+          `${replay.map} · seed ${replay.seed} · red: ${replay.participants.red} vs blue: ${replay.participants.blue}`;
+
+        const scrub = document.getElementById("scrub");
+        const playBtn = document.getElementById("play");
+        const restartBtn = document.getElementById("restart");
+        const speedSel = document.getElementById("speed");
+        const redScore = document.getElementById("red-score");
+        const blueScore = document.getElementById("blue-score");
+        const tickLabel = document.getElementById("tick-label");
+        const resultEl = document.getElementById("result");
+
+        const lastTick = frames.length - 1;
+        scrub.max = String(lastTick);
+
+        // Playback position as a CONTINUOUS tick coordinate: the integer part is
+        // the current tick, the fraction is progress toward the next — what the
+        // renderer interpolates over.
+        let t = 0;
+        let playing = false;
+        let last = 0;
+
+        function render(time) {
+          t = Math.max(0, Math.min(lastTick, time));
+          const i = Math.floor(t);
+          const frac = i < lastTick ? t - i : 0;
+          const a = frames[i];
+          const b = frames[Math.min(i + 1, lastTick)];
+          renderer.draw(a, b, frac);
+          redScore.textContent = a.score.red;
+          blueScore.textContent = a.score.blue;
+          tickLabel.textContent = `tick ${a.tick} / ${frames[lastTick].tick}`;
+          scrub.value = String(i);
+          if (a.result) {
+            const r = a.result;
+            const who = r.winner ? r.winner.toUpperCase() : "DRAW";
+            resultEl.textContent = `${who} · ${r.ended} · red ${r.score.red} – blue ${r.score.blue} · ${r.ticks} ticks`;
+            resultEl.className =
+              "result" + (r.winner ? ` win-${r.winner}` : "");
+          } else {
+            resultEl.textContent = "";
+            resultEl.className = "result";
+          }
+        }
+
+        function setPlaying(on) {
+          playing = on;
+          playBtn.textContent = on ? "⏸ Pause" : "▶ Play";
+          if (on) {
+            if (t >= lastTick) {
+              renderer.resetFacing();
+              t = 0;
+            }
+            last = performance.now();
+            requestAnimationFrame(loop);
+          }
+        }
+
+        function loop(now) {
+          if (!playing) return;
+          const dt = (now - last) / 1000;
+          last = now;
+          t += dt * TICKS_PER_SEC * Number(speedSel.value);
+          if (t >= lastTick) {
+            render(lastTick);
+            setPlaying(false);
+            return;
+          }
+          render(t);
+          requestAnimationFrame(loop);
+        }
+
+        playBtn.onclick = () => setPlaying(!playing);
+        restartBtn.onclick = () => {
+          setPlaying(false);
+          renderer.resetFacing();
+          render(0);
+        };
+        scrub.oninput = () => {
+          setPlaying(false);
+          renderer.resetFacing();
+          render(Number(scrub.value));
+        };
+
+        render(0);
+      }
+
+      main().catch((err) => {
+        document.getElementById("result").textContent = "error: " + err.message;
+        console.error(err);
+      });
+    </script>
+  </body>
+</html>

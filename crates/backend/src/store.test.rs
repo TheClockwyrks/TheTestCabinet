@@ -1,5 +1,6 @@
 use super::*;
 use tempfile::TempDir;
+use test_cabinet_core::engine::EngineCatalogExt as _;
 
 /// Open a store rooted in a fresh temp directory.
 fn temp_store() -> (TempDir, DefinitionStore) {
@@ -163,6 +164,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             variant: None,
             review: None,
         }],
+        suite: None,
     }
 }
 

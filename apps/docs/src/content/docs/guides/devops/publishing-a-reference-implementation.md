@@ -253,11 +253,10 @@ Commit the lockfile and push it to the branch the target environment tracks
 git add test-cases/reference-builds.lock.json
 git commit -m "chore(references): record carom reference builds for prod"
 git push
-scripts/reingest-cluster.sh --env prod
+tcab ingest --env prod --changed
 ```
 
-The re-ingest
-[fetches the backend's checkout and forces a re-ingest](/development/running/).
+The re-ingest refreshes the backend's checkout to the branch tip and ingests it.
 The backend then loads the lockfile, reads the entries for its own `TCAB_ENV`,
 and reconciles its `case_reference_build` table to match, upserting each URL and
 pruning any it no longer lists. The version's API response and the public
@@ -306,7 +305,7 @@ reconciling its `case_reference_sheet` table. The flow is one step shorter:
 
 ```sh
 tcab publish-reference --env prod <slug>    # runs the script, uploads the frames
-scripts/reingest-cluster.sh --env prod      # backend rediscovers them
+tcab ingest --env prod --changed         # backend rediscovers them
 ```
 
 Re-running the command after editing a script overwrites the objects in place,

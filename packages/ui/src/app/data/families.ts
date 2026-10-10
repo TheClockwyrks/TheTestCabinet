@@ -7,7 +7,7 @@
 // slugs it can actually launch.
 //
 // This is the display-side mirror of the authoritative Rust logic in
-// `crates/core/src/run_record.rs` (`HarnessSlug::family`, `HarnessFamily`); a
+// `contracts/crates/contracts/src/run_record.rs` (`HarnessSlug::family`, `HarnessFamily`); a
 // drift test there keeps the OpenRouter arm in step with the routing predicate.
 // The `HarnessFamily` union itself is generated from Rust into
 // `@clockwyrks/run-record`.

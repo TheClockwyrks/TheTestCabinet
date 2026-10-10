@@ -1,6 +1,39 @@
 use super::*;
 use tempfile::TempDir;
 
+/// The copies of the committed case versions these tests resolve, under
+/// `testdata/definitions/test-cases/`: foray and lattice at v1.0.0, carom at v2.0.0
+/// and v3.0.0, skyshard and ironward at v1.0.0. A test reads its own copy rather
+/// than the repository's catalog, so it does not depend on where that catalog
+/// lives; a missing copy fails the test that resolves it.
+fn fixture_test_cases() -> std::path::PathBuf {
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases");
+    assert!(
+        root.is_dir(),
+        "the fixture catalog {} is missing",
+        root.display()
+    );
+    root
+}
+
+/// The committed catalog itself, for the one test that holds every version to a
+/// rule: `<TCAB_DEFINITIONS_ROOT>/test-cases`, defaulting to the repository's own.
+/// It fails, rather than skips, where the catalog is absent.
+fn committed_test_cases() -> std::path::PathBuf {
+    let definitions = std::env::var_os("TCAB_DEFINITIONS_ROOT")
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
+    let root = definitions.join("test-cases");
+    assert!(
+        root.is_dir(),
+        "the committed catalog {} is missing",
+        root.display()
+    );
+    root
+}
+
 /// Write a file, creating parent directories.
 fn write(path: &std::path::Path, contents: &str) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -254,11 +287,11 @@ fn stored_manifest_carries_adversarial_specs() {
     // Foray case and building its manifest guards the full path
     // (regression: these fields were dropped, so a quick match 500'd with
     // "an adversarial match requires [contract], [sandbox], and [simulation]").
-    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let test_cases = fixture_test_cases();
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let resolved = catalog.resolve("foray", "v1.0.0").unwrap();
 
-    let manifest = build_stored_manifest(&resolved).unwrap();
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
 
     let contract = manifest.contract.expect("contract survives ingest");
     assert_eq!(contract.entry, "tick");
@@ -290,11 +323,11 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
     // guards the full path. The reporter-side script files themselves ride along in the
     // copied version tree (`copy_tree`) and are served by the artifact endpoint; they
     // must never appear in the seed sets (specs/assets/workspace).
-    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let test_cases = fixture_test_cases();
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let resolved = catalog.resolve("carom", "v2.0.0").unwrap();
 
-    let manifest = build_stored_manifest(&resolved).unwrap();
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
 
     let instrumentation = manifest
         .instrumentation
@@ -401,7 +434,8 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
     // Ingest tolerates the key: the stored manifest builds, and the variant carries
     // through (the reference-impl host path is intentionally dropped — it is not part
     // of the run-facing stored shape).
-    let manifest = build_stored_manifest(&resolved).expect("build tolerates the key");
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
+        .expect("build tolerates the key");
     assert_eq!(manifest.variants.len(), 1);
     assert_eq!(manifest.variants[0].slug, "base");
 }
@@ -442,7 +476,8 @@ fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
 
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path().join("test-cases"));
     let resolved = catalog.resolve("demo", "v1.0.0").expect("resolve");
-    let manifest = build_stored_manifest(&resolved).expect("build the stored manifest");
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
+        .expect("build the stored manifest");
 
     let showcase = manifest.variants[0]
         .showcase
@@ -482,11 +517,11 @@ fn stored_manifest_carries_performance_specs() {
     // replay) must stay absent. Resolving the real Lattice case and building its
     // manifest guards the generalized contract/sandbox shape and the new cases
     // field, mirroring the adversarial regression guard above.
-    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let test_cases = fixture_test_cases();
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let resolved = catalog.resolve("lattice", "v1.0.0").unwrap();
 
-    let manifest = build_stored_manifest(&resolved).unwrap();
+    let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
 
     let contract = manifest.contract.expect("contract survives ingest");
     assert_eq!(contract.entry, "simulate");
@@ -558,12 +593,12 @@ fn stored_manifest_carries_voxel_specs() {
     // fails with "voxel case has no [voxel]" (the regression this guards). Resolving
     // the real static Skyshard and rigged Ironward cases guards the ingest path for
     // both voxel kinds, mirroring the adversarial/performance guards above.
-    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let test_cases = fixture_test_cases();
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
 
     // A static voxel-model case: the volume survives; there is no rig.
     let skyshard = catalog.resolve("skyshard", "v1.0.0").unwrap();
-    let manifest = build_stored_manifest(&skyshard).unwrap();
+    let manifest = build_stored_manifest(&skyshard, &Keys::rooted(&skyshard.root), None).unwrap();
     let voxel = manifest.voxel.expect("voxel volume survives ingest");
     assert_eq!((voxel.width, voxel.height, voxel.depth), (50, 20, 76));
     assert!(
@@ -573,7 +608,7 @@ fn stored_manifest_carries_voxel_specs() {
 
     // A rigged voxel-animation case: the volume and the required rig both survive.
     let ironward = catalog.resolve("ironward", "v1.0.0").unwrap();
-    let manifest = build_stored_manifest(&ironward).unwrap();
+    let manifest = build_stored_manifest(&ironward, &Keys::rooted(&ironward.root), None).unwrap();
     assert!(manifest.voxel.is_some(), "voxel volume survives ingest");
     let model = manifest.model.expect("required rig survives ingest");
     assert!(
@@ -593,11 +628,11 @@ fn stored_manifest_carries_the_engines_the_case_declares() {
     // from a checkout. Dropping them at ingest makes every version look as though it
     // supports the engineless run alone, so an engine-backed run is refused whatever
     // the case declares. Carom declares both spellings.
-    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let test_cases = fixture_test_cases();
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
 
     let carom = catalog.resolve("carom", "v3.0.0").unwrap();
-    let manifest = build_stored_manifest(&carom).unwrap();
+    let manifest = build_stored_manifest(&carom, &Keys::rooted(&carom.root), None).unwrap();
     let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
     assert_eq!(slugs, vec!["none", "simple-2d", "structured-2d"]);
     // A pinned engine keeps its floor through the store, or the gate would admit a
@@ -633,7 +668,7 @@ fn every_stored_manifest_preserves_its_asset_shape() {
     // survives a JSON round-trip unchanged (the on-disk sidecar and the wire
     // encoding the runner deserializes are lossless).
     use test_cabinet_core::AssetKind;
-    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let test_cases = committed_test_cases();
     let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
     let cases = catalog.list().expect("list catalog");
     assert!(!cases.is_empty(), "catalog should not be empty");
@@ -642,7 +677,7 @@ fn every_stored_manifest_preserves_its_asset_shape() {
             let resolved = catalog
                 .resolve(&case.slug, version)
                 .unwrap_or_else(|err| panic!("resolve {}@{}: {err:?}", case.slug, version));
-            let manifest = build_stored_manifest(&resolved)
+            let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
                 .unwrap_or_else(|err| panic!("build manifest {}@{}: {err:?}", case.slug, version));
             let id = format!("{}@{}", case.slug, version);
 
@@ -1036,13 +1071,14 @@ fn a_partial_scan_leaves_the_group_set_alone() {
     assert!(!report.test_case_groups_changed);
     assert_eq!(stored_group_slugs(&store), ["solo"]);
 
-    // A whole-catalog scan of the same checkout reconciles the set to empty: the
-    // folder's absence declares no groups, like any other deletion.
+    // A whole-catalog scan of the same checkout accepts no group, which the prune
+    // guard refuses to reconcile the stored set to (see `ingest.roots.test.rs`).
     let report = Ingestor::new(checkout.path(), &store)
         .scan(&IngestRequest::default())
         .unwrap();
-    assert!(report.test_case_groups_changed);
-    assert_eq!(stored_group_slugs(&store), Vec::<String>::new());
+    assert!(!report.test_case_groups_changed);
+    assert_eq!(report.refused_prunes.len(), 1);
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
 }
 
 #[test]

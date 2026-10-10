@@ -1,6 +1,8 @@
 // Shared data shapes for the runner/reporter console, independent of transport.
 // The HTTP transport (mounted by apps/web) produces and consumes these. Fields are
 // camelCase to match both the backend HTTP API and the run-record contract.
+import type { StoredSuiteCoordinate } from "@clockwyrks/backend-api";
+import type { RunScoreOut, RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type {
   AssetKind,
   AssetSheet,
@@ -14,9 +16,9 @@ import type {
 // Re-exported so console code can keep importing the asset-kind type from the
 // client layer alongside the shapes it discriminates.
 export type { AssetKind };
-import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import type { HarnessEvent } from "@clockwyrks/run-record/event";
-import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+
 import type {
   AestheticRating,
   DomainAesthetic,
@@ -40,7 +42,7 @@ export type {
 };
 export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
-// contract (crates/core/src/event.rs) — the live monitor and the published
+// contract (contracts/crates/contracts/src/event.rs) — the live monitor and the published
 // Events tab both render it. Re-exported here so consumers keep importing it
 // from the shared client types.
 export type { HarnessEvent };
@@ -786,6 +788,9 @@ export interface VersionInfo {
   // engineless run. This is the compatibility gate a run is held to, so the
   // new-run form offers exactly this set and nothing else.
   engines: string[];
+  // The test suite coordinate this version was lowered from: the suite, the suite
+  // version and the definition. Null (or absent) on an authored case.
+  suite?: StoredSuiteCoordinate | null;
   // For an asset-generation case, which asset shape it produces — the finer
   // discriminator the catalog partitions its 2D / 3D / Particle / Audio tabs on.
   // Carried by every host, including the static snapshot; null only for a

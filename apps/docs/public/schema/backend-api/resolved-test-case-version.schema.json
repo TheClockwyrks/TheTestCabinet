@@ -906,6 +906,25 @@
       "required": ["timestepMs", "maxTicks"],
       "type": "object"
     },
+    "StoredSuiteCoordinate": {
+      "description": "Where a suite-defined test-case version came from: the\n[suite](crate::suite_store::StoredSuite) that offers it, the suite version that\ndeclares it, and the definition file it was lowered from.\n\nA version carrying one is served out of the same key space an authored version\nis, so this is the only thing that distinguishes the two on the wire — which is\nwhat lets a console group suite-derived cases under their suite.",
+      "properties": {
+        "definition": {
+          "description": "The definition's slug, which is its file stem under `test-cases/`.",
+          "type": "string"
+        },
+        "suite": {
+          "description": "The suite's slug, which is its directory in the suites checkout.",
+          "type": "string"
+        },
+        "suiteVersion": {
+          "description": "The suite version folder name, carrying its leading `v`.",
+          "type": "string"
+        }
+      },
+      "required": ["suite", "suiteVersion", "definition"],
+      "type": "object"
+    },
     "SubReviewItemOut": {
       "properties": {
         "description": {
@@ -1074,7 +1093,7 @@
             "type": "string"
           },
           "default": {},
-          "description": "The absolute URLs of this variant's authored **reference implementations** —\nthe correct, deployed static builds (the case-variant analogue of a run's\n`playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was\nbuilt for and served on the console's \"Reference\" tab, which lets a reader\nswitch between them. Empty when the variant declares no\n`reference_implementation`, or has one that has not been deployed yet.\nWritten out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
+          "description": "The absolute URLs of this variant's authored **reference implementations** —\nthe correct, deployed static builds (the case-variant analogue of a run's\n`playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was\nbuilt for and served on the console's \"Reference\" tab, which lets a reader\nswitch between them. Empty when the variant declares no\n`reference_implementation`, or has one that has not been deployed yet.\nWritten out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run. A suite-defined version carries instead the builds\nuploaded for its suite version, each URL relative to the backend.",
           "type": "object"
         },
         "referenceSheet": {
@@ -1454,6 +1473,17 @@
     },
     "slug": {
       "type": "string"
+    },
+    "suite": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoredSuiteCoordinate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The [test suite](crate::suite_store) coordinate this version was lowered\nfrom: the suite, the suite version, and the definition inside it. Absent for\nan authored case, so a client that finds one here knows the version is\nserved out of a suite and can reach the suite's own read endpoints with it."
     },
     "summary": {
       "type": ["string", "null"]

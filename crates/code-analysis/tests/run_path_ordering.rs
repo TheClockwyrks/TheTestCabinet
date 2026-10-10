@@ -52,20 +52,21 @@ use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, CODE_ANALYSIS_TREE_ARTIFACT,
     CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, EngineCatalog, EngineSelection, EventFormat, EventSink,
-    ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
-    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage,
-    ValidationSummary, Validator, Variant,
+    ContainerSpec, ContainerStart, EngineCatalog, EngineCatalogExt as _, EngineSelection,
+    EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome,
+    HarnessRegistry, HarnessSlug, MediaKind, NoopEventSink, OrchestratorCatalog,
+    OrchestratorSelection, OutputSink, OutputStream, PrerenderedReferenceRenderer, ProofFile,
+    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
+    TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
-/// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
-/// a real case exactly as a run of it would be. That matters here beyond realism: the
-/// seeded files are the scaffolding the authored-set ladder has to *exclude*, and a
-/// hand-made two-file fixture would not exercise that at all.
+/// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
+/// run is seeded from a real case exactly as a run of it would be. That matters here
+/// beyond realism: the seeded files are the scaffolding the authored-set ladder has to
+/// *exclude*, and a hand-made two-file fixture would not exercise that at all. The copy
+/// keeps the test independent of where the repository's catalog lives.
 fn catalog_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases")
 }
 
 /// The two files the "model" writes into the seeded workspace. Together they are the
@@ -359,7 +360,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         // version built against an engine refuses `EngineSelection::default()`
         // before any of the ordering below happens.
         .resolve("carom", "v2.1.0")
-        .expect("resolve the bundled carom case");
+        .expect("the fixture copy of carom v2.1.0 resolves");
     let variant = test_case.variant("base").expect("carom's base variant");
 
     let steps: Steps = Arc::new(Mutex::new(Vec::new()));

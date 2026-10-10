@@ -13,67 +13,6 @@
   margin-bottom: t.$space-xl;
 }
 
-// The type tab bar. Mirrors the test-case detail page's tab bar (see
-// TestCaseDetailLayout.module.scss): a row of underlined pills over a baseline
-// border, the active tab glowing in the accent. On narrow screens it becomes a
-// single horizontally-scrollable strip rather than wrapping.
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-sm;
-  border-bottom: t.$border-hairline solid t.$color-border;
-
-  @include bp.below(t.$bp-md) {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    // Bleed to the content edges so the first/last tabs aren't clipped by the
-    // page gutter, then restore the gutter with padding.
-    margin-inline: calc(-1 * t.$space-md);
-    padding-inline: t.$space-md;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    // Fade the trailing edge so the swipeable type-filter strip reads as
-    // scrollable rather than clipping its last tab.
-    @include s.swipe-fade;
-  }
-}
-
-// Each tab reads as an underlined pill; the active tab glows in the accent and
-// carries a solid underline that meets the strip's baseline border.
-.tab {
-  padding: t.$space-sm t.$space-md;
-  font-size: t.$font-md;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$color-text-muted;
-  border-bottom: 0.2rem solid transparent;
-  margin-bottom: -1px;
-  @include h.halo;
-
-  &:hover {
-    text-decoration: none;
-    color: t.$color-text;
-  }
-
-  @include bp.below(t.$bp-md) {
-    flex: none;
-    white-space: nowrap;
-    padding: t.$space-sm t.$space-sm;
-    font-size: t.$font-sm;
-  }
-}
-
-.tabActive {
-  color: t.$color-accent;
-  @include h.halo-glow;
-  border-bottom-color: t.$color-accent;
-}
-
 // Full-width cards stacked one per row, rather than a multi-column grid, so each
 // case gets the whole content width for its title, summary, and tags.
 .list {

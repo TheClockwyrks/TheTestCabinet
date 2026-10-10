@@ -1,5 +1,5 @@
+import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { useCallback, useEffect, useState } from "react";
-import type { Comparison } from "@clockwyrks/run-record/comparison";
 import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
 import { useGalleryData } from "./galleryContext";

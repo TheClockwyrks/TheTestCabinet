@@ -9,6 +9,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::ingest::IngestRoots;
+
 /// The default address the Axum server binds when `TCAB_BACKEND_BIND` is unset.
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
 /// The default database URL when `TCAB_BACKEND_DATABASE_URL` is unset: a local
@@ -80,7 +82,21 @@ pub struct Config {
     /// URL per environment and each backend takes only its own.
     pub env: String,
     /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
+    /// Each tree ingest reads defaults to its place in it; see
+    /// [`ingest_roots`](Self::ingest_roots).
     pub checkout: PathBuf,
+    /// The directory holding `test-cases/`, `game-jams/` and `test-case-groups/`
+    /// (`TCAB_DEFINITIONS_ROOT`), defaulting to the checkout itself. The committed
+    /// reference-builds lockfile is read from its `test-cases/`.
+    pub definitions_root: PathBuf,
+    /// The test suites tree (`TCAB_SUITES_ROOT`), defaulting to the checkout's
+    /// `test-suites/`.
+    pub suites_root: PathBuf,
+    /// The cold-storage tree baseline media is read from
+    /// (`TCAB_COLD_STORAGE_ROOT`), mirroring the definitions root. Defaults to
+    /// `TCAB_COLD_STORAGE_DIR`, the override the `tcab` capture commands read,
+    /// and then to the checkout's `cold-storage/`.
+    pub cold_storage_root: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
     pub store: PathBuf,
     /// The standalone auth service's base URL (`TCAB_BACKEND_AUTH_URL`). The
@@ -124,6 +140,13 @@ pub struct Config {
     /// sets this truthy; production leaves it unset so experimental cases are never
     /// offered and thus never run or published.
     pub allow_experimental: bool,
+    /// Whether ingest also reads the test suite previews The Spec Cabinet writes to
+    /// the suites checkout's `.previews/` folder (`TCAB_BACKEND_INGEST_PREVIEWS`,
+    /// truthy to enable). Defaults to `false`, and then `.previews/` is never read.
+    /// A preview exists only in the checkout it was written to and is always
+    /// experimental, so the setting belongs to the local development stack alone:
+    /// the local k3d overlay sets it, and no other deployment does.
+    pub ingest_previews: bool,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -278,8 +301,15 @@ impl Config {
             .filter(|v| !v.is_empty());
 
         let gg_reference = gg_reference_dir(nonempty("TCAB_GG_REFERENCE"), &checkout);
+        let roots = ingest_roots(
+            &checkout,
+            nonempty("TCAB_DEFINITIONS_ROOT"),
+            nonempty("TCAB_SUITES_ROOT"),
+            nonempty("TCAB_COLD_STORAGE_ROOT"),
+        );
 
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
+        let ingest_previews = truthy("TCAB_BACKEND_INGEST_PREVIEWS");
 
         let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
         let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
@@ -303,6 +333,9 @@ impl Config {
             database_url,
             db_azure_ad,
             checkout,
+            definitions_root: roots.definitions,
+            suites_root: roots.suites,
+            cold_storage_root: roots.cold_storage,
             store,
             auth_url,
             service_token,
@@ -325,7 +358,41 @@ impl Config {
             grafana_url,
             snapshot_url,
             allow_experimental,
+            ingest_previews,
         })
+    }
+}
+
+impl Config {
+    /// The roots ingest reads its three trees from.
+    pub fn ingest_roots(&self) -> IngestRoots {
+        IngestRoots {
+            definitions: self.definitions_root.clone(),
+            suites: self.suites_root.clone(),
+            cold_storage: self.cold_storage_root.clone(),
+        }
+    }
+}
+
+/// Resolve the roots ingest reads from: each named root when an operator set it,
+/// and otherwise its place in the checkout ([`IngestRoots::for_checkout`], whose
+/// cold-storage default honours `TCAB_COLD_STORAGE_DIR`).
+///
+/// Every default is relative to the checkout rather than to an overridden
+/// definitions root, so setting one variable moves one tree. A relative value is
+/// kept as given and resolves against the working directory, as
+/// `TCAB_BACKEND_CHECKOUT` does.
+fn ingest_roots(
+    checkout: &std::path::Path,
+    definitions: Option<String>,
+    suites: Option<String>,
+    cold_storage: Option<String>,
+) -> IngestRoots {
+    let defaults = IngestRoots::for_checkout(checkout);
+    IngestRoots {
+        definitions: definitions.map_or(defaults.definitions, PathBuf::from),
+        suites: suites.map_or(defaults.suites, PathBuf::from),
+        cold_storage: cold_storage.map_or(defaults.cold_storage, PathBuf::from),
     }
 }
 

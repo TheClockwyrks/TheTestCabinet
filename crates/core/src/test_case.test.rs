@@ -4,9 +4,9 @@ use std::fs;
 use std::path::Path;
 
 use super::{
-    AssetDimension, AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result,
-    SHIPPABLE_PACKAGES, SpecKind, TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
-    shippable_package_description,
+    AssetDimension, AssetKind, BuildCommands, DeclaredTrees, ErratumSeverity, FailureCap,
+    MediaKind, Result, SHIPPABLE_PACKAGES, SpecKind, TestCaseCatalog, TestCaseVersion, TestType,
+    is_shippable_package, shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -2946,6 +2946,38 @@ fn resolves_a_game_jam_from_its_own_manifest() {
 }
 
 #[test]
+fn declared_trees_tells_the_case_tree_from_the_jam_tree() {
+    // A jam alone: the catalog lists it, yet `test-cases/` declares nothing.
+    let (dir, catalog) = catalog_with_jam(MINIMAL_JAM);
+    assert_eq!(
+        catalog.declared_trees().expect("the trees read"),
+        DeclaredTrees {
+            test_cases: false,
+            game_jams: true,
+        }
+    );
+
+    // A case folder with no version folder declares nothing either.
+    fs::create_dir_all(dir.path().join("test-cases/end-to-end/easy/empty"))
+        .expect("create an empty case folder");
+    assert!(!catalog.declared_trees().expect("the trees read").test_cases);
+
+    // A version folder counts once it holds its manifest.
+    let version = dir.path().join("test-cases/end-to-end/easy/empty/v1.0.0");
+    fs::create_dir_all(&version).expect("create a version folder");
+    assert!(!catalog.declared_trees().expect("the trees read").test_cases);
+    fs::write(version.join("test-case.toml"), "slug = \"empty\"\n").expect("write manifest");
+    fs::remove_dir_all(dir.path().join("game-jams/trains")).expect("remove the jam");
+    assert_eq!(
+        catalog.declared_trees().expect("the trees read"),
+        DeclaredTrees {
+            test_cases: true,
+            game_jams: false,
+        }
+    );
+}
+
+#[test]
 fn game_jam_surfaces_the_time_limit_in_its_prompt() {
     let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
     let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
@@ -4324,4 +4356,25 @@ fn a_sub_divided_legacy_item_rates_per_sub_item_on_a_validator_rated_version() {
     let sub = &version.common_review_items[0].sub_items[0];
     assert_eq!(sub.failure_cap, Some(FailureCap::Passable));
     assert_eq!(sub.domains, vec!["gameplay".to_string()]);
+}
+
+/// A variant lookup fails with the shapes' own error, and `?` turns it into the
+/// core's: same variant, same fields, same message, so every caller reads it as it
+/// always did.
+#[test]
+fn a_missing_variant_reads_the_same_through_the_core_error() {
+    let err = crate::Error::from(super::VariantNotFound {
+        slug: "breakout".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "hard".to_string(),
+    });
+    assert!(matches!(
+        &err,
+        crate::Error::VariantNotFound { slug, version, variant }
+            if slug == "breakout" && version == "v1.0.0" && variant == "hard"
+    ));
+    assert_eq!(
+        err.to_string(),
+        "variant `hard` of test case `breakout@v1.0.0` not found"
+    );
 }

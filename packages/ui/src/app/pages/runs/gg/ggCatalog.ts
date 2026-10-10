@@ -1,6 +1,6 @@
 // The shared gg capability catalog — the single in-console description of gg's full
 // capability set, which the configuration editor (`GgConfigEditor`) drives off. The
-// ids, params, and tool names are the real core contract (`crates/core/src/gg.rs` +
+// ids, params, and tool names are the real core contract (`contracts/crates/contracts/src/gg.rs` +
 // `crates/gg/src/tools/mod.rs`), not guesses.
 //
 // Its analysis-side counterpart is `GG_CAPABILITY_CATALOG` in
@@ -110,12 +110,12 @@ export function anyAgentCapabilityOn(
 // resolves a reference by reading it. Which profile is the root is a flag the editor holds
 // (and, on the wire, position — gg reads the root off `agents[0]`), so this can be renamed
 // to anything and the role moved to another profile. Mirrors `ROOT_AGENT` in
-// `crates/core/src/gg.rs`.
+// `contracts/crates/contracts/src/gg.rs`.
 export const ROOT_AGENT = "Root";
 
 // The id a fresh configuration's root profile is minted with, and what a reference means
 // when it means "whichever profile drives this run". Mirrors `ROOT_PROFILE_ID` in
-// `crates/core/src/gg.rs`. Unlike the name beside it an id is never rewritten, so this one
+// `contracts/crates/contracts/src/gg.rs`. Unlike the name beside it an id is never rewritten, so this one
 // really does identify the root of a default set.
 export const ROOT_PROFILE_ID = "root";
 
@@ -266,7 +266,7 @@ export interface ParamSpec {
   // field of a [required] param is an error rather than a deferral to gg.
   //
   // Every required param has one, and they are the same figures `GgCapabilityConfig::enabled`
-  // authors (the authoring catalog in `crates/core/src/gg.rs`), so a capability switched on
+  // authors (the authoring catalog in `contracts/crates/contracts/src/gg.rs`), so a capability switched on
   // here and one switched on there are the same capability. Two exceptions, both
   // deliberate: a `boolean` needs none, since its slider always shows and always writes
   // one of its two states, and responses-as-code's `language` must never acquire one —
@@ -427,7 +427,7 @@ export interface CapSpec {
 
 // How much of a file one `read_file` call returns — the read-file capability's
 // implementation, and the per-tool A/B lever one capability per filesystem primitive
-// exists to allow. The values are gg's implementation ids (`crates/core/src/gg.rs`), and
+// exists to allow. The values are gg's implementation ids (`contracts/crates/contracts/src/gg.rs`), and
 // every row is one of them: gg reads no arm out of an unwritten `implementation`, so
 // there is no row here that writes nothing.
 export const READ_MODE_OPTIONS = [
@@ -451,7 +451,7 @@ export const CAPPED_READ_MODES = ["default-cap"] as const;
 export const AUTHORED_READ_LINE_CAP = 250;
 
 // Where a `shell` command's output goes — the shell capability's implementation. The
-// values are gg's implementation ids (`crates/core/src/gg.rs`), and every row is one of
+// values are gg's implementation ids (`contracts/crates/contracts/src/gg.rs`), and every row is one of
 // them: gg reads no arm out of an unwritten `implementation`, so there is no row here that
 // writes nothing. Both truncating modes write every command's stdout and stderr to a
 // file pair under `/tmp/gg-shell` and return only the configured tail, so a chatty build
@@ -464,7 +464,7 @@ export const AUTHORED_READ_LINE_CAP = 250;
 
 // The ten points a run can be scripted at, in the order the editor lists them: the four
 // `pre`/`post` pairs, then the session's two ends. Mirrors `ALL_HOOK_EVENTS` in
-// `crates/core/src/gg.rs`.
+// `contracts/crates/contracts/src/gg.rs`.
 export const HOOK_EVENTS: ReadonlyArray<{
   value: GgHookEvent;
   label: string;
@@ -529,7 +529,7 @@ export const HOOK_EVENTS: ReadonlyArray<{
  * configuration. `"agent"` is the other eight, which fire because a particular agent
  * wrote, ran, compacted, started or stopped, and are declared on that agent.
  *
- * Mirrors `GgHookEvent::is_session` in `crates/core/src/gg.rs`; gg refuses a hook declared
+ * Mirrors `GgHookEvent::is_session` in `contracts/crates/contracts/src/gg.rs`; gg refuses a hook declared
  * on the wrong side, so the editor must never offer one there.
  */
 export type GgHookScope = "session" | "agent";
@@ -584,7 +584,7 @@ export const HOOK_KINDS: ReadonlyArray<{
 ];
 
 // The hook scripts gg ships, for the Built-in kind. Mirrors `GG_BUILTIN_HOOKS` in
-// `crates/core/src/gg.rs`; an id gg does not ship is a launch warning, not a silent skip.
+// `contracts/crates/contracts/src/gg.rs`; an id gg does not ship is a launch warning, not a silent skip.
 export const GG_BUILTIN_HOOK_IDS = [
   "trace",
   "refuse-empty-write",
@@ -640,7 +640,7 @@ export const AUTHORED_SHELL_MAX_CHARS = 4096;
 // Whether the autoload-specifications capability **locks** the injected specs into the
 // window. This is the one implementation picker with an empty row, and the empty row is a
 // real arm rather than a deferral: `locked` is the capability's only named implementation
-// (`crates/core/src/gg.rs`), so writing nothing is itself the declaration that the seeded
+// (`contracts/crates/contracts/src/gg.rs`), so writing nothing is itself the declaration that the seeded
 // specifications are ordinary, droppable file views. Both rows therefore say what the run
 // does, and neither leaves gg to decide.
 export const AUTOLOAD_LOCKED_OPTIONS = [
@@ -823,7 +823,7 @@ export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
 // each edge). The transfer list names a closed taxonomy, so it is spelled once.
 
 // The module kinds a transition may carry, in the contract's own declaration order
-// (`GgModuleKind` in `crates/core/src/gg.rs`), each with what carrying it actually
+// (`GgModuleKind` in `contracts/crates/contracts/src/gg.rs`), each with what carrying it actually
 // means for the state that receives it.
 //
 // `value` is typed as the contract's `GgModuleKind`, so a kind added to or renamed in
@@ -905,14 +905,14 @@ export function capabilityParam(
 }
 
 // The capability whose `states` param *is* a machine, and the param key it reads
-// (`CAPABILITY_FSM` / `FSM_PARAM_STATES` in `crates/core/src/gg.rs`). Named constants
+// (`CAPABILITY_FSM` / `FSM_PARAM_STATES` in `contracts/crates/contracts/src/gg.rs`). Named constants
 // because three modules — the catalog entry, the draft's state editor, and the
 // validation that mirrors gg's launch checks — all have to spell them the same way.
 export const FSM_CAP_ID = "fsm";
 export const FSM_STATES_PARAM = "states";
 
 // The capability that *is* the responses-as-code [agent type](GgAgentMode)
-// (`CAPABILITY_RESPONSES_AS_CODE` in `crates/core/src/gg.rs`). Like `fsm` it is how the
+// (`CAPABILITY_RESPONSES_AS_CODE` in `contracts/crates/contracts/src/gg.rs`). Like `fsm` it is how the
 // wire format records which type an agent is, not a feature listed beside its peers —
 // the editor never offers it as a capability row.
 export const RESPONSES_AS_CODE_CAP_ID = "responses-as-code";
@@ -962,7 +962,7 @@ export function capabilitySpec(id: string): CapSpec | undefined {
 
 /**
  * The arm a freshly switched-on capability is written with: the first row of its picker,
- * which is the arm the authoring catalog in `crates/core/src/gg.rs` names for it. The empty
+ * which is the arm the authoring catalog in `contracts/crates/contracts/src/gg.rs` names for it. The empty
  * string for a capability that offers no arms at all, and for autoload specifications,
  * whose unwritten implementation *is* its unlocked arm.
  */
@@ -984,7 +984,7 @@ export function requiresImplementation(cap: CapSpec): boolean {
 }
 
 // The workspace-relative directory a freshly enabled skills capability is written with
-// (`GG_WORKSPACE_SKILLS_DIR` in `crates/core/src/gg.rs`). gg reads the directory the
+// (`GG_WORKSPACE_SKILLS_DIR` in `contracts/crates/contracts/src/gg.rs`). gg reads the directory the
 // configuration names and looks in no other, so this is the field's starting value rather
 // than somewhere gg would look on its own.
 export const AUTHORED_SKILLS_DIR = ".gg/skills";
@@ -1066,7 +1066,7 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
 export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has, generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is used. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely. The family's functions still work; the manual for them is simply not there. ${WITHHOLDING_TOGGLES_HINT}`;
 
 // The bounds a freshly enabled tasks or project-management capability is written with,
-// the same figures `GgCapabilityConfig::enabled` authors (`crates/core/src/gg.rs`). Every
+// the same figures `GgCapabilityConfig::enabled` authors (`contracts/crates/contracts/src/gg.rs`). Every
 // one of them is a required param: the capability carries the number in its field, and an
 // emptied field is a save the form refuses rather than a bound gg would supply.
 export const AUTHORED_MAX_TASKS = 100;
@@ -1217,7 +1217,7 @@ export const SUMMARIZER_HINT =
 
 // The remaining figures a freshly switched-on capability is written with, each named
 // beside no other vocabulary of its own. Like every [defaultValue](ParamSpec.defaultValue)
-// they are the authoring catalog's (`crates/core/src/gg.rs`) and not gg's: gg reads the
+// they are the authoring catalog's (`contracts/crates/contracts/src/gg.rs`) and not gg's: gg reads the
 // number in the document and has none of its own to fall back on.
 
 // A narrowing an order of magnitude under a large model's real window, which is what the

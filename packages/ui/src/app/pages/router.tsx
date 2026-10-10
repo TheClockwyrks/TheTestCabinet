@@ -1,5 +1,6 @@
 import { Routes } from "react-router";
 import { useGalleryData } from "../data/galleryContext";
+import { useSuiteReads } from "../data/use-test-suites";
 import { aboutRoutes } from "./about/router";
 import { accountRoutes } from "./account/router";
 import { homeRoutes } from "./home/router";
@@ -25,10 +26,14 @@ import { notFoundRoutes } from "./notfound/router";
 // can stay where it is rather than being restated for the edge.
 export function AppRoutes() {
   const { canExecute, ggData } = useGalleryData();
+  // Whether this host's transport can read the test suites at all. The Test Cases
+  // section leads with the Test Suites tab where it can, and renders the bar it
+  // always has where it cannot (the static gallery, which mounts no backend).
+  const suiteReads = useSuiteReads();
   return (
     <Routes>
       {homeRoutes()}
-      {testCasesRoutes()}
+      {testCasesRoutes(suiteReads)}
       {modelsRoutes()}
       {runsRoutes(canExecute)}
       {ggAnalysisRoutes(canExecute, ggData != null)}

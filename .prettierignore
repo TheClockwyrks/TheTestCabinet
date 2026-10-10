@@ -23,6 +23,9 @@ apps/docs/.astro/
 # npm writes this file and its formatting is npm's own; reformatting it makes
 # the next `npm install` rewrite it back.
 package-lock.json
+# ESLint writes the lint ratchet's baseline (`npm run lint:baseline`,
+# `npm run lint:prune`) in its own formatting, and rewrites it on every prune.
+/eslint-suppressions.json
 # The environments uv builds for the Python projects, each kept out of git by an
 # ignore file of its own inside the folder, which Prettier does not read.
 .venv/
@@ -58,6 +61,8 @@ deployments/k8s/
 # The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
 # eslint.config.js leave out too, so the gates never disagree about a path.
 /cold-storage/**
+# The contracts repository, a submodule whose own gates format it.
+/contracts/**
 /tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**
@@ -66,6 +71,7 @@ deployments/k8s/
 /crates/foray-core/schemas/*.json
 /crates/lattice-core/schemas/*.json
 /test-cases/performance/hard/lattice/*/cases/*.json
+/crates/*/testdata/definitions/**
 /**/*.hbs
 /**/.build/**
 /**/.spago/**

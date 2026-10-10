@@ -10,7 +10,7 @@ import {
 describe("the engine catalog", () => {
   it("mirrors core's built-in engines in catalog order", () => {
     // This list is a mirror of `engines/<slug>/engine.toml` and of
-    // `BUILT_IN_SLUGS` in `crates/core/src/engine.rs`. Pinning it here is what
+    // `BUILT_IN_SLUGS` in `contracts/crates/contracts/src/engine.rs`. Pinning it here is what
     // makes a drift between the two halves a test failure rather than a label
     // that quietly falls back to a raw slug in the console.
     expect(ENGINES.map((engine) => engine.slug)).toEqual([

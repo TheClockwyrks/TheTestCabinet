@@ -1,0 +1,22 @@
+# Standard plus the escalating Frenzy mode. Frenzy is a separate mode, so it is
+# rated on its own scoring domain rather than folded into the common single-player
+# and versus domains.
+slug = "frenzy"
+name = "Frenzy"
+description = "Standard plus the escalating Frenzy mode."
+
+# Additive on top of the common specs; `dest` defaults to `source`.
+spec = [{ source = "specs/modes/frenzy.md" }]
+reference = [{ view = "title", path = "reference/menu-frenzy.html" }]
+
+[[domain]]
+id = "frenzy"
+name = "Frenzy"
+description = "The escalating Frenzy mode: uncapped speed that visibly ramps every hit."
+
+[[review_item]]
+id = "frenzy-escalation"
+title = "Frenzy escalation"
+text = "In a Frenzy match each paddle hit multiplies ball speed by 1.08 with no cap, so the rally visibly escalates well past the normal pace and ends quickly — clearly faster than Solo."
+weight = 1
+domain = "frenzy"

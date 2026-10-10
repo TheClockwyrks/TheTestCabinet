@@ -74,14 +74,20 @@ echo 'fn main() {}' >"$repo/crates/a/main.rs"
 echo 'prose' >"$repo/docs/page.md"
 echo 'RUST=1' >"$repo/packages/gg-sandbox-rust/rust-version.sh"
 echo '[toolchain]' >"$repo/rust-toolchain.toml"
-printf '*\n!/crates\n!/Cargo.toml\n!/packages/gg-sandbox-rust\n' >"$repo/.dockerignore"
+printf '*\n!/crates\n!/Cargo.toml\n!/packages/gg-sandbox-rust\n!/sub/crates\n' >"$repo/.dockerignore"
 echo '[workspace]' >"$repo/Cargo.toml"
-(cd "$repo" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -q -m init)
+# A submodule the allowlist reaches into, as the index holds one: a gitlink and
+# none of its files. The pins are made-up commit ids; nothing fetches them.
+readonly PIN_A=1111111111111111111111111111111111111111
+readonly PIN_B=2222222222222222222222222222222222222222
+(cd "$repo" && git init -q && git add -A && git update-index --add --cacheinfo "160000,${PIN_A},sub" \
+	&& git -c user.name=t -c user.email=t@t commit -q -m init)
 
 run() { (cd "$repo" && scripts/ci/run-image-inputs.sh "$@" 2>&1); }
 digest() { run "$1" | awk '{print $2}'; }
-# Stages a change so the index, which the digest reads, sees it.
-change() { (cd "$repo" && printf '%s\n' "$2" >>"$1" && git add -A); }
+# Stages a change so the index, which the digest reads, sees it. Only that file: the
+# submodule has no checkout, which `git add -A` would stage as its removal.
+change() { (cd "$repo" && printf '%s\n' "$2" >>"$1" && git add -- "$1"); }
 revert() { (cd "$repo" && git checkout -q -- . && git reset -q --hard HEAD); }
 
 out="$(run)"
@@ -111,6 +117,12 @@ check_differs "an allowlisted context file moves the image that copies the conte
 check_differs "and the images built out of it" "$sprite0" "$(digest sprite)"
 check_equal "but not base" "$base0" "$(digest base)"
 check_equal "nor gg-toolchains" "$ggtc0" "$(digest gg-toolchains)"
+revert
+
+(cd "$repo" && git update-index --cacheinfo "160000,${PIN_B},sub")
+check_differs "a submodule pin the allowlist reaches into moves the image that copies the context" "$tools0" "$(digest tools)"
+check_differs "and the images built out of it" "$sprite0" "$(digest sprite)"
+check_equal "but not base" "$base0" "$(digest base)"
 revert
 
 change docs/page.md 'more prose'

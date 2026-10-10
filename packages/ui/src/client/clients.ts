@@ -48,39 +48,16 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "./types";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
+  SuiteVersionResponse,
+  SuiteOut,
   TestCaseGroupOut,
-} from "@clockwyrks/run-record/backend-api";
+} from "@clockwyrks/backend-api";
 import type {
-  BulkCancelOut,
-  GgRunRequest,
-  LaunchAck,
-} from "@clockwyrks/run-record/jobs-api";
-import type {
-  GgConfig,
-  GgConfigInput,
-  GgSavedAgent,
-  GgSavedAgentInput,
-  GgProgramLanguage,
-} from "@clockwyrks/run-record/gg";
-import type {
-  GgReference,
-  GgReferenceApi,
-} from "@clockwyrks/run-record/gg-reference";
-import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type {
-  GgDashboard,
-  GgDashboardInput,
-  GgFieldCatalog,
-  GgQuery,
-  GgQueryBatch,
-  GgQueryBatchResponse,
-  GgQueryResponse,
-  GgSavedQuery,
-  GgSavedQueryInput,
-} from "@clockwyrks/run-record/gg-query";
+  Comparison,
+  ComparisonInput,
+} from "@clockwyrks/backend-api/comparison";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -95,11 +72,26 @@ import type {
   HaltResult,
   LaunchPassResult,
   PlanCellRetryInput,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
 import type {
-  Comparison,
-  ComparisonInput,
-} from "@clockwyrks/run-record/comparison";
+  GgConfig,
+  GgConfigInput,
+  GgSavedAgent,
+  GgSavedAgentInput,
+} from "@clockwyrks/backend-api/gg";
+import type {
+  GgDashboard,
+  GgDashboardInput,
+  GgQueryBatch,
+  GgQueryBatchResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
+} from "@clockwyrks/backend-api/gg-query";
+import type {
+  BulkCancelOut,
+  GgRunRequest,
+  LaunchAck,
+} from "@clockwyrks/backend-api/jobs-api";
 import type {
   Ladder,
   LadderInput,
@@ -109,7 +101,19 @@ import type {
   LadderRungOrderInput,
   LadderStopInput,
   LadderSummary,
-} from "@clockwyrks/run-record/ladders";
+} from "@clockwyrks/backend-api/ladders";
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type {
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryResponse,
+} from "@clockwyrks/run-record/gg-query";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -289,6 +293,34 @@ export interface BackendClient {
    */
   listTestCaseGroups(): Promise<TestCaseGroupOut[]>;
   listVersions(slug: string): Promise<string[]>;
+
+  // The ingested [test suites](https://docs.testcabinet.ai/test-suites/overview/)
+  // a deployment offers. Optional for the reason the coverage and gg reads are:
+  // a transport that cannot reach them (the static gallery's read-only one, and
+  // any backend predating the endpoints) simply omits them, and the console reads
+  // their presence as "this host has suites at all" — the Test Suites tab and
+  // everything under it is mounted on exactly that condition rather than on a
+  // second flag that could disagree with it.
+  /**
+   * Every suite the deployment offers, with the versions it holds oldest first
+   * (`GET /test-suites`). Each version carries the identity a listing renders.
+   * Experimental versions ride here only where the deployment opted in, so a
+   * client shows what it is served rather than filtering again.
+   */
+  listTestSuites?(): Promise<SuiteOut[]>;
+  /**
+   * One suite version in full (`GET /test-suites/{slug}/{version}`): the
+   * manifest and prose, the changelog, the specifications with their
+   * requirements, the definitions, the assets, the demonstrations, the engines
+   * a reference implementation covers, and the showcase.
+   *
+   * The stored record *is* the response, so this is served unmapped — a suite
+   * detail surface reads exactly what the deployment ingested. Rejects where the
+   * slug or version names nothing the deployment offers, which is how an unknown
+   * coordinate reaches the not-found state.
+   */
+  getTestSuite?(slug: string, version: string): Promise<SuiteVersionResponse>;
+
   /**
    * Resolve one exact case version, with each variant's `prompt` rendered for
    * `engine`.

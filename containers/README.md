@@ -355,7 +355,13 @@ stage of the shared services Dockerfile (the build context is the repository roo
 stage can see `packages/`). The script builds the npm workspace, then for each package in
 its **shippable list** copies the package's `package.json` and the files its `files` field
 publishes into `/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting
-transitive `@clockwyrks/*` dependencies. The runtime stage `COPY --from`s that tree in.
+transitive `@clockwyrks/*` dependencies. The staged `package.json` drops the dev-only
+fields (`private`, `scripts`, `devDependencies`) and the registry ones
+(`publishConfig`, `repository`, `homepage`, `bugs`): it is vendored into a model's
+workspace, where a feed URL or the project's repository would name the project, and
+`scripts/stage-tcab-packages.test.mjs` stages the real set and holds every seeded
+manifest to the seeded-contract gate's strict list. The runtime stage `COPY --from`s
+that tree in.
 
 **How a case uses them, end to end.** A case declares
 `packages = ["@clockwyrks/particle-runtime"]` **and** ships a workspace whose
@@ -383,8 +389,8 @@ package format must match what `crates/core` and the review UI expect, so **buil
 the base image from the same commit as the orchestrator**. The two lists differ by
 design: the script's shippable list is everything staged into the store, while the
 `SHIPPABLE_PACKAGES` allowlist in
-[`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) is the smaller
-set a case may declare with `packages`. An engine package appears in the staging
+[`contracts/crates/contracts/src/test_case.rs`](../contracts/crates/contracts/src/test_case.rs)
+is the smaller set a case may declare with `packages`. An engine package appears in the staging
 list alone, because a run selects it. So does `@clockwyrks/case-harness`, the
 shared harness a case's engineless validators are written over: nothing seeds it
 into a run repository at all, the reporter copying it out of the store into the
@@ -410,8 +416,8 @@ To add one:
    `@clockwyrks/*` package it depends on is staged and rewritten automatically;
    it need not be listed separately unless a case imports it directly.
 3. **Add its name to the `SHIPPABLE_PACKAGES` allowlist** in
-   [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) so a case may
-   declare it. Keep this in lockstep with step 2.
+   [`contracts/crates/contracts/src/test_case.rs`](../contracts/crates/contracts/src/test_case.rs)
+   so a case may declare it. Keep this in lockstep with step 2.
 4. **Rebuild the base image** (`./build.sh base`; for the local cluster,
    `make -C deployments/local run-images-e2e` to rebuild and re-import just the
    base, or `run-images` for the whole set). The asset-generation images inherit it
@@ -1054,12 +1060,14 @@ prints: one `<name> <digest> <parents>` line for every image `image-names.sh` li
 the `tools` and `gg-toolchains` builders. An image's digest covers its Dockerfile, every
 context path the Dockerfile copies (as `git ls-files -s` records them, so the index and
 not the working tree is what is described; a Dockerfile that copies `.` reads the whole
-context, which is the root `.dockerignore`'s listing), the digests of the images it is
-built from, and a schema constant. Anything that changes below an image therefore changes
-the image's own digest, and a change to the schema constant changes every digest at once,
-which is how a build is forced when an unpinned upstream (a base image named by tag, an
-apt package set, a toolchain fetched by version) has to be refreshed without a file in the
-repository changing: bump `INPUTS_SCHEMA` in that script.
+context, which is the root `.dockerignore`'s listing; a path under a submodule, such as
+`contracts/`, is recorded as the submodule's pinned commit, the only entry the index holds
+for it), the digests of the images it is built from, and a schema constant. Anything that
+changes below an image therefore changes the image's own digest, and a change to the
+schema constant changes every digest at once, which is how a build is forced when an
+unpinned upstream (a base image named by tag, an apt package set, a toolchain fetched by
+version) has to be refreshed without a file in the repository changing: bump
+`INPUTS_SCHEMA` in that script.
 
 With the table, `build.sh` pushes every image it builds under two tags: the commit's
 (`<sha>-<arch>`) and `inputs-<digest>-<arch>`. Before it builds an image it looks the

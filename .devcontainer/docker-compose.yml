@@ -43,7 +43,9 @@ x-devcontainer-build-args: &devcontainer-build-args
   # lands in the image, and apps/web/package.json's `playwright` decides which
   # build the tests ask for, so the two move together;
   # ci/gates/web-browser-test.py reads this line and fails with both
-  # values when they disagree.
+  # values when they disagree. The `playwright` in packages/case-harness and
+  # packages/browser-driver moves with it too, for the same reason: a mismatch
+  # bakes in a Chromium those tests never ask for.
   PLAYWRIGHT_VERSION: 1.63.0
   # cargo-nextest (languages/rust/cargo-nextest.sh), which installs from the
   # release's archive for this architecture's triple and checks it before

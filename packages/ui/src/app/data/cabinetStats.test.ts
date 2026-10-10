@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { describe, expect, it } from "vitest";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   foldCabinetStats,
   formatWeekStart,

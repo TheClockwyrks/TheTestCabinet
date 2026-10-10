@@ -11,6 +11,7 @@
 //! and routes to a handler that calls into the core where the surface already
 //! exists and otherwise reports that the behavior is not implemented yet.
 
+mod catalog;
 mod cli;
 mod commands;
 mod config;
@@ -88,6 +89,7 @@ async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
         Command::Prompt(args) => commands::prompt::execute(args).await?,
         Command::PublishReference(args) => commands::publish_reference::execute(args).await?,
         Command::CaptureBaselines(args) => commands::capture_baselines::execute(args).await?,
+        Command::Ingest(args) => commands::ingest::execute(args).await?,
         Command::Analyze(args) => commands::analyze::execute(args).await?,
     }
     Ok(ExitCode::SUCCESS)
@@ -111,6 +113,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Prompt(_) => "prompt",
         Command::PublishReference(_) => "publish-reference",
         Command::CaptureBaselines(_) => "capture-baselines",
+        Command::Ingest(_) => "ingest",
         Command::Analyze(_) => "analyze",
     }
 }

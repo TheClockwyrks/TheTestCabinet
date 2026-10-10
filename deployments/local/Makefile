@@ -61,7 +61,7 @@
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
-#   local-ingest    re-ingest the catalog (force) — run after editing a test case
+#   local-ingest    re-ingest the whole catalog (`tcab ingest --force`) — the scripted whole-catalog refresh
 #   local-import    re-import EVERY already-built service + run image into the node, no rebuild (recovery after the node lost its images)
 #   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
@@ -858,6 +858,11 @@ sts-reconcile:
 #   make local-rebuild ROLLOUT_TIMEOUT=120s
 ROLLOUT_TIMEOUT ?= 600s
 
+# The `tcab` that `local-ingest` runs: the one on PATH when there is one, and
+# otherwise this checkout's CLI built and run through cargo. Override with
+# `TCAB=/path/to/tcab`.
+TCAB ?= $(shell command -v tcab 2>/dev/null || echo "cargo run --quiet --manifest-path '$(REPO)/Cargo.toml' -p test-cabinet-cli --bin tcab --")
+
 # How long `local-ingest` waits (in SECONDS — this one is not a kubectl duration) for a
 # tcab-backend pod to reach Running before giving up. It covers scheduling and, on a
 # cluster that has just imported them, the kubelet unpacking the service images; it does
@@ -926,11 +931,13 @@ apply-overlay: secrets sts-reconcile
 apply-wait:
 	@$(MAKE) --no-print-directory rollout-wait WAIT_WORKLOADS='$(APPLY_WORKLOADS)'
 
-# Ingest (force) the test-case catalog from the repo the backend has mounted.
-# Uses an ephemeral port-forward that is torn down when the recipe exits, then
-# defers to `scripts/reingest.sh`, which streams the backend's NDJSON progress
-# feed and prints a line per case — so a minute-plus scan reports progress instead
-# of looking like a hang.
+# Ingest (force) the whole catalog from the repo the backend has mounted: the
+# scripted whole-catalog refresh, and what `local-up` runs, since a freshly created
+# cluster holds nothing. Uses an ephemeral port-forward that is torn down when the
+# recipe exits, then runs `tcab ingest --force` against it, which streams the
+# backend's per-version progress and fails unless the scan reports its closing
+# summary — so a minute-plus scan reports progress instead of looking like a hang.
+# Day-to-day publishing from a checkout is `tcab ingest --changed`.
 #
 # Four guards turn the failure modes into immediate, legible errors instead of a
 # silent hang: a bounded wait for a RUNNING backend pod (a port-forward started
@@ -981,7 +988,7 @@ local-ingest:
 	    sleep 1; \
 	  done; \
 	  if [ -z "$$ready" ]; then echo "ERROR: backend not reachable on 127.0.0.1:$$port after 30s." >&2; cat "$$pflog" >&2; exit 1; fi; \
-	  BACKEND_URL=http://127.0.0.1:$$port '$(REPO)/scripts/reingest.sh'
+	  TCAB_BACKEND_URL=http://127.0.0.1:$$port $(TCAB) ingest --force
 
 # Hold the data-plane services open on localhost until interrupted (Ctrl-C). The web
 # console is NOT forwarded here — it runs from source (`npm run -w apps/web dev` on

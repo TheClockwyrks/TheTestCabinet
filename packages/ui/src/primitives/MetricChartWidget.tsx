@@ -1,5 +1,5 @@
+import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useMemo, useState, type ReactNode } from "react";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../modelId";
 import { ChartWidget } from "./ChartWidget";
 import { ChartModeControl, type ChartMode } from "./ChartModeControl";

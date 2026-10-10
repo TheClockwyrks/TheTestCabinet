@@ -1,4 +1,4 @@
-import type { InFlightLimit } from "@clockwyrks/run-record/coverage";
+import type { InFlightLimit } from "@clockwyrks/backend-api/coverage";
 
 // The runs-in-flight limit as the console handles it: the tagged shape the backend
 // stores and reports, plus the few readings every surface that shows one needs. One

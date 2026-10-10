@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "Dir": {
+      "description": "A cardinal move or a hold. The only thing a controller can express per agent —\nthere is no variant that touches game state, so an [`Action`] is structurally\nincapable of cheating.",
+      "oneOf": [
+        {
+          "const": "N",
+          "description": "North: `y - 1`.",
+          "type": "string"
+        },
+        {
+          "const": "S",
+          "description": "South: `y + 1`.",
+          "type": "string"
+        },
+        {
+          "const": "E",
+          "description": "East: `x + 1`.",
+          "type": "string"
+        },
+        {
+          "const": "W",
+          "description": "West: `x - 1`.",
+          "type": "string"
+        },
+        {
+          "const": "Stop",
+          "description": "Hold position.",
+          "type": "string"
+        }
+      ]
+    },
+    "Move": {
+      "description": "One agent's move within an [`Action`].",
+      "properties": {
+        "agent": {
+          "description": "The owned agent's id (`0..3`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dir": {
+          "$ref": "#/$defs/Dir",
+          "description": "The direction to move it (or `Stop`)."
+        }
+      },
+      "required": ["agent", "dir"],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A controller's output for one tick: one move per owned agent.",
+  "properties": {
+    "moves": {
+      "description": "One entry per owned agent. The host validates that exactly the team's\nthree ids appear, each once.",
+      "items": {
+        "$ref": "#/$defs/Move"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["moves"],
+  "title": "Action",
+  "type": "object"
+}

@@ -1,25 +1,26 @@
 import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import { FaSync } from "react-icons/fa";
 import { Link, NavLink } from "react-router";
-import { PageLayout } from "../../components/PageLayout";
-import { LoadingState } from "../../components/LoadingState";
-import { PromptHeader } from "../../components/PromptHeader";
-import { SubmitNotice } from "../../components/SubmitNotice";
+
+import styles from "./ModelsPage.module.scss";
+import { ProvidersView } from "./ProvidersView";
+import type { ListPriceRefresh } from "../../../client/types";
 import { ColumnMenu, type ColumnMenuHandle } from "../../components/ColumnMenu";
+import { LoadingState } from "../../components/LoadingState";
+import { ModelProviderMark } from "../../components/ModelProviderMark";
+import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { SortableHeaderCell } from "../../components/SortableHeaderCell";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import { useColumnVisibility } from "../../components/useColumnVisibility";
 import { useResizableColumns } from "../../components/useResizableColumns";
 import { sortRows, useTableSort } from "../../components/useTableSort";
-import type { ListPriceRefresh } from "../../../client/types";
 import type { ModelSummary } from "../../data/models";
-import { useModels } from "../../data/useModels";
 import { useModelConfig, type ModelConfigApi } from "../../data/useModelConfig";
-import { ModelProviderMark } from "../../components/ModelProviderMark";
+import { useModels } from "../../data/useModels";
 import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
-import { ProvidersView } from "./ProvidersView";
-import styles from "./ModelsPage.module.scss";
 import exec from "../runs/RunExec.module.scss";
 // The Models section reuses the Test Cases page's tab-bar styles so the two
 // catalog-style surfaces read identically (the same borrow the Other page makes).
@@ -215,7 +216,7 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
               <>
                 <button
                   type="button"
-                  className={`${exec.secondary} ${styles.refreshButton}`}
+                  className={[exec.secondary, styles.refreshButton].join(" ")}
                   onClick={() => void onRefreshPrices(config)}
                   disabled={refreshingPrices}
                   aria-busy={refreshingPrices}
@@ -224,7 +225,7 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
                     aria-hidden="true"
                     className={
                       refreshingPrices
-                        ? `${styles.refreshIcon} ${styles.spin}`
+                        ? [styles.refreshIcon, styles.spin].join(" ")
                         : styles.refreshIcon
                     }
                   />
@@ -278,8 +279,8 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
       const result = await api.refreshListPrices();
       runtime.requestRefresh();
       setPriceOutcome({ tone: "ok", message: refreshSummary(result) });
-    } catch (e) {
-      setPriceOutcome({ tone: "error", message: String(e) });
+    } catch (error) {
+      setPriceOutcome({ tone: "error", message: String(error) });
     } finally {
       setRefreshingPrices(false);
     }
@@ -375,9 +376,10 @@ function refreshSummary(result: ListPriceRefresh): string {
   if (result.total === 0) return "No models to refresh.";
   const models = result.total === 1 ? "model" : "models";
   return (
-    `Refreshed the list price of ${result.total} ${models}: ` +
-    `${result.updated} updated, ${result.unchanged} unchanged, ` +
-    `${result.unresolved} with no rate on OpenRouter.`
+    `Refreshed the list price of ${String(result.total)} ${models}: ` +
+    `${String(result.updated)} updated, ` +
+    `${String(result.unchanged)} unchanged, ` +
+    `${String(result.unresolved)} with no rate on OpenRouter.`
   );
 }
 

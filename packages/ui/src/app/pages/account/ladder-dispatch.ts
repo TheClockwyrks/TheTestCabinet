@@ -1,4 +1,4 @@
-import type { DispatchStatus } from "@clockwyrks/run-record/ladders";
+import type { DispatchStatus } from "@clockwyrks/backend-api/ladders";
 
 import ladderStyles from "./Ladder.module.scss";
 

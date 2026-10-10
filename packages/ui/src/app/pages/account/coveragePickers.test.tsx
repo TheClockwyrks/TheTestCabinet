@@ -1,12 +1,12 @@
-import { act, render, screen, fireEvent, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type {
   InFlightLimit,
   ReviewPlanCase,
   ReviewPlanCombo,
-} from "@clockwyrks/run-record/coverage";
+} from "@clockwyrks/backend-api/coverage";
+import { act, render, screen, fireEvent, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type { Model } from "../../../client/types";
 import { defaultOpeningTurn, emptyDraft } from "../runs/gg/ggConfigDraft";
 import type { GgConfigOption } from "../runs/gg/useGgConfigs";
