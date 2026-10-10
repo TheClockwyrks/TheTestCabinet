@@ -9,12 +9,12 @@ publish.workspace = true
 # definition into a run, on the filesystem, in a process or in a browser. The suite
 # catalog and its lowering onto a test case version, previews, the definition prompt,
 # the validator runners (a suite's and a case's vitest project), the static server and
-# browser driver they use, the built-in engine catalog, and the content digests and
-# labels an ingest keys a version by. The shapes it reads and writes are
-# `test-cabinet-contracts`'; the run that executes the result is `test-cabinet-core`'s,
-# which depends on this crate and re-exports every module at its old path, so
-# `test_cabinet_core::test_suite::TestSuiteCatalog` and the rest keep naming the same
-# items.
+# browser driver they use, the engine catalog (over a manifest table its caller
+# supplies), and the content digests and labels an ingest keys a version by. The
+# shapes it reads and writes are `test-cabinet-contracts`'; the run that executes the
+# result is `test-cabinet-core`'s, which depends on this crate and re-exports every
+# module at its old path, so `test_cabinet_core::test_suite::TestSuiteCatalog` and the
+# rest keep naming the same items.
 [lib]
 name = "test_cabinet_suites"
 path = "src/lib.rs"
