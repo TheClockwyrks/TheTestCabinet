@@ -97,7 +97,7 @@ The backend's queue enforces the limit at claim time. It hands a dispatcher only
 a job whose harness has fewer runs already occupying a slot (`dispatched`,
 `starting`, or `running`) than its limit. A surplus run of that harness is held in
 the `pending` state until an in-flight run of the same harness frees a slot. This
-per-harness cap composes with the dispatcher's global in-flight cap
+per-harness cap composes with the dispatcher's run-lane cap
 (`TCAB_DISPATCHER_MAX_INFLIGHT`), and a run must clear both to start.
 
 The setting is served at `GET /harness-config`, an open read enumerating every
@@ -195,7 +195,7 @@ entry, found through the entry's aliases by the run's canonical model ID.
 Harnesses that route through OpenRouter use OpenRouter model IDs, with any
 `openrouter/` routing prefix and `:free`-style variant tag stripped; harnesses
 that take a provider-native model ID match an alias of their own harness family
-unchanged. The billed-rate lookup maps a provider-native ID to its OpenRouter
+unchanged. A lookup on OpenRouter maps a provider-native ID to its OpenRouter
 equivalent. Which case a harness falls into, and the exact mapping it applies, is
 documented on that harness's Metrics page.
 

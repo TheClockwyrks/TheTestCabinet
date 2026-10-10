@@ -16,6 +16,7 @@ const ALL_VARS: &[&str] = &[
     "TCAB_DISPATCHER_NAMESPACE",
     "TCAB_DISPATCHER_DRIVER_SA",
     "TCAB_DISPATCHER_MAX_INFLIGHT",
+    "TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT",
     "TCAB_DISPATCHER_POLL_INTERVAL_SECONDS",
     "TCAB_DISPATCHER_JOB_TTL_SECONDS",
     "TCAB_DISPATCHER_DRIVER_SECRETS",
@@ -102,6 +103,7 @@ fn resolves_with_required_and_defaults() {
         );
         // Defaults.
         assert_eq!(config.max_inflight, 8);
+        assert_eq!(config.max_publish_inflight, 8);
         assert_eq!(config.poll_interval.as_secs(), 2);
         assert_eq!(config.job_ttl_seconds, 300);
         assert!(config.driver_service_account.is_none());
@@ -278,6 +280,7 @@ fn overrides_and_passthrough_are_collected() {
         set("TCAB_DISPATCHER_NAMESPACE", "runs");
         set("TCAB_DISPATCHER_DRIVER_SA", "tcab-driver");
         set("TCAB_DISPATCHER_MAX_INFLIGHT", "16");
+        set("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", "5");
         set("TCAB_DISPATCHER_POLL_INTERVAL_SECONDS", "5");
         set("TCAB_DISPATCHER_JOB_TTL_SECONDS", "120");
         set("TCAB_K8S_RUN_CPU_REQUEST", "500m");
@@ -290,6 +293,7 @@ fn overrides_and_passthrough_are_collected() {
             Some("tcab-driver")
         );
         assert_eq!(config.max_inflight, 16);
+        assert_eq!(config.max_publish_inflight, 5);
         assert_eq!(config.poll_interval.as_secs(), 5);
         assert_eq!(config.job_ttl_seconds, 120);
 
@@ -387,6 +391,38 @@ fn max_inflight_is_floored_at_one() {
         set("TCAB_DISPATCHER_MAX_INFLIGHT", "0");
         let config = Config::from_env().expect("config should resolve");
         assert_eq!(config.max_inflight, 1);
+    });
+}
+
+/// The publish cap takes the same floor as the run cap: `0` would close the lane for
+/// good, which is what leaving the publisher image unset is for.
+#[test]
+fn max_publish_inflight_is_floored_at_one() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", "0");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(config.max_publish_inflight, 1);
+        // The run cap is a separate setting and keeps its own default.
+        assert_eq!(config.max_inflight, 8);
+    });
+}
+
+#[test]
+fn an_unparseable_publish_cap_is_an_error() {
+    with_env(|| {
+        set_required();
+        for value in ["plenty", "-1"] {
+            set("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", value);
+            let err = Config::from_env().expect_err("an unparseable cap should error");
+            assert!(matches!(
+                err,
+                ConfigError::Invalid {
+                    name: "TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT",
+                    ..
+                }
+            ));
+        }
     });
 }
 

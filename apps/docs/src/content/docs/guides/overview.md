@@ -104,8 +104,8 @@ constraints that govern the task. The matching
 ## DevOps
 
 - [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)
-  curates a model in the app, and covers how derived models and price history
-  appear.
+  curates a model in the app, and covers how derived models appear and how list
+  prices are kept current.
 - [Authoring Errata](/guides/devops/authoring-errata/) records a known issue with
   a shipped test-case version without cutting a new version.
 - [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/)

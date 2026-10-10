@@ -473,3 +473,58 @@ async fn an_arm_observes_the_runs_its_recorded_jobs_stored() {
     );
     assert!(comparison.complete);
 }
+
+/// Publishing a comparison enqueues only the arm runs with nothing releasing them:
+/// a run that is already public is left alone, and one whose own publish job is
+/// under way keeps that job.
+#[tokio::test]
+async fn publishing_a_comparison_enqueues_only_the_runs_not_already_releasing() {
+    use crate::api::flow_harness::{
+        GREAT, OWNER, enqueue_other, finish, owner, publish_jobs, report, run_of, test_state,
+    };
+
+    let (_dir, state) = test_state().await;
+    // Reported by its driver, so it enqueued its own publish job.
+    enqueue_other(&state, "releasing", "pong", None).await;
+    report(&state, "releasing", run_of("run-releasing", "pong", GREAT)).await;
+    // Stored with no report behind them, so neither has a publish job.
+    for job_id in ["waiting", "public"] {
+        enqueue_other(&state, job_id, "pong", None).await;
+        finish(
+            &state,
+            job_id,
+            run_of(&format!("run-{job_id}"), "pong", GREAT),
+        )
+        .await;
+    }
+    state
+        .db
+        .publish("run-public", "2026-10-02T00:00:00Z")
+        .await
+        .unwrap();
+
+    let mut pi = pi_arm();
+    pi.run_ids = vec!["releasing".into(), "waiting".into()];
+    let mut kilo = kilo_arm();
+    kilo.run_ids = vec!["public".into()];
+    let input = ComparisonInput {
+        config: config_of(vec![pi, kilo], 2),
+        ..sample_input("arms")
+    };
+    let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
+    state.db.insert_comparison(OWNER, &stored).await.unwrap();
+
+    let Json(outcome) = publish_comparison(State(state.clone()), owner(), Path("c1".to_string()))
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.enqueued, ["run-waiting"]);
+    assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
+    let mut releasing: Vec<String> = publish_jobs(&state)
+        .await
+        .into_iter()
+        .map(|job| job.run_id)
+        .collect();
+    releasing.sort();
+    assert_eq!(releasing, ["run-releasing", "run-waiting"]);
+}

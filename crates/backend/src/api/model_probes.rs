@@ -253,7 +253,7 @@ pub async fn trigger(
         .await
         .map_err(ApiError::from)?;
 
-    // Detached, like the completion-price observation: the operator gets the row
+    // Detached, like the completion-time observation: the operator gets the row
     // back immediately and polls it; the runner records everything on the rows.
     let runner = probe::ProbeRunner {
         db: std::sync::Arc::clone(&state.db),

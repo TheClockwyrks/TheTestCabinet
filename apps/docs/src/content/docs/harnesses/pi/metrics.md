@@ -33,7 +33,7 @@ comparisons.
 ## Cost
 
 Pi's usage shape declares no cost field, so a run carries no harness-reported
-cost. The comparable cost is computed from the list price curated on the model's
+cost. The comparable cost is computed from the list price held on the model's
 catalog entry, applied to the recorded token classes. The run's model ID is
 already an OpenRouter slug and resolves to the entry unchanged.
 

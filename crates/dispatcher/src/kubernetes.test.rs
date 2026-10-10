@@ -14,7 +14,7 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
-use crate::job::JOB_ID_LABEL;
+use crate::job::{JOB_ID_LABEL, JOB_KIND_LABEL, JobKind};
 
 fn job_with_conditions(conditions: Vec<JobCondition>) -> Job {
     Job {
@@ -78,6 +78,53 @@ fn managed_job_reads_the_job_id_label() {
     assert_eq!(managed.job_id.as_deref(), Some("job-9"));
     assert_eq!(managed.name, "tcab-driver-job-9");
     assert_eq!(managed.phase, JobPhase::Failed);
+}
+
+/// A `Job` named `name` carrying `kind` as its kind label, when given.
+fn job_named(name: &str, kind: Option<&str>) -> Job {
+    Job {
+        metadata: ObjectMeta {
+            name: Some(name.to_string()),
+            labels: kind
+                .map(|kind| BTreeMap::from([(JOB_KIND_LABEL.to_string(), kind.to_string())])),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn managed_job_reads_the_kind_label() {
+    assert_eq!(
+        managed_job(&job_named("tcab-driver-job-9", Some("run"))).kind,
+        JobKind::Run
+    );
+    assert_eq!(
+        managed_job(&job_named("tcab-publisher-pub-4", Some("publish"))).kind,
+        JobKind::Publish
+    );
+    // The label, not the name, decides when both are present.
+    assert_eq!(
+        managed_job(&job_named("tcab-driver-job-9", Some("publish"))).kind,
+        JobKind::Publish
+    );
+}
+
+/// A `Job` created before the kind label existed can still be running when a
+/// dispatcher that counts by kind starts. A publisher among them must land in the
+/// publish lane, or it would occupy a run slot for as long as it runs.
+#[test]
+fn an_unlabelled_job_is_classified_by_its_name_prefix() {
+    assert_eq!(
+        managed_job(&job_named("tcab-publisher-pub-4", None)).kind,
+        JobKind::Publish
+    );
+    assert_eq!(
+        managed_job(&job_named("tcab-driver-job-9", None)).kind,
+        JobKind::Run
+    );
+    // No name at all is still a run.
+    assert_eq!(managed_job(&Job::default()).kind, JobKind::Run);
 }
 
 fn pod_with_container_state(state: ContainerState) -> Pod {

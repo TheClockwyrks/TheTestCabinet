@@ -517,6 +517,13 @@ fails), then enqueues a per-publish `tcab-publisher` Job and answers
 `202 Accepted` with the publish-job id and the live URL to observe the release
 on. The run flips public when that Job reports a terminal success.
 
+A run whose release is already under way answers with that publish job rather
+than a second one, whether an operator or the backend's
+[automatic publishing](/components/core/results/#automatic-publishing) enqueued
+it. A completed validator-rated run is enqueued by the backend when it finishes,
+so this endpoint is how every other publishable run is released and how a failed
+release is retried.
+
 The gate refuses a run that can never be published, an infrastructure failure or
 a canceled run, and it refuses a completed legacy run carrying no review. A
 completed validator-rated run is admitted with or without a review, since its
@@ -870,18 +877,24 @@ nullable: null inherits the account's setting.
   cascade. A `combo` member naming a gg configuration the account does not own is
   refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
-  themselves: members, `runsPerCell`, `outerAxis`, and the optional
-  `inFlightLimit` override. Reads add `filling`, which only the fill and halt
-  endpoints change. A `runsPerCell` outside `1..=100` is refused with `400` naming
-  the bound and the value received, rather than corrected into range. A write to
-  a filling plan runs a launch pass.
+  themselves: members, `runsPerCell`, `outerAxis`, the optional
+  `inFlightLimit` override, and `retryCount`, the
+  [retry limit](/components/backend/coverage/#the-retry-limit) of every run the
+  plan launches (`0..=10`, default `1` when omitted, clamped to `10`). Reads add
+  `filling`, which only the fill and halt endpoints change. A `runsPerCell`
+  outside `1..=100` is refused with `400` naming the bound and the value
+  received, rather than corrected into range. A write to a filling plan runs a
+  launch pass.
 - `GET /coverage-plans/summary` — the roll-up per plan: `cellsFilled`,
   `cellsTotal`, `cellsBlocked`, `runsDone`, `runsTotal`, `runsInFlight`,
-  `runsMissing`, `runsUnreviewed`, and `filling`.
+  `runsMissing`, `runsUnreviewed`, `filling`, and `needsAttention`, which is
+  true while a filling plan
+  [waits on its owner](/components/backend/coverage/#needs-attention).
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
   `case × combination` in the plan's own emission order, with the `outerAxis`
   echoed so a reader knows what that order means, the same roll-ups as the
-  summary, `runsPending`, and the `inFlightLimit` in force. A cell whose
+  summary (`needsAttention` included), `runsPending`, and the `inFlightLimit` in
+  force. A cell whose
   combination cannot be launched carries the reason in `unlaunchable`, and a
   [blocked](/components/backend/coverage/#a-blocked-cell) cell carries
   `blocked: true`. Schemas:
@@ -914,7 +927,7 @@ those runs, so a cell never reads more than its target.
 - `POST /coverage-plans/{id}/cells/retry` — retry one
   [blocked cell](/components/backend/coverage/#a-blocked-cell), named by its
   `case` and `combination` in the body. The retry is recorded, only jobs that
-  ended after it count toward the streak, and the cell is launched again: by a
+  ended after it are read for the block, and the cell is launched again: by a
   launch pass while the plan is filling, and otherwise as a launch by hand of the
   cell's shortfall. Answers `204`; `404` when the cell is not one of the plan's,
   and `409` when it is not blocked.
@@ -947,7 +960,10 @@ starts a dispatch of it.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the configuration: rungs,
   climbers, `runsPerCell`, `outerAxis`, the optional `inFlightLimit` override,
-  and the single parameterised `gate` (`floor`, `threshold`,
+  `retryCount`, the
+  [retry limit](/components/backend/ladders/#the-retry-limit) of every run a
+  dispatch launches (`0..=10`, default `1` when omitted, clamped to `10`), and
+  the single parameterised `gate` (`floor`, `threshold`,
   `unloadedCountsAsBroken`, `earlyStop`). Saving never touches a running
   dispatch. Rungs are matched on their stable ids and reconciled rather than
   replaced. A rung whose case version is not
@@ -959,23 +975,32 @@ starts a dispatch of it.
   Schema: [`coverage/ladder.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder.schema.json).
 - `GET /ladders/summary` — one entry per ladder for the ladders list: its name,
   rung count, `runsPerCell`, resolved climber count, and its latest dispatch's
-  status, rung-slot counts, and runs (`total`, `done`, `inFlight`), or a null
+  status (as the progress board reports it,
+  [`needsAttention`](/components/backend/ladders/#needs-attention) included),
+  rung-slot counts, and runs (`total`, `done`, `inFlight`), or a null
   dispatch for a ladder never run.
 - `POST /ladders/{id}/rungs/order` — reorder the configuration by rung id. The
   body must be a permutation of the ladder's current rungs; adding or dropping one
   is an edit and goes through `PUT /ladders/{id}`.
 - `POST /ladders/{id}/run` — start a dispatch of the configuration as it stands
-  and run its first launch pass. Answers with the progress board. `409` while a
+  and run its first launch pass, which counts the runs that already exist toward
+  each rung and launches only what is missing
+  ([a rung slot's runs](/components/backend/ladders/#a-rung-slots-runs)). Answers
+  with the progress board. `409` while a
   dispatch is running; `400` naming the cause when the configuration has no rungs,
   resolves no climbers, or holds a rung that is not validator-rated.
-- `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
-  `pending` jobs. With `{ "cancelRunning": true }` it also cancels its
-  `dispatched`, `starting`, and `running` jobs, which a client must confirm first.
+- `POST /ladders/{id}/stop` — end the running dispatch and cancel the `queued` and
+  `pending` jobs it launched. With `{ "cancelRunning": true }` it also cancels
+  the `dispatched`, `starting`, and `running` jobs it launched, which a client
+  must confirm first. Both reach the jobs an
+  [earlier dispatch](/components/backend/ladders/#stopping-a-dispatch) of the
+  ladder left in flight as well.
   Answers `{ "canceled": n, "includedActive": bool }`; `409` when no dispatch is
   running.
 - `GET /ladders/{id}/progress` — the board: the rungs, the latest dispatch (its
-  `status` of `running`, `finished`, or `stopped`, its rung-slot counts, and its
-  runs), and every climber of that dispatch with its status (`running` /
+  `status` of `running`, `needsAttention`, `finished`, or `stopped`, the gate,
+  climb order, `inFlightLimit` and `retryCount` it snapshotted, its rung-slot
+  counts, and its runs), and every climber of that dispatch with its status (`running` /
   `blocked` / `failed` / `completed`), its blocked reason (`unlaunchable`,
   `failing`, or `unrated`), the rung it stands on with the gate tally behind that
   answer, and the status of each of its rung slots. A ladder never run reports a
@@ -986,16 +1011,17 @@ starts a dispatch of it.
 - `POST /ladders/{id}/climbers/retry` — retry a climber of the running dispatch
   that is `blocked` as `failing` or `unlaunchable`, named by its `combination` in
   the body. The retry is recorded on the dispatch's climber, only jobs that ended
-  after it count toward the failing streak, and the backend runs a launch pass
+  after it are read for the failing block, and the backend runs a launch pass
   ([a blocked climber](/components/backend/ladders/#a-blocked-climber)). Answers
   `204`; `404` when the combination is not a climber of the dispatch, and `409`
   when no dispatch is running or the climber is not blocked for one of those two
   reasons.
-- `GET /ladders/{id}/queue` — the latest dispatch's completed runs the requesting
-  account has not reviewed, in the ladder's own order.
+- `GET /ladders/{id}/queue` — the completed runs the latest dispatch counts that
+  the requesting account has not reviewed, in the ladder's own order. A run the
+  dispatch read rather than launched is offered the same way.
 
 The backend runs every launch pass of a dispatch itself, prompted by Run, a
-climber's Retry, and the dispatch's finishing runs
+climber's Retry, and every finishing run of one of its rung slots' cells
 ([launching runs](/components/backend/ladders/#launching-runs)).
 
 ## Stopping runs in bulk
@@ -1025,45 +1051,72 @@ The model catalog is the list of subjects a run can be attributed to (see
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
 `GET /models` and `GET /models/seed` are open; the rest require a bearer token.
 
-| endpoint                       | does                                                  |
-| ------------------------------ | ----------------------------------------------------- |
-| `GET /models`                  | the merged catalog of curated and run-derived entries |
-| `POST /models`                 | create a curated entry                                |
-| `PUT /models/{slug}`           | update a curated entry                                |
-| `DELETE /models/{slug}`        | remove a curated entry                                |
-| `GET /models/seed?runId=`      | a blank form seeded from a run's model id             |
-| `GET /models/openrouter?slug=` | OpenRouter's facts about a model, for Fill            |
-| `POST /models/logo`            | fetch and sanitize an svgl.app logo                   |
+| endpoint                            | does                                                  |
+| ----------------------------------- | ----------------------------------------------------- |
+| `GET /models`                       | the merged catalog of curated and run-derived entries |
+| `POST /models`                      | create a curated entry                                |
+| `PUT /models/{slug}`                | update a curated entry                                |
+| `DELETE /models/{slug}`             | remove a curated entry                                |
+| `GET /models/seed?runId=`           | a blank form seeded from a run's model id             |
+| `GET /models/openrouter?slug=`      | OpenRouter's facts about a model, for Fill            |
+| `POST /models/list-prices/refresh`  | refresh every curated entry's list price              |
+| `POST /models/logo`                 | fetch and sanitize an svgl.app logo                   |
 
 Each `GET /models` entry carries its display fields, aliases with their harness
 families, OpenRouter slug, developer provider (`providerPin`), and provider
-policy. `listPrice` is the curated list price, per token, with `listPriceAsOf`
-the date the figures were taken and `listPriceSource` where they came from:
-`hand` for a set the operator entered or confirmed, `openrouter` for one filled
-from the official endpoint's rate at enqueue. All three are null until all three
-rates are set. `price` is the latest billed rate, and `priceHistory` the
-billed-rate history.
+policy. `listPrice` is the list price, per token, with `listPriceAsOf` the date
+the figures were taken and `listPriceSource` where they came from: `hand` for a
+set the operator entered on the form, by changing a rate or the date,
+`openrouter` for one
+[resolved from OpenRouter](/components/core/metrics/#list-price-resolution). All
+three are null until all three rates are set. The list price is the only price
+an entry carries.
 
 A write carries the list price per Mtok as `listPriceInputPerMtok`,
 `listPriceCachedInputPerMtok`, and `listPriceOutputPerMtok`, with
 `listPriceAsOf`. The three rates are written together and dated, or the write is
-refused with `422`. A write that omits all four keeps the stored list price.
+refused with `422`. A write that omits all four keeps the stored list price. So
+does a write that carries the stored rates and date back unchanged, which is
+what the form sends when another field is saved: the entry keeps its
+`listPriceSource`. A rate is unchanged when it agrees with the stored one to
+nine significant digits. Any other write stores the set with the source `hand`.
 
 `GET /models/openrouter` answers the display name, provider, and description,
-plus `inputPerMtok`, `cachedInputPerMtok`, and `outputPerMtok` read from the
-official provider's endpoint in the model's `/models/{id}/endpoints` listing.
-Each rate is null when that endpoint lists none. The form seeds its list-price
-fields from them for the operator to confirm or correct against the developer's
-pricing page. A slug OpenRouter does not list is a `404`.
+plus `inputPerMtok`, `cachedInputPerMtok`, and `outputPerMtok`, the rate the
+list price resolution yields for the slug. The optional `providerPin` query
+parameter carries the form's current developer provider, which the resolution
+tries first and whose rate it answers whenever that provider's standard endpoint
+lists a complete one. The models listing is read only when neither that provider
+nor the provider the slug's author segment names yields a rate. The three rates
+are null when the resolution yields none. The form seeds its list-price fields
+from them. A slug OpenRouter does not list is a
+`404`.
+
+`POST /models/list-prices/refresh` runs a
+[list price refresh](/components/core/metrics/#list-price-refresh) over every
+curated entry and queues a snapshot refresh when any rate changed, including
+when the refresh stopped part-way through. It takes no body and answers a
+`ListPriceRefreshOut` when the refresh has finished:
+
+```json
+{ "total": 42, "updated": 3, "unchanged": 36, "unresolved": 3 }
+```
+
+- `total`: the curated entries the refresh covered.
+- `updated`: entries whose rate changed or was set for the first time.
+- `unchanged`: entries whose resolved rate equals the stored one, dated again.
+- `unresolved`: entries OpenRouter yielded no rate for, kept as they were.
 
 A run's [comparable cost](/components/core/metrics/#cost) is priced from the
-list price. Every enqueue path fills a curated entry's missing list price from
-the official endpoint's rate, and refuses a launch naming a model the catalog has
-no entry for, or one OpenRouter lists no rate for, with the reason named; a gg
-launch binding such a model is refused the same way. The billed rate is observed
-from the official endpoint on run completion, on a 24-hour refresh, and
-missing-only at enqueue and on save. An observation never changes the list
-price.
+list price. Every enqueue path fills a curated entry's missing list price by the
+list price resolution, and refuses a launch naming a model the catalog has no
+entry for, or one OpenRouter yields no rate for, with the reason named; a gg
+launch binding such a model is refused the same way.
+
+The catalog facts an entry carries (context window, release date, input
+modalities, and the developer provider OpenRouter lists) are observed from
+OpenRouter on run completion, on the 24-hour periodic task, and missing-only at
+startup, at enqueue, and on save.
 
 ## Model probes
 

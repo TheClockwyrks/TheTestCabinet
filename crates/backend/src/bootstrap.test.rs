@@ -21,7 +21,9 @@ async fn fake_openrouter(body: serde_json::Value) -> OpenRouterPrices {
     OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
 }
 
-/// A one-model OpenRouter catalog carrying every fact an observation records.
+/// A one-model OpenRouter catalog carrying every fact an observation records, and the
+/// model's own price, which a list price falls to when no endpoint of the hand-set
+/// provider or of the model's developer yields one.
 fn catalog_of(id: &str) -> serde_json::Value {
     serde_json::json!({
         "data": [{
@@ -44,15 +46,15 @@ fn unreachable_prices() -> OpenRouterPrices {
     OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
 }
 
-/// A launch prices its models at enqueue: a model the catalog has never seen gets its
-/// first observation right there, so the console shows the model's prices — and a run
-/// page its per-class cost split — without waiting for the run to complete.
+/// A launch observes its models at enqueue: a model the catalog has never seen gets its
+/// first observation right there, so the console shows the model's catalog facts
+/// without waiting for the run to complete.
 #[tokio::test]
-async fn a_launch_seeds_prices_for_a_model_the_catalog_has_never_seen() {
+async fn a_launch_seeds_the_facts_of_a_model_the_catalog_has_never_seen() {
     let db = Db::connect_in_memory().await.unwrap();
     let prices = fake_openrouter(catalog_of("newco/brand-new")).await;
 
-    seed_launch_prices(
+    seed_launch_facts(
         &db,
         &prices,
         &[("newco/brand-new".to_string(), HarnessSlug::Gg)],
@@ -63,27 +65,21 @@ async fn a_launch_seeds_prices_for_a_model_the_catalog_has_never_seen() {
         .latest_price("newco/brand-new")
         .await
         .unwrap()
-        .expect("the launch recorded a first price observation");
-    assert_eq!(observed.uncached_input, Some(0.000003));
-    assert_eq!(observed.cached_input, Some(0.0000003));
-    assert_eq!(observed.output, Some(0.000015));
-    // The catalog facts that ride along on an observation are seeded with it, so the
-    // launch's own window resolution finds them here instead of re-fetching.
+        .expect("the launch recorded a first observation");
+    // The launch's own window resolution finds the facts here instead of re-fetching.
     assert_eq!(observed.context_length, Some(400_000));
     assert_eq!(observed.input_modalities.as_deref(), Some("text,image"));
+    assert!(observed.released_at.is_some());
 }
 
 /// Seeding is missing-only: a model already on record keeps its history and costs no
-/// fetch, leaving the price-as-it-was-at-run-time observation to completion time.
+/// fetch, leaving its next observation to completion time.
 #[tokio::test]
-async fn a_launch_does_not_re_price_a_model_already_on_record() {
+async fn a_launch_does_not_re_observe_a_model_already_on_record() {
     let db = Db::connect_in_memory().await.unwrap();
     db.insert_price_observation(PriceWrite {
         model_id: "newco/known".to_string(),
         observed_at: "2026-01-01T00:00:00Z".to_string(),
-        uncached_input: Some(1.0),
-        cached_input: None,
-        output: Some(2.0),
         context_length: Some(128_000),
         released_at: None,
         input_modalities: None,
@@ -93,7 +89,7 @@ async fn a_launch_does_not_re_price_a_model_already_on_record() {
     .unwrap();
 
     // An unreachable endpoint: reaching for the catalog at all would fail this.
-    seed_launch_prices(
+    seed_launch_facts(
         &db,
         &unreachable_prices(),
         &[("newco/known".to_string(), HarnessSlug::Gg)],
@@ -101,15 +97,16 @@ async fn a_launch_does_not_re_price_a_model_already_on_record() {
     .await;
 
     let observed = db.latest_price("newco/known").await.unwrap().unwrap();
-    assert_eq!(observed.uncached_input, Some(1.0));
+    assert_eq!(observed.context_length, Some(128_000));
     assert_eq!(observed.observed_at, "2026-01-01T00:00:00Z");
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 1);
 }
 
-/// A curated model is priced under its **configured OpenRouter slug** — the key the
-/// periodic refresh writes — even when the launch names it by a native alias, so the
-/// observation lands where the alias histories merge at compose time.
+/// A curated model is looked up under its **configured OpenRouter slug** even when the
+/// launch names it by a native alias, so a model OpenRouter lists under another
+/// spelling is still observed.
 #[tokio::test]
-async fn a_launch_prices_a_curated_model_through_its_openrouter_slug() {
+async fn a_launch_observes_a_curated_model_through_its_openrouter_slug() {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
         slug: "opus-4-8".to_string(),
@@ -136,7 +133,7 @@ async fn a_launch_prices_a_curated_model_through_its_openrouter_slug() {
     .unwrap();
     let prices = fake_openrouter(catalog_of("anthropic/claude-opus-4.8")).await;
 
-    seed_launch_prices(
+    seed_launch_facts(
         &db,
         &prices,
         &[("claude-opus-4-8".to_string(), HarnessSlug::Claude)],
@@ -149,36 +146,35 @@ async fn a_launch_prices_a_curated_model_through_its_openrouter_slug() {
         .latest_price("claude-opus-4-8")
         .await
         .unwrap()
-        .expect("the curated model was priced through its slug");
-    assert_eq!(observed.output, Some(0.000015));
+        .expect("the curated model was observed through its slug");
+    assert_eq!(observed.context_length, Some(400_000));
 }
 
-/// Curating a model prices it immediately, so the Models page shows figures for a model
-/// that has never been run rather than a dash until its first run completes.
+/// Curating a model observes it immediately, so the Models page shows the facts of a
+/// model that has never been run rather than a dash until its first run completes.
 #[tokio::test]
-async fn curating_a_model_seeds_its_prices() {
+async fn curating_a_model_seeds_its_facts() {
     let db = Db::connect_in_memory().await.unwrap();
     let prices = fake_openrouter(catalog_of("newco/brand-new")).await;
 
-    seed_curated_price(&db, &prices, "newco/brand-new").await;
+    seed_curated_facts(&db, &prices, "newco/brand-new").await;
 
     let observed = db
         .latest_price("newco/brand-new")
         .await
         .unwrap()
-        .expect("the curated slug was priced on save");
-    assert_eq!(observed.uncached_input, Some(0.000003));
+        .expect("the curated slug was observed on save");
     assert_eq!(observed.context_length, Some(400_000));
 }
 
 /// A model OpenRouter does not list (a provider-native id, an unlisted model) records
-/// nothing and fails nothing — a launch is never blocked by an unpriced model.
+/// nothing and fails nothing — a launch is never blocked by an unobserved model.
 #[tokio::test]
 async fn an_unlisted_model_is_seeded_silently() {
     let db = Db::connect_in_memory().await.unwrap();
     let prices = fake_openrouter(catalog_of("someone/else")).await;
 
-    seed_launch_prices(
+    seed_launch_facts(
         &db,
         &prices,
         &[("newco/unlisted".to_string(), HarnessSlug::Gg)],
@@ -188,12 +184,11 @@ async fn an_unlisted_model_is_seeded_silently() {
     assert!(db.latest_price("newco/unlisted").await.unwrap().is_none());
 }
 
-/// Startup prices a freshly seeded curated catalog: a rebuilt deployment inserts the
-/// curated configs with no price rows, and this pass records their first observations
-/// before any run exists — so a live run's per-class cost split never waits on a
-/// completed run.
+/// Startup observes a freshly seeded curated catalog: a rebuilt deployment inserts the
+/// curated configs with no observations, and this pass records their first before any
+/// run exists.
 #[tokio::test]
-async fn startup_prices_a_freshly_seeded_curated_catalog() {
+async fn startup_observes_a_freshly_seeded_curated_catalog() {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
         slug: "opus-4-8".to_string(),
@@ -220,7 +215,7 @@ async fn startup_prices_a_freshly_seeded_curated_catalog() {
     .unwrap();
     let prices = fake_openrouter(catalog_of("anthropic/claude-opus-4.8")).await;
 
-    let seeded = seed_catalog_prices(&db, &prices).await.unwrap();
+    let seeded = seed_catalog_facts(&db, &prices).await.unwrap();
 
     assert_eq!(seeded, 1);
     // Filed under the configured slug — the key the periodic refresh writes — so the
@@ -230,12 +225,10 @@ async fn startup_prices_a_freshly_seeded_curated_catalog() {
         .await
         .unwrap()
         .expect("startup recorded the curated model's first observation");
-    assert_eq!(observed.uncached_input, Some(0.000003));
-    assert_eq!(observed.output, Some(0.000015));
     assert_eq!(observed.context_length, Some(400_000));
 }
 
-/// Startup seeding is missing-only: a catalog already fully priced reads the database
+/// Startup seeding is missing-only: a catalog already fully observed reads the database
 /// and fetches nothing, so the steady-state boot costs no network.
 #[tokio::test]
 async fn startup_seeding_is_missing_only_and_fetches_nothing() {
@@ -266,9 +259,6 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
     db.insert_price_observation(PriceWrite {
         model_id: "anthropic/claude-opus-4.8".to_string(),
         observed_at: "2026-01-01T00:00:00Z".to_string(),
-        uncached_input: Some(1.0),
-        cached_input: None,
-        output: Some(2.0),
         context_length: Some(200_000),
         released_at: None,
         input_modalities: None,
@@ -278,7 +268,7 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
     .unwrap();
 
     // An unreachable endpoint: reaching for the catalog at all would fail this.
-    let seeded = seed_catalog_prices(&db, &unreachable_prices())
+    let seeded = seed_catalog_facts(&db, &unreachable_prices())
         .await
         .unwrap();
 
@@ -292,7 +282,7 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
 }
 
 /// Serve a fixed `/models` catalog plus a fixed `/models/{id}/endpoints` body for every
-/// model, so a path that reads the official endpoint can be exercised end to end.
+/// model, so a path that reads a model's endpoints can be exercised end to end.
 async fn fake_openrouter_with_endpoints(
     catalog: serde_json::Value,
     endpoints: serde_json::Value,
@@ -320,9 +310,8 @@ async fn fake_openrouter_with_endpoints(
     OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
 }
 
-/// An endpoints listing whose official route (Z.AI, for a `z-ai/…` id) charges the list
-/// rate while a third-party route undercuts it, the way the listing's headline price in
-/// `catalog_of` does.
+/// An endpoints listing whose developer (Z.AI, for a `z-ai/…` id) charges the list rate
+/// while a third-party route listed ahead of it undercuts it.
 fn endpoints_with_official_route() -> serde_json::Value {
     serde_json::json!({
         "data": {
@@ -345,10 +334,10 @@ fn endpoints_with_official_route() -> serde_json::Value {
     })
 }
 
-/// The refresh records the official endpoint's price as the billed rate, not the
-/// listing's headline price, which is whichever provider OpenRouter routes to by default.
+/// The fact refresh records the developer provider the endpoints listing names beside
+/// the facts the models listing carries, and no rate.
 #[tokio::test]
-async fn the_refresh_records_the_official_endpoints_price_as_the_billed_rate() {
+async fn the_fact_refresh_records_the_developer_provider() {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
         openrouter_slug: Some("z-ai/glm-5.3".to_string()),
@@ -360,86 +349,236 @@ async fn the_refresh_records_the_official_endpoints_price_as_the_billed_rate() {
         fake_openrouter_with_endpoints(catalog_of("z-ai/glm-5.3"), endpoints_with_official_route())
             .await;
 
-    assert_eq!(refresh_all_prices(&db, &prices).await.unwrap(), 1);
+    assert_eq!(refresh_all_facts(&db, &prices).await.unwrap(), 1);
 
     let observed = db
         .latest_price("z-ai/glm-5.3")
         .await
         .unwrap()
         .expect("the refresh recorded an observation");
-    assert_eq!(observed.uncached_input, Some(0.0000014));
-    assert_eq!(observed.cached_input, Some(0.00000026));
-    assert_eq!(observed.output, Some(0.0000044));
     assert_eq!(observed.provider_pin.as_deref(), Some("Z.AI"));
-    // The catalog facts still come from the listing.
     assert_eq!(observed.context_length, Some(400_000));
+    assert_eq!(observed.input_modalities.as_deref(), Some("text,image"));
+    assert!(observed.released_at.is_some());
+    // The fact refresh writes no list price: that is the list price refresh's.
+    let stored = db.get_model_config("glm-5-3").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, None);
+
+    // Nothing changed, so a second refresh appends nothing.
+    assert_eq!(refresh_all_facts(&db, &prices).await.unwrap(), 0);
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 1);
 }
 
-/// A hand-set pin names the official route where the listing spells the developer
-/// differently from the model id, and the billed rate follows it.
+/// A fact that changes while the others hold still is a new observation.
 #[tokio::test]
-async fn the_billed_rate_follows_a_hand_set_pin() {
+async fn the_fact_refresh_appends_an_observation_when_a_fact_changes() {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
-        openrouter_slug: Some("qwen/qwen3-coder".to_string()),
-        provider_pin: Some("Alibaba".to_string()),
-        ..crate::db::tests::model_write("qwen3-coder", "Qwen3 Coder", &["qwen/qwen3-coder"])
+        openrouter_slug: Some("z-ai/glm-5.3".to_string()),
+        ..crate::db::tests::model_write("glm-5-3", "GLM 5.3", &["z-ai/glm-5.3"])
     })
     .await
     .unwrap();
-    let endpoints = serde_json::json!({
+    let prices =
+        fake_openrouter_with_endpoints(catalog_of("z-ai/glm-5.3"), endpoints_with_official_route())
+            .await;
+    refresh_all_facts(&db, &prices).await.unwrap();
+
+    let mut longer = catalog_of("z-ai/glm-5.3");
+    longer["data"][0]["context_length"] = serde_json::json!(1_000_000);
+    let prices = fake_openrouter_with_endpoints(longer, endpoints_with_official_route()).await;
+
+    assert_eq!(refresh_all_facts(&db, &prices).await.unwrap(), 1);
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 2);
+    let observed = db.latest_price("z-ai/glm-5.3").await.unwrap().unwrap();
+    assert_eq!(observed.context_length, Some(1_000_000));
+    assert_eq!(observed.provider_pin.as_deref(), Some("Z.AI"));
+}
+
+/// An endpoints listing that cannot be read keeps the developer provider last recorded,
+/// so an unreachable endpoint never records a model as having lost it.
+#[tokio::test]
+async fn an_unreadable_endpoints_listing_keeps_the_recorded_developer_provider() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("z-ai/glm-5.3".to_string()),
+        ..crate::db::tests::model_write("glm-5-3", "GLM 5.3", &["z-ai/glm-5.3"])
+    })
+    .await
+    .unwrap();
+    let prices =
+        fake_openrouter_with_endpoints(catalog_of("z-ai/glm-5.3"), endpoints_with_official_route())
+            .await;
+    refresh_all_facts(&db, &prices).await.unwrap();
+
+    // The models listing answers, with a longer window; the endpoints listing does not.
+    let mut longer = catalog_of("z-ai/glm-5.3");
+    longer["data"][0]["context_length"] = serde_json::json!(1_000_000);
+    let prices = fake_openrouter(longer).await;
+
+    assert_eq!(refresh_all_facts(&db, &prices).await.unwrap(), 1);
+    let observed = db.latest_price("z-ai/glm-5.3").await.unwrap().unwrap();
+    assert_eq!(observed.context_length, Some(1_000_000));
+    assert_eq!(observed.provider_pin.as_deref(), Some("Z.AI"));
+}
+
+/// An endpoints listing as OpenRouter writes one for a model its developer serves at two
+/// tiers: the Flex endpoint first at half price, then the standard one, both under the one
+/// `provider_name` and told apart only by `tag`.
+fn endpoints_with_flex_listed_first() -> serde_json::Value {
+    serde_json::json!({
         "data": {
-            "name": "Qwen: Qwen3 Coder",
+            "name": "OpenAI: GPT-5.6 Sol",
             "endpoints": [
                 {
-                    "provider_name": "Cheapo",
-                    "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+                    "name": "OpenAI | openai/gpt-5.6-sol",
+                    "provider_name": "OpenAI",
+                    "tag": "openai/flex",
+                    "context_length": 400_000,
+                    "pricing": {
+                        "prompt": "0.000000625",
+                        "completion": "0.000005",
+                        "input_cache_read": "0.0000000625",
+                    },
+                    "supported_parameters": ["tools", "tool_choice", "reasoning"],
                 },
                 {
-                    "provider_name": "Alibaba",
-                    "pricing": { "prompt": "0.000005", "completion": "0.00001" },
+                    "name": "OpenAI | openai/gpt-5.6-sol",
+                    "provider_name": "OpenAI",
+                    "tag": "openai",
+                    "context_length": 400_000,
+                    "pricing": {
+                        "prompt": "0.00000125",
+                        "completion": "0.00001",
+                        "input_cache_read": "0.000000125",
+                    },
+                    "supported_parameters": ["tools", "tool_choice", "reasoning"],
                 },
             ],
         },
-    });
-    let prices = fake_openrouter_with_endpoints(catalog_of("qwen/qwen3-coder"), endpoints).await;
-
-    refresh_all_prices(&db, &prices).await.unwrap();
-
-    let observed = db
-        .latest_price("qwen/qwen3-coder")
-        .await
-        .unwrap()
-        .expect("the refresh recorded an observation");
-    assert_eq!(observed.uncached_input, Some(0.000005));
-    assert_eq!(observed.output, Some(0.00001));
+    })
 }
 
-/// A model with no official route keeps the listing's headline price as its billed rate.
-#[tokio::test]
-async fn a_model_with_no_official_route_records_the_headline_price() {
+/// The same model with its standard endpoint gone: the developer lists a Flex endpoint
+/// and nothing else.
+fn endpoints_with_only_flex() -> serde_json::Value {
+    let mut listing = endpoints_with_flex_listed_first();
+    listing["data"]["endpoints"]
+        .as_array_mut()
+        .expect("the fixture lists endpoints")
+        .truncate(1);
+    listing
+}
+
+/// A curated `openai/gpt-5.6-sol` entry with no list price.
+async fn db_with_sol() -> Db {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
-        openrouter_slug: Some("newco/brand-new".to_string()),
-        ..crate::db::tests::model_write("brand-new", "Brand New", &["newco/brand-new"])
+        openrouter_slug: Some("openai/gpt-5.6-sol".to_string()),
+        ..crate::db::tests::model_write("gpt-5-6-sol", "GPT-5.6 Sol", &["openai/gpt-5.6-sol"])
     })
     .await
     .unwrap();
+    db
+}
+
+/// A run's completion observes the model's catalog facts, the developer provider among
+/// them, and records no rate.
+#[tokio::test]
+async fn a_completion_observes_the_models_facts() {
+    let db = db_with_sol().await;
     let prices = fake_openrouter_with_endpoints(
-        catalog_of("newco/brand-new"),
-        endpoints_with_official_route(),
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_flex_listed_first(),
     )
     .await;
 
-    refresh_all_prices(&db, &prices).await.unwrap();
+    observe_completion(&db, &prices, "openai/gpt-5.6-sol", HarnessSlug::Kilo).await;
 
     let observed = db
-        .latest_price("newco/brand-new")
+        .latest_price("openai/gpt-5.6-sol")
         .await
         .unwrap()
-        .expect("the refresh recorded an observation");
-    assert_eq!(observed.uncached_input, Some(0.000003));
-    assert_eq!(observed.output, Some(0.000015));
+        .expect("the completion recorded an observation");
+    assert_eq!(observed.context_length, Some(400_000));
+    assert_eq!(observed.input_modalities.as_deref(), Some("text,image"));
+    assert_eq!(observed.provider_pin.as_deref(), Some("OpenAI"));
+    let stored = db.get_model_config("gpt-5-6-sol").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, None);
+
+    // A second completion with nothing changed appends nothing.
+    observe_completion(&db, &prices, "openai/gpt-5.6-sol", HarnessSlug::Kilo).await;
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 1);
+}
+
+/// The enqueue-time fill writes the standard rate onto the entry when the developer's
+/// Flex endpoint is listed first. When Flex is all the developer lists, its Flex rate is
+/// not read: the fill falls to the model's own price in the models listing, and where
+/// that publishes none either there is no list price to fill and the launch is refused.
+#[tokio::test]
+async fn the_fill_takes_the_standard_rate_when_flex_is_listed_first() {
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_flex_listed_first(),
+    )
+    .await;
+
+    let resolved = list_price_for_launch(
+        &db,
+        &prices,
+        "openai/gpt-5.6-sol",
+        HarnessSlug::Kilo,
+        &|| {},
+    )
+    .await
+    .unwrap()
+    .expect("the fill prices the launch");
+    assert_eq!(resolved.uncached_input, Some(0.00000125));
+    assert_eq!(resolved.cached_input, Some(0.000000125));
+    assert_eq!(resolved.output, Some(0.00001));
+    let stored = db.get_model_config("gpt-5-6-sol").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, Some(0.00000125));
+    assert_eq!(stored.config.list_price_cached_input, Some(0.000000125));
+    assert_eq!(stored.config.list_price_output, Some(0.00001));
+
+    let db = db_with_sol().await;
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("openai/gpt-5.6-sol"),
+        endpoints_with_only_flex(),
+    )
+    .await;
+    let resolved = list_price_for_launch(
+        &db,
+        &prices,
+        "openai/gpt-5.6-sol",
+        HarnessSlug::Kilo,
+        &|| {},
+    )
+    .await
+    .unwrap()
+    .expect("the models listing prices the launch");
+    assert_eq!(resolved.uncached_input, Some(0.000003));
+    assert_eq!(resolved.cached_input, Some(0.0000003));
+    assert_eq!(resolved.output, Some(0.000015));
+
+    let db = db_with_sol().await;
+    let mut unpriced = catalog_of("openai/gpt-5.6-sol");
+    unpriced["data"][0]["pricing"] = serde_json::json!({ "prompt": "-1", "completion": "-1" });
+    let prices = fake_openrouter_with_endpoints(unpriced, endpoints_with_only_flex()).await;
+    let reason = list_price_for_launch(
+        &db,
+        &prices,
+        "openai/gpt-5.6-sol",
+        HarnessSlug::Kilo,
+        &|| {},
+    )
+    .await
+    .unwrap()
+    .expect_err("a model listing only Flex endpoints has no list price to fill");
+    assert!(reason.contains("no complete rate"), "{reason}");
+    let stored = db.get_model_config("gpt-5-6-sol").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, None);
 }
 
 // --- The enqueue-time list-price fill ------------------------------------------
@@ -452,12 +591,12 @@ fn today() -> String {
         .unwrap()
 }
 
-/// A curated entry with no list price has one filled from the official endpoint's rate
+/// A curated entry with no list price has one filled from its developer's standard rate
 /// at enqueue: the launch is stamped with it, and the entry carries it from then on,
 /// dated today and sourced `openrouter`, so the next launch reads it from the catalog
 /// without reaching OpenRouter.
 #[tokio::test]
-async fn a_launch_fills_a_curated_models_missing_list_price_from_the_official_endpoint() {
+async fn a_launch_fills_a_curated_models_missing_list_price_from_its_developers_endpoint() {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
         openrouter_slug: Some("z-ai/glm-5.3".to_string()),
@@ -518,9 +657,8 @@ async fn a_launch_fills_a_curated_models_missing_list_price_from_the_official_en
     assert_eq!(again, resolved);
 }
 
-/// A provider-native launch id fills through the entry's configured OpenRouter slug, the
-/// same lookup the billed rate uses, so a Claude Code run of a freshly seeded Opus entry
-/// is priced rather than refused.
+/// A provider-native launch id fills through the entry's configured OpenRouter slug, so a
+/// Claude Code run of a freshly seeded Opus entry is priced rather than refused.
 #[tokio::test]
 async fn the_fill_looks_a_native_id_up_by_the_entrys_openrouter_slug() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -566,8 +704,9 @@ async fn the_fill_looks_a_native_id_up_by_the_entrys_openrouter_slug() {
     assert_eq!(stored.config.list_price_output, Some(0.000025));
 }
 
-/// The fill follows a hand-set developer provider, exactly as the billed rate does, and
-/// takes the prompt rate for cached input when the route lists no cache-read rate.
+/// The fill follows a hand-set developer provider, although another provider is listed
+/// first, and takes the prompt rate for cached input when the route lists no cache-read
+/// rate.
 #[tokio::test]
 async fn the_fill_follows_a_hand_set_pin() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -605,10 +744,11 @@ async fn the_fill_follows_a_hand_set_pin() {
     assert_eq!(resolved.output, Some(0.00001));
 }
 
-/// A model with no priced official route fills from the listing's headline rate, the
-/// same fallback the billed rate takes.
+/// A model whose developer lists no endpoint, with no provider set by hand, fills from
+/// the model's own price in the models listing. No third party's endpoint is read: the
+/// rate filled is none of theirs, the first listed one's included.
 #[tokio::test]
-async fn the_fill_takes_the_headline_rate_for_a_model_with_no_official_route() {
+async fn the_fill_takes_the_models_listing_price_for_a_model_with_no_developer_endpoint() {
     let db = Db::connect_in_memory().await.unwrap();
     db.upsert_model_config(ModelConfigWrite {
         openrouter_slug: Some("newco/brand-new".to_string()),
@@ -626,10 +766,70 @@ async fn the_fill_takes_the_headline_rate_for_a_model_with_no_official_route() {
         list_price_for_launch(&db, &prices, "newco/brand-new", HarnessSlug::Kilo, &|| {})
             .await
             .unwrap()
-            .expect("the headline rate prices the launch");
+            .expect("the models listing prices the launch");
     assert_eq!(resolved.uncached_input, Some(0.000003));
     assert_eq!(resolved.cached_input, Some(0.0000003));
     assert_eq!(resolved.output, Some(0.000015));
+    let stored = db.get_model_config("brand-new").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, Some(0.000003));
+    assert_eq!(stored.config.list_price_cached_input, Some(0.0000003));
+    assert_eq!(stored.config.list_price_output, Some(0.000015));
+    assert_eq!(
+        stored.config.list_price_source.as_deref(),
+        Some(LIST_PRICE_SOURCE_OPENROUTER)
+    );
+}
+
+/// A model that needs the models listing's price is refused when that listing cannot be
+/// read, with the failure named, and is left unpriced: no endpoint's rate stands in.
+#[tokio::test]
+async fn the_fill_is_refused_when_the_models_listing_it_needs_cannot_be_read() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("newco/brand-new".to_string()),
+        ..crate::db::tests::model_write("brand-new", "Brand New", &["newco/brand-new"])
+    })
+    .await
+    .unwrap();
+    // A models listing that is not one: the read of it fails.
+    let prices = fake_openrouter_with_endpoints(
+        serde_json::json!("unavailable"),
+        endpoints_with_official_route(),
+    )
+    .await;
+
+    let reason = list_price_for_launch(&db, &prices, "newco/brand-new", HarnessSlug::Kilo, &|| {})
+        .await
+        .unwrap()
+        .expect_err("an unreadable models listing refuses the launch");
+    assert!(reason.contains("models listing"), "{reason}");
+    let stored = db.get_model_config("brand-new").await.unwrap().unwrap();
+    assert_eq!(stored.config.list_price_input, None);
+}
+
+/// A hand-set provider that lists no endpoint for the model does not stop the fill: it
+/// falls to the provider the model id's author segment names.
+#[tokio::test]
+async fn the_fill_falls_to_the_author_segment_when_the_hand_set_provider_lists_nothing() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("z-ai/glm-5.3".to_string()),
+        provider_pin: Some("Nobody".to_string()),
+        ..crate::db::tests::model_write("glm-5-3", "GLM 5.3", &["z-ai/glm-5.3"])
+    })
+    .await
+    .unwrap();
+    let prices =
+        fake_openrouter_with_endpoints(catalog_of("z-ai/glm-5.3"), endpoints_with_official_route())
+            .await;
+
+    let resolved = list_price_for_launch(&db, &prices, "z-ai/glm-5.3", HarnessSlug::Kilo, &|| {})
+        .await
+        .unwrap()
+        .expect("the author segment's provider prices the launch");
+    assert_eq!(resolved.uncached_input, Some(0.0000014));
+    assert_eq!(resolved.cached_input, Some(0.00000026));
+    assert_eq!(resolved.output, Some(0.0000044));
 }
 
 /// When OpenRouter cannot be reached the launch is refused, naming the model, the missing

@@ -31,6 +31,13 @@ the dispatcher drain them through the existing queue (`POST /publish-jobs/next`
 → pod → `POST /publish-jobs/{id}/result`). Run ids are deduplicated across arms
 first, so a run shared by two arms is published once.
 
+A completed validator-rated arm run
+[publishes itself](/components/core/results/#automatic-publishing) when it
+finishes, so most of an arm's runs are public or releasing before the
+comparison is published. The comparison publish enqueues nothing for a run that
+is already published, and a run whose release is under way keeps the job it
+has. The response's `enqueued` list names only the runs this publish enqueued.
+
 The publish is best-effort per run. A run that cannot be published is skipped
 and reported in the response as a `runId` with a reason, rather than failing the
 whole publish, and the console shows the skipped runs so a partially-published

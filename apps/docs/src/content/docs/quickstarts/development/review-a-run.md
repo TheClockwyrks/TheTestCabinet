@@ -16,8 +16,10 @@ averages across its reviews and its rating is the worst across them; a
 validator-rated run with no reviews keeps the validators' own figures.
 
 Every review is attributed to the account that wrote it and a run carries one
-review per account. Publishing a legacy run requires at least one review; a
-validator-rated run can be reviewed before or after it is published. The full
+review per account. Publishing a legacy run requires at least one review. A
+completed validator-rated run
+[publishes itself](/components/core/results/#automatic-publishing) when it
+finishes, so its review is usually added after it is public. The full
 workflow is
 [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
 
@@ -134,5 +136,5 @@ rating.
 
 ## Next step
 
-[Publish a Run](/quickstarts/devops/publish-a-run/) once the review is in place,
-or straight away for a validator-rated run.
+[Publish a Run](/quickstarts/devops/publish-a-run/) once a legacy run's review
+is in place. A completed validator-rated run needs no publish step.

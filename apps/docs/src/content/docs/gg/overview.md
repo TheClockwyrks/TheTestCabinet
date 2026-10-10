@@ -165,8 +165,10 @@ endpoints listing spells its `provider_name`, and the quantization that
 provider's endpoint serves. The list is every provider a run of that model may
 use, in the order it tries them. A one-entry list pins the run to one provider.
 
-The backend builds the list at enqueue from the model's endpoints listing. An
-endpoint is a candidate when it passes every filter:
+The backend builds the list at enqueue from the model's endpoints listing,
+reading only standard endpoints. A Flex endpoint, one whose `tag` has a `flex`
+segment (`openai/flex`), is never a candidate and never sets the price ceiling.
+An endpoint is a candidate when it passes every filter:
 
 - Its quantization is the model's native level. Native is the highest level any
   endpoint of the model declares, and the model's catalog entry can set it by

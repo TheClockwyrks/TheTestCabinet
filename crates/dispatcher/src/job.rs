@@ -53,14 +53,56 @@ use test_cabinet_core::{ClaimedJob, PublishClaim};
 
 use crate::config::Config;
 
-/// The value of the `app.kubernetes.io/managed-by` label every driver `Job` the
-/// dispatcher creates carries. The dispatcher selects on it to find exactly the
-/// `Job`s it owns — both to count in-flight work and to reconcile after a restart.
+/// The value of the `app.kubernetes.io/managed-by` label every `Job` the dispatcher
+/// creates carries, driver and publish alike. The dispatcher selects on it to find
+/// exactly the `Job`s it owns — both to count in-flight work and to reconcile after
+/// a restart.
 pub const MANAGED_BY: &str = "tcab-dispatcher";
 
 /// The label key carrying the backend job id on each driver `Job`, so a listed
 /// `Job` maps back to its job without parsing its generated name.
 pub const JOB_ID_LABEL: &str = "tcab.dev/job-id";
+
+/// The label key carrying a `Job`'s [`JobKind`], so the dispatcher counts each
+/// admission lane's in-flight `Job`s apart.
+pub const JOB_KIND_LABEL: &str = "tcab.dev/job-kind";
+
+/// Which of the dispatcher's two products a `Job` is, and so which admission lane
+/// it occupies: a driver `Job` counts against the run cap and a publish `Job`
+/// against the publish cap, never against each other's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobKind {
+    /// A driver `Job`, executing one claimed run.
+    Run,
+    /// A `tcab-publisher` `Job`, releasing one claimed publish.
+    Publish,
+}
+
+impl JobKind {
+    /// The [`JOB_KIND_LABEL`] value this kind is stamped as.
+    pub fn label_value(self) -> &'static str {
+        match self {
+            Self::Run => "run",
+            Self::Publish => "publish",
+        }
+    }
+
+    /// Classify a listed `Job` from its [`JOB_KIND_LABEL`] value and its name. A
+    /// `Job` created before the label existed carries none, and may still be running
+    /// when a dispatcher that reads it starts, so it is classified by the name
+    /// prefix instead: [`PUBLISH_JOB_PREFIX`] is a publish, anything else a run.
+    pub fn classify(label: Option<&str>, name: &str) -> Self {
+        match label {
+            Some("run") => Self::Run,
+            Some("publish") => Self::Publish,
+            _ if name.starts_with(PUBLISH_JOB_PREFIX) => Self::Publish,
+            _ => Self::Run,
+        }
+    }
+}
+
+/// The name prefix of every publish `Job` (see [`publish_job_name`]).
+pub const PUBLISH_JOB_PREFIX: &str = "tcab-publisher-";
 
 /// The `app.kubernetes.io/managed-by` value the **driver** stamps on the sandbox
 /// pods it creates, as distinct from [`MANAGED_BY`] (which the dispatcher stamps on
@@ -136,7 +178,7 @@ pub fn job_name(job_id: &str) -> String {
 /// (they share no id space, but defensively) never collide on a name. The publish
 /// job id is a lowercase UUID minted by the backend, already a valid DNS-1123 label.
 pub fn publish_job_name(job_id: &str) -> String {
-    format!("tcab-publisher-{job_id}")
+    format!("{PUBLISH_JOB_PREFIX}{job_id}")
 }
 
 /// Build the driver `Job` for a claimed run. Pure given the claim and config, so
@@ -235,7 +277,7 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         ..Default::default()
     };
 
-    let labels = job_labels(&claim.job_id);
+    let labels = job_labels(&claim.job_id, JobKind::Run);
 
     let job_spec = JobSpec {
         // Do not retry a failed driver Job: the driver owns reporting a specific
@@ -277,7 +319,8 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
 /// no special ServiceAccount with pod-create RBAC (it gets the namespace default,
 /// which can reach the API server for nothing it is allowed to mutate). It does
 /// share the run path's ownership/job-id labels, `backoffLimit: 0`, and
-/// `ttlSecondsAfterFinished`, so the dispatcher's reconcile/cleanup covers it too.
+/// `ttlSecondsAfterFinished`, so the dispatcher's reconcile/cleanup covers it too;
+/// its [`JobKind::Publish`] label is what keeps it out of the run lane's count.
 pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
     // The publisher image is only ever called here, and the controller never claims
     // a publish job unless `publishing_enabled()` (i.e. an image is set), so this
@@ -337,7 +380,7 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
         ..Default::default()
     };
 
-    let labels = job_labels(&claim.job_id);
+    let labels = job_labels(&claim.job_id, JobKind::Publish);
 
     let job_spec = JobSpec {
         // Do not retry a failed publish Job: the publisher owns reporting its own
@@ -401,10 +444,10 @@ fn quantity_map<const N: usize>(
     (!map.is_empty()).then_some(map)
 }
 
-/// The labels every driver `Job` (and its pod template) carries: the ownership
-/// label the dispatcher selects on, the shared part-of label, and the backend job
-/// id for mapping a `Job` back to its job.
-fn job_labels(job_id: &str) -> BTreeMap<String, String> {
+/// The labels every `Job` (and its pod template) carries: the ownership label the
+/// dispatcher selects on, the shared part-of label, the backend job id for mapping
+/// a `Job` back to its job, and the kind that puts it in its admission lane.
+fn job_labels(job_id: &str, kind: JobKind) -> BTreeMap<String, String> {
     BTreeMap::from([
         (
             "app.kubernetes.io/managed-by".to_string(),
@@ -415,6 +458,7 @@ fn job_labels(job_id: &str) -> BTreeMap<String, String> {
             "test-cabinet".to_string(),
         ),
         (JOB_ID_LABEL.to_string(), job_id.to_string()),
+        (JOB_KIND_LABEL.to_string(), kind.label_value().to_string()),
     ])
 }
 

@@ -73,8 +73,9 @@ work.
 | `TCAB_DRIVER_IMAGE`                                                           | yes      | The `tcab-driver` image each `Job` runs                                                                                                                                                                                                                                                 | —                              |
 | `TCAB_DISPATCHER_NAMESPACE`                                                   | no       | Namespace the `Job`s are created in                                                                                                                                                                                                                                                     | the dispatcher's own namespace |
 | `TCAB_DISPATCHER_DRIVER_SA`                                                   | no       | `ServiceAccount` named on every driver `Job`                                                                                                                                                                                                                                            | the namespace default          |
-| `TCAB_DISPATCHER_MAX_INFLIGHT`                                                | no       | Queue-admission cap on concurrent runs                                                                                                                                                                                                                                                  | `8`                            |
-| `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS`                                       | no       | Back-off after an empty claim or a full cap                                                                                                                                                                                                                                             | `2`                            |
+| `TCAB_DISPATCHER_MAX_INFLIGHT`                                                | no       | Cap on concurrent driver `Job`s, the run lane. Publish `Job`s are counted apart                                                                                                                                                                                                         | `8`                            |
+| `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT`                                        | no       | Cap on concurrent publish `Job`s, the publish lane. Runs are counted apart                                                                                                                                                                                                              | `8`                            |
+| `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS`                                       | no       | Back-off after a tick that admits nothing                                                                                                                                                                                                                                               | `2`                            |
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS`                                             | no       | TTL after which a finished `Job` is garbage-collected                                                                                                                                                                                                                                   | `300`                          |
 | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST`                      | no       | Requests on the driver container. They keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, and the memory request is the node's reservation for the driver                                                                                 | `100m` / `2Gi`                 |
 | `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT`                                         | no       | A memory limit on the driver container. Unset by default, deliberately: a memory limit is enforced by `SIGKILL`, and a driver OOM-killed mid-run destroys a run that has already paid for its API calls. Set it only when a namespace `LimitRange` or quota forces one                  | —                              |
@@ -102,6 +103,9 @@ only when it is set. Publish `Job`s receive `TCAB_ARTIFACTS_URL`,
 
 Concurrency scales with the cluster: `TCAB_DISPATCHER_MAX_INFLIGHT` plus
 available capacity admit runs, so there is no pool to size by hand.
+Publishes are admitted through a lane of their own, so a publish starts while
+runs are queued or the run cap is full. See
+[Admission lanes](/components/dispatcher/overview/#admission-lanes).
 
 ## Driver Jobs
 
@@ -262,7 +266,8 @@ that enforce policies.
 ## Publish Jobs
 
 Publishing a run runs in its own `Job`. The backend queues a publish job, the
-dispatcher claims it whenever `TCAB_PUBLISHER_IMAGE` is configured, and one
+dispatcher claims it whenever `TCAB_PUBLISHER_IMAGE` is configured and fewer than
+`TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` publish `Job`s are running, and one
 `tcab-publisher` `Job` downloads the run tree from the artifact service and
 releases it with `gh` and `wrangler`. The publisher streams progress lines back
 to the backend and reports its terminal result there, and the backend relays both

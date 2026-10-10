@@ -1,9 +1,9 @@
 //! The `coverage_plan_cell_retry` table: when the owner last retried a plan cell that was
 //! blocked on infrastructure failures.
 //!
-//! A cell is blocked when its three newest finished jobs all failed on infrastructure and
-//! produced no counted run. Retrying it records the time here; only jobs that ended after
-//! it count toward the cell's streak, so three more such failures block it again.
+//! A cell is blocked when one of its jobs used up its automatic retries without a counted
+//! run and no later launch took its place. Retrying it records the time here; only jobs
+//! that ended after it are read, so the next launch to use up its retries blocks it again.
 
 use sea_orm::entity::prelude::*;
 

@@ -30,6 +30,10 @@ const PAGE_SIZE = 20;
 // where those runs collect, and where a whole batch of them is published again in
 // one gesture: check the rows and right-click to publish the selection.
 //
+// A completed validator-rated run publishes itself, so it is listed only while
+// its release is in flight or after that release failed; publishing it from here
+// attaches to a release still in flight rather than starting a second.
+//
 // The slice is deliberately the publish gate rather than "everything unpublished":
 // a worklist whose purpose is "select these and publish them" must not list rows
 // the backend is about to refuse. Unreviewed runs have their own tab, and
@@ -148,7 +152,7 @@ export function UnpublishedPage() {
           <p className={styles.empty}>
             {filters.activeCount > 0
               ? "No unpublished runs match those filters."
-              : "Nothing waiting to publish; every reviewed run is public."}
+              : "Nothing waiting to publish; every publishable run is public."}
           </p>
         )
       ) : (

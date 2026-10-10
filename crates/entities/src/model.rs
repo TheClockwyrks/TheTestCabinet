@@ -3,10 +3,10 @@
 //! Curated configuration is the display metadata The Test Cabinet attaches to a
 //! model — its display name, provider, provider logo, and prose — keyed by a
 //! stable `slug`. The run-record ids this entry covers live in the sibling
-//! `model_alias` table; observed prices live in `model_price`, keyed by canonical
-//! model id rather than by slug. A model with no curated row still appears in the
-//! catalog (derived from its runs); this table only holds the human-authored
-//! overlay.
+//! `model_alias` table; the catalog facts observed on OpenRouter live in
+//! `model_price`, keyed by canonical model id rather than by slug. A model with
+//! no curated row still appears in the catalog (derived from its runs); this
+//! table only holds the human-authored overlay and the model's list price.
 
 use sea_orm::entity::prelude::*;
 
@@ -32,15 +32,17 @@ pub struct Model {
     /// Site-facing description markdown, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub description_md: Option<String>,
-    /// The slug OpenRouter lists the model under, used as the price-series key
-    /// for the comparable cost, or `NULL` when the model is not on OpenRouter.
+    /// The slug OpenRouter lists the model under: the id its list price and its
+    /// catalog facts are read under, and the key its observations are stored
+    /// under. `NULL` when the model is not on OpenRouter.
     #[sea_orm(nullable)]
     pub openrouter_slug: Option<String>,
     /// The developer provider: the OpenRouter provider name of the model developer's own
     /// endpoint, set by hand where the endpoints listing's provider name does not match the
     /// author segment of the model id. `NULL` takes the provider the listing names for the
     /// author segment. A gg run's candidate list puts this provider first and takes its rates as
-    /// the price ceiling.
+    /// the price ceiling, and a list price read from OpenRouter is this provider's standard rate
+    /// where it publishes one.
     #[sea_orm(nullable)]
     pub provider_pin: Option<String>,
     /// The developer's published list price per **token** of input, in USD (the
@@ -56,13 +58,16 @@ pub struct Model {
     /// `NULL` when the model carries no curated list price.
     #[sea_orm(nullable)]
     pub list_price_output: Option<f64>,
-    /// The date the list-price figures were taken, as the operator recorded it,
-    /// or `NULL` when the model carries no curated list price.
+    /// The date the list-price figures were taken (`YYYY-MM-DD`): the day of the
+    /// refresh that last read them from OpenRouter, or the date the operator
+    /// recorded with a set entered by hand. `NULL` when the model carries no list
+    /// price.
     #[sea_orm(nullable)]
     pub list_price_as_of: Option<String>,
-    /// Where the list-price figures came from: `hand` for an operator-entered
-    /// set, `openrouter` for one filled from the official endpoint's rate at
-    /// enqueue, or `NULL` when the model carries none.
+    /// Where the list-price figures came from: `openrouter` for a set read from
+    /// OpenRouter (at enqueue, or by a refresh of every entry), `hand` for a set
+    /// an operator entered, which stands until the next refresh resolves a rate
+    /// for the model, or `NULL` when the model carries none.
     #[sea_orm(nullable)]
     pub list_price_source: Option<String>,
     /// Whether a gg run's candidate list is filtered to the model's native quantization. `false`

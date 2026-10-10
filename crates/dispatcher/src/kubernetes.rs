@@ -40,7 +40,7 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::api::{DeleteParams, ListParams, LogParams, PostParams};
 use kube::{Api, Client};
 
-use crate::job::{JOB_ID_LABEL, SANDBOX_MANAGED_BY, managed_selector};
+use crate::job::{JOB_ID_LABEL, JOB_KIND_LABEL, JobKind, SANDBOX_MANAGED_BY, managed_selector};
 
 /// The classification of a driver `Job`'s lifecycle, derived from its status
 /// conditions. A `Job` with `backoffLimit: 0` settles into exactly one of these.
@@ -57,7 +57,7 @@ pub enum JobPhase {
     Failed,
 }
 
-/// A driver `Job` the dispatcher owns, paired with its derived phase and the
+/// A `Job` the dispatcher owns, paired with its derived phase, its kind, and the
 /// backend job id it carries (from its [`JOB_ID_LABEL`]).
 #[derive(Debug, Clone)]
 pub struct ManagedJob {
@@ -65,6 +65,10 @@ pub struct ManagedJob {
     pub job_id: Option<String>,
     /// The `Job`'s metadata name.
     pub name: String,
+    /// Whether this is a driver or a publish `Job`, and so which admission lane it
+    /// occupies (from its [`JOB_KIND_LABEL`], else its name; see
+    /// [`JobKind::classify`]).
+    pub kind: JobKind,
     /// Where the `Job` is in its lifecycle.
     pub phase: JobPhase,
 }
@@ -139,9 +143,10 @@ impl Kube {
         Ok(())
     }
 
-    /// List exactly the driver `Job`s this dispatcher owns, each classified into a
-    /// [`JobPhase`]. The control loop counts the non-terminal ones for queue
-    /// admission and reports any newly-failed ones whose backend job is still live.
+    /// List exactly the `Job`s this dispatcher owns, driver and publish alike, each
+    /// classified into a [`JobPhase`] and a [`JobKind`]. The control loop counts the
+    /// non-terminal ones of each kind for that lane's admission and reports any
+    /// newly-failed ones whose backend job is still live.
     pub async fn list_managed(&self) -> anyhow::Result<Vec<ManagedJob>> {
         let params = ListParams::default().labels(&managed_selector());
         let list = self.jobs().list(&params).await?;
@@ -287,20 +292,23 @@ fn sandbox_selector(job_id: &str) -> String {
     format!("{JOB_ID_LABEL}={job_id},app.kubernetes.io/managed-by={SANDBOX_MANAGED_BY}")
 }
 
-/// Classify a `Job` into a [`ManagedJob`] from its conditions and labels. A
+/// Classify a `Job` into a [`ManagedJob`] from its conditions, labels and name. A
 /// `Job` with `backoffLimit: 0` reports a `Complete` or `Failed` condition with
 /// `status: "True"` once terminal; anything else is still active.
 fn managed_job(job: &Job) -> ManagedJob {
     let name = job.metadata.name.clone().unwrap_or_default();
-    let job_id = job
-        .metadata
-        .labels
-        .as_ref()
-        .and_then(|labels| labels.get(JOB_ID_LABEL))
-        .cloned();
+    let labels = job.metadata.labels.as_ref();
+    let job_id = labels.and_then(|labels| labels.get(JOB_ID_LABEL)).cloned();
+    let kind = JobKind::classify(
+        labels
+            .and_then(|labels| labels.get(JOB_KIND_LABEL))
+            .map(String::as_str),
+        &name,
+    );
     ManagedJob {
         job_id,
         name,
+        kind,
         phase: job_phase(job),
     }
 }

@@ -57,5 +57,5 @@ credential files each mode uses and how to lock the mode.
 
 Claude Code drives one provider directly and reports the exact charge for the
 run on its terminal result. That figure is recorded as the run's actual cost.
-The comparable cost is computed from the model's curated list price, as for
+The comparable cost is computed from the model's list price, as for
 every harness. See [Metrics](/harnesses/claude/metrics/).

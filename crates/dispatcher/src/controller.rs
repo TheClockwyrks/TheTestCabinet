@@ -8,13 +8,16 @@
 //!    job is still live — report a specific death reason. Listing the cluster (not
 //!    trusting an in-memory counter) is what makes a restart safe: the in-flight
 //!    count is recomputed from reality, never assumed zero.
-//! 2. **Admit**: while under the in-flight cap, claim the oldest queued run job and
-//!    create one driver `Job` for it, then — when publishing is enabled — also try
-//!    to claim the oldest queued **publish** job and create one `tcab-publisher`
-//!    `Job` for it. The publish queue is parallel and cheap (few, short Jobs), so it
-//!    shares the same in-flight cap accounting (both Job kinds carry the same
-//!    `managed-by` label, so the reconcile count covers both) and is simply tried
-//!    each tick. An empty queue or a full cap backs off for the poll interval.
+//! 2. **Admit** through two independent lanes (see [`admission`]). The **run**
+//!    lane claims the oldest queued run job and creates one driver `Job` for it
+//!    while fewer than `max_inflight` driver `Job`s are active. The **publish** lane
+//!    — open only when publishing is enabled — claims the oldest queued publish job
+//!    and creates one `tcab-publisher` `Job` for it while fewer than
+//!    `max_publish_inflight` publish `Job`s are active. A `Job` counts against its
+//!    own lane's cap only (by its [`JobKind`]), and every tick tries both lanes, so
+//!    a long run queue or a full run lane never holds a publish back, nor the
+//!    reverse. A tick admits at most one `Job` per lane; one that admits nothing
+//!    backs off for the poll interval.
 //!
 //! Publish `Job`s carry no bespoke death detection in this first cut: a publisher
 //! that dies before reporting either surfaces as a stuck `dispatched` publish job or
@@ -40,9 +43,45 @@ use test_cabinet_core::{ClaimedJob, PublishClaim};
 
 use crate::client::BackendClient;
 use crate::config::Config;
-use crate::job::{build_driver_job, build_publish_job};
+use crate::job::{JobKind, build_driver_job, build_publish_job};
 use crate::kubernetes::{JobPhase, Kube, ManagedJob};
 use crate::lost::{LOST_GRACE, LostTracker};
+
+/// Which admission lanes may claim on one tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Admission {
+    /// The run lane has room: claim a queued run and create its driver `Job`.
+    pub run: bool,
+    /// The publish lane is open and has room: claim a queued publish and create its
+    /// publisher `Job`.
+    pub publish: bool,
+}
+
+/// Decide which lanes may claim, from the `Job`s the dispatcher owns. Pure, so the
+/// decision is unit-tested without a cluster or a backend.
+///
+/// Each lane counts only its own kind's `Active` `Job`s against its own cap, and
+/// neither lane's answer reads the other's count or either queue's length. That is
+/// the whole guarantee that a publish does not wait behind runs: with the run lane
+/// at `max_inflight` the publish lane still answers from the publish `Job`s alone.
+/// The publish lane is closed outright when no publisher image is configured.
+pub fn admission(
+    managed: &[ManagedJob],
+    max_inflight: usize,
+    max_publish_inflight: usize,
+    publishing_enabled: bool,
+) -> Admission {
+    let active = |kind: JobKind| {
+        managed
+            .iter()
+            .filter(|job| job.phase == JobPhase::Active && job.kind == kind)
+            .count()
+    };
+    Admission {
+        run: active(JobKind::Run) < max_inflight,
+        publish: publishing_enabled && active(JobKind::Publish) < max_publish_inflight,
+    }
+}
 
 /// The running dispatcher: its config, the two clients, and the per-job tokens for
 /// jobs this process dispatched (for the death-detection report).
@@ -83,7 +122,7 @@ impl Dispatcher {
     }
 
     /// Run the control loop forever. Each iteration reconciles the cluster, then
-    /// admits as many queued jobs as the in-flight cap allows; transient errors are
+    /// admits queued jobs as each lane's in-flight cap allows; transient errors are
     /// logged and the loop backs off rather than exiting (the dispatcher is a
     /// long-lived controller).
     pub async fn run(mut self) -> anyhow::Result<()> {
@@ -107,9 +146,9 @@ impl Dispatcher {
         }
     }
 
-    /// One iteration: reconcile, then try to admit a single job. Returns whether a
-    /// job was admitted, so the caller can keep draining the queue without backing
-    /// off while capacity remains.
+    /// One iteration: reconcile, then try to admit one job through each lane that
+    /// has room. Returns whether any job was admitted, so the caller can keep
+    /// draining the queues without backing off while capacity remains.
     async fn tick(&mut self) -> anyhow::Result<bool> {
         // Read before the cluster, so a job claimed in between is not yet driven here
         // rather than driven with no `Job`.
@@ -131,38 +170,51 @@ impl Dispatcher {
             self.detect_lost(&driven, &managed).await;
         }
 
-        let in_flight = managed
-            .iter()
-            .filter(|m| m.phase == JobPhase::Active)
-            .count();
-        if in_flight >= self.config.max_inflight {
-            tracing::debug!(
-                in_flight,
-                cap = self.config.max_inflight,
-                "at in-flight cap"
-            );
+        let lanes = admission(
+            &managed,
+            self.config.max_inflight,
+            self.config.max_publish_inflight,
+            self.config.publishing_enabled(),
+        );
+        if !lanes.run {
+            tracing::debug!(cap = self.config.max_inflight, "run lane at its cap");
+        }
+
+        // The lanes are tried independently: one lane's empty queue, full cap or
+        // failure never decides whether the other is tried. A lane that fails is
+        // logged here rather than propagated, so a backend that cannot serve one
+        // queue does not stop this tick from admitting the other's work (nor send the
+        // loop into its backoff when that work was admitted).
+        let mut admitted = false;
+        if lanes.publish {
+            admitted |= lane_admitted("publish", self.admit_publish().await);
+        }
+        if lanes.run {
+            admitted |= lane_admitted("run", self.admit_run().await);
+        }
+        Ok(admitted)
+    }
+
+    /// The run lane: claim the oldest queued run, if any, and dispatch it. Returns
+    /// whether one was admitted.
+    async fn admit_run(&mut self) -> anyhow::Result<bool> {
+        let Some(claim) = self.backend.claim_next().await? else {
             return Ok(false);
-        }
+        };
+        self.dispatch(claim).await?;
+        Ok(true)
+    }
 
-        // Run queue first. If a run job is admitted, return straight away so the
-        // caller loops back to keep draining (without an idle backoff); the publish
-        // queue is tried on the next tick.
-        if let Some(claim) = self.backend.claim_next().await? {
-            self.dispatch(claim).await?;
-            return Ok(true);
-        }
-
-        // The run queue is empty; while still under the cap, try the parallel publish
-        // queue. Only when publishing is enabled (a publisher image is configured) —
-        // otherwise the dispatcher never touches the publish queue at all.
-        if self.config.publishing_enabled()
-            && let Some(claim) = self.backend.claim_next_publish().await?
-        {
-            self.dispatch_publish(claim).await?;
-            return Ok(true);
-        }
-
-        Ok(false)
+    /// The publish lane: claim the oldest queued publish, if any, and dispatch it.
+    /// Returns whether one was admitted. Only called when publishing is enabled (a
+    /// publisher image is configured) — otherwise the dispatcher never touches the
+    /// publish queue at all.
+    async fn admit_publish(&mut self) -> anyhow::Result<bool> {
+        let Some(claim) = self.backend.claim_next_publish().await? else {
+            return Ok(false);
+        };
+        self.dispatch_publish(claim).await?;
+        Ok(true)
     }
 
     /// Create one driver `Job` for a claimed run and retain its per-job token for
@@ -327,3 +379,19 @@ impl Dispatcher {
         }
     }
 }
+
+/// Whether a lane admitted a job this tick, logging the lane's failure when it had
+/// one. A failed lane admitted nothing.
+fn lane_admitted(lane: &'static str, result: anyhow::Result<bool>) -> bool {
+    match result {
+        Ok(admitted) => admitted,
+        Err(err) => {
+            tracing::warn!(lane, error = %err, "dispatcher lane failed to admit a job");
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "controller.test.rs"]
+mod tests;

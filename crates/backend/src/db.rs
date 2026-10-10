@@ -20,9 +20,9 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{CaseStatement, Expr, Func, IntoCondition, OnConflict, SimpleExpr};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
-    DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, IntoActiveModel,
-    JoinType, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
-    TransactionTrait,
+    DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, FromQueryResult,
+    IntoActiveModel, JoinType, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::comparison::ComparisonConfig;
@@ -143,7 +143,7 @@ const LAUNCH_LEASE: time::Duration = time::Duration::minutes(2);
 
 /// The `detail` an earlier backend failed an orphaned job with when it restarted. The
 /// backend no longer reaps anything, but rows written then still carry it, and a failure
-/// that was the restart's rather than the cell's must not count toward a failing streak
+/// that was the restart's rather than the cell's must not block the cell
 /// ([`Db::recent_terminal_jobs`]). Legacy rows only.
 pub const REAPED_DETAIL: &str = "interrupted: the backend restarted while this run was in flight";
 
@@ -2150,6 +2150,37 @@ async fn gate_publishable<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Whether a run in `run_state` **publishes itself**: it completed and its
+/// validators rated it. This is the automatic-publishing rule, and it is stricter
+/// than [`gate_publishable`], which also admits the publishable failure tiers and
+/// a reviewed legacy run. Those stay a person's decision, since a failure needs
+/// telling apart from a harness fault and a legacy run's rating is a reviewer's.
+///
+/// `validator_rated` is the run row's flag, so a run whose validators left it
+/// unranked still qualifies: its checklist verdicts are the machine's either way.
+pub(crate) fn auto_publishes(run_state: &str, validator_rated: bool) -> bool {
+    validator_rated
+        && run_state == run_state_str(test_cabinet_core::run_record::RunState::Completed)
+}
+
+/// What [`Db::enqueue_publish_job_once`] did for a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublishEnqueue {
+    /// A new publish job was inserted; its id.
+    Enqueued(String),
+    /// A release was already under way; the id of the job running it.
+    Attached(String),
+}
+
+impl PublishEnqueue {
+    /// The id of the publish job releasing the run, new or already under way.
+    pub fn job_id(&self) -> &str {
+        match self {
+            Self::Enqueued(id) | Self::Attached(id) => id,
+        }
+    }
+}
+
 /// Whether a run carries at least one automated validation verdict — the signal
 /// that it was scored by a machine and can stand in for the human review the
 /// comparison publish path waives. Reads the run's stored record and looks for any
@@ -2650,6 +2681,7 @@ impl Db {
             cases_json: Set(serde_json::to_string(&plan.cases)?),
             outer_axis: Set(plan.outer_axis.as_str().to_string()),
             in_flight_limit: Set(plan.in_flight_limit.map(in_flight_limit_to_column)),
+            retry_count: Set(plan.retry_count as i32),
             launch_claimed_at: Set(None),
             launch_requested: Set(false),
             fill_id: Set(None),
@@ -2700,6 +2732,10 @@ impl Db {
             .col_expr(
                 coverage_plan::Column::InFlightLimit,
                 Expr::value(plan.in_flight_limit.map(in_flight_limit_to_column)),
+            )
+            .col_expr(
+                coverage_plan::Column::RetryCount,
+                Expr::value(plan.retry_count as i32),
             )
             .col_expr(
                 coverage_plan::Column::UpdatedAt,
@@ -3093,7 +3129,7 @@ impl Db {
     }
 
     /// Record that the owner retried one cell of a plan at `now`. Only jobs that ended
-    /// after it count toward the cell's failing streak from here on.
+    /// after it are read for the cell's block from here on.
     pub async fn record_coverage_plan_cell_retry(
         &self,
         plan_id: &str,
@@ -3515,10 +3551,10 @@ impl Db {
     /// are one run), and that attempt along `record_id` to the run it stored. An id no
     /// job carries is read as a run id directly.
     ///
-    /// The run then [counts](test_cabinet_core::run_record::RunState::counts_as_model_result)
-    /// or it does not, by the rule a coverage cell counts by: a model's own failure
-    /// counts, a harness or infrastructure failure, a cancel, a deleted run and a job
-    /// that stored none do not, and nor does a run whose record this build cannot read.
+    /// The run then counts or it does not: a completed run and a catastrophic, timed-out,
+    /// limit-exceeded or hung one count, and a harness or infrastructure failure, a
+    /// cancel, a deleted run and a job that stored none do not, nor does a run whose
+    /// record this build cannot read.
     pub async fn resolve_arm_runs(
         &self,
         ids: &[String],
@@ -3614,7 +3650,7 @@ impl Db {
                 .into_iter()
                 .collect()
         };
-        let counted = counted_run_states();
+        let counted = arm_counted_run_states();
 
         Ok(resolved
             .into_iter()
@@ -3670,14 +3706,16 @@ impl Db {
     /// landed: by when each finished, then by run id. A cell with none is simply absent.
     ///
     /// A run counts when it ended `completed`, `catastrophic`, `timed_out`,
-    /// `limit_exceeded` or `hung` ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)): each is the model's result
-    /// and uses one of the cell's runs. An infrastructure-class failure
-    /// (`infrastructure`, `harness_error`) or a cancel says nothing about the model and
-    /// never counts. Nor does the run of a job that was automatically retried
+    /// `harness_error`, `limit_exceeded` or `hung`
+    /// ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)):
+    /// each is the model's result and uses one of the cell's runs. An `infrastructure`
+    /// failure or a cancel says nothing about the model and never counts. Nor does the run of a job that was automatically retried
     /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
     ///
     /// The order is what a plan takes its [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
-    /// from: the first `runsPerCell` of each list. It is read as instants rather than as
+    /// from: the first `runsPerCell` of each list. A ladder dispatch takes a rung slot's
+    /// runs from the same list, under the rung's target, and each run carries what the
+    /// rung's gate reads ([`CellRun::as_rung_run`]). It is read as instants rather than as
     /// text, since RFC 3339 text with and without a fractional second does not sort as
     /// time; a finish time that does not parse sorts after every one that does.
     ///
@@ -3713,9 +3751,12 @@ impl Db {
             .column(run::Column::FinishedAt)
             .column(run::Column::RunState)
             .column(run::Column::TestType)
+            .column(run::Column::Loaded)
+            .column(run::Column::ValidatorRated)
+            .column(run::Column::ValidatorRating)
             .filter(run::Column::RunState.is_in(counted_run_states()))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
-            .into_tuple()
+            .into_model()
             .all(&self.conn())
             .await?;
         let reviewed: std::collections::HashSet<String> = match reviewer_user_id {
@@ -3730,8 +3771,8 @@ impl Db {
                 .collect(),
             None => std::collections::HashSet::new(),
         };
-        // Read apart from the rows, which already select the twelve columns a tuple can
-        // hold. Only the review flag needs it, and unreadable rows are few.
+        // Read apart from the rows: only the review flag needs it, and unreadable rows are
+        // few.
         let unreadable: std::collections::HashSet<String> = match reviewer_user_id {
             Some(_) => run::Entity::find()
                 .select_only()
@@ -3746,42 +3787,34 @@ impl Db {
             None => std::collections::HashSet::new(),
         };
         let mut cells = CellRuns::new();
-        for (
-            slug,
-            version,
-            variant,
-            engine,
-            harness,
-            model,
-            gg_config_id,
-            gg_models,
-            id,
-            finished_at,
-            run_state,
-            test_type,
-        ) in rows
-        {
+        for row in rows {
             let unreviewed = reviewer_user_id.is_some()
-                && !unreadable.contains(&id)
-                && run_state == "completed"
-                && !AUTO_GRADED_TEST_TYPES.contains(&test_type.as_str())
-                && !reviewed.contains(&id);
+                && !unreadable.contains(&row.id)
+                && row.run_state == "completed"
+                && !AUTO_GRADED_TEST_TYPES.contains(&row.test_type.as_str())
+                && !reviewed.contains(&row.id);
             cells
                 .entry((
-                    slug,
-                    version,
-                    variant,
-                    cell_engine(engine),
-                    harness,
-                    model,
-                    gg_config_id.unwrap_or_default(),
-                    gg_models.unwrap_or_default(),
+                    row.test_case_slug,
+                    row.test_case_version,
+                    row.variant,
+                    cell_engine(row.engine_slug),
+                    row.harness_slug,
+                    row.model_id,
+                    row.gg_config_id.unwrap_or_default(),
+                    row.gg_models.unwrap_or_default(),
                 ))
                 .or_default()
                 .push(CellRun {
-                    id,
-                    finished_at,
+                    id: row.id,
+                    finished_at: row.finished_at,
                     unreviewed,
+                    model_failure: row.run_state != "completed",
+                    loaded: row.loaded,
+                    validator_rated: row.validator_rated,
+                    // A token that no longer parses reads as "no rating", which the gate
+                    // treats as unrated rather than as a bad result.
+                    rating: row.validator_rating.as_deref().and_then(Rating::parse),
                 });
         }
         for runs in cells.values_mut() {
@@ -3867,13 +3900,12 @@ impl Db {
             .collect())
     }
 
-    /// One cell's most recent **terminal** jobs (`succeeded`, `failed`, `canceled`),
-    /// newest first, at most `limit` of them, whoever launched them, each read as a
-    /// [`TerminalJob`].
+    /// One cell's **terminal** jobs (`succeeded`, `failed`, `canceled`), newest first,
+    /// whoever launched them, each read as a [`TerminalJob`].
     ///
-    /// What a plan reads to tell a cell whose runs keep failing on infrastructure from one
-    /// still filling: a job's terminal transition stamps its `updated_at`, so ordering on
-    /// it is ordering on when each job ended. The cell is matched through the same
+    /// What a plan reads to tell a blocked cell from one still filling: a job's terminal
+    /// transition stamps its `updated_at`, so ordering on it is ordering on when each job
+    /// ended. The cell is matched through the same
     /// collapses [`Self::count_in_flight_jobs_by_cell`] groups by.
     ///
     /// A job an earlier backend failed because it restarted while the job was executing
@@ -3881,58 +3913,86 @@ impl Db {
     /// the cell's fault.
     ///
     /// With `since`, only jobs that ended strictly after that RFC 3339 instant are read:
-    /// what a retried cell's streak counts from.
+    /// what a retried cell's block is read from.
     pub async fn recent_terminal_jobs(
         &self,
         cell: &CellKey,
-        limit: u64,
         since: Option<&str>,
     ) -> Result<Vec<TerminalJob>> {
-        let rows: Vec<(String, Option<String>, String)> = cell_job_query(cell)
+        let rows: Vec<TerminalTuple> = cell_job_query(cell)
             .select_only()
             .column(job::Column::State)
             .column(job::Column::RecordId)
             .column(job::Column::UpdatedAt)
+            .column(job::Column::RetriedBy)
+            .column(job::Column::Attempt)
+            .column(job::Column::QueueSeq)
             .filter(job::Column::State.is_in(["succeeded", "failed", "canceled"]))
             .filter(
                 Condition::any()
                     .add(job::Column::Detail.is_null())
                     .add(job::Column::Detail.ne(REAPED_DETAIL)),
             )
-            .order_by_desc(job::Column::UpdatedAt)
-            .order_by_desc(job::Column::QueueSeq)
-            .limit(limit)
             .into_tuple()
             .all(&self.conn())
             .await?;
-        // Compared as instants rather than as text, since RFC 3339 text with and without
-        // a fractional second does not sort as time. The rows are newest first, so the
-        // ones that ended after `since` are a prefix of the newest `limit`, and cutting
-        // after the limit reads the same jobs as cutting before it.
+        // Compared and ordered as instants rather than as text, since RFC 3339 text with
+        // and without a fractional second does not sort as time.
         let since = since
-            .map(|since| time::OffsetDateTime::parse(since, &Rfc3339))
+            .map(|since| OffsetDateTime::parse(since, &Rfc3339))
             .transpose()
             .map_err(|e| BackendError::Internal(format!("parsing a retry time: {e}")))?;
-        let rows: Vec<(String, Option<String>, String)> = rows
+        let mut rows: Vec<(Option<OffsetDateTime>, i64, TerminalRow)> = rows
             .into_iter()
-            .filter(|(_, _, ended)| {
-                since.is_none_or(|since| {
-                    time::OffsetDateTime::parse(ended, &Rfc3339).is_ok_and(|ended| ended > since)
-                })
+            .map(|(state, record_id, ended_at, retried_by, attempt, seq)| {
+                (
+                    OffsetDateTime::parse(&ended_at, &Rfc3339).ok(),
+                    seq,
+                    TerminalRow {
+                        state,
+                        record_id,
+                        ended_at,
+                        retried: retried_by.is_some(),
+                        attempt,
+                    },
+                )
+            })
+            .filter(|(ended, _, _)| {
+                since.is_none_or(|since| ended.is_some_and(|ended| ended > since))
             })
             .collect();
-        self.terminal_jobs(rows).await
+        rows.sort_by(|(a, a_seq, _), (b, b_seq, _)| b.cmp(a).then(b_seq.cmp(a_seq)));
+        self.terminal_jobs(rows.into_iter().map(|(_, _, row)| row).collect())
+            .await
     }
 
-    /// Read `(state, record id, ended at)` rows as [`TerminalJob`]s, looking up which
-    /// records are counted runs in one query.
-    async fn terminal_jobs(
-        &self,
-        rows: Vec<(String, Option<String>, String)>,
-    ) -> Result<Vec<TerminalJob>> {
+    /// When the newest launch of a cell was created, whoever launched it and whatever
+    /// became of it: the latest `created_at` among the cell's first attempts. An
+    /// automatic retry is left out, since it belongs to the launch it retries. `None`
+    /// when the cell was never launched.
+    ///
+    /// What tells a [`TerminalJob`] that still blocks its cell from one a later launch
+    /// replaced.
+    pub async fn latest_cell_launch(&self, cell: &CellKey) -> Result<Option<OffsetDateTime>> {
+        let created: Vec<String> = cell_job_query(cell)
+            .select_only()
+            .column(job::Column::CreatedAt)
+            .filter(job::Column::Attempt.eq(0))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(created
+            .iter()
+            .filter_map(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+            .max())
+    }
+
+    /// Read terminal job rows as [`TerminalJob`]s, looking up which records are counted
+    /// runs in one query.
+    async fn terminal_jobs(&self, rows: Vec<TerminalRow>) -> Result<Vec<TerminalJob>> {
         let record_ids: Vec<&str> = rows
             .iter()
-            .filter_map(|(_, record, _)| record.as_deref())
+            .filter_map(|row| row.record_id.as_deref())
             .collect();
         let counted: std::collections::HashSet<String> = if record_ids.is_empty() {
             std::collections::HashSet::new()
@@ -3950,10 +4010,12 @@ impl Db {
         };
         Ok(rows
             .into_iter()
-            .map(|(state, record, ended_at)| TerminalJob {
-                counted: record.is_some_and(|id| counted.contains(&id)),
-                state,
-                ended_at,
+            .map(|row| TerminalJob {
+                counted: row.record_id.is_some_and(|id| counted.contains(&id)),
+                state: row.state,
+                retried: row.retried,
+                attempt: row.attempt.max(0) as u32,
+                ended_at: row.ended_at,
             })
             .collect())
     }
@@ -3975,84 +4037,33 @@ fn cell_job_query(cell: &CellKey) -> sea_orm::Select<job::Entity> {
         .filter(Expr::expr(cell_gg_segment(job::Column::GgModels)).eq(gg_models.as_str()))
 }
 
-/// One terminal job of a coverage cell or rung slot, as read to tell one whose runs keep
-/// failing on infrastructure ([`Db::recent_terminal_jobs`], [`DispatchEvidence`]).
+/// One terminal job of a coverage cell or rung slot, as read to tell whether its launch
+/// used up its automatic retries without a result ([`Db::recent_terminal_jobs`],
+/// [`DispatchEvidence`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalJob {
     /// The job's terminal state: `succeeded`, `failed` or `canceled`.
     pub state: String,
     /// Whether the job's run is a counted run — the model's own result — as opposed to an
-    /// infrastructure-class failure or no run at all. A failed job with a counted run
-    /// failed on the model, which is a result rather than a fault of the cell.
+    /// infrastructure failure or no run at all. A failed job with a counted run failed on
+    /// the model, which is a result rather than a fault of the cell.
     pub counted: bool,
+    /// Whether the backend retried the job automatically (its `retried_by` is set): its
+    /// retry stands for it.
+    pub retried: bool,
+    /// Which attempt of its launch the job was, from `0` for the first.
+    pub attempt: u32,
     /// RFC 3339 of when the job ended (its `updated_at`).
     pub ended_at: String,
 }
 
 impl TerminalJob {
-    /// Whether this job failed on infrastructure: it ended without a counted run, and
-    /// was not canceled. That is a job that ended `failed` with no run (or an
-    /// `infrastructure` one), and also one that ended `succeeded` with a `harness_error`
-    /// run — a harness error is infrastructure-class, but its run is still delivered, so
-    /// its job succeeds. A canceled job breaks the streak.
-    pub fn failed_on_infrastructure(&self) -> bool {
-        self.state != "canceled" && !self.counted
-    }
-}
-
-/// One counted run of a rung slot — a completed run, or one that ended on the model's own
-/// failure — reduced to what a ladder's rung gate reads.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CellRunRating {
-    /// The run's id, so a ladder dashboard can link to the evidence a verdict was
-    /// decided from.
-    pub run_id: String,
-    /// Whether the run ended on one of the model's own failures — catastrophic, timed
-    /// out, limit exceeded or hung — rather than completing. Such a run
-    /// produced nothing to rate, and no rating can ever arrive for it, so the gate counts
-    /// it as [`Rating::Broken`] (see [`Self::as_rung_run`]).
-    pub model_failure: bool,
-    /// Whether the produced build loaded (the lifted `run.loaded`). A gate may count a
-    /// run that never loaded as broken outright — there was nothing to play.
-    pub loaded: bool,
-    /// Whether the run's case version was validator-rated when it was pushed (the
-    /// lifted `run.validator_rated`). Such a run with no [`Self::rating`] has not been
-    /// rated *yet* — the store did not hold its version when the rating was last
-    /// decided — rather than being unratable.
-    pub validator_rated: bool,
-    /// The validators' own functional rating for the run (the lifted
-    /// `run.validator_rating`), or `None` when the run carries none — a run pushed while
-    /// the backend did not hold its case version, or one whose stored token no longer
-    /// parses. `None` is not a bad rating: the gate counts it as unrated.
-    ///
-    /// Emphatically **not** the lifted `run.rating`, which folds in every reviewer's
-    /// checklist overrides, and never a review: reviews are labels added after the fact
-    /// and never move a climb.
-    pub rating: Option<Rating>,
-    /// RFC 3339 of when the run finished.
-    pub finished_at: String,
-}
-
-impl CellRunRating {
-    /// This run as [`gate`](crate::coverage::gate) sees it, so the two never drift
-    /// apart in how they name the same two facts.
-    ///
-    /// A [model failure](Self::model_failure) reaches the gate as a broken run whose
-    /// build never loaded, whatever the gate's `unloadedCountsAsBroken` says: that flag
-    /// decides how far a completed run's validator rating is trusted, and a run that
-    /// never completed has no rating to trust. The model had its attempt at the rung and
-    /// produced nothing that works, which is exactly what a broken run is.
-    pub fn as_rung_run(&self) -> RungRun {
-        if self.model_failure {
-            return RungRun {
-                rating: Some(Rating::Broken),
-                loaded: false,
-            };
-        }
-        RungRun {
-            rating: self.rating,
-            loaded: self.loaded,
-        }
+    /// Whether this job ended its launch with nothing to count: it was not canceled, it
+    /// has no counted run, and the backend did not retry it, so its automatic retries are
+    /// used up. A cell or rung slot holding one of these that no later launch replaced is
+    /// [blocked](https://docs.testcabinet.ai/components/backend/coverage/#a-blocked-cell).
+    pub fn exhausted_without_a_result(&self) -> bool {
+        self.state != "canceled" && !self.counted && !self.retried
     }
 }
 
@@ -4128,8 +4139,10 @@ pub type CellCounts = HashMap<CellKey, u32>;
 /// ([`Db::counted_runs_by_cell`]).
 pub type CellRuns = HashMap<CellKey, Vec<CellRun>>;
 
-/// One counted run of a coverage cell, reduced to what a plan reads to take its
-/// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs).
+/// One counted run of a coverage cell — a completed run, or one that ended on the model's
+/// own failure — reduced to what a plan reads to take its
+/// [cell's runs](https://docs.testcabinet.ai/components/backend/coverage/#a-cells-runs)
+/// and what a ladder's rung gate reads off each of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CellRun {
     /// The run's id.
@@ -4141,25 +4154,75 @@ pub struct CellRun {
     /// be opened, so it is never offered for review), and has no review by the account
     /// the runs were read for. Always `false` when they were read for no account.
     pub unreviewed: bool,
+    /// Whether the run ended on one of the model's own failures — catastrophic, timed
+    /// out, limit exceeded or hung — rather than completing. Such a run
+    /// produced nothing to rate, and no rating can ever arrive for it, so the gate counts
+    /// it as [`Rating::Broken`] (see [`Self::as_rung_run`]).
+    pub model_failure: bool,
+    /// Whether the produced build loaded (the lifted `run.loaded`). A gate may count a
+    /// run that never loaded as broken outright — there was nothing to play.
+    pub loaded: bool,
+    /// Whether the run's case version was validator-rated when it was pushed (the
+    /// lifted `run.validator_rated`). Such a run with no [`Self::rating`] has not been
+    /// rated *yet* — the store did not hold its version when the rating was last
+    /// decided — rather than being unratable.
+    pub validator_rated: bool,
+    /// The validators' own functional rating for the run (the lifted
+    /// `run.validator_rating`), or `None` when the run carries none — a run pushed while
+    /// the backend did not hold its case version, or one whose stored token no longer
+    /// parses. `None` is not a bad rating: the gate counts it as unrated.
+    ///
+    /// Emphatically **not** the lifted `run.rating`, which folds in every reviewer's
+    /// checklist overrides, and never a review: reviews are labels added after the fact
+    /// and never move a climb.
+    pub rating: Option<Rating>,
+}
+
+impl CellRun {
+    /// This run as [`gate`](crate::coverage::gate) sees it, so the two never drift
+    /// apart in how they name the same two facts.
+    ///
+    /// A [model failure](Self::model_failure) reaches the gate as a broken run whose
+    /// build never loaded, whatever the gate's `unloadedCountsAsBroken` says: that flag
+    /// decides how far a completed run's validator rating is trusted, and a run that
+    /// never completed has no rating to trust. The model had its attempt at the rung and
+    /// produced nothing that works, which is exactly what a broken run is.
+    pub fn as_rung_run(&self) -> RungRun {
+        if self.model_failure {
+            return RungRun {
+                rating: Some(Rating::Broken),
+                loaded: false,
+            };
+        }
+        RungRun {
+            rating: self.rating,
+            loaded: self.loaded,
+        }
+    }
 }
 
 /// One row of [`Db::counted_runs_by_cell`]: a [`CellKey`]'s eight segments (the engine one
 /// and the two gg ones still nullable, as the columns are), then the run's id, finish
-/// time, state, and test type.
-type CellRunRow = (
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    String,
-    String,
-    String,
-    String,
-);
+/// time, state and test type, and the three lifted columns a rung's gate reads. The
+/// fields are named after the columns they are read from.
+#[derive(Debug, FromQueryResult)]
+struct CellRunRow {
+    test_case_slug: String,
+    test_case_version: String,
+    variant: String,
+    engine_slug: Option<String>,
+    harness_slug: String,
+    model_id: String,
+    gg_config_id: Option<String>,
+    gg_models: Option<String>,
+    id: String,
+    finished_at: String,
+    run_state: String,
+    test_type: String,
+    loaded: bool,
+    validator_rated: bool,
+    validator_rating: Option<String>,
+}
 
 /// A [`CellKey`] as one stored string: its eight segments joined with the unit
 /// separator (`U+001F`), which no segment can contain. What
@@ -4209,6 +4272,11 @@ fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
     }
     counts
 }
+
+/// One terminal job as [`Db::recent_terminal_jobs`] selects it: its state, the id of the
+/// record it stored, when it ended, the job that retried it, its attempt, and its place
+/// in the queue.
+type TerminalTuple = (String, Option<String>, String, Option<String>, i32, i64);
 
 /// One row of a grouped coverage count: a [`CellKey`]'s eight segments (the engine one and
 /// the two gg ones still nullable, as the columns are) followed by the tally.
@@ -4322,6 +4390,7 @@ fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::Cover
             cases: serde_json::from_str(&row.cases_json)?,
             outer_axis: crate::api::CoverageAxis::parse(&row.outer_axis),
             in_flight_limit: row.in_flight_limit.map(in_flight_limit_from_column),
+            retry_count: row.retry_count.max(0) as u32,
             updated_at: row.updated_at,
         },
         filling: row.fill_id.is_some(),
@@ -4511,6 +4580,8 @@ pub struct StoredLadder {
     /// This ladder's override of the account's runs-in-flight limit, or `None` to
     /// inherit [`Db::coverage_in_flight_limit`].
     pub in_flight_limit: Option<InFlightLimit>,
+    /// How many automatic retries each run a dispatch of this ladder launches gets.
+    pub retry_count: u32,
     /// RFC 3339 of when the ladder was last saved.
     pub updated_at: String,
 }
@@ -4641,24 +4712,38 @@ pub struct StoredDispatchOutcome {
 /// A rung slot of a dispatch: the rung's id and the climber's [`CellKey`] on that rung.
 pub type SlotKey = (String, CellKey);
 
-/// One terminal job as read for a failing streak: its state, its record id, and when it
-/// ended.
-type TerminalRow = (String, Option<String>, String);
+/// One terminal job as read off the job table, before its record is looked up
+/// ([`TerminalJob`]).
+struct TerminalRow {
+    /// The job's terminal state.
+    state: String,
+    /// The id of the record it stored, if any.
+    record_id: Option<String>,
+    /// RFC 3339 of when it ended.
+    ended_at: String,
+    /// Whether the backend retried it automatically.
+    retried: bool,
+    /// Which attempt of its launch it was, from `0`.
+    attempt: i32,
+}
 
-/// Everything a dispatch's jobs say about its rung slots, read in one pass over the jobs
-/// whose origin names the dispatch ([`Db::dispatch_evidence`]).
+/// Everything the jobs a dispatch launched say about its rung slots, read in one pass
+/// over the jobs whose origin names the dispatch ([`Db::dispatch_evidence`]): what its
+/// limit, its Stop, its early stop and its failing block act on. A slot's runs are no
+/// part of it. They are its cell's, whoever launched them
+/// ([`Db::counted_runs_by_cell`]).
 #[derive(Debug, Clone, Default)]
 pub struct DispatchEvidence {
     /// The ids of each slot's jobs still in flight, in queue order.
     pub in_flight: HashMap<SlotKey, Vec<String>>,
     /// How many of each slot's jobs are still waiting (`queued` or `pending`).
     pub waiting: HashMap<SlotKey, u32>,
-    /// Each slot's counted runs, oldest first: the run of every finished job of the slot
-    /// that was not automatically retried and ended in a
-    /// [counted](test_cabinet_core::run_record::RunState::counts_as_model_result) state.
-    pub runs: HashMap<SlotKey, Vec<CellRunRating>>,
-    /// Each slot's terminal jobs, newest first, for the failing streak.
+    /// Each slot's terminal jobs, newest first, for the failing block.
     pub terminal: HashMap<SlotKey, Vec<TerminalJob>>,
+    /// When each slot's newest launch was created: the latest `created_at` among its
+    /// first attempts, in flight or ended. A terminal job that ended before it has been
+    /// replaced.
+    pub launched: HashMap<SlotKey, OffsetDateTime>,
 }
 
 /// Ladders: the ordered, gated sibling of a coverage plan, and their dispatches.
@@ -4755,6 +4840,7 @@ impl Db {
             early_stop: Set(stored.gate.early_stop),
             count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
             in_flight_limit: Set(stored.in_flight_limit.map(in_flight_limit_to_column)),
+            retry_count: Set(stored.retry_count as i32),
             // A fresh ladder is nobody's claim; only a launch pass ever sets this.
             launch_claimed_at: Set(None),
             launch_requested: Set(false),
@@ -4809,6 +4895,10 @@ impl Db {
             .col_expr(
                 ladder::Column::InFlightLimit,
                 Expr::value(stored.in_flight_limit.map(in_flight_limit_to_column)),
+            )
+            .col_expr(
+                ladder::Column::RetryCount,
+                Expr::value(stored.retry_count as i32),
             )
             .col_expr(
                 ladder::Column::ComboGroupIdsJson,
@@ -5100,7 +5190,7 @@ impl Db {
     }
 
     /// Record that the owner retried one climber of a dispatch at `now`. Only jobs that
-    /// ended after it count toward its failing streak from here on. Answers whether the
+    /// ended after it are read for its failing block from here on. Answers whether the
     /// climber is one of the dispatch's.
     pub async fn record_dispatch_climber_retry(
         &self,
@@ -5172,8 +5262,9 @@ impl Db {
 
     /// Read everything a dispatch's own jobs say about its rung slots, in two queries:
     /// every job whose origin names the dispatch (`ladder:<ladder>/<dispatch>/<rung>`),
-    /// and the runs of the finished ones. Grouped by `(rung id, cell)`, where the cell is
-    /// read off the job's lifted columns exactly as the grouped counts read it.
+    /// and which of the terminal ones ended with a counted run. Grouped by
+    /// `(rung id, cell)`, where the cell is read off the job's lifted columns exactly as
+    /// the grouped counts read it.
     pub async fn dispatch_evidence(
         &self,
         ladder_id: &str,
@@ -5186,8 +5277,6 @@ impl Db {
             .all(&self.conn())
             .await?;
         let mut evidence = DispatchEvidence::default();
-        // (slot, record id, ended at) of the finished jobs whose run may count.
-        let mut finished: Vec<(SlotKey, String)> = Vec::new();
         let mut terminal_rows: Vec<(SlotKey, TerminalRow, i64)> = Vec::new();
         for job in jobs {
             let Some(JobOrigin::Ladder {
@@ -5210,6 +5299,12 @@ impl Db {
                     job.gg_models.clone().unwrap_or_default(),
                 ),
             );
+            if job.attempt == 0
+                && let Ok(created) = OffsetDateTime::parse(&job.created_at, &Rfc3339)
+            {
+                let latest = evidence.launched.entry(slot.clone()).or_insert(created);
+                *latest = (*latest).max(created);
+            }
             if IN_FLIGHT_STATES.contains(&job.state.as_str()) {
                 if CANCELABLE_WAITING_STATES.contains(&job.state.as_str()) {
                     *evidence.waiting.entry(slot.clone()).or_insert(0) += 1;
@@ -5220,26 +5315,23 @@ impl Db {
             let reaped = job.detail.as_deref() == Some(REAPED_DETAIL);
             if !reaped {
                 terminal_rows.push((
-                    slot.clone(),
-                    (
-                        job.state.clone(),
-                        job.record_id.clone(),
-                        job.updated_at.clone(),
-                    ),
+                    slot,
+                    TerminalRow {
+                        state: job.state,
+                        record_id: job.record_id,
+                        ended_at: job.updated_at,
+                        retried: job.retried_by.is_some(),
+                        attempt: job.attempt,
+                    },
                     job.queue_seq,
                 ));
-            }
-            if job.retried_by.is_none()
-                && let Some(record) = job.record_id
-            {
-                finished.push((slot, record));
             }
         }
 
         // The terminal jobs, newest first per slot, read as `TerminalJob`s in one go.
-        terminal_rows.sort_by(|(_, (_, _, a_ended), a_seq), (_, (_, _, b_ended), b_seq)| {
-            let a = OffsetDateTime::parse(a_ended, &Rfc3339).ok();
-            let b = OffsetDateTime::parse(b_ended, &Rfc3339).ok();
+        terminal_rows.sort_by(|(_, a_row, a_seq), (_, b_row, b_seq)| {
+            let a = OffsetDateTime::parse(&a_row.ended_at, &Rfc3339).ok();
+            let b = OffsetDateTime::parse(&b_row.ended_at, &Rfc3339).ok();
             b.cmp(&a).then(b_seq.cmp(a_seq))
         });
         let slots: Vec<SlotKey> = terminal_rows
@@ -5251,49 +5343,6 @@ impl Db {
             .await?;
         for (slot, job) in slots.into_iter().zip(read) {
             evidence.terminal.entry(slot).or_default().push(job);
-        }
-
-        if finished.is_empty() {
-            return Ok(evidence);
-        }
-        let ids: Vec<&str> = finished.iter().map(|(_, id)| id.as_str()).collect();
-        let rows: Vec<(String, String, bool, bool, Option<String>, String)> = run::Entity::find()
-            .select_only()
-            .column(run::Column::Id)
-            .column(run::Column::RunState)
-            .column(run::Column::Loaded)
-            .column(run::Column::ValidatorRated)
-            .column(run::Column::ValidatorRating)
-            .column(run::Column::FinishedAt)
-            .filter(run::Column::Id.is_in(ids))
-            .filter(run::Column::RunState.is_in(counted_run_states()))
-            .order_by_asc(run::Column::FinishedAt)
-            .order_by_asc(run::Column::Id)
-            .into_tuple()
-            .all(&self.conn())
-            .await?;
-        let slot_of: HashMap<String, SlotKey> = finished
-            .into_iter()
-            .map(|(slot, record)| (record, slot))
-            .collect();
-        for (run_id, run_state, loaded, validator_rated, rating, finished_at) in rows {
-            let Some(slot) = slot_of.get(&run_id) else {
-                continue;
-            };
-            evidence
-                .runs
-                .entry(slot.clone())
-                .or_default()
-                .push(CellRunRating {
-                    model_failure: run_state != "completed",
-                    loaded,
-                    validator_rated,
-                    // A token that no longer parses reads as "no rating", which the gate
-                    // treats as unrated rather than as a bad result.
-                    rating: rating.as_deref().and_then(Rating::parse),
-                    finished_at,
-                    run_id,
-                });
         }
         Ok(evidence)
     }
@@ -5477,6 +5526,7 @@ fn stored_ladder(row: ladder::Model, rungs: Vec<StoredLadderRung>) -> Result<Sto
         rungs,
         outer_axis: row.outer_axis,
         in_flight_limit: row.in_flight_limit.map(in_flight_limit_from_column),
+        retry_count: row.retry_count.max(0) as u32,
         updated_at: row.updated_at,
     })
 }
@@ -6051,9 +6101,9 @@ fn publishable_failure_states() -> Vec<&'static str> {
 }
 
 /// The wire strings of the **counted** run states — the model's own results: completed,
-/// catastrophic, timed out, limit exceeded and hung. Never the infrastructure-class
-/// failures (`infrastructure`, `harness_error`) or an operator's cancel. What a coverage
-/// cell and a rung slot count toward their targets and a rung's gate reads as evidence.
+/// catastrophic, timed out, harness error, limit exceeded and hung. Never an
+/// `infrastructure` failure or an operator's cancel. What a coverage cell and a rung slot
+/// count toward their targets and a rung's gate reads as evidence.
 ///
 /// Derived from
 /// [`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)
@@ -6062,6 +6112,18 @@ pub(crate) fn counted_run_states() -> Vec<&'static str> {
     test_cabinet_core::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.counts_as_model_result())
+        .map(run_state_str)
+        .collect()
+}
+
+/// The wire strings of the run states a comparison arm counts toward its `N`: the
+/// [counted](counted_run_states) states less `harness_error`, for which an arm launches a
+/// replacement (docs/comparisons/experiments.md, "Which runs an arm holds").
+fn arm_counted_run_states() -> Vec<&'static str> {
+    use test_cabinet_core::run_record::RunState;
+    RunState::ALL
+        .into_iter()
+        .filter(|state| state.counts_as_model_result() && *state != RunState::HarnessError)
         .map(run_state_str)
         .collect()
 }
@@ -7084,6 +7146,107 @@ impl Db {
         Ok(())
     }
 
+    /// Enqueue a publish job for `run_id` unless its release is already under way:
+    /// the one enqueue path every publish goes through, a person's and an automatic
+    /// one alike. Answers with the job [`Self::active_publish_job_for_run`] finds
+    /// when there is one, and otherwise inserts a new job and answers with that.
+    ///
+    /// It is safe to call concurrently. Two callers that both find no live job both
+    /// insert, the partial unique index on a queued `run_id` refuses the second, and
+    /// the loser then finds the winner's job and attaches to it, so the run ends
+    /// with one job. An insert that fails with no live job to attach to is a real
+    /// error and is returned.
+    ///
+    /// The caller applies its own gate first; this checks only for a live job.
+    /// `now` is the RFC 3339 enqueue instant, also what staleness is measured
+    /// against.
+    pub async fn enqueue_publish_job_once(
+        &self,
+        run_id: &str,
+        now: &str,
+    ) -> Result<PublishEnqueue> {
+        if let Some(existing) = self.active_publish_job_for_run(run_id, now).await? {
+            return Ok(PublishEnqueue::Attached(existing.id));
+        }
+        let id = cuid2::create_id();
+        let inserted = self
+            .enqueue_publish_job(NewPublishJob {
+                id: id.clone(),
+                run_id: run_id.to_string(),
+                job_token: cuid2::create_id(),
+                created_at: now.to_string(),
+            })
+            .await;
+        match inserted {
+            Ok(()) => Ok(PublishEnqueue::Enqueued(id)),
+            Err(error) => match self.active_publish_job_for_run(run_id, now).await? {
+                Some(existing) => Ok(PublishEnqueue::Attached(existing.id)),
+                None => Err(error),
+            },
+        }
+    }
+
+    /// Whether `run_id` is already published. A missing run is not.
+    pub async fn is_run_published(&self, run_id: &str) -> Result<bool> {
+        let published: Option<bool> = run::Entity::find_by_id(run_id.to_string())
+            .select_only()
+            .column(run::Column::Published)
+            .into_tuple()
+            .one(&self.conn())
+            .await?;
+        Ok(published.unwrap_or(false))
+    }
+
+    /// The runs among `run_ids` that publish themselves now, in the order given.
+    ///
+    /// A run qualifies when `auto_publishes` holds for it, it is unpublished, it
+    /// is the attempt that stands rather than one a retry replaced, and **no
+    /// publish job has ever been enqueued for it**, in any state. The last clause
+    /// is what bounds automatic publishing to one attempt per run: a release that
+    /// is queued or running is left alone, and one that failed is left for a
+    /// person to retry, so a caller that asks on every pass never loops on a run
+    /// whose publish keeps failing.
+    pub async fn auto_publishable_among(&self, run_ids: &[String]) -> Result<Vec<String>> {
+        if run_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows: Vec<(String, String, bool)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::RunState)
+            .column(run::Column::ValidatorRated)
+            .filter(run::Column::Id.is_in(run_ids.iter().cloned()))
+            .filter(run::Column::Published.eq(false))
+            .filter(not_a_retried_attempt())
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut candidates: std::collections::HashSet<String> = rows
+            .into_iter()
+            .filter(|(_, run_state, validator_rated)| auto_publishes(run_state, *validator_rated))
+            .map(|(id, _, _)| id)
+            .collect();
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        let attempted: Vec<String> = publish_job::Entity::find()
+            .select_only()
+            .column(publish_job::Column::RunId)
+            .filter(publish_job::Column::RunId.is_in(candidates.iter().cloned()))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        for run_id in attempted {
+            candidates.remove(&run_id);
+        }
+        let mut seen = std::collections::HashSet::new();
+        Ok(run_ids
+            .iter()
+            .filter(|id| candidates.contains(*id) && seen.insert(id.as_str()))
+            .cloned()
+            .collect())
+    }
+
     /// Atomically claim the oldest `queued` publish job, flipping it to
     /// `dispatched`, and return it (or `None` when the queue is empty). The
     /// select-then-update runs in one transaction, exactly like
@@ -7282,22 +7445,22 @@ pub struct ModelConfigWrite {
     /// The providers accepted despite declaring `unknown` quantization. Empty is stored as
     /// `NULL`.
     pub unknown_quantization_providers: Vec<String>,
-    /// The developer's published list price per **token** of input, in USD (the
+    /// The list price per **token** of input, in USD (the
     /// form enters per Mtok; the store carries per token). The write is
     /// **all-or-nothing**: a caller writes all three prices plus
     /// `list_price_as_of`, or nothing — the store enforces nothing but the API
     /// layer does.
     pub list_price_input: Option<f64>,
-    /// The developer's published list price per **token** of cached input, in
-    /// USD. See [`list_price_input`](Self::list_price_input).
+    /// The list price per **token** of cached input, in USD. See
+    /// [`list_price_input`](Self::list_price_input).
     pub list_price_cached_input: Option<f64>,
-    /// The developer's published list price per **token** of output, in USD.
-    /// See [`list_price_input`](Self::list_price_input).
+    /// The list price per **token** of output, in USD. See
+    /// [`list_price_input`](Self::list_price_input).
     pub list_price_output: Option<f64>,
     /// The date the list-price figures were taken.
     pub list_price_as_of: Option<String>,
     /// Where the list-price figures came from: `hand` for an operator-entered
-    /// set, `openrouter` for one the enqueue-time fill wrote (see
+    /// set, `openrouter` for one read from OpenRouter (see
     /// [`Db::set_list_price`]).
     pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
@@ -7350,21 +7513,22 @@ pub struct ListPriceWrite {
     pub output: f64,
     /// The date the rates were taken, `YYYY-MM-DD`.
     pub as_of: String,
-    /// Where the rates came from (`openrouter` for the enqueue-time fill).
+    /// Where the rates came from (`openrouter` for a set read from OpenRouter).
     pub source: String,
     /// RFC 3339 timestamp for the updated stamp.
     pub now: String,
 }
 
-/// One price observation to append to a model's history.
-#[derive(Debug, Clone)]
+/// One observation of a model's catalog facts to append to its history.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriceWrite {
+    /// The canonical model id the facts were observed for.
     pub model_id: String,
+    /// RFC 3339 of the observation.
     pub observed_at: String,
-    pub uncached_input: Option<f64>,
-    pub cached_input: Option<f64>,
-    pub output: Option<f64>,
+    /// The context window in tokens, or `None` when OpenRouter reported none.
     pub context_length: Option<i64>,
+    /// The model's release date (RFC 3339), or `None`.
     pub released_at: Option<String>,
     /// The accepted input modalities as a comma-separated lowercase list, or
     /// `None` when OpenRouter reported none (unknown, not "text only").
@@ -7405,7 +7569,7 @@ fn alias_entry(row: model_alias::Model) -> AliasEntry {
     }
 }
 
-/// The model catalog store: curated config, its aliases, and observed prices.
+/// The model catalog store: curated config, its aliases, and observed catalog facts.
 impl Db {
     /// Every curated model config with its aliases, ordered by slug.
     pub async fn list_model_configs(&self) -> Result<Vec<StoredModel>> {
@@ -7552,7 +7716,7 @@ impl Db {
     }
 
     /// Delete a curated model config (its aliases cascade). Returns whether a row
-    /// was removed. The model's runs and price history are untouched, so it may
+    /// was removed. The model's runs and observed facts are untouched, so it may
     /// reappear as a derived (uncurated) catalog entry.
     pub async fn delete_model_config(&self, slug: &str) -> Result<bool> {
         let deleted = model::Entity::delete_by_id(slug).exec(&self.conn()).await?;
@@ -7586,7 +7750,7 @@ impl Db {
             .await?)
     }
 
-    /// The most recent price observation for a canonical model id, or `None`.
+    /// The most recent observation of a canonical model id's catalog facts, or `None`.
     pub async fn latest_price(&self, model_id: &str) -> Result<Option<model_price::Model>> {
         Ok(model_price::Entity::find()
             .filter(model_price::Column::ModelId.eq(model_id))
@@ -7596,15 +7760,12 @@ impl Db {
             .await?)
     }
 
-    /// Append a price observation to a model's history.
+    /// Append an observation of a model's catalog facts to its history.
     pub async fn insert_price_observation(&self, write: PriceWrite) -> Result<()> {
         model_price::Entity::insert(model_price::ActiveModel {
             id: NotSet,
             model_id: Set(write.model_id),
             observed_at: Set(write.observed_at),
-            uncached_input: Set(write.uncached_input),
-            cached_input: Set(write.cached_input),
-            output: Set(write.output),
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
             input_modalities: Set(write.input_modalities),
@@ -7615,8 +7776,8 @@ impl Db {
         Ok(())
     }
 
-    /// Every price observation, ascending by `(model_id, observed_at)`. The
-    /// catalog groups these into per-model histories.
+    /// Every observation of a model's catalog facts, ascending by
+    /// `(model_id, observed_at)`. The catalog reads each model's newest.
     pub async fn all_model_prices(&self) -> Result<Vec<model_price::Model>> {
         Ok(model_price::Entity::find()
             .order_by_asc(model_price::Column::ModelId)
@@ -7670,8 +7831,9 @@ impl Db {
     }
 
     /// Write a complete list price onto a curated model's catalog entry, replacing
-    /// whatever it held, and stamp the entry updated. The enqueue-time fill from
-    /// OpenRouter writes through here; an operator's own edits go through
+    /// whatever it held, and stamp the entry updated. A list price read from
+    /// OpenRouter is written through here, by the enqueue-time fill and by the
+    /// refresh of every entry; an operator's own edits go through
     /// [`Self::upsert_model_config`]. A slug no curated model has is an error.
     pub async fn set_list_price(&self, write: ListPriceWrite) -> Result<()> {
         model::ActiveModel {
@@ -7761,7 +7923,7 @@ impl Db {
 
     /// Whether any stored run is a candidate for `:free` normalization — an
     /// OpenRouter-accessed harness whose model id carries a trailing `:tag`. Used
-    /// to skip the OpenRouter price fetch entirely at startup when there is nothing
+    /// to skip the catalog read entirely at startup when there is nothing
     /// to re-price (the common case), so a boot with no such runs costs no network.
     pub async fn has_free_tag_candidates(&self) -> Result<bool> {
         let rows: Vec<(String, String)> = run::Entity::find()
@@ -8014,7 +8176,7 @@ impl Db {
     /// fail toward including a row, never toward skipping one that needed the lift. A
     /// spurious match — the string occurring somewhere else in the record — parses, finds
     /// nothing to lift and stays `NULL`: a harmless no-write residue. The same pushdown
-    /// [`Self::has_free_tag_candidates`] uses to keep a boot's price fetch off the wire.
+    /// [`Self::has_free_tag_candidates`] uses to keep a boot's catalog read off the wire.
     ///
     /// Best-effort per row: a record that no longer deserializes is left for a later
     /// boot. Returns how many rows were filled.

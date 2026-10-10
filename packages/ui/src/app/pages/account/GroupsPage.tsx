@@ -169,14 +169,18 @@ export function GroupsPage() {
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>No combination groups yet.</p>
           ) : (
-            <div className={styles.list}>{comboGroups.map(renderGroup)}</div>
+            <div className={[styles.list, styles.rowList].join(" ")}>
+              {comboGroups.map(renderGroup)}
+            </div>
           )}
 
           <p className={exec.sectionLabel}>Case groups</p>
           {caseGroups.length === 0 ? (
             <p className={styles.empty}>No case groups yet.</p>
           ) : (
-            <div className={styles.list}>{caseGroups.map(renderGroup)}</div>
+            <div className={[styles.list, styles.rowList].join(" ")}>
+              {caseGroups.map(renderGroup)}
+            </div>
           )}
         </>
       )}

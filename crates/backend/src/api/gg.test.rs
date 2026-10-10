@@ -301,14 +301,11 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
 // The per-model context windows pushed onto a gg launch
 // ---------------------------------------------------------------------------
 
-/// A price observation carrying `context_length` for `model_id`.
+/// An observation carrying `context_length` for `model_id`.
 fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWrite {
     crate::db::PriceWrite {
         model_id: model_id.to_string(),
         observed_at: "2026-01-01T00:00:00Z".to_string(),
-        uncached_input: Some(1.0),
-        cached_input: None,
-        output: Some(2.0),
         context_length: Some(context_length),
         released_at: None,
         input_modalities: None,
@@ -442,7 +439,7 @@ async fn curate_unpriced(db: &Db, model_id: &str) {
 }
 
 /// A bound model whose catalog entry carries no list price has one filled from its
-/// official endpoint at enqueue: the launch carries the filled price in
+/// developer's standard endpoint at enqueue: the launch carries the filled price in
 /// `gg_model_prices`, the entry keeps it, and the fill is reported once.
 #[tokio::test]
 async fn launch_fills_a_bound_models_missing_list_price() {

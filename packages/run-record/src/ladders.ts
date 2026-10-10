@@ -193,6 +193,12 @@ export type Ladder = {
    */
   inFlightLimit: InFlightLimit | null;
   /**
+   * How many automatic retries each run a dispatch launches gets, `0..=10`. A launch
+   * that uses them up without a counted run blocks its climber. A dispatch takes it
+   * when it starts and keeps it.
+   */
+  retryCount: number;
+  /**
    * RFC 3339 of when the ladder was last saved.
    */
   updatedAt: string;
@@ -236,13 +242,22 @@ export type LadderInput = {
    * This ladder's override of the account's runs-in-flight limit, or null to inherit.
    */
   inFlightLimit?: InFlightLimit;
+  /**
+   * How many automatic retries each run a dispatch launches gets, or null for the
+   * default of one. Clamped to the most the backend honours for any launch.
+   */
+  retryCount?: number;
 };
 
 /**
  * Where a ladder's latest dispatch stands. A ladder never run has no dispatch, which
  * the console reads as "Not run yet".
  */
-export type DispatchStatus = "running" | "finished" | "stopped";
+export type DispatchStatus =
+  | "running"
+  | "needsAttention"
+  | "finished"
+  | "stopped";
 
 /**
  * Where one **rung slot** — one climber on one rung of a dispatch — stands.
@@ -278,7 +293,7 @@ export type ClimberBlock =
   | {
       kind: "failing";
       /**
-       * How many failed jobs in a row marked it failing.
+       * How many attempts that launch made: the first, and each automatic retry.
        */
       attempts: number;
     }
@@ -335,13 +350,15 @@ export type DispatchRuns = {
   total: number;
   /**
    * The runs that need no more executing, summed per slot: a passed, failed or
-   * skipped slot's whole target less its runs still in flight, a running or blocked
-   * slot's counted runs up to its target, and nothing of a pending one. Equal to
+   * skipped slot's whole target less the runs the dispatch still has in flight for
+   * it, a running or blocked slot's runs, and nothing of a pending one. A run that
+   * existed before the dispatch started is done from its first pass. Equal to
    * `total` once nothing is left to execute.
    */
   done: number;
   /**
-   * The dispatch's jobs still in flight (`queued` through `running`).
+   * The jobs the dispatch launched that are still in flight (`queued` through
+   * `running`).
    */
   inFlight: number;
 };
@@ -378,6 +395,11 @@ export type LadderDispatch = {
    * The runs-in-flight limit resolved at Run.
    */
   inFlightLimit: InFlightLimit;
+  /**
+   * The retry limit, as it stood at Run: how many automatic retries each run the
+   * dispatch launches gets.
+   */
+  retryCount: number;
   /**
    * The rung-slot counts.
    */
@@ -470,11 +492,15 @@ export type LadderSlot = {
    */
   decidedAt?: string;
   /**
-   * The dispatch's counted runs of this slot, oldest first.
+   * The slot's runs, oldest first: the first runs of its cell to finish, up to the
+   * rung's target, whoever launched them. Empty on a slot the climber has not
+   * reached.
    */
   runIds: Array<string>;
   /**
-   * The dispatch's jobs of this slot still in flight, in queue order.
+   * The jobs the dispatch launched for this slot that are still in flight, in queue
+   * order. The tally's `inFlight` also counts a job of the cell someone else
+   * launched, so it can exceed these.
    */
   jobIds: Array<string>;
 };
@@ -620,8 +646,8 @@ export type LadderProgress = {
    */
   climbers: Array<LadderClimber>;
   /**
-   * The dispatch's completed runs the requester has not reviewed — exactly what
-   * `GET /ladders/{id}/queue` offers. Information only.
+   * The completed runs among the dispatch's slots' runs that the requester has not
+   * reviewed — exactly what `GET /ladders/{id}/queue` offers. Information only.
    */
   runsUnreviewed: number;
 };

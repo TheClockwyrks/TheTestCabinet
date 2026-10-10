@@ -240,7 +240,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
 
     // Compose the model catalog for the public site: curated configs merged with
     // the models the **published** runs reference (the public derived set), and
-    // the observed price history. The same composition the `GET /models` read
+    // the observed catalog facts. The same composition the `GET /models` read
     // uses, so the console and the site show one catalog.
     let configs = inner.db.list_model_configs().await?;
     let prices = inner.db.all_model_prices().await?;

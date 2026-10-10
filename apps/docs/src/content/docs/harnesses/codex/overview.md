@@ -49,5 +49,5 @@ container as `CODEX_API_KEY`, which is the variable `codex exec` reads. See
 ## Pricing
 
 Codex reports no cost figure of its own, so the comparable cost is computed
-from the model's curated list price. Codex's bare OpenAI model IDs resolve to
+from the model's list price. Codex's bare OpenAI model IDs resolve to
 the catalog entry that lists them as a Codex alias. See [Metrics](/harnesses/codex/metrics/).

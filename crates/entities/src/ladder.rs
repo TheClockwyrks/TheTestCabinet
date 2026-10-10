@@ -81,6 +81,10 @@ pub struct Model {
     /// "no bound — launch everything". A dispatch resolves it once, at Run.
     #[sea_orm(nullable)]
     pub in_flight_limit: Option<i32>,
+    /// How many automatic retries each run a dispatch launches gets: the `retryCount` its
+    /// launch passes put on every launch request. `1` unless the owner chose otherwise. A
+    /// dispatch snapshots it at Run.
+    pub retry_count: i32,
     /// RFC 3339 of when a launch pass claimed this ladder, or `NULL` when none is running.
     /// A timestamp rather than a flag so a pass that dies midway expires out of the claim
     /// instead of wedging the ladder.
