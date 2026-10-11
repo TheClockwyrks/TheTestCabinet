@@ -152,11 +152,12 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
   // The engine widener is offered only when the anchored version supports more
   // than one engine — with one engine there is nothing to widen into, and the
   // hook then reads the anchored scope regardless of a stale `?engines=all`.
-  const multiEngine = (testCase.enginesByVersion[version] ?? []).length > 1;
+  const supportedEngines = testCase.enginesByVersion[version];
+  const multiEngine = (supportedEngines ?? []).length > 1;
   const anchoredScope = useAnchoredScope({
     version,
     versions: testCase.versions,
-    engineWidenable: multiEngine,
+    engines: supportedEngines,
   });
   const { versionScope, engineScope } = anchoredScope;
   const engineWidened = engineScope === "all";
@@ -400,10 +401,7 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
 
   return (
     <section className={styles.section}>
-      <AnchoredScopeControls
-        state={anchoredScope}
-        engine={multiEngine ? { name: engineName(engine) } : undefined}
-      />
+      <AnchoredScopeControls state={anchoredScope} engine={engine} />
 
       {/* The case's runs drain over several requests, so a count taken mid-drain
           is meaningless — it would report "not enough runs" about a set that is

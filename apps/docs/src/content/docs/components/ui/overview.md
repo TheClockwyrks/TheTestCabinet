@@ -80,9 +80,18 @@ page names the latest version and links to it, and the link re-anchors the page
 to that version.
 
 The page's run aggregations scope relative to the anchored coordinate rather
-than selecting one of their own, and that scope lives in the URL alongside it. A
-view widened across engines lists each engine separately rather than folding
-them, since runs under different engines measure different work.
+than selecting one of their own, and that scope lives in the URL alongside it.
+Where the anchored version supports more than one engine, the engine scope
+offers each of those engines by name and then every engine at once. Choosing a
+named engine anchors the whole page to it, exactly as the page's own engine
+selector does. A view widened across engines lists each engine separately
+rather than folding them, since runs under different engines measure different
+work.
+
+The leaderboard ranks each model and harness pair by the average points its runs
+earned, and its metric columns are chosen from a column picker. As on the run
+log, the functional rating and the aesthetic tier are separate columns, and the
+aesthetic columns are hidden until a viewer enables them.
 
 A case's changelog and errata cover every version regardless of the anchor.
 

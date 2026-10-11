@@ -75,8 +75,8 @@ interface Entry {
   bestRating: Rating | null;
   /** Worst overall functional rating across the model's runs (null when unrated). */
   worstRating: Rating | null;
-  /** Best overall aesthetic rating across the model's runs, shown beside the
-   * functional badge; null when no run of the pair carries one (every legacy
+  /** Best overall aesthetic rating across the model's runs, shown in its own
+   * opt-in column; null when no run of the pair carries one (every legacy
    * run, and a validator-rated run nobody has reviewed). */
   bestAesthetic: AestheticRating | null;
   /** Worst overall aesthetic rating across the model's runs; null as above. */
@@ -98,7 +98,7 @@ interface Entry {
 }
 
 // A metric column of the board. The rank (#) and model columns are fixed and
-// rendered outside this set; these eight are toggleable via the picker, four of
+// rendered outside this set; these ten are toggleable via the picker, four of
 // them visible by default. Each carries its own grid track width so the template
 // can be built from the visible subset.
 interface LeaderboardColumn {
@@ -129,25 +129,28 @@ function scoreCell(value: number, total: number): ReactNode {
 // The board's rating cell adapts to the case: a game jam carries a whole-game
 // overall grade in place of a domain rating, so its badge is the grade; every
 // other case shows its functional rating. An entry never carries both. The
-// aesthetic badge sits beside the functional one wherever a run's rating shows,
-// so a Legendary / Amazing pair is visible on the board; it is omitted when no
-// run of the pair carries an aesthetic rating (a legacy case never does).
+// aesthetic tier is a column of its own (see `aestheticCell`), as on the run
+// log, so a row is one badge tall whichever columns are shown.
 function ratingCell(
   rating: Rating | null,
   grade: GradeStatus | null,
-  aesthetic: AestheticRating | null,
 ): ReactNode {
-  return (
-    <span className={styles.badges}>
-      {grade ? (
-        <GradeBadge status={grade} />
-      ) : rating ? (
-        <RatingBadge rating={rating} />
-      ) : (
-        <span className={styles.none}>—</span>
-      )}
-      {aesthetic && <AestheticBadge rating={aesthetic} />}
-    </span>
+  return grade ? (
+    <GradeBadge status={grade} />
+  ) : rating ? (
+    <RatingBadge rating={rating} />
+  ) : (
+    <span className={styles.none}>—</span>
+  );
+}
+
+// The aesthetic tier, a dash when no run of the pair carries one (a legacy case
+// never does, and nor does a validator-rated run nobody has reviewed).
+function aestheticCell(aesthetic: AestheticRating | null): ReactNode {
+  return aesthetic ? (
+    <AestheticBadge rating={aesthetic} />
+  ) : (
+    <span className={styles.none}>—</span>
   );
 }
 
@@ -181,8 +184,9 @@ function sessionCell(seconds: number | null): ReactNode {
 }
 
 // The toggleable metric columns, in display order. Average Score, Best Rating,
-// Average Cost, and Average Session start visible; the others are available from
-// the column picker. Module-level so the array identity is stable across renders
+// Average Cost, and Average Session start visible; the others — the two
+// aesthetic columns among them, as on the run log — are available from the
+// column picker. Module-level so the array identity is stable across renders
 // (the visibility hook and picker memoize on it).
 const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
   {
@@ -219,7 +223,7 @@ const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
     defaultVisible: true,
     width: "7rem",
     numeric: false,
-    render: (e) => ratingCell(e.bestRating, e.bestGrade, e.bestAesthetic),
+    render: (e) => ratingCell(e.bestRating, e.bestGrade),
   },
   {
     id: "worstRating",
@@ -228,7 +232,25 @@ const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
     defaultVisible: false,
     width: "7rem",
     numeric: false,
-    render: (e) => ratingCell(e.worstRating, e.worstGrade, e.worstAesthetic),
+    render: (e) => ratingCell(e.worstRating, e.worstGrade),
+  },
+  {
+    id: "bestAesthetic",
+    label: "Best Aesthetic",
+    optional: true,
+    defaultVisible: false,
+    width: "7.5rem",
+    numeric: false,
+    render: (e) => aestheticCell(e.bestAesthetic),
+  },
+  {
+    id: "worstAesthetic",
+    label: "Worst Aesthetic",
+    optional: true,
+    defaultVisible: false,
+    width: "7.5rem",
+    numeric: false,
+    render: (e) => aestheticCell(e.worstAesthetic),
   },
   {
     id: "averageCost",
@@ -308,14 +330,16 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
   // revised case would rank models against each other that were never set the
   // same task; the anchored `major.minor` default keeps the board to the spec
   // in play, and widening it is the visitor's call.
-  // The engine widener is offered only when the anchored version supports more
-  // than one engine — with one engine there is nothing to widen into, and the
-  // hook then reads the anchored scope regardless of a stale `?engines=all`.
-  const multiEngine = (testCase.enginesByVersion[version] ?? []).length > 1;
+  // The engine control is offered only when the anchored version supports more
+  // than one engine — with one engine there is nothing to pick or widen into,
+  // and the hook then reads the anchored scope regardless of a stale
+  // `?engines=all`.
+  const supportedEngines = testCase.enginesByVersion[version];
+  const multiEngine = (supportedEngines ?? []).length > 1;
   const anchoredScope = useAnchoredScope({
     version,
     versions: testCase.versions,
-    engineWidenable: multiEngine,
+    engines: supportedEngines,
   });
   const { versionScope, engineScope } = anchoredScope;
   const engineWidened = engineScope === "all";
@@ -423,12 +447,9 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
   }
 
   // The scope controls the board renders: the version segments, plus the engine
-  // widener when the anchored version has more than one engine to widen into.
+  // segments when the anchored version supports more than one engine.
   const controls = (
-    <AnchoredScopeControls
-      state={anchoredScope}
-      engine={multiEngine ? { name: engineName(engine) } : undefined}
-    />
+    <AnchoredScopeControls state={anchoredScope} engine={engine} />
   );
   // Whether some narrowing is in effect that widening could undo — what decides
   // if the empty state should suggest widening the scope.
