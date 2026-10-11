@@ -703,10 +703,46 @@ pub(crate) async fn drive_orchestrator(
     // not be read at all.
     let streamed_segments = segment_sessions(&streamed.raw_output);
     let streamed_complete = streamed_segments.iter().filter(|s| s.terminated).count();
-    let (segments, source) = match read_session_log(runtime, container, &session_log_path).await {
+    let session_log = read_session_log(runtime, container, &session_log_path).await;
+    let read_from_log = session_log.is_some();
+    let (segments, source) = match session_log {
         Some(log) => (segment_session_log(&log), "container session log"),
         None => (streamed_segments, "streamed harness output"),
     };
+    let truncated = segments.iter().filter(|s| !s.terminated).count();
+
+    // The wrapper appends a session's closing sentinel to the log after the
+    // harness exits, whatever its status, and the log does not travel over the
+    // exec stream. A session the log holds without that sentinel is therefore one
+    // whose harness was still running when the runner's exec returned: the
+    // connection carrying the exec was lost and the platform reported the runner
+    // as finished. The log is believed over that exit status, and the run fails as
+    // our infrastructure's, because the tree holds a half-written build that is
+    // not the model's result.
+    if read_from_log && truncated > 0 {
+        let error = Error::HarnessSessionLost {
+            slug: slug.as_str().to_string(),
+            unfinished: truncated,
+            total: segments.len(),
+        };
+        tracing::error!(
+            harness = slug.as_str(),
+            orchestrator = orchestrator.slug(),
+            truncated_sessions = truncated,
+            total_sessions = segments.len(),
+            complete_sessions_in_stream = streamed_complete,
+            "harness session connection was lost before the harness exited"
+        );
+        events.emit(&crate::event::HarnessEvent {
+            timestamp: now_timestamp(),
+            session_id: None,
+            kind: crate::event::EventKind::Error {
+                message: error.to_string(),
+                code: None,
+            },
+        });
+        return Err(error);
+    }
 
     let mut tokens = TokenCounts::default();
     let mut reported_cost: Option<f64> = None;
@@ -718,14 +754,15 @@ pub(crate) async fn drive_orchestrator(
         }
     }
 
-    // A session with no closing sentinel in the source we read lost the tail of
-    // its output, and with it whatever usage the harness reports at the end of a
-    // session. The run itself is sound — the harness exited cleanly and its work is
-    // on disk — so this is not a failure, but the metrics are incomplete and must
-    // not be mistaken for a run that genuinely used nothing. Say so on the run's own
-    // event stream, where a reviewer looking at the run will see it, and in the
-    // logs, naming which source was read so the gap is diagnosable after the fact.
-    let truncated = segments.iter().filter(|s| !s.terminated).count();
+    // Past this point an unterminated session can only have come from the streamed
+    // copy, read because the log could not be. The exec stream can close as the
+    // runner exits and lose its last lines, the closing sentinel and the harness's
+    // usage report among them, so a missing sentinel there says nothing about
+    // whether the harness finished. The run stands, but its metrics are incomplete
+    // and must not be mistaken for a run that genuinely used nothing. Say so on the
+    // run's own event stream, where a reviewer looking at the run will see it, and
+    // in the logs, naming which source was read so the gap is diagnosable after the
+    // fact.
     if truncated > 0 || segments.is_empty() {
         let message = format!(
             "recorded token usage is incomplete: {truncated} of {} harness sessions read \

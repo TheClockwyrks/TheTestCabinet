@@ -77,11 +77,14 @@ spec:
               # shallowly on every refresh. `.gitmodules` names it relative to the
               # superproject, so it resolves to the mirror's sibling repository; sync
               # first so a moved URL reaches the persistent checkout. A failure still
-              # ingests, with no baseline media, rather than leaving the store empty.
+              # ingests rather than leaving the store empty: the backend keeps the
+              # baselines each version already has when cold storage is not checked
+              # out, so only a version new to the store goes without until the next
+              # ingest that finds the submodule.
               echo "ingest: updating the cold-storage submodule"
               git -C "$CHECKOUT" submodule sync \
                 && git -C "$CHECKOUT" submodule update --init --depth 1 \
-                || echo "ingest: submodule update failed; ingesting without baselines"
+                || echo "ingest: submodule update failed; ingesting with the baselines already stored"
               # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
               # store is populated, which is what the POST below is about to do, so
               # gating on it would deadlock the sidecar against itself.

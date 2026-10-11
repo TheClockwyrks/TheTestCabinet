@@ -13,11 +13,15 @@
 }
 
 // One labelled control. The label is inline with its segments rather than above
-// them so the controls read as one row.
+// them so the controls read as one row. A control never outgrows the row: the
+// engine segments name every engine a version supports, and on a phone that
+// track has to compress within the page rather than push it sideways.
 .control {
   display: inline-flex;
   align-items: center;
   gap: t.$space-sm;
+  max-width: 100%;
+  min-width: 0;
 }
 
 // Muted, letter-spaced field names, matching the header selectors' labels.

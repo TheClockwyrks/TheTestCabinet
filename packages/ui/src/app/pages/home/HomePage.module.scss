@@ -312,26 +312,90 @@
 }
 
 // A dense, column-aligned board mirroring the case leaderboard's treatment:
-// rank, model, mean score fraction, mean cost, badge. The board owns the
-// column tracks and every row is a subgrid of them, so each content-sized
-// column (rank, score, cost, badge) is as wide in every row as its widest cell
-// and the columns line up down the board. The model column takes what is left.
-.boardRows {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  column-gap: t.$space-lg;
-}
-
-.boardRow {
+// disclosure marker, rank, model, mean score fraction, mean cost, badge. The
+// board owns the column tracks and everything under it (a row's item, its
+// button, its runs panel and each listed run) is a subgrid of them, so each
+// content-sized column is as wide in every row as its widest cell, the columns
+// line up down the board, and a listed run's figures sit directly under the
+// row's own. The model column takes what is left.
+@mixin board-subgrid {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
-  align-items: center;
-  padding: t.$space-xs 0;
-  border-bottom: 1px solid t.$color-border;
+}
+
+// The ring every focusable part of a board shows for keyboard focus. Inset, so
+// the panel's edge never clips it.
+@mixin board-focus {
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: calc(-1 * #{t.$border-hairline});
+  }
+}
+
+.boardRows {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+  column-gap: t.$space-lg;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  // Phone widths: the six columns cannot share one line, so a row stacks onto
+  // two. The name takes the first line and wraps freely; the figures take the
+  // second from the row's left edge, since the narrowest phone has no room to
+  // indent them under the name. They sit in tracks the whole board still
+  // shares, so score, cost and badge line up from row to row.
+  @include bp.below(t.$bp-sm) {
+    grid-template-columns: auto auto auto minmax(0, 1fr);
+    column-gap: t.$space-sm;
+  }
+}
+
+.boardItem {
+  @include board-subgrid;
+  border-bottom: t.$border-hairline solid t.$color-border;
 
   &:last-child {
     border-bottom: none;
+  }
+}
+
+// The row is the disclosure button; the reset leaves it reading as the row it
+// replaces, with the marker, hover wash and focus ring saying it opens.
+.boardRow {
+  @include board-subgrid;
+  align-items: center;
+  padding: t.$space-xs;
+  border: none;
+  border-radius: t.$radius-sm;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  @include board-focus;
+
+  &:hover {
+    background: t.$color-surface-2;
+  }
+
+  &[aria-expanded="true"] .chevron {
+    color: t.$color-accent;
+  }
+
+  @include bp.below(t.$bp-sm) {
+    row-gap: t.$space-xs;
+    // A comfortable tap target: the two-line row plus this padding.
+    padding: t.$space-sm t.$space-xs;
+  }
+}
+
+.chevron {
+  color: t.$color-text-muted;
+
+  .boardRow:hover & {
+    color: t.$color-accent;
   }
 }
 
@@ -343,27 +407,52 @@
 // On a viewport too narrow for the line, the cell wraps rather than cutting
 // the name off: the row grows, and the columns beside it stay where they are.
 .model {
+  min-width: 0;
   color: t.$color-text;
   overflow-wrap: anywhere;
+
+  @include bp.below(t.$bp-sm) {
+    grid-column: 3 / -1;
+  }
 }
 
 // The harness slug (and, on a mixed board, the engine) after the model name,
-// muted so the model stays the primary read.
+// muted so the model stays the primary read. On a phone it drops to its own
+// line under the name.
 .harness {
   color: t.$color-text-muted;
   font-weight: 400;
+
+  @include bp.below(t.$bp-sm) {
+    display: block;
+    font-size: t.$font-sm;
+  }
 }
 
+// The three figure cells. On a phone they move to the row's second line: the
+// score under the marker and rank, the cost beside it, and the badge at the
+// right edge of the flexible track that ends the board.
 .score {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: right;
+
+  @include bp.below(t.$bp-sm) {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    text-align: left;
+  }
 }
 
 .cost {
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
+
+  @include bp.below(t.$bp-sm) {
+    grid-column: 3;
+    grid-row: 2;
+  }
 }
 
 .noRating {
@@ -374,4 +463,84 @@
 .badge {
   display: inline-flex;
   justify-content: flex-end;
+  min-width: 0;
+
+  @include bp.below(t.$bp-sm) {
+    grid-column: 4;
+    grid-row: 2;
+  }
+}
+
+// ---- A row's runs ------------------------------------------------------------
+
+// The panel a row's button controls. `hidden` must win over the grid display.
+.boardRuns {
+  @include board-subgrid;
+  padding-bottom: t.$space-sm;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.runList {
+  @include board-subgrid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.runItem {
+  @include board-subgrid;
+}
+
+// One run, the whole line a link into its detail page.
+.runLink {
+  @include board-subgrid;
+  align-items: center;
+  padding: t.$space-xs;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  @include board-focus;
+
+  &:hover {
+    background: t.$color-surface-2;
+    text-decoration: none;
+
+    .runCaseName {
+      color: t.$color-accent;
+    }
+  }
+
+  // The same two-line stack as the row above it, with the tap target's height.
+  @include bp.below(t.$bp-sm) {
+    row-gap: t.$space-xs;
+    padding: t.$space-sm t.$space-xs;
+  }
+}
+
+// The run's case, under the model column on both layouts.
+.runCase {
+  grid-column: 3;
+  min-width: 0;
+  overflow-wrap: anywhere;
+
+  @include bp.below(t.$bp-sm) {
+    grid-column: 3 / -1;
+  }
+}
+
+.runCaseName {
+  font-weight: 700;
+}
+
+// Version, variant, points and age, muted behind the case name; on a phone
+// they drop to their own line under it.
+.runMeta {
+  color: t.$color-text-muted;
+
+  @include bp.below(t.$bp-sm) {
+    display: block;
+  }
 }

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { DEFAULT_ENGINE_SLUG, orderEngines } from "../../../data/engines";
 import type { TestCaseDetail, VariantRef } from "../../../data/testCases";
@@ -87,8 +87,10 @@ export function useSelectedCoordinate(
   // The engines this version supports, in catalog order. A version the host
   // carries no entry for still offers the engineless rendering: it is what every
   // host publishes as the variant's own prompt and specs.
-  const engines = orderEngines(
-    testCase?.enginesByVersion[version] ?? [DEFAULT_ENGINE_SLUG],
+  const declaredEngines = testCase?.enginesByVersion[version];
+  const engines = useMemo(
+    () => orderEngines(declaredEngines ?? [DEFAULT_ENGINE_SLUG]),
+    [declaredEngines],
   );
   const defaultEngine = defaultEngineOf(engines);
   const requestedEngine = params.get(ENGINE_PARAM);
@@ -136,20 +138,9 @@ export function useSelectedCoordinate(
 
   const setEngine = useCallback(
     (next: string) => {
-      setParams(
-        (prev) => {
-          const search = new URLSearchParams(prev);
-          if (next === defaultEngine) {
-            search.delete(ENGINE_PARAM);
-          } else {
-            search.set(ENGINE_PARAM, next);
-          }
-          return search;
-        },
-        { replace: true },
-      );
+      setParams((prev) => withEngine(prev, engines, next), { replace: true });
     },
-    [setParams, defaultEngine],
+    [setParams, engines],
   );
 
   return {
@@ -196,6 +187,29 @@ function withVersion(
   const selectedEngine = search.get(ENGINE_PARAM);
   if (selectedEngine && !nextEngines.includes(selectedEngine)) {
     search.delete(ENGINE_PARAM);
+  }
+  return search;
+}
+
+/**
+ * The query string anchoring the page to the engine `next`, derived from the
+ * current one: the parameter is dropped at the default engine of `engines` (the
+ * engines the anchored version supports) so the ordinary URL stays clean.
+ *
+ * Exported for the anchored scope's engine control, which re-anchors the page
+ * and narrows its own widening in a single write. Two writes in one tick would
+ * each start from the same query string, and the second would undo the first.
+ */
+export function withEngine(
+  prev: URLSearchParams,
+  engines: readonly string[],
+  next: string,
+): URLSearchParams {
+  const search = new URLSearchParams(prev);
+  if (next === defaultEngineOf(engines)) {
+    search.delete(ENGINE_PARAM);
+  } else {
+    search.set(ENGINE_PARAM, next);
   }
   return search;
 }

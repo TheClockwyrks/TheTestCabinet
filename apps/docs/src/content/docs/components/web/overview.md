@@ -246,6 +246,10 @@ whole ladder, never one climber: running, passed, failed, and skipped. A
 unfinished work, so it is counted in the running total. A ladder never run shows
 an empty bar and zero totals in the same slots, so a first Run moves nothing.
 
+The list shows 20 ladders a page. A list longer than one page carries a search
+field that narrows it by name. The page and the search live in the URL as `page`
+and `q`, so a narrowed list is a link.
+
 ### A ladder
 
 A ladder's dashboard heads with its status, Run ladder, Stop, and Stop and cancel
@@ -266,6 +270,25 @@ and a climber blocked as failing or unlaunchable offers Retry. Every status name
 its rung: "Running rung 2", "Failed at rung 3", "Blocked at rung 4" with the
 reason, and "Completed". Once a dispatch is stopped, a climber that was running
 or blocked reads "Stopped at rung 2".
+
+The board shows 20 climbers a page in the dispatch's climb order, so a climber
+holds its place for as long as the dispatch runs, and an expanded climber stays
+expanded when the board is read again. A board longer than one page carries a
+search field and a status filter. The search narrows the climbers by harness,
+model, provider, or gg configuration. The status filter narrows them to Running,
+Blocked, Failed, or Completed, and on a stopped dispatch to Stopped, Failed, or
+Completed, and offers each status with the number of climbers the search leaves
+in it.
+
+The page, the search, and the status live in the URL as `page`, `q`, and
+`status`. A change to the search or the status returns to the first page, and a
+page the narrowed board no longer reaches falls back to its last one.
+
+The page and the filters choose which cards are drawn and nothing else. The
+summary, the status note, and Run and Stop describe and act on the whole
+dispatch. The console reads the whole board in one
+[`GET /ladders/{id}/progress`](/components/backend/api/#ladders) and pages it
+itself, which keeps the filters and the counts beside them exact between reads.
 
 Expanded, a climber lists every rung with its slot status: Running, Blocked,
 Passed, Failed, Pending, or Skipped. Only a running climber's current rung is

@@ -63,6 +63,22 @@ impl ColdStorage {
         &self.root
     }
 
+    /// Whether the cold storage is checked out: its root holds something other
+    /// than git's own bookkeeping.
+    ///
+    /// The submodule is optional, so a root that is missing, or is the empty
+    /// directory git leaves for a submodule it has not fetched (with or without a
+    /// `.git` entry from a fetch that failed part-way), is cold storage that says
+    /// nothing about any version. A reader has to tell that apart from cold
+    /// storage that is present and simply holds no baselines for one version.
+    pub fn is_checked_out(&self) -> bool {
+        std::fs::read_dir(&self.root).is_ok_and(|entries| {
+            entries
+                .flatten()
+                .any(|entry| entry.file_name() != std::ffi::OsStr::new(".git"))
+        })
+    }
+
     /// The directory a case version's baseline validation media lives under, given
     /// the version's folder in the checkout: the folder's checkout-relative path
     /// re-rooted beneath the cold-storage root, joined with

@@ -428,6 +428,10 @@ struct HostShellRuntime {
     /// The command still runs and still exits zero — only the stream is short,
     /// which is exactly the shape of the failure this guards against.
     stream_tail_dropped: usize,
+    /// When set, a streamed exec returns exit zero with the session log's last
+    /// session left open, standing in for a connection that was lost while the
+    /// harness was still running and that the platform reported as a clean finish.
+    loses_the_connection: bool,
 }
 
 impl HostShellRuntime {
@@ -439,7 +443,30 @@ impl HostShellRuntime {
             path,
             hangs_when_streamed: false,
             stream_tail_dropped: 0,
+            loses_the_connection: false,
         }
+    }
+
+    /// A runtime whose streamed exec reports a clean finish for a session whose
+    /// harness has not exited: the log holds the session without its closing
+    /// sentinel, and the stream is cut at the same point.
+    fn losing_the_connection(home: PathBuf) -> Self {
+        Self {
+            loses_the_connection: true,
+            ..Self::new(home)
+        }
+    }
+
+    /// Reopen the last session in the session log by removing its closing
+    /// sentinel, as the log reads while the harness is still running.
+    fn reopen_the_last_logged_session(&self) {
+        let log_path = self.home.join(".tcab/sessions.log");
+        let log = std::fs::read_to_string(&log_path).expect("read the session log");
+        let reopened = log
+            .trim_end()
+            .strip_suffix(SESSION_END)
+            .expect("the log ends on a closing sentinel");
+        std::fs::write(&log_path, reopened).expect("rewrite the session log");
     }
 
     /// A runtime whose streamed exec drops the last `lines` lines on the floor.
@@ -491,7 +518,13 @@ impl ContainerRuntime for HostShellRuntime {
         if !self.hangs_when_streamed {
             let output = self.exec(container, command).await?;
             let lines: Vec<&str> = output.stdout.lines().collect();
-            let delivered = lines.len().saturating_sub(self.stream_tail_dropped);
+            let dropped = if self.loses_the_connection {
+                self.reopen_the_last_logged_session();
+                1
+            } else {
+                self.stream_tail_dropped
+            };
+            let delivered = lines.len().saturating_sub(dropped);
             for line in &lines[..delivered] {
                 sink.on_line(OutputStream::Stdout, line);
             }
@@ -1026,4 +1059,110 @@ async fn nonzero_runner_exit_before_the_deadline_is_a_harness_error() {
         Error::HarnessInvocation { .. } => {}
         other => panic!("expected a harness error before the deadline, got {other:?}"),
     }
+}
+
+/// Drive the given orchestrator against a runtime that reports a clean finish for
+/// a session whose harness has not exited, and return the resulting error.
+async fn drive_losing_the_connection(under_test: UnderTest, sessions_before_marker: u32) -> Error {
+    let root = tempfile::tempdir().expect("temp dir");
+    let home = root.path().join("home");
+    let workspace = root.path().join("work");
+    let capture = root.path().join("captures");
+    for dir in [&home, &workspace, &capture] {
+        std::fs::create_dir_all(dir).expect("create dir");
+    }
+    let selection = match under_test {
+        UnderTest::BuiltIn(slug) => OrchestratorSelection::builtin(slug),
+        UnderTest::MultiSession => write_multi_session_orchestrator(&root.path().join("looper")),
+    };
+    let orchestrator = OrchestratorCatalog::new()
+        .resolve(&selection)
+        .expect("orchestrator resolves");
+    let marker_file = orchestrator
+        .manifest
+        .params
+        .get("marker_file")
+        .map(|rel| workspace.join(rel))
+        .unwrap_or_else(|| workspace.join(".vendor/unused-marker"));
+    let harness = RecordingHarness {
+        count_file: root
+            .path()
+            .join("session-count")
+            .to_string_lossy()
+            .into_owned(),
+        capture_dir: capture.to_string_lossy().into_owned(),
+        marker_file: marker_file.to_string_lossy().into_owned(),
+        sessions_before_marker,
+    };
+    let runtime = HostShellRuntime::losing_the_connection(home);
+    let container = ContainerHandle {
+        id: "fake".to_string(),
+    };
+    let mut events = NoopEventSink;
+    match drive_orchestrator(
+        &runtime,
+        &container,
+        &harness,
+        &orchestrator,
+        HarnessSlug::Claude,
+        "fake-model",
+        "Build it.",
+        &workspace.to_string_lossy(),
+        NO_DEADLINE,
+        TEST_MAX_RUNTIME,
+        &mut events,
+    )
+    .await
+    {
+        Ok(_) => panic!("a session the log leaves open must fail the run"),
+        Err(error) => error,
+    }
+}
+
+#[tokio::test]
+async fn a_session_the_log_leaves_open_fails_the_run_despite_a_clean_exit() {
+    // The platform can report a runner as finished when the connection carrying
+    // its exec was lost and the harness is still at work. The exit status reads
+    // zero, so nothing but the log tells the two apart: the wrapper writes the
+    // closing sentinel there only once the harness has exited. Trusting the exit
+    // status collected a half-written tree and scored it as the model's result.
+    match drive_losing_the_connection(UnderTest::BuiltIn(ONE_SHOT_SLUG), 99).await {
+        Error::HarnessSessionLost {
+            unfinished, total, ..
+        } => {
+            assert_eq!(unfinished, 1);
+            assert_eq!(total, 1);
+        }
+        other => panic!("expected a lost session, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_lost_session_counts_only_the_sessions_left_open() {
+    // A multi-session run cut off in its second session: the first closed in the
+    // log and is not held against the run, the second is the one that was lost.
+    match drive_losing_the_connection(UnderTest::MultiSession, 2).await {
+        Error::HarnessSessionLost {
+            unfinished, total, ..
+        } => {
+            assert_eq!(unfinished, 1);
+            assert_eq!(total, 2);
+        }
+        other => panic!("expected a lost session, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_lost_session_is_an_infrastructure_failure() {
+    // Nothing about the model can be concluded from a session our own platform cut
+    // off, so it must never land in a state that publishes or counts.
+    let error = Error::HarnessSessionLost {
+        slug: "codex".to_string(),
+        unfinished: 1,
+        total: 1,
+    };
+    assert_eq!(
+        crate::run_record::RunState::classify_failure(&error),
+        crate::run_record::RunState::Infrastructure
+    );
 }
