@@ -422,6 +422,55 @@ fn reference_scope_and_view_are_validated() {
     ));
 }
 
+/// A version captured before engines existed keeps its baselines at
+/// `validation-baseline/<variant>/`. They are its engineless build's, so the
+/// `none` engine reads and lists them; no other engine does, and a version that
+/// has a `none/<variant>/` of its own is read from there.
+#[test]
+fn validation_baseline_serves_a_pre_engine_layout_as_the_none_engine() {
+    let (_dir, store) = temp_store();
+    let root = store
+        .version_dir("pong", "v1.0.0")
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR);
+    std::fs::create_dir_all(root.join("base")).unwrap();
+    std::fs::write(root.join("base/serve__clip.webm"), b"legacy").unwrap();
+
+    assert_eq!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "none", "base", "serve__clip.webm")
+            .unwrap(),
+        b"legacy",
+    );
+    assert_eq!(
+        store
+            .list_validation_baseline("pong", "v1.0.0", "none", "base")
+            .unwrap(),
+        vec!["serve__clip.webm".to_string()],
+    );
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "serve__clip.webm")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(
+        store
+            .list_validation_baseline("pong", "v1.0.0", "simple-2d", "base")
+            .unwrap()
+            .is_empty()
+    );
+
+    // Once the version has an engine-keyed directory for the build, that wins.
+    std::fs::create_dir_all(root.join("none/base")).unwrap();
+    std::fs::write(root.join("none/base/serve__clip.webm"), b"keyed").unwrap();
+    assert_eq!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "none", "base", "serve__clip.webm")
+            .unwrap(),
+        b"keyed",
+    );
+}
+
 #[test]
 fn validation_baseline_reads_committed_case_scoped_media() {
     let (_dir, store) = temp_store();

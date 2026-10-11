@@ -392,7 +392,9 @@ image store](/components/core/validation/#the-shared-image-store) its recordings
 draw from), synthesized from the reference implementation. The engine is part of
 the address because a variant has one reference implementation per
 [engine](/components/core/engines/), and a run is only comparable against the
-one it was itself built on.
+one it was itself built on. A version captured before engines existed answers
+under the `none` engine; see
+[where baselines live](/components/core/validation/#where-baselines-live).
 
 ### `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
 

@@ -311,8 +311,9 @@ their baselines:
 git submodule update --init --depth 1 cold-storage
 ```
 
-Without it every version ingests with no baseline media, and a review shows only
-the build's half of each side-by-side. `TCAB_COLD_STORAGE_DIR` in `.env.backend`
+Without it a version ingests with no baseline media, and a review shows only
+the build's half of each side-by-side. A version that was ingested while the
+submodule was present keeps the baselines it was stored with. `TCAB_COLD_STORAGE_DIR` in `.env.backend`
 points the backend at a copy kept elsewhere. The same applies to the k3d stack,
 which ingests the checkout it mounts.
 
