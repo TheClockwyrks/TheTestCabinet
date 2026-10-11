@@ -129,6 +129,57 @@ describe("foldLeaderboardEntries", () => {
     expect(entries[0]!.fractions).toEqual([0.8, 0.45, 0]);
   });
 
+  it("carries exactly the runs each row counts, beside what it took from them", () => {
+    const entries = foldLeaderboardEntries(
+      [
+        run("a", { score: { earned: 4, total: 5 }, rating: "great" }),
+        // Excluded runs never reach a row's run list…
+        run("failed", { state: "harness_error" }),
+        run("gg", { harness: "gg" }),
+        run("unscored", { score: null }),
+        // …and another row's run stays in its own.
+        run("other", { engine: "simple-2d" }),
+        run("b", { score: { earned: 0, total: 0 }, rating: null }),
+      ],
+      { keyEngine: true },
+    );
+    const row = entries.find((e) => e.engineSlug === "none")!;
+    expect(row.runs.map((r) => r.run.id)).toEqual(["a", "b"]);
+    // The per-run lists are these runs' figures, index for index, so a surface
+    // listing the runs shows the numbers the row's mean is taken over.
+    expect(row.runs.map((r) => r.fraction)).toEqual(row.fractions);
+    expect(row.runs.map((r) => r.scored.earned)).toEqual(row.earned);
+    expect(row.runs[0]!.scored).toMatchObject({
+      earned: 4,
+      total: 5,
+      rating: "great",
+    });
+    const other = entries.find((e) => e.engineSlug === "simple-2d")!;
+    expect(other.runs.map((r) => r.run.id)).toEqual(["other"]);
+  });
+
+  it("carries the writeup-resolved score of a run scored through the variant", () => {
+    const variant = {
+      reviewItems: [
+        { id: "a", title: "A", weight: 3 },
+        { id: "b", title: "B", weight: 2 },
+      ],
+    } as unknown as VariantSummary;
+    const writeup = {
+      ratings: [{ domain: "gameplay", rating: "great" }],
+      aesthetics: [],
+      checklist: [{ id: "a", status: "pass" }],
+    } as unknown as ParsedWriteup;
+    const entries = foldLeaderboardEntries([run("a", { score: null })], {
+      variant,
+      findReview: () => writeup,
+      localWriteups: {},
+    });
+    expect(entries[0]!.runs).toHaveLength(1);
+    expect(entries[0]!.runs[0]!.scored).toMatchObject({ earned: 3, total: 5 });
+    expect(entries[0]!.runs[0]!.fraction).toBe(0.6);
+  });
+
   it("collects ratings, aesthetics, and grades only from runs carrying them", () => {
     const entries = foldLeaderboardEntries([
       run("a", { rating: "great", aesthetic: "amazing" }),

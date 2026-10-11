@@ -1,4 +1,5 @@
 import {
+  fireEvent,
   render,
   screen,
   waitForElementToBeRemoved,
@@ -420,10 +421,10 @@ describe("the group leaderboards", () => {
       testCaseGroups: [GROUP],
     });
 
-    const board = await screen.findByRole("table", {
+    const board = await screen.findByRole("list", {
       name: "Arcade leaderboard",
     });
-    const rows = within(board).getAllByRole("row");
+    const rows = within(board).getAllByRole("listitem");
     expect(rows).toHaveLength(2);
     // The catalog resolves Claude's name; GPT is off-catalog and reads as its
     // canonical id.
@@ -448,7 +449,7 @@ describe("the group leaderboards", () => {
       ],
       testCaseGroups: [GROUP],
     });
-    const board = await screen.findByRole("table", {
+    const board = await screen.findByRole("list", {
       name: "Arcade leaderboard",
     });
     expect(within(board).getByText(/Simple 2D/)).toBeTruthy();
@@ -463,7 +464,7 @@ describe("the group leaderboards", () => {
       ],
       testCaseGroups: [GROUP],
     });
-    const board = await screen.findByRole("table", {
+    const board = await screen.findByRole("list", {
       name: "Arcade leaderboard",
     });
     expect(within(board).queryByText(/Simple 2D/)).toBeNull();
@@ -480,7 +481,7 @@ describe("the group leaderboards", () => {
       ],
       testCaseGroups: [GROUP],
     });
-    const board = await screen.findByRole("table", {
+    const board = await screen.findByRole("list", {
       name: "Arcade leaderboard",
     });
     expect(within(board).getByText("Incredible")).toBeTruthy();
@@ -499,6 +500,138 @@ describe("the group leaderboards", () => {
   it("renders no boards section at all for a host without groups", async () => {
     renderHome({ summaries: [run({ id: "a" })] });
     await showcaseSettledEmpty();
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("list", { name: /leaderboard/ })).toBeNull();
+  });
+});
+
+describe("a group leaderboard row's runs", () => {
+  // Claude on pi: two carom runs and one spectra run, which fold into one row.
+  // Around them, every kind of run that must stay out of that row's list.
+  const SUMMARIES = [
+    run({
+      id: "carom-old",
+      startedAt: "2026-08-01T00:00:00Z",
+      score: { earned: 5, total: 10 },
+      cost: 2,
+    }),
+    run({
+      id: "carom-new",
+      startedAt: "2026-08-05T00:00:00Z",
+      score: { earned: 10, total: 10 },
+      rating: "flawless",
+      cost: null,
+    }),
+    run({
+      id: "spectra-1",
+      testCaseSlug: "spectra",
+      startedAt: "2026-08-09T00:00:00Z",
+      score: { earned: 6, total: 20 },
+      rating: "passable",
+      cost: 4,
+      publishedAt: null,
+    }),
+    // Another row's run.
+    run({ id: "gpt", modelId: "openai/gpt", score: { earned: 1, total: 10 } }),
+    // Runs the fold leaves out of every row.
+    run({ id: "failed", state: "failed", score: null }),
+    run({ id: "unscored", score: null }),
+    run({ id: "gg", harnessSlug: "gg" }),
+    // A case outside the group.
+    run({ id: "outsider", testCaseSlug: "lattice" }),
+  ];
+
+  async function claudeRow() {
+    renderHome({ summaries: SUMMARIES, testCaseGroups: [GROUP] });
+    const board = await screen.findByRole("list", {
+      name: "Arcade leaderboard",
+    });
+    const toggle = within(board).getByRole("button", { name: /Claude/ });
+    return { board, toggle };
+  }
+
+  function panelOf(toggle: HTMLElement): HTMLElement {
+    const panel = document.getElementById(
+      toggle.getAttribute("aria-controls") ?? "",
+    );
+    if (!panel) throw new Error("the row controls no panel");
+    return panel;
+  }
+
+  it("toggles its runs open and shut", async () => {
+    const { toggle } = await claudeRow();
+    const panel = panelOf(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(panel.hidden).toBe(true);
+    expect(within(panel).queryAllByRole("link")).toHaveLength(0);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(panel.hidden).toBe(false);
+    expect(within(panel).getAllByRole("link")).toHaveLength(3);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(panel.hidden).toBe(true);
+    expect(within(panel).queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("lists exactly the runs the row is folded from, each a link to its run", async () => {
+    const { toggle } = await claudeRow();
+    fireEvent.click(toggle);
+    const links = within(panelOf(toggle)).getAllByRole("link");
+    // Group case order (carom before spectra), then newest first.
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/runs/carom-new",
+      "/runs/carom-old",
+      "/runs/spectra-1",
+    ]);
+  });
+
+  it("shows each run's own figures, which average to the row's", async () => {
+    const { toggle } = await claudeRow();
+    // (100% + 50% + 30%) / 3 = 60%.
+    expect(toggle.textContent).toContain("60%");
+    fireEvent.click(toggle);
+    const panel = panelOf(toggle);
+    const [caromNew, caromOld, spectra] = within(panel).getAllByRole("link");
+
+    // The catalog is empty here, so the name falls back through the slug.
+    expect(caromNew?.textContent).toContain("Carom");
+    expect(caromNew?.textContent).toContain("v1.0.0");
+    expect(caromNew?.textContent).toContain("base");
+    expect(caromNew?.textContent).toContain("100%");
+    expect(caromNew?.textContent).toContain("10 / 10");
+    expect(caromNew?.textContent).toContain("Flawless");
+    // No comparable cost: an em dash, never $0.
+    expect(caromNew?.textContent).toContain("—");
+    expect(caromNew?.querySelector("time")?.getAttribute("datetime")).toBe(
+      "2026-08-05T00:00:00Z",
+    );
+
+    expect(caromOld?.textContent).toContain("50%");
+    expect(caromOld?.textContent).toContain("$2.00");
+
+    expect(spectra?.textContent).toContain("Spectra");
+    expect(spectra?.textContent).toContain("30%");
+    expect(spectra?.textContent).toContain("6 / 20");
+    expect(spectra?.textContent).toContain("$4.00");
+    expect(spectra?.textContent).toContain("Passable");
+    // The unpublished run is tagged, as in the run log.
+    expect(within(spectra!).getByTitle("Unpublished")).toBeTruthy();
+    expect(within(caromNew!).queryByTitle("Unpublished")).toBeNull();
+  });
+
+  it("opens rows independently of one another", async () => {
+    const { board, toggle } = await claudeRow();
+    const other = within(board).getByRole("button", { name: /openai\/gpt/ });
+    fireEvent.click(toggle);
+    fireEvent.click(other);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(other.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      within(panelOf(other))
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href")),
+    ).toEqual(["/runs/gpt"]);
   });
 });

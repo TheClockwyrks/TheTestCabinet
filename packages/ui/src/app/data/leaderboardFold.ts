@@ -40,6 +40,19 @@ export interface ScoredRun {
   aesthetic: AestheticRating | null;
 }
 
+/** One run a fold entry counts: the summary it was folded from beside exactly
+ * the figures the fold took from it. An entry's per-run lists are derived from
+ * these, so a surface that lists an entry's runs reads this set instead of
+ * filtering the summaries a second time. */
+export interface LeaderboardFoldRun {
+  run: RunSummary;
+  /** The points and badges the fold resolved for this run. */
+  scored: ScoredRun;
+  /** The run's score fraction (earned/total; 0 when its total is 0), the
+   * figure it contributes to {@link LeaderboardFoldEntry.fractions}. */
+  fraction: number;
+}
+
 // One `(harness, model[, engine])` pair's scored runs, folded but not yet
 // aggregated: the per-run lists a board derives its columns from. The case page
 // takes extremes/means of `earned` (every run shares that variant's `total`);
@@ -65,6 +78,9 @@ export interface LeaderboardFoldEntry {
   /** The points available — uniform across one variant's runs (the case
    * boards' denominator); on a cross-case fold, the last contributing run's. */
   total: number;
+  /** Every run the row counts, in the order they were folded. `earned` and
+   * `fractions` hold one entry per run here, at the same index. */
+  runs: LeaderboardFoldRun[];
   /** Points earned, one entry per contributing run. */
   earned: number[];
   /** Score fraction (earned/total) per contributing run — the cross-case
@@ -172,6 +188,7 @@ export function foldLeaderboardEntries(
         harnessSlug,
         engineSlug: keyEngine ? runEngine : null,
         total,
+        runs: [],
         earned: [],
         fractions: [],
         ratings: [],
@@ -185,8 +202,10 @@ export function foldLeaderboardEntries(
       entries.set(key, entry);
     }
     entry.total = total;
+    const fraction = total > 0 ? earned / total : 0;
+    entry.runs.push({ run, scored, fraction });
     entry.earned.push(earned);
-    entry.fractions.push(total > 0 ? earned / total : 0);
+    entry.fractions.push(fraction);
     if (rating) entry.ratings.push(rating);
     if (aesthetic) entry.aesthetics.push(aesthetic);
     if (grade) entry.grades.push(grade);

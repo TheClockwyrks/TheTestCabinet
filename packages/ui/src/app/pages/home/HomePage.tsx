@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router";
 import type { ShowcaseMedia } from "@clockwyrks/run-record";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
@@ -32,6 +32,7 @@ import {
   foldLeaderboardEntries,
   mean,
   type LeaderboardFoldEntry,
+  type LeaderboardFoldRun,
 } from "../../data/leaderboardFold";
 import { RATINGS, type Rating } from "../../data/ratings";
 import type { RunQuery, RunQueryResult } from "../../data/runQuery";
@@ -45,9 +46,11 @@ import {
   formatCompact,
   formatInteger,
   formatTimeAgo,
+  formatTimestamp,
   formatUsd,
   formatUsdExact,
 } from "../../format";
+import { formatPoints as formatPointValue } from "../../../ratings";
 import { ReplayPlayer } from "../runs/replay/ReplayPlayer";
 import styles from "./HomePage.module.scss";
 
@@ -546,7 +549,7 @@ function byFractionThenRatingThenRecency(a: GroupRow, b: GroupRow): number {
 }
 
 // One leaderboard per repo-defined test-case group, each a full-width panel so
-// a row holds its model, harness and engine on one line. A host that
+// a row holds its model, harness and engine on one line (two on a phone). A host that
 // supplies no groups (the set is optional gallery data) renders no section at
 // all — there is nothing to head it with.
 function GroupBoards() {
@@ -630,9 +633,13 @@ function GroupBoard({ group }: { group: TestCaseGroupSummary }) {
       ) : top.length === 0 ? (
         <p className={styles.boardEmpty}>No scored runs in this group yet.</p>
       ) : (
-        <div
+        // A list of disclosures rather than a table: a row is one button that
+        // opens the runs behind it, and a button cannot hold table cells. The
+        // explicit role keeps the list a list where the marker-less styling
+        // would otherwise have a screen reader drop it.
+        <ol
           className={styles.boardRows}
-          role="table"
+          role="list"
           aria-label={`${group.name} leaderboard`}
         >
           {top.map((row, index) => (
@@ -641,56 +648,182 @@ function GroupBoard({ group }: { group: TestCaseGroupSummary }) {
               row={row}
               rank={index + 1}
               multiEngine={multiEngine}
+              group={group}
             />
           ))}
-        </div>
+        </ol>
       )}
     </Panel>
   );
 }
 
+// The functional badge of a row or of one run: a jam's whole-game grade in
+// place of a domain rating (never both), an em dash when it carries neither.
+// The aesthetic tier is an opt-in column on the run log, and a board this
+// narrow has no room for a second badge.
+function BoardBadge({
+  grade,
+  rating,
+}: {
+  grade: ReturnType<typeof bestGrade>;
+  rating: Rating | null;
+}) {
+  return (
+    <span className={styles.badge}>
+      {grade ? (
+        <GradeBadge status={grade} />
+      ) : rating ? (
+        <RatingBadge rating={rating} />
+      ) : (
+        <span className={styles.noRating}>—</span>
+      )}
+    </span>
+  );
+}
+
+function percent(fraction: number): string {
+  return `${Math.round(fraction * 100)}%`;
+}
+
+// One ranked row, a disclosure over the runs it aggregates: the row itself is
+// the button, and the panel it controls lists exactly `entry.runs`, the set the
+// fold built the row's figures from.
 function GroupBoardRow({
   row,
   rank,
   multiEngine,
+  group,
 }: {
   row: GroupRow;
   rank: number;
   multiEngine: boolean;
+  group: TestCaseGroupSummary;
 }) {
   const { entry } = row;
-  // A jam's runs carry a whole-game grade in place of a domain rating; a row
-  // never carries both, so the badge adapts exactly as the case board's does.
-  const grade = bestGrade(entry.grades);
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
   return (
-    <div className={styles.boardRow} role="row">
-      <span className={styles.rank}>{rank}</span>
-      <span className={styles.model}>
-        {entry.modelName}{" "}
-        <span className={styles.harness}>
-          &middot; {entry.harnessSlug}
-          {multiEngine && entry.engineSlug !== null
-            ? ` · ${engineName(entry.engineSlug)}`
-            : ""}
+    <li className={styles.boardItem}>
+      <button
+        type="button"
+        className={styles.boardRow}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className={styles.chevron} aria-hidden="true">
+          {open ? "▾" : "▸"}
         </span>
-      </span>
-      <span className={styles.score}>
-        {Math.round(row.meanFraction * 100)}%
-      </span>
-      {/* formatUsd already renders an em dash for a pair no run of which
-          reported a comparable cost (an empty list means a null mean). */}
-      <span className={styles.cost}>{formatUsd(mean(entry.costs))}</span>
-      {/* The functional badge only: the aesthetic tier is an opt-in column on
-          the run log, and a board this narrow has no room for a second badge. */}
-      <span className={styles.badge}>
-        {grade ? (
-          <GradeBadge status={grade} />
-        ) : row.best ? (
-          <RatingBadge rating={row.best} />
-        ) : (
-          <span className={styles.noRating}>—</span>
-        )}
-      </span>
-    </div>
+        {/* The list position already announces the rank. */}
+        <span className={styles.rank} aria-hidden="true">
+          {rank}
+        </span>
+        <span className={styles.model}>
+          {entry.modelName}{" "}
+          <span className={styles.harness}>
+            &middot; {entry.harnessSlug}
+            {multiEngine && entry.engineSlug !== null
+              ? ` · ${engineName(entry.engineSlug)}`
+              : ""}
+          </span>
+        </span>
+        <span className={styles.score} title="Mean score">
+          {percent(row.meanFraction)}
+        </span>
+        {/* formatUsd already renders an em dash for a pair no run of which
+            reported a comparable cost (an empty list means a null mean). */}
+        <span className={styles.cost} title="Mean cost">
+          {formatUsd(mean(entry.costs))}
+        </span>
+        <BoardBadge grade={bestGrade(entry.grades)} rating={row.best} />
+      </button>
+      {/* Always mounted so `aria-controls` names a real element; `hidden`
+          takes the closed panel out of the layout and the accessibility tree. */}
+      <div id={panelId} className={styles.boardRuns} hidden={!open}>
+        {open && <GroupRowRuns entry={entry} group={group} />}
+      </div>
+    </li>
+  );
+}
+
+// The runs behind one row, each a link into its detail page. The figures line
+// up under the row's own columns, so the listed fractions visibly average to
+// its score.
+function GroupRowRuns({
+  entry,
+  group,
+}: {
+  entry: LeaderboardFoldEntry;
+  group: TestCaseGroupSummary;
+}) {
+  const { localIds } = useGalleryData();
+  const testCaseName = useTestCaseName();
+
+  // By the group's own case order (the order its member line reads in), then
+  // newest first. A slug outside the group's list cannot be drained into the
+  // fold, but would sort last rather than throw.
+  const runs = useMemo(() => {
+    const order = (slug: string) => {
+      const index = group.cases.indexOf(slug);
+      return index === -1 ? group.cases.length : index;
+    };
+    return [...entry.runs].sort((a, b) => {
+      const byCase =
+        order(a.run.subject.testCaseSlug) - order(b.run.subject.testCaseSlug);
+      if (byCase !== 0) return byCase;
+      return b.run.startedAt.localeCompare(a.run.startedAt);
+    });
+  }, [entry.runs, group.cases]);
+
+  return (
+    <ul className={styles.runList} role="list">
+      {runs.map((folded) => (
+        <GroupRunItem
+          key={folded.run.id}
+          folded={folded}
+          caseName={testCaseName(folded.run.subject.testCaseSlug)}
+          local={localIds.has(folded.run.id) || !folded.run.publishedAt}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function GroupRunItem({
+  folded,
+  caseName,
+  local,
+}: {
+  folded: LeaderboardFoldRun;
+  caseName: string;
+  local: boolean;
+}) {
+  const { run, scored, fraction } = folded;
+  const { subject } = run;
+  return (
+    <li className={styles.runItem}>
+      <Link to={routes.runDetail(run.id)} className={styles.runLink}>
+        <span className={styles.runCase}>
+          <span className={styles.runCaseName}>{caseName}</span>
+          {local && <UnpublishedTag className={styles.tag} />}{" "}
+          <span className={styles.runMeta}>
+            {subject.testCaseVersion} &middot; {subject.variant} &middot;{" "}
+            {formatPointValue(scored.earned)} / {formatPointValue(scored.total)}{" "}
+            pts &middot;{" "}
+            <time
+              dateTime={run.startedAt}
+              title={formatTimestamp(run.startedAt)}
+            >
+              {formatTimeAgo(run.startedAt)}
+            </time>
+          </span>
+        </span>
+        <span className={styles.score}>{percent(fraction)}</span>
+        <span className={styles.cost}>
+          {formatUsd(run.metrics.cost.comparable)}
+        </span>
+        <BoardBadge grade={scored.grade} rating={scored.rating} />
+      </Link>
+    </li>
   );
 }
