@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
+import { Input, Pagination } from "@clockwyrks/ui";
 import type {
   DispatchStatus,
   LadderSummary,
@@ -12,9 +13,12 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
+import { showingLabel, useClientPage } from "../../components/useClientPage";
+import { usePagedSearchParams } from "../../components/usePagedSearchParams";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import filterStyles from "../../components/RunFilters.module.scss";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 import ladderStyles from "./Ladder.module.scss";
@@ -104,7 +108,12 @@ function Count({ n, label }: { n: number; label: string }) {
 // it — a plan fills a matrix, a ladder walks an ordered climb and stops each model at
 // the first rung it fails. Console-only and gated on a signed-in account.
 //
-// The whole list is one request (`GET /ladders/summary`), and every card is laid out
+/** How many ladders the list draws per page. Matches the run listings. */
+export const LADDERS_PER_PAGE = 20;
+
+// The whole list is one request (`GET /ladders/summary`), paged here: the page and the
+// name search live in the URL (`?page=`, `?q=`), and the cards keep the order the
+// backend lists them in. Every card is laid out
 // in fixed slots: the right side lines up with the name row and the description row,
 // and a number changing never moves anything. A card too narrow for that stacks its
 // slots instead, by its own width rather than the viewport's.
@@ -117,6 +126,31 @@ export function LaddersPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { page, setPage, query, setQuery, committedQuery } =
+    usePagedSearchParams();
+  const needle = committedQuery.trim().toLowerCase();
+  const all = useMemo(() => ladders ?? [], [ladders]);
+  const matched = useMemo(
+    () =>
+      needle
+        ? all.filter((entry) => entry.name.toLowerCase().includes(needle))
+        : all,
+    [all, needle],
+  );
+  // Held back until the list has loaded, so a pasted `?page=2` is not corrected
+  // against the empty list of the first render. A delete that empties the last page
+  // falls back onto the one before it.
+  const shown = useClientPage(
+    matched,
+    LADDERS_PER_PAGE,
+    page,
+    setPage,
+    !loading && ladders !== null,
+  );
+  // A list that fits one page needs no search; one arriving by link still shows, so
+  // it can be cleared.
+  const showSearch = all.length > LADDERS_PER_PAGE || Boolean(needle);
 
   const reload = useCallback(async () => {
     if (!backend?.getLaddersSummary || !token) return;
@@ -221,87 +255,113 @@ export function LaddersPage() {
           </Link>
         </div>
       ) : (
-        <div className={[styles.list, ladderStyles.ladderList].join(" ")}>
-          {ladders.map((entry) => {
-            const view = ladderCardView(entry);
-            return (
-              <div
-                key={entry.id}
-                className={`${styles.rowCard} ${ladderStyles.ladderCard}`}
-              >
-                <Link
-                  className={`${styles.rowTitleLink} ${ladderStyles.cardName}`}
-                  to={routes.accountLadder(entry.id)}
-                >
-                  {entry.name}
-                </Link>
-                <span className={`${styles.rowSub} ${ladderStyles.cardSub}`}>
-                  {view.description}
-                </span>
-                <span className={ladderStyles.cardStatus}>
-                  <span
-                    className={[
-                      ladderStyles.cardBadge,
-                      dispatchBadgeClass(view.status),
-                    ].join(" ")}
-                  >
-                    {view.badge}
-                  </span>
-                  <span
-                    className={`${styles.groupBar} ${ladderStyles.cardBar}`}
-                    role="progressbar"
-                    aria-label={`${entry.name}: runs done`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(view.donePct)}
-                    title={view.title}
-                  >
-                    <span
-                      className={styles.groupBarDone}
-                      style={{ width: `${view.donePct}%` }}
-                    />
-                  </span>
-                </span>
-                <span
-                  className={ladderStyles.cardCounts}
-                  title="Rung slots — one climber on one rung — across the whole ladder."
-                >
-                  <Count n={view.counts.running} label="running" />
-                  <span className={ladderStyles.cardCountSep} aria-hidden>
-                    {" · "}
-                  </span>
-                  <Count n={view.counts.passed} label="passed" />
-                  <span className={ladderStyles.cardCountSep} aria-hidden>
-                    {" · "}
-                  </span>
-                  <Count n={view.counts.failed} label="failed" />
-                  <span className={ladderStyles.cardCountSep} aria-hidden>
-                    {" · "}
-                  </span>
-                  <Count n={view.counts.skipped} label="skipped" />
-                </span>
-                <span
-                  className={`${styles.rowActions} ${ladderStyles.cardActions}`}
+        <>
+          {showSearch && (
+            <div
+              className={`${filterStyles.filters} ${ladderStyles.listFilters}`}
+            >
+              <Input
+                type="search"
+                placeholder="Search ladders by name…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label="Search ladders"
+              />
+              <span className={ladderStyles.climberShowing} role="status">
+                {showingLabel(shown, matched.length, all.length, "ladder")}
+              </span>
+            </div>
+          )}
+          {matched.length === 0 && (
+            <p className={styles.empty}>No ladders match that search.</p>
+          )}
+          <div className={[styles.list, ladderStyles.ladderList].join(" ")}>
+            {shown.items.map((entry) => {
+              const view = ladderCardView(entry);
+              return (
+                <div
+                  key={entry.id}
+                  className={`${styles.rowCard} ${ladderStyles.ladderCard}`}
                 >
                   <Link
-                    className={exec.secondary}
-                    to={routes.accountLadderEdit(entry.id)}
+                    className={`${styles.rowTitleLink} ${ladderStyles.cardName}`}
+                    to={routes.accountLadder(entry.id)}
                   >
-                    Edit
+                    {entry.name}
                   </Link>
-                  <button
-                    type="button"
-                    className={exec.danger}
-                    disabled={busy}
-                    onClick={() => deleteLadder(entry.id, entry.name)}
+                  <span className={`${styles.rowSub} ${ladderStyles.cardSub}`}>
+                    {view.description}
+                  </span>
+                  <span className={ladderStyles.cardStatus}>
+                    <span
+                      className={[
+                        ladderStyles.cardBadge,
+                        dispatchBadgeClass(view.status),
+                      ].join(" ")}
+                    >
+                      {view.badge}
+                    </span>
+                    <span
+                      className={`${styles.groupBar} ${ladderStyles.cardBar}`}
+                      role="progressbar"
+                      aria-label={`${entry.name}: runs done`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(view.donePct)}
+                      title={view.title}
+                    >
+                      <span
+                        className={styles.groupBarDone}
+                        style={{ width: `${view.donePct}%` }}
+                      />
+                    </span>
+                  </span>
+                  <span
+                    className={ladderStyles.cardCounts}
+                    title="Rung slots — one climber on one rung — across the whole ladder."
                   >
-                    Delete
-                  </button>
-                </span>
-              </div>
-            );
-          })}
-        </div>
+                    <Count n={view.counts.running} label="running" />
+                    <span className={ladderStyles.cardCountSep} aria-hidden>
+                      {" · "}
+                    </span>
+                    <Count n={view.counts.passed} label="passed" />
+                    <span className={ladderStyles.cardCountSep} aria-hidden>
+                      {" · "}
+                    </span>
+                    <Count n={view.counts.failed} label="failed" />
+                    <span className={ladderStyles.cardCountSep} aria-hidden>
+                      {" · "}
+                    </span>
+                    <Count n={view.counts.skipped} label="skipped" />
+                  </span>
+                  <span
+                    className={`${styles.rowActions} ${ladderStyles.cardActions}`}
+                  >
+                    <Link
+                      className={exec.secondary}
+                      to={routes.accountLadderEdit(entry.id)}
+                    >
+                      Edit
+                    </Link>
+                    <button
+                      type="button"
+                      className={exec.danger}
+                      disabled={busy}
+                      onClick={() => deleteLadder(entry.id, entry.name)}
+                    >
+                      Delete
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <Pagination
+            page={shown.current}
+            pageCount={shown.pageCount}
+            onPageChange={setPage}
+          />
+        </>
       )}
     </PageLayout>
   );

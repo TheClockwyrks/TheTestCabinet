@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   DispatchStatus,
@@ -30,10 +30,13 @@ import {
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import {
+  CLIMBERS_PER_PAGE,
   ClimberRow,
   LADDER_ATTENTION_NOTE,
   LadderPage,
   climberCombo,
+  climberSearchText,
+  climberStanding,
   climberStatusLabel,
   describeClimberBlock,
   describeLadderStop,
@@ -778,17 +781,25 @@ describe("LadderPage", () => {
 
   let board: LadderProgress;
   let calls: string[];
+  // The model of each climber a Retry named.
+  let retried: string[];
   // What a Run answers with: a running dispatch unless a test says otherwise.
   let ranBoard: LadderProgress;
 
   beforeEach(() => {
     calls = [];
+    retried = [];
     ranBoard = progress();
     confirmAnswer = true;
     confirmSpy.mockClear();
   });
 
-  function renderPage(initial: LadderProgress) {
+  // The address the page is at, so a test reads the page and the filters off the URL.
+  function Search() {
+    return <output data-testid="search">{useLocation().search}</output>;
+  }
+
+  function renderPage(initial: LadderProgress, search = "") {
     board = initial;
     const client = {
       getLadder: async () => ladder,
@@ -804,8 +815,12 @@ describe("LadderPage", () => {
         board = progress({ dispatch: dispatch({ status: "stopped" }) });
         return { canceled: 2, includedActive: input.cancelRunning };
       },
-      retryLadderClimber: async () => {
+      retryLadderClimber: async (
+        _id: string,
+        input: { combination: { model: string } },
+      ) => {
         calls.push("retry");
+        retried.push(input.combination.model);
       },
     } as unknown as BackendClient;
     const value = {
@@ -817,13 +832,18 @@ describe("LadderPage", () => {
       setUrl: () => {},
     } as unknown as BackendContextValue;
     return render(
-      <MemoryRouter initialEntries={["/account/ladders/l1"]}>
+      <MemoryRouter initialEntries={[`/account/ladders/l1${search}`]}>
         <BackendProvider value={value}>
           <GalleryDataProvider value={galleryValue()}>
             <Routes>
               <Route
                 path="/account/ladders/:ladderId"
-                element={<LadderPage />}
+                element={
+                  <>
+                    <LadderPage />
+                    <Search />
+                  </>
+                }
               />
             </Routes>
           </GalleryDataProvider>
@@ -968,5 +988,311 @@ describe("LadderPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "▶ Run ladder" }));
     await waitFor(() => expect(calls).toEqual(["run"]));
     expect(confirmSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // A dispatch at scale: one climber per model, in the order the backend reports them.
+  // `model-07` is the eighth climber, so a page's cards are told apart by number.
+  function many(
+    count: number,
+    over: (index: number) => Partial<LadderClimber> = () => ({}),
+  ): LadderClimber[] {
+    return Array.from({ length: count }, (_, index) => {
+      const model = `model-${String(index).padStart(2, "0")}`;
+      return climber({ key: `claude|${model}`, model, ...over(index) });
+    });
+  }
+
+  // The models of the cards on screen, in order.
+  function shownModels(): string[] {
+    return screen
+      .getAllByText(/^claude · model-\d+$/)
+      .map((node) => (node.textContent ?? "").replace("claude · ", ""));
+  }
+
+  const search = () => screen.getByTestId("search").textContent;
+
+  const failing = (at: number) => (index: number) =>
+    index === at
+      ? ({
+          status: "blocked",
+          blocked: { kind: "failing", attempts: 2 },
+        } as Partial<LadderClimber>)
+      : {};
+
+  describe("paging the climbers", () => {
+    it("draws one page of a long board, in the backend's order", async () => {
+      renderPage(progress({ climbers: many(45) }));
+      await screen.findByText("claude · model-00");
+      expect(shownModels()).toHaveLength(CLIMBERS_PER_PAGE);
+      expect(shownModels()[0]).toBe("model-00");
+      expect(shownModels()[19]).toBe("model-19");
+      expect(screen.getByText("Showing 1–20 of 45 climbers")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Page 3" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Page 4" })).toBeNull();
+    });
+
+    it("offers no pager and no filters on a board that fits one page", async () => {
+      renderPage(progress({ climbers: many(CLIMBERS_PER_PAGE) }));
+      await screen.findByText("claude · model-00");
+      expect(shownModels()).toHaveLength(CLIMBERS_PER_PAGE);
+      expect(
+        screen.queryByRole("navigation", { name: "Pagination" }),
+      ).toBeNull();
+      expect(screen.queryByLabelText("Search climbers")).toBeNull();
+      expect(screen.queryByLabelText("Status")).toBeNull();
+    });
+
+    it("moves through the pages by the pager, keeping the page in the URL", async () => {
+      renderPage(progress({ climbers: many(45) }));
+      await screen.findByText("claude · model-00");
+      fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+      expect(shownModels()[0]).toBe("model-20");
+      expect(shownModels()).toHaveLength(20);
+      expect(search()).toBe("?page=2");
+      expect(screen.getByText("Showing 21–40 of 45 climbers")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
+      expect(shownModels()).toEqual([
+        "model-40",
+        "model-41",
+        "model-42",
+        "model-43",
+        "model-44",
+      ]);
+      expect(search()).toBe("?page=3");
+      // The first page's URL carries no page at all.
+      fireEvent.click(screen.getByRole("button", { name: "Page 1" }));
+      expect(search()).toBe("");
+    });
+
+    it("opens on the page a link names", async () => {
+      renderPage(progress({ climbers: many(45) }), "?page=2");
+      await screen.findByText("claude · model-20");
+      expect(screen.queryByText("claude · model-00")).toBeNull();
+      expect(
+        screen
+          .getByRole("button", { name: "Page 2" })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(search()).toBe("?page=2");
+    });
+
+    it("falls back to the last page when the link names one past the end", async () => {
+      renderPage(progress({ climbers: many(45) }), "?page=9");
+      await screen.findByText("claude · model-44");
+      expect(shownModels()[0]).toBe("model-40");
+      await waitFor(() => expect(search()).toBe("?page=3"));
+    });
+
+    // A re-read that leaves fewer climbers than the page reaches (here a Stop whose
+    // re-read answers with a one-climber board) shows the last page that exists.
+    it("falls back when the board shrinks under the page", async () => {
+      renderPage(progress({ climbers: many(45) }), "?page=3");
+      await screen.findByText("claude · model-44");
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+      await screen.findByText("claude · opus");
+      await waitFor(() => expect(search()).toBe(""));
+      expect(screen.queryByText(/^claude · model-/)).toBeNull();
+    });
+
+    // The summary, the status note and the blocked count are the whole dispatch's,
+    // whatever page is on screen: the one blocked climber here is on page 2.
+    it("keeps the summary and the status note about the whole dispatch", async () => {
+      renderPage(
+        progress({
+          dispatch: dispatch({ climbersRunning: 44, climbersBlocked: 1 }),
+          climbers: many(45, failing(30)),
+        }),
+      );
+      await screen.findByText("claude · model-00");
+      expect(screen.getByText("climbers").textContent).toBe("45 climbers");
+      expect(screen.getByText("running").textContent).toBe("44 running");
+      expect(screen.getByText("blocked").textContent).toBe("1 blocked");
+      expect(
+        screen.getByText(/^1 blocked climber stands on a rung where a launch/),
+      ).toBeTruthy();
+      // Its card is not drawn on this page, so neither is its Retry.
+      expect(screen.queryByRole("button", { name: /^Retry / })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+      expect(screen.getByText("climbers").textContent).toBe("45 climbers");
+      expect(
+        screen.getByText(/^1 blocked climber stands on a rung where a launch/),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Retry claude · model-30" }),
+      ).toBeTruthy();
+    });
+
+    it("narrows to a status, reaching a climber off the page, and retries it", async () => {
+      renderPage(
+        progress({
+          dispatch: dispatch({ climbersRunning: 40, climbersBlocked: 1 }),
+          climbers: many(45, (index) =>
+            index > 40 ? { status: "failed" } : failing(30)(index),
+          ),
+        }),
+        "?page=2",
+      );
+      await screen.findByText("claude · model-20");
+      const status = screen.getByLabelText<HTMLSelectElement>("Status");
+      expect([...status.options].map((option) => option.textContent)).toEqual([
+        "All statuses",
+        "Running (40)",
+        "Blocked (1)",
+        "Failed (4)",
+        "Completed (0)",
+      ]);
+      fireEvent.change(status, { target: { value: "blocked" } });
+      // A filter reshapes the list, so it returns to the first page.
+      expect(search()).toBe("?status=blocked");
+      expect(shownModels()).toEqual(["model-30"]);
+      expect(
+        screen.getByText("Showing 1 of 1 matching (45 climbers)"),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("navigation", { name: "Pagination" }),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Retry claude · model-30" }),
+      );
+      await screen.findByText("Retrying claude · model-30.");
+      expect(retried).toEqual(["model-30"]);
+      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(search()).toBe("");
+      expect(shownModels()).toHaveLength(20);
+    });
+
+    it("searches by harness, model or configuration, and returns to page 1", async () => {
+      renderPage(
+        progress({
+          climbers: [...many(44), ggClimber({ key: "gg|cfg", model: "haiku" })],
+        }),
+        "?page=2",
+      );
+      await screen.findByText("claude · model-20");
+      fireEvent.change(screen.getByLabelText("Search climbers"), {
+        target: { value: "MODEL-3" },
+      });
+      await waitFor(() => expect(search()).toBe("?q=MODEL-3"));
+      expect(shownModels()).toEqual(
+        Array.from({ length: 10 }, (_, index) => `model-3${index}`),
+      );
+      expect(
+        screen.getByText("Showing 1–10 of 10 matching (45 climbers)"),
+      ).toBeTruthy();
+      // The status counts follow the search.
+      expect(screen.getByRole("option", { name: "Running (10)" })).toBeTruthy();
+      fireEvent.change(screen.getByLabelText("Search climbers"), {
+        target: { value: "reviewer" },
+      });
+      await waitFor(() => expect(search()).toBe("?q=reviewer"));
+      expect(screen.getByText(/^reviewer · /)).toBeTruthy();
+      expect(screen.queryByText(/^claude · model-/)).toBeNull();
+      fireEvent.change(screen.getByLabelText("Search climbers"), {
+        target: { value: "nothing-like-this" },
+      });
+      await screen.findByText("No climbers match those filters.");
+      expect(screen.getByText("0 of 45 climbers")).toBeTruthy();
+      // The whole dispatch is still what the summary counts.
+      expect(screen.getByText("climbers").textContent).toBe("45 climbers");
+    });
+
+    it("restores a filtered view from a link", async () => {
+      renderPage(
+        progress({
+          climbers: many(45, (index) =>
+            index % 2 === 0 ? { status: "failed" } : {},
+          ),
+        }),
+        "?q=model-1&status=failed",
+      );
+      await screen.findByText("claude · model-10");
+      expect(shownModels()).toEqual([
+        "model-10",
+        "model-12",
+        "model-14",
+        "model-16",
+        "model-18",
+      ]);
+      expect(
+        screen.getByLabelText<HTMLInputElement>("Search climbers").value,
+      ).toBe("model-1");
+      expect(screen.getByLabelText<HTMLSelectElement>("Status").value).toBe(
+        "failed",
+      );
+    });
+
+    it("offers a stopped dispatch's own statuses", async () => {
+      renderPage(
+        progress({
+          dispatch: dispatch({ status: "stopped" }),
+          climbers: many(45, (index) =>
+            index < 5 ? { status: "failed" } : {},
+          ),
+        }),
+      );
+      await screen.findByText("claude · model-00");
+      const status = screen.getByLabelText<HTMLSelectElement>("Status");
+      expect([...status.options].map((option) => option.textContent)).toEqual([
+        "All statuses",
+        "Stopped (40)",
+        "Failed (5)",
+        "Completed (0)",
+      ]);
+      fireEvent.change(status, { target: { value: "stopped" } });
+      expect(shownModels()[0]).toBe("model-05");
+      expect(
+        screen.getByText("Showing 1–20 of 40 matching (45 climbers)"),
+      ).toBeTruthy();
+    });
+
+    // A run finishing re-reads the board. The cards that stay on the page keep their
+    // state, and the page itself stays where it was.
+    it("keeps an expanded climber open and its page across a re-read", async () => {
+      renderPage(progress({ climbers: many(45, failing(25)) }), "?page=2");
+      const toggle = (await screen.findByText("claude · model-21")).closest(
+        "button",
+      )!;
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      // The board the Retry's re-read returns: fresh objects, the climber now running.
+      board = progress({ climbers: many(45) });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Retry claude · model-25" }),
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: /^Retry / })).toBeNull(),
+      );
+      expect(search()).toBe("?page=2");
+      expect(shownModels()[0]).toBe("model-20");
+      expect(
+        screen
+          .getByText("claude · model-21")
+          .closest("button")!
+          .getAttribute("aria-expanded"),
+      ).toBe("true");
+    });
+  });
+
+  describe("climberStanding and climberSearchText", () => {
+    it("reads a running or blocked climber of a stopped dispatch as stopped", () => {
+      expect(climberStanding(climber(), "running")).toBe("running");
+      expect(climberStanding(climber(), "stopped")).toBe("stopped");
+      expect(climberStanding(climber({ status: "blocked" }), "stopped")).toBe(
+        "stopped",
+      );
+      expect(climberStanding(climber({ status: "failed" }), "stopped")).toBe(
+        "failed",
+      );
+      expect(
+        climberStanding(climber({ status: "blocked" }), "needsAttention"),
+      ).toBe("blocked");
+    });
+
+    it("matches a climber on its heading and on every raw field under it", () => {
+      const text = climberSearchText(ggClimber({ provider: "OpenRouter" }));
+      for (const needle of ["reviewer", "opus", "haiku", "gg", "openrouter"]) {
+        expect(text).toContain(needle);
+      }
+    });
   });
 });
