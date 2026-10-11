@@ -678,8 +678,10 @@ impl RunState {
     /// from a harness error because it must not be retried;
     /// a harness that went silent and was killed by the idle watchdog is
     /// [`Hung`](RunState::Hung); every other error — the harness-install or
-    /// case-init timeouts and container/cluster faults — is the Test Cabinet's
-    /// [`Infrastructure`](RunState::Infrastructure).
+    /// case-init timeouts, container/cluster faults, and a session whose
+    /// connection was lost while its harness was still running
+    /// ([`HarnessSessionLost`](crate::Error::HarnessSessionLost)) — is the Test
+    /// Cabinet's [`Infrastructure`](RunState::Infrastructure).
     ///
     /// [`Canceled`](RunState::Canceled) is reached by one error only, a run the
     /// engine refused to launch a session for because its operator had already

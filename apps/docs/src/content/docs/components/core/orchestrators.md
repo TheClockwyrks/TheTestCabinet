@@ -76,9 +76,24 @@ streamed copy produces live [events](/components/core/events/). The run's
 runner has exited, which keeps a session's reported usage independent of the
 exec stream surviving to its last line.
 
-If the log cannot be read, the streamed copy stands in. Either way a session
-that arrives without its closing sentinel is reported as a warning on the run's
-event stream, with its tokens recorded as unknown rather than as none.
+If the log cannot be read, the streamed copy stands in. A session that arrives
+in the streamed copy without its closing sentinel is reported as a warning on
+the run's event stream, with its tokens recorded as unknown rather than as none,
+because the exec stream can lose its last lines as a session exits.
+
+#### A session whose connection was lost
+
+The wrapper writes a session's closing sentinel to the log after the harness
+exits, whatever its exit status. A session the log holds without its closing
+sentinel is therefore one whose harness was still running when the runner's exec
+returned: the connection carrying the exec was lost, and the platform reported
+the runner as finished.
+
+The log is the authority on this, over the exit status the platform reported.
+Such a run ends as an
+[`infrastructure`](/components/core/run-records/#status) failure whose
+detail names the lost connection. Its tree is left uncollected, so a
+half-written build is never validated or scored as the model's result.
 
 ### Runner environment contract
 
