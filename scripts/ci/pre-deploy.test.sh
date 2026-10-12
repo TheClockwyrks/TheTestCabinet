@@ -86,6 +86,15 @@ fresh_repo() {
 	} >"$repo/deployments/k8s/overlays/staging/kustomization.yaml"
 	cp "$repo/deployments/k8s/overlays/staging/kustomization.yaml" "$repo/unpinned.yaml"
 
+	# Stands in for the catalog check: records its arguments and exits with the
+	# status the case declares.
+	cat >"$repo/scripts/ci/catalog-ingest.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$(dirname "$0")/../../catalog.log"
+exit "${STUB_CATALOG_EXIT:-0}"
+STUB
+	chmod +x "$repo/scripts/ci/catalog-ingest.sh"
+
 	cat >"$repo/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -153,6 +162,8 @@ check_contains "shows the dispatcher's run-container tag" "name: TCAB_CONTAINER_
 check_contains "shows the read of the backend" "kubectl -n tcab-staging get deployment the-test-cabinet-backend --ignore-not-found" "$out"
 check_contains "shows the read of the legacy backend" "kubectl -n tcab-staging get deployment tcab-backend --ignore-not-found" "$out"
 check_contains "shows the retirement" "kubectl -n tcab-staging delete deployment tcab-backend --ignore-not-found" "$out"
+check_contains "shows the catalog check" "scripts/ci/catalog-ingest.sh preflight staging $COMMIT" "$out"
+check_equal "checks no catalog" "" "$(cat "$repo/catalog.log" 2>/dev/null)"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
 check_equal "leaves the overlay as it was" "$(cat "$repo/unpinned.yaml")" \
 	"$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
@@ -169,6 +180,7 @@ check_equal "passes" 0 "$status"
 overlay="$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
 check_equal "pins all eight images in place" 8 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
 check_contains "adds the dispatcher's patch in place" "TCAB_PUBLISHER_IMAGE" "$overlay"
+check_equal "checks the catalog of the overlay's branch" "preflight staging $COMMIT" "$(cat "$repo/catalog.log" 2>/dev/null)"
 check_equal "hands the cluster two commands" 2 "$(wc -l <"$repo/az.log")"
 check_contains "reads first" "--command sh read-backend-commit.sh" "$(sed -n 1p "$repo/az.log")"
 check_contains "retires second" "--command sh retire-legacy-backend.sh" "$(sed -n 2p "$repo/az.log")"
@@ -198,6 +210,18 @@ out="$(run "$repo" -- staging "$COMMIT")"
 status=$?
 check_equal "passes" 0 "$status"
 check_contains "sets an empty previous commit" "##vso[task.setvariable variable=TCAB_PREVIOUS_COMMIT]"$'\n' "$out"$'\n'
+
+echo "--- a catalog that cannot be fetched ---"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_CATALOG_EXIT=1 -- staging "$COMMIT")"
+status=$?
+check_failed "fails" "$status"
+check_contains "says nothing was applied" "the staging catalog cannot be fetched, above; nothing was applied" "$out"
+check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
+check_equal "pins nothing" "$(cat "$repo/unpinned.yaml")" \
+	"$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
+check_lacks "sets no pipeline variable" "##vso" "$out"
 
 echo "--- the read fails ---"
 

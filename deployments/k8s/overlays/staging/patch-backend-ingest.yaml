@@ -1,24 +1,28 @@
-# Catalog ingest sidecar (staging) — identical to prod EXCEPT the branch
-# differs (staging ingests `staging`, prod ingests `master`).
+# Catalog ingest sidecar (staging): the two values ../../components/catalog-ingest leaves
+# to the overlay. The component's kustomization.yaml and its ingest.sh describe the
+# sidecar itself; the prod overlay's copy of this patch differs in these values alone.
 #
-# The shipped base `tcab-ingest` CronJob cannot work in this deployment (the
-# default-deny NetworkPolicy blocks a standalone pod from reaching tcab-backend:8787,
-# and it clones into its own emptyDir the backend never reads). This co-locates ingest
-# INSIDE the backend pod as a sidecar: it shares the `state` volume (writing the
-# /state/checkout the backend ingests) and calls POST /ingest over localhost — intra-pod
-# traffic, so the NetworkPolicy never applies and no service token / extra route is
-# needed. It runs a ONE-SHOT forced ingest on backend start, then idles; every pipeline
-# deploy starts a new backend pod, so every deploy re-ingests the branch tip it shipped
-# (see the prod copy of this patch). /state is a PVC (see
-# components/postgres/deployment-backend.yaml), so on a cold volume (first deploy,
-# replaced disk) this is what fills the store, and /readyz holds the pod out of its
-# Service until it lands.
+# Every pipeline deploy changes the backend's image tag, so every deploy starts a new
+# backend pod and the sidecar with it. The sidecar brings /state/checkout to the tip
+# of the branch below on the GitHub mirror, which the pipeline pushed before it
+# deployed, and its cold-storage submodule to the commit that tip pins, then asks the
+# backend for one forced ingest. The deploy checks that both are fetchable before it
+# applies anything, and reads the sidecar's result once the rollout is ready
+# (scripts/ci/catalog-ingest.sh); a sidecar that could not fetch ingests nothing, so
+# the backend keeps the catalog and the baselines it had.
 #
-# BRANCH: ingest the `staging` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
-# pick up pushed test-case edits and reference-build lockfile updates on demand — that
-# on-demand catalog refresh (no roll) is the whole point of the ingest. It is a stable
-# BRANCH, never a release tag like `v0.5.0`, which does not exist while that release is
-# still being tested on staging. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
+# /state is a PVC (components/postgres/deployment-backend.yaml). On a warm volume the
+# store is already populated, so the backend is ready and serving while the sidecar
+# works, and stays so when it fails. On a cold one (a first deploy, a replaced disk)
+# the sidecar's ingest is what fills the store, and /readyz holds the backend out of
+# its Service until it lands.
+#
+# The sidecar ingests once per pod start. Catalog changes between deploys are
+# published on demand with `scripts/reingest-cluster.sh --env staging`.
+#
+# TCAB_INGEST_BRANCH is `staging`, the branch the pipeline deploys to staging: a stable
+# branch, never a release tag. Keep it == TCAB_INGEST_BRANCH in scripts/lib/env.sh,
+# which scripts/reingest-cluster.sh and the deploy's checks read.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,72 +33,8 @@ spec:
     spec:
       containers:
         - name: ingest
-          image: alpine:3
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              set -u
-              # Keep == TCAB_INGEST_BRANCH in scripts/lib/env.sh (the branch reingest fetches).
-              BRANCH=staging
-              until apk add --no-cache git curl; do
-                echo "ingest: apk add failed, retrying in 5s"; sleep 5
-              done
-              REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
-              CHECKOUT=/state/checkout
-              # One-shot: check out the catalog branch tip, then trigger a single forced ingest.
-              # No periodic loop. Refresh the live checkout if one survives a lone sidecar
-              # restart, else clone the branch fresh.
-              if [ -d "$CHECKOUT/.git" ]; then
-                echo "ingest: refreshing checkout ($BRANCH)"
-                git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
-                  && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
-                  || echo "ingest: fetch failed"
-              else
-                echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
-                rm -rf "$CHECKOUT" \
-                  && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
-                  || echo "ingest: clone failed"
-              fi
-              # The cold-storage submodule holds every version's baseline validation
-              # media, which ingest copies into the store. Fetch the pinned commit
-              # shallowly on every refresh. `.gitmodules` names it relative to the
-              # superproject, so it resolves to the mirror's sibling repository; sync
-              # first so a moved URL reaches the persistent checkout. A failure still
-              # ingests rather than leaving the store empty: the backend keeps the
-              # baselines each version already has when cold storage is not checked
-              # out, so only a version new to the store goes without until the next
-              # ingest that finds the submodule.
-              echo "ingest: updating the cold-storage submodule"
-              git -C "$CHECKOUT" submodule sync \
-                && git -C "$CHECKOUT" submodule update --init --depth 1 \
-                || echo "ingest: submodule update failed; ingesting with the baselines already stored"
-              # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
-              # store is populated, which is what the POST below is about to do, so
-              # gating on it would deadlock the sidecar against itself.
-              echo "ingest: waiting for backend healthz"
-              until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
-              n=0
-              until curl -fsS -X POST http://127.0.0.1:8787/ingest \
-                     -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
-                n=$((n + 1))
-                if [ "$n" -ge 10 ]; then
-                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env staging)"
-                  break
-                fi
-                echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
-              done
-              [ "$n" -lt 10 ] && echo "ingest: triggered ok"
-              exec sleep infinity
-          volumeMounts:
-            - name: state
-              mountPath: /state
-          resources:
-            # MEMORY REQUEST == LIMIT, and the ceiling raised from 128Mi to 256Mi —
-            # same reasoning as the prod overlay's copy of this patch, and staging is
-            # where the 82Mi peak that motivated it was actually measured.
-            requests:
-              cpu: 10m
-              memory: 256Mi
-            limits:
-              cpu: 250m
-              memory: 256Mi
+          env:
+            - name: TCAB_INGEST_BRANCH
+              value: staging
+            - name: TCAB_INGEST_ENV
+              value: staging
