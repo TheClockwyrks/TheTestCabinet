@@ -7,12 +7,17 @@
 # handed and runs it, as the cluster would, with a stub kubectl whose every call is
 # recorded: its `exec ... cat` prints the result file the case wrote, its
 # `exec ... df` answers the free space the case set, and its `exec ... git` the
-# cold-storage commit the case says the volume holds.
+# cold-storage commit the case says the volume holds. Its `get pvc` answers the
+# claim the case describes, its `get storageclass` whether the class expands, and
+# its `patch ... --dry-run=server` what the cluster says of a resize. A second stub
+# kubectl, on the deploying machine's PATH, answers `kustomize` with a render whose
+# claim asks for the size the case set.
 #
 # The subject is what each check refuses and says, that the preflight reads the
 # state volume only once the mirror has answered and fails only on a reading that
-# is too low, and that verify waits on a sidecar still working and no longer than
-# its bound.
+# is too low, that it counts the growth a deployment applies to the volume and
+# refuses a resize the cluster would refuse, and that verify waits on a sidecar
+# still working and no longer than its bound.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,14 +82,52 @@ fresh_repo() {
 	# sidecar that has recorded nothing yet. `exec ... df` answers STUB_FREE_KB
 	# kilobytes free, or fails when the case set none; `exec ... git` answers
 	# STUB_COLD_STORAGE. `get deployment` names the backend unless
-	# STUB_NO_BACKEND is set.
+	# STUB_NO_BACKEND is set. `get pvc` answers a 10Gi claim of the class
+	# `managed-csi`, or the STUB_CAPACITY, STUB_REQUEST and STUB_CLASS the case set;
+	# STUB_CLAIM is `absent` for no claim and `unreadable` for a read that fails.
+	# STUB_RESIZE is what the claim says of a resize, as the read prints it: its
+	# resize status, a comma, then each condition as `Type:Status,`.
+	# `get storageclass` answers STUB_EXPANSION: `true` (the default), `false`,
+	# `unset` for a class that states nothing, `unreadable` for a read that fails.
+	# `patch` is the dry run: STUB_DRY_RUN is `accepted` (the default), `refused`
+	# for the admission answer, anything else for another failure.
 	cat >"$repo/cluster/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$STUB_KUBECTL_LOG"
 [ "$1" = "-n" ] && shift 2
 case "$1" in
 	get)
-		[ -n "${STUB_NO_BACKEND:-}" ] || echo "deployment.apps/the-test-cabinet-backend"
+		case "$2" in
+			pvc)
+				case "${STUB_CLAIM:-}" in
+					absent) exit 0 ;;
+					unreadable) exit 1 ;;
+				esac
+				printf 'capacity=%s request=%s resize=%s class=%s' "${STUB_CAPACITY-10Gi}" \
+					"${STUB_REQUEST-${STUB_CAPACITY-10Gi}}" "${STUB_RESIZE-,}" "${STUB_CLASS-managed-csi}"
+				;;
+			storageclass)
+				case "${STUB_EXPANSION:-true}" in
+					true | false) printf '%s=%s' "$3" "${STUB_EXPANSION:-true}" ;;
+					unset) printf '%s=' "$3" ;;
+					*) exit 1 ;;
+				esac
+				;;
+			*) [ -n "${STUB_NO_BACKEND:-}" ] || echo "deployment.apps/the-test-cabinet-backend" ;;
+		esac
+		;;
+	patch)
+		case "${STUB_DRY_RUN:-accepted}" in
+			accepted) echo "persistentvolumeclaim/tcab-backend-state patched (server dry run)" ;;
+			refused)
+				echo 'Error from server (Forbidden): persistentvolumeclaims "tcab-backend-state" is forbidden: only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize' >&2
+				exit 1
+				;;
+			*)
+				echo 'Error from server (Forbidden): persistentvolumeclaims "tcab-backend-state" is forbidden: User "deploy" cannot patch resource' >&2
+				exit 1
+				;;
+		esac
 		;;
 	exec)
 		while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
@@ -134,9 +177,70 @@ code=$?
 jq -n --arg logs "$logs" --argjson code "$code" \
 	'{exitCode: $code, id: "stub", logs: $logs, provisioningState: "Succeeded"}'
 STUB
-	chmod +x "$repo/bin/az"
+	# The deploying machine's kubectl, which renders: the overlay's claim at
+	# STUB_DECLARED (10Gi), in kustomize's layout, among other objects. STUB_DECLARED
+	# set to nothing is a render with no such claim, and STUB_NO_RENDER one that fails.
+	cat >"$repo/bin/kubectl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STUB_RENDER_LOG"
+[ "$1" = kustomize ] || exit 1
+[ -z "${STUB_NO_RENDER:-}" ] || { echo "error: no kustomization" >&2; exit 1; }
+write_manifest "${STUB_DECLARED-10Gi}"
+STUB
+	chmod +x "$repo/bin/az" "$repo/bin/kubectl"
 	printf '%s' "$repo"
 }
+
+# A render as kustomize writes one: another claim, the state volume's claim asking
+# for <size> (no such claim when <size> is empty), and a Deployment.
+write_manifest() { # size
+	cat <<'YAML'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tcab-lgtm-data
+  namespace: tcab-staging
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 7Gi
+---
+YAML
+	if [ -n "$1" ]; then
+		cat <<YAML
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tcab-backend-state
+  namespace: tcab-staging
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: $1
+---
+YAML
+	fi
+	cat <<'YAML'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: the-test-cabinet-backend
+  namespace: tcab-staging
+spec:
+  template:
+    spec:
+      containers:
+      - name: backend
+        resources:
+          requests:
+            storage: 1Gi
+YAML
+}
+export -f write_manifest
 
 run() { # repo [env-assignment...] -- [argument...]
 	local repo="$1"
@@ -150,9 +254,10 @@ run() { # repo [env-assignment...] -- [argument...]
 	(
 		cd / || exit 1
 		env -u THE_TEST_CABINET_RESOURCE_GROUP -u THE_TEST_CABINET_CLUSTER -u THE_TEST_CABINET_NAMESPACE \
+			-u TCAB_INGEST_MANIFEST \
 			PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="$repo/sent" \
 			STUB_CLUSTER_BIN="$repo/cluster/bin" STUB_KUBECTL_LOG="$repo/kubectl.log" \
-			STUB_SLEEP_LOG="$repo/sleep.log" STUB_RESULT="$repo/result" \
+			STUB_SLEEP_LOG="$repo/sleep.log" STUB_RESULT="$repo/result" STUB_RENDER_LOG="$repo/render.log" \
 			"${assignments[@]}" "$repo/scripts/ci/catalog-ingest.sh" "$@" 2>&1
 	)
 }
@@ -184,6 +289,12 @@ check_contains "through the ingest container of the running backend" \
 	"-n tcab-staging exec deployment/the-test-cabinet-backend -c ingest -- df -Pk /state" "$(cat "$repo/kubectl.log")"
 check_contains "and reads the cold-storage commit the volume holds" \
 	"-- git -C /state/checkout/cold-storage rev-parse --verify --quiet HEAD" "$(cat "$repo/kubectl.log")"
+check_equal "renders the environment's overlay for the size it asks of the claim" \
+	"kustomize deployments/k8s/overlays/staging" "$(cat "$repo/render.log")"
+check_contains "reads the claim in the same call" "-n tcab-staging get pvc tcab-backend-state" "$(cat "$repo/kubectl.log")"
+check_contains "and its storage class" "get storageclass managed-csi" "$(cat "$repo/kubectl.log")"
+check_lacks "says nothing of a claim that keeps its size" "grows" "$out"
+check_lacks "and tries no resize" " patch " "$(cat "$repo/kubectl.log")"
 
 repo="$(fresh_repo)"
 out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_COLD_STORAGE="$CATALOG_PIN" \
@@ -227,6 +338,272 @@ out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=2097152 TCAB_I
 	TCAB_INGEST_COLD_STORAGE_MB=512 -- preflight staging "$CATALOG_TIP")"
 check_equal "both needs are settings" 0 "$?"
 check_contains "that the report names" "has 2048 MiB free; the sidecar's fetch needs 768 MiB." "$out"
+
+echo "--- preflight: a deployment that grows the state volume ---"
+
+# A volume with nothing free, whose claim the deployment takes from 10Gi to 50Gi.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi \
+	STUB_COLD_STORAGE=ffffffffffffffffffffffffffffffffffffffff -- preflight prod "$CATALOG_TIP")"
+status=$?
+check_equal "a full volume passes when the deployment enlarges it" 0 "$status"
+check_contains "names the growth and the class that allows it" \
+	"The deployment grows the state volume of tcab-prod from 10Gi to 50Gi, which its storage class, managed-csi, allows." "$out"
+check_contains "counts nine tenths of it as free space" \
+	"The state volume of tcab-prod has 0 MiB free and the deployment adds 36864 MiB; the sidecar's fetch needs 3584 MiB." "$out"
+check_lacks "notes nothing" "Note:" "$out"
+check_equal "in one cluster call" 1 "$(wc -l <"$repo/az.log")"
+check_contains "that asks the cluster about the resize in a dry run, which persists nothing" \
+	" patch pvc tcab-backend-state --dry-run=server " "$(cat "$repo/kubectl.log")"
+
+# The cluster's refusal counts even where the class reads as allowing expansion.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_DRY_RUN=refused \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+check_equal "a growth the cluster refuses in a dry run fails though the class allows expansion" 1 "$?"
+check_contains "saying the cluster refused it" "and the cluster refused that resize in a dry run" "$out"
+
+# A size equal to the one the claim has is asked of nobody.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=10Gi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+check_equal "an unchanged size passes" 0 "$?"
+check_lacks "with no dry run" " patch " "$(cat "$repo/kubectl.log")"
+
+# The file a deployment is about to apply is read in place of a render.
+repo="$(fresh_repo)"
+write_manifest 12Gi >"$repo/applied.yaml"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_COLD_STORAGE="$CATALOG_PIN" \
+	TCAB_INGEST_MANIFEST="$repo/applied.yaml" -- preflight staging "$CATALOG_TIP")"
+check_equal "the manifest a deployment names is the size it asks" 0 "$?"
+check_contains "which is the one compared" "from 10Gi to 12Gi" "$out"
+check_contains "and counted" "has 0 MiB free and the deployment adds 1843 MiB; the sidecar's fetch needs 1024 MiB." "$out"
+check_equal "with no render of its own" "" "$(cat "$repo/render.log" 2>/dev/null)"
+
+# Growth that is not room enough still fails, and says what it counted.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=11Gi \
+	-- preflight staging "$CATALOG_TIP")"
+status=$?
+check_equal "growth short of the need fails" 1 "$status"
+check_contains "naming the room, the growth and the need" \
+	"the state volume of tcab-staging has 0 MiB free and the deployment adds 921 MiB, and the sidecar's fetch needs 3584 MiB." "$out"
+check_contains "and that nothing was applied" "Nothing was applied: tcab-staging runs what it ran." "$out"
+
+# An earlier apply resized the claim and the cluster is still carrying it out.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_REQUEST=50Gi \
+	STUB_RESIZE=,Resizing:True, \
+	STUB_EXPANSION=false STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a resize under way is counted" 0 "$?"
+check_contains "and named" "holds 10Gi and its claim already requests 50Gi: a resize is under way." "$out"
+check_contains "with its growth" "the deployment adds 36864 MiB" "$out"
+check_lacks "and no dry run, the size being the one requested" " patch " "$(cat "$repo/kubectl.log")"
+
+for resize in ",FileSystemResizePending:True," "ControllerResizeInProgress," "NodeResizePending," \
+	"NodeResizeInProgress,Resizing:True,FileSystemResizePending:True,"; do
+	repo="$(fresh_repo)"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_REQUEST=50Gi \
+		STUB_RESIZE="$resize" STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+	check_equal "so is one the claim reports as ${resize}" 0 "$?"
+done
+
+echo "--- preflight: a resize that was asked for and is not happening ---"
+
+# The claim requests the size and the cluster says nothing of carrying it out: the
+# volume is as full as it reads, and the deployment fails before it applies.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_REQUEST=50Gi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+status=$?
+check_equal "a resize the claim reports nothing of counts no growth, and a full volume fails" 1 "$status"
+check_contains "with a note of what the claim says" \
+	"Note: the claim tcab-backend-state of tcab-prod requests 50Gi and its volume holds 10Gi, and the claim reports no resize under way. No growth is counted, and the volume is judged by the free space it has." "$out"
+check_contains "and the volume as it reads" "the state volume of tcab-prod has 0 MiB free, and the sidecar's fetch needs 1024 MiB." "$out"
+check_contains "with nothing applied" "Nothing was applied: tcab-prod runs what it ran." "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_REQUEST=50Gi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+check_equal "the same claim on a volume with room passes" 0 "$?"
+check_contains "on the room it has" "has 4096 MiB free; the sidecar's fetch needs 1024 MiB." "$out"
+
+# A condition the claim carries as false is not a resize under way.
+for resize in ",FileSystemResizePending:False," ",Resizing:False,"; do
+	repo="$(fresh_repo)"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_REQUEST=50Gi \
+		STUB_RESIZE="$resize" STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+	check_equal "a claim that reports ${resize} counts no growth" 1 "$?"
+	check_contains "and says no resize is under way" "the claim reports no resize under way" "$out"
+done
+
+for resize in "ControllerResizeFailed," "NodeResizeFailed,Resizing:True," "ControllerResizeInfeasible," "NodeResizeInfeasible,"; do
+	repo="$(fresh_repo)"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_REQUEST=50Gi \
+		STUB_RESIZE="$resize" STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+	check_equal "a resize reported as ${resize} counts no growth" 1 "$?"
+	check_contains "and is named as failed" "the cluster reports that the resize failed (${resize%%,*})" "$out"
+done
+
+echo "--- preflight: a resize the cluster would refuse ---"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_EXPANSION=false \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+status=$?
+check_equal "growth on a class that cannot expand fails" 1 "$status"
+check_contains "naming the sizes, the class and the field" \
+	"the deployment grows tcab-backend-state from 10Gi to 50Gi, and the claim's storage class, managed-csi, does not allow volume expansion (allowVolumeExpansion)." "$out"
+check_contains "says what it stops" "the prod deployment grows a state volume whose storage class cannot expand it." "$out"
+check_contains "says nothing was applied" "Nothing was applied: tcab-prod runs what it ran." "$out"
+check_contains "and where the size is set" "deployments/k8s/components/postgres/deployment-backend.yaml" "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_EXPANSION=unset \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "as does a class that states no allowVolumeExpansion" 1 "$?"
+check_contains "for the same reason" "does not allow volume expansion" "$out"
+
+# A caller that may not read the class asks the cluster with a dry run.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_EXPANSION=unreadable \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a class that cannot be read passes when the cluster accepts the resize" 0 "$?"
+check_contains "saying how it knows" \
+	"from 10Gi to 50Gi, which the cluster accepted in a dry run (its storage class, managed-csi, could not be read)." "$out"
+check_contains "asked with a server-side dry run of the size" \
+	'-n tcab-staging patch pvc tcab-backend-state --dry-run=server --type merge -p {"spec":{"resources":{"requests":{"storage":"50Gi"}}}}' \
+	"$(cat "$repo/kubectl.log")"
+check_contains "and counts the growth" "the deployment adds 36864 MiB" "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_EXPANSION=unreadable \
+	STUB_DRY_RUN=refused STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+status=$?
+check_equal "a dry run the cluster refuses for the class fails" 1 "$status"
+check_contains "saying the cluster refused it" \
+	"and the cluster refused that resize in a dry run: the claim's storage class, managed-csi, does not support it." "$out"
+check_contains "with nothing applied" "Nothing was applied: tcab-staging runs what it ran." "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=50Gi STUB_EXPANSION=unreadable \
+	STUB_DRY_RUN=denied STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a class nothing answers for is noted and passes" 0 "$?"
+check_contains "with the note" \
+	"Note: whether the claim's storage class, managed-csi, allows expansion could not be read, so the growth is counted without that check." "$out"
+check_contains "and the growth counted" "the deployment adds 36864 MiB" "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=5Gi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+status=$?
+check_equal "a smaller size fails" 1 "$status"
+check_contains "naming both sizes" \
+	"the deployment asks for 5Gi of tcab-backend-state, and the claim in tcab-prod holds 10Gi and requests 10Gi." "$out"
+check_contains "and why" "Kubernetes refuses to shrink a volume" "$out"
+check_contains "says what it stops" "the prod deployment would shrink the backend's state volume." "$out"
+check_contains "says nothing was applied" "Nothing was applied: tcab-prod runs what it ran." "$out"
+
+# A claim an earlier apply asked more of, which the volume has not reached: the
+# deployment lowers that request, and the cluster's dry run decides.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=0 STUB_DECLARED=20Gi STUB_REQUEST=50Gi \
+	STUB_RESIZE=ControllerResizeFailed, STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a size between the volume's and the claim's request passes when the cluster accepts it" 0 "$?"
+check_contains "saying what it lowers" \
+	"The deployment lowers the size tcab-backend-state requests in tcab-staging from 50Gi to 20Gi, above the 10Gi the volume holds, which the cluster accepted in a dry run." "$out"
+check_contains "asked with a dry run of that size, though the class answered" \
+	'patch pvc tcab-backend-state --dry-run=server --type merge -p {"spec":{"resources":{"requests":{"storage":"20Gi"}}}}' \
+	"$(cat "$repo/kubectl.log")"
+check_contains "and counts the growth to it" "the deployment adds 9216 MiB" "$out"
+
+for dry_run in refused denied; do
+	repo="$(fresh_repo)"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=20Gi STUB_REQUEST=50Gi \
+		STUB_DRY_RUN="$dry_run" STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+	check_equal "and fails when the dry run is ${dry_run}" 1 "$?"
+	check_contains "naming what it holds and requests" "holds 10Gi and requests 50Gi, and the cluster did not accept lowering that request in a dry run." "$out"
+	check_contains "with nothing applied" "Nothing was applied: tcab-staging runs what it ran." "$out"
+done
+
+# Under what the volume holds, no dry run is needed to know.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=5Gi STUB_REQUEST=50Gi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a size under the volume's fails whatever the claim requests" 1 "$?"
+check_contains "as a shrink" "would shrink the backend's state volume" "$out"
+
+# A checkout from before the volume was grown declares the old size.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=10Gi STUB_CAPACITY=50Gi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight prod "$CATALOG_TIP")"
+check_equal "an older checkout's smaller size is refused" 1 "$?"
+check_contains "and the reader told why an older checkout cannot be deployed" \
+	"A checkout from" "$out"
+
+# The claim is judged whether or not a backend is running to read the volume of.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_DECLARED=5Gi -- preflight staging "$CATALOG_TIP")"
+check_equal "a shrink fails with a backend that cannot be read" 1 "$?"
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_NO_BACKEND=1 STUB_DECLARED=50Gi STUB_EXPANSION=false \
+	-- preflight staging "$CATALOG_TIP")"
+check_equal "and growth a class cannot give fails with no backend at all" 1 "$?"
+check_lacks "having read no volume" " exec " "$(cat "$repo/kubectl.log")"
+
+echo "--- preflight: a size or a claim that cannot be compared ---"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_NO_RENDER=1 \
+	STUB_COLD_STORAGE="$CATALOG_PIN" STUB_CAPACITY=50Gi -- preflight staging "$CATALOG_TIP")"
+status=$?
+check_equal "an overlay that does not render passes" 0 "$status"
+check_contains "with a note" \
+	"Note: the render to be applied states no size for tcab-backend-state, so it was not compared with the claim in tcab-staging." "$out"
+check_contains "and the free space checked as it was read" "has 4096 MiB free; the sidecar's fetch needs 1024 MiB." "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED= \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a render with no such claim passes" 0 "$?"
+check_contains "with the same note" "states no size for tcab-backend-state" "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=524288 STUB_DECLARED=50Gi STUB_CLAIM=unreadable \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+status=$?
+check_contains "a claim that cannot be read is noted" \
+	"Note: the tcab-backend-state claim of tcab-staging could not be read, so the 50Gi the deployment asks for was not compared with it." "$out"
+check_equal "and no growth is counted for it" 1 "$status"
+check_contains "so the volume is judged as it was read" "has 512 MiB free, and the sidecar's fetch needs 1024 MiB." "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_CLAIM=absent \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a namespace with no claim yet passes" 0 "$?"
+check_contains "saying the deployment creates it" "tcab-staging has no tcab-backend-state claim yet; the deployment creates it at 50Gi." "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=1.5Ti \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a size in a notation it does not read passes" 0 "$?"
+check_contains "with a note naming it" "1.5Ti, is in a notation this check does not read" "$out"
+check_lacks "and is sent to no dry run" " patch " "$(cat "$repo/kubectl.log")"
+
+# A claim that is not bound holds nothing, so there is no growth to count.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=50Gi STUB_CAPACITY= \
+	STUB_REQUEST=10Gi STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "a claim with no capacity yet passes" 0 "$?"
+check_contains "with no growth counted" "has 4096 MiB free; the sidecar's fetch needs 1024 MiB." "$out"
+
+# Sizes are compared as quantities, whatever unit each side is written in.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_FREE_KB=4194304 STUB_DECLARED=10240Mi \
+	STUB_COLD_STORAGE="$CATALOG_PIN" -- preflight staging "$CATALOG_TIP")"
+check_equal "the same size in another unit is the same size" 0 "$?"
+check_lacks "which grows nothing" "grows" "$out"
+check_contains "and adds nothing" "has 4096 MiB free; the sidecar's fetch needs 1024 MiB." "$out"
 
 echo "--- preflight: a state volume that cannot be read ---"
 

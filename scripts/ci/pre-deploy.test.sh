@@ -217,7 +217,7 @@ repo="$(fresh_repo)"
 out="$(run "$repo" STUB_CATALOG_EXIT=1 -- staging "$COMMIT")"
 status=$?
 check_failed "fails" "$status"
-check_contains "says nothing was applied" "the staging catalog cannot be fetched, above; nothing was applied" "$out"
+check_contains "says nothing was applied" "the staging deploy preflight failed, above; nothing was applied" "$out"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
 check_equal "pins nothing" "$(cat "$repo/unpinned.yaml")" \
 	"$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"

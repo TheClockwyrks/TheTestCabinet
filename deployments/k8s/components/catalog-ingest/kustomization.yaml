@@ -19,6 +19,11 @@
 #
 # An overlay sets the two values that differ between environments on the `ingest`
 # container: TCAB_INGEST_BRANCH and TCAB_INGEST_ENV (its patch-backend-ingest.yaml).
+#
+# The container is also told the size the backend's state volume is declared at,
+# TCAB_INGEST_STATE_SIZE, which the replacement below copies from the
+# `tcab-backend-state` claim of components/postgres. ingest.sh uses it to tell a
+# volume whose resize has yet to land from one that is simply full.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 
@@ -31,3 +36,15 @@ configMapGenerator:
 
 patches:
   - path: sidecar.yaml
+
+replacements:
+  - source:
+      kind: PersistentVolumeClaim
+      name: tcab-backend-state
+      fieldPath: spec.resources.requests.storage
+    targets:
+      - select:
+          kind: Deployment
+          name: the-test-cabinet-backend
+        fieldPaths:
+          - spec.template.spec.containers.[name=ingest].env.[name=TCAB_INGEST_STATE_SIZE].value

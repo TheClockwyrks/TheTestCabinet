@@ -8,13 +8,16 @@
 # state directory. Stubs first on PATH stand in for the rest: curl records each
 # request and answers as the case declares, sleep records its argument and returns
 # at once, so no case waits and `sleep infinity` ends the run, and df reports a
-# fixed volume.
+# fixed volume: its `-h` answer never changes, and its `-k` answer, which the wait
+# for space reads, is nothing the script can read unless the case wrote the
+# readings it is to give, one a line, the last of them repeating.
 #
 # The subject is the script's contract: it asks for an ingest only once the checkout
 # and its cold storage are at the branch tip, a step that fails records its name,
 # its cause and the volume's free space and sends no POST, every path ends parked
 # rather than exited, and a start that follows a killed one in the same pod records
-# that and does not try again.
+# that and does not try again. Before a fetch it waits for the space the fetch
+# needs, no longer than its bound, and then fetches whatever the volume holds.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -109,6 +112,18 @@ printf '%s\n' "$*" >>"$STUB_SLEEP_LOG"
 STUB
 	cat >"$pod/bin/df" <<'STUB'
 #!/usr/bin/env bash
+case " $* " in
+	*" -Pk "*)
+		if [ -s "${STUB_DF_KB:-}" ]; then
+			# A line is the free space, and the filesystem's size after it when
+			# the test gives one; the size is otherwise a 10Gi volume's.
+			read -r kb size <<<"$(sed -n 1p "$STUB_DF_KB")"
+			[ "$(wc -l <"$STUB_DF_KB")" -le 1 ] || sed -i 1d "$STUB_DF_KB"
+			printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sdc %s 1 %s 50%% /state\n' "${size:-10255636}" "$kb"
+			exit 0
+		fi
+		;;
+esac
 printf 'Filesystem Size Used Available Capacity Mounted on\n/dev/sdc 9.8G 9.7G 12.0M 100%% /state\n'
 STUB
 	chmod +x "$pod/bin/curl" "$pod/bin/sleep" "$pod/bin/df"
@@ -120,8 +135,10 @@ run() { # pod [env-assignment...]
 	local pod="$1"
 	shift
 	env PATH="$pod/bin:$PATH" STUB_CURL_LOG="$pod/curl.log" STUB_SLEEP_LOG="$pod/sleep.log" \
+		STUB_DF_KB="$pod/df-kb" \
 		TCAB_INGEST_BRANCH=staging TCAB_INGEST_ENV=staging TCAB_INGEST_REPO="$CATALOG_REPO" \
 		TCAB_INGEST_STATE="$pod/state" TCAB_INGEST_RESULT="$pod/tmp/ingest-result" \
+		TCAB_INGEST_STATE_SIZE=50Gi \
 		"$@" sh "$SCRIPT" 2>&1
 }
 
@@ -129,6 +146,8 @@ result() { cat "$1/tmp/ingest-result" 2>/dev/null; }
 field() { sed -n "s/^$2=//p" "$1/tmp/ingest-result" 2>/dev/null | head -n 1; }
 posts() { awk '/^POST / { n++ } END { print n + 0 }' "$1/curl.log" 2>/dev/null || echo 0; }
 parked() { tail -n 1 "$1/sleep.log" 2>/dev/null; }
+# How many five-second polls the run spent waiting for space.
+polls() { grep -cx 5 "$1/sleep.log" 2>/dev/null || true; }
 marker() { cat "$1/state/.ingest-in-progress" 2>/dev/null; }
 
 # What every failure has to hold: no ingest was asked for, the result says which
@@ -248,6 +267,127 @@ check_contains "quotes curl's error" "The requested URL returned error: 500" "$(
 check_contains "and the backend's answer" "the checkout holds no test-cases folder" "$(result "$pod")"
 check_contains "reports the volume's free space" "12.0M free of 9.8G (100% used)" "$(result "$pod")"
 check_equal "and parks" infinity "$(parked "$pod")"
+
+echo "--- a volume that grows after the pod has mounted it ---"
+
+# Full at the start, as a volume whose claim the deployment enlarged is until the
+# cluster has grown its filesystem, then 40 GiB free of the 50Gi it is declared at.
+pod="$(fresh_pod)"
+printf '%s\n' 0 0 0 "41943040 51474912" >"$pod/df-kb"
+out="$(run "$pod")"
+status=$?
+check_equal "the script ends parked" 0 "$status"
+check_equal "it waits for the space, reading every five seconds" 3 "$(polls "$pod")"
+check_contains "says what it waits for" \
+	"ingest: $pod/state has 0 MiB free and the fetch needs 1024 MiB, and the volume has yet to reach the 50Gi it is declared at; waiting up to 300s for it to grow" "$out"
+check_contains "and what arrived" "ingest: $pod/state has 40960 MiB free" "$out"
+check_equal "then ingests" ok "$(field "$pod" status)"
+check_equal "once" 1 "$(posts "$pod")"
+check_equal "and parks" infinity "$(parked "$pod")"
+
+# Room for the checkout is not room for cold storage, which waits in its turn.
+pod="$(fresh_pod)"
+printf '%s\n' 2097152 2097152 2097152 "41943040 51474912" >"$pod/df-kb"
+out="$(run "$pod")"
+check_equal "the checkout does not wait on a volume with room for it" "" \
+	"$(sed -n '/bringing .* to the tip/,/bringing the cold-storage/p' <<<"$out" | grep 'waiting up to' || true)"
+check_contains "cold storage that has to be fetched waits for its own room" \
+	"has 2048 MiB free and the fetch needs 3584 MiB, and the volume has yet to reach the 50Gi it is declared at; waiting up to 300s for it to grow" "$out"
+check_equal "for as long as it takes to arrive" 2 "$(polls "$pod")"
+check_equal "then ingests" ok "$(field "$pod" status)"
+
+# A warm volume whose cold storage is at its pin fetches none, and needs no room for it.
+printf '%s\n' 2097152 >"$pod/df-kb"
+: >"$pod/sleep.log"
+out="$(run "$pod")"
+check_equal "cold storage already at its pin waits for nothing" 0 "$(polls "$pod")"
+check_lacks "and says nothing of space" "waiting up to" "$out"
+check_equal "and ingests" ok "$(field "$pod" status)"
+
+echo "--- a volume that stays small ---"
+
+pod="$(fresh_pod)"
+printf '%s\n' 102400 >"$pod/df-kb"
+out="$(run "$pod")"
+status=$?
+check_equal "the script ends parked" 0 "$status"
+check_equal "the wait is bounded: three hundred seconds over the whole run" 60 "$(polls "$pod")"
+check_contains "it then fetches anyway, saying so" \
+	"has 100 MiB free and the fetch needs 1024 MiB; fetching anyway, having waited 300s" "$out"
+check_contains "and the second fetch does not wait again" \
+	"has 100 MiB free and the fetch needs 3584 MiB; fetching anyway, having waited 300s" "$out"
+check_equal "so the fetch decides, which here has room" ok "$(field "$pod" status)"
+
+pod="$(fresh_pod)"
+printf '%s\n' 102400 >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_SPACE_WAIT_SECONDS=10 TCAB_INGEST_MIN_FREE_MB=64 TCAB_INGEST_COLD_STORAGE_MB=128)"
+check_equal "the bound and both needs are settings" 2 "$(polls "$pod")"
+check_contains "that the wait names" "has 100 MiB free and the fetch needs 192 MiB, and the volume has yet to reach the 50Gi it is declared at; waiting up to 10s" "$out"
+check_lacks "and a fetch with room does not wait" "the fetch needs 64 MiB" "$out"
+
+pod="$(fresh_pod)"
+printf '%s\n' 102400 >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_SPACE_WAIT_SECONDS=soon TCAB_INGEST_MIN_FREE_MB=)"
+check_equal "a setting that is no number is its default" 60 "$(polls "$pod")"
+
+# A fetch that fails after the wait reports as every failure does.
+pod="$(fresh_pod)"
+printf '%s\n' 0 >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_REPO="file://$tmp/no-such-mirror.git" TCAB_INGEST_SPACE_WAIT_SECONDS=15)"
+status=$?
+check_failure "$pod" "$status" checkout
+check_equal "having waited its bound first" 3 "$(polls "$pod")"
+
+echo "--- a full volume that is not being resized ---"
+
+# The filesystem already has the size the claim asks for, so no room is coming and
+# the fetch is made at once.
+pod="$(fresh_pod)"
+printf '%s\n' "102400 51474912" >"$pod/df-kb"
+out="$(run "$pod")"
+check_equal "a volume at its declared size is not waited on" 0 "$(polls "$pod")"
+check_lacks "and nothing is said of waiting" "waiting up to" "$out"
+check_equal "the fetch decides, which here has room" ok "$(field "$pod" status)"
+
+# Nine tenths of the declared size is a volume that has it: a filesystem keeps the
+# rest for itself.
+pod="$(fresh_pod)"
+printf '%s\n' "102400 47185920" >"$pod/df-kb"
+out="$(run "$pod")"
+check_equal "a filesystem of nine tenths of the size has reached it" 0 "$(polls "$pod")"
+pod="$(fresh_pod)"
+printf '%s\n' "102400 47184000" >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_SPACE_WAIT_SECONDS=10)"
+check_equal "and one just under it has not" 2 "$(polls "$pod")"
+
+# A resize that lands without freeing enough ends the wait all the same.
+pod="$(fresh_pod)"
+printf '%s\n' 102400 102400 "102400 51474912" >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_COLD_STORAGE_MB=0)"
+check_equal "the wait ends when the volume reaches its size" 2 "$(polls "$pod")"
+check_contains "saying so" "has reached its size with 100 MiB free; fetching" "$out"
+
+pod="$(fresh_pod)"
+printf '%s\n' 102400 >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_STATE_SIZE=)"
+check_equal "a sidecar that is told no size waits for nothing" 0 "$(polls "$pod")"
+check_equal "and ingests" ok "$(field "$pod" status)"
+
+pod="$(fresh_pod)"
+printf '%s\n' 102400 >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_STATE_SIZE=copied-from-the-claim)"
+check_equal "nor does one told a size it cannot read" 0 "$(polls "$pod")"
+pod="$(fresh_pod)"
+printf '%s\n' 102400 >"$pod/df-kb"
+out="$(run "$pod" TCAB_INGEST_STATE_SIZE=51200Mi TCAB_INGEST_SPACE_WAIT_SECONDS=10)"
+check_equal "a size in another unit is the same size" 2 "$(polls "$pod")"
+
+echo "--- a volume whose free space cannot be read ---"
+
+pod="$(fresh_pod)"
+out="$(run "$pod")"
+check_equal "is not waited on" 0 "$(polls "$pod")"
+check_equal "and ingests" ok "$(field "$pod" status)"
 
 echo "--- an attempt that was killed ---"
 

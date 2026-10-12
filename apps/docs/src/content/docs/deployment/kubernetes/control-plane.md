@@ -120,6 +120,21 @@ the `POST`, so the definition store, every version's baselines and the public
 snapshot stay as they were. A network step is tried three times and the `POST`
 ten times before it counts as failed.
 
+A deploy that enlarges the `state` volume rolls this pod in the same apply, and
+the filesystem grows only once the cluster has grown the disk under it, which
+can be after the sidecar has started. The sidecar is told the size the claim
+asks for (`TCAB_INGEST_STATE_SIZE`, which the render copies from the claim), and
+while the filesystem it reads on `/state` is smaller than nine tenths of that, a
+resize is still to land. Only then does it wait before a fetch that lacks room:
+the `checkout` step needs `TCAB_INGEST_MIN_FREE_MB` (1024) free, and the
+`cold-storage` step needs that plus `TCAB_INGEST_COLD_STORAGE_MB` (2560) when
+the submodule is at another commit than the checkout pins. It reads again every
+five seconds, for at most `TCAB_INGEST_SPACE_WAIT_SECONDS` (300) over the whole
+run. Once the wait is spent the sidecar fetches anyway, so a volume that stayed
+small fails at the fetch, with the fetch's own error. A volume that already has
+its declared size is never waited on, however little of it is free, and neither
+is a reading the sidecar cannot take or a size it is not told.
+
 The sidecar records its outcome in `/tmp/ingest-result` in its own container: a
 `status` of `running`, `ok` or `failed`, the `step`, the `branch`, the checkout's
 `commit`, and on a failure a message. The message names what failed, quotes the
@@ -159,7 +174,9 @@ other, through `scripts/ci/catalog-ingest.sh`:
   new pod's sidecar fetches onto, and fails when that is under
   `TCAB_INGEST_MIN_FREE_MB` (1024), or under that plus
   `TCAB_INGEST_COLD_STORAGE_MB` (2560) when the volume's cold storage is at
-  another commit than the tip pins and has to be fetched. A failure leaves the
+  another commit than the tip pins and has to be fetched. In the same call it
+  reads the `tcab-backend-state` claim, and compares the size the deploy is about
+  to apply for it with the size it has, as described below. A failure leaves the
   cluster exactly as it was.
 - `verify <env>` runs once the rollout is ready. It reads the sidecar's result
   inside the cluster, waits up to `TCAB_INGEST_WAIT_SECONDS` (600) for a sidecar
@@ -172,6 +189,47 @@ no backend has no volume to read, and a volume that cannot be read is noted and
 left to `verify`, since the deploy may be what repairs the backend. A fetch that
 fails inside the cluster for any other reason is caught by `verify`.
 
+The size the deploy is about to apply is the claim's storage request in the
+render: the manifest file `deploy-environment.sh` applies, which it names in
+`TCAB_INGEST_MANIFEST`, and otherwise the preflight's own render of the
+environment's overlay. The preflight compares it with the live claim:
+
+| The render asks for                                                | The preflight                                                                                      |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| The size the volume has                                            | Checks the free space as it reads it.                                                              |
+| A larger size, on a storage class that allows expansion            | Counts nine tenths of the growth as free space, the rest being what a filesystem keeps for itself. |
+| A larger size, on a storage class that does not allow it           | Fails. Kubernetes refuses the resize, so the apply would fail part-way.                            |
+| A larger size the claim already requests, the resize under way     | Counts the growth, as above.                                                                       |
+| A larger size the claim already requests, with no resize under way | Notes that the earlier resize has not been carried out, and checks the free space as it reads it.  |
+| A size between what the volume has and what the claim requests     | Asks the cluster in a dry run. Accepted, the growth is counted. Otherwise it fails.                |
+| A smaller size than the volume has                                 | Fails. Kubernetes refuses to shrink a volume.                                                      |
+
+Whether the class allows expansion is its `allowVolumeExpansion`. For every size
+other than the one the claim requests, the preflight also asks the cluster, with
+a server-side dry run of the resize, which changes nothing. A dry run that
+answers that the class does not support resizing fails the deploy whatever the
+class reads as, and it is the only answer there is for a deploy identity that
+may not read storage classes. When neither answers, the preflight notes it and
+counts the growth.
+
+A claim that already requests the size the render asks for, on a volume that is
+still smaller, was resized by an earlier deploy. The growth is counted only while
+the claim says the cluster is carrying that resize out: its `Resizing` or
+`FileSystemResizePending` condition, or a resize status that is in progress or
+pending. A claim that reports the resize failed, or reports nothing about it, is
+a volume that is not growing, so the preflight says so and judges the volume by
+the free space it has. A full volume then fails the deploy before anything is
+applied, instead of at `verify` on every deploy. The way out of a resize the
+cluster cannot carry out is another size in the manifest: the row above the last
+is a render that lowers a request the cluster never fulfilled, which recent
+Kubernetes accepts and which the dry run decides.
+
+A render that states no size, a claim that cannot be read and a size in a
+notation the preflight does not read are each noted, and no growth is counted
+for them. A full volume therefore still fails a deploy whose claim could not be
+read, even one that would have enlarged it; the reading is taken again by
+running the deploy again.
+
 Once the cause of a failed ingest is fixed, `scripts/reingest-cluster.sh --env
 <env>` ingests without a deploy. It exits non-zero when a fetch, the pin check or
 the ingest fails. A whole-catalog ingest that succeeds records the sidecar's
@@ -183,6 +241,45 @@ restarted sidecar finds the marker its earlier start left on the volume
 (`/state/.ingest-in-progress`, naming the pod), records a `failed` result at the
 step that was killed and idles, so the pod stays ready and `verify` fails with
 the cause instead of the backend leaving its Service on every restart.
+
+#### Growing the state volume
+
+The `state` volume is the `tcab-backend-state` claim, 16Gi, declared once in
+`deployments/k8s/components/postgres/deployment-backend.yaml`. No overlay
+patches it, so staging and prod have the same size and a change of it reaches
+each with that environment's next deploy. To grow the volume, raise
+`spec.resources.requests.storage` there and deploy as usual, through the
+pipeline. The procedure has no other step:
+
+1. The preflight counts the growth, so a volume that is full does not stop the
+   deploy that enlarges it, provided the preflight could read the claim.
+2. The apply resizes the claim. The cluster grows the disk and then the
+   filesystem on it, either as the new backend pod mounts the volume or while
+   the pod runs.
+3. The new pod's ingest sidecar waits for the filesystem to reach its new size
+   when a fetch lacks room, then fetches and ingests.
+4. `verify` fails the deploy if the sidecar did not ingest, and its message
+   carries the free space the sidecar read.
+
+Step 2 is the cluster's, and nothing in this repository tests it. It rests on the
+claim's storage class allowing expansion (`allowVolumeExpansion: true`, which
+the classes AKS ships have, and which the preflight refuses the deploy without)
+and on the disk driver growing a disk that is attached to a running node.
+Where that does not hold the resize does not land. The deploy then fails at
+`verify` with the sidecar's line `fetching anyway, having waited 300s`, and the
+claim reads a request of the new size over a capacity of the old one. The next
+deploy's preflight reports that state as a resize that has not been carried out
+and, on a full volume, fails before it applies anything. Deploy the change to
+staging first: it shares the manifest, so it takes the same path on a volume
+that is not full.
+
+A volume cannot shrink, and the preflight refuses a deploy that asks for it.
+Once an environment has grown, that covers every checkout that still declares
+the smaller size: re-running an earlier pipeline run, or deploying a branch cut
+before the change, is refused with nothing applied. Put an earlier commit back
+from a checkout that carries the current size
+(`scripts/ci/deploy-environment.sh <env> <sha>`), which changes the images and
+leaves the claim alone.
 
 #### Restoring baselines
 

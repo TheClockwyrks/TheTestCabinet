@@ -125,7 +125,12 @@ deployment job, inside the private cluster through `az aks command invoke`:
 1. `scripts/ci/pre-deploy.sh staging <sha>` checks that the catalog branch tip and
    the cold-storage commit it pins can be fetched
    (`scripts/ci/catalog-ingest.sh preflight`), failing with nothing applied when
-   they cannot, pins the overlay, records the commit the
+   they cannot. The same check reads the backend's state volume, the
+   `tcab-backend-state` claim: it fails when the volume is too full to fetch onto,
+   counting the growth the deploy applies to it, and when the deploy asks for a
+   resize the cluster would refuse. The volume is grown by raising the claim's size
+   in `components/postgres/deployment-backend.yaml` and deploying. The script then
+   pins the overlay, records the commit the
    namespace runs, gives each rollout 600 seconds, and deletes the backend's
    Deployment of its old name, `tcab-backend`, which holds the backend's disk
    (`scripts/ci/retire-legacy-backend.sh`).

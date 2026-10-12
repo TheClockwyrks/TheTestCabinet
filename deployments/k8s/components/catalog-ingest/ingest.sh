@@ -12,6 +12,19 @@
 #   backend       the backend answers /healthz
 #   ingest        POST /ingest {"force": true} answered 2xx
 #
+# A deployment that enlarges the state volume's claim rolls this pod in the same
+# apply, and the filesystem grows only once the cluster has grown the disk under
+# it, which may be after this container has started. TCAB_INGEST_STATE_SIZE is the
+# size the claim asks for, and a filesystem smaller than nine tenths of it is one
+# whose resize has yet to land. Only then, before each of the two fetches, does the
+# run wait for room: TCAB_INGEST_MIN_FREE_MB for the checkout, and
+# TCAB_INGEST_COLD_STORAGE_MB on top of it for a cold storage that is not at its
+# pinned commit. The wait is bounded, TCAB_INGEST_SPACE_WAIT_SECONDS over the whole
+# run, and once it is spent the fetch is made anyway: a volume that stayed small
+# fails there, with the fetch's own error. A volume already at its size is not
+# waited on however full it is, and neither is a reading that cannot be taken or a
+# size that is not given.
+#
 # A step that fails ends the run before the POST. Nothing is ingested, so the
 # definition store, every version's baselines and the public snapshot stay exactly
 # as they were. A forced ingest from a checkout that is half refreshed, or whose
@@ -54,6 +67,15 @@
 #   TCAB_INGEST_BACKEND_URL   The backend, in the same pod (default http://127.0.0.1:8787).
 #   TCAB_INGEST_RESULT        The result file (default /tmp/ingest-result).
 #   TCAB_INGEST_POD           The pod's name (default: the hostname, which is it).
+#   TCAB_INGEST_MIN_FREE_MB   Free space on the state volume a fetch needs (default 1024).
+#   TCAB_INGEST_COLD_STORAGE_MB  What a fetch of cold storage needs on top (default 2560).
+#   TCAB_INGEST_SPACE_WAIT_SECONDS  The longest the run waits for that space (default 300).
+#   TCAB_INGEST_STATE_SIZE    The size the state volume's claim asks for, as the
+#                             claim writes it (16Gi). The deployment's render
+#                             copies it from the claim. Unset, nothing is waited for.
+#
+# The first two are the settings of the deployment's own check of the same volume
+# (scripts/ci/catalog-ingest.sh preflight), with the same defaults.
 #
 # POSIX sh: it runs under busybox ash in the sidecar and under any sh in
 # scripts/ci/catalog-ingest-sidecar.test.sh.
@@ -87,6 +109,47 @@ HEALTH_TRIES=200
 HEALTH_DELAY=3
 INGEST_TRIES=10
 INGEST_DELAY=10
+
+
+# A setting that is a whole number, else its default.
+number() { # value default
+	case "$1" in
+		'' | *[!0-9]*) echo "$2" ;;
+		*) echo "$1" ;;
+	esac
+}
+MIN_FREE_MB="$(number "${TCAB_INGEST_MIN_FREE_MB:-}" 1024)"
+COLD_STORAGE_MB="$(number "${TCAB_INGEST_COLD_STORAGE_MB:-}" 2560)"
+SPACE_WAIT="$(number "${TCAB_INGEST_SPACE_WAIT_SECONDS:-}" 300)"
+SPACE_POLL=5
+# The seconds already spent waiting for space, which both fetches draw on.
+space_waited=0
+
+# A Kubernetes quantity of storage in MiB: a whole number with a binary or decimal
+# suffix or none. Prints nothing for any other notation.
+quantity_mb() { # quantity
+	digits="${1%%[!0-9]*}"
+	suffix="${1#"$digits"}"
+	case "$digits" in
+		'' | ????????????????*) return 0 ;;
+	esac
+	case "$suffix" in
+		Ki) echo $((digits / 1024)) ;;
+		Mi) echo "$digits" ;;
+		Gi) echo $((digits * 1024)) ;;
+		Ti) echo $((digits * 1048576)) ;;
+		k) echo $((digits * 1000 / 1048576)) ;;
+		M) echo $((digits * 1000000 / 1048576)) ;;
+		G) echo $((digits * 1000000000 / 1048576)) ;;
+		T) echo $((digits * 1000000000000 / 1048576)) ;;
+		'') echo $((digits / 1048576)) ;;
+	esac
+}
+# The filesystem size, in MiB, below which the volume's resize has yet to land:
+# nine tenths of the declared size, the rest being what a filesystem keeps for
+# itself. Empty when no size is given, and then nothing is waited for.
+EXPECTED_MB="$(quantity_mb "${TCAB_INGEST_STATE_SIZE:-}")"
+[ -z "$EXPECTED_MB" ] || EXPECTED_MB=$((EXPECTED_MB * 9 / 10))
 
 commit=""
 
@@ -129,6 +192,55 @@ begin() { # step description
 free_space() {
 	df -hP "$STATE" 2>/dev/null |
 		awk 'NR == 2 { print $4 " free of " $2 " (" $5 " used)"; found = 1 } END { if (!found) print "unknown" }'
+}
+
+# The state volume's free space and its filesystem's size, in MiB, as two words
+# from one reading, or nothing when it cannot be read.
+volume_mb() {
+	df -Pk "$STATE" 2>/dev/null |
+		awk 'NR == 2 && $4 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { print int($4 / 1024), int($2 / 1024) }'
+}
+
+# Waits while the state volume has less than <needed> MiB free and its resize has
+# yet to land: its filesystem is smaller than the size the claim asks for. The
+# wait lasts as long as the run's does. It always returns: the fetch that follows
+# is what fails on a volume that stayed small.
+await_space() { # needed-mb
+	[ -n "$EXPECTED_MB" ] || return 0
+	announced=""
+	while :; do
+		reading="$(volume_mb)"
+		[ -n "$reading" ] || return 0
+		have="${reading%% *}"
+		size="${reading##* }"
+		if [ "$have" -ge "$1" ]; then
+			[ -z "$announced" ] || say "$STATE has $have MiB free"
+			return 0
+		fi
+		if [ "$size" -ge "$EXPECTED_MB" ]; then
+			[ -z "$announced" ] || say "$STATE has reached its size with $have MiB free; fetching"
+			return 0
+		fi
+		if [ "$space_waited" -ge "$SPACE_WAIT" ]; then
+			say "$STATE has $have MiB free and the fetch needs $1 MiB; fetching anyway, having waited ${space_waited}s"
+			return 0
+		fi
+		if [ -z "$announced" ]; then
+			say "$STATE has $have MiB free and the fetch needs $1 MiB, and the volume has yet to reach the $TCAB_INGEST_STATE_SIZE it is declared at; waiting up to $((SPACE_WAIT - space_waited))s for it to grow"
+			announced=1
+		fi
+		sleep "$SPACE_POLL"
+		space_waited=$((space_waited + SPACE_POLL))
+	done
+}
+
+# True when cold storage has to be fetched: the submodule is not at the commit the
+# checkout pins. An uninitialised submodule answers the superproject's commit,
+# which is not the pin.
+cold_storage_moved() {
+	pinned="$(git -C "$CHECKOUT" rev-parse --verify --quiet HEAD:cold-storage)" || return 0
+	actual="$(git -C "$COLD_STORAGE" rev-parse --verify --quiet HEAD 2>/dev/null)" || return 0
+	[ "$actual" != "$pinned" ]
 }
 
 # Records a failed step and parks. The message carries the free space on the state
@@ -246,11 +358,15 @@ if ! { command -v git >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; }; the
 fi
 
 begin checkout "bringing $CHECKOUT to the tip of $BRANCH"
+await_space "$MIN_FREE_MB"
 attempt "$FETCH_TRIES" "$FETCH_DELAY" refresh_checkout ||
 	fail checkout "The checkout at $CHECKOUT could not be brought to the tip of $BRANCH from the mirror."
 commit="$(git -C "$CHECKOUT" rev-parse --verify --quiet HEAD)" || commit=""
 
 begin cold-storage "bringing the cold-storage submodule to its pinned commit"
+if cold_storage_moved; then
+	await_space "$((MIN_FREE_MB + COLD_STORAGE_MB))"
+fi
 attempt "$FETCH_TRIES" "$FETCH_DELAY" update_cold_storage ||
 	fail cold-storage "The cold-storage submodule could not be fetched at the commit $BRANCH pins."
 attempt 1 0 check_cold_storage ||

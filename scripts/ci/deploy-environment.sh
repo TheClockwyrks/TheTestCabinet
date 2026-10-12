@@ -37,6 +37,10 @@
 # backend's ingest sidecar will fetch can be fetched (scripts/ci/catalog-ingest.sh
 # preflight): the environment's catalog branch tip on the GitHub mirror and the
 # cold-storage commit it pins. It fails there, with nothing applied, when it cannot.
+# The same preflight reads the backend's state volume and the render's size for it:
+# it fails when the volume is too full for the sidecar's fetch, the growth this
+# deployment applies counted, and when the render asks for a resize of the volume
+# the cluster would refuse.
 #
 # Before the apply it retires the backend Deployment of its old name
 # (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk. After it,
@@ -117,8 +121,10 @@ if ! ci_assert_namespaced "$NAMESPACE" <"$manifest"; then
 	exit 1
 fi
 
-if ! "${CI_DIR}/catalog-ingest.sh" preflight "$ENVIRONMENT" "$COMMIT"; then
-	echo "deploy-environment.sh: the ${ENVIRONMENT} catalog cannot be fetched, above; nothing was applied." >&2
+# The preflight is given the file about to be applied, whose size for the backend's
+# state volume it compares with the claim in the cluster.
+if ! TCAB_INGEST_MANIFEST="$manifest" "${CI_DIR}/catalog-ingest.sh" preflight "$ENVIRONMENT" "$COMMIT"; then
+	echo "deploy-environment.sh: the ${ENVIRONMENT} deploy preflight failed, above; nothing was applied." >&2
 	exit 1
 fi
 

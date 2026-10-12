@@ -268,11 +268,14 @@ the backend pod, and its ingest sidecar force-ingests the branch tip it shipped
 with. Both routes hold the deploy to that with `scripts/ci/catalog-ingest.sh`.
 The catalog preflight fails the deploy before anything in the cluster changes
 when the branch tip or the cold-storage commit it pins cannot be fetched, or
-when the backend's `state` volume is too full for the sidecar to fetch onto. The
+when the backend's `state` volume is too full for the sidecar to fetch onto, the
+growth a deploy applies to the volume counted, or when the deploy asks for a
+resize of the volume the cluster would refuse. The
 catalog verify fails it after the rollout when the sidecar did not ingest,
 printing the sidecar's failing step and message, and leaves the rollout in
 place, since the backend then serves the catalog it had. See
-[Deploys and the catalog](/deployment/kubernetes/control-plane/#deploys-and-the-catalog).
+[Deploys and the catalog](/deployment/kubernetes/control-plane/#deploys-and-the-catalog)
+and [Growing the state volume](/deployment/kubernetes/control-plane/#growing-the-state-volume).
 
 Run by hand, signed in to Azure with the same roles,
 `scripts/ci/deploy-environment.sh <staging|prod> <sha>` rolls an environment to

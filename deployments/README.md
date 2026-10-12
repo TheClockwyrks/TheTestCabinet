@@ -114,7 +114,10 @@ A push to `staging` deploys staging in the workspace template's deployment job
 1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) checks that
    the catalog the new backend's ingest sidecar fetches can be fetched
    ([`catalog-ingest.sh preflight`](../scripts/ci/catalog-ingest.sh)), failing with
-   nothing applied when it cannot, then pins the
+   nothing applied when it cannot. The same check reads the backend's state
+   volume: it fails when the volume is too full to fetch onto, counting the
+   growth the deploy applies to it, and when the deploy asks for a resize the
+   cluster would refuse. It then pins the
    overlay, records the commit the namespace runs now, gives every rollout 600
    seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
    holds the backend's disk

@@ -120,7 +120,7 @@ for tool in az jq kubectl; do
 done
 
 if ! "${CI_DIR}/catalog-ingest.sh" preflight "$OVERLAY" "$COMMIT"; then
-	echo "pre-deploy.sh: the ${OVERLAY} catalog cannot be fetched, above; nothing was applied." >&2
+	echo "pre-deploy.sh: the ${OVERLAY} deploy preflight failed, above; nothing was applied." >&2
 	exit 1
 fi
 

@@ -16,6 +16,13 @@ spec:
           # this decoupled from the service images. Pin a digest in time.
           image: alpine:3
           command: ["/bin/sh", "/ingest/ingest.sh"]
+          env:
+            # The size the state volume's claim asks for, which the component's
+            # replacement copies here from the claim itself, so it is declared in
+            # one place. ingest.sh waits for room only while the filesystem is
+            # smaller than this, which is a resize that has yet to land.
+            - name: TCAB_INGEST_STATE_SIZE
+              value: copied-from-the-claim
           # No probe of any kind, on purpose. This container shares the backend's
           # pod, so a readiness probe that failed here would take the backend out of
           # its Service, and a liveness probe would restart a container whose one-shot
