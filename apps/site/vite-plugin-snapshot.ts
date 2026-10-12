@@ -6,6 +6,14 @@ import type {
   TestType,
 } from "@clockwyrks/run-record";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import {
+  CONCURRENCY_ENV,
+  createSnapshotFetcher,
+  forEachOrdered,
+  resolveConcurrency,
+  SnapshotFetchError,
+  type SnapshotFetcher,
+} from "./snapshot-fetch";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -29,6 +37,11 @@ import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 // dataset and succeeds — otherwise every gallery build would fail until the very
 // first publish. Only a *reachable-but-broken* snapshot (a network error, a 5xx,
 // or a sub-file that `index.json` references but is missing) fails the build.
+//
+// "A network error" and "a 5xx" mean ones that outlast their retries: every
+// request goes through `./snapshot-fetch`, which gives each attempt a timeout and
+// retries the transient failures, and the per-run documents are fetched several
+// at a time. Neither changes what is assembled or which failures are fatal.
 
 const VIRTUAL_ID = "virtual:tcab-snapshot";
 const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
@@ -912,14 +925,6 @@ function joinUrl(base: string, key: string): string {
   return `${base.replace(/\/+$/, "")}/${key.replace(/^\/+/, "")}`;
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText} for ${url}`);
-  }
-  return (await response.json()) as T;
-}
-
 // Reconstruct a single *aggregate* writeup's `---\nrating.<domain>: …\n---\n\n
 // <body>` framing from a run's reviews, so the existing `parseWriteup` path is
 // unchanged on the site side and the cards/badges show the aggregate verdict. The
@@ -1347,28 +1352,35 @@ function collapseCases(
 // `emitRecord` is called for every run with its full record JSON, so the build
 // can write it out as a runtime-fetchable `runs/<id>.json` asset (the lazy
 // per-run detail fetch), mirroring the events emission.
-async function loadSnapshot(
+//
+// Every document is read through `fetcher`, and the per-run and per-case
+// documents `concurrency` at a time. Both emitters are still called in the
+// snapshot's own order, a run's record before its events and one run after
+// another, so what is assembled and emitted is independent of the concurrency.
+//
+// Exported for the plugin's tests, which drive it with a scripted `fetch`.
+export async function loadSnapshot(
   base: string,
   emitEvents: (runId: string, json: string) => void,
   emitRecord: (runId: string, json: string) => void,
+  fetcher: SnapshotFetcher,
+  concurrency: number,
 ): Promise<AssembledSnapshot | null> {
   // `index.json` is the atomic pointer the backend writes last, only after a
   // publish. A 404 here means nothing has been published yet (a fresh
   // deployment), which is the empty-dataset bootstrap case — signal it with
   // `null` so the build succeeds empty. Any other non-OK status is a genuinely
   // broken snapshot and must fail the build.
-  const indexUrl = joinUrl(base, "index.json");
-  const indexResponse = await fetch(indexUrl);
-  if (indexResponse.status === 404) {
-    return null;
+  let index: SnapshotIndex;
+  try {
+    index = await fetcher.json<SnapshotIndex>(joinUrl(base, "index.json"));
+  } catch (error) {
+    if (error instanceof SnapshotFetchError && error.status === 404) {
+      return null;
+    }
+    throw error;
   }
-  if (!indexResponse.ok) {
-    throw new Error(
-      `${indexResponse.status} ${indexResponse.statusText} for ${indexUrl}`,
-    );
-  }
-  const index = (await indexResponse.json()) as SnapshotIndex;
-  const runsFile = await fetchJson<SnapshotRunsFile>(
+  const runsFile = await fetcher.json<SnapshotRunsFile>(
     joinUrl(base, index.runsKey),
   );
 
@@ -1387,20 +1399,27 @@ async function loadSnapshot(
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
 
-  // Per-run records + reviews, in the snapshot's newest-first order.
-  for (const summary of runsFile.runs) {
-    // The run's document is content-addressed under a snapshot-independent prefix, so
-    // the summary is what names it — the key carries a digest of the document's own
-    // bytes and cannot be composed from the run id. A summary in `runs.json` always
-    // carries one; a missing key is a malformed snapshot, not a fallback path.
+  // The run's document is content-addressed under a snapshot-independent prefix, so
+  // the summary is what names it — the key carries a digest of the document's own
+  // bytes and cannot be composed from the run id. A summary in `runs.json` always
+  // carries one; a missing key is a malformed snapshot, not a fallback path. Checked
+  // for every run before the first document is requested, so a malformed index fails
+  // the build without a download.
+  const runDocuments = runsFile.runs.map((summary) => {
     if (!summary.documentKey) {
       throw new Error(
         `snapshot run summary ${summary.id} carries no documentKey; the snapshot is malformed`,
       );
     }
-    const runFile = await fetchJson<SnapshotRunFile>(
-      joinUrl(base, summary.documentKey),
-    );
+    return { summary, url: joinUrl(base, summary.documentKey) };
+  });
+
+  // Per-run records + reviews. The documents are fetched several at a time and
+  // assembled in the snapshot's newest-first order, one run after another.
+  const assembleRun = (
+    runFile: SnapshotRunFile,
+    { summary }: { summary: RunSummary },
+  ): void => {
     // Emit the full run record as a runtime-fetchable static asset
     // (`runs/<id>.json`), so a summary-first page lazily fetches one run's whole
     // record on demand — the bundle ships the summary index but NOT the array of
@@ -1480,19 +1499,34 @@ async function loadSnapshot(
     }
     const { testCaseSlug, testCaseVersion } = summary.subject;
     caseKeys.add(`${index.casesPrefix}${testCaseSlug}/${testCaseVersion}.json`);
-  }
+  };
+  await forEachOrdered(
+    runDocuments,
+    concurrency,
+    ({ url }) => fetcher.json<SnapshotRunFile>(url),
+    assembleRun,
+  );
 
-  // Per-case-version metadata for every case a published run references.
+  // Per-case-version metadata for every case a published run references, in the
+  // order the runs first referenced them.
   const caseFiles: SnapshotCaseFile[] = [];
-  for (const key of caseKeys) {
-    try {
-      caseFiles.push(await fetchJson<SnapshotCaseFile>(joinUrl(base, key)));
-    } catch {
-      // A run can reference a historical case-version the snapshot did not
-      // emit; skip it rather than failing the whole build (the run still shows,
-      // it just lacks framing metadata).
-    }
-  }
+  await forEachOrdered(
+    [...caseKeys],
+    concurrency,
+    async (key) => {
+      try {
+        return await fetcher.json<SnapshotCaseFile>(joinUrl(base, key));
+      } catch {
+        // A run can reference a historical case-version the snapshot did not
+        // emit; skip it rather than failing the whole build (the run still shows,
+        // it just lacks framing metadata).
+        return null;
+      }
+    },
+    (file) => {
+      if (file !== null) caseFiles.push(file);
+    },
+  );
 
   // The case-scoped *baseline* validation media, keyed by a
   // `<slug>/<version>/<engine>/<variant>` subject key then the flat
@@ -1574,7 +1608,7 @@ async function loadSnapshot(
   let models: unknown[] = [];
   if (index.modelsKey) {
     try {
-      const modelsFile = await fetchJson<SnapshotModelsFile>(
+      const modelsFile = await fetcher.json<SnapshotModelsFile>(
         joinUrl(base, index.modelsKey),
       );
       models = modelsFile.models;
@@ -1589,7 +1623,7 @@ async function loadSnapshot(
   let comparisons: unknown[] = [];
   if (index.comparisonsKey) {
     try {
-      const comparisonsFile = await fetchJson<SnapshotComparisonsFile>(
+      const comparisonsFile = await fetcher.json<SnapshotComparisonsFile>(
         joinUrl(base, index.comparisonsKey),
       );
       comparisons = comparisonsFile.comparisons;
@@ -1604,7 +1638,7 @@ async function loadSnapshot(
   let testCaseGroups: unknown[] = [];
   if (index.testCaseGroupsKey) {
     try {
-      const groupsFile = await fetchJson<SnapshotTestCaseGroupsFile>(
+      const groupsFile = await fetcher.json<SnapshotTestCaseGroupsFile>(
         joinUrl(base, index.testCaseGroupsKey),
       );
       testCaseGroups = groupsFile.groups;
@@ -1619,7 +1653,7 @@ async function loadSnapshot(
   let ggRuns: AssembledSnapshot["ggRuns"] = null;
   if (index.ggRunsKey) {
     try {
-      const ggRunsFile = await fetchJson<SnapshotGgRunsFile>(
+      const ggRunsFile = await fetcher.json<SnapshotGgRunsFile>(
         joinUrl(base, index.ggRunsKey),
       );
       ggRuns = {
@@ -1656,7 +1690,8 @@ async function loadSnapshot(
   };
 }
 
-function serialize(data: AssembledSnapshot): string {
+// Exported for the plugin's tests, which compare two loads byte for byte.
+export function serialize(data: AssembledSnapshot): string {
   return [
     "// Generated at build time by vite-plugin-snapshot. Do not edit.",
     `export const runSummaries = ${JSON.stringify(data.runSummaries)};`,
@@ -1704,6 +1739,14 @@ export function snapshot(): Plugin {
         module = serialize(EMPTY);
         return;
       }
+      let concurrency: number;
+      try {
+        concurrency = resolveConcurrency(process.env[CONCURRENCY_ENV]);
+      } catch (error) {
+        this.error(error instanceof Error ? error.message : String(error));
+      }
+      const fetcher = createSnapshotFetcher();
+      const started = performance.now();
       try {
         let eventAssets = 0;
         let recordAssets = 0;
@@ -1729,6 +1772,8 @@ export function snapshot(): Plugin {
             });
             recordAssets += 1;
           },
+          fetcher,
+          concurrency,
         );
         if (data === null) {
           this.warn(
@@ -1739,6 +1784,9 @@ export function snapshot(): Plugin {
         }
         this.info(
           `fetched snapshot from ${base}: ${data.runSummaries.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s).`,
+        );
+        this.info(
+          `fetched ${fetcher.fetched} snapshot document(s), ${fetcher.retried} of them after a retry, in ${((performance.now() - started) / 1000).toFixed(1)} s (${concurrency} at a time).`,
         );
         module = serialize(data);
       } catch (error) {
