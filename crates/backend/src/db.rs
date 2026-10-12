@@ -58,8 +58,25 @@ use crate::store::{CaseNames, StoredManifest};
 /// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
 /// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
-/// and `running` each have a driver Job coming up or executing.
-const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+/// and `running` each have a driver Job coming up or executing, and `storing` has
+/// one that has finished its run and is waiting on the artifact store to take the
+/// tree.
+const IN_FLIGHT_STATES: [&str; 6] = [
+    "queued",
+    "pending",
+    "dispatched",
+    "starting",
+    "running",
+    "storing",
+];
+
+/// The job state of a run whose driver is waiting to store its artifact tree.
+pub const STORING_STATE: &str = "storing";
+
+/// The job states a driver exists for: claimed, and not yet terminal. A driver's
+/// `storing` report is taken only from one of these, and these are what the
+/// dispatcher may report lost.
+pub const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
 /// What one id a comparison arm recorded stands for ([`Db::resolve_arm_runs`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +126,11 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 /// The job states that occupy a **parallelism slot** for their harness: a driver
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
 /// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
-const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+///
+/// A `storing` run counts too. Its session is over, but its record and README are
+/// not stored yet, which is what a game jam's next entry waits for, and the whole
+/// queue is on hold while any run is storing in any case.
+const ACTIVE_SLOT_STATES: [&str; 4] = DRIVEN_STATES;
 
 /// The in-flight job states that have **cost nothing yet**: the job is waiting to be
 /// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
@@ -128,7 +149,7 @@ pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 /// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
 /// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
-pub const CANCELABLE_ACTIVE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+pub const CANCELABLE_ACTIVE_STATES: [&str; 4] = DRIVEN_STATES;
 
 /// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
@@ -277,6 +298,10 @@ pub struct StoredRun {
     pub links: RunLinks,
     /// Whether the run is published (and thus eligible for the public snapshot).
     pub published: bool,
+    /// The `run.artifacts_stored` column: whether the artifact service holds the
+    /// run's tree. `None` while unknown, which is not the same as not stored.
+    #[serde(default)]
+    pub artifacts_stored: Option<bool>,
     /// RFC 3339 of when this run was first published, or `None` while it is only
     /// pushed. Not part of the run record itself.
     pub published_at: Option<String>,
@@ -660,6 +685,11 @@ impl Db {
             review_count: Set(0),
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
+            // Not the record's to say: a push leaves the column at its `NULL` on an
+            // insert and at whatever was recorded on a re-push. See `db.artifacts.rs`.
+            artifacts_stored: NotSet,
+            // Automatic publishing's own mark, which a push likewise leaves alone.
+            auto_publish_deferred: NotSet,
             record_json: Set(record_json),
             record_readable: Set(true),
             record_format: Set(RUN_RECORD_FORMAT as i32),
@@ -1763,6 +1793,7 @@ impl Db {
                     playable_build: link.and_then(|l| l.playable_build.clone()),
                 },
                 published: run.published,
+                artifacts_stored: run.artifacts_stored,
                 published_at: run.published_at,
                 events_json: run.events_json,
             });
@@ -2161,6 +2192,18 @@ async fn gate_publishable<C: ConnectionTrait>(
 pub(crate) fn auto_publishes(run_state: &str, validator_rated: bool) -> bool {
     validator_rated
         && run_state == run_state_str(test_cabinet_core::run_record::RunState::Completed)
+}
+
+/// One run automatic publishing may publish, from [`Db::auto_publish_candidates`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoPublishCandidate {
+    /// The run's id.
+    pub run_id: String,
+    /// The run's recorded [artifact presence](Db::run_artifacts_stored).
+    pub artifacts_stored: Option<bool>,
+    /// Whether automatic publishing has already passed the run over and left it to
+    /// the periodic retry.
+    pub deferred: bool,
 }
 
 /// What [`Db::enqueue_publish_job_once`] did for a run.
@@ -5831,9 +5874,18 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
         // unpublishable has to be refused by the first half or a reviewed one would
         // be listed and then refused by the gate. Kept in step with the gate by
         // `publishable_slice_matches_the_publish_gate`.
+        //
+        // A run recorded as having no stored artifact tree is left out as well: the
+        // publish endpoint refuses it (see `crate::api::publish_gate`), and this
+        // slice lists only what that endpoint accepts. An unknown presence stays in.
         SummaryState::Publishable => query
             .filter(run::Column::Published.eq(false))
             .filter(run::Column::RunState.is_not_in(never_publishable_states()))
+            .filter(
+                Condition::any()
+                    .add(run::Column::ArtifactsStored.is_null())
+                    .add(run::Column::ArtifactsStored.eq(true)),
+            )
             .filter(
                 Condition::any()
                     .add(run::Column::RunState.is_in(publishable_failure_states()))
@@ -6379,6 +6431,20 @@ pub struct ClaimOutcome {
     pub reconciled: Vec<job::Model>,
 }
 
+/// Whether a claim pass may hand out a run at all.
+///
+/// The per-job rules (a harness at its cap, a jam entry waiting its turn) hold one
+/// job back and let the pass move on to the next. This holds the whole queue, for a
+/// reason that is not about any one run: today, an artifact store that could not
+/// take another run's tree (see [`crate::capacity`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimGate {
+    /// Claim the first claimable job.
+    Open,
+    /// Claim nothing, and hold every waiting job in `pending`.
+    Hold,
+}
+
 /// Which jobs a bulk cancel reaches: the in-flight states to sweep, optionally narrowed
 /// to one plan/ladder and/or one account.
 ///
@@ -6532,6 +6598,7 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         // `starting`, not by joining the queue.
         started_at: Set(None),
         retried_by: Set(None),
+        held_report_json: Set(None),
     }
 }
 
@@ -6676,6 +6743,17 @@ impl Db {
     /// Returning only the claim would leave every held-back run's row stale until
     /// something else re-read the queue.
     pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
+        self.claim_next_gated(now, ClaimGate::Open).await
+    }
+
+    /// [`claim_next`](Self::claim_next) behind a queue-wide gate.
+    ///
+    /// Under [`ClaimGate::Hold`] the pass claims nothing and treats every waiting
+    /// job as held back, so each one reads `pending`. Nothing else about a held job
+    /// changes: it keeps its queue position, and the first pass under
+    /// [`ClaimGate::Open`] releases the claimable ones to `queued` and claims the
+    /// oldest, exactly as if the hold had never been.
+    pub async fn claim_next_gated(&self, now: &str, gate: ClaimGate) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
         let txn = self.conn().begin().await?;
@@ -6735,7 +6813,8 @@ impl Db {
             // single sweep never dispatches two entries of the same pair.
             let jam_turn =
                 job.test_type != TestType::GameJam.as_str() || !jams_in_flight.contains(&jam_key);
-            let has_room = under_cap(&job.harness_slug, active) && jam_turn;
+            let has_room =
+                gate == ClaimGate::Open && under_cap(&job.harness_slug, active) && jam_turn;
 
             if claimed.is_none() && has_room {
                 // Claim this one: it now occupies a slot for its harness, so bump the
@@ -6996,6 +7075,7 @@ impl Db {
             return Ok(None);
         };
         let unstarted = model.started_at.is_none();
+        let was_storing = model.state == STORING_STATE;
         let mut active = model.into_active_model();
         active.state = Set(state.to_string());
         active.updated_at = Set(now.to_string());
@@ -7004,11 +7084,151 @@ impl Db {
         }
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
+        } else if was_storing {
+            // The detail of a `storing` job is why its driver was waiting, which is
+            // no part of the state it is leaving for.
+            active.detail = Set(None);
         }
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
+        if matches!(state, "succeeded" | "failed") {
+            // The report the driver handed over for safekeeping has been made.
+            active.held_report_json = Set(None);
+        }
         Ok(Some(active.update(&self.conn()).await?))
+    }
+
+    /// Move a driven job to `storing`: its driver has finished the run and is
+    /// waiting on the artifact store to take the tree, for `reason`. Stamps
+    /// `updated_at` and records the reason as the job's `detail`, and keeps
+    /// `held_report` as the job's [held report](job::Model::held_report_json) when
+    /// one is given.
+    ///
+    /// Only a job in one of [`DRIVEN_STATES`] moves, a job already `storing`
+    /// included, since the driver repeats the report with its latest reason.
+    /// Returns the updated row, or `None` when the job is unknown, still waiting
+    /// for a driver, or terminal: a report that outlived its job (one canceled, or
+    /// failed as lost) must not bring it back into flight, where it would hold the
+    /// run queue with no driver left to release it.
+    ///
+    /// The move is one conditional `UPDATE`, so a cancellation that commits beside
+    /// it either precedes it, and the update matches nothing, or follows it and
+    /// cancels a `storing` job. A read followed by a write by id would let the
+    /// write put a canceled job back in flight.
+    pub async fn set_job_storing(
+        &self,
+        id: &str,
+        now: &str,
+        reason: Option<&str>,
+        held_report: Option<&str>,
+    ) -> Result<Option<job::Model>> {
+        let mut update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value(STORING_STATE))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(job::Column::Detail, Expr::value(reason.map(str::to_string)))
+            // A run that finished has started, whatever reports were missed.
+            .col_expr(
+                job::Column::StartedAt,
+                Func::coalesce([
+                    Expr::col(job::Column::StartedAt).into(),
+                    Expr::value(now),
+                ])
+                .into(),
+            )
+            .filter(job::Column::Id.eq(id))
+            .filter(job::Column::State.is_in(DRIVEN_STATES));
+        if let Some(held_report) = held_report {
+            update = update.col_expr(job::Column::HeldReportJson, Expr::value(held_report));
+        }
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get_job(id).await
+    }
+
+    /// Return a `storing` job to `running`: its driver's wait on the artifact
+    /// store is over. Clears the reason the wait recorded as the job's `detail`,
+    /// and replaces the job's [held report](job::Model::held_report_json) when
+    /// `held_report` is given. Returns the updated row, or `None` when the job is
+    /// not `storing`. One conditional `UPDATE`, for the reason
+    /// [`set_job_storing`](Self::set_job_storing) is.
+    pub async fn set_job_stored(
+        &self,
+        id: &str,
+        now: &str,
+        held_report: Option<&str>,
+    ) -> Result<Option<job::Model>> {
+        let mut update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value("running"))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(job::Column::Detail, Expr::value(Option::<String>::None))
+            .filter(job::Column::Id.eq(id))
+            .filter(job::Column::State.eq(STORING_STATE));
+        if let Some(held_report) = held_report {
+            update = update.col_expr(job::Column::HeldReportJson, Expr::value(held_report));
+        }
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get_job(id).await
+    }
+
+    /// How many jobs a driver exists for: the jobs in [`DRIVEN_STATES`]. What the
+    /// run claim reads while the artifact store is being
+    /// [proved](crate::capacity::ClaimGate::Trial), when it hands out a run only
+    /// if none is in flight.
+    pub async fn driven_job_count(&self) -> Result<u64> {
+        Ok(job::Entity::find()
+            .filter(job::Column::State.is_in(DRIVEN_STATES))
+            .count(&self.conn())
+            .await?)
+    }
+
+    /// Whether the tree of the most recently finished run was stored: the recorded
+    /// [artifact presence](Self::run_artifacts_stored) of the run of the latest
+    /// `succeeded` or `failed` job that has one. `None` when no finished job's run
+    /// has a recorded presence, which is every backend with no artifact service.
+    ///
+    /// The backend reads this once as it starts, to decide whether the artifact
+    /// store had failed an upload when the previous process stopped. Only the
+    /// most recent jobs are looked at: older ones say nothing about the store now.
+    pub async fn latest_finished_tree_stored(&self) -> Result<Option<bool>> {
+        let recent: Vec<Option<String>> = job::Entity::find()
+            .select_only()
+            .column(job::Column::RecordId)
+            .filter(job::Column::State.is_in(["succeeded", "failed"]))
+            .filter(job::Column::RecordId.is_not_null())
+            .order_by_desc(job::Column::UpdatedAt)
+            .limit(16)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        for record_id in recent.into_iter().flatten() {
+            if let Some(stored) = self.run_artifacts_stored(&record_id).await? {
+                return Ok(Some(stored));
+            }
+        }
+        Ok(None)
+    }
+
+    /// The runs whose drivers are waiting to store their artifact trees: how many
+    /// jobs are `storing`, and the reason the most recently updated one reported.
+    ///
+    /// This is what the [artifact capacity](crate::capacity) hold counts. It reads
+    /// the live job state, so a waiting run stops counting the moment its job
+    /// leaves `storing` by any route: a report from its driver, a cancellation, or
+    /// the dispatcher failing it as lost.
+    pub async fn storing_jobs(&self) -> Result<crate::capacity::WaitingRuns> {
+        let jobs = job::Entity::find()
+            .filter(job::Column::State.eq(STORING_STATE))
+            .order_by_desc(job::Column::UpdatedAt)
+            .all(&self.conn())
+            .await?;
+        Ok(crate::capacity::WaitingRuns {
+            count: u32::try_from(jobs.len()).unwrap_or(u32::MAX),
+            reason: jobs.into_iter().find_map(|job| job.detail),
+        })
     }
 
     /// Fetch one job by id.
@@ -7197,34 +7417,54 @@ impl Db {
         Ok(published.unwrap_or(false))
     }
 
-    /// The runs among `run_ids` that publish themselves now, in the order given.
+    /// The runs among `run_ids` that publish themselves: each is
+    /// unpublished, is the attempt that stands, and has never had a publish job.
+    /// They come back in the order asked for, each named once, with the two facts
+    /// that decide what automatic publishing does with one next.
     ///
-    /// A run qualifies when `auto_publishes` holds for it, it is unpublished, it
-    /// is the attempt that stands rather than one a retry replaced, and **no
-    /// publish job has ever been enqueued for it**, in any state. The last clause
-    /// is what bounds automatic publishing to one attempt per run: a release that
-    /// is queued or running is left alone, and one that failed is left for a
-    /// person to retry, so a caller that asks on every pass never loops on a run
-    /// whose publish keeps failing.
-    pub async fn auto_publishable_among(&self, run_ids: &[String]) -> Result<Vec<String>> {
+    /// A run recorded as not stored is a candidate like the rest. Whether it is
+    /// asked about is the caller's to decide, since the record may be older than
+    /// the tree.
+    ///
+    /// "Never had a publish job" means in any state, and is what bounds automatic
+    /// publishing to one attempt per run: a release that is queued or running is
+    /// left alone, and one that failed is left for a person to retry, so a caller
+    /// that asks on every pass never loops on a run whose publish keeps failing.
+    pub async fn auto_publish_candidates(
+        &self,
+        run_ids: &[String],
+    ) -> Result<Vec<AutoPublishCandidate>> {
         if run_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let rows: Vec<(String, String, bool)> = run::Entity::find()
+        let rows: Vec<(String, String, bool, Option<bool>, bool)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
             .column(run::Column::RunState)
             .column(run::Column::ValidatorRated)
+            .column(run::Column::ArtifactsStored)
+            .column(run::Column::AutoPublishDeferred)
             .filter(run::Column::Id.is_in(run_ids.iter().cloned()))
             .filter(run::Column::Published.eq(false))
             .filter(not_a_retried_attempt())
             .into_tuple()
             .all(&self.conn())
             .await?;
-        let mut candidates: std::collections::HashSet<String> = rows
+        let mut candidates: std::collections::HashMap<String, AutoPublishCandidate> = rows
             .into_iter()
-            .filter(|(_, run_state, validator_rated)| auto_publishes(run_state, *validator_rated))
-            .map(|(id, _, _)| id)
+            .filter(|(_, run_state, validator_rated, _, _)| {
+                auto_publishes(run_state, *validator_rated)
+            })
+            .map(|(run_id, _, _, artifacts_stored, deferred)| {
+                (
+                    run_id.clone(),
+                    AutoPublishCandidate {
+                        run_id,
+                        artifacts_stored,
+                        deferred,
+                    },
+                )
+            })
             .collect();
         if candidates.is_empty() {
             return Ok(Vec::new());
@@ -7232,18 +7472,16 @@ impl Db {
         let attempted: Vec<String> = publish_job::Entity::find()
             .select_only()
             .column(publish_job::Column::RunId)
-            .filter(publish_job::Column::RunId.is_in(candidates.iter().cloned()))
+            .filter(publish_job::Column::RunId.is_in(candidates.keys().cloned()))
             .into_tuple()
             .all(&self.conn())
             .await?;
         for run_id in attempted {
             candidates.remove(&run_id);
         }
-        let mut seen = std::collections::HashSet::new();
         Ok(run_ids
             .iter()
-            .filter(|id| candidates.contains(*id) && seen.insert(id.as_str()))
-            .cloned()
+            .filter_map(|id| candidates.remove(id))
             .collect())
     }
 
@@ -9272,3 +9510,7 @@ impl Db {
         Ok(res.rows_affected)
     }
 }
+
+#[path = "db.artifacts.rs"]
+mod artifacts;
+pub use artifacts::ArtifactReconciliation;

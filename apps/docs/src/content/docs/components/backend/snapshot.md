@@ -16,7 +16,8 @@ corpus](#gg-runsjson--the-gg-document-corpus) is the one exception, and it is
 redacted rather than gated on publication.
 
 The backend regenerates the whole snapshot from its full published set on each
-coalesced publish, uploads it, and swaps it into place. Regenerating everything
+[batched refresh](/components/backend/overview/#refresh-batching), uploads it,
+and swaps it into place. Regenerating everything
 rather than applying deltas keeps the operation idempotent.
 
 Regenerating is distinct from re-uploading. The per-generation index files are
@@ -441,7 +442,7 @@ ephemeral local disk a pod reschedule empties it until the ingest repopulates
 it. A snapshot regenerated while the store is momentarily empty would emit each
 published run with no case file for it, and the gallery would show a run with no
 case to browse. To keep the snapshot self-consistent, an ingest that actually
-(re)ingests a version queues a snapshot refresh, the same coalesced regeneration
+(re)ingests a version queues a snapshot refresh, the same batched regeneration
 a publish triggers. A no-op ingest does not, so the periodic refresh does not
 rebuild the gallery on every cycle.
 

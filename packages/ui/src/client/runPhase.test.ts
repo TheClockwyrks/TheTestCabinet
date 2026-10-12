@@ -34,4 +34,8 @@ describe("runPhase", () => {
     // in-flight list; the active-list caller falls back for it.
     expect(runPhase("something-new")).toBeNull();
   });
+
+  it("keeps a run waiting on the artifact store apart from a running one", () => {
+    expect(runPhase("storing")).toBe("storing");
+  });
 });

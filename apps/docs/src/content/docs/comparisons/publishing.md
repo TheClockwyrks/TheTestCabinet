@@ -43,6 +43,10 @@ and reported in the response as a `runId` with a reason, rather than failing the
 whole publish, and the console shows the skipped runs so a partially-published
 comparison never reads as if every run is inspectable.
 
+A run whose [artifact tree is not
+stored](/components/backend/overview/#artifact-presence), and a run the artifact
+service could not be asked about, are each skipped this way with that reason.
+
 Asset-generation runs release no repo, but a playable
 [end-to-end](/testing/end-to-end/overview/) comparison run does the full GitHub
 and Cloudflare release, so the heavy case is the one to budget for.
@@ -103,9 +107,9 @@ site, so the same page is interactive internally and read-only publicly.
 1. An operator builds and runs a [comparison](/comparisons/experiments/)
    internally, and its arms fill with auto-validated runs.
 2. The operator publishes it. The comparison is marked published, a publish job
-   is enqueued per publishable arm run, and the snapshot debounce is woken.
+   is enqueued per publishable arm run, and a snapshot refresh is requested.
 3. The dispatcher drains the publish jobs. Each completed publish flips
-   `run.published` and wakes the snapshot debounce again.
+   `run.published` and requests a snapshot refresh again.
 4. The [publisher](/components/backend/snapshot/) regenerates the R2 snapshot
    with the comparison and its published runs, and fires the Cloudflare Pages
    deploy hook. The public site rebuilds and the comparison is live, read-only.

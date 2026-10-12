@@ -95,7 +95,14 @@ export function RunVerdictPage() {
   const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review, reviews, published, validatorRated }) => {
+      {({
+        run,
+        review,
+        reviews,
+        published,
+        artifactsMissing,
+        validatorRated,
+      }) => {
         const presentation = describeRunState(run.status.state);
 
         // A performance run is scored automatically, so nothing below this branch
@@ -184,6 +191,7 @@ export function RunVerdictPage() {
                   run={run}
                   reviews={reviews}
                   published={published}
+                  artifactsMissing={artifactsMissing}
                   validatorRated={validatorRated}
                   onChanged={() => runtime.requestRefresh()}
                 />

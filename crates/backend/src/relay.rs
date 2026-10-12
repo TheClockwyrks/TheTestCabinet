@@ -249,6 +249,9 @@ pub enum StreamMessage {
     Notification(Box<Notification>),
     /// An in-flight list transition: gated on the `runs` topic.
     Run(Box<RunEvent>),
+    /// A change in the artifact store's [capacity](crate::capacity): delivered to
+    /// every stream, since it decides whether any run starts at all.
+    Storage(Box<crate::capacity::ArtifactStorageStatus>),
 }
 
 /// Which topics one connected stream currently wants.
@@ -278,6 +281,7 @@ impl StreamTopics {
         match message {
             StreamMessage::Notification(_) => self.notifications.load(Ordering::Relaxed),
             StreamMessage::Run(_) => self.runs.load(Ordering::Relaxed),
+            StreamMessage::Storage(_) => true,
         }
     }
 
@@ -412,6 +416,12 @@ impl Notifier {
     /// Publish a run-lifecycle event to every stream subscribed to the `runs` topic.
     pub fn publish_run(&self, event: RunEvent) {
         let _ = self.tx.send(StreamMessage::Run(Box::new(event)));
+    }
+
+    /// Publish a change in the artifact store's capacity to every stream, whatever
+    /// its topics.
+    pub fn publish_storage(&self, status: crate::capacity::ArtifactStorageStatus) {
+        let _ = self.tx.send(StreamMessage::Storage(Box::new(status)));
     }
 
     /// How many streams are connected right now. Test/diagnostic only.

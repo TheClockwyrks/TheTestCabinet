@@ -62,7 +62,7 @@ name starts with `tcab-publisher-` and a run otherwise.
 
 ## Backend-enforced admission rules
 
-Two admission rules are enforced by the backend at the claim, not by the
+Three admission rules are enforced by the backend at the claim, not by the
 dispatcher.
 
 - Per-harness maximum parallelism. The backend hands back only a job whose
@@ -73,6 +73,15 @@ dispatcher.
   [game-jam](/testing/game-jam/overview/) job back while another run of the same
   jam by the same model is in flight under any harness, so a model's jam entries
   run one at a time and each is briefed with the previous one's README.
+- Artifact capacity. While any condition for storing a run's tree is
+  [not green](/components/backend/overview/#artifact-capacity), the run claim
+  hands back nothing and every waiting run is held in `pending`. The conditions
+  are the store's free space, its write check, its being readable, every run
+  in flight having stored its tree, and no upload having failed since a tree
+  last landed. After a failed upload the write check could not account for,
+  the claim hands back one run at a time, and only while no run is in flight,
+  until a tree lands.
+  The publish lane's claim is unaffected.
 
 ## Queue order
 
@@ -149,7 +158,7 @@ leaves that job to [lost-driver detection](#lost-drivers).
 ## Lost drivers
 
 The backend believes a driver is executing every job it holds as `dispatched`,
-`starting`, or `running`. That belief outlives the driver when nobody is left to
+`starting`, `running` or `storing`. That belief outlives the driver when nobody is left to
 report its death:
 
 - the whole machine restarted, taking every driver pod and the dispatcher down
@@ -160,14 +169,19 @@ report its death:
 
 Each tick, the dispatcher reads the backend's jobs in flight (`GET /jobs/active`)
 and then lists its `Job`s. A driven job with no `Active` driver `Job` is missing.
-A job missing for two minutes without a break is lost, and the dispatcher
+A driven job is one in the `dispatched`, `starting`, `running` or `storing`
+state. A job missing for two minutes without a break is lost, and the dispatcher
 reports it with `POST /jobs/{id}/lost`. That call uses the service token, so it
 needs no per-job token a restart could have lost. The detail names what the
 cluster shows: the dead pod's reason, a driver that exited without its report
 landing, or a `Job` that no longer exists.
 
 The backend fails a lost job exactly as it would a driver's own `failed` report.
-The automatic retry and the coverage feed both apply. It ignores the report for
+The automatic retry and the coverage feed both apply. The exception is a job
+whose driver had
+[handed its report over](/components/backend/overview/#a-driver-lost-while-it-waits)
+before it began waiting on the artifact store: that run had finished, and the
+backend lands the report it holds. It ignores the report for
 a job that is no longer driven, so a report racing the driver's own is harmless.
 
 The grace period covers the gap between a claim and its `Job` appearing, and the

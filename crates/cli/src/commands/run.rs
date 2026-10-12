@@ -287,6 +287,7 @@ fn state_label(state: JobState) -> &'static str {
         JobState::Dispatched => "dispatched",
         JobState::Starting => "starting",
         JobState::Running => "running",
+        JobState::Storing => "storing",
         JobState::Succeeded => "succeeded",
         JobState::Failed => "failed",
         JobState::Canceled => "canceled",

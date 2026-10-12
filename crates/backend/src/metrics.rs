@@ -12,7 +12,7 @@ use std::time::Instant;
 use axum::extract::{MatchedPath, Request};
 use axum::middleware::Next;
 use axum::response::Response;
-use opentelemetry::metrics::{Counter, Histogram, Meter};
+use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter};
 use opentelemetry::{KeyValue, global};
 
 /// The meter every backend instrument is registered against.
@@ -42,6 +42,30 @@ static RUNS_PUBLISHED: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .with_description("Count of runs successfully published.")
         .build()
 });
+
+/// Free bytes on the artifact store's volume, as of the latest capacity reading.
+static ARTIFACTS_FREE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.artifacts.free_bytes")
+        .with_description("Free bytes on the artifact store's volume.")
+        .with_unit("By")
+        .build()
+});
+
+/// The size of the artifact store's volume, as of the latest capacity reading.
+static ARTIFACTS_TOTAL_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.artifacts.total_bytes")
+        .with_description("Size of the artifact store's volume.")
+        .with_unit("By")
+        .build()
+});
+
+/// Record one reading of the artifact store's [capacity](crate::capacity).
+pub fn record_artifact_capacity(free_bytes: u64, total_bytes: u64) {
+    ARTIFACTS_FREE_BYTES.record(free_bytes, &[]);
+    ARTIFACTS_TOTAL_BYTES.record(total_bytes, &[]);
+}
 
 /// Record one accepted publish. `newly_published` distinguishes a first publish
 /// from an idempotent re-publish so the two can be told apart downstream.

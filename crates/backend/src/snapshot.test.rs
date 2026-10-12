@@ -136,6 +136,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             playable_build: Some("https://abc.pages.dev".to_string()),
         },
         published: true,
+        artifacts_stored: None,
         published_at: Some(published_at.to_string()),
         events_json: None,
     }

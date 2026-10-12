@@ -10,7 +10,12 @@
         },
         {
           "const": "running",
-          "description": "Execution has begun.",
+          "description": "Execution has begun. Also what a driver that was [`Storing`](Self::Storing)\nreports once its upload has landed, returning the job to `running` while it\nfinishes its report.",
+          "type": "string"
+        },
+        {
+          "const": "storing",
+          "description": "The run has finished and the driver is waiting on the artifact store: an\nupload of the run's tree failed for a reason that is the store's rather than\nthe run's, and the driver is holding the only copy while it retries. The\nfailure is in `detail`. Reported after the first failed attempt and again\nafter every later one.",
           "type": "string"
         },
         {
@@ -342,9 +347,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The body of `POST /jobs/{id}/status`: the new driver state, plus the produced\nrecord on success or the reason on failure.",
   "properties": {
+    "artifactsStored": {
+      "description": "Whether the artifact service acknowledged the run's tree, on a terminal\nreport: `true` when the upload landed and `false` when every attempt failed,\nso the run has nothing to release. Absent when the driver has no artifact\nservice to upload to, and on every non-terminal report but one: the\n`running` report that ends a wait on the store carries `true` when the wait\nended with the tree stored. The backend leaves what it has recorded for the\nrun as it is when the field is absent.",
+      "type": ["boolean", "null"]
+    },
     "detail": {
       "default": null,
-      "description": "A human-readable failure reason, used when `state` is `failed`.",
+      "description": "A human-readable reason: why the run failed when `state` is `failed`, and why\nthe tree could not be stored when it is `storing`.",
       "type": ["string", "null"]
     },
     "record": {
@@ -357,11 +366,19 @@
         }
       ],
       "default": null,
-      "description": "The produced run record, required when `state` is `succeeded` and carried on\na `canceled` report too (the record a killed gg run wound down to produce). Its\n`links` are authoritative and stored with it."
+      "description": "The produced run record, required when `state` is `succeeded` and carried on\na `canceled` report too (the record a killed gg run wound down to produce). Its\n`links` are authoritative and stored with it. The first `storing` report\ncarries it as well, for the backend to keep while the driver waits."
+    },
+    "runFailure": {
+      "description": "On a `storing` report that carries the `record`: the reason the run failed,\nwhen the terminal report the driver is holding is a `failed` one. Absent\nwhen it is holding a `succeeded` report. The backend keeps the record and\nthis reason, and finishes the run from them if the driver is lost while it\nwaits.",
+      "type": ["string", "null"]
     },
     "state": {
       "$ref": "#/$defs/DriverState",
       "description": "The state the driver is reporting."
+    },
+    "storeFault": {
+      "description": "Why the tree was not stored, when `artifactsStored` is `false` and the cause\nwas a condition of the artifact store rather than something about this run's\ntree: the last failure of the upload. The backend reads it as evidence that\nthe store cannot take a tree, whatever state the job is in. Absent when the\ntree was stored, when the failure was the run's own, and on a report that\ncarries no `artifactsStored`.",
+      "type": ["string", "null"]
     }
   },
   "required": ["state"],

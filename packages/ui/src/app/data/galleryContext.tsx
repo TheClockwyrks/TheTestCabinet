@@ -128,6 +128,13 @@ export interface RunDetail {
    */
   published: boolean;
   /**
+   * Whether the artifact service holds the run's tree, which is what a publish
+   * releases. False means the service holds no tree, so an unpublished run cannot
+   * be published and the detail page says so. Null or absent while unknown,
+   * which is every run on a host that does not track it (the static site).
+   */
+  artifactsStored?: boolean | null;
+  /**
    * The run's showcase — the model's own presentation of the game it built (a
    * store-page description plus an ordered media carousel), lifted off the stored
    * record the same way the rating channels are so a page reads `run.showcase`

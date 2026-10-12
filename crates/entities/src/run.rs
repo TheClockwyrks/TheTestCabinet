@@ -168,6 +168,17 @@ pub struct Model {
     /// having at least one review — by an explicit publish. Only published runs
     /// enter the public snapshot.
     pub published: bool,
+    /// Whether the artifact service holds the run's tree, which is what a release
+    /// publishes: `Some(true)` when it does, `Some(false)` when it does not, and
+    /// `None` while nothing has reported on the run (every run of a backend with no
+    /// artifact service). Written by the driver's terminal report, the reclamation
+    /// sweep's reconciliation and the publish gate, and never by a push.
+    #[sea_orm(nullable)]
+    pub artifacts_stored: Option<bool>,
+    /// Whether automatic publishing passed this run over because its artifact tree
+    /// could not be confirmed, which hands the run to the backend's periodic retry.
+    /// Cleared once the run is published or has a publish job.
+    pub auto_publish_deferred: bool,
     /// The full `RunRecord` serialized verbatim (links populated).
     #[sea_orm(column_type = "Text")]
     pub record_json: String,

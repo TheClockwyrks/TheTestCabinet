@@ -21,16 +21,26 @@ const DEFAULT_STORE: &str = "./tcab-store";
 /// service's own loopback default, so local dev works with both services up and
 /// no extra configuration.
 const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
-/// The default coalescing window, in milliseconds, when
-/// `TCAB_SNAPSHOT_COALESCE_MS` is unset.
+/// The default quiet window, in milliseconds, when `TCAB_SNAPSHOT_COALESCE_MS` is
+/// unset: a pending batch of refresh requests is released once no request has
+/// arrived for this long.
 ///
-/// This is a **sliding** debounce: each publish restarts the window, so a batch is
-/// only regenerated once the operator stops publishing. It was 5s, which is shorter
-/// than the gap between two console publishes — a sweep of N runs therefore minted N
-/// full snapshot generations (and N site rebuilds) instead of one. A minute
-/// comfortably spans a hand-driven batch while staying far below the site build it
-/// triggers, so a single publish still reaches the gallery about as fast as before.
-const DEFAULT_COALESCE_MS: u64 = 60_000;
+/// Two minutes spans the gap between two publishes of one hand-driven or
+/// dispatcher-driven sequence, so the sequence is one batch, while a single publish
+/// still reaches the gallery within minutes.
+const DEFAULT_COALESCE_MS: u64 = 120_000;
+/// The default batch threshold when `TCAB_SNAPSHOT_BATCH_SIZE` is unset: this many
+/// pending refresh requests release a batch without waiting for the quiet window,
+/// so a long sequence of publishes reaches the gallery as it goes.
+const DEFAULT_SNAPSHOT_BATCH_SIZE: u64 = 20;
+/// The default minimum interval between two batch releases, in milliseconds, when
+/// `TCAB_SNAPSHOT_MIN_INTERVAL_MS` is unset. Each release starts a site build of
+/// about five minutes; ten minutes lets one finish before the next starts.
+const DEFAULT_SNAPSHOT_MIN_INTERVAL_MS: u64 = 600_000;
+/// The default bound on one snapshot refresh, in milliseconds, when
+/// `TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS` is unset. A refresh takes a minute or a few;
+/// thirty is far past any that is still making progress.
+const DEFAULT_SNAPSHOT_REFRESH_TIMEOUT_MS: u64 = 1_800_000;
 /// The default retention for superseded snapshot generations, in hours, when
 /// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
 /// reading a just-superseded generation finishes against a complete dataset.
@@ -108,8 +118,19 @@ pub struct Config {
     /// The Cloudflare Pages deploy-hook fired after each upload
     /// (`TCAB_SITE_DEPLOY_HOOK_URL`). `None` disables the hook (dev only).
     pub deploy_hook_url: Option<String>,
-    /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
+    /// The quiet window a batch of snapshot refresh requests is released after
+    /// (`TCAB_SNAPSHOT_COALESCE_MS`): no request for this long releases what is
+    /// pending.
     pub coalesce: Duration,
+    /// How many pending refresh requests release a batch at once
+    /// (`TCAB_SNAPSHOT_BATCH_SIZE`). A value below one behaves as one.
+    pub snapshot_batch_size: u64,
+    /// The minimum time between two batch releases
+    /// (`TCAB_SNAPSHOT_MIN_INTERVAL_MS`). `Duration::ZERO` removes the hold.
+    pub snapshot_min_interval: Duration,
+    /// How long one snapshot refresh may run before it is abandoned as failed
+    /// (`TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS`). `Duration::ZERO` removes the bound.
+    pub snapshot_refresh_timeout: Duration,
     /// How long a superseded snapshot generation is kept in the bucket before the
     /// refresh prunes it (`TCAB_SNAPSHOT_RETENTION_HOURS`). The generation
     /// `index.json` points at is never pruned regardless of this value; it bounds
@@ -182,6 +203,10 @@ pub struct Config {
     /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
     /// uploaded its tree but not yet reported terminal is protected from the sweep.
     pub artifact_sweep_grace: Duration,
+    /// The thresholds and timing of the [artifact capacity](crate::capacity) watch
+    /// (`TCAB_ARTIFACT_FREE_WARN_MB`, `TCAB_ARTIFACT_FREE_STOP_MB`,
+    /// `TCAB_ARTIFACT_FREE_RECOVER_MB`, `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`).
+    pub artifact_capacity: crate::capacity::CapacitySettings,
     /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
     /// reported to the console via `GET /config` so it can POST adversarial
     /// matches/tournaments and stream live tournament progress against the data
@@ -236,6 +261,14 @@ pub enum ConfigError {
     /// A required variable was not set.
     #[error("required environment variable `{0}` is not set")]
     Missing(&'static str),
+    /// A variable was set to a value the backend cannot run with.
+    #[error("environment variable `{name}` is invalid: {reason}")]
+    Invalid {
+        /// The variable at fault.
+        name: &'static str,
+        /// What is wrong with its value.
+        reason: String,
+    },
 }
 
 impl Config {
@@ -268,6 +301,21 @@ impl Config {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(DEFAULT_COALESCE_MS);
 
+        let snapshot_batch_size = std::env::var("TCAB_SNAPSHOT_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_SNAPSHOT_BATCH_SIZE);
+
+        let snapshot_min_interval_ms = std::env::var("TCAB_SNAPSHOT_MIN_INTERVAL_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_SNAPSHOT_MIN_INTERVAL_MS);
+
+        let snapshot_refresh_timeout_ms = std::env::var("TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_SNAPSHOT_REFRESH_TIMEOUT_MS);
+
         let snapshot_retention_hours = std::env::var("TCAB_SNAPSHOT_RETENTION_HOURS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -297,6 +345,8 @@ impl Config {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS);
 
+        let artifact_capacity = capacity_settings()?;
+
         Ok(Self {
             bind,
             env,
@@ -310,6 +360,9 @@ impl Config {
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),
+            snapshot_batch_size,
+            snapshot_min_interval: Duration::from_millis(snapshot_min_interval_ms),
+            snapshot_refresh_timeout: Duration::from_millis(snapshot_refresh_timeout_ms),
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
             gg_reference,
@@ -321,12 +374,92 @@ impl Config {
             artifact_sweep_grace: Duration::from_secs(
                 artifact_sweep_grace_hours.saturating_mul(3600),
             ),
+            artifact_capacity,
             arena_url,
             grafana_url,
             snapshot_url,
             allow_experimental,
         })
     }
+}
+
+impl Config {
+    /// The publisher's timing, as the snapshot settings resolve it.
+    pub fn publisher_timing(&self) -> crate::publisher::PublisherTiming {
+        crate::publisher::PublisherTiming {
+            batch: crate::publisher::BatchTiming {
+                threshold: self.snapshot_batch_size,
+                quiet_window: self.coalesce,
+                min_interval: self.snapshot_min_interval,
+                refresh_timeout: self.snapshot_refresh_timeout,
+            },
+            snapshot_retention: self.snapshot_retention,
+        }
+    }
+}
+
+/// Resolve the [artifact capacity](crate::capacity) settings from the environment.
+///
+/// Unlike the older numeric settings, a value that does not parse is refused rather
+/// than replaced by the default: these decide whether runs are dispatched at all,
+/// and a mistyped threshold that silently became 2 GiB would not be noticed until
+/// the volume was full.
+fn capacity_settings() -> Result<crate::capacity::CapacitySettings, ConfigError> {
+    use crate::capacity::{CapacitySettings, MIB};
+
+    let defaults = CapacitySettings::default();
+    let megabytes = |name: &'static str, default: u64| -> Result<u64, ConfigError> {
+        Ok(whole_number(name)?.map_or(default, |mb| mb.saturating_mul(MIB)))
+    };
+    let seconds = |name: &'static str, default: Duration| -> Result<Duration, ConfigError> {
+        Ok(whole_number(name)?.map_or(default, Duration::from_secs))
+    };
+
+    let settings = CapacitySettings {
+        warn_bytes: megabytes("TCAB_ARTIFACT_FREE_WARN_MB", defaults.warn_bytes)?,
+        stop_bytes: megabytes("TCAB_ARTIFACT_FREE_STOP_MB", defaults.stop_bytes)?,
+        recover_bytes: megabytes("TCAB_ARTIFACT_FREE_RECOVER_MB", defaults.recover_bytes)?,
+        poll_interval: seconds(
+            "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS",
+            defaults.poll_interval,
+        )?,
+    };
+    // A warning that fires only after the queue has already stopped warns nobody.
+    if settings.warn_bytes < settings.stop_bytes {
+        return Err(ConfigError::Invalid {
+            name: "TCAB_ARTIFACT_FREE_WARN_MB",
+            reason: format!(
+                "the warn threshold ({} MiB) is below the stop threshold \
+                 `TCAB_ARTIFACT_FREE_STOP_MB` ({} MiB)",
+                settings.warn_bytes / MIB,
+                settings.stop_bytes / MIB
+            ),
+        });
+    }
+    // A zero interval would poll the artifact service in a busy loop.
+    if settings.poll_interval.is_zero() {
+        return Err(ConfigError::Invalid {
+            name: "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS",
+            reason: "the poll interval must be at least 1 second".to_string(),
+        });
+    }
+    Ok(settings)
+}
+
+/// Read a whole-number environment variable: `None` when unset or empty, and an
+/// error naming the variable when it is set to anything else.
+fn whole_number(name: &'static str) -> Result<Option<u64>, ConfigError> {
+    let Some(value) = nonempty(name) else {
+        return Ok(None);
+    };
+    value
+        .trim()
+        .parse::<u64>()
+        .map(Some)
+        .map_err(|_| ConfigError::Invalid {
+            name,
+            reason: format!("`{value}` is not a whole number"),
+        })
 }
 
 /// Read an environment variable, falling back to a default when unset or empty.

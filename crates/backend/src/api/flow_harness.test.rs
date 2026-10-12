@@ -52,10 +52,7 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
             config.auth_url.clone(),
         )),
-        crate::publisher::PublisherTiming {
-            coalesce: config.coalesce,
-            snapshot_retention: config.snapshot_retention,
-        },
+        config.publisher_timing(),
     );
     let state = AppState {
         db,
@@ -66,6 +63,7 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
             config.auth_url.clone(),
         )),
         relay: crate::relay::Relay::new(),
+        capacity: crate::capacity::CapacityMonitor::unmonitored(config.artifact_capacity),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
@@ -97,6 +95,15 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         .await
         .unwrap();
     (dir, state)
+}
+
+/// Point `state` at an artifact service at `base`, presenting `token` to it: the
+/// two settings the publish gate needs before it asks about a run's tree.
+pub(crate) fn with_artifact_service(state: &mut AppState, base: &str, token: &str) {
+    let mut config = (*state.config).clone();
+    config.artifacts_internal_url = Some(base.to_string());
+    config.service_token = Some(token.to_string());
+    state.config = std::sync::Arc::new(config);
 }
 
 pub(crate) fn owner() -> AuthUser {
@@ -218,8 +225,20 @@ pub(crate) async fn wait_for_in_flight(state: &AppState, slug: &str, count: usiz
     }
 }
 
-/// Report `job_id` finished through the driver's status endpoint with `record`.
+/// Report `job_id` finished through the driver's status endpoint with `record`, as
+/// a driver with no artifact service to upload to does.
 pub(crate) async fn report(state: &AppState, job_id: &str, record: RunRecord) {
+    report_with_artifacts(state, job_id, record, None).await;
+}
+
+/// Report `job_id` finished with `record`, the report saying `artifacts_stored`
+/// about the run's tree upload.
+pub(crate) async fn report_with_artifacts(
+    state: &AppState,
+    job_id: &str,
+    record: RunRecord,
+    artifacts_stored: Option<bool>,
+) {
     let token = state.db.get_job(job_id).await.unwrap().unwrap().job_token;
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -234,6 +253,9 @@ pub(crate) async fn report(state: &AppState, job_id: &str, record: RunRecord) {
             state: DriverState::Succeeded,
             record: Some(record),
             detail: None,
+            artifacts_stored,
+            store_fault: None,
+            run_failure: None,
         }),
     )
     .await
@@ -259,6 +281,9 @@ pub(crate) async fn report_failed(state: &AppState, job_id: &str) -> Option<Stri
             state: DriverState::Failed,
             record: None,
             detail: Some("harness unavailable".to_string()),
+            artifacts_stored: None,
+            store_fault: None,
+            run_failure: None,
         }),
     )
     .await

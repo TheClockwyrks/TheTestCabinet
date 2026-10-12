@@ -81,6 +81,9 @@ mod m20261002_000054_ladder_plain_flow;
 mod m20261002_000055_ladder_dispatch;
 mod m20261009_000056_add_retry_count;
 mod m20261010_000057_drop_model_price_rates;
+mod m20261012_000058_add_run_artifacts_stored;
+mod m20261012_000059_add_run_auto_publish_deferred;
+mod m20261012_000060_add_job_held_report;
 
 pub struct Migrator;
 
@@ -149,6 +152,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20261002_000055_ladder_dispatch::Migration),
             Box::new(m20261009_000056_add_retry_count::Migration),
             Box::new(m20261010_000057_drop_model_price_rates::Migration),
+            Box::new(m20261012_000058_add_run_artifacts_stored::Migration),
+            Box::new(m20261012_000059_add_run_auto_publish_deferred::Migration),
+            Box::new(m20261012_000060_add_job_held_report::Migration),
         ]
     }
 }

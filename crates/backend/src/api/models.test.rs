@@ -32,10 +32,7 @@ async fn test_state_with_prices(
         std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
             config.auth_url.clone(),
         )),
-        crate::publisher::PublisherTiming {
-            coalesce: config.coalesce,
-            snapshot_retention: config.snapshot_retention,
-        },
+        config.publisher_timing(),
     );
     let state = AppState {
         db,
@@ -46,6 +43,7 @@ async fn test_state_with_prices(
             config.auth_url.clone(),
         )),
         relay: crate::relay::Relay::new(),
+        capacity: crate::capacity::CapacityMonitor::unmonitored(config.artifact_capacity),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
         http: reqwest::Client::new(),

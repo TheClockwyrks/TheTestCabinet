@@ -85,6 +85,41 @@ The per-deployment URLs a console needs to reach the data plane: `artifactsUrl`,
 snapshot bucket). Each is `null` when the deployment configures no such service,
 and the console degrades that feature. An open read.
 
+### `GET /artifacts/capacity`
+
+The backend's current reading of the artifact store's
+[capacity](/components/backend/overview/#artifact-capacity):
+
+```json
+{
+  "state": "low",
+  "runsOnHold": true,
+  "holdReason": "uploads-waiting",
+  "runsWaitingToStore": 2,
+  "detail": "the artifact service rejected the upload: HTTP 500",
+  "freeBytes": 2684354560,
+  "totalBytes": 21474836480,
+  "writable": true,
+  "warnBytes": 3221225472,
+  "stopBytes": 2147483648
+}
+```
+
+- `state` is `ok`, `low`, `blocked`, `unwritable`, `unavailable` or
+  `unmonitored`.
+- `runsOnHold` says whether the run queue is being held.
+- `holdReason` is present while it is: `unreadable`, `low-space`, `unwritable`,
+  `uploads-waiting`, `write-check-pending` or `proving-store`. Under
+  `proving-store` the queue hands out one run at a time rather than none; see
+  [the hold](/components/backend/overview/#the-hold).
+- `runsWaitingToStore` is the number of jobs in the `storing` state.
+- `detail` is the error text behind the hold when there is one: the failed
+  poll's error, the write check's error, or the reason the latest failed upload
+  reported. A change of `detail` alone is announced on the console stream.
+- `freeBytes`, `totalBytes` and `writable` are the latest reading and are absent
+  until one has arrived.
+- The two thresholds are always present.
+
 ## `POST /ingest`
 
 Scan the repository checkout the backend ingests from. New or changed [test case
@@ -462,6 +497,32 @@ accumulated and attaches the record id to the already-canceled job. The job
 keeps its `canceled` state and its cancellation detail, no completion
 notification fires, and no retry is enqueued.
 
+A `storing` status is the driver reporting that it is
+[waiting on the artifact store](/components/driver/overview/#waiting-on-the-store),
+with the upload's failure as `detail`. It moves a `dispatched`, `starting`,
+`running` or `storing` job to `storing` and records the detail, and it moves no
+job in any other state. The first one of a wait carries the run's `record`, and
+`runFailure` when the run failed, which the backend keeps on the job and
+[finishes the run from](/components/backend/overview/#a-driver-lost-while-it-waits)
+if the driver is lost. A later `running` status returns the job to `running`,
+and carries `artifactsStored` to say how the wait ended. A `storing` job is in
+flight: `GET /jobs/active` lists it with its `detail`, it can be canceled, and
+the dispatcher can report it lost.
+
+A terminal status may carry `artifactsStored`, the driver's account of its
+[tree upload](/components/driver/overview/#artifacts): `true` when the artifact
+service acknowledged the run's tree and `false` when the upload failed. The
+backend records it as the run's
+[artifact presence](/components/backend/overview/#artifact-presence). A report
+that omits it leaves the run's recorded presence as it was. A report with
+`artifactsStored: false` carries `storeFault`, the failure's text, when the
+upload ended on a condition of the store rather than of the run's own tree.
+
+What a report says of the store is
+[evidence](/components/backend/overview/#evidence-from-uploads) whatever state
+its job is in: a `storing` status and a `storeFault` each record a failed
+upload, and `artifactsStored: true` records a tree that landed.
+
 Only the driver of a killed gg run whose session had been launched posts this
 status. A killed run of any other harness, and a gg run killed before its
 session was launched, is destroyed by its driver, which posts nothing further,
@@ -470,9 +531,12 @@ so the job stays `canceled` with no record attached.
 `POST /jobs/{id}/lost` is the dispatcher's report of a job whose driver is
 [gone without reporting](/components/dispatcher/overview/#lost-drivers). It
 requires the service token and takes a `failed` status with a detail and no record
-(`422` otherwise). A job still `dispatched`, `starting`, or `running` is failed
-exactly as the driver's own `failed` report would fail it. A job in any other
-state is left alone. Either way the answer is `204`.
+(`422` otherwise). A job still `dispatched`, `starting`, `running` or `storing`
+is failed exactly as the driver's own `failed` report would fail it, unless it
+holds a report its driver
+[handed over](/components/backend/overview/#a-driver-lost-while-it-waits), which
+lands in its place. A job in any other state is left alone. Either way the
+answer is `204`.
 
 ### `POST /runs/{id}/reviews`
 
@@ -531,6 +595,12 @@ a canceled run, and it refuses a completed legacy run carrying no review. A
 completed validator-rated run is admitted with or without a review, since its
 functional rating and score are on the record. A publishable failure needs no
 review, since it has no review checklist.
+
+A run that passes the gate is then checked for its
+[stored artifact tree](/components/backend/overview/#artifact-presence), which
+is what a release publishes. A run with no stored tree is refused with `409`,
+and the message says the tree is not stored. When the artifact service gives no
+answer the request is refused with `503` and can be repeated.
 
 ```jsonc
 { "publishJobId": "clx…", "liveUrl": "/publish-jobs/clx…/live" }
@@ -610,8 +680,11 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   the default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
   the publish gate accepts right now, which is a validator-rated completed run,
-  a reviewed legacy completed run, or one of the publishable failure tiers.
-  Every listed run is one the publish endpoint will accept.
+  a reviewed legacy completed run, or one of the publishable failure tiers. A
+  run whose artifact tree is recorded as not stored is left out, since its
+  publish is refused. A listed run whose tree has not been checked yet can
+  still be refused by the publish endpoint, which asks the artifact service as
+  it enqueues.
 - `state=any` — the union of the published and unpublished slices: every
   recorded run, with no lifecycle predicate at all. This is what the web
   console's run listings draw from.
@@ -641,6 +714,12 @@ launched, leaves no record, so it is listed by no selector.
   snapshot](/components/backend/snapshot/#runsjson--the-run-index) ships as its
   run index, whose schema is
   [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
+  The page carries `artifactsNotStored` beside its rows: the ids, among the
+  rows of this page, of the runs whose
+  [artifact tree is recorded as not stored](/components/backend/overview/#artifact-presence).
+  It is a property of the page rather than of the card, so the summary shape
+  the snapshot ships is unchanged. Every console response that returns summary
+  cards carries the same list, `GET /account/reviews` among them.
 
 #### Two pagination modes
 
@@ -708,10 +787,11 @@ The offset mode additionally accepts:
 
 ### `GET /runs/{id}`
 
-One stored run, as `{ record, reviews, published, links, rating, aesthetic,
-validatorRated, score }`: its record with links populated, the array of reviews
-it carries with each reviewer's identity, whether it is published, its links,
-and the run's ratings and score. Each review carries the `ratings` or the
+One stored run, as `{ record, reviews, published, artifactsStored, links,
+rating, aesthetic, validatorRated, score }`: its record with links populated,
+the array of reviews it carries with each reviewer's identity, whether it is
+published, whether its artifact tree is stored, its links, and the run's ratings
+and score. Each review carries the `ratings` or the
 run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
 shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
 
@@ -719,6 +799,10 @@ This endpoint answers with the record, so a run whose stored record this build
 cannot read answers `404` here and is reached through [`GET
 /runs/unreadable`](#get-runsunreadable).
 
+- `artifactsStored`: the run's
+  [artifact presence](/components/backend/overview/#artifact-presence). `true`
+  when the artifact service holds the run's tree, `false` when it does not, in
+  which case the run cannot be published, and `null` while unknown.
 - `validatorRated`: whether the run's case version is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
   consumer can show the run's points and functional rating from the record
@@ -744,13 +828,14 @@ cannot read answers `404` here and is reached through [`GET
   run's case version is not ingested, and `null` for every run that did not
   complete, for the same reason its `rating` is.
 
-The four are always present, `null` rather than omitted when unset. A run's
+The five are always present, `null` rather than omitted when unset. A run's
 detail and its summary card always report the same functional rating and score.
 
 ```jsonc
 {
   "record": { "…": "full RunRecord, links populated" },
   "published": false,
+  "artifactsStored": true,
   "validatorRated": true,
   "rating": "great",
   "aesthetic": "amazing",
@@ -790,9 +875,11 @@ array, empty when the run recorded none. Raw harness output is never served.
 ### `POST /snapshot/refresh`
 
 Force an immediate [public snapshot](/components/backend/snapshot/)
-regeneration, upload, and deploy-hook fire, outside the normal coalescing
-window. The response reports whether the snapshot was refreshed, the run count
-it covers, and whether the deploy hook fired.
+regeneration, upload, and deploy-hook fire, outside the normal [refresh
+batching](/components/backend/overview/#refresh-batching). It waits for a
+refresh already running, carries every pending request, and starts the minimum
+interval before the next batch. The response reports whether the snapshot was
+refreshed, the run count it covers, and whether the deploy hook fired.
 
 ## Coverage plans and ladders
 
@@ -913,9 +1000,11 @@ it](/components/backend/coverage/#a-cells-runs): the first `runsPerCell` counted
 of the cell to land. Every count on the cell, and every roll-up, is computed over
 those runs, so a cell never reads more than its target.
 
-- `GET /coverage-plans/{id}/runs` — `{ "runs": [...] }`, the run summary card of
-  every run the plan's cells hold, in the matrix's cell order. The console's
-  dashboard breakdowns read it.
+- `GET /coverage-plans/{id}/runs` — `{ "runs": [...], "artifactsNotStored": [...] }`,
+  the run summary card of every run the plan's cells hold, in the matrix's cell
+  order, and the ids among them whose
+  [artifact tree is recorded as not stored](/components/backend/overview/#artifact-presence).
+  The console's dashboard breakdowns read it.
 
 ### Filling a plan
 
@@ -940,10 +1029,10 @@ those runs, so a cell never reads more than its target.
 
 ### Halting a plan
 
-| endpoint                             | ends filling | cancels                                            |
-| ------------------------------------ | ------------ | -------------------------------------------------- |
-| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                      |
-| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running` |
+| endpoint                             | ends filling | cancels                                                       |
+| ------------------------------------ | ------------ | ------------------------------------------------------------- |
+| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                                 |
+| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running`, `storing` |
 
 Both reuse the same atomic cancel transition
 [`POST /jobs/{id}/cancel`](#stopping-runs-in-bulk) uses, and reach only jobs whose
@@ -993,7 +1082,7 @@ starts a dispatch of it.
   resolves no climbers, or holds a rung that is not validator-rated.
 - `POST /ladders/{id}/stop` — end the running dispatch and cancel the `queued` and
   `pending` jobs it launched. With `{ "cancelRunning": true }` it also cancels
-  the `dispatched`, `starting`, and `running` jobs it launched, which a client
+  the `dispatched`, `starting`, `running` and `storing` jobs it launched, which a client
   must confirm first. Both reach the jobs an
   [earlier dispatch](/components/backend/ladders/#stopping-a-dispatch) of the
   ladder left in flight as well.
@@ -1031,11 +1120,11 @@ climber's Retry, and every finishing run of one of its rung slots' cells
 Three global sweeps. All require a bearer token, and all answer
 `{ "canceled": n, "includedWaiting": bool, "includedActive": bool }`.
 
-| endpoint                    | sweeps                              |
-| --------------------------- | ----------------------------------- |
-| `POST /jobs/cancel-waiting` | `queued`, `pending`                 |
-| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running` |
-| `POST /jobs/cancel-all`     | both, in one transition             |
+| endpoint                    | sweeps                                         |
+| --------------------------- | ---------------------------------------------- |
+| `POST /jobs/cancel-waiting` | `queued`, `pending`                            |
+| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running`, `storing` |
+| `POST /jobs/cancel-all`     | both, in one transition                        |
 
 These are global and scoped to nothing: they cancel matching jobs whatever
 launched them, including runs launched by hand and runs launched by another
@@ -1053,16 +1142,16 @@ The model catalog is the list of subjects a run can be attributed to (see
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
 `GET /models` and `GET /models/seed` are open; the rest require a bearer token.
 
-| endpoint                            | does                                                  |
-| ----------------------------------- | ----------------------------------------------------- |
-| `GET /models`                       | the merged catalog of curated and run-derived entries |
-| `POST /models`                      | create a curated entry                                |
-| `PUT /models/{slug}`                | update a curated entry                                |
-| `DELETE /models/{slug}`             | remove a curated entry                                |
-| `GET /models/seed?runId=`           | a blank form seeded from a run's model id             |
-| `GET /models/openrouter?slug=`      | OpenRouter's facts about a model, for Fill            |
-| `POST /models/list-prices/refresh`  | refresh every curated entry's list price              |
-| `POST /models/logo`                 | fetch and sanitize an svgl.app logo                   |
+| endpoint                           | does                                                  |
+| ---------------------------------- | ----------------------------------------------------- |
+| `GET /models`                      | the merged catalog of curated and run-derived entries |
+| `POST /models`                     | create a curated entry                                |
+| `PUT /models/{slug}`               | update a curated entry                                |
+| `DELETE /models/{slug}`            | remove a curated entry                                |
+| `GET /models/seed?runId=`          | a blank form seeded from a run's model id             |
+| `GET /models/openrouter?slug=`     | OpenRouter's facts about a model, for Fill            |
+| `POST /models/list-prices/refresh` | refresh every curated entry's list price              |
+| `POST /models/logo`                | fetch and sanitize an svgl.app logo                   |
 
 Each `GET /models` entry carries its display fields, aliases with their harness
 families, OpenRouter slug, developer provider (`providerPin`), and provider
@@ -1361,13 +1450,14 @@ backlog to catch up on.
 Opens the stream. Every frame is a named SSE event, so there is no unnamed
 `message` frame and a client using `EventSource.onmessage` alone receives nothing.
 
-| `event:`       | payload               | topic                         |
-| -------------- | --------------------- | ----------------------------- |
-| `stream`       | `{ "streamId": "…" }` | always — the first frame      |
-| `notification` | `Notification`        | `notifications`               |
-| `run`          | `RunEvent`            | `runs`                        |
-| `resync`       | `{ "dropped": n }`    | always                        |
-| `heartbeat`    | _(none)_              | always — every 15s while idle |
+| `event:`       | payload                 | topic                         |
+| -------------- | ----------------------- | ----------------------------- |
+| `stream`       | `{ "streamId": "…" }`   | always — the first frame      |
+| `notification` | `Notification`          | `notifications`               |
+| `run`          | `RunEvent`              | `runs`                        |
+| `resync`       | `{ "dropped": n }`      | always                        |
+| `storage`      | `ArtifactStorageStatus` | always                        |
+| `heartbeat`    | _(none)_                | always — every 15s while idle |
 
 The hello frame (`stream`) arrives first and carries the id the client quotes
 back to change its topics. The id is minted per connection rather than per
@@ -1379,6 +1469,12 @@ The `resync` frame says this client fell behind far enough that the backend
 dropped messages for it. Nothing can be replayed, so the client's recovery is to
 re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
 showing produced runs).
+
+The `storage` frame carries the body of
+[`GET /artifacts/capacity`](#get-artifactscapacity). One follows the hello frame
+on every connection, and another is sent each time `state`, `runsOnHold`,
+`holdReason` or `runsWaitingToStore` changes, so a client holds the current
+state without asking for it.
 
 The `heartbeat` frame carries no payload; its arrival is the whole message. A
 client arms a watchdog, rearms it on every frame, and treats an overdue one as a
@@ -1433,7 +1529,8 @@ A duration ticked from `startedAt` is elapsed wall clock, so it reads higher tha
 down once the run lands.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
-non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,
+non-terminal states, a move into `storing` adding the driver's reason as
+`detail`), or `finished` (reached `succeeded`, `failed`, or `canceled`,
 and left the in-flight set). A `finished` event adds `recordId` when the run
 produced one and `detail` when it failed or was cancelled. A cancelled run raises
 a run event but no notification, since it is an operator action rather than a

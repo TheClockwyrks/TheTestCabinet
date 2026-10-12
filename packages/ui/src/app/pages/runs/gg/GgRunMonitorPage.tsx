@@ -1,10 +1,12 @@
 import { Link, useParams } from "react-router";
+import { storingRunNotice } from "../../../../client/artifactStorage";
 import { useWorkers } from "../../../../client/context";
 import { KillRunControl } from "../../../components/KillRunControl";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
 import { useCaseMaxRuntime } from "../../../data/useCaseMaxRuntime";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
+import { useLiveRunUpdates } from "../../../runtime/useLiveRunUpdates";
 import { routes } from "../../../routes";
 import runExec from "../RunExec.module.scss";
 import { useGgRuntime } from "./ggRuntime";
@@ -31,6 +33,10 @@ export function GgRunMonitorPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const { active: worker } = useWorkers();
   const runs = useRunsRuntime();
+  // The monitor reads this run's phase out of the in-flight list (`launched`
+  // below), so it needs that list kept current for as long as it is open: the
+  // telemetry stream carries gg's output, not the job's lifecycle.
+  useLiveRunUpdates();
   const state = useGgRunState(jobId);
   const {
     status,
@@ -62,12 +68,17 @@ export function GgRunMonitorPage() {
     launched?.testCaseVersion ?? null,
   );
 
+  // The run is over and its driver is waiting on the artifact store: the one live
+  // phase the telemetry stream says nothing about.
+  const storingNotice =
+    status.kind === "running" ? storingRunNotice(launched) : null;
   const dashboardStatus: GgDashboardStatus = {
-    ...statusPhase(status, sawSession, setupStage),
+    ...statusPhase(status, sawSession, setupStage, storingNotice !== null),
     note:
-      sessionEndStatus && status.kind === "running"
+      storingNotice ??
+      (sessionEndStatus && status.kind === "running"
         ? `gg session ended: ${sessionEndStatus}. Finalizing…`
-        : null,
+        : null),
     action:
       status.kind === "running" && jobId ? (
         <KillRunControl runId={jobId} />
@@ -200,8 +211,18 @@ function statusPhase(
   status: GgMonitorStatus,
   sawSession: boolean,
   setupStage: SetupStage | null,
+  storing: boolean,
 ): Pick<GgDashboardStatus, "label" | "detail" | "tone"> {
   if (status.kind === "running") {
+    // Finished, and waiting on the artifact store to take what it built. The note
+    // under the pill carries the driver's reason.
+    if (storing) {
+      return {
+        label: "Storing",
+        detail: "finished; waiting on the artifact store",
+        tone: "live",
+      };
+    }
     if (sawSession) {
       // No detail: the pill already says the run is live, and a run has as many agents
       // working as it has dispatched, so there is nothing true to add in one phrase.

@@ -808,10 +808,18 @@ pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobO
     let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
     Ok(Json(
         jobs.iter()
-            .map(|job| ActiveJobOut {
-                run_id: job.id.clone(),
-                summary: job_summary(job),
-                state: JobState::from_db(&job.state),
+            .map(|job| {
+                let state = JobState::from_db(&job.state);
+                ActiveJobOut {
+                    run_id: job.id.clone(),
+                    summary: job_summary(job),
+                    state,
+                    // An in-flight job's detail is a reason only while it is
+                    // `storing`.
+                    detail: (state == JobState::Storing)
+                        .then(|| job.detail.clone())
+                        .flatten(),
+                }
             })
             .collect(),
     ))
@@ -912,6 +920,10 @@ pub async fn cancel(
             Some(detail),
         ),
     );
+    // A canceled run that was waiting to store its tree no longer holds the queue.
+    if job.state == crate::db::STORING_STATE {
+        refresh_waiting_runs(&state).await;
+    }
     // The job held its cell for every plan filling it, and its slot for its dispatch.
     spawn_cancel_feed(&state, vec![canceled.clone()]);
     Ok(Json(job_status_out(&canceled)))
@@ -1113,6 +1125,14 @@ pub(super) async fn sweep_cancel(
         );
     }
 
+    // Any of them that was waiting to store its tree no longer holds the queue.
+    if ended
+        .iter()
+        .any(|job| job.state == crate::db::STORING_STATE)
+    {
+        refresh_waiting_runs(state).await;
+    }
+
     if feed == CancelFeed::Feed && !ended.is_empty() {
         spawn_cancel_feed(state, ended);
     }
@@ -1159,13 +1179,51 @@ pub async fn live(
 
 /// `POST /jobs/next` — the dispatcher claims the oldest queued job. Requires the
 /// service token. Returns `200` with the claimed job (id, driver token, and the
-/// launch request to run) or `204 No Content` when the queue is empty.
+/// launch request to run) or `204 No Content` when nothing is claimable: the queue
+/// is empty, every waiting run is held back, or the whole queue is on hold.
+///
+/// This is the one place a queued run is handed to a dispatcher, so it is where the
+/// [artifact capacity](crate::capacity) hold applies. While any condition for
+/// storing a run's tree is not green, the pass claims nothing and every waiting
+/// run reads `pending`; the runs stay queued and are claimed in their original
+/// order once the hold lifts. While the store's latest read has failed but the
+/// failure is not yet announced, the pass is skipped whole: nothing is claimed and
+/// no run's display state changes. While the store is being
+/// [proved](crate::capacity::ClaimGate::Trial) the pass claims a run only if no
+/// run is in flight, and holds the queue otherwise.
 pub async fn claim(
     State(state): State<AppState>,
     _service: ServiceAuth,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
-    let outcome = state.db.claim_next(&now).await.map_err(ApiError::from)?;
+    // The hold counts the runs waiting to store from the job table, so a claim
+    // never rests on a count older than itself.
+    refresh_waiting_runs(&state).await;
+    let gate = match state.capacity.claim_gate() {
+        crate::capacity::ClaimGate::Open => crate::db::ClaimGate::Open,
+        crate::capacity::ClaimGate::Hold => crate::db::ClaimGate::Hold,
+        crate::capacity::ClaimGate::Trial => {
+            // One run at a time proves the store: the next is handed out only once
+            // the one before it has reported.
+            let in_flight = state.db.driven_job_count().await.map_err(ApiError::from)?;
+            if in_flight > 0 {
+                crate::db::ClaimGate::Hold
+            } else {
+                crate::db::ClaimGate::Open
+            }
+        }
+        crate::capacity::ClaimGate::Paused => {
+            tracing::debug!(
+                "the artifact store's latest read failed; claiming nothing until it is read again"
+            );
+            return Ok(StatusCode::NO_CONTENT.into_response());
+        }
+    };
+    let outcome = state
+        .db
+        .claim_next_gated(&now, gate)
+        .await
+        .map_err(ApiError::from)?;
 
     // Announce the display states this pass reconciled, whether or not it claimed
     // anything. A pass that claims nothing still moves runs between `queued` and
@@ -1230,7 +1288,13 @@ pub async fn ingest_preview(
 /// by the per-job token.
 ///
 /// `starting` records that the driver pod is up and running the pre-run setup;
-/// `running` records that execution began. `succeeded` carries the produced
+/// `running` records that execution began. `storing` records that the run has
+/// finished and its driver is waiting on the artifact store to take the tree, with
+/// the failed upload as its `detail`: the job reads `storing`, and the run queue is
+/// [on hold](crate::capacity) until it leaves that state, which a later `running`
+/// or any terminal status does. The first `storing` report carries the run's
+/// record, which is kept on the job ([`HeldReport`]) and is what the run is
+/// finished from if its driver is lost during the wait. `succeeded` carries the produced
 /// [`RunRecord`] — persisted to the `run` store **regardless of outcome**
 /// (completed, unevaluable, or a model failure that produced a record), using the
 /// events the relay accumulated as its recorded stream, so nothing the ephemeral
@@ -1289,7 +1353,8 @@ pub async fn report_lost(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
-    if !DRIVEN_STATES.contains(&job.state.as_str()) {
+    // Only a job a driver exists for can lose it.
+    if !crate::db::DRIVEN_STATES.contains(&job.state.as_str()) {
         return Ok(StatusCode::NO_CONTENT);
     }
     tracing::warn!(
@@ -1300,12 +1365,115 @@ pub async fn report_lost(
     apply_status(&state, &id, job, update).await
 }
 
-/// The job states a driver exists for: what [`report_lost`] may fail.
-const DRIVEN_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+/// Count the runs waiting to store their artifact trees and hand the count to the
+/// [capacity](crate::capacity) monitor, announcing the change it makes to the hold,
+/// if any. Called wherever a job may have entered or left `storing`.
+async fn refresh_waiting_runs(state: &AppState) {
+    if let Some(waiting) = crate::capacity::waiting_runs(&state.db).await {
+        state.capacity.set_waiting(waiting);
+    }
+    state.capacity.announce(state.relay.notifier());
+}
 
 /// Apply a status update to `job`, once whoever sent it is authorized: the driver itself
 /// ([`update_status`]) or the dispatcher reporting it lost ([`report_lost`]).
 async fn apply_status(
+    state: &AppState,
+    id: &str,
+    job: job::Model,
+    update: StatusUpdate,
+) -> Result<StatusCode, ApiError> {
+    // Any report can move a job into or out of `storing`, the state the artifact
+    // capacity hold counts, so the count is taken again after every one.
+    let was_storing = job.state == crate::db::STORING_STATE;
+    let storing_report = matches!(update.state, DriverState::Storing);
+    // What the report says about the store is taken whatever state the job is in:
+    // the upload of a canceled run, or of a run already reported lost, fails on
+    // the same store every other run's tree is headed for.
+    let evidence = match (storing_report, update.artifacts_stored) {
+        (true, _) => {
+            state.capacity.upload_failed(update.detail.as_deref());
+            true
+        }
+        (false, Some(true)) => {
+            state.capacity.tree_landed();
+            true
+        }
+        (false, Some(false)) if update.store_fault.is_some() => {
+            state.capacity.upload_failed(update.store_fault.as_deref());
+            true
+        }
+        (false, _) => false,
+    };
+    let result = apply_status_update(state, id, job, update).await;
+    if was_storing || evidence {
+        refresh_waiting_runs(state).await;
+    }
+    result
+}
+
+/// The terminal report a waiting driver handed over for safekeeping: what
+/// [`job::Model::held_report_json`] holds.
+///
+/// The record of a run whose driver is waiting on the artifact store exists
+/// nowhere but that driver's pod until its terminal report. This is the copy the
+/// backend finishes the run from if the pod is lost first.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HeldReport {
+    /// The record the run produced.
+    record: RunRecord,
+    /// Why the run failed, when the report being held is a `failed` one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    run_failure: Option<String>,
+    /// Whether the tree was stored, once the wait has ended. Absent while the
+    /// driver is still waiting, which reads as not stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifacts_stored: Option<bool>,
+}
+
+impl HeldReport {
+    /// The report held on `job`, if it holds one that still parses.
+    fn of(job: &job::Model) -> Option<Self> {
+        let json = job.held_report_json.as_deref()?;
+        match serde_json::from_str(json) {
+            Ok(held) => Some(held),
+            Err(error) => {
+                tracing::warn!(job_id = %job.id, %error, "the job's held report does not parse; ignoring it");
+                None
+            }
+        }
+    }
+
+    /// The report serialized for the column, or `None` (logged) if it cannot be.
+    fn to_json(&self, job_id: &str) -> Option<String> {
+        match serde_json::to_string(self) {
+            Ok(json) => Some(json),
+            Err(error) => {
+                tracing::warn!(%job_id, %error, "could not serialize the run's held report");
+                None
+            }
+        }
+    }
+
+    /// The terminal report the driver would have made.
+    fn into_update(self) -> StatusUpdate {
+        let state = if self.run_failure.is_some() {
+            DriverState::Failed
+        } else {
+            DriverState::Succeeded
+        };
+        StatusUpdate {
+            record: Some(self.record),
+            detail: self.run_failure,
+            artifacts_stored: Some(self.artifacts_stored.unwrap_or(false)),
+            ..StatusUpdate::of(state)
+        }
+    }
+}
+
+/// The body of [`apply_status`]: the transition one report makes.
+async fn apply_status_update(
     state: &AppState,
     id: &str,
     job: job::Model,
@@ -1337,6 +1505,29 @@ async fn apply_status(
 
     let now = now_rfc3339()?;
 
+    // A `failed` report with no record is the dispatcher saying the driver is gone.
+    // If that driver had handed its report over before it began waiting on the
+    // artifact store, the run had already finished: land the report it was
+    // holding, so the run keeps its outcome and is not run again as an
+    // infrastructure failure. Its tree went with the pod unless the wait had
+    // already ended with it stored.
+    let mut update = update;
+    if matches!(update.state, DriverState::Failed)
+        && update.record.is_none()
+        && !already_terminal
+        && let Some(held) = HeldReport::of(&job)
+    {
+        tracing::warn!(
+            job_id = %id,
+            run.id = %held.record.id,
+            lost = update.detail.as_deref().unwrap_or(""),
+            artifacts_stored = held.artifacts_stored.unwrap_or(false),
+            "the driver of a finished run was lost while it held the run's report; \
+             finishing the run from the record it handed over"
+        );
+        update = held.into_update();
+    }
+
     match update.state {
         DriverState::Starting => {
             // Announce from the row the transition *wrote*, not the one read before it.
@@ -1356,6 +1547,68 @@ async fn apply_status(
                 job_summary(started.as_ref().unwrap_or(&job)),
                 JobState::Starting,
             ));
+            Ok(StatusCode::NO_CONTENT)
+        }
+        DriverState::Running if job.state == crate::db::STORING_STATE => {
+            // The driver's wait on the artifact store is over. The job returns to
+            // `running` for the moment it takes the driver to finish its report,
+            // and the reason the wait recorded goes with the wait.
+            // The report the driver handed over stays on the job until its terminal
+            // report lands, now saying what became of the tree.
+            let held = update.artifacts_stored.and_then(|stored| {
+                let mut held = HeldReport::of(&job)?;
+                held.artifacts_stored = Some(stored);
+                held.to_json(&id)
+            });
+            let running = state
+                .db
+                .set_job_stored(&id, &now, held.as_deref())
+                .await
+                .map_err(ApiError::from)?;
+            if let Some(running) = running {
+                tracing::info!(job_id = %id, "the run is no longer waiting to store its artifacts");
+                state.relay.notifier().publish_run(RunEvent::state_changed(
+                    &id,
+                    job_summary(&running),
+                    JobState::Running,
+                ));
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
+        DriverState::Storing => {
+            // The run has finished and its driver is holding the tree for a store
+            // that could not take it. Only a job a driver exists for moves: a
+            // report that outlived its job is ignored, so nothing terminal is
+            // brought back into flight to hold the queue.
+            let reason = update.detail.as_deref();
+            let held = update.record.as_ref().and_then(|record| {
+                HeldReport {
+                    record: record.clone(),
+                    run_failure: update.run_failure.clone(),
+                    artifacts_stored: None,
+                }
+                .to_json(&id)
+            });
+            let storing = state
+                .db
+                .set_job_storing(&id, &now, reason, held.as_deref())
+                .await
+                .map_err(ApiError::from)?;
+            if let Some(storing) = storing {
+                // Once per wait, not once per repeated report.
+                if job.state != crate::db::STORING_STATE {
+                    tracing::warn!(
+                        job_id = %id,
+                        reason = reason.unwrap_or(""),
+                        "a finished run is waiting to store its artifacts"
+                    );
+                }
+                state.relay.notifier().publish_run(RunEvent::storing(
+                    &id,
+                    job_summary(&storing),
+                    reason,
+                ));
+            }
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Running => {
@@ -1396,6 +1649,7 @@ async fn apply_status(
             )
             .await?;
             let record_id = persist_produced(state, &id, update.record.as_ref()).await?;
+            record_artifact_presence(state, record_id.as_deref(), update.artifacts_stored).await;
             state
                 .db
                 .set_job_state(&id, "failed", &now, Some(detail), record_id.as_deref())
@@ -1437,6 +1691,7 @@ async fn apply_status(
             )
             .await?;
             let record_id = persist_record(state, &id, record).await?;
+            record_artifact_presence(state, Some(&record_id), update.artifacts_stored).await;
             // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
             // model claimed done but the build won't load) — the record carries
             // which — unless the engine classified the run as the Test Cabinet's own
@@ -1508,6 +1763,7 @@ async fn apply_status(
                 ));
             };
             let record_id = persist_record(state, &id, record).await?;
+            record_artifact_presence(state, Some(&record_id), update.artifacts_stored).await;
             state
                 .db
                 .attach_canceled_job_record(&id, &record_id, &now)
@@ -1515,6 +1771,43 @@ async fn apply_status(
                 .map_err(ApiError::from)?;
             Ok(StatusCode::NO_CONTENT)
         }
+    }
+}
+
+/// Record what a terminal status report says about its run's artifact tree
+/// ([`StatusUpdate::artifacts_stored`]), once the run it describes is stored.
+///
+/// A report that says nothing (no artifact service on the driver's side, or a
+/// report that produced no run) leaves the run's recorded presence as it is. A
+/// tree the driver could not store is logged here, at the moment the backend
+/// learns of it: such a run is never offered to automatic publishing, so nothing
+/// later would say why it stayed unpublished.
+///
+/// Best effort, like everything a report does after its record is stored: a
+/// failure to write the column is logged, and the reclamation sweep's next pass
+/// reconciles the run from the artifact service's listing.
+async fn record_artifact_presence(
+    state: &AppState,
+    record_id: Option<&str>,
+    artifacts_stored: Option<bool>,
+) {
+    let (Some(record_id), Some(stored)) = (record_id, artifacts_stored) else {
+        return;
+    };
+    if let Err(error) = state.db.set_run_artifacts_stored(record_id, stored).await {
+        tracing::warn!(
+            run.id = %record_id,
+            %error,
+            "could not record the run's artifact presence"
+        );
+        return;
+    }
+    if !stored {
+        tracing::warn!(
+            run.id = %record_id,
+            "the run's driver could not store its artifact tree: the run has no \
+             build to play and cannot be published"
+        );
     }
 }
 
@@ -1993,6 +2286,9 @@ pub async fn notifications(
                         StreamMessage::Run(run) => Event::default()
                             .event(STREAM_EVENT_RUN)
                             .json_data(run.as_ref()),
+                        StreamMessage::Storage(status) => Event::default()
+                            .event(STREAM_EVENT_STORAGE)
+                            .json_data(status.as_ref()),
                     }
                     .unwrap_or_else(|_| Event::default());
                     return Some((Ok(event), handle));
@@ -2015,7 +2311,15 @@ pub async fn notifications(
         }
     });
 
-    let stream = stream::once(async move { Ok(hello) }).chain(tail);
+    // The artifact store's status follows the hello frame on every connection, so a
+    // console holds the current one from the moment it connects, and again after
+    // any reconnect, without asking. Changes then arrive as they happen.
+    let storage = Event::default()
+        .event(STREAM_EVENT_STORAGE)
+        .json_data(state.capacity.status())
+        .unwrap_or_else(|_| Event::default());
+
+    let stream = stream::iter([Ok(hello), Ok(storage)]).chain(tail);
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
@@ -2321,6 +2625,10 @@ pub const STREAM_EVENT_RUN: &str = "run";
 /// The SSE `event:` name telling a client it fell behind and must re-read the
 /// authoritative lists.
 pub const STREAM_EVENT_RESYNC: &str = "resync";
+/// The SSE event name of the frame carrying the artifact store's
+/// [status](crate::capacity::ArtifactStorageStatus): one after the hello frame on
+/// every connection, and one on each change of state.
+pub const STREAM_EVENT_STORAGE: &str = "storage";
 /// The SSE `event:` name of the periodic liveness frame. Payloadless — its arrival
 /// is the whole message.
 pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
@@ -2374,3 +2682,11 @@ pub struct StreamResync {
 #[cfg(test)]
 #[path = "jobs.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "jobs.capacity.test.rs"]
+mod capacity_tests;
+
+#[cfg(test)]
+#[path = "jobs.storing.test.rs"]
+mod storing_tests;

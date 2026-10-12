@@ -193,8 +193,8 @@ pub async fn report_result(
                 )
                 .await
                 .map_err(ApiError::from)?;
-            // Coalesced: the dirty flag was set in `complete_publish_job`'s
-            // transaction; this only wakes the debounce loop.
+            // Batched: the dirty flag was set in `complete_publish_job`'s
+            // transaction; this counts one request toward the next refresh batch.
             state.publisher.queue_refresh();
             crate::metrics::record_run_published(true);
         }

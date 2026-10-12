@@ -30,6 +30,7 @@ use crate::snapshot::{RunSummary, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
+use super::publish_gate::{GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message};
 
 use std::collections::HashMap;
 
@@ -211,6 +212,10 @@ fn validate_validator_rated_review(
 /// Requires a bearer token. `404` for an unknown run. Returns `202 Accepted` with
 /// the publish-job id and the live URL to observe it on.
 ///
+/// A run that passes the gate is enqueued only when the artifact service holds its
+/// tree (see [`super::publish_gate`]): `409` when it holds none, `503` when it
+/// could not be asked.
+///
 /// **Idempotent while a release is under way.** When the run already has a live
 /// publish job ([`crate::db::Db::active_publish_job_for_run`]) this answers with
 /// *that* job instead of enqueuing another, so repeated calls re-attach to the
@@ -251,11 +256,25 @@ pub async fn publish(
     //
     // The same enqueue an automatic publish goes through, so a run that published
     // itself and a person publishing it by hand converge on one job.
-    let outcome = state
-        .db
-        .enqueue_publish_job_once(&id, &created_at)
+    //
+    // The enqueue is gated on the run having a stored artifact tree, which is what
+    // a release publishes. The two refusals are different facts and get different
+    // statuses: a run with no tree cannot be released until it has one (`409`),
+    // while a service that gave no answer says nothing about the run (`503`).
+    let outcome = match super::publish_gate::enqueue_publish(&state, &id, &created_at)
         .await
-        .map_err(ApiError::from)?;
+        .map_err(ApiError::from)?
+    {
+        GatedEnqueue::Enqueued(outcome) => outcome,
+        GatedEnqueue::NoStoredTree => {
+            return Err(ApiError::conflict(no_stored_tree_message(&id)));
+        }
+        GatedEnqueue::ArtifactsUnavailable(error) => {
+            return Err(ApiError::unavailable(artifacts_unavailable_message(
+                &id, &error,
+            )));
+        }
+    };
     if let crate::db::PublishEnqueue::Attached(existing) = &outcome {
         tracing::info!(
             publish_job.id = %existing,
@@ -396,6 +415,7 @@ pub async fn list(
             .map_err(ApiError::from)?;
         return Ok(Json(SummaryListResponse {
             runs: summary_cards(&state.store, &case_names, &runs),
+            artifacts_not_stored: artifacts_not_stored(&runs),
             next_before: None,
             total: Some(total),
         })
@@ -433,6 +453,7 @@ pub async fn list(
         let case_names = state.store.case_names().map_err(ApiError::from)?;
         Ok(Json(SummaryListResponse {
             runs: summary_cards(&state.store, &case_names, &runs),
+            artifacts_not_stored: artifacts_not_stored(&runs),
             next_before,
             total: None,
         })
@@ -476,6 +497,20 @@ impl ManifestCache {
             })
             .as_ref()
     }
+}
+
+/// The ids, in page order, of the runs of a page recorded as having no stored
+/// artifact tree. A run whose presence is unknown is not among them.
+///
+/// Carried beside a summary page's cards rather than on each card: the card is the
+/// shape the public snapshot ships as its run index, and whether a run can be
+/// released is the console's concern alone. Every console response that returns
+/// summary cards carries it, so a run reads the same wherever it is listed.
+pub(super) fn artifacts_not_stored(runs: &[StoredRun]) -> Vec<String> {
+    runs.iter()
+        .filter(|run| run.artifacts_stored == Some(false))
+        .map(|run| run.record.id.clone())
+        .collect()
 }
 
 /// Build the summary cards for a page of runs, enriching each with the two fields
@@ -703,7 +738,11 @@ pub async fn my_reviews(
         })
         .collect();
 
-    Ok(Json(MyReviewsResponse { reviews, total }))
+    Ok(Json(MyReviewsResponse {
+        reviews,
+        artifacts_not_stored: artifacts_not_stored(&runs),
+        total,
+    }))
 }
 
 /// How many of the account's most recent reviews the Profile-tab breakdown charts
@@ -803,7 +842,8 @@ fn stat_slices(counts: HashMap<String, usize>) -> Vec<StatSlice> {
 }
 
 /// Map a stored run to the read-side wire shape: `record` (links populated), the
-/// reviews array, the resolved links, the published flag, the two rating
+/// reviews array, the resolved links, the published flag, the run's artifact
+/// presence, the two rating
 /// channels (the functional `rating`, the aggregate `aesthetic`) with the
 /// `validator_rated` flag that says which way the functional one was decided,
 /// and the run's `score`.
@@ -828,6 +868,7 @@ fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredR
             playable_build: run.links.playable_build.clone(),
         },
         published: run.published,
+        artifacts_stored: run.artifacts_stored,
         rating,
         aesthetic: crate::db::aggregate_review_aesthetic(&run.reviews),
         validator_rated: manifest.map_or(run.validator_rated, StoredManifest::validator_rated),
@@ -991,6 +1032,10 @@ pub struct ListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SummaryListResponse {
     runs: Vec<RunSummary>,
+    /// The ids, among [`runs`](Self::runs), of the runs recorded as having no
+    /// stored artifact tree, which therefore cannot be published. Always present,
+    /// empty when the page holds none.
+    artifacts_not_stored: Vec<String>,
     next_before: Option<String>,
     /// The total number of matching rows, ignoring the page window — present only
     /// on the numbered-pager (offset) path, to size the console's pager. Absent on
@@ -1123,6 +1168,9 @@ pub struct StoredRunOut {
     links: LinksOut,
     /// Whether the run is published (in the public snapshot).
     published: bool,
+    /// Whether the artifact service holds the run's tree: `false` means the run
+    /// cannot be published, and `null` that nothing is known. Always present.
+    artifacts_stored: Option<bool>,
     /// The run's **functional** rating: on a validator-rated run the validators'
     /// decision as overridden by its reviews (present from completion — the
     /// validators' own figure while unreviewed), the review aggregate on a legacy
@@ -1209,6 +1257,9 @@ pub struct MyReviewOut {
 #[serde(rename_all = "camelCase")]
 pub struct MyReviewsResponse {
     reviews: Vec<MyReviewOut>,
+    /// The ids, among the reviewed runs, of the runs recorded as having no stored
+    /// artifact tree. Always present, empty when the page holds none.
+    artifacts_not_stored: Vec<String>,
     total: usize,
 }
 

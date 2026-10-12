@@ -218,6 +218,7 @@ async fn a_sweep_with_no_live_runs_deletes_nothing() {
         outcome,
         SweepOutcome {
             listed: 2,
+            orphans: 0,
             reclaimed: 0,
             failed: 0,
         }
@@ -313,6 +314,7 @@ async fn a_sweep_deletes_only_the_stale_orphan() {
         outcome,
         SweepOutcome {
             listed: 3,
+            orphans: 1,
             reclaimed: 1,
             failed: 0,
         }
@@ -343,6 +345,7 @@ async fn a_refused_sweep_delete_is_counted_and_the_pass_finishes() {
         outcome,
         SweepOutcome {
             listed: 2,
+            orphans: 2,
             reclaimed: 0,
             failed: 2,
         }

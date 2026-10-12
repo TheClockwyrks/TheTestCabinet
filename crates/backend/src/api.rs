@@ -49,6 +49,7 @@ mod launch;
 mod model_candidates;
 mod model_probes;
 mod models;
+mod publish_gate;
 mod publish_jobs;
 mod runs;
 mod stats;
@@ -61,6 +62,7 @@ mod tournaments;
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
+pub use crate::capacity::{ArtifactStorageState, ArtifactStorageStatus, HoldReason};
 pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
@@ -85,6 +87,7 @@ pub use jobs::{
 };
 // The backend's boot runs a launch pass of every running ladder dispatch and every filling
 // plan, so a restart never strands one.
+pub(crate) use auto_publish::spawn_auto_publish_retry;
 pub(crate) use coverage::default_retry_count;
 pub use ladders::{
     ClimberBlock, ClimberStatus, DispatchRuns, DispatchStatus, Ladder, LadderAxis, LadderClimber,
@@ -135,6 +138,9 @@ pub struct AppState {
     /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
     /// and `/notifications` streams), fed by the drivers' progress ingestion.
     pub relay: Relay,
+    /// The watch on the artifact store's free space, which the run claim consults
+    /// before it hands out a run (see [`crate::capacity`]).
+    pub capacity: crate::capacity::CapacityMonitor,
     /// The live progress fan-out for in-flight publish jobs (the
     /// `/publish-jobs/{id}/live` stream), fed by the publisher's progress and
     /// terminal-result ingestion. The publish path's analogue of
@@ -184,6 +190,10 @@ pub fn router(state: AppState) -> Router {
         // and media links against it (the control-plane backend never serves the
         // bytes). A single read, no auth.
         .route("/config", get(client_config))
+        // The backend's reading of the artifact store's free space, and whether it
+        // is holding the run queue on it. Ungated like the other reads: it is what
+        // the console shows every visitor of a held queue.
+        .route("/artifacts/capacity", get(artifact_capacity))
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
         // runs, with their observed catalog facts) plus operator-driven config CRUD,
@@ -810,6 +820,15 @@ async fn client_config(
         grafana_url: state.config.grafana_url.clone(),
         snapshot_url: state.config.snapshot_url.clone(),
     })
+}
+
+/// `GET /artifacts/capacity` — the artifact store's [capacity](crate::capacity) as
+/// the backend currently reads it: the state, whether the run queue is on hold,
+/// the latest free and total bytes, and the two thresholds.
+async fn artifact_capacity(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::Json<crate::capacity::ArtifactStorageStatus> {
+    axum::Json(state.capacity.status())
 }
 
 /// The body of `GET /config`: the console's client-side configuration.

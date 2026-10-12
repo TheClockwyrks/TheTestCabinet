@@ -20,8 +20,9 @@
 //!
 //! This module is split in two: [`SnapshotBuilder`] turns the published runs +
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
-//! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
-//! hook. The split lets the generation be unit-tested without R2.
+//! [`upload_snapshot`] PUTs them to R2 in dependency order, after which
+//! [`fire_deploy_hook`] fires the deploy hook. The split lets the generation be
+//! unit-tested without R2.
 //!
 //! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
 //! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
@@ -2233,12 +2234,16 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
     })
 }
 
-/// Upload a generated snapshot to R2 and fire the site deploy hook.
+/// How long the site deploy hook may take to answer. The hook only queues a
+/// build, so a slow answer is a host that is not answering.
+const DEPLOY_HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Upload a generated snapshot to R2.
 ///
 /// Objects are uploaded first, `UPLOAD_CONCURRENCY` at a time; the top-level
 /// `index.json` pointer is written **last** so the cut-over is atomic — a site
-/// build reading `index.json` always follows it to a complete prefix. The deploy
-/// hook fires only after a successful upload. Returns whether the hook fired.
+/// build reading `index.json` always follows it to a complete prefix. The caller
+/// fires the [deploy hook](fire_deploy_hook) only after this returns `Ok`.
 ///
 /// The objects have no ordering constraint among themselves (nothing reaches any of
 /// them until `index.json` names their generation), only the barrier before the
@@ -2246,12 +2251,7 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
 /// refresh's wall clock on bucket round trips, which is what made a large snapshot
 /// slow even once it had little new to say. As soon as any upload fails the error
 /// propagates and `index.json` is never written, leaving the previous generation live.
-pub async fn upload_snapshot(
-    snapshot: &Snapshot,
-    r2: &R2Client,
-    deploy_hook_url: Option<&str>,
-    http: &reqwest::Client,
-) -> Result<bool> {
+pub async fn upload_snapshot(snapshot: &Snapshot, r2: &R2Client) -> Result<()> {
     use futures_util::TryStreamExt;
 
     futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
@@ -2274,23 +2274,26 @@ pub async fn upload_snapshot(
         snapshot.index.content_encoding.as_deref(),
     )
     .await?;
+    Ok(())
+}
 
-    let mut fired = false;
-    if let Some(url) = deploy_hook_url {
-        let response = http
-            .post(url)
-            .send()
-            .await
-            .map_err(|e| BackendError::Snapshot(format!("firing deploy hook: {e}")))?;
-        if !response.status().is_success() {
-            let status = response.status();
-            return Err(BackendError::Snapshot(format!(
-                "deploy hook returned {status}"
-            )));
-        }
-        fired = true;
+/// Fire the site deploy hook, which queues a gallery build from the snapshot
+/// `index.json` now points at. Any answer but a success, and no answer within
+/// `DEPLOY_HOOK_TIMEOUT`, is an error: the gallery was not told to rebuild.
+pub async fn fire_deploy_hook(url: &str, http: &reqwest::Client) -> Result<()> {
+    let response = http
+        .post(url)
+        .timeout(DEPLOY_HOOK_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| BackendError::Snapshot(format!("firing deploy hook: {e}")))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        return Err(BackendError::Snapshot(format!(
+            "deploy hook returned {status}"
+        )));
     }
-    Ok(fired)
+    Ok(())
 }
 
 // --- Wire shapes (§3) -------------------------------------------------------
@@ -3998,3 +4001,7 @@ fn core_review_validation(
 #[cfg(test)]
 #[path = "snapshot.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "snapshot.hook.test.rs"]
+mod hook_tests;

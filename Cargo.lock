@@ -4997,6 +4997,7 @@ dependencies = [
  "http",
  "opentelemetry",
  "reqwest 0.12.28",
+ "rustix",
  "serde",
  "serde_json",
  "tar",
@@ -5244,7 +5245,9 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bytes",
  "cuid2",
+ "futures-util",
  "k8s-openapi",
  "kube",
  "reqwest 0.12.28",
@@ -5259,7 +5262,6 @@ dependencies = [
  "thiserror 2.0.18",
  "time",
  "tokio",
- "tokio-util",
  "tracing",
 ]
 

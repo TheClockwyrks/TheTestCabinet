@@ -282,6 +282,7 @@ fn detail_run(record: RunRecord, validator_rated: bool) -> StoredRun {
         validator_rated,
         links: Default::default(),
         published: false,
+        artifacts_stored: None,
         published_at: None,
         events_json: None,
     }
@@ -393,4 +394,46 @@ fn an_unreadable_run_carries_its_lifted_identity_and_its_error_onto_the_wire() {
     assert_eq!(json["published"], false);
     assert_eq!(json["reviewCount"], 2);
     assert_eq!(json["error"], "missing field `interp`");
+}
+
+#[test]
+fn a_run_detail_states_its_artifact_presence_in_all_three_readings() {
+    // Always present, `null` rather than omitted while unknown: a console reads
+    // `false` as "cannot be published" and must not read an absent field that way.
+    for (stored, expected) in [
+        (None, serde_json::Value::Null),
+        (Some(true), serde_json::Value::Bool(true)),
+        (Some(false), serde_json::Value::Bool(false)),
+    ] {
+        let mut run = detail_run(detail_record(&[("serve", true)]), true);
+        run.artifacts_stored = stored;
+        let json = serde_json::to_value(stored_run_out(&run, None)).unwrap();
+        assert_eq!(json["artifactsStored"], expected);
+    }
+}
+
+#[test]
+fn a_summary_page_names_only_the_runs_recorded_as_not_stored() {
+    let page: Vec<StoredRun> = [
+        ("unknown", None),
+        ("lost", Some(false)),
+        ("kept", Some(true)),
+    ]
+    .into_iter()
+    .map(|(id, stored)| {
+        let mut record = detail_record(&[("serve", true)]);
+        record.id = id.to_string();
+        let mut run = detail_run(record, true);
+        run.artifacts_stored = stored;
+        run
+    })
+    .collect();
+
+    assert_eq!(artifacts_not_stored(&page), ["lost"]);
+
+    // The card itself, which is the shape the public snapshot ships, says nothing
+    // about it.
+    let card = serde_json::to_value(RunSummary::from_stored(&page[1])).unwrap();
+    assert!(card.get("artifactsStored").is_none());
+    assert!(card.get("artifactsNotStored").is_none());
 }

@@ -140,6 +140,78 @@ describe("RunDetailLayout header", () => {
   });
 });
 
+describe("RunDetailLayout artifact presence", () => {
+  // Render the layout for a run whose detail carries the given publish state and
+  // presence, and report what the layout hands its tab body.
+  async function renderWithPresence(
+    published: boolean,
+    artifactsStored: boolean | null,
+  ) {
+    const seen: boolean[] = [];
+    fixture.failure = null;
+    fixture.byId = null;
+    fixture.detail = {
+      record: record("end-to-end"),
+      reviews: [],
+      published,
+      artifactsStored,
+    };
+    const view = render(
+      <MemoryRouter initialEntries={[`/runs/${RUN_ID}`]}>
+        <Routes>
+          <Route
+            path="/runs/:runId"
+            element={
+              <RunDetailLayout tab="verdict">
+                {(ctx) => {
+                  seen.push(ctx.artifactsMissing);
+                  return null;
+                }}
+              </RunDetailLayout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText("simple-2d");
+    return { ...view, artifactsMissing: seen.at(-1) };
+  }
+
+  it("marks an unpublished run with no stored tree and tells the tab body", async () => {
+    const { container, artifactsMissing } = await renderWithPresence(
+      false,
+      false,
+    );
+
+    expect(artifactsMissing).toBe(true);
+    expect(
+      container.querySelector("[data-artifacts-missing='true']"),
+    ).not.toBeNull();
+  });
+
+  it("carries no mark while the run's presence is unknown or stored", async () => {
+    for (const stored of [null, true]) {
+      const { container, artifactsMissing, unmount } = await renderWithPresence(
+        false,
+        stored,
+      );
+      expect(artifactsMissing).toBe(false);
+      expect(container.querySelector("[data-artifacts-missing]")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("carries no mark on a published run, whose release is already out", async () => {
+    const { container, artifactsMissing } = await renderWithPresence(
+      true,
+      false,
+    );
+
+    expect(artifactsMissing).toBe(false);
+    expect(container.querySelector("[data-artifacts-missing]")).toBeNull();
+  });
+});
+
 describe("RunDetailLayout tabs", () => {
   it("offers a gg tab on a gg run", async () => {
     renderLayout("end-to-end", "gg");

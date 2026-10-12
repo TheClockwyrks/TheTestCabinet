@@ -124,6 +124,7 @@ async fn app_with_service_token(
         backend_url: Arc::new(stub_url.trim_end_matches('/').to_string()),
         http: reqwest::Client::new(),
         service_token: service_token.map(|t| Arc::new(t.to_string())),
+        capacity_reads: Arc::default(),
     };
     (router(state), store, dir)
 }
@@ -1083,6 +1084,231 @@ async fn listing_when_no_service_token_is_configured_is_disabled() {
     let response = app
         .clone()
         .oneshot(list_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+fn presence_request(run_id: &str, token: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/artifacts"));
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+/// The JSON body of a response.
+async fn json_body(response: axum::response::Response) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+#[tokio::test]
+async fn presence_answers_stored_for_a_run_with_a_tree() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-here").await;
+
+    let response = app
+        .clone()
+        .oneshot(presence_request("run-here", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({ "id": "run-here", "stored": true })
+    );
+}
+
+#[tokio::test]
+async fn presence_answers_not_stored_as_a_body_rather_than_a_404() {
+    // The caller decides differently for "no tree" and "could not ask", so absence
+    // must not share a status with a route that is not there.
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    let response = app
+        .clone()
+        .oneshot(presence_request("run-gone", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({ "id": "run-gone", "stored": false })
+    );
+}
+
+#[tokio::test]
+async fn presence_requires_the_service_token() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-here").await;
+
+    for token in [None, Some("not-the-secret")] {
+        let response = app
+            .clone()
+            .oneshot(presence_request("run-here", token))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // With no token configured the route is closed to every caller.
+    let (app, _store, _dir) = app_with_service_token(&stub, None).await;
+    let response = app
+        .oneshot(presence_request("run-here", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn presence_refuses_an_unsafe_id() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    // A percent-encoded `../x` reaches the handler as one path parameter, and the
+    // store's own staging directory is not a run.
+    for id in ["..%2Fx", ".staging", ".."] {
+        let response = app
+            .clone()
+            .oneshot(presence_request(id, Some(SERVICE_TOKEN)))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "`{id}` is not a run id"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_failed_upload_leaves_the_run_reported_as_not_stored() {
+    // End to end through the route: an upload whose archive is cut short is
+    // refused as the upload's own, and the run is then neither present nor listed.
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    let mut truncated = build_tarball();
+    truncated.truncate(700);
+
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-cut/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(truncated))
+        .unwrap();
+    let status = app.clone().oneshot(upload).await.unwrap().status();
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let response = app
+        .clone()
+        .oneshot(presence_request("run-cut", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(json_body(response).await["stored"], false);
+    assert!(store.list_runs().unwrap().is_empty());
+}
+
+fn capacity_request(token: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder().method("GET").uri("/capacity");
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn capacity_reports_the_free_and_total_bytes_of_the_store_volume() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    let response = app
+        .oneshot(capacity_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let object = body.as_object().unwrap();
+    assert_eq!(
+        object.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["freeBytes", "totalBytes", "writable"],
+        "the body is the two figures and the write check, with no error to report"
+    );
+    assert_eq!(body["writable"], true);
+    let free = body["freeBytes"].as_u64().unwrap();
+    let total = body["totalBytes"].as_u64().unwrap();
+    assert!(total > 0, "the store's filesystem has a size");
+    assert!(free <= total, "free space is a share of the total");
+}
+
+#[tokio::test]
+async fn capacity_reports_a_store_whose_staging_directory_cannot_be_made() {
+    let stub = spawn_stub().await;
+    let (app, _store, dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    // The spool still takes a file, but nothing can be staged: where the staging
+    // directory goes there is a file. No permission bit is involved, so this
+    // holds for root as it does for any other user.
+    std::fs::write(dir.path().join(".staging"), b"").unwrap();
+
+    let response = app
+        .oneshot(capacity_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    // A failed check is an answer, with the space still reported beside it.
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["totalBytes"].as_u64().unwrap() > 0);
+    assert_eq!(body["writable"], false);
+    let error = body["writeError"].as_str().unwrap();
+    assert!(!error.is_empty(), "the failure carries its cause");
+}
+
+#[tokio::test]
+async fn uploading_bytes_that_are_not_an_archive_is_refused_as_the_uploads_own() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+
+    // A header block that is not one. The store is sound, and the same bytes would
+    // be refused again, so the status is one the driver does not wait on.
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-1/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(vec![0x41u8; 2048]))
+        .unwrap();
+    let response = app.oneshot(upload).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(!store.has_run_tree("run-1").unwrap());
+}
+
+#[tokio::test]
+async fn capacity_requires_the_service_token() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    for token in [None, Some("not-the-secret")] {
+        let response = app.clone().oneshot(capacity_request(token)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // With no token configured the route is closed to every caller.
+    let (app, _store, _dir) = app_with_service_token(&stub, None).await;
+    let response = app
+        .oneshot(capacity_request(Some(SERVICE_TOKEN)))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

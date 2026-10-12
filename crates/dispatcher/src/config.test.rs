@@ -35,6 +35,7 @@ const ALL_VARS: &[&str] = &[
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_ARTIFACTS_URL",
+    "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
     // Run-container image passthroughs — cleared for the same reason as the
     // observability vars below: a developer or CI machine may have these set (they
     // are the runner's own image-resolution env), and they must not leak into the
@@ -160,6 +161,35 @@ fn publisher_config_parses_when_set() {
             config
                 .passthrough_publisher_env
                 .contains(&("TCAB_PAGES_PROJECT".to_string(), "tcab-runs".to_string()))
+        );
+    });
+}
+
+#[test]
+fn the_upload_wait_is_forwarded_into_driver_jobs_only_when_set() {
+    with_env(|| {
+        set_required();
+        let config = Config::from_env().expect("config should resolve");
+        assert!(
+            config
+                .passthrough_k8s_env
+                .iter()
+                .all(|(name, _)| name != "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS"),
+            "unset leaves the driver's own default"
+        );
+
+        set("TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS", "3600");
+        let config = Config::from_env().expect("config should resolve");
+        assert!(config.passthrough_k8s_env.contains(&(
+            "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS".to_string(),
+            "3600".to_string()
+        )));
+        // The publisher uploads no tree, so it has no wait to be told about.
+        assert!(
+            config
+                .passthrough_publisher_env
+                .iter()
+                .all(|(name, _)| name != "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS")
         );
     });
 }

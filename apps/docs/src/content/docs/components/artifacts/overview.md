@@ -39,7 +39,9 @@ is the run record's id.
 | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `POST /runs/{id}/artifacts`                                                              | The driver, uploading a finished run's tree as a tar                                            |
 | `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree                                                       |
+| `GET /runs/{id}/artifacts`                                                               | The backend, asking whether a run's tree is stored before it enqueues a publish                 |
 | `GET /runs`                                                                              | The backend, listing every stored tree for its reclamation sweep                                |
+| `GET /capacity`                                                                          | The backend, reading the store volume's free space                                              |
 | `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                                           |
 | `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                                           |
 | `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media; the backend, baking a published run's media into the snapshot |
@@ -64,6 +66,89 @@ served by the validation media route as `image/png` and
 so a console resolves it through the lookup it resolved the recording with. See
 [the shared image store](/components/core/validation/#the-shared-image-store).
 
+## Storing a tree
+
+An upload replaces a run's tree as a whole. The service spools the tar to the
+store's volume, unpacks it into a staging directory on that volume, and renames
+the staging directory to `<root>/<run-id>/` once every entry has been written.
+A run directory therefore always holds a complete tree: an upload that fails
+part way, on a full volume or a refused entry, removes its staging directory and
+leaves the run with the tree it had before, or with none.
+
+How an upload fails says whose fault it was, because the
+[driver](/components/driver/overview/#artifacts) waits on the store's faults and
+not on its own tree's:
+
+| Answer | Meaning                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------ |
+| `400`  | An entry names a path outside the tree                                                                 |
+| `413`  | The tree is over the size cap                                                                          |
+| `422`  | The body is not an archive the service can read, with no error from the volume anywhere in the failure |
+| `503`  | The request body stopped arriving                                                                      |
+| `500`  | The volume refused a write: full, read-only, a disk fault, lost permissions                            |
+
+Directories are created with the service's own mode rather than the archive's,
+so a tree that holds a read-only directory unpacks like any other.
+
+A tree that replaces an earlier one is exchanged with it in a single step, so
+the run directory holds a complete tree at every instant. A filesystem with no
+such step has the earlier tree moved aside first, and a service that stops
+between the two moves puts it back when it next starts.
+
+Staging directories live under `<root>/.staging/`. The listing, the presence
+check and every read address run directories only, so a staged upload is never
+reported as a tree, and the service clears the staging directory at startup.
+
+`GET /runs/{id}/artifacts` answers `200` with `{ "id", "stored" }`, where
+`stored` says whether the run has a tree. Absence is an answer rather than an
+error status, so a caller can tell a run with no tree from a service it could
+not reach. An id that is not a single path segment answers `400`.
+
+## Capacity
+
+`GET /capacity` answers `200` with `{ "freeBytes", "totalBytes", "writable" }`.
+The two byte figures are read from the filesystem the store root is on at the
+moment of the request. `freeBytes` is the space an upload can still be written
+into, and `totalBytes` is the filesystem's size.
+
+`writable` is the result of a write check made for the request. The check
+takes the path an upload takes, with a tree of one small file:
+
+1. It spools a file in the directory uploads are spooled into and syncs it to
+   the volume.
+2. It creates a staging directory and unpacks a one-file archive into it.
+3. It renames the staging directory into the store root, as
+   `.write-check.<pid>.<n>`.
+4. It reads the file back, and removes what it made.
+
+A check that fails at any step answers `"writable": false` with the error as
+`writeError`, so a read-only volume, a disk fault, lost permissions, a full
+volume and a store root that takes no new directory are each reported before a
+run's tree depends on the store. A check directory left by a service that
+stopped part way is removed when the service next starts, and is never listed
+as a run.
+
+The check does not cover everything an upload needs. It writes a few bytes, so
+a quota or a fault that only a large write meets passes it, and it does not
+verify a job token with the backend, which every upload does. The backend
+covers both from the other side: an
+[upload that fails](/components/backend/overview/#evidence-from-uploads) holds
+the queue whatever the check says.
+
+One check runs at a time. A request that arrives while an earlier check has not
+returned, which is what a hung volume looks like, is answered at once with the
+last byte figures and
+`"writable": false, "writeError": "the previous write check has not returned"`,
+or with `503` when no figures have been read yet. Neither the check nor the
+free-space read runs on the threads that serve requests.
+
+The backend polls the route and
+[holds new runs back](/components/backend/overview/#artifact-capacity) while
+the volume is nearly full or the write check fails.
+
+An upload needs about twice its tree's size while it lands, because the tar is
+spooled onto the volume before it is unpacked there.
+
 ## Auth
 
 The artifact service has no Kubernetes API access. It only talks HTTP.
@@ -73,15 +158,17 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
   which is a different UUID from the run id in the upload path, so the driver
   sends its job id in the `x-tcab-job-id` header and the service verifies
   against that. Only the driver holding a job's token can upload for it.
-- The tree delete and the `GET /runs` listing present the shared control-plane
-  service token (`TCAB_BACKEND_SERVICE_TOKEN`, the same secret the backend and
-  dispatcher share), so only a trusted control-plane caller can enumerate or
-  prune trees. When the token is unset both routes reject every caller.
+- The tree delete, the presence check, the `GET /runs` listing and the
+  `GET /capacity` reading present the shared control-plane service token
+  (`TCAB_BACKEND_SERVICE_TOKEN`, the same secret the backend and dispatcher
+  share), so only a trusted control-plane caller can enumerate, probe, measure
+  or prune the store. When the token is unset the four routes reject every
+  caller.
 
   `GET /runs` answers one entry per stored tree carrying the run id and the
   tree's last-modified time, which is when the driver uploaded it. An upload in
-  flight is spooled to an unnamed scratch file, so it is listed only once it has
-  been unpacked into a run directory.
+  flight is spooled to an unnamed scratch file and unpacked into a staging
+  directory, so it is listed only once its tree is complete.
 
 - The publisher's `tree.tar` pull presents its per-publish-job token, verified
   the same way against the backend's publish-job endpoint, with the publish job

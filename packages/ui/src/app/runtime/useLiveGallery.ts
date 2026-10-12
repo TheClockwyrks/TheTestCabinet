@@ -969,6 +969,9 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
         // must still read as published so the review surfaces don't offer to
         // publish it a second time.
         published: stored.published ?? false,
+        // The store's word on whether the run's artifact tree is held; unknown
+        // on a transport that does not say.
+        artifactsStored: stored.artifactsStored ?? null,
         // The run's showcase, lifted off the record the same way the rating
         // channels are so a page reads `run.showcase` directly.
         showcase: stored.record.showcase ?? null,

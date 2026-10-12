@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBackendExec, createHttpBackend } from "./httpBackend";
+import { artifactsNotStored } from "../client/artifactPresence";
 
 const BACKEND = "https://backend.example";
 const AUTH = "https://auth.example";
@@ -162,6 +163,128 @@ describe("createBackendExec unreadable listing", () => {
     expect(fetchMock.mock.calls[0]![0]).toBe(
       `${BACKEND}/runs/unreadable?limit=20&offset=40`,
     );
+  });
+});
+
+describe("createHttpBackend artifact presence", () => {
+  it("folds the page's not-stored ids onto the cards they name", async () => {
+    // The backend names the runs beside the cards rather than on them, since the
+    // card is the snapshot's shape. Everything downstream reads the card.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string) =>
+        Response.json({
+          runs: [{ id: "kept" }, { id: "lost" }],
+          artifactsNotStored: ["lost"],
+          total: 2,
+        }),
+      ),
+    );
+
+    const { summaries } = await createHttpBackend(BACKEND).listRunSummaries({
+      offset: 0,
+    });
+
+    expect(summaries.map((s) => [s.id, artifactsNotStored(s)])).toEqual([
+      ["kept", false],
+      ["lost", true],
+    ]);
+  });
+
+  it("marks the runs of a plan that the backend names as not stored", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string) =>
+        Response.json({
+          runs: [{ id: "kept" }, { id: "lost" }],
+          artifactsNotStored: ["lost"],
+        }),
+      ),
+    );
+
+    const { runs } = await createHttpBackend(BACKEND).getCoveragePlanRuns(
+      "plan-1",
+      "token",
+    );
+
+    expect(runs.map((s) => [s.id, artifactsNotStored(s)])).toEqual([
+      ["kept", false],
+      ["lost", true],
+    ]);
+  });
+
+  it("marks the reviewed runs the backend names as not stored", async () => {
+    const review = {
+      reviewer: { userId: "u1", displayName: "Reviewer" },
+      checklist: [],
+      labels: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string) =>
+        Response.json({
+          reviews: [
+            { run: { id: "kept" }, review },
+            { run: { id: "lost" }, review },
+          ],
+          artifactsNotStored: ["lost"],
+          total: 2,
+        }),
+      ),
+    );
+
+    const { reviews } = await createHttpBackend(BACKEND).listMyReviews(
+      undefined,
+      "token",
+    );
+
+    expect(
+      reviews.map((entry) => [entry.run.id, artifactsNotStored(entry.run)]),
+    ).toEqual([
+      ["kept", false],
+      ["lost", true],
+    ]);
+  });
+
+  it("reads a page from a backend that names none as nothing missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string) =>
+        Response.json({ runs: [{ id: "a" }], total: 1 }),
+      ),
+    );
+
+    const { summaries } = await createHttpBackend(BACKEND).listRunSummaries({
+      offset: 0,
+    });
+
+    expect(artifactsNotStored(summaries[0]!)).toBe(false);
+  });
+
+  it("carries a run's presence onto its detail, null while unknown", async () => {
+    const detail = (artifactsStored?: boolean | null) => ({
+      record: { id: "r1", links: {} },
+      reviews: [],
+      published: false,
+      rating: null,
+      aesthetic: null,
+      validatorRated: true,
+      score: null,
+      ...(artifactsStored === undefined ? {} : { artifactsStored }),
+    });
+    for (const [wire, expected] of [
+      [false, false],
+      [true, true],
+      [null, null],
+      [undefined, null],
+    ] as const) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string) => Response.json(detail(wire))),
+      );
+      const run = await createHttpBackend(BACKEND).readRun("r1");
+      expect(run.artifactsStored).toBe(expected);
+    }
   });
 });
 
@@ -798,18 +921,21 @@ describe("createBackendExec console stream", () => {
     const onNotification = vi.fn();
     const onRunLifecycle = vi.fn();
     const onResync = vi.fn();
+    const onStorage = vi.fn();
 
     const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
     client.subscribeToNotifications({
       onNotification,
       onRunLifecycle,
       onResync,
+      onStorage,
     });
     const source = sources.instances[0]!;
     source.open();
     source.emit("notification", { kind: "run-completed", jobId: "j1" });
     source.emit("run", { kind: "enqueued", runId: "j2" });
     source.emit("resync", { dropped: 4 });
+    source.emit("storage", { state: "blocked", runsOnHold: true });
 
     expect(onNotification).toHaveBeenCalledWith(
       expect.objectContaining({ jobId: "j1" }),
@@ -818,6 +944,9 @@ describe("createBackendExec console stream", () => {
       expect.objectContaining({ runId: "j2" }),
     );
     expect(onResync).toHaveBeenCalledTimes(1);
+    expect(onStorage).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "blocked", runsOnHold: true }),
+    );
   });
 
   it("survives a malformed frame", async () => {

@@ -132,3 +132,137 @@ fn the_artifact_sweep_timings_are_read_as_hours() {
         Duration::ZERO
     );
 }
+
+/// The three snapshot batching settings resolve into the publisher's timing: the
+/// quiet window and the minimum interval are milliseconds on the wire, and the
+/// threshold is a count.
+///
+/// One test, because it resolves the whole configuration: nextest runs each test in
+/// its own process, so the environment it sets is its own.
+#[test]
+fn the_snapshot_batching_settings_resolve_into_the_publisher_timing() {
+    use std::time::Duration;
+
+    use crate::publisher::BatchTiming;
+
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_SNAPSHOT_COALESCE_MS");
+        std::env::remove_var("TCAB_SNAPSHOT_BATCH_SIZE");
+        std::env::remove_var("TCAB_SNAPSHOT_MIN_INTERVAL_MS");
+        std::env::remove_var("TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS");
+    }
+    let defaults = super::Config::from_env().unwrap();
+    assert_eq!(
+        defaults.publisher_timing().batch,
+        BatchTiming {
+            threshold: 20,
+            quiet_window: Duration::from_secs(2 * 60),
+            min_interval: Duration::from_secs(10 * 60),
+            refresh_timeout: Duration::from_secs(30 * 60),
+        }
+    );
+
+    // SAFETY: as above.
+    unsafe {
+        std::env::set_var("TCAB_SNAPSHOT_COALESCE_MS", "5000");
+        std::env::set_var("TCAB_SNAPSHOT_BATCH_SIZE", "50");
+        // `0` is how an operator removes the hold, so it has to survive as a zero
+        // duration rather than falling back to the default.
+        std::env::set_var("TCAB_SNAPSHOT_MIN_INTERVAL_MS", "0");
+        std::env::set_var("TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS", "90000");
+    }
+    let configured = super::Config::from_env().unwrap();
+    assert_eq!(
+        configured.publisher_timing().batch,
+        BatchTiming {
+            threshold: 50,
+            quiet_window: Duration::from_secs(5),
+            min_interval: Duration::ZERO,
+            refresh_timeout: Duration::from_secs(90),
+        }
+    );
+}
+
+/// The artifact capacity settings: megabytes and seconds on the wire, the shipped
+/// defaults when unset, and a refusal to start on a value the backend cannot run
+/// with.
+///
+/// One test, because it resolves the whole configuration: nextest runs each test in
+/// its own process, so the environment it sets is its own.
+#[test]
+fn the_artifact_capacity_settings_resolve_and_are_validated() {
+    use std::time::Duration;
+
+    use super::ConfigError;
+    use crate::capacity::{CapacitySettings, MIB};
+
+    const NAMES: [&str; 4] = [
+        "TCAB_ARTIFACT_FREE_WARN_MB",
+        "TCAB_ARTIFACT_FREE_STOP_MB",
+        "TCAB_ARTIFACT_FREE_RECOVER_MB",
+        "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS",
+    ];
+    let set = |values: [Option<&str>; 4]| {
+        for (name, value) in NAMES.iter().zip(values) {
+            // SAFETY: this process is this test's alone under nextest, the repo's
+            // runner.
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    };
+    let invalid = || match super::Config::from_env() {
+        Err(ConfigError::Invalid { name, .. }) => name,
+        other => panic!("expected an invalid setting, got {other:?}"),
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path()) };
+
+    // Unset: warn under 3 GiB, stop under 2 GiB.
+    set([None; 4]);
+    let defaults = super::Config::from_env().unwrap().artifact_capacity;
+    assert_eq!(defaults, CapacitySettings::default());
+    assert_eq!(defaults.warn_bytes, 3072 * MIB);
+    assert_eq!(defaults.stop_bytes, 2048 * MIB);
+
+    set([Some("8192"), Some("4096"), Some("0"), Some("5")]);
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_capacity,
+        CapacitySettings {
+            warn_bytes: 8192 * MIB,
+            stop_bytes: 4096 * MIB,
+            // `0` is how an operator removes the margin.
+            recover_bytes: 0,
+            poll_interval: Duration::from_secs(5),
+        }
+    );
+
+    // Equal thresholds are allowed: the warning and the hold then coincide.
+    set([Some("2048"), Some("2048"), None, None]);
+    assert!(super::Config::from_env().is_ok());
+
+    // A warn threshold under the stop threshold would warn only after the queue
+    // had already stopped.
+    set([Some("1024"), Some("2048"), None, None]);
+    assert_eq!(invalid(), "TCAB_ARTIFACT_FREE_WARN_MB");
+    // The same mistake made by raising only the stop threshold past the default
+    // warn threshold.
+    set([None, Some("4096"), None, None]);
+    assert_eq!(invalid(), "TCAB_ARTIFACT_FREE_WARN_MB");
+
+    // A value that is not a whole number is refused rather than defaulted.
+    set([None, Some("2GiB"), None, None]);
+    assert_eq!(invalid(), "TCAB_ARTIFACT_FREE_STOP_MB");
+
+    // A zero poll interval would poll in a busy loop.
+    set([None, None, None, Some("0")]);
+    assert_eq!(invalid(), "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS");
+}

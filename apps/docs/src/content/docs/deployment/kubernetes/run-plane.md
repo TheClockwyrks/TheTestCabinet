@@ -95,7 +95,8 @@ interpreting them: `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_SERVICE_ACCOUNT`,
 `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`,
 `TCAB_K8S_RUN_POD_PREFIX`,
 `TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG` with the per-image
-`TCAB_CONTAINER_IMAGE_*` overrides, `TCAB_ARTIFACTS_URL`, the `TCAB_GG_*` install
+`TCAB_CONTAINER_IMAGE_*` overrides, `TCAB_ARTIFACTS_URL`,
+`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`, the `TCAB_GG_*` install
 controls, the `OTEL_EXPORTER_OTLP_*` variables, and `TCAB_ENV`. Each is forwarded
 only when it is set. Publish `Job`s receive `TCAB_ARTIFACTS_URL`,
 `TCAB_GITHUB_ORG`, `TCAB_PAGES_PROJECT`, the same observability variables, and
@@ -294,10 +295,19 @@ It runs under its own `ServiceAccount` with no Kubernetes API access. An upload
 presents the driver's per-job token, which the service forwards to the backend
 (`TCAB_BACKEND_URL`) as the token authority. Reads are ungated, since
 browser-loaded media cannot present a token; the private-network boundary is what
-gates them. A run-tree delete and the `GET /runs` tree listing present the shared
-`TCAB_BACKEND_SERVICE_TOKEN`, and leaving that unset disables both routes.
+gates them. A run-tree delete, the `GET /runs` tree listing and the
+`GET /capacity` reading present the shared `TCAB_BACKEND_SERVICE_TOKEN`, and
+leaving that unset disables all three routes.
 
-The backend calls those two routes on the service's `ClusterIP` `Service` through
+The backend reads the volume's free space through `GET /capacity` and
+[puts new runs on hold](/components/backend/overview/#artifact-capacity) under
+2 GiB free, warning under 3 GiB. Both thresholds are backend settings, and the
+overlays leave them at their defaults. The same reading carries the service's
+write check, and the backend also holds new runs while that check fails, while
+the service does not answer, and after a run's upload has failed. Size the
+`PersistentVolumeClaim` so the stop threshold is a small share of it.
+
+The backend calls those routes on the service's `ClusterIP` `Service` through
 `TCAB_ARTIFACTS_URL`, and reports the console-facing base URL separately as
 `TCAB_ARTIFACTS_PUBLIC_URL`. Artifact bytes flow driver to artifacts to console
 without passing through the backend.

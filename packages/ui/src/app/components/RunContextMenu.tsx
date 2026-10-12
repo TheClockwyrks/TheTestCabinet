@@ -14,6 +14,10 @@ import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { useRunKill } from "../data/useRunKill";
 import { isPublishable, useRunPublish } from "../data/useRunPublish";
 import {
+  ARTIFACTS_NOT_STORED_LABEL,
+  artifactsNotStored,
+} from "../../client/artifactPresence";
+import {
   useConfirm,
   type AlertOptions,
   type ConfirmApi,
@@ -347,6 +351,20 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
             >
               Publish run
             </button>
+          </>
+        )}
+        {/* An unpublished run with no stored artifact tree: say why no publish
+            is offered, where the publish would have been. */}
+        {canPublish && !run.publishedAt && artifactsNotStored(run) && (
+          <>
+            <div className={styles.separator} role="separator" />
+            <div
+              className={styles.note}
+              role="note"
+              data-testid="artifacts-missing-note"
+            >
+              {ARTIFACTS_NOT_STORED_LABEL}
+            </div>
           </>
         )}
         {/* The row's card carries the run's own publish state, so this asks the

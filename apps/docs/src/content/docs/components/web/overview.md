@@ -135,6 +135,34 @@ engine](/components/core/validation/). A review records one run-wide aesthetic
 tier, a writeup, and a verdict for each point of that checklist. Publish is
 offered whether or not a review exists.
 
+A run whose [artifact tree is not
+stored](/components/backend/overview/#artifact-presence) cannot be released. The
+run listings mark such a row while it is unpublished, and the run's page states
+it in place of the publish control, so an operator sees a lost tree where the
+publish would have been offered.
+
+Every page of the console carries a notice while the
+[artifact store](/components/backend/overview/#artifact-capacity) needs
+attention, kept current by the console stream. It reads "Artifact storage is
+running low" while the state is `low`. While the queue is on hold it reads "New
+runs are on hold" with the condition holding it: the storage is full, the
+artifact service cannot be reached, the artifact store cannot be written to,
+finished runs are waiting to store their artifacts, or the store is being
+checked after failed uploads. While the backend is
+[proving the store](/components/backend/overview/#evidence-from-uploads) the
+notice reads "New runs start one at a time" instead, since runs are still
+being started. The notice states how many runs are waiting to store and the
+error behind the hold when the backend reports them. A run the
+hold keeps waiting reads `pending` in the run listings, with the reason as its
+tooltip.
+
+A run whose driver is waiting on the artifact store reads "storing" in the run
+listings, with the driver's reason as its tooltip, and counts as an active run
+for the stop controls. Its live monitor says that the run has finished and is
+waiting to store its artifacts, with the driver's reason, and a gg run's status
+pill reads "Storing". The monitor's stop control stays, and stopping a waiting
+run discards what it built.
+
 The publish backlog is its own worklist because a publish is asynchronous and
 can fail. Its slice is the publish gate rather than everything unpublished, so
 it offers only rows the backend will accept. A batch publish enqueues each

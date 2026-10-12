@@ -1,17 +1,18 @@
-//! The synchronized publish path: coalesced snapshot regeneration + upload +
+//! The synchronized publish path: batched snapshot regeneration + upload +
 //! deploy-hook fire (§1.4, §3 and the backend overview's "Publishing and
 //! Synchronization").
 //!
-//! Being a single central entity is the point: the backend serializes publishes
-//! so two operators cannot race on the shared snapshot state, and it **coalesces**
-//! a burst of publishes into one regeneration, one upload, and one site rebuild.
+//! Being a single central entity is the point: the backend serializes refreshes
+//! so two of them cannot race on the shared snapshot state, and it **batches** the
+//! requests for one, because every refresh ends in a full site rebuild.
 //!
-//! The coalescing is a debounce: a publish marks the store dirty and pings the
-//! refresher; the refresher waits the coalescing window, draining any further
-//! pings that arrive during it, then regenerates the **full** published set
-//! (idempotent — re-running converges on the same snapshot), uploads it
-//! atomically, and fires the hook. A forced refresh (`POST /snapshot/refresh`)
-//! bypasses the debounce and runs immediately.
+//! A change to what the snapshot shows counts one request
+//! ([`Publisher::queue_refresh`]). The [`batch`] module decides when the pending
+//! requests are released: at a threshold count, or once no request has arrived for
+//! a quiet window, with a minimum interval between two releases. A release
+//! regenerates the **full** published set (idempotent — re-running converges on
+//! the same snapshot), uploads it atomically, and fires the hook. A forced refresh
+//! (`POST /snapshot/refresh`) bypasses the batching and runs immediately.
 //!
 //! Regenerating the full set is a statement about *correctness*, not about work: the
 //! run and case media, and each run's own JSON document, are content-addressed under
@@ -25,8 +26,14 @@ use std::time::Duration;
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::mpsc;
 use tracing::Instrument;
+
+#[path = "publisher.batch.rs"]
+pub mod batch;
+
+pub use batch::BatchTiming;
+use batch::{Batch, Batcher, RefreshTarget};
 
 use crate::db::Db;
 use crate::error::{BackendError, Result};
@@ -65,27 +72,31 @@ struct PublisherInner {
     /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
     /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
-    coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (see [`prune_stale_snapshots`]).
     snapshot_retention: Duration,
-    /// Pinged when a publish marks the store dirty, waking the debounce loop.
-    wake: Notify,
-    /// How many refreshes the background loop has finished, so a test can wait for the loop to
-    /// act rather than poll the database on a timer.
+    /// Counts the refresh requests and decides when a batch of them is released.
+    batcher: Batcher,
+    /// How many refreshes have finished, so a test can wait for the loop to act
+    /// rather than poll the database on a timer.
     #[cfg(test)]
     refreshes: tokio::sync::watch::Sender<u64>,
+    /// How many times pending requests have been recorded durably, for the same
+    /// reason.
+    #[cfg(test)]
+    recordings: tokio::sync::watch::Sender<u64>,
 }
 
-/// The timing knobs a publisher is built with, grouped so the two `Duration`s
-/// cannot be transposed at the call site (they are adjacent, same-typed and mean
-/// very different things) and so adding a third does not widen
-/// [`Publisher::new`] again.
+/// The timing knobs a publisher is built with, grouped so the `Duration`s cannot
+/// be transposed at the call site (they are same-typed and mean very different
+/// things) and so adding another does not widen [`Publisher::new`] again.
+/// [`Config::publisher_timing`](crate::config::Config::publisher_timing) builds it
+/// from the environment.
 #[derive(Debug, Clone, Copy)]
 pub struct PublisherTiming {
-    /// The sliding debounce a burst of publishes is coalesced over
-    /// (`TCAB_SNAPSHOT_COALESCE_MS`).
-    pub coalesce: Duration,
+    /// When a batch of refresh requests is released (`TCAB_SNAPSHOT_BATCH_SIZE`,
+    /// `TCAB_SNAPSHOT_COALESCE_MS`, `TCAB_SNAPSHOT_MIN_INTERVAL_MS`).
+    pub batch: BatchTiming,
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (`TCAB_SNAPSHOT_RETENTION_HOURS`).
     pub snapshot_retention: Duration,
@@ -127,62 +138,45 @@ impl Publisher {
                 auth,
                 http: reqwest::Client::new(),
                 artifacts_url,
-                coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
-                wake: Notify::new(),
+                batcher: Batcher::new(timing.batch),
                 #[cfg(test)]
                 refreshes: tokio::sync::watch::channel(0).0,
+                #[cfg(test)]
+                recordings: tokio::sync::watch::channel(0).0,
             }),
         }
     }
 
-    /// Notify the refresher that a publish has landed (the store is dirty). This
-    /// returns immediately; the actual regeneration is coalesced and run on the
-    /// background task. Returns whether a refresh was queued — always `true`
-    /// here, since the debounce loop is what coalesces.
+    /// Count one refresh request: one change to what the public snapshot shows (a
+    /// run's publish, a review on a published run, a published comparison, an
+    /// ingest that changed the store, a catalog or price change). Every request
+    /// counts as one, whatever its kind.
+    ///
+    /// Returns immediately; the background task releases the request with its
+    /// batch. Returns whether a refresh was queued, which is always `true`.
     pub fn queue_refresh(&self) -> bool {
-        self.inner.wake.notify_one();
+        self.inner.batcher.request();
         true
     }
 
-    /// Spawn the background debounce loop. It runs until the returned shutdown
+    /// Spawn the background batching loop. It runs until the returned shutdown
     /// channel is dropped or signaled. On startup it checks the persisted dirty
     /// flag so a refresh pending at the last restart is not lost.
     pub fn spawn(&self) -> RefresherHandle {
         let inner = Arc::clone(&self.inner);
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
-        // Give the detached coalescing task its own span. It is the root of every
+        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
+        // Give the detached batching task its own span. It is the root of every
         // background refresh's trace (a refresh is not tied to one request), so
         // `run_refresh`'s spans nest under it rather than floating free.
         let task_span = tracing::info_span!("publisher.refresher");
         let handle = tokio::spawn(
             async move {
-                // Recover a refresh that was pending when the process last stopped.
-                if matches!(inner.db.snapshot_state().await, Ok(state) if state.dirty)
-                    && let Err(err) = run_refresh(&inner).await
-                {
-                    tracing::error!("startup snapshot refresh failed: {err}");
-                }
-                loop {
-                    tokio::select! {
-                        _ = inner.wake.notified() => {
-                            // Debounce: wait the coalescing window, draining further
-                            // wakes that arrive during it into this one refresh.
-                            loop {
-                                tokio::select! {
-                                    _ = tokio::time::sleep(inner.coalesce) => break,
-                                    _ = inner.wake.notified() => continue,
-                                }
-                            }
-                            if let Err(err) = run_refresh(&inner).await {
-                                tracing::error!("coalesced snapshot refresh failed: {err}");
-                            }
-                            #[cfg(test)]
-                            inner.refreshes.send_modify(|finished| *finished += 1);
-                        }
-                        _ = shutdown_rx.recv() => break,
-                    }
-                }
+                let recover = inner.recovery().await;
+                inner
+                    .batcher
+                    .run(inner.as_ref(), recover, shutdown_rx)
+                    .await;
             }
             .instrument(task_span),
         );
@@ -192,16 +186,96 @@ impl Publisher {
         }
     }
 
-    /// A receiver that changes each time the background loop finishes a coalesced refresh.
+    /// A receiver that changes each time a refresh finishes.
     #[cfg(test)]
     pub(crate) fn refreshes(&self) -> tokio::sync::watch::Receiver<u64> {
         self.inner.refreshes.subscribe()
     }
 
-    /// Force an immediate refresh, bypassing the debounce (operator recovery via
-    /// `POST /snapshot/refresh`). Regenerates, uploads, and fires the hook now.
+    /// A receiver that changes each time pending requests are recorded durably.
+    #[cfg(test)]
+    pub(crate) fn recordings(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.inner.recordings.subscribe()
+    }
+
+    /// Force an immediate refresh, bypassing the batching (operator recovery via
+    /// `POST /snapshot/refresh`). Regenerates, uploads, and fires the hook now. It
+    /// waits for a refresh already running, carries every pending request, and
+    /// starts the minimum interval before the next batch.
     pub async fn refresh_now(&self) -> Result<RefreshOutcome> {
-        run_refresh(&self.inner).await
+        self.inner.batcher.forced(self.inner.as_ref()).await
+    }
+}
+
+impl PublisherInner {
+    /// Whether a refresh was pending when the process last stopped, and how long
+    /// the batcher holds its release for.
+    ///
+    /// A state that cannot be read is taken as pending. A refresh nobody needed
+    /// republishes what is already live, while one skipped leaves the gallery
+    /// behind until some later request.
+    async fn recovery(&self) -> Option<Duration> {
+        match self.db.snapshot_state().await {
+            Ok(state) if state.dirty => Some(recovery_hold(
+                state.last_uploaded.as_deref(),
+                OffsetDateTime::now_utc(),
+                self.batcher.timing().min_interval,
+            )),
+            Ok(_) => None,
+            Err(err) => {
+                tracing::warn!(
+                    "could not read whether a snapshot refresh was pending ({err});                      refreshing as though one was"
+                );
+                Some(Duration::ZERO)
+            }
+        }
+    }
+}
+
+/// How long a startup recovery waits: what is left of `min_interval` since the
+/// last upload, so the interval between two releases holds across a restart.
+///
+/// Nothing is left when there has been no upload, when its time cannot be read,
+/// or when it lies in the future, which is a clock that moved rather than an
+/// upload to wait behind.
+fn recovery_hold(
+    last_uploaded: Option<&str>,
+    now: OffsetDateTime,
+    min_interval: Duration,
+) -> Duration {
+    let Some(uploaded) = last_uploaded.and_then(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+    else {
+        return Duration::ZERO;
+    };
+    match Duration::try_from(now - uploaded) {
+        Ok(since) => min_interval.saturating_sub(since),
+        Err(_) => Duration::ZERO,
+    }
+}
+
+impl RefreshTarget for PublisherInner {
+    type Output = RefreshOutcome;
+
+    async fn refresh(&self, _batch: Batch) -> Result<RefreshOutcome> {
+        let result = run_refresh(self).await;
+        #[cfg(test)]
+        self.refreshes.send_modify(|finished| *finished += 1);
+        result
+    }
+
+    /// The persisted dirty flag is the durable record. A publish sets it in its
+    /// own transaction; a request that changed only the catalog or the store has
+    /// set nothing, and a refresh clears the flag under requests that arrived
+    /// while it ran.
+    async fn persist_pending(&self) {
+        if let Err(err) = self.db.mark_dirty().await {
+            tracing::warn!(
+                "could not record the pending snapshot refresh ({err}); \
+                 a restart before it is released would drop it"
+            );
+        }
+        #[cfg(test)]
+        self.recordings.send_modify(|recorded| *recorded += 1);
     }
 }
 
@@ -226,7 +300,7 @@ impl RefresherHandle {
 
 /// Regenerate the full snapshot, upload it (when R2 is configured), fire the
 /// deploy hook, and clear the dirty flag. This is the one place the snapshot is
-/// produced; both the debounce loop and the forced path call it.
+/// produced; both the batching loop and the forced path reach it.
 #[tracing::instrument(
     name = "snapshot.run_refresh",
     skip(inner),
@@ -406,17 +480,19 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
 
     let deploy_hook_fired = match &inner.r2 {
         Some(r2) => {
-            let fired = crate::snapshot::upload_snapshot(
-                &snapshot,
-                r2,
-                inner.deploy_hook_url.as_deref(),
-                &inner.http,
-            )
-            .await?;
+            crate::snapshot::upload_snapshot(&snapshot, r2).await?;
             // Only after the atomic `index.json` cut-over: until it lands, the
             // previous generation is still the live one and must not be touched.
+            // Before the hook, so a hook that keeps failing does not also keep the
+            // generations its retries upload from ever being pruned.
             prune_stale_snapshots(r2, &snapshot.snapshot_id, inner.snapshot_retention).await;
-            fired
+            match inner.deploy_hook_url.as_deref() {
+                Some(url) => {
+                    crate::snapshot::fire_deploy_hook(url, &inner.http).await?;
+                    true
+                }
+                None => false,
+            }
         }
         None => {
             // Dev mode: no R2 credentials. The snapshot was still regenerated

@@ -1,0 +1,244 @@
+import { describe, expect, it } from "vitest";
+import type { ArtifactStorageStatus } from "@clockwyrks/run-record/jobs-api";
+import {
+  formatGib,
+  storageHoldReason,
+  storingRunNotice,
+  storageNotice,
+  worstStorageNotice,
+} from "./artifactStorage";
+
+const GIB = 1024 ** 3;
+
+function status(
+  overrides: Partial<ArtifactStorageStatus> = {},
+): ArtifactStorageStatus {
+  return {
+    state: "ok",
+    runsOnHold: false,
+    runsWaitingToStore: 0,
+    freeBytes: 10 * GIB,
+    totalBytes: 20 * GIB,
+    warnBytes: 3 * GIB,
+    stopBytes: 2 * GIB,
+    ...overrides,
+  };
+}
+
+describe("formatGib", () => {
+  it("drops a trailing zero and keeps one decimal otherwise", () => {
+    expect(formatGib(3 * GIB)).toBe("3 GiB");
+    expect(formatGib(2.5 * GIB)).toBe("2.5 GiB");
+    expect(formatGib(0)).toBe("0 GiB");
+  });
+});
+
+describe("storageNotice", () => {
+  it("says nothing while the store has room or is not watched", () => {
+    expect(storageNotice(status())).toBeNull();
+    expect(storageNotice(status({ state: "unmonitored" }))).toBeNull();
+    expect(storageNotice(null)).toBeNull();
+    expect(storageNotice(undefined)).toBeNull();
+  });
+
+  it("warns while storage is low, quoting both thresholds", () => {
+    const notice = storageNotice(status({ state: "low" }));
+    expect(notice).toEqual({
+      tone: "warn",
+      title: "Artifact storage is running low",
+      detail: "Less than 3 GiB is free. New runs go on hold under 2 GiB.",
+    });
+  });
+
+  it("states the hold while storage is full", () => {
+    const notice = storageNotice(
+      status({ state: "blocked", runsOnHold: true }),
+    );
+    expect(notice?.tone).toBe("hold");
+    expect(notice?.title).toBe(
+      "New runs are on hold: artifact storage is full",
+    );
+    expect(notice?.detail).toContain("Less than 2 GiB is free");
+    expect(notice?.detail).toContain("Queued runs start once space is freed");
+  });
+
+  it("quotes the thresholds the backend is configured with", () => {
+    const configured = { warnBytes: 8 * GIB, stopBytes: 4.5 * GIB };
+    expect(storageNotice(status({ state: "low", ...configured }))?.detail).toBe(
+      "Less than 8 GiB is free. New runs go on hold under 4.5 GiB.",
+    );
+  });
+
+  it("names an unwritable store and the error its write check reported", () => {
+    const notice = storageNotice(
+      status({
+        state: "unwritable",
+        runsOnHold: true,
+        holdReason: "unwritable",
+        detail: "Read-only file system (os error 30)",
+      }),
+    );
+    expect(notice?.tone).toBe("hold");
+    expect(notice?.title).toBe(
+      "New runs are on hold: the artifact store cannot be written to",
+    );
+    expect(notice?.detail).toContain(
+      "Reported: Read-only file system (os error 30)",
+    );
+    expect(notice?.detail).toContain("Publishing is unaffected");
+  });
+
+  it("counts the finished runs waiting to store their artifacts", () => {
+    const one = storageNotice(
+      status({
+        runsOnHold: true,
+        holdReason: "uploads-waiting",
+        runsWaitingToStore: 1,
+        detail: "artifact service returned HTTP 503",
+      }),
+    );
+    expect(one?.title).toBe(
+      "New runs are on hold: finished runs are waiting to store their artifacts",
+    );
+    expect(one?.detail).toContain("1 finished run is retrying an upload");
+    expect(one?.detail).toContain(
+      "Reported: artifact service returned HTTP 503",
+    );
+
+    const three = storageNotice(
+      status({
+        runsOnHold: true,
+        holdReason: "uploads-waiting",
+        runsWaitingToStore: 3,
+      }),
+    );
+    expect(three?.detail).toContain("3 finished runs are retrying an upload");
+    expect(three?.detail).not.toContain("Reported:");
+  });
+
+  it("adds the waiting runs to a hold another condition leads", () => {
+    const notice = storageNotice(
+      status({
+        state: "blocked",
+        runsOnHold: true,
+        holdReason: "low-space",
+        runsWaitingToStore: 2,
+      }),
+    );
+    expect(notice?.title).toBe(
+      "New runs are on hold: artifact storage is full",
+    );
+    expect(notice?.detail).toContain(
+      "2 finished runs are waiting to store their artifacts.",
+    );
+  });
+
+  it("says the store is being checked once the last waiting run is gone", () => {
+    const notice = storageNotice(
+      status({ runsOnHold: true, holdReason: "write-check-pending" }),
+    );
+    expect(notice?.tone).toBe("hold");
+    expect(notice?.title).toBe(
+      "New runs are on hold: the artifact store is being checked after failed uploads",
+    );
+  });
+
+  it("says runs start one at a time while the store is being proved", () => {
+    const notice = storageNotice(
+      status({
+        runsOnHold: true,
+        holdReason: "proving-store",
+        detail: "HTTP 502: verifying the job token with the backend",
+      }),
+    );
+    expect(notice?.tone).toBe("hold");
+    expect(notice?.title).toBe(
+      "New runs start one at a time: an upload failed and the artifact store has not stored a run since",
+    );
+    expect(notice?.detail).toContain("once a run's artifacts have been stored");
+    expect(notice?.detail).toContain(
+      "Reported: HTTP 502: verifying the job token with the backend",
+    );
+    // The held run's tooltip states the same reason.
+    expect(
+      storageHoldReason(
+        status({ runsOnHold: true, holdReason: "proving-store" }),
+      ),
+    ).toBe(notice?.title);
+  });
+
+  it("reads a hold from the state when the backend names no reason", () => {
+    // What a backend older than `holdReason` sends.
+    expect(
+      storageNotice(status({ state: "blocked", runsOnHold: true }))?.title,
+    ).toBe("New runs are on hold: artifact storage is full");
+  });
+
+  it("says nothing about an unreachable service that holds no run", () => {
+    expect(storageNotice(status({ state: "unavailable" }))).toBeNull();
+
+    const held = storageNotice(
+      status({
+        state: "unavailable",
+        runsOnHold: true,
+        freeBytes: undefined,
+        totalBytes: undefined,
+      }),
+    );
+    expect(held?.tone).toBe("hold");
+    expect(held?.title).toBe(
+      "New runs are on hold: the artifact service cannot be reached",
+    );
+  });
+});
+
+describe("storageHoldReason", () => {
+  it("names the reason only while runs are held", () => {
+    expect(storageHoldReason(status())).toBeNull();
+    expect(storageHoldReason(status({ state: "low" }))).toBeNull();
+    expect(storageHoldReason(null)).toBeNull();
+    expect(
+      storageHoldReason(status({ state: "blocked", runsOnHold: true })),
+    ).toBe("New runs are on hold: artifact storage is full");
+  });
+});
+
+describe("worstStorageNotice", () => {
+  it("puts a hold ahead of a warning, whatever the order", () => {
+    const low = status({ state: "low" });
+    const blocked = status({ state: "blocked", runsOnHold: true });
+    expect(worstStorageNotice([low, blocked])?.tone).toBe("hold");
+    expect(worstStorageNotice([blocked, low])?.tone).toBe("hold");
+    expect(worstStorageNotice([status(), low])?.tone).toBe("warn");
+    expect(worstStorageNotice([status()])).toBeNull();
+    expect(worstStorageNotice([])).toBeNull();
+  });
+});
+
+describe("storingRunNotice", () => {
+  it("says nothing for a run in any other phase", () => {
+    expect(storingRunNotice(undefined)).toBeNull();
+    expect(storingRunNotice({ state: "running" })).toBeNull();
+    expect(
+      storingRunNotice({ state: "running", detail: "a stale reason" }),
+    ).toBeNull();
+  });
+
+  it("says the run has finished and why it is waiting", () => {
+    const notice = storingRunNotice({
+      state: "storing",
+      detail: "the artifact service rejected the upload: HTTP 500",
+    });
+    expect(notice).toContain("The run has finished");
+    expect(notice).toContain("new runs are on hold");
+    expect(notice).toContain(
+      "Reported: the artifact service rejected the upload: HTTP 500",
+    );
+  });
+
+  it("stands without a reason", () => {
+    const notice = storingRunNotice({ state: "storing", detail: null });
+    expect(notice).toContain("waiting to store its artifacts");
+    expect(notice).not.toContain("Reported:");
+  });
+});

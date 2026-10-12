@@ -147,6 +147,8 @@ fn run_summary_lifts_the_runs_display_identity() {
         review_count: 1,
         loaded: true,
         published: false,
+        artifacts_stored: None,
+        auto_publish_deferred: false,
         record_json: "{}".to_string(),
         record_readable: true,
         record_format: 1,

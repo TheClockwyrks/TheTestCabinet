@@ -659,6 +659,9 @@ async fn report_lost(state: &AppState, job_id: &str) -> StatusCode {
             state: test_cabinet_core::DriverState::Failed,
             record: None,
             detail: Some("the driver Job no longer exists".to_string()),
+            artifacts_stored: None,
+            store_fault: None,
+            run_failure: None,
         }),
     )
     .await
@@ -714,6 +717,9 @@ async fn a_job_whose_driver_is_lost_fails_and_its_retry_keeps_the_plan_filling()
             state: test_cabinet_core::DriverState::Succeeded,
             record: None,
             detail: None,
+            artifacts_stored: None,
+            store_fault: None,
+            run_failure: None,
         }),
     )
     .await
@@ -904,6 +910,19 @@ async fn a_cell_holds_the_first_runs_to_land_and_the_plan_never_reads_past_its_t
         .unwrap();
     let carded: Vec<String> = runs.runs.iter().map(|run| run.id.clone()).collect();
     assert_eq!(carded, plan_run_ids);
+    assert!(runs.artifacts_not_stored.is_empty());
+
+    // A run recorded as having no stored tree is named beside the cards, so the
+    // console marks it here as it does in the run log.
+    state
+        .db
+        .set_run_artifacts_stored("pong-claude-sonnet-4-5-1", false)
+        .await
+        .unwrap();
+    let Json(runs) = plan_runs(State(state.clone()), owner(), Path(id.clone()))
+        .await
+        .unwrap();
+    assert_eq!(runs.artifacts_not_stored, ["pong-claude-sonnet-4-5-1"]);
     assert!(
         extras
             .iter()

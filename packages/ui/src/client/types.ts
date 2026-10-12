@@ -1099,6 +1099,11 @@ export interface StoredRun {
   // Whether the run has cleared the publish gate (a published run is publicly
   // visible). Worker-produced runs default to false until published.
   published: boolean;
+  // Whether the artifact service holds the run's tree, which is what a publish
+  // releases: false means the service holds no tree and the run cannot be
+  // published. Null or absent while unknown, which is every run on a host that
+  // does not track it (a worker's produced list, the static gallery).
+  artifactsStored?: boolean | null;
   // The run's FUNCTIONAL rating as the store decides it: on a validator-rated run
   // the validator-decided rating (present from completion, never changed by a
   // review); on a legacy run the review aggregate (null while unreviewed). Composed
@@ -1418,9 +1423,13 @@ export interface InProgressRun {
   // The run's live phase, mapped from the backend's fine-grained job state: still
   // waiting for a dispatcher slot ("queued"), deliberately held back because its
   // harness is at its parallelism cap ("pending"), spinning up the driver +
-  // container ("starting"), executing ("running"), or locally observed to have
+  // container ("starting"), executing ("running"), finished and waiting on the
+  // artifact store to take its tree ("storing"), or locally observed to have
   // failed before it dropped out of the active list ("failed").
-  state: "queued" | "pending" | "starting" | "running" | "failed";
+  state: "queued" | "pending" | "starting" | "running" | "storing" | "failed";
+  // Why the run's driver is waiting on the artifact store, in the driver's own
+  // words. Present only while `state` is "storing".
+  detail?: string | null;
 }
 
 // One harness's operator-tunable configuration, as `GET /harness-config` reports it
@@ -1510,6 +1519,7 @@ export interface RunLifecycleEvent {
     | "dispatched"
     | "starting"
     | "running"
+    | "storing"
     | "succeeded"
     | "failed"
     | "canceled";

@@ -5,6 +5,7 @@ import "react-toastify/dist/ReactToastify.css";
 import "./notifications.scss";
 import { useWorkers } from "../../client/context";
 import type { RunLifecycleEvent, RunNotification } from "../../client/types";
+import { useArtifactStorage } from "../runtime/artifactStorage";
 import { useRunsRuntime } from "../runtime/runsRuntime";
 import {
   notificationFromPush,
@@ -53,6 +54,9 @@ import { NotificationsSidebar } from "./NotificationsSidebar";
 //     only while some page has asked for them (`useLiveRunUpdates`); the alerts
 //     above arrive always, which is why the stream is opened here rather than by
 //     the pages that read the list;
+//   - records each backend's artifact-store status as the stream reports it, which
+//     is what the page chrome's standing notice (`StorageNotice`) and a held run's
+//     tooltip read;
 //   - marks a run's notification read once the user opens that run.
 // It is rendered by `GalleryApp` behind the `canExecute` gate, so the static site
 // (no workers, no bell) never mounts it.
@@ -61,6 +65,8 @@ export function NotificationsLayer() {
   const runtime = useRunsRuntime();
   const add = useNotifications((s) => s.add);
   const markReadByRunId = useNotifications((s) => s.markReadByRunId);
+  const setStorageStatus = useArtifactStorage((s) => s.setStatus);
+  const retainStorage = useArtifactStorage((s) => s.retain);
 
   // The runtime object is recreated whenever its own state changes; hold the
   // latest in a ref so the subscription and reconcile effects don't depend on it
@@ -138,6 +144,8 @@ export function NotificationsLayer() {
           ...(action.startedAt !== undefined
             ? { startedAt: action.startedAt }
             : {}),
+          // Likewise only when the row's reason changed.
+          ...(action.detail !== undefined ? { detail: action.detail } : {}),
         });
         break;
       case "remove":
@@ -220,6 +228,7 @@ export function NotificationsLayer() {
       worker.client.subscribeToNotifications({
         onNotification: handlePush,
         onRunLifecycle: handleRunLifecycle,
+        onStorage: (status) => setStorageStatus(worker.id, status),
         // A transport fault is non-fatal: the EventSource reconnects on its own.
         onError: () => {},
         // The feed carries no backlog, so anything published while the channel was
@@ -237,10 +246,20 @@ export function NotificationsLayer() {
         },
       }),
     );
+    // A backend removed from the console takes its storage status with it, or its
+    // notice would outlive the connection that could ever clear it.
+    retainStorage(workersRef.current.map((worker) => worker.id));
     return () => {
       for (const unsubscribe of unsubscribes) unsubscribe();
     };
-  }, [workerKey, handlePush, handleRunLifecycle, reconcileActive]);
+  }, [
+    workerKey,
+    handlePush,
+    handleRunLifecycle,
+    reconcileActive,
+    setStorageStatus,
+    retainStorage,
+  ]);
 
   // Re-base the list whenever something asks for it: `useLiveRunUpdates` does on
   // navigating onto a page that shows in-flight runs, because nothing published

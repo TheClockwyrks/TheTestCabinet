@@ -903,6 +903,12 @@ export type CoveragePlanRuns = {
    * landed within a cell. A run beyond a cell's target is not here.
    */
   runs: Array<RunSummary>;
+  /**
+   * The ids, among [`runs`](Self::runs), of the runs recorded as having no
+   * stored artifact tree, which therefore cannot be published. Always present,
+   * empty when the plan holds none.
+   */
+  artifactsNotStored: Array<string>;
 };
 
 /**

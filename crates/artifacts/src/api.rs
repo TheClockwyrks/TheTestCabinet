@@ -12,9 +12,11 @@
 //!   *read* that is token-gated: it is a server-to-server pull (not browser-loaded
 //!   media), and a run's source tree is published deliberately, never ambiently.
 //! - The **backend** manages the lifetime of a stored tree — `DELETE
-//!   /runs/{id}/artifacts` when a run is deleted, and `GET /runs` to enumerate the
-//!   stored trees for its reclamation sweep — authed by the shared **control-plane
-//!   service token**.
+//!   /runs/{id}/artifacts` when a run is deleted, `GET /runs` to enumerate the
+//!   stored trees for its reclamation sweep, `GET /runs/{id}/artifacts` to ask
+//!   whether one run's tree is stored before it enqueues a publish, and
+//!   `GET /capacity` to read the store volume's free space — authed by the shared
+//!   **control-plane service token**.
 //! - A **reviewer** (through the console) reads the run's playable build and
 //!   proof/asset media — `GET /runs/{id}/build` (and the trailing-slash
 //!   `/runs/{id}/build/` the console actually loads), `/runs/{id}/build/{*path}`,
@@ -258,12 +260,47 @@ pub struct AppState {
     pub backend_url: Arc<String>,
     /// The HTTP client the upload-auth verify call uses.
     pub http: reqwest::Client,
-    /// The shared control-plane service token the backend's two management routes —
-    /// the run-tree delete and the `GET /runs` listing — must present, or `None` when
-    /// tree management is disabled (both routes then reject every caller). See
+    /// The shared control-plane service token the backend's management routes — the
+    /// run-tree delete, the presence check, the `GET /runs` listing and the
+    /// `GET /capacity` reading — must present, or `None` when tree management is
+    /// disabled (those routes then reject every caller). See
     /// [`crate::auth::verify_service_token`].
     pub service_token: Option<Arc<String>>,
+    /// The `GET /capacity` reading in flight, if one is, and the last one that
+    /// returned.
+    pub capacity_reads: Arc<CapacityReads>,
 }
+
+/// What the `GET /capacity` handler keeps between requests, so that one reading runs at a time.
+///
+/// A reading is a `statvfs` and a [write check](ArtifactStore::probe_write), and
+/// on a volume that hangs rather than errors both block for as long as it does.
+/// The backend polls every few seconds and gives up on each answer long before
+/// that, so without this each poll would park one more thread of the blocking
+/// pool, which is the pool uploads are unpacked on.
+#[derive(Debug, Default)]
+pub struct CapacityReads {
+    /// Whether a reading is running on the blocking pool right now.
+    running: std::sync::atomic::AtomicBool,
+    /// The byte figures of the last reading that returned.
+    last: std::sync::Mutex<Option<crate::store::StoreCapacity>>,
+}
+
+/// Marks a reading as running for as long as it lives. Held by the blocking task,
+/// so a request the caller abandoned still clears the mark when its reading
+/// returns, and a reading that never returns never clears it.
+struct RunningRead(Arc<CapacityReads>);
+
+impl Drop for RunningRead {
+    fn drop(&mut self) {
+        self.0
+            .running
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// What a `GET /capacity` answers while the reading before it has not returned.
+const READ_IN_FLIGHT: &str = "the previous write check has not returned";
 
 /// Build the artifact service's Axum router. The upload route carries its own
 /// generous body limit (a tarball is buffered to unpack); the trace middleware
@@ -278,11 +315,17 @@ pub fn router(state: AppState) -> Router {
         // No `DefaultBodyLimit` layer: `upload` takes the raw `Body` so it can spool
         // to disk, and that layer only bounds the buffering extractors. The cap is
         // applied as the bytes are written — see `MAX_UPLOAD_BYTES`.
-        .route("/runs/{id}/artifacts", post(upload).delete(delete))
+        .route(
+            "/runs/{id}/artifacts",
+            post(upload).delete(delete).get(presence),
+        )
         // Enumerate every stored tree (backend → service, shared control-plane
         // service token) so the backend's reclamation sweep can compare the volume's
         // contents against its own run rows.
         .route("/runs", get(list_runs))
+        // The store volume's free and total space (backend → service, shared
+        // control-plane service token), which the backend holds new runs back on.
+        .route("/capacity", get(capacity))
         // Download a run's source tree as a tar (publisher → service, per-publish-job
         // token). The one *gated* read: a server-to-server pull the publisher uses to
         // drive the GitHub-repo + Pages release, verified against the backend like an
@@ -389,8 +432,11 @@ async fn spool_to_disk(
     let mut stream = body.into_data_stream();
     let mut written: usize = 0;
     while let Some(chunk) = stream.next().await {
+        // A body that stops arriving is a fault of the connection, not a refusal of
+        // the tree, and the status has to say so: a driver gives up at once on a
+        // `400`, and holds its tree and retries on this.
         let chunk = chunk
-            .map_err(|err| ApiError::bad_request(format!("reading the upload body: {err}")))?;
+            .map_err(|err| ApiError::unavailable(format!("reading the upload body: {err}")))?;
         written = written.saturating_add(chunk.len());
         if written > max_bytes {
             return Err(ApiError::payload_too_large(format!(
@@ -514,6 +560,40 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+/// The [`presence`] response body.
+#[derive(serde::Serialize)]
+struct TreePresenceOut {
+    /// The run id asked about.
+    id: String,
+    /// Whether the store holds a tree for it.
+    stored: bool,
+}
+
+/// `GET /runs/{id}/artifacts` — whether run `{id}` has a stored tree.
+///
+/// The backend asks this before it enqueues a publish: a release is built from the
+/// stored tree, so a run without one must not be handed to a publisher. Absence is
+/// answered in the body of a `200`, never as a `404`, so the caller cannot mistake
+/// a misrouted or unreachable service for a run with no tree; the two lead to
+/// different decisions there.
+///
+/// Gated by the shared control-plane service token like the listing, since it is
+/// the same information one run at a time. `200 OK` with `{ "id", "stored" }`;
+/// `401` without the token; `400` for an unsafe id. The check is one `stat`.
+#[tracing::instrument(name = "artifacts.presence", skip(state, headers), fields(run.id = %id), err(Debug))]
+async fn presence(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    crate::auth::verify_service_token(
+        &headers,
+        state.service_token.as_deref().map(String::as_str),
+    )?;
+    let stored = state.store.has_run_tree(&id).map_err(map_store_error)?;
+    Ok((StatusCode::OK, axum::Json(TreePresenceOut { id, stored })).into_response())
+}
+
 /// One entry of the [`list_runs`] response.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -573,6 +653,112 @@ async fn list_runs(
 
     tracing::debug!(trees = runs.len(), "listed stored run trees");
     Ok((StatusCode::OK, axum::Json(TreeListingOut { runs })).into_response())
+}
+
+/// The [`capacity`] response body.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CapacityOut {
+    /// Bytes an upload can still be written into.
+    free_bytes: u64,
+    /// The size of the filesystem the store root is on.
+    total_bytes: u64,
+    /// Whether the write check made for this request passed.
+    writable: bool,
+    /// Why the write check failed, when it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    write_error: Option<String>,
+}
+
+/// `GET /capacity` — the free and total space of the volume the store is on, and
+/// whether the store can take a write right now.
+///
+/// The backend polls this and hands out new runs only while the volume has room
+/// for the trees of the runs already in flight and the write check passes. It
+/// describes the store as a whole rather than any run, and it is the control
+/// plane's alone to read, so it carries the same gate as the listing: the shared
+/// control-plane service token (`TCAB_BACKEND_SERVICE_TOKEN`), with every caller
+/// rejected (`401`) when none is configured.
+///
+/// `200 OK` with `{ "freeBytes", "totalBytes", "writable" }`, plus `writeError`
+/// when the check failed. The byte figures are one `statvfs`; the write check is
+/// [`ArtifactStore::probe_write`]. A
+/// failed check is an answer rather than an error status, so the backend can tell
+/// a store that cannot be written from a service it could not read.
+///
+/// One reading runs at a time ([`CapacityReads`]). A request that arrives while
+/// the one before it is still blocked on the volume starts nothing: it answers
+/// with the last byte figures and a failed check, or `503` when no reading has
+/// ever returned.
+#[tracing::instrument(name = "artifacts.capacity", skip(state, headers), err(Debug))]
+async fn capacity(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    crate::auth::verify_service_token(
+        &headers,
+        state.service_token.as_deref().map(String::as_str),
+    )?;
+    let reads = state.capacity_reads.clone();
+    if reads
+        .running
+        .swap(true, std::sync::atomic::Ordering::AcqRel)
+    {
+        // The reading before this one is still blocked on the volume, which is
+        // itself the answer: the store is not taking a write. It is reported with
+        // the last byte figures read, and as the service being unavailable when
+        // none has been.
+        tracing::warn!("{READ_IN_FLIGHT}; answering without starting another");
+        let last = *reads.last.lock().expect("capacity reads mutex poisoned");
+        let Some(capacity) = last else {
+            return Err(ApiError::unavailable(READ_IN_FLIGHT));
+        };
+        return Ok(capacity_response(
+            capacity,
+            Some(READ_IN_FLIGHT.to_string()),
+        ));
+    }
+    // Both halves block on the volume, so both run off the async runtime: a
+    // `statvfs` against a volume that hangs would otherwise stall a worker thread
+    // that every other request shares.
+    let store = state.store.clone();
+    let running = RunningRead(reads);
+    let (capacity, write_error) = tokio::task::spawn_blocking(move || {
+        let running = running;
+        let capacity = store.capacity()?;
+        *running
+            .0
+            .last
+            .lock()
+            .expect("capacity reads mutex poisoned") = Some(capacity);
+        let write_error = store.probe_write().err().map(|err| err.to_string());
+        Ok::<_, crate::store::StoreError>((capacity, write_error))
+    })
+    .await
+    .map_err(|err| ApiError::internal(format!("capacity task failed: {err}")))?
+    .map_err(map_store_error)?;
+    if let Some(error) = &write_error {
+        tracing::warn!(error = %error, "the artifact store's write check failed");
+    }
+    Ok(capacity_response(capacity, write_error))
+}
+
+/// The `200` answer of [`capacity`]: the byte figures, and the write check's
+/// result as `write_error` has it.
+fn capacity_response(
+    capacity: crate::store::StoreCapacity,
+    write_error: Option<String>,
+) -> Response {
+    (
+        StatusCode::OK,
+        axum::Json(CapacityOut {
+            free_bytes: capacity.free_bytes,
+            total_bytes: capacity.total_bytes,
+            writable: write_error.is_none(),
+            write_error,
+        }),
+    )
+        .into_response()
 }
 
 /// `GET /runs/{id}/tree.tar` — stream a tar of run `{id}`'s stored source tree
@@ -907,12 +1093,18 @@ fn serve_run_stream(state: &AppState, id: &str, file_name: &str) -> Result<Respo
 }
 
 /// Map a [`StoreError`](crate::store::StoreError) onto the HTTP envelope: a
-/// traversal attempt is the client's bad upload (`400`); a read of an unknown run's
-/// tree is a `404`; an I/O fault is the service's (`500`).
+/// traversal attempt is the client's bad upload (`400`); an archive that cannot be
+/// read is the upload's own too (`422`); a read of an unknown run's tree is a
+/// `404`; an I/O fault is the service's (`500`).
+///
+/// The split between the first two and the last is what an uploading driver acts
+/// on: it gives up at once on a refusal of its tree, and holds the tree and
+/// retries on a fault of the store.
 fn map_store_error(err: crate::store::StoreError) -> ApiError {
     use crate::store::StoreError;
     match err {
         StoreError::Traversal(_) => ApiError::bad_request(err.to_string()),
+        StoreError::Malformed(_) => ApiError::unprocessable(err.to_string()),
         StoreError::NotFound(_) => ApiError::not_found(err.to_string()),
         StoreError::Io(_) => ApiError::internal(err.to_string()),
     }
@@ -921,6 +1113,10 @@ fn map_store_error(err: crate::store::StoreError) -> ApiError {
 #[cfg(test)]
 #[path = "api.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "api.capacity.test.rs"]
+mod capacity_tests;
 
 #[cfg(test)]
 #[path = "api.spool.test.rs"]

@@ -311,6 +311,7 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         updated_at: "2026-06-17T20:40:00Z".to_string(),
         started_at: None,
         retried_by: None,
+        held_report_json: None,
     }
 }
 
@@ -490,7 +491,7 @@ fn an_unparseable_origin_is_rejected_rather_than_dropped() {
 fn stream_event_names_are_the_ones_clients_listen_for() {
     // These strings are the wire contract for `GET /notifications`, and unlike the
     // JSON payloads they are *not* generated — the TypeScript transport hardcodes
-    // the same five literals in its `addEventListener` calls. Nothing links the two
+    // the same six literals in its `addEventListener` calls. Nothing links the two
     // sides, so renaming one here would silently stop every console receiving that
     // frame: SSE never dispatches to a listener for a name the server no longer
     // sends, with no error anywhere. Pinning them means a rename has to be a
@@ -500,6 +501,7 @@ fn stream_event_names_are_the_ones_clients_listen_for() {
     assert_eq!(STREAM_EVENT_RUN, "run");
     assert_eq!(STREAM_EVENT_RESYNC, "resync");
     assert_eq!(STREAM_EVENT_HEARTBEAT, "heartbeat");
+    assert_eq!(STREAM_EVENT_STORAGE, "storage");
 }
 
 #[test]

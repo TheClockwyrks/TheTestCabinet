@@ -14,6 +14,7 @@
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
 //! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. a local setup with no artifact service) skips the upload entirely. | — |
+//! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | no | How long the driver keeps retrying the run-tree upload when the artifact store cannot take it, holding the tree, before it reports the run without one. `0` is a single attempt. | `21600` |
 //! | `TCAB_DRIVER_SUBSCRIPTION_DIR` | no | A directory the operator-provided subscription Secret is mounted into (one file per credential, keyed by basename). When set, the driver makes subscription auth available by reading these files instead of a host home; unset leaves the run API-key-only, unchanged. | — |
 //!
 //! The driver never *decides* the auth mode — [`resolve_auth_with`] does, from
@@ -92,6 +93,11 @@ pub struct Config {
     /// (`TCAB_ARTIFACTS_URL`), without a trailing slash. `None` (a local setup with
     /// no artifact service) skips the upload entirely.
     pub artifacts_url: Option<String>,
+    /// How long the driver keeps retrying the run-tree upload when the artifact
+    /// store cannot take it, before it reports the run without a stored tree
+    /// (`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`). See
+    /// [`UploadRetry::give_up_after`](crate::artifacts::UploadRetry::give_up_after).
+    pub upload_wait: Duration,
     /// The directory the operator-provided subscription Secret is mounted into
     /// (`TCAB_DRIVER_SUBSCRIPTION_DIR`), one file per credential keyed by basename.
     /// `None` (no Secret configured) leaves the run API-key-only, unchanged; when
@@ -101,6 +107,28 @@ pub struct Config {
     /// Sandbox-pod settings used when [`runtime`](Self::runtime) is
     /// [`DriverRuntime::Kubernetes`]; left at defaults (and unused) otherwise.
     pub kubernetes: KubernetesConfig,
+}
+
+/// The variable that bounds the driver's wait on the artifact store.
+const UPLOAD_WAIT_VAR: &str = "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS";
+
+/// The wait on the artifact store `value` asks for, `value` being what
+/// [`UPLOAD_WAIT_VAR`] holds: a whole number of seconds, `0` for a single attempt,
+/// and [`DEFAULT_UPLOAD_WAIT`](crate::artifacts::DEFAULT_UPLOAD_WAIT) when unset.
+/// Anything else is refused, so a driver never starts a run under a bound nobody
+/// chose.
+fn upload_wait_from(value: Option<String>) -> Result<Duration, ConfigError> {
+    let Some(value) = value else {
+        return Ok(crate::artifacts::DEFAULT_UPLOAD_WAIT);
+    };
+    match value.trim().parse::<u64>() {
+        Ok(seconds) => Ok(Duration::from_secs(seconds)),
+        Err(err) => Err(ConfigError::Invalid {
+            name: UPLOAD_WAIT_VAR,
+            value,
+            detail: err.to_string(),
+        }),
+    }
 }
 
 impl Config {
@@ -141,6 +169,7 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from(".tcab-driver"));
         let artifacts_url =
             non_empty("TCAB_ARTIFACTS_URL").map(|url| url.trim_end_matches('/').to_string());
+        let upload_wait = upload_wait_from(non_empty(UPLOAD_WAIT_VAR))?;
         let subscription_dir = non_empty("TCAB_DRIVER_SUBSCRIPTION_DIR").map(PathBuf::from);
         let mut kubernetes = kubernetes_from_env()?;
         // Stamp the run's job id onto each sandbox pod (via a label) so a
@@ -154,9 +183,16 @@ impl Config {
             runtime,
             work_dir,
             artifacts_url,
+            upload_wait,
             subscription_dir,
             kubernetes,
         })
+    }
+
+    /// The policy the run-tree upload is retried under: the default pacing, with
+    /// the wait bounded by [`upload_wait`](Self::upload_wait).
+    pub fn upload_retry(&self) -> crate::artifacts::UploadRetry {
+        crate::artifacts::UploadRetry::waiting_for(self.upload_wait)
     }
 
     /// Build the [`RunRequest`] this driver executes from the claimed
@@ -317,3 +353,7 @@ fn non_empty(key: &str) -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
+
+#[cfg(test)]
+#[path = "config.test.rs"]
+mod tests;

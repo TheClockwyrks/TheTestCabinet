@@ -17,6 +17,7 @@ import { useFindModel } from "../../data/useModels";
 import { formatSlug } from "../../format";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
+import { ARTIFACTS_NOT_STORED_LABEL } from "../../../client/artifactPresence";
 import styles from "./RunFailuresPage.module.scss";
 import exec from "./RunExec.module.scss";
 
@@ -101,11 +102,12 @@ export function RunFailuresPage() {
       ) : (
         <Panel>
           <ul className={styles.list}>
-            {publishable.map(({ record: run, published }) => (
+            {publishable.map(({ record: run, published, artifactsStored }) => (
               <FailureRow
                 key={run.id}
                 run={run}
                 published={published}
+                artifactsMissing={artifactsStored === false}
                 token={token}
                 onPublish={
                   client
@@ -127,15 +129,20 @@ export function RunFailuresPage() {
 // needs a signed-in account (the backend authorizes the call with its token);
 // when signed out the row links to sign-in instead. After a successful publish
 // it nudges the data source to re-read so the row reflects its published state.
+//
+// A failure whose artifact tree is not stored has nothing to release, so its row
+// says so where the Publish control would be.
 function FailureRow({
   run,
   published,
+  artifactsMissing,
   token,
   onPublish,
   onPublished,
 }: {
   run: RunRecord;
   published: boolean;
+  artifactsMissing: boolean;
   token: string | null;
   onPublish:
     | ((onProgress: (progress: PublishProgress) => void) => Promise<unknown>)
@@ -202,6 +209,14 @@ function FailureRow({
         </span>
         {published ? (
           <span className={styles.publishedTag}>Published</span>
+        ) : artifactsMissing ? (
+          <span
+            className={styles.missingTag}
+            title={ARTIFACTS_NOT_STORED_LABEL}
+            data-testid="artifacts-missing"
+          >
+            No stored artifacts
+          </span>
         ) : token ? (
           <button
             type="button"

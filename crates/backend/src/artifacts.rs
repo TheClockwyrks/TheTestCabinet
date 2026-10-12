@@ -1,5 +1,6 @@
 //! The backend's ownership of a run's tree on the **artifact service** (the data
-//! plane): the delete-time prune, and the periodic reclamation sweep.
+//! plane): the delete-time prune, the periodic reclamation sweep, and what the
+//! backend knows about whether a run's tree is stored at all.
 //!
 //! The backend is the system of record: deleting a run removes its row (and the
 //! backend's own proof/asset/controller media). A run's *playable build* and the
@@ -26,6 +27,17 @@
 //! A pass acts only on a run-id set that holds at least one run. An empty set makes
 //! every tree an orphan, so a database fault and a fresh database beside a populated
 //! volume would each reclaim the whole volume on the next pass.
+//!
+//! The same pass reconciles each run's recorded **artifact presence** against the
+//! listing it already holds ([`reconcile_presence`]): the sweep is the one place
+//! that has both the stored trees and the run ids, so a run whose tree was lost
+//! without the backend being told is found here. Reconciling changes only that
+//! record. It selects nothing for deletion, and what the sweep deletes is decided
+//! by [`orphaned_trees`] alone.
+//!
+//! [`run_tree_stored`] asks the service about one run, for the publish gate
+//! (`crate::api::publish_gate`), which must know now rather than as of the last
+//! pass.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -57,6 +69,9 @@ struct TreeListing {
 pub struct SweepOutcome {
     /// Trees the artifact service reported.
     pub listed: usize,
+    /// Trees selected for deletion: those with no run row, past the grace window.
+    /// Each one ends the pass either reclaimed or failed.
+    pub orphans: usize,
     /// Trees deleted this pass.
     pub reclaimed: usize,
     /// Trees selected for deletion whose delete the service refused or did not
@@ -182,6 +197,78 @@ pub async fn list_run_trees(
     Ok(listing.runs)
 }
 
+/// Why the artifact service could not say whether a run's tree is stored. Never
+/// read as "not stored": the caller must be able to tell a run with no tree from a
+/// service it could not ask.
+#[derive(Debug, thiserror::Error)]
+pub enum TreePresenceError {
+    /// The service answered a non-success status.
+    #[error("the artifact service answered HTTP {0}")]
+    Refused(reqwest::StatusCode),
+    /// The request got no answer, or an answer that could not be read.
+    #[error("the artifact service could not be reached: {0}")]
+    Transport(#[from] reqwest::Error),
+}
+
+/// The artifact service's `GET /runs/{id}/artifacts` body.
+#[derive(Debug, serde::Deserialize)]
+struct TreePresence {
+    stored: bool,
+}
+
+/// Ask the artifact service whether it holds a tree for run `run_id`
+/// (`GET /runs/{id}/artifacts`), presenting the shared control-plane service token.
+///
+/// `Ok(false)` is the service saying the run has no tree. Everything else that is
+/// not a clear answer is an `Err`, including a `404`: the service answers absence
+/// in the body of a `200`, so a `404` is a route that is not there.
+pub async fn run_tree_stored(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    run_id: &str,
+) -> Result<bool, TreePresenceError> {
+    let url = format!("{}/runs/{}/artifacts", base.trim_end_matches('/'), run_id);
+    let response = http
+        .get(&url)
+        .bearer_auth(token)
+        // A person's publish waits on this, and the answer is one `stat` on the
+        // service's side, so a slow one is a service that is not answering.
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(TreePresenceError::Refused(response.status()));
+    }
+    let presence: TreePresence = response.json().await?;
+    Ok(presence.stored)
+}
+
+/// Reconcile every run's recorded artifact presence against `trees`, the listing a
+/// sweep pass just took: each run in `runs` whose tree is listed is recorded as
+/// stored and each other run of `runs` as not stored.
+///
+/// `runs` must have been read **before** `trees` was listed; see
+/// [`Db::reconcile_artifacts_stored`](crate::db::Db::reconcile_artifacts_stored)
+/// for why that order is what makes "not stored" a safe conclusion.
+///
+/// An empty listing reconciles nothing, for the reason an empty run-id set sweeps
+/// nothing. A service started against the wrong or an unmounted volume lists no
+/// trees, and taking that at its word would record every run in the cabinet as
+/// having lost its tree. The publish gate asks about each run directly, so nothing
+/// depends on this pass to keep such a run from being released.
+pub async fn reconcile_presence(
+    db: &crate::db::Db,
+    runs: &HashSet<String>,
+    trees: &[StoredTree],
+) -> crate::error::Result<crate::db::ArtifactReconciliation> {
+    if trees.is_empty() {
+        return Ok(crate::db::ArtifactReconciliation::default());
+    }
+    let listed: HashSet<String> = trees.iter().map(|tree| tree.id.clone()).collect();
+    db.reconcile_artifacts_stored(runs, &listed).await
+}
+
 /// Select the trees a sweep should delete: every tree whose id has no run row and
 /// which was last written more than `grace` before `now`.
 ///
@@ -233,11 +320,29 @@ pub async fn sweep_orphaned_trees(
     grace: Duration,
 ) -> Result<SweepOutcome, reqwest::Error> {
     let trees = list_run_trees(http, base, token).await?;
+    Ok(reclaim_orphans(http, base, token, &trees, live, now, grace).await)
+}
+
+/// Delete the orphans among `trees`, a listing the caller already holds: the half
+/// of a sweep pass that follows the listing. Split from [`sweep_orphaned_trees`] so
+/// a pass can list once and both reclaim and [reconcile](reconcile_presence) from
+/// the same listing.
+pub async fn reclaim_orphans(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    trees: &[StoredTree],
+    live: &HashSet<String>,
+    now: OffsetDateTime,
+    grace: Duration,
+) -> SweepOutcome {
     let mut outcome = SweepOutcome {
         listed: trees.len(),
         ..SweepOutcome::default()
     };
-    for id in orphaned_trees(&trees, live, now, grace) {
+    let orphans = orphaned_trees(trees, live, now, grace);
+    outcome.orphans = orphans.len();
+    for id in orphans {
         match delete_tree(http, base, token, &id).await {
             Ok(()) => {
                 outcome.reclaimed += 1;
@@ -253,7 +358,37 @@ pub async fn sweep_orphaned_trees(
             }
         }
     }
-    Ok(outcome)
+    outcome
+}
+
+/// Run one whole pass: list the service's trees once, reclaim the orphans among
+/// them, and reconcile each run's recorded artifact presence against the same
+/// listing. `live` is the run-id set, read by the caller before this is called.
+///
+/// A reconciliation that fails is logged and does not fail the pass: the trees
+/// were already reclaimed, and the next pass reconciles again.
+pub async fn sweep_pass(
+    db: &crate::db::Db,
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    live: &HashSet<String>,
+    now: OffsetDateTime,
+    grace: Duration,
+) -> Result<(SweepOutcome, crate::db::ArtifactReconciliation), reqwest::Error> {
+    let trees = list_run_trees(http, base, token).await?;
+    let outcome = reclaim_orphans(http, base, token, &trees, live, now, grace).await;
+    let reconciled = match reconcile_presence(db, live, &trees).await {
+        Ok(reconciled) => reconciled,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "could not reconcile the runs' artifact presence; retrying next pass"
+            );
+            crate::db::ArtifactReconciliation::default()
+        }
+    };
+    Ok((outcome, reconciled))
 }
 
 /// Spawn the periodic reclamation sweep, returning its task handle so the caller
@@ -283,61 +418,113 @@ pub fn spawn_orphan_sweeper(
     Some(tokio::spawn(async move {
         tokio::time::sleep(FIRST_SWEEP_DELAY).await;
         loop {
-            let live = match db.all_run_ids().await {
-                Ok(live) if !live.is_empty() => live,
-                Ok(_) => {
-                    tracing::warn!(
-                        "skipping the artifact sweep: the backend holds no run rows, \
-                         which would make every stored tree an orphan"
-                    );
-                    tokio::time::sleep(timing.interval).await;
-                    continue;
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        "skipping the artifact sweep: could not read the stored run ids"
-                    );
-                    tokio::time::sleep(timing.interval).await;
-                    continue;
-                }
-            };
-            match sweep_orphaned_trees(
+            scheduled_pass(
+                &db,
                 &http,
                 &base,
                 &token,
-                &live,
                 OffsetDateTime::now_utc(),
                 timing.grace,
             )
             .await
-            {
-                Ok(outcome) if outcome.reclaimed > 0 || outcome.failed > 0 => {
-                    tracing::info!(
-                        listed = outcome.listed,
-                        reclaimed = outcome.reclaimed,
-                        failed = outcome.failed,
-                        "swept orphaned run trees from the artifact service"
-                    );
-                }
-                Ok(outcome) => {
-                    tracing::debug!(
-                        listed = outcome.listed,
-                        "artifact sweep found no orphaned run trees"
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        "could not list the artifact service's run trees; skipping this sweep"
-                    );
-                }
-            }
+            .log();
             tokio::time::sleep(timing.interval).await;
         }
     }))
 }
 
+/// How one scheduled pass of the sweep ended. Every pass ends as exactly one of
+/// these and [logs](Self::log) exactly one line for it, so a pass that did nothing
+/// can be told apart from a sweep that is not running.
+#[derive(Debug)]
+pub enum ScheduledPass {
+    /// The pass listed the service's trees and acted on the listing.
+    Complete(SweepOutcome, crate::db::ArtifactReconciliation),
+    /// The pass was abandoned before it changed anything, and is retried at the
+    /// next interval.
+    Abandoned(AbandonedPass),
+}
+
+/// Why a scheduled pass was abandoned.
+#[derive(Debug)]
+pub enum AbandonedPass {
+    /// The backend holds no run rows, which would make every stored tree an
+    /// orphan.
+    NoRuns,
+    /// The stored run ids could not be read.
+    RunsUnreadable(crate::error::BackendError),
+    /// The artifact service's trees could not be listed.
+    ListingFailed(reqwest::Error),
+}
+
+impl AbandonedPass {
+    /// The reason as the log line's `reason` field spells it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::NoRuns => "no_runs",
+            Self::RunsUnreadable(_) => "runs_unreadable",
+            Self::ListingFailed(_) => "listing_failed",
+        }
+    }
+}
+
+impl ScheduledPass {
+    /// Log the pass's one line: `info` for a pass that completed, a pass that
+    /// reclaimed nothing included, and `warn` for one that was abandoned.
+    pub fn log(&self) {
+        match self {
+            Self::Complete(outcome, reconciled) => tracing::info!(
+                listed = outcome.listed,
+                orphans = outcome.orphans,
+                reclaimed = outcome.reclaimed,
+                failed = outcome.failed,
+                marked_stored = reconciled.marked_stored,
+                marked_not_stored = reconciled.marked_not_stored,
+                "artifact sweep pass complete"
+            ),
+            Self::Abandoned(why) => {
+                let error = match why {
+                    AbandonedPass::NoRuns => None,
+                    AbandonedPass::RunsUnreadable(err) => Some(err.to_string()),
+                    AbandonedPass::ListingFailed(err) => Some(err.to_string()),
+                };
+                tracing::warn!(
+                    reason = why.as_str(),
+                    error,
+                    "artifact sweep pass abandoned; retrying at the next interval"
+                );
+            }
+        }
+    }
+}
+
+/// Run one scheduled pass: read the run ids, then [`sweep_pass`] against them.
+///
+/// The pass acts only on a run-id set that was read and holds at least one run,
+/// because an empty set makes every tree an orphan.
+pub async fn scheduled_pass(
+    db: &crate::db::Db,
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    now: OffsetDateTime,
+    grace: Duration,
+) -> ScheduledPass {
+    let live = match db.all_run_ids().await {
+        Ok(live) if !live.is_empty() => live,
+        Ok(_) => return ScheduledPass::Abandoned(AbandonedPass::NoRuns),
+        Err(err) => return ScheduledPass::Abandoned(AbandonedPass::RunsUnreadable(err)),
+    };
+    match sweep_pass(db, http, base, token, &live, now, grace).await {
+        Ok((outcome, reconciled)) => ScheduledPass::Complete(outcome, reconciled),
+        Err(err) => ScheduledPass::Abandoned(AbandonedPass::ListingFailed(err)),
+    }
+}
+
 #[cfg(test)]
 #[path = "artifacts.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "artifacts.presence.test.rs"]
+pub(crate) mod presence_tests;

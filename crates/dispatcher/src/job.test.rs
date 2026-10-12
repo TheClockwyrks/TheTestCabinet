@@ -339,6 +339,25 @@ fn restart_policy_never_and_no_retries() {
 }
 
 #[test]
+fn the_driver_job_has_no_deadline() {
+    // A driver waits on the artifact store for as long as its upload wait says,
+    // hours by default. A deadline on the Job or its pod would end that wait from
+    // outside, and take the tree with it.
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let job_spec = job.spec.as_ref().unwrap();
+    assert_eq!(job_spec.active_deadline_seconds, None);
+    assert_eq!(
+        job_spec
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .active_deadline_seconds,
+        None
+    );
+}
+
+#[test]
 fn sets_ttl_after_finished() {
     let job = build_driver_job(&claim(), &config()).unwrap();
     assert_eq!(

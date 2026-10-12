@@ -247,6 +247,83 @@ playable build, the proof media, and the asset media. By the time a console sees
 the run finish, its build and media are already servable. When the artifacts URL
 is unset the upload is skipped.
 
+The driver's copy of the tree is the only one until the upload is acknowledged,
+so the driver keeps a tree it could not upload for as long as the failure is
+the store's. The tarball stays on the driver's disk between attempts, and each
+attempt reads it from its first byte at offsets of its own, so an attempt the
+service answered before reading its whole body leaves the next one unaffected.
+
+An attempt has no overall deadline, since its body is as large as the run tree.
+It is abandoned as stalled when the service takes none of the tree and gives no
+answer for five minutes.
+
+A failed upload is one of two kinds:
+
+| Kind              | Failures                                                                                                                              | The driver                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| The run's own     | The tree cannot be tarred, the service answers `413` (over its size cap), `400` (a refused path) or `422` (an archive it cannot read) | Ends the upload at once              |
+| A store condition | Every other failure: no answer, a stall, a `5xx`, a `401` or `403`, a `404`, any other status                                         | [Waits](#waiting-on-the-store) on it |
+
+The run's outcome is independent of the upload. When the upload ends without
+the tree stored, the driver logs the last status and body at `error`, leaves the
+playable-build link off the record, since nothing would serve it, and reports
+the run with the state it reached. Its terminal status report carries
+`artifactsStored`: `true` when the service acknowledged the tree, `false` when
+it did not, and absent when no artifact service is configured. A report with
+`artifactsStored: false` whose upload ended on a store condition also carries
+`storeFault`, the failure's text, which is how the backend learns of a failed
+upload from a driver that never reported a wait.
+
+### Waiting on the store
+
+On a store condition the driver retries the upload until it lands, waiting 5,
+10, 20 and 40 seconds and then 60 seconds between attempts. It gives up once
+`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` (default `21600`, six hours) have passed
+since the first failure, and then reports the run with `artifactsStored: false`.
+A value of `0` makes a single attempt, and a value that is not a whole number
+of seconds stops the driver before it runs anything. The dispatcher forwards the
+setting from its own environment.
+
+The driver reports the wait to the backend with a `storing` status carrying the
+failure as its reason: after the first failed attempt and again after every
+later one. A first attempt that has neither landed nor failed after 60 seconds
+is reported the same way while it goes on, so a store that accepts an upload
+and then hangs does not leave the run reading as running. The job then reads
+`storing`, which the console shows as waiting to store artifacts, and the
+backend [holds the run queue](/components/backend/overview/#the-hold) while any
+job is in that state.
+
+The first `storing` report of a wait also carries the run's record, and the
+reason the run failed when it did. The record exists nowhere but the driver's
+pod until the terminal report, so the driver hands it to the backend before it
+waits, and the backend
+[finishes the run from it](/components/backend/overview/#a-driver-lost-while-it-waits)
+if the pod is lost.
+
+When the wait ends the driver reports `running` again, with `artifactsStored`
+saying whether the tree was stored, and goes on to its terminal report. A
+report that fails to reach the backend is logged and the wait continues.
+
+An operator's cancellation ends the upload wherever it is: during the first
+attempt, a later one, or the pause between two. The driver polls its job's
+state every three seconds from the moment the upload begins, and a `canceled`
+job ends the attempt in flight and the wait with it. The driver then posts a
+`canceled` status carrying the record with `artifactsStored: false`, so the run
+stays inspectable.
+
+A run that was already canceled when its upload began is the exception, since a
+canceled gg run uploads its tree after the cancellation. Its upload is not ended
+by that cancellation, and it is retried on a store condition for at most ten
+minutes, or for the configured wait when that is shorter. Its job is terminal,
+so it never reads `storing`, and its reports still tell the backend that an
+upload failed.
+
+Nothing else ends the wait. The driver `Job` carries no active deadline, the
+per-job token is valid for as long as the job row exists, whatever its state,
+and the backend reaps no job by age. A driver that dies while waiting is
+[reported lost](/components/dispatcher/overview/#lost-drivers) by the
+dispatcher, which ends its job and its share of the hold.
+
 The artifact service serves a run only to the console session that produced it,
 so the driver also mirrors a backend-driven run's servable media into the
 [backend](/components/backend/overview/) store: every run's

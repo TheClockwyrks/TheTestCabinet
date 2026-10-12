@@ -230,7 +230,9 @@ of these hold:
 - its case version is
   [validator-rated](/terminology/#validator-rated);
 - it is unpublished;
-- no publish job has ever been enqueued for it.
+- no publish job has ever been enqueued for it;
+- its [artifact tree is stored](/components/backend/overview/#artifact-presence),
+  which the backend asks the artifact service as it enqueues.
 
 Every other run stays manual. A `catastrophic`, `timed_out`, `hung`,
 `harness_error` or `limit_exceeded` run is published deliberately by an
@@ -239,7 +241,7 @@ operator, a legacy run is published through review, and an `infrastructure` or
 
 The rule applies to every run however it was launched: from the run form, by a
 coverage plan, by a ladder, or as a comparison's arm. The backend applies it at
-two moments:
+three moments:
 
 - When a driver reports a run's terminal status. The run's record is stored and
   its validator rating decided within that report, so the run is enqueued for
@@ -249,6 +251,8 @@ two moments:
 - When a [ladder](/components/backend/ladders/#a-rung-slots-runs) launch pass
   reads a rung slot's runs. A run the dispatch counts is enqueued for publishing
   even when another launch produced it.
+- Every five minutes, for each run an earlier moment passed over because its
+  artifact tree could not be confirmed.
 
 Automatic publishing enqueues the same publish job an operator's publish does,
 and at most one for a run. A run that already has a publish job in any state is
@@ -256,6 +260,21 @@ left alone, so a failed automatic publish is never retried automatically: it
 raises the publish-failed notification and waits in the Unpublished worklist for
 an operator. An automatic publish that cannot be enqueued is logged and never
 fails the report or the pass that prompted it.
+
+A run with no stored tree is passed over with no publish job recorded, since a
+release has nothing to publish, and so is a run the artifact service could not
+be asked about. The backend marks each run it passes over, and the five-minute
+retry is what publishes it later: a run launched outside a ladder has no other
+moment left once its report has been accepted.
+
+The retry asks the artifact service about a marked run whose tree is recorded as
+stored or unknown. A run recorded as having no stored tree is left unasked until
+a reclamation sweep pass finds its tree. A report or ladder pass leaves a marked
+run to the retry, and any pass stops asking once the artifact service fails to
+answer, marking the runs it has left. An outage of the artifact service
+therefore costs a report or a pass one unanswered question, and every run that
+finished during it publishes within five minutes of the service answering
+again.
 
 Only published runs appear in the public snapshot and therefore in the gallery. A
 published catastrophic or timeout failure shows its generated source and has no

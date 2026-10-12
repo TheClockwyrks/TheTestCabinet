@@ -7,6 +7,7 @@ import { useAuth } from "../../client/auth";
 import { selectUnreadCount, useNotifications } from "../runtime/notifications";
 import { BellIcon } from "./BellIcon";
 import { CabinetIcon } from "./CabinetIcon";
+import { StorageNotice } from "./StorageNotice";
 import styles from "./PageLayout.module.scss";
 import exec from "../pages/runs/RunExec.module.scss";
 
@@ -286,6 +287,9 @@ export function PageLayout({
           </nav>
         )}
       </header>
+      {/* Says so on every page while the artifact store is low or the run queue
+          is on hold. Only a console's stream ever fills the store it reads. */}
+      <StorageNotice />
       <main
         className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}
       >

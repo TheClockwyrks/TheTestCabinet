@@ -12,7 +12,7 @@
 //! - is the **system of record** for published runs + reviews in a SeaORM store
 //!   (SQLite locally and in tests, PostgreSQL in deployments); and
 //! - owns the **synchronized publish path**: a publish ingests into SQLite, then
-//!   a coalesced background task regenerates the full public snapshot, uploads it
+//!   a batching background task regenerates the full public snapshot, uploads it
 //!   atomically to R2, and fires the site deploy hook.
 //!
 //! There is **no app-level auth**: the backend sits on a private network and
@@ -22,6 +22,7 @@ pub mod api;
 pub mod artifacts;
 pub mod auth;
 pub mod bootstrap;
+pub mod capacity;
 pub mod config;
 pub mod coverage;
 pub mod db;
@@ -67,6 +68,10 @@ pub struct Backend {
     /// not configured: no in-cluster artifact URL, no service token, or a zero
     /// interval.
     pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
+    /// The [artifact capacity](crate::capacity) poll loop's task, which runs for
+    /// the server's lifetime. `None` when no artifact
+    /// service is configured, in which case nothing is watched and no run is held.
+    pub capacity_monitor: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -276,10 +281,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.deploy_hook_url.clone(),
         config.artifacts_internal_url.clone(),
         Arc::clone(&auth),
-        crate::publisher::PublisherTiming {
-            coalesce: config.coalesce,
-            snapshot_retention: config.snapshot_retention,
-        },
+        config.publisher_timing(),
     );
     let refresher = publisher.spawn();
 
@@ -333,8 +335,8 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
         tracing::warn!(
             "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
-             tree pruning, the reclamation sweep and the snapshot's artifact media fallback \
-             are all off"
+             tree pruning, the reclamation sweep, the capacity hold on new runs and the \
+             snapshot's artifact media fallback are all off"
         );
     }
 
@@ -353,6 +355,21 @@ pub async fn build(config: Config) -> error::Result<Backend> {
             grace: config.artifact_sweep_grace,
         },
     );
+
+    // Watch the artifact store, and hold the run queue while any condition for
+    // storing a run's tree is not green (see `crate::capacity`). The
+    // relay is built here rather than in the state literal below because the watch
+    // announces each change of state on its console stream.
+    let relay = crate::relay::Relay::new();
+    let (capacity, capacity_monitor) = crate::capacity::spawn_capacity_monitor(
+        config.artifact_capacity,
+        http.clone(),
+        config.artifacts_internal_url.clone(),
+        config.service_token.clone(),
+        relay.notifier().clone(),
+        db.clone(),
+    )
+    .await;
 
     let bind = config.bind.clone();
     // Every test-case resolution reads the definition store, and on a deployment
@@ -379,7 +396,8 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         ready: readiness,
         publisher,
         auth,
-        relay: crate::relay::Relay::new(),
+        relay,
+        capacity,
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),
         http,
@@ -391,6 +409,9 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // not finished dies with the process. Run a launch pass of each once, as soon as the
     // store can be served.
     api::spawn_startup_passes(state.clone());
+    // Offer the runs automatic publishing could not publish when they finished to
+    // it again, on an interval, for as long as the process lives.
+    api::spawn_auto_publish_retry(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
@@ -399,6 +420,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         refresher,
         price_refresher,
         artifact_sweeper,
+        capacity_monitor,
     })
 }
 

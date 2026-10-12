@@ -1,0 +1,36 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// Sits in the shell's column between the topbar and the page body, aligned to the
+// content column. The topbar's own bottom margin is the gap above it.
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-2xs t.$space-md;
+  width: calc(100% - 2 * #{t.$space-md});
+  max-width: calc(#{t.$content-max} - 2 * #{t.$space-md});
+  margin: 0 auto t.$space-lg;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-warning;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  color: t.$color-text;
+
+  &[data-tone="hold"] {
+    border-color: t.$color-negative;
+  }
+}
+
+.title {
+  color: t.$color-warning;
+
+  [data-tone="hold"] > & {
+    color: t.$color-negative;
+  }
+}
+
+.detail {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}

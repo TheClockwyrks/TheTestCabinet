@@ -1,6 +1,8 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { ArtifactStorageStatus } from "@clockwyrks/run-record/jobs-api";
 import type { InProgressRun } from "../../client/types";
+import { useArtifactStorage } from "../runtime/artifactStorage";
 import { formatTimestamp } from "../format";
 import {
   RUN_COLUMNS,
@@ -194,5 +196,71 @@ describe("run column in-progress cells", () => {
       render(column("timestamp").renderActive(broken, ctx())).container
         .textContent,
     ).toBe("—");
+  });
+});
+
+// A run the artifact store is holding back says why, since "pending" alone cannot
+// tell that hold from a harness at its parallelism cap.
+describe("a held run's status cell", () => {
+  const pendingRun: InProgressRun = { ...activeRun, state: "pending" };
+  const held: ArtifactStorageStatus = {
+    state: "blocked",
+    runsOnHold: true,
+    runsWaitingToStore: 0,
+    warnBytes: 3 * 1024 ** 3,
+    stopBytes: 2 * 1024 ** 3,
+  };
+
+  beforeEach(() => {
+    useArtifactStorage.setState({ byWorker: {} });
+  });
+
+  function statusCell(run: InProgressRun): HTMLElement {
+    const { container } = render(column("rating").renderActive(run, ctx()));
+    return container.querySelector("[data-state]") as HTMLElement;
+  }
+
+  it("carries the storage hold as its tooltip", () => {
+    useArtifactStorage.getState().setStatus("w1", held);
+
+    const cell = statusCell(pendingRun);
+    expect(cell).toHaveTextContent("pending");
+    expect(cell).toHaveAttribute(
+      "title",
+      "New runs are on hold: artifact storage is full",
+    );
+  });
+
+  it("gives no reason when the queue is not on hold", () => {
+    // Pending behind its harness's cap, with the store merely low.
+    useArtifactStorage
+      .getState()
+      .setStatus("w1", { ...held, state: "low", runsOnHold: false });
+    expect(statusCell(pendingRun)).not.toHaveAttribute("title");
+  });
+
+  it("leaves a run that is already running alone", () => {
+    useArtifactStorage.getState().setStatus("w1", held);
+    expect(statusCell(activeRun)).not.toHaveAttribute("title");
+  });
+
+  it("says a finished run is waiting to store its artifacts, and why", () => {
+    const cell = statusCell({
+      ...activeRun,
+      state: "storing",
+      detail: "artifact service returned HTTP 507: no space left on device",
+    });
+    expect(cell).toHaveTextContent("storing…");
+    expect(cell).toHaveAttribute(
+      "title",
+      "Waiting to store artifacts: artifact service returned HTTP 507: no space left on device",
+    );
+  });
+
+  it("says a run is waiting to store even when no reason was reported", () => {
+    expect(statusCell({ ...activeRun, state: "storing" })).toHaveAttribute(
+      "title",
+      "Waiting to store artifacts",
+    );
   });
 });

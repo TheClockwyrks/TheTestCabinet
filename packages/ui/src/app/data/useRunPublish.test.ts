@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { isPublishable } from "./useRunPublish";
+import { markArtifactsNotStored } from "../../client/artifactPresence";
 
 // A summary card carrying only the fields the publish gate reads; everything else
 // gets a benign default so a test varies one axis at a time.
@@ -55,6 +56,22 @@ describe("isPublishable", () => {
 
   it("refuses a completed run nobody has reviewed", () => {
     expect(isPublishable(summary({ reviewCount: 0 }))).toBe(false);
+  });
+
+  it("refuses a run whose artifact tree is not stored, whatever else holds", () => {
+    // Each of these would publish, were its tree stored: a reviewed completed run,
+    // a validator-rated one, and a publishable failure. With no tree there is
+    // nothing to release, and the backend refuses the publish.
+    for (const fields of [
+      { reviewCount: 1 },
+      { validatorRated: true },
+      { state: "catastrophic" as const },
+    ]) {
+      const card = summary(fields);
+      expect(isPublishable(card)).toBe(true);
+      const [lost] = markArtifactsNotStored([card], [card.id]);
+      expect(isPublishable(lost!)).toBe(false);
+    }
   });
 
   it("refuses a run that is already public", () => {

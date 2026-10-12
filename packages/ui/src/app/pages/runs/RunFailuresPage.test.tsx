@@ -25,12 +25,19 @@ function failure(state: RunRecord["status"]["state"], detail: string) {
   };
 }
 
-const failures = [
+const failures: (ReturnType<typeof failure> & {
+  artifactsStored?: boolean | null;
+})[] = [
   failure("harness_error", "run failed: gg harness exited nonzero (code 1)"),
   failure(
     "limit_exceeded",
     "run failed: gg execution ceiling hit (5 consecutive turns failed)",
   ),
+  // A failure whose driver could not store its tree: nothing to release.
+  {
+    ...failure("catastrophic", "run failed: the build never loaded"),
+    artifactsStored: false,
+  },
 ];
 
 vi.mock("../../data/galleryContext", () => ({
@@ -86,5 +93,20 @@ describe("RunFailuresPage", () => {
         screen.getByLabelText(describeRunState(state).consequence),
       ).toBeTruthy();
     }
+  });
+
+  it("offers no publish for a failure whose artifacts are not stored", async () => {
+    render(
+      <MemoryRouter>
+        <RunFailuresPage />
+      </MemoryRouter>,
+    );
+
+    const missing = await screen.findByTestId("artifacts-missing");
+    expect(missing.textContent).toBe("No stored artifacts");
+    expect(missing.getAttribute("title")).toContain("cannot be published");
+    // The two failures whose trees are not known to be missing keep their
+    // Publish control; the third row has the marker in its place.
+    expect(screen.getAllByRole("button", { name: "Publish" })).toHaveLength(2);
   });
 });

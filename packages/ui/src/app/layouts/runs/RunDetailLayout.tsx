@@ -63,8 +63,10 @@ interface RunDetailLayoutProps {
    * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
    * tabs read reviews from here rather than the console's global reviews map —
    * whether the run is already published (the review editor offers no Publish
-   * action once it is), and whether it is validator-rated (its verdict is read off
-   * the record — reviewer overrides folded in — and reviews add the run-wide
+   * action once it is), whether its artifact tree is missing (an unpublished run
+   * with no stored tree cannot be published, so the editor says so in place of
+   * the action), and whether it is validator-rated (its verdict is read off the
+   * record — reviewer overrides folded in — and reviews add the run-wide
    * aesthetic channel).
    */
   children: (ctx: {
@@ -72,6 +74,7 @@ interface RunDetailLayoutProps {
     review: ParsedWriteup | undefined;
     reviews: StoredReview[];
     published: boolean;
+    artifactsMissing: boolean;
     validatorRated: boolean;
   }) => ReactNode;
 }
@@ -232,6 +235,11 @@ export function RunDetailLayout({
       ]
     : [];
   const isLocal = localIds.has(run.id);
+  // An unpublished run whose artifact tree the backend records as not stored: it
+  // has no build to play and cannot be published. Read off the detail this page
+  // resolved, so it holds for a run the produced worklist does not list.
+  const artifactsMissing =
+    detail?.published === false && detail.artifactsStored === false;
   // The run's per-reviewer breakdown, fetched with the record — the detail layer's
   // source of truth for reviews (the console's global reviews map is no longer
   // read here). Passed to the tab body so the Verdict/review/editor tabs render
@@ -365,7 +373,9 @@ export function RunDetailLayout({
               overallGrade && <GradeBadge status={overallGrade} />
             )}
             {overallAesthetic && <AestheticBadge rating={overallAesthetic} />}
-            {isLocal && <UnpublishedTag />}
+            {(isLocal || artifactsMissing) && (
+              <UnpublishedTag artifactsMissing={artifactsMissing} />
+            )}
           </h2>
           <span className={styles.harness}>{subject.harnessSlug}</span>
         </div>
@@ -536,6 +546,7 @@ export function RunDetailLayout({
         review,
         reviews,
         published: detail?.published ?? false,
+        artifactsMissing,
         validatorRated,
       })}
     </PageLayout>
