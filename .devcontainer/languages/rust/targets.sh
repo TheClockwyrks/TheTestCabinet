@@ -7,9 +7,9 @@ set -euo pipefail
 arch="$(dpkg --print-architecture)"
 readonly arch
 
-# rustup lands in CARGO_HOME, which languages/rust/rustup.sh leaves to the
-# caller: the default under the container user's home here, /usr/local/cargo
-# in the CI images under ci/images/.
+# rustup lands in CARGO_HOME, where the toolchain image installed it: the
+# default under the container user's home in the devcontainer, which the Rust
+# CI image under ci/images/ names as CARGO_HOME, since its HOME is root's.
 readonly RUSTUP="${CARGO_HOME:-$HOME/.cargo}/bin/rustup"
 
 # Whether a switch the environment states is on, `true` when it is unset.
@@ -30,7 +30,7 @@ switched_on() {
 # The musl target backs portable, fully static builds: a static binary carries
 # no dynamic loader, so it runs on a distribution that ships none of the usual
 # FHS layout, NixOS among them, as well as on a mainstream one. The linker such
-# a build needs is musl-gcc, and `musl-tools` (system/apt.sh) ships exactly one,
+# a build needs is musl-gcc, and `musl-tools` (system/packages.sh) ships exactly one,
 # for the architecture it was installed on, so the other architecture's musl
 # target would be a cross build with nothing here to link it. INSTALL_MUSL,
 # `true` when unset, turns it off for an image that builds nothing static.

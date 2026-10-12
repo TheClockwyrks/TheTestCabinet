@@ -34,7 +34,7 @@
 # `"updateRemoteUserUID": false` is load-bearing: a uid rewrite at start would
 # orphan the gigabytes this lays down. The two things the installer's header
 # asks a caller to arrange, ~/.local/bin and ~/.cargo/bin on the PATH, the
-# Dockerfile's ENV has already arranged for every process in the image.
+# toolchain image's ENV has already arranged for every process in the image.
 #
 # The one prerequisite of a gg build that cannot be baked is `npm ci`: two of
 # the eleven catalogues are reflected with the pinned `typescript` in the npm

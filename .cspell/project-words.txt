@@ -605,6 +605,7 @@ neighbours
 NEXTEST
 nextest
 nextest's
+nginx
 nobuild
 noconfig
 nonblank
@@ -623,6 +624,7 @@ nullcore
 numpad
 nvcc
 nyxsis
+nyxsisdev
 offence
 offsuit
 OPENCODE
@@ -679,6 +681,7 @@ playstyle
 playtest
 playtesting
 playthrough
+playwright
 pointercancel
 pointerdown
 pointerleave

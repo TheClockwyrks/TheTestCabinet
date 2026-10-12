@@ -339,10 +339,11 @@ On a Rust track whose suite drives a browser, the Rust job runs with
 its gates, since the browser tests drive the workspace's `vitest`,
 `@vitest/browser-playwright` and `playwright`. Its `playwright-image` gate then
 fails unless that `playwright` finds its Chromium, naming the version and
-`PLAYWRIGHT_BROWSERS_PATH`. The image carries the browser of the superrepo's
-`PLAYWRIGHT_VERSION`, so an image bump that moves `PLAYWRIGHT_VERSION` moves
-the `playwright` devDependency of each such repository in the same change as
-the `render.py --update` that brings the new pins.
+`PLAYWRIGHT_BROWSERS_PATH`. The image carries the browser of the playwright
+image the superrepo's devcontainer names as `PLAYWRIGHT_IMAGE`, so an image
+bump that moves that image's tag moves the `playwright` devDependency of each
+such repository in the same change as the `render.py --update` that brings the
+new pins.
 
 A repository `WINDOWS_TESTS` names runs its suite on Windows too, in the
 `windows` job of the gates stage on a hosted `windows-2022` agent. The job runs

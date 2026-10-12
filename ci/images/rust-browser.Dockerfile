@@ -1,5 +1,5 @@
-# The Rust gate job's CI image: the Rust CI image of the same commit, plus Node
-# and Playwright's Chromium.
+# The Rust gate job's CI image: the Rust CI image of the same commit, plus the
+# browser engines.
 #
 # Some of the core's and the suite runtime's tests drive a real browser through
 # the npm workspace's Playwright, in the Chromium it launches (a validator project
@@ -15,48 +15,34 @@
 # image for every job.
 #
 # Built on top of the Rust image rather than beside it, so the two cannot
-# drift: everything ci/images/rust.Dockerfile installs and states (the
-# toolchain under /usr/local, the PATH, HOME=/root, the safe.directory setting)
-# holds here unchanged, and this file adds two layers. The image pipeline builds
-# the Rust image first and hands its reference to this build as RUST_CI_IMAGE,
-# at the same commit: `<registry>/ubuntu-the-test-cabinet-rust-cicd:<commit>`.
-# The empty default makes a build without it fail at once rather than pull some
-# other image.
+# drift: everything ci/images/rust.Dockerfile states (the toolchain under
+# /home/dev, the PATH, HOME=/root, the safe.directory setting) holds here
+# unchanged. The image pipeline builds the Rust image first and hands its
+# reference to this build as RUST_CI_IMAGE, at the same commit:
+# `<registry>/ubuntu-the-test-cabinet-rust-cicd:<commit>`. The empty default
+# makes a build without it fail at once rather than pull some other image.
 #
-# The pins come from the `x-devcontainer-build-args` anchor in
-# .devcontainer/docker-compose.yml, extracted by ci/images/build-args.sh, like
-# every CI image's. Built for linux/amd64 only. scripts/ci/ci-image.sh builds
-# and pushes this file. See ci/images/README.md.
+# Both halves of a browser are already the published images': the toolchain
+# image the Rust image is built on carries Node, linked into ~/.local/bin on the
+# PATH, and the engines' system libraries, and the playwright image holds the
+# engines themselves, which this file copies over it as the devcontainer and
+# the web image do. PLAYWRIGHT_IMAGE comes from the `x-devcontainer-build-args`
+# anchor in .devcontainer/docker-compose.yml, extracted by
+# ci/images/build-args.sh, like every CI image's argument, and its tag is the
+# Playwright version `web-browser-test` holds the workspace's `playwright` to,
+# so the workspace's Playwright finds the build copied here. Nothing is
+# installed, and nothing of the checkout is copied. Built for linux/amd64 only.
+# scripts/ci/ci-image.sh builds and pushes this file. See ci/images/README.md.
 ARG RUST_CI_IMAGE=
+ARG PLAYWRIGHT_IMAGE
+FROM ${PLAYWRIGHT_IMAGE} AS playwright
 FROM ${RUST_CI_IMAGE}
 
-ARG DEBIAN_FRONTEND=noninteractive
+# The browser engines, in the account's Playwright cache, as the devcontainer
+# and the web image hold them.
+COPY --from=playwright / /
 
-ARG NODE_VERSION
-ARG PLAYWRIGHT_VERSION
-
-# Node where the web image puts it: /usr/local, whichever user Azure runs a
-# step as. The Rust job also provisions the same pinned Node into its
-# gg-toolchains cache and puts that first on the PATH, so this one is what the
-# image build itself and any job without that cache run.
-ENV NODE_INSTALL_DIR=/usr/local/node \
-	NODE_BIN_DIR=/usr/local/bin
-
-# Chromium goes somewhere every user can read, as on the web image. Playwright
-# reads this variable when it installs the browser and again when a test
-# launches it, so the workspace's own Playwright finds the build installed here.
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
-
-# npm's cache goes to scratch for the build and leaves with the layer, so
-# nothing under /root changes and the base image's widening of it holds.
-COPY .devcontainer/languages/node/ /tmp/scripts/node/
-RUN bash /tmp/scripts/node/install.sh && \
-	rm -rf "$NODE_INSTALL_DIR/include" /tmp/scripts
-
-# Chromium and the system libraries it needs, at the pinned Playwright, started
-# once before the step ends. scripts/ci/install-playwright-chromium.sh is the
-# one place this is written; its header says why it is not the web image's
-# pair of scripts.
-COPY scripts/ci/install-playwright-chromium.sh /tmp/scripts/
-RUN npm_config_cache=/tmp/npm-cache bash /tmp/scripts/install-playwright-chromium.sh && \
-	rm -rf /var/lib/apt/lists/* /tmp/npm-cache /tmp/scripts
+# The engines are read where the playwright image put them rather than from
+# HOME's cache, which is root's here. Playwright reads this variable when a
+# test launches an engine, so the workspace's own Playwright finds them.
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright

@@ -20,17 +20,30 @@ carries every toolchain below at a pinned version. A gate whose toolchain is
 absent fails and names the command that installs it, so the container is what
 makes a gate judge rather than complain.
 
+The devcontainer and the CI images the pipeline's gates run in are built on
+the images this project's template publishes, which the
+`x-devcontainer-build-args` anchor of `.devcontainer/docker-compose.yml` names
+by full reference: the toolchain image, and the tool images it copies over it.
+Each reference's tag is what the image is built from, so a tool's version is
+the published image's that holds it, and updating the project to a new template
+version moves it onto the versions that template's images hold.
+
 | Toolchain | Pinned by |
 | --- | --- |
-| Rust, with `rustfmt` and `clippy` | `rust-toolchain.toml`, and `RUST_VERSION` in `.devcontainer/docker-compose.yml` |
-| `cargo-nextest` | `NEXTEST_VERSION` in `.devcontainer/docker-compose.yml` |
-| `mold`, the linker of a glibc build | `MOLD_VERSION` in `.devcontainer/docker-compose.yml` |
-| Node and npm | `NODE_VERSION` in `.devcontainer/docker-compose.yml` |
+| Rust, with `rustfmt` and `clippy` | `rust-toolchain.toml`, and the toolchain image `TOOLCHAIN_IMAGE` names |
+| `cargo-nextest` | The toolchain image |
+| `mold`, the linker of a glibc build | The toolchain image |
+| Node and npm | The toolchain image |
 | `cspell`, `markdownlint-cli2`, Prettier, ESLint | `package.json` and `package-lock.json` |
 | Vite, Vitest, React and TypeScript | `apps/web/package.json` and `package-lock.json` |
-| uv, which the gates run under, and pre-commit | `.devcontainer/tools/uv.sh` |
-| `kubectl` | `.devcontainer/tools/kubectl.sh` |
-| `k3d`, `kubelogin` | `.devcontainer/tools/k8s.sh` |
+| The browser engines | The playwright image `PLAYWRIGHT_IMAGE` names, tagged with the Playwright version, and `playwright` in `apps/web/package.json` |
+| uv, which the gates run under, and pre-commit | The toolchain image |
+| `kubectl`, `k3d`, `kubelogin` | The toolchain image |
+| The Claude Code and Codex CLIs | `CLAUDE_CODE_VERSION` and `CODEX_VERSION` in `.devcontainer/docker-compose.yml` |
+| `musl-tools`, `ruby`, `libicu-dev`, `ffmpeg`, `cmake` and the local cluster tools' `iproute2`, `lsof` and `procps` | Ubuntu's, installed by `.devcontainer/system/packages.sh` |
+| This architecture's musl target | `rust-toolchain.toml`, added by `.devcontainer/languages/rust/targets.sh` |
+| `helm` | `.devcontainer/tools/helm.sh` |
+| gg's program-language toolchains | Each arm's `packages/gg-sandbox-*/<lang>-version.sh`, installed by `.devcontainer/languages/gg/install.sh` |
 
 Setting up a machine that executes test cases (container runtime,
 run-container image, credentials) is covered by
@@ -655,9 +668,10 @@ finishes in under a second.
 ### The Rust toolchain pin
 
 `rust-toolchain.toml` is the template's, and pins the compiler to an exact patch
-release, together with the `RUST_VERSION` build argument in
-`.devcontainer/docker-compose.yml` and the CI images. A new compiler therefore
-arrives with a template update. The images under `containers/` build with the
+release, the compiler the toolchain image `TOOLCHAIN_IMAGE` in
+`.devcontainer/docker-compose.yml` names holds, which the devcontainer and the
+CI images are built on. A new compiler therefore arrives with a template
+update. The images under `containers/` build with the
 same compiler: each `FROM rust:<version>-bookworm` and each
 `ARG RUST_VERSION=<version>` default there must equal the toolchain file's
 `channel`, and the `build-context` gate, whose hook also fires on

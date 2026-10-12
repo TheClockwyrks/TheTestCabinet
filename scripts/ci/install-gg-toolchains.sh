@@ -111,7 +111,7 @@ if ! command -v ruby >/dev/null 2>&1; then
 	echo "       A distribution Ruby is all it needs and any recent one will do; installing one" >&2
 	echo "       takes root, which is why this script will not do it for you:" >&2
 	echo "           sudo apt-get install -y ruby        # Debian, Ubuntu" >&2
-	echo "       The devcontainer image installs it in .devcontainer/system/apt.sh with the other" >&2
+	echo "       The devcontainer image installs it in .devcontainer/system/packages.sh with the other" >&2
 	echo "       apt prerequisites; the Rust CI image carries it through ci/images/rust.Dockerfile." >&2
 	exit 1
 fi

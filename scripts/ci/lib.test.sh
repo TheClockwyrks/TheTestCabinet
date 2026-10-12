@@ -65,7 +65,12 @@ make_tree() {
 	local root="$1"
 	mkdir -p "$root/scripts/ci" "$root/.devcontainer"
 	cp "$CI_DIR/lib.sh" "$root/scripts/ci/"
-	printf 'x-devcontainer-build-args: &devcontainer-build-args\n  NODE_VERSION: 24.0.0\n' \
+	# shellcheck disable=SC2016 # the compose file's own interpolation, written as it is
+	printf '%s\n' \
+		'x-devcontainer-build-args: &devcontainer-build-args' \
+		'  TOOLCHAIN_IMAGE: registry.example.com/template/toolchain:0123456789abcdef' \
+		'  INSTALL_CUDA: ${INSTALL_CUDA:-false}' \
+		'  CODEX_VERSION: 0.1.0' \
 		>"$root/.devcontainer/docker-compose.yml"
 	cat >"$root/scripts/ci/probe.sh" <<'PROBE'
 #!/usr/bin/env bash
@@ -121,11 +126,30 @@ check_path "invocation from a nested directory resolves the tree root" \
 
 echo "--- build_arg ---"
 
-out="$(cd / && "$tree/scripts/ci/probe.sh" build-arg NODE_VERSION 2>&1)"
+out="$(cd / && "$tree/scripts/ci/probe.sh" build-arg CODEX_VERSION 2>&1)"
 status=$?
 check_status "exits 0 for an argument the file declares" 0 "$status"
-check_contains "prints its value" "24.0.0" "$out"
+check_contains "prints its value" "0.1.0" "$out"
 check_contains "runs the script on" "the script ran on" "$out"
+
+out="$(cd / && "$tree/scripts/ci/probe.sh" build-arg TOOLCHAIN_IMAGE 2>/dev/null)"
+status=$?
+check_status "exits 0 for an image reference" 0 "$status"
+if [ "$(printf '%s' "$out" | sed -n 1p)" = "registry.example.com/template/toolchain:0123456789abcdef" ]; then
+	ok "prints the reference whole, its registry, repository and tag"
+else
+	bad "prints the reference whole, its registry, repository and tag" "got: ${out:-<empty>}"
+fi
+
+out="$(cd / && "$tree/scripts/ci/probe.sh" build-arg INSTALL_CUDA 2>&1)"
+status=$?
+if [ "$status" -ne 0 ]; then
+	ok "exits non-zero for an entry the host's environment decides"
+else
+	bad "exits non-zero for an entry the host's environment decides" "got exit 0"
+fi
+# shellcheck disable=SC2016 # the interpolation as the compose file writes it
+check_lacks "prints no interpolation" '${INSTALL_CUDA' "$out"
 
 out="$(cd / && "$tree/scripts/ci/probe.sh" build-arg RUST_VERSION 2>&1)"
 status=$?

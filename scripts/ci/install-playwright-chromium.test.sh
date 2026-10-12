@@ -47,8 +47,8 @@ trap 'rm -rf "$tmp"' EXIT
 checkout="$tmp/checkout"
 mkdir -p "$checkout/scripts/ci" "$checkout/.devcontainer"
 cp "$CI_DIR/install-playwright-chromium.sh" "$checkout/scripts/ci/"
-printf 'x-devcontainer-build-args: &build-args\n  PLAYWRIGHT_VERSION: 1.2.3\n' >"$checkout/.devcontainer/docker-compose.yml"
-# The same script with no compose file beside it, as the image build copies it.
+printf 'x-devcontainer-build-args: &build-args\n  PLAYWRIGHT_IMAGE: registry.example/project/playwright:1.2.3\n' >"$checkout/.devcontainer/docker-compose.yml"
+# The same script with no compose file beside it, as a copy of it run alone.
 bare="$tmp/bare"
 mkdir -p "$bare"
 cp "$CI_DIR/install-playwright-chromium.sh" "$bare/"

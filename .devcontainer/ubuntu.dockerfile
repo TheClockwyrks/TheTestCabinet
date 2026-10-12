@@ -1,142 +1,87 @@
 # The image a workspace of this project is developed in.
 #
-# docker-compose.yml builds it and passes every argument below; the versions
-# are pinned there, in the anchor its dev service merges.
+# It is built on the images the project's template publishes to
+# nyxsisdev.azurecr.io, which any machine pulls with no login: the toolchain
+# image, holding the system packages, the account and every language and tool
+# each workspace carries, and one tool image per optional toolchain, holding
+# that toolchain's files alone, which this file copies over it. What this file
+# runs itself is only what the published images cannot hold: the steps whose
+# inputs are this project's own, and the tools whose pins move faster than the
+# template's versions. See "What the image carries" in README.md.
 #
 # Its build context is the repository root rather than this directory, and
-# every COPY below is written from there. The last layer installs gg's
-# program-language toolchains with the repository's own installers, which read
-# their pins from beside the arms under packages/, so the build has to see the
-# repository. The root .dockerignore is an allowlist and decides what it sees;
-# see "The build context" in README.md.
+# every COPY below is written from there. The last of the project's steps
+# installs gg's program-language toolchains with the repository's own
+# installers, which read their pins from beside the arms under packages/, so the
+# build has to see the repository. The root .dockerignore is an allowlist and
+# decides what it sees; see "The build context" in README.md.
 #
 # Every script reads the architecture from `dpkg --print-architecture` rather
 # than from a build argument, because Podman supplies none.
-FROM docker.io/library/ubuntu:26.04
-USER root
-
-ARG USERNAME
-ARG USER_UID
-ARG USER_GID
-# Whether system/cuda.sh installs the CUDA toolkit. Off unless something in
-# this checkout compiles CUDA sources and the host has an NVIDIA GPU behind its
-# container runtime.
-ARG INSTALL_CUDA
-
-ARG CLAUDE_CODE_VERSION
-ARG CODEX_VERSION
-ARG LAZYGIT_VERSION
-ARG NODE_VERSION
-ARG PLAYWRIGHT_VERSION
-ARG NEXTEST_VERSION
-ARG NEXTEST_SHA256_AMD64
-ARG NEXTEST_SHA256_ARM64
-ARG MOLD_VERSION
-ARG MOLD_SHA256_AMD64
-ARG MOLD_SHA256_ARM64
-ARG RUST_VERSION
-ARG WRANGLER_VERSION
-
-# Install apt packages, base OS configuration, and the container user.
-COPY ./.devcontainer/system/apt.sh ./.devcontainer/system/cuda.sh ./.devcontainer/system/system-config.sh ./.devcontainer/system/init-user.sh /tmp/scripts/
-RUN bash /tmp/scripts/apt.sh && \
-	bash /tmp/scripts/cuda.sh && \
-	bash /tmp/scripts/system-config.sh && \
-	bash /tmp/scripts/init-user.sh && \
-	rm -rf /tmp/scripts
-
-# Claude Code's managed settings. Every session in the image runs unattended,
-# and the managed file is the one source Claude Code takes a default of bypass
-# permissions mode from whichever configuration directory a session points it
-# at: it ignores the mode in a checkout's own .claude/settings.json, which a
-# repository could write, and reads a user's file only from the directory
-# CLAUDE_CONFIG_DIR names. See ai/claude-managed-settings.json.
-COPY ./.devcontainer/ai/claude-managed-settings.json /etc/claude-code/managed-settings.json
-USER $USERNAME
-
-# Make binaries installed in the next step available via the PATH. Both
-# entries are load-bearing at build time as well as at run time: a Dockerfile
-# RUN sources no profile, and the gg toolchain layer at the bottom of this
-# file needs `rustc` from .cargo/bin and puts `purs` and `esbuild` in
-# .local/bin, which the installers after it shell out to. The order is
-# load-bearing too: languages/rust/permit-wrapper.sh places a wrapper named
-# cargo in ~/.local/bin, which has to be found ahead of the toolchain's own.
-ENV PATH="$PATH:/home/$USERNAME/.local/bin:/home/$USERNAME/.cargo/bin"
-
-# The linker cargo links the two glibc targets with: cc-mold, the driver
-# languages/rust/mold.sh installs beside cargo, which hands the link to mold.
-# It is set in the image, so a terminal, an editor's language server and an
-# `exec` naming cargo with no shell all link alike, and it names those two
-# targets alone, so a build for any other target keeps its own linker.
-ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc-mold \
-	CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=cc-mold
-
-# Copy the install scripts and shell config.
-COPY --chown=${USER_UID}:${USER_GID} \
-	./.devcontainer/ai/claude.sh \
-	./.devcontainer/ai/codex.sh \
-	./.devcontainer/tools/lazygit.sh \
-	./.devcontainer/tools/az.sh \
-	./.devcontainer/tools/gh.sh \
-	./.devcontainer/tools/k8s.sh \
-	./.devcontainer/tools/kubectl.sh \
-	./.devcontainer/tools/container.sh \
-	./.devcontainer/tools/uv.sh \
-	./.devcontainer/tools/wrangler.sh \
-	./.devcontainer/tools/browsers.sh \
-	./.devcontainer/system/browser-deps.sh \
-	./.devcontainer/post-install.sh \
-	./.devcontainer/system/.bashrc \
-	./.devcontainer/system/.tmux.conf \
-	/tmp/scripts/
-COPY --chown=${USER_UID}:${USER_GID} \
-	./.devcontainer/languages/node/install.sh \
-	/tmp/scripts/languages/node/
-COPY --chown=${USER_UID}:${USER_GID} \
-	./.devcontainer/languages/rust/install.sh \
-	./.devcontainer/languages/rust/rustup.sh \
-	./.devcontainer/languages/rust/targets.sh \
-	./.devcontainer/languages/rust/cargo-nextest.sh \
-	./.devcontainer/languages/rust/mold.sh \
-	./.devcontainer/languages/rust/permit-wrapper.sh \
-	/tmp/scripts/languages/rust/
-
-# wrangler follows the Node install, which it is installed with.
-RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
-	bash /tmp/scripts/lazygit.sh && \
-	bash /tmp/scripts/az.sh && \
-	bash /tmp/scripts/gh.sh && \
-	bash /tmp/scripts/k8s.sh && \
-	bash /tmp/scripts/container.sh && \
-	bash /tmp/scripts/uv.sh && \
-	bash /tmp/scripts/languages/node/install.sh && \
-	bash /tmp/scripts/wrangler.sh && \
-	bash /tmp/scripts/languages/rust/install.sh && \
-	bash /tmp/scripts/languages/rust/permit-wrapper.sh && \
-	bash /tmp/scripts/claude.sh && \
-	bash /tmp/scripts/codex.sh && \
-	bash /tmp/scripts/post-install.sh
-
-# The browser engines Playwright launches: the web app's browser tests, and the
-# Chromium the case-harness suite, the validator's browser driver and the Rust
-# suite's served validator-project tests use. `npm ci` installs Playwright but
-# downloads no browser, so these two layers are what make those tests runnable.
 #
-# The browser engines' system libraries. They are apt's, so they need root, and
-# Playwright resolves which ones they are by running `npx`, so this sits after
-# the Node install above rather than beside the rest of the apt work at the top
-# of this file. The build takes root back for the one step, and each half drops
-# the package index and the package cache it downloaded to run. See the header
-# of system/browser-deps.sh.
-USER root
-RUN bash /tmp/scripts/browser-deps.sh && \
-	rm -rf /var/lib/apt/lists/* /root/.npm
-USER $USERNAME
+# docker-compose.yml builds it and passes every argument below, from the anchor
+# its dev service merges. The image references are global `ARG`s, which only a
+# `FROM` reads, so none of them enters the key of a `RUN`. Each step after the
+# copies `COPY`s only the scripts it runs and declares only the arguments they
+# read immediately before its `RUN`, in the order of what changes least often
+# first, so a moved pin builds again only the step reading it and the steps
+# after it.
+ARG TOOLCHAIN_IMAGE
+ARG PLAYWRIGHT_IMAGE
 
-# The engines themselves, which land in the container user's own cache and are
-# therefore downloaded as that user.
-RUN bash /tmp/scripts/browsers.sh && \
-	rm -rf "$HOME/.npm" /tmp/scripts
+# The browser engines.
+FROM ${PLAYWRIGHT_IMAGE} AS playwright
+
+# The toolchain image, whose account, `dev` at uid and gid 1000, is the one
+# every step below runs as. It sets the PATH every process in the image is
+# given, ~/.local/bin and ~/.cargo/bin among it, and the linker cargo links the
+# two glibc targets with, so neither is stated here.
+FROM ${TOOLCHAIN_IMAGE}
+
+# Each tool image holds its tree at the path it takes here, with the account's
+# ownership on the tree and on every directory above it, so a copy of its root
+# places the tree and leaves the account's home as the base image made it. The
+# copies run from what changes least often to what changes most often.
+
+# The browser engines, in the account's Playwright cache, where Playwright looks
+# for them.
+COPY --from=playwright / /
+
+# The CUDA toolkit, which is several GB and off unless something in this
+# checkout compiles CUDA sources and the host has an NVIDIA GPU behind its
+# container runtime. It is apt's, so the step runs as root and returns to the
+# account after it.
+USER root
+COPY ./.devcontainer/system/cuda.sh /tmp/scripts/system/
+ARG INSTALL_CUDA
+RUN bash /tmp/scripts/system/cuda.sh && rm -rf /var/lib/apt/lists/* /tmp/scripts
+USER dev
+
+# This project's own steps go here, such as a database server its tests run
+# against: each a `COPY` of only the scripts it runs, the `ARG` lines they read
+# declared immediately before its `RUN`, with those arguments added to the
+# anchor in docker-compose.yml. Above the coding agents, which move most often,
+# so a bump of either rebuilds neither the copies nor these.
+
+# The system packages this project's own builds and tools reach for beyond the
+# toolchain image's: musl-tools for the static builds the musl target below
+# serves, and what gg's arms, the audio packs, some crates and the local
+# cluster tooling need. They are apt's, so the step runs as root. See the
+# header of system/packages.sh.
+USER root
+COPY ./.devcontainer/system/packages.sh /tmp/scripts/system/
+RUN bash /tmp/scripts/system/packages.sh && rm -rf /var/lib/apt/lists/* /tmp/scripts
+USER dev
+
+# This architecture's musl target, for static builds; musl-tools above ships
+# the linker it needs. See the header of languages/rust/targets.sh.
+COPY --chown=dev:dev ./.devcontainer/languages/rust/targets.sh /tmp/scripts/languages/rust/
+RUN bash /tmp/scripts/languages/rust/targets.sh && rm -rf /tmp/scripts
+
+# helm, which installs a cluster's prerequisites from charts, beside the
+# cluster tools the toolchain image carries. Pinned in the script.
+COPY --chown=dev:dev ./.devcontainer/tools/helm.sh /tmp/scripts/tools/
+RUN bash /tmp/scripts/tools/helm.sh && rm -rf /tmp/scripts
 
 # gg's eleven program-language toolchains and its C# guest's build toolchains:
 # about 3.4 GB, by far the largest thing in this image, and not optional.
@@ -146,10 +91,11 @@ RUN bash /tmp/scripts/browsers.sh && \
 # and the rust-clippy and rust-doc commit hooks fail with it. See the header of
 # languages/gg/install.sh.
 #
-# Deliberately last, and its own layer. A pin moving in
+# Deliberately the last of this project's steps, and its own layer. A pin moving in
 # packages/gg-sandbox-*/<lang>-version.sh, an installer changing or a new arm
 # arriving invalidates this layer and nothing above it, so a rebuild downloads
-# toolchains rather than redoing apt, Node, Rust and the CLIs first. It is also
+# toolchains rather than redoing the project's packages, helm and the musl
+# target first, and the coding agents below it rebuild without it. It is also
 # the layer most likely to fail on a bad day, fetching from half a dozen
 # upstreams, and having everything else cached is what makes retrying it cheap.
 #
@@ -171,69 +117,69 @@ RUN bash /tmp/scripts/browsers.sh && \
 # repository for someone to read a pin out of. That is hygiene rather than a
 # saving: each COPY is its own layer and a later delete only writes a whiteout,
 # and the whole slice is a few hundred kB.
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./.devcontainer/languages/gg/install.sh \
 	/tmp/scripts/languages/gg/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./scripts/ci/install-*.sh \
 	./scripts/ci/tcab-lib.sh \
 	./scripts/ci/fetch.sh \
 	/tmp/scripts/gg-repo/scripts/ci/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./scripts/gg-*.sh \
 	/tmp/scripts/gg-repo/scripts/
 # The lock each npm-delivered build tool's tree is installed from. The resolver
 # in gg-npm-tools.sh reads it beside itself, and install-gg-build-tools.sh runs
 # that resolver in this layer; a lock moving reinstalls the tool, so the
 # directory is part of this layer's cache key on purpose.
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./scripts/gg-npm-locks/ \
 	/tmp/scripts/gg-repo/scripts/gg-npm-locks/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./rust-toolchain.toml \
 	/tmp/scripts/gg-repo/rust-toolchain.toml
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-cpp/cpp-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-cpp/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-csharp/csharp-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-csharp/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-java/java-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-java/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-kotlin/kotlin-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-kotlin/
 # purescript-version.sh reads the registry version out of spago.yaml, and the
 # build tools' installer warms Spago's store against spago.lock.
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-purescript/purescript-version.sh \
 	./packages/gg-sandbox-purescript/spago.yaml \
 	./packages/gg-sandbox-purescript/spago.lock \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-purescript/
 # The Python arm has no version file: its componentize-py pin is in build.sh,
 # and its wheels are pre-fetched from requirements.txt into uv's cache.
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-python/build.sh \
 	./packages/gg-sandbox-python/requirements.txt \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-python/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-ruby/opal-version.sh \
 	./packages/gg-sandbox-ruby/yard-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-ruby/
 # The Rust arm's crate closure and the ECMAScript guest's are separate
 # lockfiles from the workspace's, fetched here so their builds run --offline.
 # Each manifest names its [lib] path, so cargo looks for no src/ in the slice.
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-rust/rust-version.sh \
 	./packages/gg-sandbox-rust/Cargo.toml \
 	./packages/gg-sandbox-rust/Cargo.lock \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-rust/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox/guest/Cargo.toml \
 	./packages/gg-sandbox/guest/Cargo.lock \
 	/tmp/scripts/gg-repo/packages/gg-sandbox/guest/
-COPY --chown=${USER_UID}:${USER_GID} \
+COPY --chown=dev:dev \
 	./packages/gg-sandbox-swift/swift-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-swift/
 # ~/.npm is npm's download cache, left behind by the build tools it installs
@@ -241,3 +187,17 @@ COPY --chown=${USER_UID}:${USER_GID} \
 # cargo's registry) stay.
 RUN bash /tmp/scripts/languages/gg/install.sh && \
 	rm -rf "$HOME/.npm" /tmp/scripts
+
+# The two coding-agent CLIs. Both publish often, which is why they are steps of
+# this file rather than of a published image.
+COPY --chown=dev:dev ./.devcontainer/ai/codex.sh /tmp/scripts/ai/
+ARG CODEX_VERSION
+RUN bash /tmp/scripts/ai/codex.sh && rm -rf "$HOME/.npm" /tmp/scripts
+
+COPY --chown=dev:dev ./.devcontainer/ai/claude.sh /tmp/scripts/ai/
+ARG CLAUDE_CODE_VERSION
+RUN bash /tmp/scripts/ai/claude.sh && rm -rf /tmp/scripts
+
+# The shell configuration, last.
+COPY --chown=dev:dev ./.devcontainer/post-install.sh ./.devcontainer/system/.bashrc ./.devcontainer/system/.tmux.conf /tmp/scripts/
+RUN bash /tmp/scripts/post-install.sh && rm -rf /tmp/scripts

@@ -224,7 +224,7 @@ def uv_project(
     """
     if not (project / "pyproject.toml").is_file():
         fail(f"{project} is not a uv project: it has no pyproject.toml.")
-    require_tool("uv", "The devcontainer installs it (.devcontainer/tools/uv.sh).")
+    require_tool("uv", "The devcontainer's toolchain image carries it.")
     return succeeded(["uv", "run", "--quiet", "--project", project, *argv], cwd=cwd, unset=("VIRTUAL_ENV",))
 
 

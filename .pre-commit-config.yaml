@@ -46,9 +46,9 @@
 # the respective stage.
 #
 # Revisions are pinned; refresh them with `pre-commit autoupdate`. The version
-# below is the framework's own, and .devcontainer/tools/uv.sh is where it is
-# decided: bump it there first and match this floor and scripts/setup-hooks.sh's
-# fallback install to it.
+# below is the framework's own, and the toolchain image the devcontainer is
+# built on is what holds it: match this floor and scripts/setup-hooks.sh's
+# fallback install to the pre-commit that image carries.
 minimum_pre_commit_version: "4.6.0"
 
 default_install_hook_types: [pre-commit, pre-push]
@@ -131,16 +131,17 @@ repos:
 
       - id: devcontainer-declaration
         name: devcontainer declaration
-        description: Assert the devcontainer mounts the checkout at the folder the container works in.
+        description: Assert the devcontainer mounts the checkout at the folder the container works in, and builds what its anchor names.
         entry: uv run --quiet --project ci gate run devcontainer-declaration
         language: system
         # Reads both halves of the declaration itself, so it takes no paths:
         # the folder is devcontainer.json's and the mount the compose file's,
         # and either one moving alone is what this catches. A configuration
-        # under a subdirectory and an override it lists are read too. The
+        # under a subdirectory and an override it lists are read too, and so is
+        # the Dockerfile, whose arguments the compose file's anchor holds. The
         # check's own script, and the JSONC reader beside it, re-judge the
         # declaration too.
-        files: '^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^scripts/(check-devcontainer|jsonc)\.py$|^ci/gates/devcontainer-declaration\.py$'
+        files: '^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/ubuntu\.dockerfile$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^scripts/(check-devcontainer|jsonc)\.py$|^ci/gates/devcontainer-declaration\.py$'
         pass_filenames: false
 
       - id: shell-tests
@@ -232,15 +233,15 @@ repos:
       # part of web-test because what it states is what only a real engine
       # decides: the layout a width selects, the color the cascade resolves,
       # and whether the document overflows itself. It fires on the app's
-      # sources and its configuration, on its own script, and on the engines'
-      # pin and the scripts that install them, because a bump there is the
-      # change most likely to break the suite.
+      # sources and its configuration, on its own script, and on the compose
+      # file naming the playwright image the engines come from, because a bump
+      # there is the change most likely to break the suite.
       - id: web-browser-test
         name: web browser tests (vitest, playwright)
         description: Run the web app's browser tests in the engines its test configuration names.
         entry: uv run --quiet --project ci gate run web-browser-test
         language: system
-        files: '^apps/web/.*\.(ts|tsx|css|html|json)$|^package(-lock)?\.json$|^ci/gates/web-browser-test\.py$|^\.devcontainer/(docker-compose\.yml|tools/browsers\.sh|system/browser-deps\.sh)$'
+        files: '^apps/web/.*\.(ts|tsx|css|html|json)$|^package(-lock)?\.json$|^ci/gates/web-browser-test\.py$|^\.devcontainer/docker-compose\.yml$'
         pass_filenames: false
 
       - id: web-build

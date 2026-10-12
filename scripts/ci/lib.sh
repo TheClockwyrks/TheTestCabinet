@@ -28,9 +28,10 @@ remediation() {
 
 # Prints the value the devcontainer image is built with for one build argument.
 #
-# The `x-devcontainer-build-args` anchor of the compose file is the one place a
-# tool's version is decided, and a script that asserts a version reads it from
-# there, so the image and the script never drift apart. Fails naming the
+# The `x-devcontainer-build-args` anchor of the compose file is the one place
+# the published images the image is built on are named and a pin of its own
+# steps is decided, and a script that asserts one reads it from there, so the
+# image and the script never drift apart. Fails naming the
 # argument when the anchor decides none, so a rename there stops the caller
 # rather than handing it a default.
 #
@@ -41,9 +42,9 @@ remediation() {
 # anchor's own line to the next line that starts in column zero, which is the
 # next top-level key.
 #
-# Only a literal value is returned. The anchor's interpolated entries —
-# USER_UID and USER_GID — are properties of the host a devcontainer is being
-# built on rather than versions, and no caller asserts one.
+# Only a literal value is returned. The anchor's interpolated entry,
+# INSTALL_CUDA, is a property of the host a devcontainer is being built on
+# rather than a version, and no caller asserts it.
 build_arg() {
 	local name="$1" value
 	value="$(awk -v name="$name" '
@@ -61,7 +62,7 @@ build_arg() {
 	if [ -z "$value" ]; then
 		echo >&2 "${DEVCONTAINER_COMPOSE} decides no ${name}."
 		remediation \
-			"The build arguments of ${DEVCONTAINER_COMPOSE} decide every tool version." \
+			"The build arguments of ${DEVCONTAINER_COMPOSE} name every image and version the devcontainer is built from." \
 			"Add a ${name} argument to them, or name the argument it was renamed to."
 		return 1
 	fi

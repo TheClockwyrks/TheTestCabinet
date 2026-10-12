@@ -988,7 +988,7 @@ impl<'a> CompilerCommand<'a> {
     ///
     /// It exists for a variable whose absence is invisible: the C# arm's `LD_LIBRARY_PATH`, which
     /// names the ICU its toolchain carries. Every machine `cargo` runs on has an ICU of its own
-    /// (`.devcontainer/system/apt.sh` now declares one, deliberately), so deleting that line leaves
+    /// (`.devcontainer/system/packages.sh` declares one, deliberately), so deleting that line leaves
     /// the whole arm's suite green and the run images broken — which is how it shipped. Nothing on
     /// the turn path reads this; the test that does is the only reader.
     #[cfg(test)]

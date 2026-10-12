@@ -34,17 +34,20 @@ root = enter_repo_root()
 if not (root / "node_modules").is_dir():
     fail("The npm workspace is not installed. Install it first:", "    npm ci")
 
-# Playwright is pinned twice, and the two pins are one version. The build
-# argument in the devcontainer's compose file is what downloads the engines
-# into the image, and the `playwright` package in apps/web/package.json is the
-# client vitest drives them through. A client resolves an engine by the build
-# its own release names, so a pin that moves alone leaves the client asking for
-# a revision the cache does not hold, and the failure surfaces deep inside the
-# browser provider rather than here. Nothing else in the workspace holds the
-# two together, so this does.
+# Playwright is pinned twice, and the two pins are one version. The playwright
+# image the devcontainer's compose file names is what holds the engines, and
+# its reference's tag is the Playwright version that downloaded them; the
+# `playwright` package in apps/web/package.json is the client vitest drives them
+# through. A client resolves an engine by the build its own release names, so a
+# pin that moves alone leaves the client asking for a revision the cache does
+# not hold, and the failure surfaces deep inside the browser provider rather
+# than here. Nothing else in the workspace holds the two together, so this
+# does.
 COMPOSE = ".devcontainer/docker-compose.yml"
-pins = re.findall(r"^ *PLAYWRIGHT_VERSION: *(.*)$", (root / COMPOSE).read_text(encoding="utf-8"), flags=re.MULTILINE)
-image_pin = "\n".join(pins)
+references = re.findall(
+    r"^ *PLAYWRIGHT_IMAGE: *(\S+?) *$", (root / COMPOSE).read_text(encoding="utf-8"), flags=re.MULTILINE
+)
+image_pin = "\n".join(reference.rpartition(":")[2] for reference in references)
 client = run(
     ["node", "--eval", 'process.stdout.write(require("playwright/package.json").version)'],
     capture=True,
@@ -56,10 +59,11 @@ client_pin = client.stdout
 if image_pin != client_pin:
     fail(
         "Playwright's two pins disagree, so the client asks for engines the image does not carry:",
-        f"    {COMPOSE} names {image_pin}, which is what installs the engines",
+        f"    PLAYWRIGHT_IMAGE in {COMPOSE} holds the engines of {image_pin}",
         f"    apps/web/package.json names {client_pin}, which is what drives them",
-        "Move both to the same version, then reinstall the engines:",
-        "    bash .devcontainer/tools/browsers.sh",
+        "Move the `playwright` package to the image's version, or update the workspace",
+        "to a template version whose playwright image holds the package's, then",
+        "rebuild the devcontainer, which copies the engines from that image.",
     )
 
 # The contracts submodule pins a third: its own `playwright`, which its Rust
@@ -81,9 +85,9 @@ if CONTRACTS.is_file():
         )
 
 # The engines belong to the image this suite runs in, not to the npm workspace:
-# they are downloaded when that image is built, so `npm ci` leaves them absent
-# in an image built before this gate existed, and vitest then fails deep inside
-# its browser provider. The check below needs to know where they live, because
+# they are copied in when that image is built, so `npm ci` leaves them absent
+# in an image built without them, and vitest then fails deep inside its browser
+# provider. The check below needs to know where they live, because
 # it asks Playwright itself, which honours PLAYWRIGHT_BROWSERS_PATH. It then
 # says plainly which ones are missing.
 ABSENT_ENGINES = """
@@ -105,9 +109,9 @@ if engines.returncode != 0:
 missing = engines.stdout
 if missing:
     fail(
-        f"Playwright has no browser to drive ({missing}). Install the engines with:",
-        "    bash .devcontainer/tools/browsers.sh",
-        "or rebuild the devcontainer, which installs them as part of the image.",
+        f"Playwright has no browser to drive ({missing}). Rebuild the devcontainer,",
+        f"which copies the engines from the playwright image PLAYWRIGHT_IMAGE in {COMPOSE}",
+        "names into the image.",
     )
 
 # The variable may name a relative path, and npm runs the suite from the app's
