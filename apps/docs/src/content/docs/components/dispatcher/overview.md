@@ -82,6 +82,11 @@ dispatcher.
   the claim hands back one run at a time, and only while no run is in flight,
   until a tree lands.
   The publish lane's claim is unaffected.
+- Publish failures. While publishes are
+  [failing across several runs](/components/backend/overview/#publish-failures),
+  the run claim hands back nothing and every waiting run is held in `pending`.
+  The publish lane's claim is unaffected, and a publish that succeeds through it
+  is what ends the hold.
 
 ## Queue order
 
@@ -188,8 +193,20 @@ The grace period covers the gap between a claim and its `Job` appearing, and the
 gap between a driver's last report and its `Job` completing. The clock is held in
 memory, so a dispatcher restart starts it again.
 
-A publisher that dies surfaces as a stuck `dispatched` publish job or is reaped
-by its TTL.
+### The publisher Job
+
+A publisher `Job` carries `activeDeadlineSeconds` of forty-five minutes, counted
+from the `Job`'s start. A release takes minutes, so the deadline only ever ends
+a publisher that has hung, and Kubernetes then stops its pod. A driver `Job`
+carries no such deadline, since the driver enforces a run's own time limit.
+
+A publisher that dies, or that the deadline ends, surfaces as a stuck
+`dispatched` publish job or is reaped by its TTL. The backend records a publish
+job left `dispatched` for an hour as failed and
+[retries it](/components/core/results/#retrying-a-failed-publish). The deadline
+is shorter than that hour on purpose: by the time the backend enqueues the
+retry, the first publisher is gone, so two publishers never release one run at
+the same time.
 
 ## Sandbox reaping
 

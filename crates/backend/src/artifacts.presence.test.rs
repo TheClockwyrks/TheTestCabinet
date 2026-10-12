@@ -219,6 +219,13 @@ async fn an_unreachable_service_is_an_error() {
     );
 }
 
+/// The rules these passes run by: the orphan rule with an hour's grace, and no
+/// tree of a run that exists deleted. The retention rules have their own tests.
+const ORPHANS_ONLY: SweepRules = SweepRules {
+    grace: Duration::from_secs(3600),
+    retention: RetentionPolicy::KEEP_EVERYTHING,
+};
+
 fn listed(ids: &[&str]) -> Vec<StoredTree> {
     ids.iter()
         .map(|id| StoredTree {
@@ -264,16 +271,17 @@ async fn a_pass_reconciles_from_the_listing_it_swept_with() {
     // no row. One pass reclaims the orphan and records the other two.
     let db = db_with(&["kept", "lost"]).await;
     let (base, stub) = spawn_artifact_stub(&["kept", "orphan"]).await;
-    let live = db.all_run_ids().await.unwrap();
+    let runs = db.retention_runs(None).await.unwrap();
 
     let (outcome, reconciled) = sweep_pass(
         &db,
         &reqwest::Client::new(),
         &base,
         STUB_TOKEN,
-        &live,
+        &runs,
+        &HashSet::new(),
         OffsetDateTime::now_utc(),
-        Duration::from_secs(3600),
+        &ORPHANS_ONLY,
     )
     .await
     .unwrap();
@@ -299,16 +307,17 @@ async fn a_pass_whose_listing_fails_changes_nothing() {
     let db = db_with(&["kept"]).await;
     db.set_run_artifacts_stored("kept", true).await.unwrap();
     let base = unreachable_base().await;
-    let live = db.all_run_ids().await.unwrap();
+    let runs = db.retention_runs(None).await.unwrap();
 
     let result = sweep_pass(
         &db,
         &reqwest::Client::new(),
         &base,
         STUB_TOKEN,
-        &live,
+        &runs,
+        &HashSet::new(),
         OffsetDateTime::now_utc(),
-        Duration::from_secs(3600),
+        &ORPHANS_ONLY,
     )
     .await;
 
@@ -325,7 +334,7 @@ async fn scheduled(db: &Db, base: &str) -> ScheduledPass {
         base,
         STUB_TOKEN,
         OffsetDateTime::now_utc(),
-        Duration::from_secs(3600),
+        &ORPHANS_ONLY,
     )
     .await
 }

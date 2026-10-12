@@ -299,6 +299,7 @@ fn the_status_serializes_in_the_shape_the_console_reads() {
         hold_reason: None,
         runs_waiting_to_store: 0,
         detail: None,
+        publish_failing_runs: None,
         free_bytes: Some(5 * GIB / 2),
         total_bytes: Some(20 * GIB),
         writable: Some(true),
@@ -691,12 +692,14 @@ fn change_to(state: ArtifactStorageState, hold_reason: Option<HoldReason>) -> Ca
     CapacityChange {
         previous: ArtifactStorageState::Ok,
         previously_on_hold: false,
+        previous_hold_reason: None,
         status: ArtifactStorageStatus {
             state,
             runs_on_hold: hold_reason.is_some(),
             hold_reason,
             runs_waiting_to_store: 0,
             detail: None,
+            publish_failing_runs: None,
             free_bytes: Some(GIB),
             total_bytes: Some(20 * GIB),
             writable: Some(true),

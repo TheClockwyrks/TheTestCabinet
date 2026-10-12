@@ -74,6 +74,19 @@ describe("isPublishable", () => {
     }
   });
 
+  it("refuses a run whose artifact tree was reclaimed, whatever else holds", () => {
+    // A failure past its retention has no tree left to release.
+    for (const fields of [
+      { reviewCount: 1 },
+      { validatorRated: true },
+      { state: "catastrophic" as const },
+    ]) {
+      const card = summary(fields);
+      const [removed] = markArtifactsNotStored([card], null, [card.id]);
+      expect(isPublishable(removed!)).toBe(false);
+    }
+  });
+
   it("refuses a run that is already public", () => {
     expect(
       isPublishable(

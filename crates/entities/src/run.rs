@@ -175,6 +175,30 @@ pub struct Model {
     /// sweep's reconciliation and the publish gate, and never by a push.
     #[sea_orm(nullable)]
     pub artifacts_stored: Option<bool>,
+    /// RFC 3339 of the snapshot refresh that found every media file of this
+    /// published run in the bucket [`media_bucket`](Self::media_bucket) names, or
+    /// `NULL` while none has. The artifact reclamation sweep deletes a published
+    /// run's tree only with this set, and only while that bucket is the configured
+    /// one. Storing the run's record again clears it.
+    #[sea_orm(nullable)]
+    pub media_confirmed_at: Option<String>,
+    /// RFC 3339 of the latest snapshot refresh that evaluated this published run's
+    /// media, confirmed or not. `NULL` for a run no refresh has looked at.
+    #[sea_orm(nullable)]
+    pub media_checked_at: Option<String>,
+    /// The bucket the evaluation recorded in the two columns above was made
+    /// against, as `<endpoint>/<bucket>`. `NULL` for a run no refresh has looked
+    /// at.
+    #[sea_orm(nullable)]
+    pub media_bucket: Option<String>,
+    /// RFC 3339 of when the artifact reclamation sweep deleted this run's tree on
+    /// purpose, or `NULL` for a run whose tree was never reclaimed.
+    #[sea_orm(nullable)]
+    pub artifacts_reclaimed_at: Option<String>,
+    /// Why the tree was reclaimed (`published`, `failed` or `canceled`); set
+    /// together with [`artifacts_reclaimed_at`](Self::artifacts_reclaimed_at).
+    #[sea_orm(nullable)]
+    pub artifacts_reclaimed_reason: Option<String>,
     /// Whether automatic publishing passed this run over because its artifact tree
     /// could not be confirmed, which hands the run to the backend's periodic retry.
     /// Cleared once the run is published or has a publish job.

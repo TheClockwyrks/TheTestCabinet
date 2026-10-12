@@ -45,11 +45,22 @@ const DEFAULT_SNAPSHOT_REFRESH_TIMEOUT_MS: u64 = 1_800_000;
 /// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
 /// reading a just-superseded generation finishes against a complete dataset.
 const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
-/// The default interval between artifact reclamation sweeps, in hours, when
-/// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is unset. An orphaned tree costs only disk,
-/// so a few passes a day reclaim it well within the volume's headroom while keeping
-/// the artifact service's listing load negligible.
-const DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS: u64 = 6;
+/// The default interval between artifact reclamation sweeps, in minutes, when
+/// neither `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES` nor
+/// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is set. The sweep is what returns space to
+/// a volume that holds new runs back when it is full, so a pass follows a publish
+/// or a run's retention running out by minutes. A pass that finds nothing to
+/// delete is one listing and two reads.
+const DEFAULT_ARTIFACT_SWEEP_INTERVAL_MINUTES: u64 = 10;
+/// The default retention of a failed run's tree, in hours, when
+/// `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` is unset: a day in which to look at the
+/// failure, or to publish it.
+const DEFAULT_ARTIFACT_FAILED_RETENTION_HOURS: u64 = 24;
+/// The default retention of a canceled run's tree, in hours, when
+/// `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` is unset. A canceled run was stopped
+/// on purpose and is never published, so its partial tree is kept only long enough
+/// to be clear of the upload its driver may still be making.
+const DEFAULT_ARTIFACT_CANCELED_RETENTION_HOURS: u64 = 1;
 /// The default grace window before a run-less tree is swept, in hours, when
 /// `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` is unset.
 ///
@@ -196,9 +207,14 @@ pub struct Config {
     /// public URL without supplying this one.
     pub artifacts_internal_url: Option<String>,
     /// How often the artifact reclamation sweep runs
-    /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,
+    /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`, or `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`
+    /// while the minutes setting is unset). `Duration::ZERO` disables the sweep,
     /// leaving the delete-time prune as the only reclamation.
     pub artifact_sweep_interval: Duration,
+    /// When the sweep deletes the tree of a run that still exists
+    /// (`TCAB_ARTIFACT_FAILED_RETENTION_HOURS`,
+    /// `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS`, `TCAB_ARTIFACT_RECLAIM_PUBLISHED`).
+    pub artifact_retention: crate::artifacts::RetentionPolicy,
     /// How old a tree with no run row must be before a sweep deletes it
     /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
     /// uploaded its tree but not yet reported terminal is protected from the sweep.
@@ -207,6 +223,11 @@ pub struct Config {
     /// (`TCAB_ARTIFACT_FREE_WARN_MB`, `TCAB_ARTIFACT_FREE_STOP_MB`,
     /// `TCAB_ARTIFACT_FREE_RECOVER_MB`, `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`).
     pub artifact_capacity: crate::capacity::CapacitySettings,
+    /// How many different runs must fail to publish in a row, with no publish
+    /// succeeding among them, before new runs are put on hold
+    /// (`TCAB_PUBLISH_FAILURE_HOLD_RUNS`). `0` turns the hold off. See
+    /// [`crate::publish_health`].
+    pub publish_failure_hold_runs: u32,
     /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
     /// reported to the console via `GET /config` so it can POST adversarial
     /// matches/tournaments and stream live tournament progress against the data
@@ -335,10 +356,34 @@ impl Config {
         let grafana_url = base_url("TCAB_GRAFANA_PUBLIC_URL");
         let snapshot_url = base_url("TCAB_SNAPSHOT_PUBLIC_URL");
 
-        let artifact_sweep_interval_hours = std::env::var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS);
+        // The settings that decide what the sweep deletes are read strictly: a
+        // value that is not a whole number, or not a recognizable switch, fails the
+        // start instead of falling back to a default that deletes.
+        let artifact_sweep_interval = sweep_interval(
+            whole_number("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES")?,
+            sweep_interval_hours()?,
+        );
+        let artifact_retention = crate::artifacts::RetentionPolicy {
+            failed: Duration::from_secs(
+                whole_number("TCAB_ARTIFACT_FAILED_RETENTION_HOURS")?
+                    .unwrap_or(DEFAULT_ARTIFACT_FAILED_RETENTION_HOURS)
+                    .saturating_mul(3600),
+            ),
+            canceled: Duration::from_secs(
+                whole_number("TCAB_ARTIFACT_CANCELED_RETENTION_HOURS")?
+                    .unwrap_or(DEFAULT_ARTIFACT_CANCELED_RETENTION_HOURS)
+                    .saturating_mul(3600),
+            ),
+            published: on_unless_off("TCAB_ARTIFACT_RECLAIM_PUBLISHED")?,
+            // Resolved once and kept for the life of the process, which is what
+            // lets the policy stay `Copy`.
+            bucket: r2.as_ref().map(|r2| -> &'static str {
+                Box::leak(
+                    crate::artifacts::media_bucket_identity(&r2.endpoint, &r2.bucket)
+                        .into_boxed_str(),
+                )
+            }),
+        };
 
         let artifact_sweep_grace_hours = std::env::var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")
             .ok()
@@ -346,6 +391,7 @@ impl Config {
             .unwrap_or(DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS);
 
         let artifact_capacity = capacity_settings()?;
+        let publish_failure_hold_runs = publish_failure_hold_runs()?;
 
         Ok(Self {
             bind,
@@ -368,13 +414,13 @@ impl Config {
             gg_reference,
             artifacts_public_url,
             artifacts_internal_url,
-            artifact_sweep_interval: Duration::from_secs(
-                artifact_sweep_interval_hours.saturating_mul(3600),
-            ),
+            artifact_sweep_interval,
+            artifact_retention,
             artifact_sweep_grace: Duration::from_secs(
                 artifact_sweep_grace_hours.saturating_mul(3600),
             ),
             artifact_capacity,
+            publish_failure_hold_runs,
             arena_url,
             grafana_url,
             snapshot_url,
@@ -394,6 +440,49 @@ impl Config {
                 refresh_timeout: self.snapshot_refresh_timeout,
             },
             snapshot_retention: self.snapshot_retention,
+            // Only a backend whose sweep deletes published runs' trees has a use
+            // for a confirmation.
+            confirm_media: self
+                .artifact_retention
+                .bucket
+                .filter(|_| self.sweep_deletes_published_trees()),
+        }
+    }
+}
+
+impl Config {
+    /// Whether this backend's reclamation sweep deletes published runs' trees:
+    /// the rule is on, the sweep runs, and there is an artifact service to sweep
+    /// and a token to delete with.
+    fn sweep_deletes_published_trees(&self) -> bool {
+        self.artifact_retention.published
+            && !self.artifact_sweep_interval.is_zero()
+            && self.artifacts_internal_url.is_some()
+            && self.service_token.is_some()
+    }
+}
+
+/// Read `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`, the older of the two interval
+/// settings.
+///
+/// It is read strictly only while it decides the interval, which is while
+/// `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES` is unset. With the minutes setting
+/// present its value is not used, so a value that does not read is ignored with
+/// a warning: a deployment that carried a loosely written hours value for years
+/// must not stop starting because a newer setting made it irrelevant.
+fn sweep_interval_hours() -> Result<Option<u64>, ConfigError> {
+    const NAME: &str = "TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS";
+    if nonempty("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES").is_none() {
+        return whole_number(NAME);
+    }
+    match whole_number(NAME) {
+        Ok(hours) => Ok(hours),
+        Err(err) => {
+            tracing::warn!(
+                "{err}; ignoring it, because TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES is set \
+                 and decides the interval"
+            );
+            Ok(None)
         }
     }
 }
@@ -444,6 +533,21 @@ fn capacity_settings() -> Result<crate::capacity::CapacitySettings, ConfigError>
         });
     }
     Ok(settings)
+}
+
+/// Resolve `TCAB_PUBLISH_FAILURE_HOLD_RUNS`: how many different runs must fail to
+/// publish in a row before new runs are held, the default when unset, and `0` for
+/// no hold. Read strictly, like the capacity settings: it decides whether runs are
+/// dispatched, and a mistyped value must not silently become the default.
+fn publish_failure_hold_runs() -> Result<u32, ConfigError> {
+    const NAME: &str = "TCAB_PUBLISH_FAILURE_HOLD_RUNS";
+    let Some(runs) = whole_number(NAME)? else {
+        return Ok(crate::publish_health::DEFAULT_HOLD_RUNS);
+    };
+    u32::try_from(runs).map_err(|_| ConfigError::Invalid {
+        name: NAME,
+        reason: format!("`{runs}` is too large"),
+    })
 }
 
 /// Read a whole-number environment variable: `None` when unset or empty, and an
@@ -515,6 +619,42 @@ fn base_url(key: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "config.test.rs"]
 mod tests;
+
+/// The reclamation sweep's interval from its two settings. The minutes setting
+/// decides when it is set. The hours setting, which predates it, is read while the
+/// minutes setting is unset, so a deployment that sets only hours keeps the
+/// interval it asked for. With neither set the interval is
+/// [`DEFAULT_ARTIFACT_SWEEP_INTERVAL_MINUTES`]. A zero in the setting that decides
+/// disables the sweep.
+fn sweep_interval(minutes: Option<u64>, hours: Option<u64>) -> Duration {
+    match (minutes, hours) {
+        (Some(minutes), _) => Duration::from_secs(minutes.saturating_mul(60)),
+        (None, Some(hours)) => Duration::from_secs(hours.saturating_mul(3600)),
+        (None, None) => Duration::from_secs(DEFAULT_ARTIFACT_SWEEP_INTERVAL_MINUTES * 60),
+    }
+}
+
+/// Read a switch that is on by default: `true` when unset or empty, `true` for
+/// `1`, `true`, `yes` and `on`, `false` for `0`, `false`, `no` and `off`
+/// (case-insensitive), and an error naming the variable for anything else.
+///
+/// The counterpart of [`truthy`] for a behavior a deployment has unless it turns
+/// it off. It refuses a value it does not recognize, where `truthy` reads one as
+/// off, because the switches read this way govern deletion: an operator who
+/// misspells "off" must not find the deletion still on.
+fn on_unless_off(name: &'static str) -> Result<bool, ConfigError> {
+    let Some(value) = nonempty(name) else {
+        return Ok(true);
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(ConfigError::Invalid {
+            name,
+            reason: format!("`{value}` is neither on (`true`) nor off (`false`)"),
+        }),
+    }
+}
 
 /// Read a boolean flag environment variable, treating a **truthy** value as
 /// `true` and anything else — including unset, empty, or an unrecognized value —

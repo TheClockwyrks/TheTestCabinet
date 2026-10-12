@@ -6,7 +6,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
-use super::{GatedEnqueue, enqueue_publish};
+use super::{GatedEnqueue, enqueue_publish, reclaimed_message};
 use crate::api::AppState;
 use crate::api::auto_publish::{AutoPublishCause, auto_publish_runs, retry_deferred_runs};
 use crate::api::flow_harness::*;
@@ -441,4 +441,140 @@ async fn a_run_whose_tree_appears_becomes_eligible_again() {
         .unwrap();
 
     assert_eq!(retry_deferred_runs(&state).await, ["run-j"]);
+}
+
+// ---------------------------------------------------------------------------
+// A run whose tree was reclaimed
+// ---------------------------------------------------------------------------
+
+/// Record run `run_id`'s tree as reclaimed by the sweep, as a failed run's is.
+async fn reclaim(state: &AppState, run_id: &str) {
+    let seen = state
+        .db
+        .retention_run(run_id, None)
+        .await
+        .unwrap()
+        .expect("the run exists");
+    assert!(
+        state
+            .db
+            .mark_artifacts_reclaimed(&seen, crate::db::ReclaimReason::Failed, NOW)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn a_reclaimed_run_is_refused_without_asking_the_service() {
+    let (_dir, mut state) = test_state().await;
+    let run_id = stored_run(&state, "j").await;
+    // The service would even answer that it holds a tree, one that landed late.
+    let (base, stub) = spawn_artifact_stub(&[&run_id]).await;
+    with_artifact_service(&mut state, &base, STUB_TOKEN);
+    reclaim(&state, &run_id).await;
+
+    let outcome = enqueue_publish(&state, &run_id, NOW).await.unwrap();
+
+    assert!(matches!(outcome, GatedEnqueue::Reclaimed(_)), "{outcome:?}");
+    assert!(publish_jobs(&state).await.is_empty());
+    assert!(stub.asked().is_empty(), "the record already says why");
+    // The refusal changed nothing about the record.
+    assert_eq!(
+        state.db.run_artifacts_stored(&run_id).await.unwrap(),
+        Some(false)
+    );
+    assert!(
+        state
+            .db
+            .run_artifacts_reclaimed(&run_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn a_persons_publish_of_a_reclaimed_run_says_the_tree_was_removed_on_purpose() {
+    let (_dir, mut state) = test_state().await;
+    let run_id = stored_run(&state, "j").await;
+    let (base, _stub) = spawn_artifact_stub(&[]).await;
+    with_artifact_service(&mut state, &base, STUB_TOKEN);
+    reclaim(&state, &run_id).await;
+
+    let (status, code, message) = publish_by_hand(&state, &run_id).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(code, "conflict");
+    assert!(
+        message.contains("retention"),
+        "the refusal says the tree was removed after its retention: {message}"
+    );
+    assert!(
+        !message.contains("not stored"),
+        "and does not read as a lost tree: {message}"
+    );
+    assert!(publish_jobs(&state).await.is_empty());
+}
+
+#[test]
+fn the_refusal_of_a_published_runs_republish_names_what_removed_the_tree() {
+    // A published run's tree is not removed by a retention period, so the message
+    // a failed run gets would send its reader looking at the wrong setting.
+    let published = reclaimed_message("r1", crate::db::ReclaimReason::Published);
+    assert!(published.contains("published again"), "{published}");
+    assert!(published.contains("release was confirmed"), "{published}");
+    assert!(
+        published.contains("TCAB_ARTIFACT_RECLAIM_PUBLISHED=false"),
+        "{published}"
+    );
+    assert!(!published.contains("retention"), "{published}");
+
+    for reason in [
+        crate::db::ReclaimReason::Failed,
+        crate::db::ReclaimReason::Canceled,
+    ] {
+        let message = reclaimed_message("r1", reason);
+        assert!(message.contains("retention period"), "{message}");
+        assert!(
+            !message.contains("TCAB_ARTIFACT_RECLAIM_PUBLISHED"),
+            "{message}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_gate_answers_with_the_reason_the_tree_was_reclaimed_for() {
+    let (_dir, state) = test_state().await;
+    let run_id = stored_run(&state, "j").await;
+    reclaim(&state, &run_id).await;
+
+    let outcome = enqueue_publish(&state, &run_id, NOW).await.unwrap();
+
+    assert!(
+        matches!(
+            outcome,
+            GatedEnqueue::Reclaimed(crate::db::ReclaimReason::Failed)
+        ),
+        "{outcome:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_deferred_retry_settles_a_reclaimed_run_instead_of_asking_again() {
+    // Passed over while the service was unreachable, then reclaimed before the
+    // retry reached it.
+    let (_dir, mut state) = test_state().await;
+    with_artifact_service(&mut state, &unreachable_base().await, STUB_TOKEN);
+    enqueue_other(&state, "j", "pong", None).await;
+    report(&state, "j", run_of("run-j", "pong", GREAT)).await;
+    assert!(publish_jobs(&state).await.is_empty());
+    reclaim(&state, "run-j").await;
+
+    let (base, stub) = spawn_artifact_stub(&["run-j"]).await;
+    with_artifact_service(&mut state, &base, STUB_TOKEN);
+    retry_deferred_runs(&state).await;
+    retry_deferred_runs(&state).await;
+
+    assert!(publish_jobs(&state).await.is_empty());
+    assert!(stub.asked().is_empty(), "{:?}", stub.asked());
 }

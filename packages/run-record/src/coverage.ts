@@ -909,6 +909,11 @@ export type CoveragePlanRuns = {
    * empty when the plan holds none.
    */
   artifactsNotStored: Array<string>;
+  /**
+   * The ids, among [`runs`](Self::runs), of the runs whose artifact tree the
+   * reclamation sweep reclaimed. Disjoint from the list above. Always present.
+   */
+  artifactsReclaimed: Array<string>;
 };
 
 /**

@@ -141,14 +141,40 @@ run listings mark such a row while it is unpublished, and the run's page states
 it in place of the publish control, so an operator sees a lost tree where the
 publish would have been offered.
 
+A run's page offers one download, and what it downloads follows the run's
+state:
+
+| Run                                                                                    | Download                                                      |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Unpublished, with its tree stored or unknown                                           | The whole stored tree, from the artifact service              |
+| Published, with a source repository on GitHub                                          | The repository's released branch as a zip archive from GitHub |
+| Published, with a source repository elsewhere                                          | The repository's page                                         |
+| Published, with no source repository, its tree stored or unknown                       | The whole stored tree, from the artifact service              |
+| Its tree [reclaimed](/components/backend/overview/#artifact-reclamation) or not stored | None                                                          |
+
+A release pushes a run's source to the `main` branch of its repository, so the
+zip archive is `<repository>/archive/refs/heads/main.zip`. A published run
+carries no marker for a reclaimed tree: its release holds the run's source and
+its media, which is what a published run is read for. The tree's logs and its
+build directory are not part of a release and go with the tree, and a published
+run with no source repository, such as an asset-generation run, has no download
+once its tree is reclaimed. An unpublished run whose tree was reclaimed keeps
+the plain
+unpublished marker, whose tooltip says that its artifacts were removed after the
+retention period.
+
 Every page of the console carries a notice while the
 [artifact store](/components/backend/overview/#artifact-capacity) needs
 attention, kept current by the console stream. It reads "Artifact storage is
 running low" while the state is `low`. While the queue is on hold it reads "New
 runs are on hold" with the condition holding it: the storage is full, the
 artifact service cannot be reached, the artifact store cannot be written to,
-finished runs are waiting to store their artifacts, or the store is being
-checked after failed uploads. While the backend is
+finished runs are waiting to store their artifacts, the store is being
+checked after failed uploads, or
+[publishing is failing](/components/backend/overview/#publish-failures). The
+publishing notice says how many runs in a row could not be published, that
+publishing is retried automatically, and that queued runs start once a publish
+succeeds. While the backend is
 [proving the store](/components/backend/overview/#evidence-from-uploads) the
 notice reads "New runs start one at a time" instead, since runs are still
 being started. The notice states how many runs are waiting to store and the

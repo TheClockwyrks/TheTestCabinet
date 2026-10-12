@@ -36,7 +36,9 @@ use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
-use super::publish_gate::{GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message};
+use super::publish_gate::{
+    GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message, reclaimed_message,
+};
 
 /// The longest a comparison's display name may be.
 const MAX_NAME_LEN: usize = 80;
@@ -299,6 +301,10 @@ pub async fn publish_comparison(
                         GatedEnqueue::NoStoredTree => skipped.push(SkippedRun {
                             run_id: run_id.clone(),
                             reason: no_stored_tree_message(run_id),
+                        }),
+                        GatedEnqueue::Reclaimed(reason) => skipped.push(SkippedRun {
+                            run_id: run_id.clone(),
+                            reason: reclaimed_message(run_id, reason),
                         }),
                         GatedEnqueue::ArtifactsUnavailable(error) => skipped.push(SkippedRun {
                             run_id: run_id.clone(),

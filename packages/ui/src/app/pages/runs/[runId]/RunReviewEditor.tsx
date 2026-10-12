@@ -73,7 +73,10 @@ import {
 import { useConfirm } from "../../../components/ConfirmDialog";
 import type { ReviewModel } from "../../../data/galleryContext";
 import { ValidatorVerdict } from "./ValidatorVerdict";
-import { ARTIFACTS_NOT_STORED_LABEL } from "../../../../client/artifactPresence";
+import {
+  ARTIFACTS_NOT_STORED_LABEL,
+  ARTIFACTS_RECLAIMED_LABEL,
+} from "../../../../client/artifactPresence";
 import styles from "../RunExec.module.scss";
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
@@ -210,6 +213,7 @@ export function RunReviewEditor({
   reviews,
   published,
   artifactsMissing = false,
+  artifactsReclaimed = false,
   validatorRated,
   onChanged,
 }: {
@@ -228,6 +232,9 @@ export function RunReviewEditor({
    * release and the backend refuses its publish, so the Publish action is shown
    * disabled with the reason; reviewing it is unaffected. */
   artifactsMissing?: boolean;
+  /** Whether the run's artifact tree was removed after its retention period.
+   * The Publish action is disabled the same way, with that reason. */
+  artifactsReclaimed?: boolean;
   /** Whether the run is validator-rated (the store's word, lifted with the
    * detail): the aesthetics-only form above, and publish without a review. */
   validatorRated: boolean;
@@ -1878,19 +1885,27 @@ export function RunReviewEditor({
           <button
             className={styles.primary}
             onClick={onPublish}
-            disabled={busy || needAccount || artifactsMissing || !canPublish}
+            disabled={
+              busy ||
+              needAccount ||
+              artifactsMissing ||
+              artifactsReclaimed ||
+              !canPublish
+            }
             title={
-              artifactsMissing
-                ? ARTIFACTS_NOT_STORED_LABEL
-                : needAccount
-                  ? "Sign in to publish"
-                  : !canPublish
-                    ? "Submit at least one review before publishing"
-                    : validatorRated &&
-                        reviews.length === 0 &&
-                        !submittedThisSession
-                      ? "Publish without an aesthetic review; one can be added later"
-                      : undefined
+              artifactsReclaimed
+                ? ARTIFACTS_RECLAIMED_LABEL
+                : artifactsMissing
+                  ? ARTIFACTS_NOT_STORED_LABEL
+                  : needAccount
+                    ? "Sign in to publish"
+                    : !canPublish
+                      ? "Submit at least one review before publishing"
+                      : validatorRated &&
+                          reviews.length === 0 &&
+                          !submittedThisSession
+                        ? "Publish without an aesthetic review; one can be added later"
+                        : undefined
             }
           >
             Publish run

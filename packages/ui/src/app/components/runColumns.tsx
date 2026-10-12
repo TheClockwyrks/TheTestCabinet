@@ -35,7 +35,10 @@ import {
 import { RunSelectBox, type RunSelectionContext } from "./RunSelect";
 import { sortRows, type SortState } from "./useTableSort";
 import { UnpublishedTag } from "./UnpublishedTag";
-import { artifactsNotStored } from "../../client/artifactPresence";
+import {
+  artifactsNotStored,
+  artifactsReclaimed,
+} from "../../client/artifactPresence";
 import {
   selectStorageHoldReason,
   useArtifactStorage,
@@ -71,6 +74,9 @@ export interface EnrichedRun {
   /** Whether the run is unpublished and its artifact tree is not stored, so it
    * cannot be published. The UNPUBLISHED tag then says so. */
   artifactsMissing: boolean;
+  /** Whether the run is unpublished and its artifact tree was removed after its
+   * retention period. The UNPUBLISHED tag stays plain and says so. */
+  artifactsReclaimed: boolean;
   displayName: string;
   /** The model's catalog display name, resolved once so the cell and its sort
    * both read it; falls back to the canonical model id when the catalog doesn't
@@ -328,6 +334,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
           <UnpublishedTag
             className={styles.tag}
             artifactsMissing={row.artifactsMissing}
+            artifactsReclaimed={row.artifactsReclaimed}
           />
         )}
       </span>
@@ -403,6 +410,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
           <UnpublishedTag
             className={styles.tag}
             artifactsMissing={row.artifactsMissing}
+            artifactsReclaimed={row.artifactsReclaimed}
           />
         )}
       </span>
@@ -771,6 +779,8 @@ export function useEnrichedRuns(
           // Only an unpublished run is marked: a published run's release is
           // done, so whether its tree is still held changes nothing for it.
           artifactsMissing: !summary.publishedAt && artifactsNotStored(summary),
+          artifactsReclaimed:
+            !summary.publishedAt && artifactsReclaimed(summary),
           displayName: testCaseName(summary.subject.testCaseSlug),
           modelName:
             findModel(summary.subject.modelId, summary.subject.harnessSlug)

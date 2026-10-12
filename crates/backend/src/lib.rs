@@ -33,6 +33,7 @@ pub mod logo;
 pub mod metrics;
 pub mod model_seed;
 pub mod probe;
+pub mod publish_health;
 pub mod publish_relay;
 pub mod publisher;
 pub mod readiness;
@@ -352,7 +353,10 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.service_token.clone(),
         crate::artifacts::SweepTiming {
             interval: config.artifact_sweep_interval,
-            grace: config.artifact_sweep_grace,
+            rules: crate::artifacts::SweepRules {
+                grace: config.artifact_sweep_grace,
+                retention: config.artifact_retention,
+            },
         },
     );
 
@@ -412,6 +416,9 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // Offer the runs automatic publishing could not publish when they finished to
     // it again, on an interval, for as long as the process lives.
     api::spawn_auto_publish_retry(state.clone());
+    // Give each failed publish another attempt on its schedule, and keep probing
+    // while publish failures hold new runs, for as long as the process lives.
+    api::spawn_failed_publish_retry(state.clone());
     let router = api::router(state);
 
     Ok(Backend {

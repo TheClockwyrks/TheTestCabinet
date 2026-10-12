@@ -63,6 +63,7 @@ import type {
   SpecRole,
   StoredReview,
   StoredRun,
+  ArtifactsReclaimed,
   TestCase,
   TestType,
   UnreadableRunPage,
@@ -348,6 +349,9 @@ interface StoredRunResponse {
   // Whether the artifact service holds the run's tree (see `StoredRun`); absent
   // on an older backend, which reads as unknown.
   artifactsStored?: boolean | null;
+  // When and why the run's tree was reclaimed (see `StoredRun`); absent on an
+  // older backend, which reads as not reclaimed.
+  artifactsReclaimed?: ArtifactsReclaimed | null;
   links?: { sourceRepo: string | null; playableBuild: string | null };
   // The two rating channels the store decides (see `StoredRun`): the functional
   // `rating` (validator-decided on a validator-rated run, the review aggregate on
@@ -380,6 +384,9 @@ interface RunSummaryPageResponse {
   // The ids, among `runs`, of the runs whose artifact tree is recorded as not
   // stored. Beside the cards rather than on them; absent on an older backend.
   artifactsNotStored?: string[] | null;
+  // The ids, among `runs`, of the runs whose tree the backend reclaimed on
+  // purpose. Never also in `artifactsNotStored`; absent on an older backend.
+  artifactsReclaimed?: string[] | null;
   nextBefore?: string | null;
   total?: number | null;
 }
@@ -417,6 +424,7 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     reviews,
     published: r.published ?? true,
     artifactsStored: r.artifactsStored ?? null,
+    artifactsReclaimed: r.artifactsReclaimed ?? null,
     rating: r.rating,
     aesthetic: r.aesthetic,
     validatorRated: r.validatorRated,
@@ -478,6 +486,8 @@ interface MyReviewsResponseBody {
   // The reviewed runs with no stored artifact tree. Absent from a backend that
   // predates the field.
   artifactsNotStored?: string[] | null;
+  // The reviewed runs whose tree was reclaimed on purpose. Absent likewise.
+  artifactsReclaimed?: string[] | null;
   total: number;
 }
 
@@ -994,7 +1004,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
       return {
         ...body,
-        runs: markArtifactsNotStored(body.runs, body.artifactsNotStored),
+        runs: markArtifactsNotStored(
+          body.runs,
+          body.artifactsNotStored,
+          body.artifactsReclaimed,
+        ),
       };
     },
 
@@ -1353,6 +1367,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       const runs = markArtifactsNotStored(
         body.reviews.map((entry) => entry.run),
         body.artifactsNotStored,
+        body.artifactsReclaimed,
       );
       return {
         reviews: body.reviews.map((entry, index) => ({
@@ -1421,7 +1436,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/runs?${params.toString()}`,
       );
       return {
-        summaries: markArtifactsNotStored(body.runs, body.artifactsNotStored),
+        summaries: markArtifactsNotStored(
+          body.runs,
+          body.artifactsNotStored,
+          body.artifactsReclaimed,
+        ),
         nextCursor: body.nextBefore ?? null,
         total: body.total ?? null,
       };

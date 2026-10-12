@@ -84,6 +84,7 @@ mod m20261010_000057_drop_model_price_rates;
 mod m20261012_000058_add_run_artifacts_stored;
 mod m20261012_000059_add_run_auto_publish_deferred;
 mod m20261012_000060_add_job_held_report;
+mod m20261012_000061_add_run_artifact_retention;
 
 pub struct Migrator;
 
@@ -155,6 +156,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261012_000058_add_run_artifacts_stored::Migration),
             Box::new(m20261012_000059_add_run_auto_publish_deferred::Migration),
             Box::new(m20261012_000060_add_job_held_report::Migration),
+            Box::new(m20261012_000061_add_run_artifact_retention::Migration),
         ]
     }
 }

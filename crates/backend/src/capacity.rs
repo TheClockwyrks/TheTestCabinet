@@ -24,11 +24,23 @@
 //!
 //! # What holds the queue
 //!
-//! Six conditions, the first that applies being the [reason](HoldReason) reported:
-//! the store cannot be read, its free space is under the stop threshold, its write
-//! check failed, a run in flight is waiting to store its tree, an upload failed
-//! while the store read as faulty and no passing reading has arrived since, or an
-//! upload failed while the store read as healthy and no tree has landed since.
+//! Seven conditions, the first that applies being the [reason](HoldReason)
+//! reported: the store cannot be read, its free space is under the stop threshold,
+//! its write check failed, a run in flight is waiting to store its tree, an upload
+//! failed while the store read as faulty and no passing reading has arrived since,
+//! publishes are failing across several runs, or an upload failed while the store
+//! read as healthy and no tree has landed since.
+//!
+//! # Publish failures
+//!
+//! The sixth is not read from the store. An unpublished run keeps its tree until
+//! it is published, so a release path that has stopped working fills the store as
+//! surely as a volume that has stopped taking writes. The rule is
+//! [`crate::publish_health`]'s, derived from the publish job table, and the monitor
+//! only carries its latest answer ([`set_publish_hold`](CapacityMonitor::set_publish_hold))
+//! so the hold is reported, logged and announced with the others. The run claim
+//! derives it again from the table before every pass, so no claim rests on the
+//! copy held here. It applies with or without an artifact service.
 //!
 //! # A store that cannot be read
 //!
@@ -79,6 +91,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 
+use crate::publish_health::PublishHold;
 use crate::relay::Notifier;
 
 /// One mebibyte, the unit the threshold settings are given in.
@@ -238,6 +251,11 @@ pub enum HoldReason {
     /// An upload failed while the store read as faulty, and no passing reading has
     /// arrived since with no run waiting.
     WriteCheckPending,
+    /// Publishes are failing: the most recent finished publish jobs are failures
+    /// of several different runs with no success among them
+    /// ([`crate::publish_health`]). Ahead of [`ProvingStore`](Self::ProvingStore)
+    /// because nothing is handed out under it.
+    PublishFailing,
     /// An upload failed while the store read as healthy, so the write check cannot
     /// see what failed it, and no tree has landed since. The one reason under which
     /// a run is still handed out: one at a time, while no other run is in flight.
@@ -267,11 +285,19 @@ pub struct ArtifactStorageStatus {
     /// `storing` state.
     pub runs_waiting_to_store: u32,
     /// The error text behind the hold, when there is one: why the latest poll
-    /// brought no reading back, why the write check failed, or the latest reason a
-    /// driver reported for an upload that failed.
+    /// brought no reading back, why the write check failed, the latest reason a
+    /// driver reported for an upload that failed, or under
+    /// [`HoldReason::PublishFailing`] the reason the latest failed publish job
+    /// recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
+    /// How many different runs have failed to publish since a publish last
+    /// succeeded. Present while that is enough to hold the queue, under whichever
+    /// reason is reported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub publish_failing_runs: Option<u32>,
     /// Free bytes on the store's volume as of the latest reading. Absent until a
     /// reading has arrived.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -428,7 +454,19 @@ type Announced = (
     Option<HoldReason>,
     u32,
     Option<String>,
+    Option<u32>,
 );
+
+/// What the monitor holds whether or not a store is watched.
+#[derive(Debug)]
+struct Shared {
+    /// The hold publish failures call for, as last derived from the publish job
+    /// table.
+    publish_hold: Option<PublishHold>,
+    /// What [`CapacityMonitor::take_change`] last returned. `None` until the first
+    /// call of a watching monitor, which therefore always reports.
+    announced: Option<Announced>,
+}
 
 /// An announced state the store has to earn its way out of.
 #[derive(Debug, Clone)]
@@ -471,9 +509,6 @@ struct Tracker {
     fault: Option<Fault>,
     /// The failed upload nothing has yet disproved, if any.
     unproven: Option<Unproven>,
-    /// What [`CapacityMonitor::take_change`] last returned. `None` until the first
-    /// call, which therefore always reports.
-    announced: Option<Announced>,
 }
 
 impl Tracker {
@@ -498,6 +533,8 @@ pub struct CapacityChange {
     pub previous: ArtifactStorageState,
     /// Whether runs were on hold before the change.
     pub previously_on_hold: bool,
+    /// The reason runs were on hold for before the change, if they were.
+    pub previous_hold_reason: Option<HoldReason>,
     /// The status after it.
     pub status: ArtifactStorageStatus,
 }
@@ -510,15 +547,25 @@ pub struct CapacityMonitor {
     /// `None` when no artifact service is configured, which is the state
     /// [`ArtifactStorageState::Unmonitored`].
     tracker: Option<Arc<Mutex<Tracker>>>,
+    /// The publish-failure hold and the last announcement. Locked after the
+    /// tracker wherever both are.
+    shared: Arc<Mutex<Shared>>,
 }
 
 impl CapacityMonitor {
     /// A monitor of a deployment with no artifact service: it reports
-    /// [`ArtifactStorageState::Unmonitored`] and never holds a run.
+    /// [`ArtifactStorageState::Unmonitored`] and holds a run only for
+    /// [publish failures](HoldReason::PublishFailing).
     pub fn unmonitored(settings: CapacitySettings) -> Self {
         Self {
             settings,
             tracker: None,
+            shared: Arc::new(Mutex::new(Shared {
+                publish_hold: None,
+                // An unwatched store has no starting state to report, so only a
+                // change from this one is announced.
+                announced: Some((ArtifactStorageState::Unmonitored, None, 0, None, None)),
+            })),
         }
     }
 
@@ -536,8 +583,11 @@ impl CapacityMonitor {
                 waiting: WaitingRuns::default(),
                 fault: None,
                 unproven: None,
-                announced: None,
             }))),
+            shared: Arc::new(Mutex::new(Shared {
+                publish_hold: None,
+                announced: None,
+            })),
         }
     }
 
@@ -676,25 +726,30 @@ impl CapacityMonitor {
         });
     }
 
+    /// Record the hold publish failures call for, as just derived from the
+    /// publish job table: `None` when they call for none.
+    ///
+    /// The monitor decides nothing about it. It carries the answer so the status,
+    /// the log and the console stream report this hold with the store's own.
+    pub fn set_publish_hold(&self, hold: Option<PublishHold>) {
+        self.shared
+            .lock()
+            .expect("capacity shared mutex poisoned")
+            .publish_hold = hold;
+    }
+
     /// The store's status as of now.
     pub fn status(&self) -> ArtifactStorageStatus {
         match &self.tracker {
             Some(tracker) => {
                 let tracker = tracker.lock().expect("capacity tracker mutex poisoned");
-                self.status_of(&tracker, Instant::now())
+                let shared = self.shared.lock().expect("capacity shared mutex poisoned");
+                self.status_of(Some(&tracker), &shared, Instant::now())
             }
-            None => ArtifactStorageStatus {
-                state: ArtifactStorageState::Unmonitored,
-                runs_on_hold: false,
-                hold_reason: None,
-                runs_waiting_to_store: 0,
-                detail: None,
-                free_bytes: None,
-                total_bytes: None,
-                writable: None,
-                warn_bytes: self.settings.warn_bytes,
-                stop_bytes: self.settings.stop_bytes,
-            },
+            None => {
+                let shared = self.shared.lock().expect("capacity shared mutex poisoned");
+                self.status_of(None, &shared, Instant::now())
+            }
         }
     }
 
@@ -712,14 +767,37 @@ impl CapacityMonitor {
     /// reporting at all. [`ClaimGate::Trial`] is the one hold that still hands out
     /// a run, and it too is paused while the store's latest read is unconfirmed.
     pub fn claim_gate(&self) -> ClaimGate {
+        let publish_held = self
+            .shared
+            .lock()
+            .expect("capacity shared mutex poisoned")
+            .publish_hold
+            .is_some();
+        self.claim_gate_with(publish_held)
+    }
+
+    /// [`claim_gate`](Self::claim_gate) for a caller that has just derived whether
+    /// publish failures hold new runs: the store's own gate with `publish_held`
+    /// laid over it, whatever answer the monitor last recorded. The run claim asks
+    /// this, so it never rests on a copy another caller may have overwritten.
+    ///
+    /// The publish hold holds the queue wherever the store would hand out a run,
+    /// including the one run at a time of [`ClaimGate::Trial`].
+    pub fn claim_gate_with(&self, publish_held: bool) -> ClaimGate {
         let Some(tracker) = &self.tracker else {
-            return ClaimGate::Open;
+            return if publish_held {
+                ClaimGate::Hold
+            } else {
+                ClaimGate::Open
+            };
         };
         let tracker = tracker.lock().expect("capacity tracker mutex poisoned");
         let now = Instant::now();
-        let proving = match self.status_of(&tracker, now).hold_reason {
+        let proving = match self.store_status_of(&tracker, now).hold_reason {
+            Some(HoldReason::ProvingStore) if publish_held => return ClaimGate::Hold,
             Some(HoldReason::ProvingStore) => true,
             Some(_) => return ClaimGate::Hold,
+            None if publish_held => return ClaimGate::Hold,
             None => false,
         };
         let unconfirmed = tracker.last_error.is_some()
@@ -736,32 +814,41 @@ impl CapacityMonitor {
     }
 
     /// The change since the last call, if the state, the hold's reason, the number
-    /// of waiting runs or the reported error differs from what that call saw. Each
-    /// change is therefore logged and announced exactly once however long it
-    /// lasts. The first call always reports, so the state a backend starts in is
-    /// logged like any other.
+    /// of waiting runs, the reported error or the number of runs failing to
+    /// publish differs from what that call saw. Each change is therefore logged and
+    /// announced exactly once however long it lasts. The first call of a watching
+    /// monitor always reports, so the state a backend starts in is logged like any
+    /// other. An unmonitored one reports only a change from holding nothing.
     pub fn take_change(&self) -> Option<CapacityChange> {
-        let tracker = self.tracker.as_ref()?;
-        let mut tracker = tracker.lock().expect("capacity tracker mutex poisoned");
-        let status = self.status_of(&tracker, Instant::now());
+        let tracker = self
+            .tracker
+            .as_ref()
+            .map(|tracker| tracker.lock().expect("capacity tracker mutex poisoned"));
+        let mut shared = self.shared.lock().expect("capacity shared mutex poisoned");
+        let status = self.status_of(tracker.as_deref(), &shared, Instant::now());
         let now = (
             status.state,
             status.hold_reason,
             status.runs_waiting_to_store,
             status.detail.clone(),
+            status.publish_failing_runs,
         );
-        if tracker.announced.as_ref() == Some(&now) {
+        if shared.announced.as_ref() == Some(&now) {
             return None;
         }
         // A monitor that has announced nothing was holding the queue on a store it
         // had never read.
-        let (previous, previously_on_hold) = match tracker.announced.replace(now) {
-            Some((state, reason, _, _)) => (state, reason.is_some()),
-            None => (ArtifactStorageState::Unavailable, true),
+        let (previous, previous_hold_reason) = match shared.announced.replace(now) {
+            Some((state, reason, _, _, _)) => (state, reason),
+            None => (
+                ArtifactStorageState::Unavailable,
+                Some(HoldReason::Unreadable),
+            ),
         };
         Some(CapacityChange {
             previous,
-            previously_on_hold,
+            previously_on_hold: previous_hold_reason.is_some(),
+            previous_hold_reason,
             status,
         })
     }
@@ -777,8 +864,49 @@ impl CapacityMonitor {
         }
     }
 
-    /// Derive the status from what the tracker holds and the time.
-    fn status_of(&self, tracker: &Tracker, now: Instant) -> ArtifactStorageStatus {
+    /// Derive the status from what the monitor holds and the time: the store's
+    /// own status, or the unmonitored one with no tracker, with the publish-failure
+    /// hold laid over it.
+    ///
+    /// The publish hold is the reported reason when the store gives none, and in
+    /// place of [`HoldReason::ProvingStore`], under which a run would still be
+    /// handed out. Every other reason of the store's leads, being the one that
+    /// loses a tree.
+    fn status_of(
+        &self,
+        tracker: Option<&Tracker>,
+        shared: &Shared,
+        now: Instant,
+    ) -> ArtifactStorageStatus {
+        let mut status = match tracker {
+            Some(tracker) => self.store_status_of(tracker, now),
+            None => ArtifactStorageStatus {
+                state: ArtifactStorageState::Unmonitored,
+                runs_on_hold: false,
+                hold_reason: None,
+                runs_waiting_to_store: 0,
+                detail: None,
+                publish_failing_runs: None,
+                free_bytes: None,
+                total_bytes: None,
+                writable: None,
+                warn_bytes: self.settings.warn_bytes,
+                stop_bytes: self.settings.stop_bytes,
+            },
+        };
+        if let Some(hold) = &shared.publish_hold {
+            status.publish_failing_runs = Some(hold.failing_runs);
+            if matches!(status.hold_reason, None | Some(HoldReason::ProvingStore)) {
+                status.hold_reason = Some(HoldReason::PublishFailing);
+                status.runs_on_hold = true;
+                status.detail = hold.latest_error.clone();
+            }
+        }
+        status
+    }
+
+    /// Derive the store's own status from what the tracker holds and the time.
+    fn store_status_of(&self, tracker: &Tracker, now: Instant) -> ArtifactStorageStatus {
         let stale_after = self.settings.stale_after();
         let current = tracker
             .reading
@@ -828,7 +956,7 @@ impl CapacityMonitor {
                     .as_ref()
                     .and_then(|unproven| unproven.reason.clone())
             }),
-            Some(HoldReason::LowSpace) | None => None,
+            Some(HoldReason::LowSpace | HoldReason::PublishFailing) | None => None,
         };
         let reading = tracker.reading.as_ref().map(|reading| &reading.capacity);
         ArtifactStorageStatus {
@@ -837,6 +965,7 @@ impl CapacityMonitor {
             hold_reason,
             runs_waiting_to_store: tracker.waiting.count,
             detail,
+            publish_failing_runs: None,
             free_bytes: reading.map(|capacity| capacity.free_bytes),
             total_bytes: reading.map(|capacity| capacity.total_bytes),
             writable: reading.map(|capacity| capacity.writable),
@@ -845,6 +974,9 @@ impl CapacityMonitor {
         }
     }
 }
+
+/// What the end of a publish-failure hold is logged as.
+const PUBLISH_HOLD_ENDED: &str = "publish failures no longer hold new runs";
 
 /// The log line a change is announced with: its level and its message. `None` for
 /// the one state that is never entered by a change.
@@ -856,6 +988,16 @@ fn announcement(change: &CapacityChange) -> Option<(tracing::Level, &'static str
     use tracing::Level as Log;
     let status = &change.status;
     match (status.state, status.hold_reason) {
+        (_, Some(HoldReason::PublishFailing)) => Some((
+            Log::WARN,
+            "publishing is failing; new runs are on hold until a publish succeeds",
+        )),
+        // The end of a publish hold is said in those words whatever the store
+        // reads as, an unwatched one included. The words claim no success: the
+        // hold also ends when too few failing runs are left to count.
+        (_, None) if change.previous_hold_reason == Some(HoldReason::PublishFailing) => {
+            Some((Log::INFO, PUBLISH_HOLD_ENDED))
+        }
         (ArtifactStorageState::Unmonitored, _) => None,
         (_, Some(HoldReason::LowSpace)) => Some((
             Log::ERROR,
@@ -892,6 +1034,16 @@ fn announcement(change: &CapacityChange) -> Option<(tracing::Level, &'static str
     }
 }
 
+/// Whether `change` is a publish-failure hold ending while another reason goes on
+/// holding new runs. A store reason that merely takes the lead over a publish hold
+/// still in force is not one: the status then still counts failing runs.
+fn publish_hold_ended_under_another(change: &CapacityChange) -> bool {
+    change.previous_hold_reason == Some(HoldReason::PublishFailing)
+        && change.status.hold_reason.is_some()
+        && change.status.hold_reason != Some(HoldReason::PublishFailing)
+        && change.status.publish_failing_runs.is_none()
+}
+
 /// Log one change, at the level it calls for. Every line carries the same fields:
 /// the reason for the hold, the number of runs waiting to store, and the error
 /// text behind the condition.
@@ -912,6 +1064,15 @@ fn log_change(change: &CapacityChange) {
         status.runs_waiting_to_store,
     );
     let (writable, error) = (status.writable, status.detail.as_deref());
+    let publish_failing_runs = status.publish_failing_runs;
+    // A publish hold that ends under another reason is said on a line of its own:
+    // the line below is the other reason's, and would otherwise be the only one.
+    if publish_hold_ended_under_another(change) {
+        tracing::info!(
+            hold_reason = ?hold_reason,
+            "{PUBLISH_HOLD_ENDED}; new runs stay on hold for another reason"
+        );
+    }
     // `tracing`'s macros take their level as a constant, so the level picks the
     // macro.
     macro_rules! emit {
@@ -921,6 +1082,7 @@ fn log_change(change: &CapacityChange) {
                 runs_on_hold = status.runs_on_hold,
                 hold_reason = ?hold_reason,
                 runs_waiting_to_store = waiting,
+                publish_failing_runs,
                 free_bytes,
                 warn_bytes,
                 stop_bytes,
@@ -1072,3 +1234,7 @@ mod tests;
 #[cfg(test)]
 #[path = "capacity.hold.test.rs"]
 mod hold_tests;
+
+#[cfg(test)]
+#[path = "capacity.publish.test.rs"]
+mod publish_tests;

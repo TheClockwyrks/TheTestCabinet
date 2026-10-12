@@ -17,7 +17,10 @@ import { useFindModel } from "../../data/useModels";
 import { formatSlug } from "../../format";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
-import { ARTIFACTS_NOT_STORED_LABEL } from "../../../client/artifactPresence";
+import {
+  ARTIFACTS_NOT_STORED_LABEL,
+  ARTIFACTS_RECLAIMED_LABEL,
+} from "../../../client/artifactPresence";
 import styles from "./RunFailuresPage.module.scss";
 import exec from "./RunExec.module.scss";
 
@@ -102,21 +105,29 @@ export function RunFailuresPage() {
       ) : (
         <Panel>
           <ul className={styles.list}>
-            {publishable.map(({ record: run, published, artifactsStored }) => (
-              <FailureRow
-                key={run.id}
-                run={run}
-                published={published}
-                artifactsMissing={artifactsStored === false}
-                token={token}
-                onPublish={
-                  client
-                    ? (onProgress) => client.publish(run.id, token!, onProgress)
-                    : null
-                }
-                onPublished={requestRefresh}
-              />
-            ))}
+            {publishable.map((failure) => {
+              const { record: run, published, artifactsStored } = failure;
+              const artifactsReclaimed = failure.artifactsReclaimed != null;
+              return (
+                <FailureRow
+                  key={run.id}
+                  run={run}
+                  published={published}
+                  artifactsMissing={
+                    artifactsStored === false && !artifactsReclaimed
+                  }
+                  artifactsReclaimed={artifactsReclaimed}
+                  token={token}
+                  onPublish={
+                    client
+                      ? (onProgress) =>
+                          client.publish(run.id, token!, onProgress)
+                      : null
+                  }
+                  onPublished={requestRefresh}
+                />
+              );
+            })}
           </ul>
         </Panel>
       )}
@@ -131,11 +142,13 @@ export function RunFailuresPage() {
 // it nudges the data source to re-read so the row reflects its published state.
 //
 // A failure whose artifact tree is not stored has nothing to release, so its row
-// says so where the Publish control would be.
+// says so where the Publish control would be. One whose tree was removed after
+// its retention period says that instead, without the colour of a fault.
 function FailureRow({
   run,
   published,
   artifactsMissing,
+  artifactsReclaimed,
   token,
   onPublish,
   onPublished,
@@ -143,6 +156,7 @@ function FailureRow({
   run: RunRecord;
   published: boolean;
   artifactsMissing: boolean;
+  artifactsReclaimed: boolean;
   token: string | null;
   onPublish:
     | ((onProgress: (progress: PublishProgress) => void) => Promise<unknown>)
@@ -209,6 +223,14 @@ function FailureRow({
         </span>
         {published ? (
           <span className={styles.publishedTag}>Published</span>
+        ) : artifactsReclaimed ? (
+          <span
+            className={styles.reclaimedTag}
+            title={ARTIFACTS_RECLAIMED_LABEL}
+            data-testid="artifacts-reclaimed"
+          >
+            Artifacts removed
+          </span>
         ) : artifactsMissing ? (
           <span
             className={styles.missingTag}

@@ -352,6 +352,9 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/asset/{file}", get(asset_file))
         .route("/runs/{id}/validation/{file}", get(validation_file))
         .route("/runs/{id}/showcase/{file}", get(showcase_file))
+        // The names of the validation and showcase files a run's tree holds
+        // (backend → service, ungated like the media reads whose names it lists).
+        .route("/runs/{id}/media", get(media_listing))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
         .layer(axum::middleware::from_fn(accept_trace))
@@ -592,6 +595,67 @@ async fn presence(
     )?;
     let stored = state.store.has_run_tree(&id).map_err(map_store_error)?;
     Ok((StatusCode::OK, axum::Json(TreePresenceOut { id, stored })).into_response())
+}
+
+/// The [`media_listing`] response body.
+#[derive(serde::Serialize)]
+struct MediaListingOut {
+    /// The run id asked about.
+    id: String,
+    /// Whether the store holds a tree for it. Both lists are empty when not.
+    stored: bool,
+    /// The names the `/validation/{file}` route serves for this run.
+    validation: Vec<String>,
+    /// The names the `/showcase/{file}` route serves for this run.
+    showcase: Vec<String>,
+}
+
+/// `GET /runs/{id}/media` — the names of the validation and showcase files run
+/// `{id}`'s tree holds.
+///
+/// The backend's snapshot refresh asks this for a published run whose media it has
+/// not confirmed in the bucket. A run's record names its declared outputs, but two
+/// file sets are named by nothing except the directory they sit in: the image
+/// store its recordings share, and showcase files that neither the carousel nor
+/// the description mentions. Without the listing the refresh cannot know they
+/// exist, and the backend deletes a published run's tree once it believes
+/// everything the run published is in the bucket.
+///
+/// Ungated, like the media routes whose names it lists. As with [`presence`], a
+/// run with no tree is answered in the body of a `200`, so the caller cannot
+/// mistake an unreachable or misrouted service for a run with nothing to list.
+/// `400` for an unsafe id; `500` when a directory of the tree cannot be read,
+/// which the caller must not take for an empty one.
+#[tracing::instrument(name = "artifacts.media_listing", skip(state), fields(run.id = %id), err(Debug))]
+async fn media_listing(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let stored = state.store.has_run_tree(&id).map_err(map_store_error)?;
+    let (validation, showcase) = if stored {
+        let run_dir = state.store.run_dir(&id);
+        let listed = tokio::task::spawn_blocking(move || {
+            Ok::<_, std::io::Error>((
+                test_cabinet_core::list_validation_files(&run_dir)?,
+                test_cabinet_core::list_showcase_files(&run_dir)?,
+            ))
+        })
+        .await
+        .map_err(|err| ApiError::internal(format!("listing run `{id}`'s media: {err}")))?;
+        listed.map_err(|err| ApiError::internal(format!("listing run `{id}`'s media: {err}")))?
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    Ok((
+        StatusCode::OK,
+        axum::Json(MediaListingOut {
+            id,
+            stored,
+            validation,
+            showcase,
+        }),
+    )
+        .into_response())
 }
 
 /// One entry of the [`list_runs`] response.

@@ -881,6 +881,7 @@ export type HoldReason =
   | "unwritable"
   | "uploads-waiting"
   | "write-check-pending"
+  | "publish-failing"
   | "proving-store";
 
 /**
@@ -912,10 +913,18 @@ export type ArtifactStorageStatus = {
   runsWaitingToStore: number;
   /**
    * The error text behind the hold, when there is one: why the latest poll
-   * brought no reading back, why the write check failed, or the latest reason a
-   * driver reported for an upload that failed.
+   * brought no reading back, why the write check failed, the latest reason a
+   * driver reported for an upload that failed, or under
+   * [`HoldReason::PublishFailing`] the reason the latest failed publish job
+   * recorded.
    */
   detail?: string;
+  /**
+   * How many different runs have failed to publish since a publish last
+   * succeeded. Present while that is enough to hold the queue, under whichever
+   * reason is reported.
+   */
+  publishFailingRuns?: number;
   /**
    * Free bytes on the store's volume as of the latest reading. Absent until a
    * reading has arrived.

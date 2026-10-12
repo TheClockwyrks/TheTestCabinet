@@ -167,6 +167,42 @@ describe("storageNotice", () => {
     ).toBe(notice?.title);
   });
 
+  it("says that publishing is failing, with the count and the latest error", () => {
+    const held = status({
+      runsOnHold: true,
+      holdReason: "publish-failing",
+      publishFailingRuns: 5,
+      detail: "gh: HTTP 502",
+    });
+    const notice = storageNotice(held);
+    expect(notice).toEqual({
+      tone: "hold",
+      title: "New runs are on hold: publishing is failing",
+      detail:
+        "5 runs in a row could not be published, and an unpublished run keeps its artifacts on the store. Publishing is retried automatically, and queued runs start once a publish succeeds. Reported: gh: HTTP 502",
+    });
+    // The other holds say publishing is unaffected. This one must not.
+    expect(notice?.detail).not.toContain("Publishing is unaffected");
+    // The held run's tooltip states the same reason.
+    expect(storageHoldReason(held)).toBe(notice?.title);
+  });
+
+  it("reports failing publishes with no artifact service configured", () => {
+    const notice = storageNotice(
+      status({
+        state: "unmonitored",
+        runsOnHold: true,
+        holdReason: "publish-failing",
+        freeBytes: undefined,
+        totalBytes: undefined,
+      }),
+    );
+    expect(notice?.tone).toBe("hold");
+    expect(notice?.title).toBe("New runs are on hold: publishing is failing");
+    // A backend that sends no count still reads as a sentence.
+    expect(notice?.detail).toMatch(/^Several runs in a row could not/);
+  });
+
   it("reads a hold from the state when the backend names no reason", () => {
     // What a backend older than `holdReason` sends.
     expect(

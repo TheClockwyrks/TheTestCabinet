@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { useOptionalWorkers } from "../../client/context";
 import { useAuth } from "../../client/auth";
-import { artifactsNotStored } from "../../client/artifactPresence";
+import { unpublishableArtifactsLabel } from "../../client/artifactPresence";
 import { describeRunState } from "./runState";
 import { useGalleryData } from "./galleryContext";
 import { useRunsRuntime } from "../runtime/runsRuntime";
@@ -30,7 +30,7 @@ import { useRunsRuntime } from "../runtime/runsRuntime";
  */
 export function isPublishable(summary: RunSummary): boolean {
   if (summary.publishedAt) return false;
-  if (artifactsNotStored(summary)) return false;
+  if (unpublishableArtifactsLabel(summary)) return false;
   const state = describeRunState(summary.state);
   if (state.isPublishableFailure) return true;
   if (summary.state === "infrastructure") return false;

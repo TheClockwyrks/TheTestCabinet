@@ -61,6 +61,35 @@ static ARTIFACTS_TOTAL_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
+/// Count of run trees the reclamation sweep deleted, by reason.
+static ARTIFACTS_RECLAIMED_TREES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("tcab.artifacts.reclaimed_trees")
+        .with_description("Count of run trees the reclamation sweep deleted.")
+        .build()
+});
+
+/// Published runs the latest snapshot refresh could not confirm the media of.
+static ARTIFACTS_UNCONFIRMED_RUNS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.artifacts.unconfirmed_runs")
+        .with_description(
+            "Published runs whose media the latest snapshot refresh could not confirm in the bucket.",
+        )
+        .build()
+});
+
+/// Record one run tree the [reclamation sweep](crate::artifacts) deleted. `reason`
+/// is `orphan`, `published`, `failed` or `canceled`.
+pub fn record_tree_reclaimed(reason: &'static str) {
+    ARTIFACTS_RECLAIMED_TREES.add(1, &[KeyValue::new("reason", reason)]);
+}
+
+/// Record how many published runs a snapshot refresh left unconfirmed.
+pub fn record_unconfirmed_runs(runs: u64) {
+    ARTIFACTS_UNCONFIRMED_RUNS.record(runs, &[]);
+}
+
 /// Record one reading of the artifact store's [capacity](crate::capacity).
 pub fn record_artifact_capacity(free_bytes: u64, total_bytes: u64) {
     ARTIFACTS_FREE_BYTES.record(free_bytes, &[]);

@@ -75,6 +75,9 @@ struct PublisherInner {
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (see [`prune_stale_snapshots`]).
     snapshot_retention: Duration,
+    /// The bucket media confirmations are recorded against, on a backend that
+    /// records them (see [`PublisherTiming::confirm_media`]).
+    confirm_media: Option<&'static str>,
     /// Counts the refresh requests and decides when a batch of them is released.
     batcher: Batcher,
     /// How many refreshes have finished, so a test can wait for the loop to act
@@ -100,6 +103,24 @@ pub struct PublisherTiming {
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (`TCAB_SNAPSHOT_RETENTION_HOURS`).
     pub snapshot_retention: Duration,
+    /// `Some` on a backend that records [media
+    /// confirmations](crate::db::Db::record_media_confirmation): the name of the
+    /// bucket they are made against
+    /// ([`media_bucket_identity`](crate::artifacts::media_bucket_identity)).
+    ///
+    /// Set for a backend whose artifact reclamation sweep deletes published runs'
+    /// trees, which it does only for a run a refresh has confirmed in this bucket.
+    /// Any other backend has no use for a confirmation: it records none, and its
+    /// refreshes ask the artifact service for no tree listing.
+    ///
+    /// A publisher with this set that starts beside published runs no refresh has
+    /// evaluated against the bucket requests one refresh to evaluate them. Runs
+    /// published before the backend recorded confirmations have none, and on a
+    /// deployment whose queue is on hold for lack of space no publish will arrive
+    /// to prompt the refresh that would give them one. The request is made only
+    /// while such a run exists, and a refresh records every run it evaluated, so
+    /// a later start requests nothing.
+    pub confirm_media: Option<&'static str>,
 }
 
 impl Publisher {
@@ -139,6 +160,7 @@ impl Publisher {
                 http: reqwest::Client::new(),
                 artifacts_url,
                 snapshot_retention: timing.snapshot_retention,
+                confirm_media: timing.confirm_media,
                 batcher: Batcher::new(timing.batch),
                 #[cfg(test)]
                 refreshes: tokio::sync::watch::channel(0).0,
@@ -173,6 +195,7 @@ impl Publisher {
         let handle = tokio::spawn(
             async move {
                 let recover = inner.recovery().await;
+                inner.request_startup_confirmation().await;
                 inner
                     .batcher
                     .run(inner.as_ref(), recover, shutdown_rx)
@@ -228,6 +251,39 @@ impl PublisherInner {
                 );
                 Some(Duration::ZERO)
             }
+        }
+    }
+}
+
+impl PublisherInner {
+    /// Request one refresh when published runs exist that no refresh has evaluated
+    /// the media of against the configured bucket, so their confirmations are
+    /// established without waiting for a publish. See
+    /// [`PublisherTiming::confirm_media`].
+    ///
+    /// The request is an ordinary one: it is counted with any others and released
+    /// by the batching, so it adds no refresh to a start that was going to refresh
+    /// anyway. Without a bucket there is nothing to confirm against and nothing is
+    /// requested. A count that cannot be read requests nothing either, since the
+    /// next publish evaluates every run all the same.
+    async fn request_startup_confirmation(&self) {
+        let Some(bucket) = self.confirm_media.filter(|_| self.r2.is_some()) else {
+            return;
+        };
+        match self.db.published_runs_unchecked(bucket).await {
+            Ok(0) => {}
+            Ok(runs) => {
+                tracing::info!(
+                    runs,
+                    "published runs have no media confirmation on record; requesting a \
+                     snapshot refresh to establish it"
+                );
+                self.batcher.request();
+            }
+            Err(err) => tracing::warn!(
+                "could not count the published runs awaiting a media confirmation ({err}); \
+                 the next refresh evaluates them"
+            ),
         }
     }
 }
@@ -308,6 +364,14 @@ impl RefresherHandle {
     err,
 )]
 async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
+    // What each published run's confirmation is recorded against, read before the
+    // runs themselves: a confirmation is written only for a run whose row still
+    // carries the mutation timestamp read here, so the record this refresh
+    // evaluates is never older than the one it vouches for.
+    let confirming = match inner.confirm_media.filter(|_| inner.r2.is_some()) {
+        Some(bucket) => Some((bucket, inner.db.published_media_states(bucket).await?)),
+        None => None,
+    };
     let runs = inner.db.all_published().await?;
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
@@ -361,21 +425,37 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // (`files/cases/<slug>/<version>/…`).
     //
     // Only when R2 is configured — the dev path has no bucket to list, and re-uploads
-    // nothing anyway. A list failure is not fatal: fall back to an empty set (re-export
-    // everything) rather than abort the whole refresh, so a transient list error
-    // degrades to the old behavior.
+    // nothing anyway.
+    //
+    // A failure to list `media/` fails the refresh, which the batching retries.
+    // Falling back to an empty set would have the builder read every run's media
+    // from its source again, and the source of a published run's media may be gone
+    // on purpose: the artifact reclamation sweep deletes a published run's tree
+    // once a refresh has confirmed its media in this bucket. A run whose bytes are
+    // only in the bucket would then be published with its media left out. The
+    // `files/` prefix holds case files read from the definition store, which is
+    // always there to read again, so a failure to list it degrades to re-exporting
+    // them.
     let existing_media = match &inner.r2 {
         Some(r2) => {
-            let mut keys = std::collections::HashSet::new();
-            for prefix in ["media/", "files/"] {
-                match r2.list_keys(prefix).await {
-                    Ok(listed) => keys.extend(listed),
-                    Err(err) => {
-                        tracing::warn!(
-                            "listing existing snapshot `{prefix}` objects failed ({err}); \
-                             re-exporting everything under it"
-                        );
-                    }
+            let mut keys: std::collections::HashSet<String> = r2
+                .list_keys("media/")
+                .await
+                .map_err(|err| {
+                    BackendError::Snapshot(format!(
+                        "listing the bucket's existing `media/` objects failed ({err}); \
+                         refusing to rebuild run media from sources that may have been reclaimed"
+                    ))
+                })?
+                .into_iter()
+                .collect();
+            match r2.list_keys("files/").await {
+                Ok(listed) => keys.extend(listed),
+                Err(err) => {
+                    tracing::warn!(
+                        "listing existing snapshot `files/` objects failed ({err}); \
+                         re-exporting everything under it"
+                    );
                 }
             }
             keys
@@ -462,8 +542,18 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .map(crate::api::TestCaseGroupOut::from)
         .collect();
 
-    let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
-        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
+    let mut builder = SnapshotBuilder::new(runs, cases, inner.store.clone())
+        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone());
+    if let Some((_, states)) = &confirming {
+        builder = builder.with_media_confirmation(
+            states
+                .iter()
+                .filter(|state| state.settled())
+                .map(|state| state.id.clone())
+                .collect(),
+        );
+    }
+    let snapshot = builder
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)
@@ -478,9 +568,19 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let run_count = snapshot.run_count;
     tracing::Span::current().record("run_count", run_count);
 
+    let mut confirmation = None;
     let deploy_hook_fired = match &inner.r2 {
         Some(r2) => {
             crate::snapshot::upload_snapshot(&snapshot, r2).await?;
+            // Every object is in the bucket and `index.json` names this generation,
+            // so what the build found about each run's media now holds of the
+            // bucket. Recorded before the hook: a hook that fails changes nothing
+            // about where the media is.
+            if let Some((bucket, states)) = &confirming {
+                confirmation = Some(
+                    record_media_confirmation(inner, bucket, states, &snapshot, generated_at).await,
+                );
+            }
             // Only after the atomic `index.json` cut-over: until it lands, the
             // previous generation is still the live one and must not be touched.
             // Before the hook, so a hook that keeps failing does not also keep the
@@ -516,12 +616,123 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // fired. `deploy_hook_fired` is false whenever no hook is configured (R2-only)
     // or R2 itself is off — so this is the log to check when a publish uploaded the
     // snapshot to R2 but the public gallery never rebuilt.
-    tracing::info!(run_count, deploy_hook_fired, "snapshot refresh complete");
+    let (runs_confirmed, runs_unconfirmed) = confirmation.unzip();
+    tracing::info!(
+        run_count,
+        deploy_hook_fired,
+        runs_confirmed,
+        runs_unconfirmed,
+        "snapshot refresh complete"
+    );
 
     Ok(RefreshOutcome {
         run_count,
         deploy_hook_fired,
     })
+}
+
+/// Record which of the runs of an uploaded snapshot have every media file of
+/// theirs in `bucket`, and report the rest. Returns how many runs the refresh
+/// found confirmed and how many it could not confirm.
+///
+/// A published run's tree on the artifact service is the fallback source for media
+/// that is not in the bucket yet, and the reclamation sweep deletes the tree only
+/// for a run recorded here as confirmed. Each run left unconfirmed is logged with
+/// its files, and the count is the `tcab.artifacts.unconfirmed_runs` gauge.
+///
+/// `states` is what the refresh read about each published run before it read the
+/// runs. Three kinds of run are left as they are:
+///
+/// - A **settled** run, confirmed in this bucket with its tree reclaimed. The
+///   build asked nothing about it, and there is no tree left for a withdrawn
+///   confirmation to keep.
+/// - A run the snapshot was not built from although it was published when
+///   `states` was read, and one published since: the build did not evaluate it.
+/// - A run that changed while the refresh ran. The database refuses its
+///   confirmation, and this requests another refresh to evaluate it.
+///
+/// A run whose tree was reclaimed and whose media the build did not find in the
+/// bucket has no source left. That is not a state a refresh can repair, and it is
+/// what a backend pointed at the wrong or an emptied bucket looks like, so it is
+/// logged at `error` with the number of such runs.
+///
+/// Best-effort: a failure to record is logged and does not fail the refresh. The
+/// snapshot is live either way, the trees are kept, and the next refresh evaluates
+/// every run again.
+async fn record_media_confirmation(
+    inner: &PublisherInner,
+    bucket: &str,
+    states: &[crate::db::PublishedMediaState],
+    snapshot: &crate::snapshot::Snapshot,
+    uploaded_at: OffsetDateTime,
+) -> (usize, usize) {
+    let mut confirmed = Vec::new();
+    let mut unconfirmed = Vec::new();
+    let mut sourceless = 0usize;
+    for state in states {
+        if !snapshot.run_ids.contains(&state.id) {
+            continue;
+        }
+        let missing = snapshot.unconfirmed_media.contains_key(&state.id);
+        if missing && state.reclaimed {
+            sourceless += 1;
+        }
+        if state.settled() {
+            continue;
+        }
+        if missing {
+            unconfirmed.push(state.id.clone());
+        } else {
+            confirmed.push(state.clone());
+        }
+    }
+    for (run_id, files) in &snapshot.unconfirmed_media {
+        tracing::warn!(
+            run.id = %run_id,
+            files = %files.join(", "),
+            "published run media not confirmed in the bucket; its artifact tree is kept"
+        );
+    }
+    if sourceless > 0 {
+        tracing::error!(
+            runs = sourceless,
+            bucket,
+            "published runs whose artifact tree was reclaimed have media that is not in \
+             the configured bucket; nothing is left to publish it from"
+        );
+    }
+    crate::metrics::record_unconfirmed_runs(unconfirmed.len() as u64);
+    let recorded = match uploaded_at.format(&Rfc3339) {
+        Ok(at) => {
+            inner
+                .db
+                .record_media_confirmation(&confirmed, &unconfirmed, &at, bucket)
+                .await
+        }
+        Err(err) => Err(err.into()),
+    };
+    match recorded {
+        Ok(changed) => {
+            if changed.confirmed > 0 || changed.withdrawn > 0 || changed.changed > 0 {
+                tracing::info!(
+                    newly_confirmed = changed.confirmed,
+                    withdrawn = changed.withdrawn,
+                    changed_meanwhile = changed.changed,
+                    "recorded the published runs' media confirmations"
+                );
+            }
+            if changed.changed > 0 {
+                // The runs that moved were evaluated from a record that may no
+                // longer be theirs. Evaluate them again.
+                inner.batcher.request();
+            }
+        }
+        Err(err) => tracing::warn!(
+            "could not record the published runs' media confirmations ({err}); \
+             their artifact trees are kept and the next refresh records them"
+        ),
+    }
+    (confirmed.len(), unconfirmed.len())
 }
 
 /// Delete the snapshot generations nothing points at any more, keeping the one just

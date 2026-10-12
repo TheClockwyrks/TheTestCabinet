@@ -34,6 +34,15 @@ const fixture = vi.hoisted(() => ({
   // HIT still refetched in the background.
   byId: null as ((runId: string) => unknown) | null,
   calls: [] as string[],
+  // Whether the host can execute runs (the console), which is what offers the
+  // download, and whether it has an artifact service to download a tree from.
+  canExecute: false,
+  artifactService: true,
+}));
+// The delete control reads the worker context, which these tests do not stand
+// up. It is not what they are about.
+vi.mock("../../components/RunDeleteControl", () => ({
+  RunDeleteControl: () => null,
 }));
 vi.mock("../../data/galleryContext", () => ({
   useGalleryData: () => ({
@@ -45,7 +54,11 @@ vi.mock("../../data/galleryContext", () => ({
     },
     localIds: new Set<string>(),
     writeups: {},
-    canExecute: false,
+    canExecute: fixture.canExecute,
+    runArchiveUrl: (runId: string) =>
+      fixture.artifactService
+        ? `https://artifacts.test/runs/${runId}/archive.tar.gz`
+        : null,
   }),
 }));
 
@@ -209,6 +222,221 @@ describe("RunDetailLayout artifact presence", () => {
 
     expect(artifactsMissing).toBe(false);
     expect(container.querySelector("[data-artifacts-missing]")).toBeNull();
+  });
+});
+
+describe("RunDetailLayout reclaimed artifacts", () => {
+  async function renderReclaimed(published: boolean, reason: string) {
+    const seen: { missing: boolean; reclaimed: boolean }[] = [];
+    fixture.failure = null;
+    fixture.byId = null;
+    fixture.detail = {
+      record: record("end-to-end"),
+      reviews: [],
+      published,
+      artifactsStored: false,
+      artifactsReclaimed: { at: "2026-10-12T00:00:00Z", reason },
+    };
+    const view = render(
+      <MemoryRouter initialEntries={[`/runs/${RUN_ID}`]}>
+        <Routes>
+          <Route
+            path="/runs/:runId"
+            element={
+              <RunDetailLayout tab="verdict">
+                {(ctx) => {
+                  seen.push({
+                    missing: ctx.artifactsMissing,
+                    reclaimed: ctx.artifactsReclaimed,
+                  });
+                  return null;
+                }}
+              </RunDetailLayout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText("simple-2d");
+    return { ...view, ctx: seen.at(-1)! };
+  }
+
+  it("marks an unpublished reclaimed run as plainly unpublished, with the reason", async () => {
+    for (const reason of ["failed", "canceled"]) {
+      const { container, ctx, unmount } = await renderReclaimed(false, reason);
+
+      // Not a fault: no missing-artifacts mark, in the tag or for the tab body.
+      expect(ctx).toEqual({ missing: false, reclaimed: true });
+      expect(container.querySelector("[data-artifacts-missing]")).toBeNull();
+      const tag = container.querySelector("[data-artifacts-reclaimed='true']");
+      expect(tag).not.toBeNull();
+      expect(tag!.getAttribute("title")).toContain(
+        "artifacts were removed after the retention period",
+      );
+      unmount();
+    }
+  });
+
+  it("puts no mark at all on a published run whose tree was reclaimed", async () => {
+    const { container, ctx } = await renderReclaimed(true, "published");
+
+    expect(ctx).toEqual({ missing: false, reclaimed: false });
+    expect(container.querySelector("[data-artifacts-missing]")).toBeNull();
+    expect(container.querySelector("[data-artifacts-reclaimed]")).toBeNull();
+    expect(screen.queryByRole("img", { name: /Unpublished/ })).toBeNull();
+  });
+});
+
+describe("RunDetailLayout download", () => {
+  const TREE = `https://artifacts.test/runs/${RUN_ID}/archive.tar.gz`;
+
+  afterEach(() => {
+    fixture.canExecute = false;
+    fixture.artifactService = true;
+  });
+
+  // Render the console's page for a run in the given state and hand back its
+  // download link, or null when the page offers none.
+  async function download(state: {
+    published: boolean;
+    artifactsStored?: boolean | null;
+    reclaimed?: string;
+    sourceRepo?: string | null;
+    canExecute?: boolean;
+    artifactService?: boolean;
+  }) {
+    fixture.failure = null;
+    fixture.byId = null;
+    fixture.canExecute = state.canExecute ?? true;
+    fixture.artifactService = state.artifactService ?? true;
+    fixture.detail = {
+      record: {
+        ...record("end-to-end"),
+        links: { sourceRepo: state.sourceRepo ?? null, playableBuild: null },
+      },
+      reviews: [],
+      published: state.published,
+      artifactsStored: state.artifactsStored ?? null,
+      artifactsReclaimed: state.reclaimed
+        ? { at: "2026-10-12T00:00:00Z", reason: state.reclaimed }
+        : null,
+    };
+    const view = render(
+      <MemoryRouter initialEntries={[`/runs/${RUN_ID}`]}>
+        <Routes>
+          <Route
+            path="/runs/:runId"
+            element={
+              <RunDetailLayout tab="verdict">{() => null}</RunDetailLayout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText("simple-2d");
+    const link = view.container.querySelector("a[data-download]");
+    const found = link
+      ? {
+          kind: link.getAttribute("data-download"),
+          href: link.getAttribute("href"),
+        }
+      : null;
+    view.unmount();
+    return found;
+  }
+
+  it("downloads an unpublished run's stored tree, as before", async () => {
+    for (const artifactsStored of [true, null]) {
+      expect(await download({ published: false, artifactsStored })).toEqual({
+        kind: "tree",
+        href: TREE,
+      });
+    }
+  });
+
+  it("downloads a published run's source as a zip of the released branch", async () => {
+    // Whether or not the tree is still held: the release is what is offered.
+    for (const state of [
+      { artifactsStored: true },
+      { artifactsStored: false, reclaimed: "published" },
+      { artifactsStored: null },
+    ]) {
+      expect(
+        await download({
+          published: true,
+          sourceRepo: "https://github.com/clockwyrks/lattice-run-1",
+          ...state,
+        }),
+      ).toEqual({
+        kind: "archive",
+        href: "https://github.com/clockwyrks/lattice-run-1/archive/refs/heads/main.zip",
+      });
+    }
+  });
+
+  it("links a published run's repository page where no archive link can be built", async () => {
+    expect(
+      await download({
+        published: true,
+        artifactsStored: false,
+        reclaimed: "published",
+        sourceRepo: "https://git.example.org/team/lattice-run-1",
+      }),
+    ).toEqual({
+      kind: "page",
+      href: "https://git.example.org/team/lattice-run-1",
+    });
+  });
+
+  it("offers no download for an unpublished run whose tree was reclaimed", async () => {
+    for (const reclaimed of ["failed", "canceled"]) {
+      expect(
+        await download({ published: false, artifactsStored: false, reclaimed }),
+      ).toBeNull();
+    }
+  });
+
+  it("offers no download for a run whose tree is recorded as not stored", async () => {
+    expect(
+      await download({ published: false, artifactsStored: false }),
+    ).toBeNull();
+  });
+
+  it("offers a published run with no repository its tree unless the tree is known gone", async () => {
+    // Unknown presence is a run nothing has reported on, which is every run of
+    // a backend that has yet to reconcile; it is not a run with no tree.
+    for (const artifactsStored of [true, null]) {
+      expect(await download({ published: true, artifactsStored })).toEqual({
+        kind: "tree",
+        href: TREE,
+      });
+    }
+    for (const state of [
+      { artifactsStored: false },
+      { artifactsStored: false, reclaimed: "published" },
+    ]) {
+      expect(await download({ published: true, ...state })).toBeNull();
+    }
+  });
+
+  it("offers nothing on a host that cannot execute runs", async () => {
+    expect(
+      await download({
+        published: true,
+        canExecute: false,
+        sourceRepo: "https://github.com/clockwyrks/lattice-run-1",
+      }),
+    ).toBeNull();
+  });
+
+  it("offers an unpublished run nothing where there is no artifact service", async () => {
+    expect(
+      await download({
+        published: false,
+        artifactsStored: true,
+        artifactService: false,
+      }),
+    ).toBeNull();
   });
 });
 

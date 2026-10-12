@@ -198,6 +198,17 @@ pub async fn report_result(
             state.publisher.queue_refresh();
             crate::metrics::record_run_published(true);
         }
+        // The job was already recorded as failed, by the backend when its
+        // publisher went an hour without reporting. The failure is on record and
+        // was notified then; writing it again would move the instant the retry
+        // schedule and the publish hold order it by.
+        PublishState::Failed if job.state == "failed" => {
+            tracing::info!(
+                run.id = %job.run_id,
+                "a publisher reported a failure for a publish job already recorded as failed; \
+                 the record is left as it is"
+            );
+        }
         PublishState::Failed => {
             let detail = result.detail.as_deref().unwrap_or("publish failed");
             state
@@ -209,10 +220,27 @@ pub async fn report_result(
         }
     }
 
+    // A finished publish job is what begins and ends the hold publish failures
+    // put on new runs, so it is derived again now and a change announced at once.
+    super::publish_retry::refresh_publish_hold_best_effort(&state).await;
+
     // The terminal item closes every live subscriber's stream — pushed after the
     // durable write so a subscriber that reacts to it sees a consistent store.
     state.publish_relay.live(&id).finish(result);
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Close out a publish job the backend has just recorded as failed because its
+/// publisher never reported ([`crate::db::Db::fail_abandoned_publish_jobs`]): raise
+/// the `publish-failed` notification and end its live stream, as the publisher's
+/// own failed result would have.
+pub(super) async fn close_abandoned(state: &AppState, job: &publish_job::Model) {
+    let detail = job.detail.as_deref().unwrap_or("publish failed");
+    notify_publish_failed(state, &job.id, &job.run_id, detail).await;
+    state
+        .publish_relay
+        .live(&job.id)
+        .finish(terminal_from_row(job));
 }
 
 /// `POST /publish-jobs/{id}/verify-token` — confirm a presented per-job token

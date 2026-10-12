@@ -854,3 +854,19 @@ fn sandbox_managed_by_matches_the_value_the_driver_stamps() {
     // would match driver Job pods as well as sandboxes.
     assert_ne!(SANDBOX_MANAGED_BY, MANAGED_BY);
 }
+
+#[test]
+fn a_publisher_job_is_ended_before_the_backend_gives_up_on_it() {
+    // The backend records a publish job left `dispatched` for an hour as failed
+    // and enqueues another for the run. The publisher must be gone by then, or two
+    // publishers would release one run.
+    let job = build_publish_job(&publish_claim(), &config());
+    let deadline = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .active_deadline_seconds
+        .expect("a publisher Job carries a deadline");
+    assert_eq!(deadline, 45 * 60);
+    assert!(deadline < 60 * 60);
+}

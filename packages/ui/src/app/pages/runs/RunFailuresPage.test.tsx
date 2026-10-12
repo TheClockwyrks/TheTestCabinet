@@ -27,6 +27,7 @@ function failure(state: RunRecord["status"]["state"], detail: string) {
 
 const failures: (ReturnType<typeof failure> & {
   artifactsStored?: boolean | null;
+  artifactsReclaimed?: { at: string; reason: string } | null;
 })[] = [
   failure("harness_error", "run failed: gg harness exited nonzero (code 1)"),
   failure(
@@ -37,6 +38,13 @@ const failures: (ReturnType<typeof failure> & {
   {
     ...failure("catastrophic", "run failed: the build never loaded"),
     artifactsStored: false,
+  },
+  // A failure whose tree was removed after its retention: nothing to release
+  // either, and nothing wrong.
+  {
+    ...failure("timed_out", "run failed: the run hit its maximum runtime"),
+    artifactsStored: false,
+    artifactsReclaimed: { at: "2026-10-12T00:00:00Z", reason: "failed" },
   },
 ];
 
@@ -106,7 +114,24 @@ describe("RunFailuresPage", () => {
     expect(missing.textContent).toBe("No stored artifacts");
     expect(missing.getAttribute("title")).toContain("cannot be published");
     // The two failures whose trees are not known to be missing keep their
-    // Publish control; the third row has the marker in its place.
+    // Publish control; the other rows have a marker in its place.
     expect(screen.getAllByRole("button", { name: "Publish" })).toHaveLength(2);
+    // Exactly one row is the lost tree: the reclaimed one is not counted as it.
+    expect(screen.getAllByTestId("artifacts-missing")).toHaveLength(1);
+  });
+
+  it("says a reclaimed failure's artifacts were removed, without calling them missing", async () => {
+    render(
+      <MemoryRouter>
+        <RunFailuresPage />
+      </MemoryRouter>,
+    );
+
+    const removed = await screen.findByTestId("artifacts-reclaimed");
+    expect(removed.textContent).toBe("Artifacts removed");
+    expect(removed.getAttribute("title")).toContain(
+      "removed after the retention period",
+    );
+    expect(screen.getAllByTestId("artifacts-reclaimed")).toHaveLength(1);
   });
 });

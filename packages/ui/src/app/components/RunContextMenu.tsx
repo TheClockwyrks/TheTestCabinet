@@ -14,8 +14,8 @@ import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { useRunKill } from "../data/useRunKill";
 import { isPublishable, useRunPublish } from "../data/useRunPublish";
 import {
-  ARTIFACTS_NOT_STORED_LABEL,
-  artifactsNotStored,
+  artifactsReclaimed,
+  unpublishableArtifactsLabel,
 } from "../../client/artifactPresence";
 import {
   useConfirm,
@@ -353,17 +353,22 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
             </button>
           </>
         )}
-        {/* An unpublished run with no stored artifact tree: say why no publish
-            is offered, where the publish would have been. */}
-        {canPublish && !run.publishedAt && artifactsNotStored(run) && (
+        {/* An unpublished run with no stored artifact tree, or one whose tree
+            was removed after its retention: say why no publish is offered,
+            where the publish would have been. */}
+        {canPublish && !run.publishedAt && unpublishableArtifactsLabel(run) && (
           <>
             <div className={styles.separator} role="separator" />
             <div
               className={styles.note}
               role="note"
-              data-testid="artifacts-missing-note"
+              data-testid={
+                artifactsReclaimed(run)
+                  ? "artifacts-reclaimed-note"
+                  : "artifacts-missing-note"
+              }
             >
-              {ARTIFACTS_NOT_STORED_LABEL}
+              {unpublishableArtifactsLabel(run)}
             </div>
           </>
         )}

@@ -157,6 +157,12 @@ impl Batcher {
         &self.timing
     }
 
+    /// How many requests no release has carried yet.
+    #[cfg(test)]
+    pub(crate) fn pending(&self) -> u64 {
+        self.state().pending
+    }
+
     /// Count one refresh request. Returns at once; the loop releases it.
     pub fn request(&self) {
         {

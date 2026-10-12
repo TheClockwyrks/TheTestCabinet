@@ -14,6 +14,11 @@ import type { InProgressRun } from "./types";
 // is to say so plainly: queued runs that never start otherwise read as a broken
 // dispatcher.
 //
+// The backend also stops handing out runs while publishing is failing across
+// several runs. An unpublished run keeps its artifacts on the store, so runs that
+// cannot be published would fill it. That hold is reported through the same
+// status, under any state of the store, and reads as its own notice.
+//
 // The wording lives here, framework-free, so the notice and the held run's
 // tooltip state the same reason in the same words.
 
@@ -45,6 +50,12 @@ function waitingRuns(count: number): string {
 function withError(detail: string, error: string | undefined): string {
   const text = error?.trim();
   return text ? `${detail} Reported: ${text}` : detail;
+}
+
+/** "1 run" / "5 runs in a row", for the runs whose publishes are failing. */
+function failingRuns(count: number | undefined): string {
+  if (!count) return "Several runs in a row";
+  return count === 1 ? "1 run" : `${count} runs in a row`;
 }
 
 /** How many runs are waiting to store, as a sentence, or nothing when none are. */
@@ -130,6 +141,15 @@ export function storageNotice(
           "New runs are on hold: the artifact store is being checked after failed uploads",
         detail: withError(
           "No run is waiting to store its artifacts any longer. Queued runs start with the next passing write check, within seconds. Publishing is unaffected.",
+          status.detail,
+        ),
+      };
+    case "publish-failing":
+      return {
+        tone: "hold",
+        title: "New runs are on hold: publishing is failing",
+        detail: withError(
+          `${failingRuns(status.publishFailingRuns)} could not be published, and an unpublished run keeps its artifacts on the store. Publishing is retried automatically, and queued runs start once a publish succeeds.`,
           status.detail,
         ),
       };

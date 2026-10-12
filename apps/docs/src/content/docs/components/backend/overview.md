@@ -124,7 +124,11 @@ flight.
 
 A completed validator-rated run is published by the backend itself, with no
 operator action, as described under
-[automatic publishing](/components/core/results/#automatic-publishing).
+[automatic publishing](/components/core/results/#automatic-publishing). A
+publish job that fails is
+[retried by the backend](/components/core/results/#retrying-a-failed-publish),
+and failures across several runs
+[put new runs on hold](#publish-failures).
 When that Job reports a
 terminal success the backend marks the run published, regenerates the public
 snapshot from the full set of published runs, uploads it, and triggers a site
@@ -197,29 +201,207 @@ service](/components/artifacts/overview/), reaching the service over
 Deleting a run removes its row and then prunes its tree. The prune is
 best-effort, so the delete succeeds regardless of the data plane's health.
 
-A periodic sweep reclaims what a failed prune left, and anything else the volume
-holds with no run behind it. The tree of a run that still exists is never
-reclaimed, whatever the run's age or state, so the sweep frees space only as
-runs are deleted. Each pass lists the service's stored trees, keeps
-every tree whose id still has a run row, and deletes the rest once they are
-older than a grace window. The grace window covers the interval between a driver
-uploading a run's tree and reporting the run terminal.
+A periodic sweep reclaims every other tree the volume has no further use for.
+Each pass lists the service's stored trees and deletes a tree for exactly one
+of four reasons:
 
-`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` sets the pass interval and `0` disables the
-sweep. `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` sets the grace window.
+| Reason      | The tree's run                                                       | Deleted                                                          |
+| ----------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `orphan`    | Has no run row                                                       | Once the tree is older than the grace window                     |
+| `published` | Is published                                                         | Once a snapshot refresh has [confirmed its media](#confirmation) |
+| `failed`    | Is unpublished and ended in any state but `completed` and `canceled` | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` after the run ended       |
+| `canceled`  | Is unpublished and ended `canceled`                                  | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` after the run ended     |
 
-Every pass that lists the service's trees logs one `info` line, `artifact sweep
-pass complete`, with six counts: the trees `listed`, the `orphans` selected for
-deletion, the trees `reclaimed`, the deletes that `failed`, and the runs whose
-[artifact presence](#artifact-presence) the pass changed, `marked_stored` and
-`marked_not_stored`. A pass that changes nothing logs the same line with zero
-counts.
+Every other tree is kept. The tree of a completed run that is not published is
+the only copy of what a release publishes, so it is kept whatever its age. A
+tree is also kept while a job of its run is queued, running or storing, and
+while a publish job for its run is queued or dispatched.
 
-A pass acts only on a run-id set the backend read and found at least one run in.
-A query that fails and one that comes back empty both abandon the pass, which is
+A published run is governed by the `published` rule alone, whatever state it
+ended in. A failed run whose tree has been reclaimed can no longer be published,
+so a failure worth releasing is published inside the retention period.
+
+The two retentions run from the later of the run's end and the moment its tree
+was stored, which the service's listing reports. A run that waited in `storing`
+through an outage of the store longer than its retention therefore still keeps
+its tree for the whole period once the tree lands, instead of losing it to the
+next pass.
+
+The grace window covers the interval between a driver uploading a run's tree and
+reporting the run terminal. A canceled run's driver may still be uploading its
+partial tree for ten minutes after the cancel, so the canceled retention is at
+least fifteen minutes whatever the setting says. A tree that lands for a run
+already reclaimed is kept for the retention from when it landed and then deleted
+by the pass that follows, and the run's record of its first reclaim is left as
+it was written.
+
+### Confirmation
+
+A published run's tree is the snapshot refresh's fallback source for media that
+is not yet in the bucket, so it is deleted only once nothing can need it. A
+refresh confirms a run when it uploaded successfully and every media file of the
+run is in the bucket under the key the run's document references: the object
+was listed there before the refresh, or the refresh uploaded it. The
+confirmation is recorded on the run with the refresh's time and the bucket it
+was made against.
+
+The files of a run are the ones its record lists and the ones only its tree can
+name. Two file sets are on no record: the image store a run's recordings share,
+and showcase files that neither the carousel nor the description mentions. For
+each run it has yet to confirm, the refresh asks the artifact service which
+validation and showcase files the run's tree holds
+([`GET /runs/{id}/media`](/components/artifacts/overview/#routes)), publishes
+those files from the tree when the backend store does not hold them, and
+requires each one in the bucket. A run whose tree the service could not list is
+left unconfirmed, as is one whose files in the backend store could not be
+listed: the refresh then cannot know that it has seen every file.
+
+A run is left unconfirmed, and its tree kept, when any of its files could not be
+published because its bytes could not be read from the backend store or the
+artifact service. A video that could not be transcoded is published as recorded
+and leaves its run unconfirmed as well, since the next refresh reads the source
+again to transcode it. The same holds for a code-analysis document the backend
+store no longer holds. A refresh that finds a confirmed run unconfirmed
+withdraws the confirmation.
+
+One case does not count against a run. When the service holds the run's tree and
+answers `404` for a file the record lists, the file was never produced: a
+description that references an image the model did not write, or a frame whose
+preview was not rendered. Keeping the tree could never supply it, so the file is
+left out of the run's document as before and the run can still be confirmed. A
+file the service could not be asked about, an answer other than `404`, and a
+tree that is not there all leave the run unconfirmed.
+
+A confirmation holds for the bucket it was made against and for the record it
+was made from:
+
+- The sweep deletes a published run's tree only when the run's confirmation
+  names the bucket this backend is configured with, by its endpoint and bucket
+  name. A database restored into another environment, or a backend pointed at
+  another bucket, therefore deletes nothing on the strength of a confirmation
+  made elsewhere, and its first refresh evaluates every run against its own
+  bucket.
+- Storing a run's record again clears its confirmation, so a run pushed again
+  must be confirmed again before its tree qualifies. It also clears a reclaim
+  record, since the push follows a driver that has uploaded the run's tree
+  again.
+- A refresh confirms a run only if the run has not changed since the refresh
+  read it. A run that changed in between is left as it was, and the refresh
+  requests another to evaluate it.
+
+Once a run is confirmed in this bucket and its tree is reclaimed, nothing about
+it is left to decide. Later refreshes ask the artifact service nothing about it,
+leave out a file its record lists that the bucket lacks, as the refresh that
+confirmed it did, and do not change its confirmation.
+
+A refresh learns what the bucket holds by listing its `media/` prefix. A refresh
+that cannot list it fails, and the batching retries it. It does not fall back to
+building every run's media from its source, because the source of a confirmed
+run's media is the tree this sweep deleted: a snapshot built that way would
+publish those runs with their media left out.
+
+Each refresh logs one `warn` line per unconfirmed run, `published run media
+not confirmed in the bucket`, with the run id and the files, and its completion
+line carries the counts `runs_confirmed` and `runs_unconfirmed`. The number of
+unconfirmed runs of the latest refresh is the
+`tcab.artifacts.unconfirmed_runs` gauge. A run whose tree was reclaimed, which
+is not confirmed in the configured bucket and whose media that bucket lacks, has
+no source left. A refresh that finds any logs one `error` line with their
+number, which is what a backend pointed at another bucket than the one its runs
+were confirmed in looks like.
+
+Confirmations are recorded only by a backend whose sweep deletes published
+trees: one with a bucket, an artifact service and a service token, the sweep on
+and `TCAB_ARTIFACT_RECLAIM_PUBLISHED` on. Any other backend records none and
+asks the artifact service for no listing.
+
+Every refresh evaluates every published run it has yet to settle, so a publish
+confirms the runs before it as well. A backend that records confirmations and
+starts beside at least one published run no refresh has evaluated against its
+bucket requests one refresh, which goes through the
+[batching](#refresh-batching) like any other request. This is what confirms the
+runs published before the backend recorded confirmations, with no publish needed
+to prompt it. A refresh records every run it evaluated, confirmed or not, so the
+request is made once: a later start finds no run left to evaluate and requests
+nothing.
+
+### Guards
+
+A pass acts only on a run set the backend read and found at least one run in. A
+query that fails and one that comes back empty both abandon the pass, which is
 retried at the next interval, so a database fault or a backend brought up
 against a fresh database beside a populated volume leaves the volume intact. A
 failing tree listing abandons the pass the same way.
+
+A run's end time, its tree's storing time and its confirmation time qualify it
+only when they parse and lie in the past. The backend compares them itself, so
+SQLite and PostgreSQL decide alike. Immediately before each delete the backend
+reads the run again, with its jobs and publish jobs, and skips the tree if the
+run no longer qualifies. It reads the run's jobs once more after it has recorded
+the reclaim, and takes the record back if a publish job appeared in between, so
+a publish enqueued in that instant keeps its tree.
+
+### What a reclaim records
+
+The backend records on the run that its tree was reclaimed, when, and for which
+of the three run reasons, before it asks the service to delete the tree. The
+record is distinct from a tree that was [not stored](#artifact-presence): a
+reclaimed run is one whose tree the backend removed on purpose.
+
+A delete the service refuses with an error status left the tree in place, so the
+record is taken back and the next pass tries again. A delete that gets no
+answer is different: the service carries a delete through once it has started
+one, so the tree may be gone although the backend never heard so. The record is
+kept. If the tree is still listed at the next pass, the pass deletes it again
+and leaves the record as it was; if it is not, the record already says what
+happened. Either way the run never reads as one whose tree was lost. The sweep
+gives a delete two minutes to answer.
+
+### Settings and logging
+
+| Variable                                 | Meaning                                                                    | Default |
+| ---------------------------------------- | -------------------------------------------------------------------------- | ------- |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`   | Time between passes; `0` disables the sweep                                | `10`    |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`     | The same in hours, used only while the minutes setting is unset            | —       |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`        | The grace window of the `orphan` rule                                      | `24`    |
+| `TCAB_ARTIFACT_FAILED_RETENTION_HOURS`   | The `failed` rule's retention; `0` keeps every failed run's tree           | `24`    |
+| `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` | The `canceled` rule's retention; `0` keeps every canceled run's tree       | `1`     |
+| `TCAB_ARTIFACT_RECLAIM_PUBLISHED`        | Whether the `published` rule applies; `false` keeps every published tree   | `true`  |
+
+The interval runs from the end of one pass to the start of the next, and one
+task runs every pass, so two passes never overlap. The first pass runs one
+minute after the backend starts.
+
+The interval and retention settings and the switch are read strictly: a value
+that is not a whole number, or a switch that is neither on (`1`, `true`, `yes`,
+`on`) nor off (`0`, `false`, `no`, `off`), stops the backend at startup with an
+error naming the variable. A misspelled "off" therefore never leaves a deletion
+on. The hours setting is the older one, and is held to that only while it
+decides the interval: with the minutes setting present its value is not used,
+and a value there that does not read is ignored with a warning instead of
+stopping the start.
+
+`TCAB_ARTIFACT_RECLAIM_PUBLISHED=false` is also the setting for a deployment
+that publishes a published run again, to repair its Pages deployment or its
+source repository: a release is built from the tree, so a published run can be
+published again only while its tree is stored.
+
+Each deleted tree logs one `info` line, `reclaimed a run tree from the artifact
+service`, with the run id and the reason. The artifact service does not report a
+tree's size, so the space is reported for the pass: the backend reads the
+volume's free space before and after a pass that deleted anything and logs the
+difference as `freed_bytes`.
+
+Every pass that lists the service's trees logs one `info` line, `artifact sweep
+pass complete`, with the trees `listed`, the trees `reclaimed` and the deletes
+that `failed`, the `orphans` the pass selected, the reclaimed trees of runs by
+reason (`reclaimed_published`, `reclaimed_failed`, `reclaimed_canceled`), the
+trees a re-read `skipped`, the published runs with a stored tree still
+`unconfirmed`, `freed_bytes`, and the runs whose
+[artifact presence](#artifact-presence) the pass changed, `marked_stored` and
+`marked_not_stored`. A pass that changes nothing logs the same line with zero
+counts. Reclaimed trees are also counted by the
+`tcab.artifacts.reclaimed_trees` counter, by reason.
 
 An abandoned pass logs one `warn` line in place of the `info` one, `artifact
 sweep pass abandoned`, with the `reason` (`no_runs`, `runs_unreadable` or
@@ -245,6 +427,13 @@ Three sources write it:
   reason an empty run-id set sweeps nothing.
 - The publish gate below, which records the answer it was given.
 
+A run whose tree the backend [reclaimed](#what-a-reclaim-records) is recorded as
+not stored together with the reclaim, and none of the three sources writes its
+presence again. Everything that reads "not stored" as a lost tree reads the
+reclaim first: the lists and counts of runs with no stored tree leave a
+reclaimed run out, the reconciliation leaves it as it is, and the
+[capacity hold](#evidence-from-uploads) takes no evidence from it.
+
 Every publish passes one gate before a publish job is enqueued, whichever of the
 three paths asked for it: [automatic
 publishing](/components/core/results/#automatic-publishing), an operator's
@@ -261,6 +450,13 @@ with the service token, and acts on the answer:
 | No artifact service configured | Enqueues                                      | Enqueues              | Enqueues                       |
 
 A run whose release is already under way keeps its job and is not asked about.
+A run whose tree was reclaimed is not asked about either: automatic publishing
+passes it over for good, an operator's publish is refused with `409`, and a
+comparison publish skips it. The reason given says which reclaim it was: a
+failed or canceled run's artifacts were removed after the retention period, and
+a published run's tree was removed once its release was confirmed in the
+bucket. The reclaim record is read again as the publish job is written, so a
+publish that raced the sweep is answered the same way and records no job.
 Automatic publishing logs each run it passes over, at `warn`, with the run id
 and which of the two answers it got. A status report whose driver could not
 store the run's tree is logged at `warn` as it is accepted.
@@ -319,6 +515,7 @@ reported reason:
 | `unwritable`          | The state is `unwritable`                                                                         |
 | `uploads-waiting`     | A run in flight is [waiting to store its tree](/components/driver/overview/#waiting-on-the-store) |
 | `write-check-pending` | An upload failed while the store read as faulty, and no passing reading has arrived since         |
+| `publish-failing`     | [Publishes are failing](#publish-failures) across several runs                                    |
 | `proving-store`       | An upload failed while the store read as healthy, and no tree has landed since                    |
 
 While runs are on hold,
@@ -368,7 +565,8 @@ store taking a whole upload.
 
 This memory is the backend process's own. When the backend starts, it reads the
 most recently finished run's recorded
-[artifact presence](#artifact-presence). If that run's tree was not stored, the
+[artifact presence](#artifact-presence), passing over a run whose tree was
+reclaimed. If that run's tree was not stored, the
 backend starts in `proving-store`, so a restart during a store fault does not
 reopen the whole queue. That recorded presence does not say why the tree was
 not stored, so a backend can start in `proving-store` after a tree the store
@@ -413,6 +611,58 @@ The three readings apply only to a state the backend has announced. A single
 missed poll that only [paused the claim](#an-unreadable-store) ends with the
 next reading, and so does the `unavailable` state the backend starts in.
 
+### Publish failures
+
+An unpublished completed run [keeps its tree](#artifact-reclamation) until it is
+published, so a release path that has stopped working fills the store with every
+run that finishes. The backend therefore also holds new runs while publishing is
+failing, with the reason `publish-failing`.
+
+The hold is on while the most recent finished publish jobs are failures of
+`TCAB_PUBLISH_FAILURE_HOLD_RUNS` different runs, five by default, with no
+succeeded publish job among them. `0` turns the hold off. The rule reads the
+publish job table alone:
+
+- Jobs are ordered by when they finished, and only the failures after the latest
+  succeeded job count.
+- Runs are counted, not jobs, so one run that fails on every retry counts once.
+- A failure counts while its run can still be released: the run exists, is
+  unpublished, its tree is neither reclaimed nor recorded as not stored, it is
+  not an attempt an automatic retry replaced, and it still passes the
+  [publish gate](/components/core/results/#publishing) for its state and
+  reviews. A run that has stopped being publishable is therefore neither counted
+  nor published by the backend.
+- A publish refused at the [gate](#artifact-presence) records no publish job and
+  counts for nothing.
+
+While the hold is on the run claim hands out nothing and every waiting run reads
+`pending`, as under the other reasons. Runs in flight finish and store their
+trees, and the publish queue is claimed as usual. The hold applies with or
+without an artifact service configured, and it is reported under whichever
+state the store is in.
+
+The first publish job that succeeds ends the hold, whichever run it releases and
+whether the backend or an operator enqueued it. The hold also ends when fewer
+than the threshold's runs are left to count, which happens when a failing run
+is deleted, loses its tree or stops being publishable; the release path may
+still be failing then, and the log line for the end of the hold does not claim
+otherwise. The backend reads the hold from the table at every run claim, every
+publish result and every status request, so a restart changes nothing and there
+is nothing to reset. A run claim decides on the reading it has just taken.
+
+While the hold is on the backend keeps publishing, so that a recovery is found
+without an operator. The
+[retry of failed publishes](/components/core/results/#retrying-a-failed-publish)
+runs as usual. Whenever no publish job is in flight and none has finished for
+the probe interval, the backend also enqueues one for the failed run whose
+latest attempt is oldest, whatever that run's wait and however long ago it first
+failed. A probe that fails makes its run the most recently attempted, so the
+next probe takes another run: the probes go round every failed run in turn, and
+one run that cannot be published for a reason of its own does not keep the
+others from being tried. The probe interval is five minutes when the hold begins
+and doubles with each further failure, up to thirty minutes. A run the gate
+refuses is passed over for the next.
+
 ### Thresholds
 
 The byte states move with hysteresis. `low` returns to `ok`, and `blocked`
@@ -431,19 +681,22 @@ the stop threshold can still admit a run the reserve has to absorb.
 Each change of the state, the hold, its reason, the number of waiting runs or
 the reported error logs one line. Entering a hold logs at `error` for `blocked`,
 `unwritable` and `unavailable`, and at `warn` for the three reasons that come
-from uploads. Entering `low` logs at `warn`, and a change that leaves the queue
-open at `ok` logs at `info`. Every line carries the hold's reason, the number of
-runs waiting to store, and the error text of the condition: the failed poll's
-error, the write check's error, or the latest reason a driver reported. The
-first reading the backend takes when it starts is logged the same way, so a
+from uploads and for `publish-failing`, whose line carries the number of failing
+runs and the latest publish error. The end of a `publish-failing` hold logs at
+`info`, as publish failures no longer holding new runs, whether or not another
+reason still holds them. Entering `low` logs at `warn`, and a change that leaves
+the queue open at `ok` logs at `info`. Every line carries the hold's reason, the
+number of runs waiting to store, and the error text of the condition: the failed
+poll's error, the write check's error, or the latest reason a driver reported.
+The first reading the backend takes when it starts is logged the same way, so a
 backend that starts beside a store it cannot read says so.
 
 The free space of each reading is the `tcab.artifacts.free_bytes` gauge, beside
 `tcab.artifacts.total_bytes`.
 [`GET /artifacts/capacity`](/components/backend/api/#get-artifactscapacity)
 reports the state, and the [console stream](/components/backend/api/#the-console-stream)
-carries each change. Nothing is deleted to make room: space returns as runs are
-deleted and the [reclamation sweep](#artifact-reclamation) runs.
+carries each change. The hold deletes nothing to make room: space returns as
+runs are deleted and the [reclamation sweep](#artifact-reclamation) runs.
 
 ### A driver lost while it waits
 
@@ -544,38 +797,43 @@ The backend is configured entirely through environment variables.
 variables omitted the backend still ingests, records reviews and publishes, and
 regenerates the snapshot, skipping the upload and the rebuild.
 
-| Variable                              | Purpose                                                                                                                                                                                                                                                                                                        | Default                                   |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `TCAB_BACKEND_CHECKOUT`               | The repository checkout ingest scans. Required.                                                                                                                                                                                                                                                                | —                                         |
-| `TCAB_BACKEND_BIND`                   | Bind address.                                                                                                                                                                                                                                                                                                  | `127.0.0.1:8787`                          |
-| `TCAB_BACKEND_DATABASE_URL`           | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                                                                                                              | `sqlite://./tcab-backend.sqlite?mode=rwc` |
-| `TCAB_BACKEND_DB_AZURE_AD`            | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                                                                                                                      | `false`                                   |
-| `TCAB_BACKEND_STORE`                  | The on-disk definition store.                                                                                                                                                                                                                                                                                  | `./tcab-store`                            |
-| `TCAB_BACKEND_AUTH_URL`               | The auth service bearer tokens are verified against.                                                                                                                                                                                                                                                           | `http://127.0.0.1:8789`                   |
-| `TCAB_BACKEND_SERVICE_TOKEN`          | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                                                                                                              | —                                         |
-| `TCAB_BACKEND_ALLOW_EXPERIMENTAL`     | Offer experimental case versions to the UI.                                                                                                                                                                                                                                                                    | `false`                                   |
-| `TCAB_ENV`                            | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                                                                                                                | `local`                                   |
-| `TCAB_SNAPSHOT_COALESCE_MS`           | Quiet window: a pending [refresh batch](#refresh-batching) is released once no request has arrived for this long.                                                                                                                                                                                              | `120000`                                  |
-| `TCAB_SNAPSHOT_BATCH_SIZE`            | Pending refresh requests that release a batch without waiting for the quiet window.                                                                                                                                                                                                                            | `20`                                      |
-| `TCAB_SNAPSHOT_MIN_INTERVAL_MS`       | Minimum time between two batch releases; `0` removes the hold.                                                                                                                                                                                                                                                 | `600000`                                  |
-| `TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS`    | How long one refresh may run before it is abandoned as failed; `0` removes the bound.                                                                                                                                                                                                                          | `1800000`                                 |
-| `TCAB_SNAPSHOT_RETENTION_HOURS`       | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                                                                                                                         | `24`                                      |
-| `TCAB_R2_*`                           | Credentials and bucket the snapshot is uploaded to.                                                                                                                                                                                                                                                            | —                                         |
-| `TCAB_SITE_DEPLOY_HOOK_URL`           | The site deploy hook fired after each upload.                                                                                                                                                                                                                                                                  | —                                         |
-| `TCAB_OPENROUTER_API_KEY`             | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`.                                                                                             | —                                         |
-| `TCAB_REFERENCE_BROWSER`              | Headless browser used to render references at ingest.                                                                                                                                                                                                                                                          | image Chromium                            |
-| `TCAB_GG_REFERENCE`                   | Directory holding gg's projected reference documents. The deployed image bakes them at `/opt/gg-reference`, projected by the same gg build the driver ships.                                                                                                                                                   | `<checkout>/target/gg-reference`          |
-| `TCAB_ARTIFACTS_PUBLIC_URL`           | Artifact service base URL, advertised to the web console.                                                                                                                                                                                                                                                      | —                                         |
-| `TCAB_ARTIFACTS_URL`                  | Artifact service base URL the backend itself calls to prune and sweep run trees, to check a run's tree before a publish and to read the store's free space and write check. Unset disables the prune, the sweep, the publish gate's tree check, the capacity hold, and the snapshot's artifact media fallback. | —                                         |
-| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`  | Interval between reclamation sweeps; `0` disables the sweep.                                                                                                                                                                                                                                                   | `6`                                       |
-| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`     | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                                                                                                                     | `24`                                      |
-| `TCAB_ARTIFACT_FREE_WARN_MB`          | Free space on the artifact store, in MiB, under which [artifact capacity](#artifact-capacity) is `low`. At least the stop threshold.                                                                                                                                                                           | `3072`                                    |
-| `TCAB_ARTIFACT_FREE_STOP_MB`          | Free space, in MiB, under which new runs are put on hold.                                                                                                                                                                                                                                                      | `2048`                                    |
-| `TCAB_ARTIFACT_FREE_RECOVER_MB`       | Free space, in MiB, a reading must exceed a crossed threshold by before the state recovers.                                                                                                                                                                                                                    | `256`                                     |
-| `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS` | Interval between capacity readings. At least `1`.                                                                                                                                                                                                                                                              | `10`                                      |
-| `TCAB_ARENA_PUBLIC_URL`               | Arena service base URL, advertised to the web console.                                                                                                                                                                                                                                                         | —                                         |
-| `TCAB_GRAFANA_PUBLIC_URL`             | Grafana base URL, advertised to the web console.                                                                                                                                                                                                                                                               | —                                         |
-| `TCAB_SNAPSHOT_PUBLIC_URL`            | Public read base URL of the snapshot bucket, advertised to the web console.                                                                                                                                                                                                                                    | —                                         |
+| Variable                                 | Purpose                                                                                                                                                                                                                                                                                                        | Default                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `TCAB_BACKEND_CHECKOUT`                  | The repository checkout ingest scans. Required.                                                                                                                                                                                                                                                                | —                                         |
+| `TCAB_BACKEND_BIND`                      | Bind address.                                                                                                                                                                                                                                                                                                  | `127.0.0.1:8787`                          |
+| `TCAB_BACKEND_DATABASE_URL`              | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                                                                                                              | `sqlite://./tcab-backend.sqlite?mode=rwc` |
+| `TCAB_BACKEND_DB_AZURE_AD`               | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                                                                                                                      | `false`                                   |
+| `TCAB_BACKEND_STORE`                     | The on-disk definition store.                                                                                                                                                                                                                                                                                  | `./tcab-store`                            |
+| `TCAB_BACKEND_AUTH_URL`                  | The auth service bearer tokens are verified against.                                                                                                                                                                                                                                                           | `http://127.0.0.1:8789`                   |
+| `TCAB_BACKEND_SERVICE_TOKEN`             | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                                                                                                              | —                                         |
+| `TCAB_BACKEND_ALLOW_EXPERIMENTAL`        | Offer experimental case versions to the UI.                                                                                                                                                                                                                                                                    | `false`                                   |
+| `TCAB_ENV`                               | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                                                                                                                | `local`                                   |
+| `TCAB_SNAPSHOT_COALESCE_MS`              | Quiet window: a pending [refresh batch](#refresh-batching) is released once no request has arrived for this long.                                                                                                                                                                                              | `120000`                                  |
+| `TCAB_SNAPSHOT_BATCH_SIZE`               | Pending refresh requests that release a batch without waiting for the quiet window.                                                                                                                                                                                                                            | `20`                                      |
+| `TCAB_SNAPSHOT_MIN_INTERVAL_MS`          | Minimum time between two batch releases; `0` removes the hold.                                                                                                                                                                                                                                                 | `600000`                                  |
+| `TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS`       | How long one refresh may run before it is abandoned as failed; `0` removes the bound.                                                                                                                                                                                                                          | `1800000`                                 |
+| `TCAB_SNAPSHOT_RETENTION_HOURS`          | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                                                                                                                         | `24`                                      |
+| `TCAB_R2_*`                              | Credentials and bucket the snapshot is uploaded to.                                                                                                                                                                                                                                                            | —                                         |
+| `TCAB_SITE_DEPLOY_HOOK_URL`              | The site deploy hook fired after each upload.                                                                                                                                                                                                                                                                  | —                                         |
+| `TCAB_OPENROUTER_API_KEY`                | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`.                                                                                             | —                                         |
+| `TCAB_REFERENCE_BROWSER`                 | Headless browser used to render references at ingest.                                                                                                                                                                                                                                                          | image Chromium                            |
+| `TCAB_GG_REFERENCE`                      | Directory holding gg's projected reference documents. The deployed image bakes them at `/opt/gg-reference`, projected by the same gg build the driver ships.                                                                                                                                                   | `<checkout>/target/gg-reference`          |
+| `TCAB_ARTIFACTS_PUBLIC_URL`              | Artifact service base URL, advertised to the web console.                                                                                                                                                                                                                                                      | —                                         |
+| `TCAB_ARTIFACTS_URL`                     | Artifact service base URL the backend itself calls to prune and sweep run trees, to check a run's tree before a publish and to read the store's free space and write check. Unset disables the prune, the sweep, the publish gate's tree check, the capacity hold, and the snapshot's artifact media fallback. | —                                         |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`   | Minutes between [reclamation sweeps](#settings-and-logging); `0` disables the sweep.                                                                                                                                                                                                                           | `10`                                      |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`     | The sweep interval in hours, read only while the minutes setting is unset; `0` disables the sweep.                                                                                                                                                                                                             | —                                         |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`        | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                                                                                                                     | `24`                                      |
+| `TCAB_ARTIFACT_FAILED_RETENTION_HOURS`   | How long after a failed run ended a sweep deletes its tree; `0` keeps it.                                                                                                                                                                                                                                      | `24`                                      |
+| `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` | How long after a canceled run ended a sweep deletes its tree; `0` keeps it.                                                                                                                                                                                                                                    | `1`                                       |
+| `TCAB_ARTIFACT_RECLAIM_PUBLISHED`        | Whether a sweep deletes a published run's tree once its media is confirmed in the bucket.                                                                                                                                                                                                                      | `true`                                    |
+| `TCAB_ARTIFACT_FREE_WARN_MB`             | Free space on the artifact store, in MiB, under which [artifact capacity](#artifact-capacity) is `low`. At least the stop threshold.                                                                                                                                                                           | `3072`                                    |
+| `TCAB_ARTIFACT_FREE_STOP_MB`             | Free space, in MiB, under which new runs are put on hold.                                                                                                                                                                                                                                                      | `2048`                                    |
+| `TCAB_ARTIFACT_FREE_RECOVER_MB`          | Free space, in MiB, a reading must exceed a crossed threshold by before the state recovers.                                                                                                                                                                                                                    | `256`                                     |
+| `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`    | Interval between capacity readings. At least `1`.                                                                                                                                                                                                                                                              | `10`                                      |
+| `TCAB_PUBLISH_FAILURE_HOLD_RUNS`         | How many different runs must fail to publish in a row before [new runs are put on hold](#publish-failures); `0` turns the hold off.                                                                                                                                                                            | `5`                                       |
+| `TCAB_ARENA_PUBLIC_URL`                  | Arena service base URL, advertised to the web console.                                                                                                                                                                                                                                                         | —                                         |
+| `TCAB_GRAFANA_PUBLIC_URL`                | Grafana base URL, advertised to the web console.                                                                                                                                                                                                                                                               | —                                         |
+| `TCAB_SNAPSHOT_PUBLIC_URL`               | Public read base URL of the snapshot bucket, advertised to the web console.                                                                                                                                                                                                                                    | —                                         |
 
 The backend binds `8787`, the [auth service](/components/auth/overview/) `8789`,
 the [artifact service](/components/artifacts/overview/) `8790`, and the

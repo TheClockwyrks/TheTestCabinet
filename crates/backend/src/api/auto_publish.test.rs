@@ -187,10 +187,12 @@ async fn an_already_published_run_is_not_published_again() {
     assert!(publish_jobs(&state).await.is_empty());
 }
 
-/// One automatic attempt per run: a publish that failed is left for a person, so
-/// neither a repeated report nor anything else enqueues it again.
+/// The triggers enqueue a run's first publish job and no other: a publish that
+/// failed is left to the retry of failed publishes (`publish_retry.rs`), which
+/// spaces its attempts, so a repeated report or a launch pass does not enqueue it
+/// again.
 #[tokio::test]
-async fn a_failed_publish_is_not_retried_automatically() {
+async fn a_failed_publish_is_not_enqueued_again_by_a_trigger() {
     let (_dir, state) = test_state().await;
     launch_and_report(&state, "j", "pong", None, run_of("run-j", "pong", GREAT)).await;
     let job = publish_jobs(&state).await.remove(0);

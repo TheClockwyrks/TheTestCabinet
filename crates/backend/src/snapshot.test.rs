@@ -37,7 +37,7 @@ fn run_document<'a>(snapshot: &'a Snapshot, run_id: &str) -> &'a SnapshotObject 
 }
 
 /// The parsed per-run document for `run_id`.
-fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
+pub(super) fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
     serde_json::from_slice(&run_document(snapshot, run_id).bytes)
         .expect("the run document is valid JSON")
 }
@@ -55,13 +55,13 @@ fn runs_index(snapshot: &Snapshot) -> serde_json::Value {
 
 /// An empty definition store rooted at a fresh temp dir. The `TempDir` is
 /// returned so the caller keeps it alive for the test's duration.
-fn empty_store() -> (TempDir, DefinitionStore) {
+pub(super) fn empty_store() -> (TempDir, DefinitionStore) {
     let dir = TempDir::new().expect("temp dir");
     let store = DefinitionStore::open(dir.path()).expect("open store");
     (dir, store)
 }
 
-fn stored_run(id: &str, published_at: &str) -> StoredRun {
+pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
     StoredRun {
         record: RunRecord {
             id: id.to_string(),
@@ -137,6 +137,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
         },
         published: true,
         artifacts_stored: None,
+        artifacts_reclaimed: None,
         published_at: Some(published_at.to_string()),
         events_json: None,
     }
@@ -163,7 +164,7 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
     run
 }
 
-fn manifest() -> StoredManifest {
+pub(super) fn manifest() -> StoredManifest {
     StoredManifest {
         toolchain: None,
         engine_format: false,
@@ -247,7 +248,7 @@ fn manifest() -> StoredManifest {
     }
 }
 
-fn now() -> OffsetDateTime {
+pub(super) fn now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(1_718_660_880).unwrap()
 }
 
@@ -1372,14 +1373,14 @@ async fn snapshot_id_changes_with_the_run_set() {
 /// A stored run carrying the given proof results (end-to-end). The recorded proofs
 /// are what the builder enumerates from — the store/artifact-service only supply the
 /// bytes.
-fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
+pub(super) fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.proofs = proofs;
     run
 }
 
 /// A proof result the agent did (or did not) produce at `dest`.
-fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
+pub(super) fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
     ProofResult {
         id: id.into(),
         name: id.into(),
@@ -1394,7 +1395,9 @@ fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
 /// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path and `404`
 /// otherwise, recording every path it is asked for so a test can assert the store
 /// fast-path skipped it. Returns its base URL and that request log.
-async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
+pub(super) async fn stub_artifacts(
+    files: HashMap<String, Vec<u8>>,
+) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     let seen = Arc::new(Mutex::new(Vec::new()));

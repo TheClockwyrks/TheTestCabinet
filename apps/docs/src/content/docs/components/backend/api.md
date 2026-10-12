@@ -109,13 +109,20 @@ The backend's current reading of the artifact store's
   `unmonitored`.
 - `runsOnHold` says whether the run queue is being held.
 - `holdReason` is present while it is: `unreadable`, `low-space`, `unwritable`,
-  `uploads-waiting`, `write-check-pending` or `proving-store`. Under
-  `proving-store` the queue hands out one run at a time rather than none; see
-  [the hold](/components/backend/overview/#the-hold).
+  `uploads-waiting`, `write-check-pending`, `publish-failing` or
+  `proving-store`. Under `proving-store` the queue hands out one run at a time
+  rather than none; see [the hold](/components/backend/overview/#the-hold).
+  `publish-failing` is reported under any `state`, `unmonitored` included.
 - `runsWaitingToStore` is the number of jobs in the `storing` state.
 - `detail` is the error text behind the hold when there is one: the failed
-  poll's error, the write check's error, or the reason the latest failed upload
+  poll's error, the write check's error, the reason the latest failed upload
+  reported, or under `publish-failing` the reason the latest failed publish job
   reported. A change of `detail` alone is announced on the console stream.
+- `publishFailingRuns` is present while
+  [publish failures](/components/backend/overview/#publish-failures) call for a
+  hold, under whichever reason is reported: the number of different runs whose
+  publishes have failed since a publish last succeeded. The request reads the
+  publish job table, so the answer is current.
 - `freeBytes`, `totalBytes` and `writable` are the latest reading and are absent
   until one has arrived.
 - The two thresholds are always present.
@@ -596,11 +603,15 @@ completed validator-rated run is admitted with or without a review, since its
 functional rating and score are on the record. A publishable failure needs no
 review, since it has no review checklist.
 
-A run that passes the gate is then checked for its
-[stored artifact tree](/components/backend/overview/#artifact-presence), which
-is what a release publishes. A run with no stored tree is refused with `409`,
-and the message says the tree is not stored. When the artifact service gives no
-answer the request is refused with `503` and can be repeated.
+A run that passes the gate is then checked for its [stored artifact
+tree](/components/backend/overview/#artifact-presence), which is what a release
+publishes. A run with no stored tree is refused with `409`, and the message says
+the tree is not stored. A run whose tree was reclaimed is refused with `409` as
+well. For a failed or canceled run the message says its artifacts were removed
+after the retention period, and for a published run it says the tree was removed
+once the release was confirmed, which is why a published run cannot be published
+again after that. When the artifact service gives no answer the request is
+refused with `503` and can be repeated.
 
 ```jsonc
 { "publishJobId": "clx…", "liveUrl": "/publish-jobs/clx…/live" }
@@ -719,7 +730,11 @@ launched, leaves no record, so it is listed by no selector.
   [artifact tree is recorded as not stored](/components/backend/overview/#artifact-presence).
   It is a property of the page rather than of the card, so the summary shape
   the snapshot ships is unchanged. Every console response that returns summary
-  cards carries the same list, `GET /account/reviews` among them.
+  cards carries the same list, `GET /account/reviews` among them. A run whose
+  tree the backend
+  [reclaimed](/components/backend/overview/#what-a-reclaim-records) is left out
+  of it and named in `artifactsReclaimed`, a second list of ids beside the
+  first.
 
 #### Two pagination modes
 
@@ -787,11 +802,12 @@ The offset mode additionally accepts:
 
 ### `GET /runs/{id}`
 
-One stored run, as `{ record, reviews, published, artifactsStored, links,
-rating, aesthetic, validatorRated, score }`: its record with links populated,
-the array of reviews it carries with each reviewer's identity, whether it is
-published, whether its artifact tree is stored, its links, and the run's ratings
-and score. Each review carries the `ratings` or the
+One stored run, as `{ record, reviews, published, artifactsStored,
+artifactsReclaimed, links, rating, aesthetic, validatorRated, score }`: its
+record with links populated, the array of reviews it carries with each
+reviewer's identity, whether it is published, whether its artifact tree is
+stored, whether that tree was reclaimed, its links, and the run's ratings and
+score. Each review carries the `ratings` or the
 run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
 shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
 
@@ -803,6 +819,12 @@ cannot read answers `404` here and is reached through [`GET
   [artifact presence](/components/backend/overview/#artifact-presence). `true`
   when the artifact service holds the run's tree, `false` when it does not, in
   which case the run cannot be published, and `null` while unknown.
+- `artifactsReclaimed`: `null`, or `{ "at", "reason" }` for a run whose tree the
+  backend
+  [reclaimed](/components/backend/overview/#what-a-reclaim-records): the RFC
+  3339 time and one of `published`, `failed` and `canceled`. Such a run reports
+  `artifactsStored: false`, and a consumer reads `artifactsReclaimed` first to
+  tell a tree removed on purpose from one that was lost.
 - `validatorRated`: whether the run's case version is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
   consumer can show the run's points and functional rating from the record
@@ -828,7 +850,7 @@ cannot read answers `404` here and is reached through [`GET
   run's case version is not ingested, and `null` for every run that did not
   complete, for the same reason its `rating` is.
 
-The five are always present, `null` rather than omitted when unset. A run's
+The six are always present, `null` rather than omitted when unset. A run's
 detail and its summary card always report the same functional rating and score.
 
 ```jsonc
@@ -1473,8 +1495,8 @@ showing produced runs).
 The `storage` frame carries the body of
 [`GET /artifacts/capacity`](#get-artifactscapacity). One follows the hello frame
 on every connection, and another is sent each time `state`, `runsOnHold`,
-`holdReason` or `runsWaitingToStore` changes, so a client holds the current
-state without asking for it.
+`holdReason`, `runsWaitingToStore`, `publishFailingRuns` or `detail` changes, so
+a client holds the current state without asking for it.
 
 The `heartbeat` frame carries no payload; its arrival is the whole message. A
 client arms a watchdog, rearms it on every frame, and treats an overdue one as a

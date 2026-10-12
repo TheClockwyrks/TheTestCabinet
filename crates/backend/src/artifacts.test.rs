@@ -221,6 +221,7 @@ async fn a_sweep_with_no_live_runs_deletes_nothing() {
             orphans: 0,
             reclaimed: 0,
             failed: 0,
+            ..SweepOutcome::default()
         }
     );
     assert!(stub.recorder.lock().unwrap().deleted.is_empty());
@@ -317,6 +318,7 @@ async fn a_sweep_deletes_only_the_stale_orphan() {
             orphans: 1,
             reclaimed: 1,
             failed: 0,
+            ..SweepOutcome::default()
         }
     );
     let recorder = stub.recorder.lock().unwrap();
@@ -348,6 +350,7 @@ async fn a_refused_sweep_delete_is_counted_and_the_pass_finishes() {
             orphans: 2,
             reclaimed: 0,
             failed: 2,
+            ..SweepOutcome::default()
         }
     );
     // Both were attempted: one refusal does not abandon the rest of the pass.

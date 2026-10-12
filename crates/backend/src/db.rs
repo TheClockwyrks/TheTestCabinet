@@ -302,6 +302,12 @@ pub struct StoredRun {
     /// run's tree. `None` while unknown, which is not the same as not stored.
     #[serde(default)]
     pub artifacts_stored: Option<bool>,
+    /// The record that the artifact reclamation sweep deleted the run's tree on
+    /// purpose, or `None` for a run whose tree was never reclaimed. A reclaimed
+    /// run carries `artifacts_stored: Some(false)` as well, and this is what tells
+    /// it from a run whose tree was lost.
+    #[serde(default)]
+    pub artifacts_reclaimed: Option<ArtifactsReclaimed>,
     /// RFC 3339 of when this run was first published, or `None` while it is only
     /// pushed. Not part of the run record itself.
     pub published_at: Option<String>,
@@ -593,6 +599,9 @@ impl Db {
             .as_ref()
             .map(|model| model.published)
             .unwrap_or(false);
+        let was_reclaimed = existing
+            .as_ref()
+            .is_some_and(|model| model.artifacts_reclaimed_at.is_some());
         let existing_published_at = existing.and_then(|model| model.published_at);
 
         // The record-derived sort columns (test type, run time, tokens, cost) are
@@ -688,6 +697,14 @@ impl Db {
             // Not the record's to say: a push leaves the column at its `NULL` on an
             // insert and at whatever was recorded on a re-push. See `db.artifacts.rs`.
             artifacts_stored: NotSet,
+            // The reclamation sweep's and the snapshot refresh's own records. An
+            // insert leaves them at `NULL`; a re-push clears them below, in this
+            // transaction. See `clear_retention_records`.
+            media_confirmed_at: NotSet,
+            media_checked_at: NotSet,
+            media_bucket: NotSet,
+            artifacts_reclaimed_at: NotSet,
+            artifacts_reclaimed_reason: NotSet,
             // Automatic publishing's own mark, which a push likewise leaves alone.
             auto_publish_deferred: NotSet,
             record_json: Set(record_json),
@@ -730,6 +747,10 @@ impl Db {
         )
         .exec(&txn)
         .await?;
+
+        if !newly_pushed {
+            retention::clear_retention_records(&txn, &record.id, was_reclaimed).await?;
+        }
 
         touch_run(&txn, &record.id).await?;
 
@@ -1794,6 +1815,10 @@ impl Db {
                 },
                 published: run.published,
                 artifacts_stored: run.artifacts_stored,
+                artifacts_reclaimed: ArtifactsReclaimed::from_columns(
+                    run.artifacts_reclaimed_at,
+                    run.artifacts_reclaimed_reason.as_deref(),
+                ),
                 published_at: run.published_at,
                 events_json: run.events_json,
             });
@@ -7188,7 +7213,8 @@ impl Db {
     /// Whether the tree of the most recently finished run was stored: the recorded
     /// [artifact presence](Self::run_artifacts_stored) of the run of the latest
     /// `succeeded` or `failed` job that has one. `None` when no finished job's run
-    /// has a recorded presence, which is every backend with no artifact service.
+    /// has a recorded presence, which is every backend with no artifact service. A
+    /// run whose tree the reclamation sweep reclaimed is passed over.
     ///
     /// The backend reads this once as it starts, to decide whether the artifact
     /// store had failed an upload when the previous process stopped. Only the
@@ -7205,6 +7231,11 @@ impl Db {
             .all(&self.conn())
             .await?;
         for record_id in recent.into_iter().flatten() {
+            // A tree the sweep reclaimed is recorded as not stored, on purpose. It
+            // says nothing about whether the store took the upload.
+            if self.run_artifacts_reclaimed(&record_id).await?.is_some() {
+                continue;
+            }
             if let Some(stored) = self.run_artifacts_stored(&record_id).await? {
                 return Ok(Some(stored));
             }
@@ -7426,10 +7457,12 @@ impl Db {
     /// asked about is the caller's to decide, since the record may be older than
     /// the tree.
     ///
-    /// "Never had a publish job" means in any state, and is what bounds automatic
-    /// publishing to one attempt per run: a release that is queued or running is
-    /// left alone, and one that failed is left for a person to retry, so a caller
-    /// that asks on every pass never loops on a run whose publish keeps failing.
+    /// "Never had a publish job" means in any state, and is what bounds the
+    /// callers of this to a run's first publish job: a release that is queued or
+    /// running is left alone, and one that failed is left to the retry of failed
+    /// publishes ([`Self::publish_facts`]), which spaces its attempts. A caller
+    /// that asks on every pass therefore never loops on a run whose publish keeps
+    /// failing.
     pub async fn auto_publish_candidates(
         &self,
         run_ids: &[String],
@@ -7446,6 +7479,8 @@ impl Db {
             .column(run::Column::AutoPublishDeferred)
             .filter(run::Column::Id.is_in(run_ids.iter().cloned()))
             .filter(run::Column::Published.eq(false))
+            // A reclaimed tree is gone for good, so the run has nothing to release.
+            .filter(run::Column::ArtifactsReclaimedAt.is_null())
             .filter(not_a_retried_attempt())
             .into_tuple()
             .all(&self.conn())
@@ -9514,3 +9549,22 @@ impl Db {
 #[path = "db.artifacts.rs"]
 mod artifacts;
 pub use artifacts::ArtifactReconciliation;
+
+#[path = "db.retention.rs"]
+mod retention;
+
+#[cfg(test)]
+#[path = "db.retention.test.rs"]
+pub(crate) mod retention_tests;
+pub use retention::{
+    ArtifactsReclaimed, MediaConfirmation, PublishedMediaState, ReclaimReason, RetentionRun,
+    past_instant,
+};
+
+#[path = "db.publish_retry.rs"]
+mod publish_retry;
+pub use publish_retry::PUBLISHER_NEVER_REPORTED;
+
+#[cfg(test)]
+#[path = "db.publish_retry.test.rs"]
+mod publish_retry_tests;

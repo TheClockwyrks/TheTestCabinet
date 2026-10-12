@@ -10,8 +10,16 @@
 //! Three writers, all through this module: the driver's terminal status report and
 //! the publish gate ([`Db::set_run_artifacts_stored`], one run at a time), and the
 //! reclamation sweep's reconciliation against the artifact service's listing
-//! ([`Db::reconcile_artifacts_stored`]). [`Db::push`] never writes the column, so
-//! storing a record again leaves a run's recorded presence alone.
+//! ([`Db::reconcile_artifacts_stored`]). [`Db::push`] leaves the column alone
+//! when it stores a record again, with the one exception below.
+//!
+//! A run whose tree the reclamation sweep [reclaimed](super::retention) is
+//! recorded as not stored by the reclaim itself, and none of the three writers
+//! moves it afterwards: a tree that lands late for such a run is the sweep's to
+//! delete again, and the run was never one whose tree was lost. Storing such a
+//! run's record again ends that: the push follows a driver that ran the run and
+//! uploaded its tree again, so [`Db::push`] clears the reclaim record and puts
+//! the presence back to unknown, for the three writers to record afresh.
 
 use std::collections::HashSet;
 
@@ -51,8 +59,8 @@ fn presence_differs(stored: bool) -> Condition {
 
 impl Db {
     /// Record whether the artifact service holds run `run_id`'s tree. Returns
-    /// whether the row changed; an unknown run, and a run already recorded with
-    /// this value, change nothing.
+    /// whether the row changed; an unknown run, a run already recorded with this
+    /// value, and a run whose tree was reclaimed change nothing.
     ///
     /// The run's mutation timestamp is stamped in the same statement, so a console
     /// following the run sees its presence change.
@@ -62,6 +70,7 @@ impl Db {
             .col_expr(run::Column::ArtifactsStored, Expr::value(stored))
             .col_expr(run::Column::UpdatedAt, Expr::value(now))
             .filter(run::Column::Id.eq(run_id))
+            .filter(run::Column::ArtifactsReclaimedAt.is_null())
             .filter(presence_differs(stored))
             .exec(&self.conn())
             .await?;
@@ -85,7 +94,8 @@ impl Db {
     /// stored and every other run of `runs` as not stored.
     ///
     /// `runs` is the caller's own read of the run ids and bounds what is written: a
-    /// run that is not in it is left exactly as it is, whatever the listing says.
+    /// run that is not in it is left exactly as it is, whatever the listing says,
+    /// and so is a run whose tree was reclaimed.
     /// The caller reads `runs` **before** it lists the trees, which is what makes
     /// "not stored" safe to conclude. A driver uploads its tree before it reports
     /// the run, so a run that already had a row when `runs` was read had finished
@@ -125,6 +135,7 @@ impl Db {
                 let res = run::Entity::update_many()
                     .col_expr(run::Column::ArtifactsStored, Expr::value(true))
                     .filter(run::Column::Id.is_in(ids()))
+                    .filter(run::Column::ArtifactsReclaimedAt.is_null())
                     .filter(run::Column::ArtifactsStored.is_null())
                     .exec(&self.conn())
                     .await?;
@@ -134,6 +145,7 @@ impl Db {
                 .col_expr(run::Column::ArtifactsStored, Expr::value(stored))
                 .col_expr(run::Column::UpdatedAt, Expr::value(now.clone()))
                 .filter(run::Column::Id.is_in(ids()))
+                .filter(run::Column::ArtifactsReclaimedAt.is_null())
                 .filter(presence_differs(stored))
                 .exec(&self.conn())
                 .await?;
@@ -174,8 +186,9 @@ impl Db {
     }
 
     /// Clear the mark on each of `run_ids` that no longer waits on automatic
-    /// publishing: the run is published, or a publish job has been written for it,
-    /// by the retry or by a person. Returns how many marks were cleared.
+    /// publishing: the run is published, a publish job has been written for it, by
+    /// the retry or by a person, or its tree was reclaimed and there is nothing
+    /// left to release. Returns how many marks were cleared.
     pub async fn settle_auto_publish_deferred(&self, run_ids: &[String]) -> Result<u64> {
         let mut settled = 0;
         for chunk in run_ids.chunks(RECONCILE_CHUNK) {
@@ -193,6 +206,7 @@ impl Db {
                 .filter(
                     Condition::any()
                         .add(run::Column::Published.eq(true))
+                        .add(run::Column::ArtifactsReclaimedAt.is_not_null())
                         .add(run::Column::Id.is_in(with_job)),
                 )
                 .exec(&self.conn())

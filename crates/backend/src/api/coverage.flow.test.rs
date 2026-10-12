@@ -923,6 +923,32 @@ async fn a_cell_holds_the_first_runs_to_land_and_the_plan_never_reads_past_its_t
         .await
         .unwrap();
     assert_eq!(runs.artifacts_not_stored, ["pong-claude-sonnet-4-5-1"]);
+    assert!(runs.artifacts_reclaimed.is_empty());
+
+    // Once the sweep reclaims that run's tree it is named as reclaimed, and no
+    // longer as a run that lost its tree.
+    let seen = state
+        .db
+        .retention_run("pong-claude-sonnet-4-5-1", None)
+        .await
+        .unwrap()
+        .expect("the run exists");
+    assert!(
+        state
+            .db
+            .mark_artifacts_reclaimed(
+                &seen,
+                crate::db::ReclaimReason::Failed,
+                "2026-10-12T00:00:00Z"
+            )
+            .await
+            .unwrap()
+    );
+    let Json(runs) = plan_runs(State(state.clone()), owner(), Path(id.clone()))
+        .await
+        .unwrap();
+    assert!(runs.artifacts_not_stored.is_empty());
+    assert_eq!(runs.artifacts_reclaimed, ["pong-claude-sonnet-4-5-1"]);
     assert!(
         extras
             .iter()

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBackendExec, createHttpBackend } from "./httpBackend";
-import { artifactsNotStored } from "../client/artifactPresence";
+import {
+  artifactsNotStored,
+  artifactsReclaimed,
+} from "../client/artifactPresence";
 
 const BACKEND = "https://backend.example";
 const AUTH = "https://auth.example";
@@ -244,6 +247,65 @@ describe("createHttpBackend artifact presence", () => {
       ["kept", false],
       ["lost", true],
     ]);
+  });
+
+  it("folds the reclaimed ids on as reclaimed, never as not stored", async () => {
+    const page = {
+      runs: [{ id: "kept" }, { id: "lost" }, { id: "removed" }],
+      artifactsNotStored: ["lost"],
+      artifactsReclaimed: ["removed"],
+      total: 3,
+    };
+    const review = {
+      reviewer: { userId: "u1", displayName: "Reviewer" },
+      checklist: [],
+      labels: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        Response.json(
+          url.includes("/account/reviews")
+            ? { ...page, reviews: page.runs.map((run) => ({ run, review })) }
+            : page,
+        ),
+      ),
+    );
+    const backend = createHttpBackend(BACKEND);
+    const expected = [
+      ["kept", false, false],
+      ["lost", true, false],
+      ["removed", false, true],
+    ];
+    const read = (runs: Parameters<typeof artifactsNotStored>[0][]) =>
+      runs.map((s) => [s.id, artifactsNotStored(s), artifactsReclaimed(s)]);
+
+    const { summaries } = await backend.listRunSummaries({ offset: 0 });
+    expect(read(summaries)).toEqual(expected);
+    const { runs } = await backend.getCoveragePlanRuns("plan-1", "token");
+    expect(read(runs)).toEqual(expected);
+    const { reviews } = await backend.listMyReviews(undefined, "token");
+    expect(read(reviews.map((entry) => entry.run))).toEqual(expected);
+  });
+
+  it("carries a run's reclaim onto its detail, and none from an older backend", async () => {
+    const reclaimed = { at: "2026-10-12T00:00:00Z", reason: "failed" };
+    for (const [served, expected] of [
+      [{ artifactsStored: false, artifactsReclaimed: reclaimed }, reclaimed],
+      [{ artifactsStored: true, artifactsReclaimed: null }, null],
+      [{}, null],
+    ] as const) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string) =>
+          Response.json({ ...storedRunBody("r1"), ...served }),
+        ),
+      );
+      const run = await createBackendExec(BACKEND, AUTH, ARTIFACTS).readRun(
+        "r1",
+      );
+      expect(run.artifactsReclaimed).toEqual(expected);
+    }
   });
 
   it("reads a page from a backend that names none as nothing missing", async () => {

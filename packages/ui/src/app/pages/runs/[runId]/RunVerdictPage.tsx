@@ -101,6 +101,7 @@ export function RunVerdictPage() {
         reviews,
         published,
         artifactsMissing,
+        artifactsReclaimed,
         validatorRated,
       }) => {
         const presentation = describeRunState(run.status.state);
@@ -192,6 +193,7 @@ export function RunVerdictPage() {
                   reviews={reviews}
                   published={published}
                   artifactsMissing={artifactsMissing}
+                  artifactsReclaimed={artifactsReclaimed}
                   validatorRated={validatorRated}
                   onChanged={() => runtime.requestRefresh()}
                 />

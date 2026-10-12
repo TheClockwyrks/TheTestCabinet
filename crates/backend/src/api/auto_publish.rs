@@ -26,6 +26,9 @@
 //! on the artifact service once per call, for as long as one presence query may
 //! take, because a pass stops asking at the first unanswered question. A run it
 //! could not enqueue stays in the Unpublished worklist for a person.
+//!
+//! This module enqueues a run's first publish job only. A run whose publish job
+//! failed is taken up by the [retry of failed publishes](super::publish_retry).
 
 use std::time::Duration;
 
@@ -147,6 +150,18 @@ pub(crate) async fn auto_publish_runs(
                      stored, so there is nothing to release"
                 );
                 deferred.push(run_id);
+            }
+            // The candidate rule leaves a reclaimed run out, so this is a run
+            // reclaimed between that read and the enqueue. Nothing is left to
+            // release, and the retry's settle pass clears any mark it carries.
+            Ok(GatedEnqueue::Reclaimed(_)) => {
+                tracing::info!(
+                    run.id = %run_id,
+                    cause = cause.as_str(),
+                    reason = "reclaimed",
+                    "automatic publishing passed over a run: its artifacts were \
+                     removed after the retention period"
+                );
             }
             Ok(GatedEnqueue::ArtifactsUnavailable(error)) => {
                 tracing::warn!(

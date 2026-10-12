@@ -972,6 +972,8 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
         // The store's word on whether the run's artifact tree is held; unknown
         // on a transport that does not say.
         artifactsStored: stored.artifactsStored ?? null,
+        // And on whether the backend removed that tree on purpose.
+        artifactsReclaimed: stored.artifactsReclaimed ?? null,
         // The run's showcase, lifted off the record the same way the rating
         // channels are so a page reads `run.showcase` directly.
         showcase: stored.record.showcase ?? null,

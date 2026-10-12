@@ -1184,9 +1184,10 @@ pub async fn live(
 ///
 /// This is the one place a queued run is handed to a dispatcher, so it is where the
 /// [artifact capacity](crate::capacity) hold applies. While any condition for
-/// storing a run's tree is not green, the pass claims nothing and every waiting
-/// run reads `pending`; the runs stay queued and are claimed in their original
-/// order once the hold lifts. While the store's latest read has failed but the
+/// storing a run's tree is not green, or while
+/// [publishes are failing](crate::publish_health) across several runs, the pass
+/// claims nothing and every waiting run reads `pending`; the runs stay queued and
+/// are claimed in their original order once the hold lifts. While the store's latest read has failed but the
 /// failure is not yet announced, the pass is skipped whole: nothing is claimed and
 /// no run's display state changes. While the store is being
 /// [proved](crate::capacity::ClaimGate::Trial) the pass claims a run only if no
@@ -1199,7 +1200,17 @@ pub async fn claim(
     // The hold counts the runs waiting to store from the job table, so a claim
     // never rests on a count older than itself.
     refresh_waiting_runs(&state).await;
-    let gate = match state.capacity.claim_gate() {
+    // Likewise the hold publish failures call for, read from the publish job
+    // table. A table that cannot be read fails the claim: no run is handed out on
+    // a hold that could not be derived.
+    //
+    // The claim decides on the answer it has just derived, laid over the store's
+    // own gate, so a status request that read the table a moment earlier cannot
+    // lift the hold in between by storing its older answer.
+    let publish_held = super::publish_retry::refresh_publish_hold(&state)
+        .await
+        .map_err(ApiError::from)?;
+    let gate = match state.capacity.claim_gate_with(publish_held) {
         crate::capacity::ClaimGate::Open => crate::db::ClaimGate::Open,
         crate::capacity::ClaimGate::Hold => crate::db::ClaimGate::Hold,
         crate::capacity::ClaimGate::Trial => {

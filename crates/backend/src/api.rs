@@ -51,6 +51,7 @@ mod model_probes;
 mod models;
 mod publish_gate;
 mod publish_jobs;
+mod publish_retry;
 mod runs;
 mod stats;
 mod test_case_groups;
@@ -105,6 +106,7 @@ pub use models::{
     AliasInput, AliasOut, ListPriceRefreshOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse,
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
+pub(crate) use publish_retry::spawn_failed_publish_retry;
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
 pub use test_cases::{
     CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
@@ -825,9 +827,14 @@ async fn client_config(
 /// `GET /artifacts/capacity` — the artifact store's [capacity](crate::capacity) as
 /// the backend currently reads it: the state, whether the run queue is on hold,
 /// the latest free and total bytes, and the two thresholds.
+///
+/// The publish-failure hold is derived from the publish job table as the request
+/// is served, so the answer never rests on what an earlier request found. A table
+/// that cannot be read leaves the answer as it last was.
 async fn artifact_capacity(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<crate::capacity::ArtifactStorageStatus> {
+    publish_retry::refresh_publish_hold_best_effort(&state).await;
     axum::Json(state.capacity.status())
 }
 

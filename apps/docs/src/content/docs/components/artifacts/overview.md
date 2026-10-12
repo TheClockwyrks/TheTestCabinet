@@ -22,7 +22,9 @@ The backend is also a caller in its own right, over an in-cluster URL of its own
 (`TCAB_ARTIFACTS_URL`). It prunes a deleted run's tree, enumerates stored trees
 for its [reclamation sweep](/components/backend/overview/#artifact-reclamation),
 and reads a published run's media here when baking the public snapshot, for the
-runs whose media has aged out of its own ephemeral store. The two URLs are
+runs whose media has aged out of its own ephemeral store. The sweep decides how
+long each tree is kept: the service stores a tree until the backend deletes
+it. The two URLs are
 separate because the advertised one is whatever a browser can resolve, which in
 a port-forwarded development cluster is a loopback address the backend pod
 cannot reach.
@@ -38,13 +40,14 @@ is the run record's id.
 | Route                                                                                    | Caller                                                                                          |
 | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `POST /runs/{id}/artifacts`                                                              | The driver, uploading a finished run's tree as a tar                                            |
-| `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree                                                       |
+| `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree and reclaiming the trees its sweep selects            |
 | `GET /runs/{id}/artifacts`                                                               | The backend, asking whether a run's tree is stored before it enqueues a publish                 |
 | `GET /runs`                                                                              | The backend, listing every stored tree for its reclamation sweep                                |
 | `GET /capacity`                                                                          | The backend, reading the store volume's free space                                              |
 | `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                                           |
 | `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                                           |
 | `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media; the backend, baking a published run's media into the snapshot |
+| `GET /runs/{id}/media`                                                                   | The backend, listing the validation and showcase files of a published run's tree                |
 | `GET /runs/{id}/events.jsonl`, `/raw.jsonl`                                              | A console, reading the recorded logs                                                            |
 | `GET /runs/{id}/archive.tar.gz`                                                          | A reviewer, downloading the whole run                                                           |
 
@@ -149,6 +152,20 @@ the volume is nearly full or the write check fails.
 An upload needs about twice its tree's size while it lands, because the tar is
 spooled onto the volume before it is unpacked there.
 
+`GET /runs/{id}/media` answers `200` with `{ "id", "stored", "validation",
+"showcase" }`. `validation` and `showcase` are the names of the files the tree
+holds in its validation media directory and its showcase directory, each a name
+the `/validation/{file}` or `/showcase/{file}` route serves, and both are empty
+for a run with no tree. The backend's snapshot refresh reads it for a published
+run whose media it has not yet confirmed in the bucket. Two of a run's file sets
+are named by nothing but the directory they sit in: the image store its
+recordings share, and showcase files that neither the carousel nor the
+description mentions. The refresh publishes them from this listing, and a run
+is [confirmed](/components/backend/overview/#artifact-reclamation) only once
+every file listed here is in the bucket. The route is ungated, like the media
+routes whose names it lists. As with the presence check, absence is an answer
+in the body, and an id that is not a single path segment answers `400`.
+
 ## Auth
 
 The artifact service has no Kubernetes API access. It only talks HTTP.
@@ -180,6 +197,10 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
   run's record.
 
 ## Downloading a whole run
+
+The console offers this download for an unpublished run. A published run's
+download is its released source instead, since the backend
+[reclaims a published run's tree](/components/backend/overview/#artifact-reclamation).
 
 `GET /runs/{id}/archive.tar.gz` returns a run's entire stored tree as one gzip
 tar: the generated source, the built playable output, the proof, asset,

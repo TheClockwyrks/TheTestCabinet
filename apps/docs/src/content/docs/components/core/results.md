@@ -214,6 +214,14 @@ recovers a publish whose repository was created before its first push landed. Th
 first push settles briefly and is then retried with backoff, so a transient
 post-create `403` from GitHub's permission-propagation lag self-heals.
 
+A release is built from the run's stored tree, so a published run can be
+published again only while the tree is stored. The backend
+[deletes a published run's tree](/components/backend/overview/#artifact-reclamation)
+once a snapshot refresh has confirmed the run's media in the bucket, usually
+within minutes of the publish, and a publish asked for after that is refused. A
+deployment that needs to publish published runs again sets
+`TCAB_ARTIFACT_RECLAIM_PUBLISHED=false`.
+
 A release that does not land records its reason on the publish job and raises a
 publish-failed notification on the console. Publishing the run again is the
 recovery, admitted as soon as the failed publish job is terminal, and the run
@@ -230,7 +238,7 @@ of these hold:
 - its case version is
   [validator-rated](/terminology/#validator-rated);
 - it is unpublished;
-- no publish job has ever been enqueued for it;
+- no publish job has been enqueued for it;
 - its [artifact tree is stored](/components/backend/overview/#artifact-presence),
   which the backend asks the artifact service as it enqueues.
 
@@ -254,12 +262,12 @@ three moments:
 - Every five minutes, for each run an earlier moment passed over because its
   artifact tree could not be confirmed.
 
-Automatic publishing enqueues the same publish job an operator's publish does,
-and at most one for a run. A run that already has a publish job in any state is
-left alone, so a failed automatic publish is never retried automatically: it
-raises the publish-failed notification and waits in the Unpublished worklist for
-an operator. An automatic publish that cannot be enqueued is logged and never
-fails the report or the pass that prompted it.
+Automatic publishing enqueues the same publish job an operator's publish does.
+At these three moments a run that already has a publish job in any state is left
+alone, and a run whose publish job failed is taken up by the
+[retry of failed publishes](#retrying-a-failed-publish). An automatic publish
+that cannot be enqueued is logged and never fails the report or the pass that
+prompted it.
 
 A run with no stored tree is passed over with no publish job recorded, since a
 release has nothing to publish, and so is a run the artifact service could not
@@ -269,12 +277,62 @@ moment left once its report has been accepted.
 
 The retry asks the artifact service about a marked run whose tree is recorded as
 stored or unknown. A run recorded as having no stored tree is left unasked until
-a reclamation sweep pass finds its tree. A report or ladder pass leaves a marked
+a reclamation sweep pass finds its tree. A run whose tree the backend reclaimed
+is no candidate and loses its mark. A report or ladder pass leaves a marked
 run to the retry, and any pass stops asking once the artifact service fails to
 answer, marking the runs it has left. An outage of the artifact service
 therefore costs a report or a pass one unanswered question, and every run that
 finished during it publishes within five minutes of the service answering
 again.
+
+#### Retrying a failed publish
+
+A publish job that fails raises the publish-failed notification, and the backend
+enqueues another for the run by itself. It applies to every unpublished run
+whose latest publish job failed, whether automatic publishing or an operator
+enqueued that job, and it goes through the same enqueue and the same
+[artifact tree check](/components/backend/overview/#artifact-presence). A run
+has at most one publish job in flight at any time.
+
+A run is retried only while it is still publishable. Before each retry the
+backend applies the publish gate again as it stands now: the run's state must be
+a publishable one, and a completed run that its validators did not rate needs a
+review or, as a comparison's run does, automated verdicts. A run that an
+automatic retry replaced is not retried either. So a run whose only review was
+removed, or whose attempt was superseded, after its publish failed is left
+unpublished.
+
+| Consecutive failures of the run | Wait after the latest failure |
+| ------------------------------- | ----------------------------- |
+| 1                               | 5 minutes                     |
+| 2                               | 10 minutes                    |
+| 3                               | 20 minutes                    |
+| n                               | 5 minutes doubled n - 1 times |
+| 7 and above                     | 4 hours                       |
+
+The retries of a run end 24 hours after its first failed publish job. The run
+then waits in the Unpublished worklist for an operator. An operator's publish is
+accepted at any time, whatever the run's wait or age, and a publish job it
+enqueues that fails counts as one more consecutive failure of the run.
+
+A run whose tree is reclaimed or recorded as not stored is left out, since a
+release has nothing to publish. It is retried again once a reclamation sweep
+pass finds its tree.
+
+A publish job that has been `dispatched` for an hour with no result is recorded
+as failed, with the reason that its publisher never reported, and is retried
+like any other failure. It is recorded as having failed at that hour, not at the
+moment the backend noticed, so a job abandoned long ago takes its place in the
+order of events: it does not count as a failure after a publish that succeeded
+since, and a run whose publisher died more than a day ago is past its retries.
+The dispatcher gives a publisher forty-five minutes
+([`activeDeadlineSeconds`](/components/dispatcher/overview/#the-publisher-job)),
+so a publisher that is still running at the hour does not exist and the retry
+cannot release a run beside it. A failure a publisher reports for a job already
+recorded as failed changes nothing.
+
+Publish failures across several runs put new runs on hold, as described under
+[publish failures](/components/backend/overview/#publish-failures).
 
 Only published runs appear in the public snapshot and therefore in the gallery. A
 published catastrophic or timeout failure shows its generated source and has no

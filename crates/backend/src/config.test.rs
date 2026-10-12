@@ -80,34 +80,38 @@ fn the_gg_reference_directory_falls_back_to_the_checkout_when_unset() {
     );
 }
 
-/// The artifact reclamation sweep is configured entirely from the environment, and
-/// its two knobs are hours on the wire and [`Duration`]s in the struct. A
-/// deployment that means "every six hours" and gets six seconds sweeps a tree the
-/// moment its run finishes.
+/// The reclamation sweep's timings. The interval is ten minutes unless a setting
+/// says otherwise, the minutes setting decides when both are set, and the hours
+/// setting that predates it still works on its own. A unit slip is not cosmetic
+/// here: a deployment that means "every six hours" and gets six seconds sweeps a
+/// tree the moment its run finishes.
 ///
 /// One test, because it resolves the whole configuration: nextest runs each test in
 /// its own process, so the environment it sets is its own.
 #[test]
-fn the_artifact_sweep_timings_are_read_as_hours() {
+fn the_artifact_sweep_timings_are_read_in_their_units() {
     use std::time::Duration;
 
     let dir = tempfile::tempdir().unwrap();
     // SAFETY: this process is this test's alone under nextest, the repo's runner.
     unsafe {
         std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES");
         std::env::remove_var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS");
         std::env::remove_var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS");
     }
     let defaults = super::Config::from_env().unwrap();
     assert_eq!(
         defaults.artifact_sweep_interval,
-        Duration::from_secs(super::DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS * 3600)
+        Duration::from_secs(10 * 60)
     );
     assert_eq!(
         defaults.artifact_sweep_grace,
         Duration::from_secs(super::DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS * 3600)
     );
 
+    // The hours setting alone is the interval a deployment that predates the
+    // minutes setting asked for.
     // SAFETY: as above.
     unsafe {
         std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS", "2");
@@ -131,6 +135,237 @@ fn the_artifact_sweep_timings_are_read_as_hours() {
         super::Config::from_env().unwrap().artifact_sweep_interval,
         Duration::ZERO
     );
+
+    // The minutes setting decides when both are set, in either direction.
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES", "30") };
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_sweep_interval,
+        Duration::from_secs(30 * 60)
+    );
+    // SAFETY: as above.
+    unsafe {
+        std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES", "0");
+        std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS", "6");
+    }
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_sweep_interval,
+        Duration::ZERO
+    );
+
+    // A value that is not a whole number is refused by name, never read as the
+    // default: the interval decides when trees are deleted.
+    // SAFETY: as above.
+    unsafe {
+        std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES", "ten");
+        std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS", "1");
+    }
+    let error = super::Config::from_env().unwrap_err().to_string();
+    assert!(
+        error.contains("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES"),
+        "{error}"
+    );
+    // The hours setting is held to that while it decides the interval.
+    // SAFETY: as above.
+    unsafe {
+        std::env::remove_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES");
+        std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS", "1.5");
+    }
+    let error = super::Config::from_env().unwrap_err().to_string();
+    assert!(
+        error.contains("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS"),
+        "{error}"
+    );
+
+    // With the minutes setting present the hours value is not used, so a value
+    // there that a deployment has carried since before it was read strictly does
+    // not stop the start.
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES", "15") };
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_sweep_interval,
+        Duration::from_secs(15 * 60)
+    );
+}
+
+/// The retention settings: a failed run's tree for a day and a canceled run's for
+/// an hour unless set, `0` for never, the published rule on unless turned off, and
+/// a value that cannot be read refused instead of guessed at.
+///
+/// One test, because it resolves the whole configuration: nextest runs each test in
+/// its own process, so the environment it sets is its own.
+#[test]
+fn the_artifact_retention_settings_resolve_into_the_policy() {
+    use std::time::Duration;
+
+    use crate::artifacts::RetentionPolicy;
+
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_ARTIFACT_FAILED_RETENTION_HOURS");
+        std::env::remove_var("TCAB_ARTIFACT_CANCELED_RETENTION_HOURS");
+        std::env::remove_var("TCAB_ARTIFACT_RECLAIM_PUBLISHED");
+        for name in R2_VARIABLES {
+            std::env::remove_var(name);
+        }
+    }
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_retention,
+        RetentionPolicy {
+            failed: Duration::from_secs(24 * 3600),
+            canceled: Duration::from_secs(3600),
+            published: true,
+            bucket: None,
+        }
+    );
+
+    // The bucket a confirmation must name is the endpoint and the bucket name.
+    // SAFETY: as above.
+    unsafe { set_r2("https://acct.r2.example/", "gallery") };
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_retention.bucket,
+        Some("https://acct.r2.example/gallery")
+    );
+    // SAFETY: as above.
+    unsafe { set_r2("https://acct.r2.example", "staging-gallery") };
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_retention.bucket,
+        Some("https://acct.r2.example/staging-gallery")
+    );
+    // SAFETY: as above.
+    unsafe {
+        for name in R2_VARIABLES {
+            std::env::remove_var(name);
+        }
+    }
+
+    // SAFETY: as above.
+    unsafe {
+        std::env::set_var("TCAB_ARTIFACT_FAILED_RETENTION_HOURS", "72");
+        std::env::set_var("TCAB_ARTIFACT_CANCELED_RETENTION_HOURS", "0");
+        std::env::set_var("TCAB_ARTIFACT_RECLAIM_PUBLISHED", "false");
+    }
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_retention,
+        RetentionPolicy {
+            failed: Duration::from_secs(72 * 3600),
+            canceled: Duration::ZERO,
+            published: false,
+            bucket: None,
+        }
+    );
+
+    for (spelling, on) in [
+        ("0", false),
+        ("no", false),
+        ("OFF", false),
+        ("1", true),
+        ("yes", true),
+        ("On", true),
+        ("", true),
+    ] {
+        // SAFETY: as above.
+        unsafe { std::env::set_var("TCAB_ARTIFACT_RECLAIM_PUBLISHED", spelling) };
+        assert_eq!(
+            super::Config::from_env()
+                .unwrap()
+                .artifact_retention
+                .published,
+            on,
+            "{spelling:?}"
+        );
+    }
+
+    // A misspelled "off" must not leave the deletion on, and a retention that is
+    // not a number must not become the default.
+    for (name, value) in [
+        ("TCAB_ARTIFACT_RECLAIM_PUBLISHED", "disabled"),
+        ("TCAB_ARTIFACT_FAILED_RETENTION_HOURS", "a day"),
+        ("TCAB_ARTIFACT_CANCELED_RETENTION_HOURS", "-1"),
+    ] {
+        // SAFETY: as above.
+        unsafe {
+            std::env::set_var("TCAB_ARTIFACT_RECLAIM_PUBLISHED", "true");
+            std::env::set_var("TCAB_ARTIFACT_FAILED_RETENTION_HOURS", "24");
+            std::env::set_var("TCAB_ARTIFACT_CANCELED_RETENTION_HOURS", "1");
+            std::env::set_var(name, value);
+        }
+        let error = super::Config::from_env().unwrap_err().to_string();
+        assert!(error.contains(name), "{error}");
+    }
+}
+
+/// The variables an R2 configuration is read from.
+const R2_VARIABLES: [&str; 5] = [
+    "TCAB_R2_ACCOUNT_ID",
+    "TCAB_R2_BUCKET",
+    "TCAB_R2_ACCESS_KEY_ID",
+    "TCAB_R2_SECRET_ACCESS_KEY",
+    "TCAB_R2_ENDPOINT",
+];
+
+/// Configure R2 with `endpoint` and `bucket`.
+///
+/// # Safety
+///
+/// Writes the process environment: only for a test that owns its process.
+unsafe fn set_r2(endpoint: &str, bucket: &str) {
+    // SAFETY: the caller's.
+    unsafe {
+        std::env::set_var("TCAB_R2_ACCOUNT_ID", "acct");
+        std::env::set_var("TCAB_R2_BUCKET", bucket);
+        std::env::set_var("TCAB_R2_ACCESS_KEY_ID", "key");
+        std::env::set_var("TCAB_R2_SECRET_ACCESS_KEY", "secret");
+        std::env::set_var("TCAB_R2_ENDPOINT", endpoint);
+    }
+}
+
+/// Media confirmations are recorded only where one can lead to a deletion: the
+/// published rule on, the sweep on, an artifact service to sweep and a bucket to
+/// confirm against.
+///
+/// One test, because it resolves the whole configuration: nextest runs each test in
+/// its own process, so the environment it sets is its own.
+#[test]
+fn media_is_confirmed_only_where_published_trees_are_reclaimed() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe { set_r2("https://acct.r2.example", "gallery") };
+    let set = |published: &str, minutes: &str, service: bool| {
+        // SAFETY: this process is this test's alone under nextest, the repo's runner.
+        unsafe {
+            std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+            std::env::remove_var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS");
+            std::env::set_var("TCAB_ARTIFACT_RECLAIM_PUBLISHED", published);
+            std::env::set_var("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES", minutes);
+            if service {
+                std::env::set_var("TCAB_ARTIFACTS_URL", "http://artifacts:8080");
+                std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", "secret");
+            } else {
+                std::env::remove_var("TCAB_ARTIFACTS_URL");
+            }
+        }
+        super::Config::from_env()
+            .unwrap()
+            .publisher_timing()
+            .confirm_media
+    };
+    assert_eq!(
+        set("true", "10", true),
+        Some("https://acct.r2.example/gallery")
+    );
+    assert_eq!(set("false", "10", true), None, "the published rule is off");
+    assert_eq!(set("true", "0", true), None, "the sweep is off");
+    assert_eq!(
+        set("true", "10", false),
+        None,
+        "there is no artifact service"
+    );
+    // SAFETY: as above.
+    unsafe { std::env::remove_var("TCAB_R2_BUCKET") };
+    assert_eq!(set("true", "10", true), None, "there is no bucket");
 }
 
 /// The three snapshot batching settings resolve into the publisher's timing: the
@@ -265,4 +500,44 @@ fn the_artifact_capacity_settings_resolve_and_are_validated() {
     // A zero poll interval would poll in a busy loop.
     set([None, None, None, Some("0")]);
     assert_eq!(invalid(), "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS");
+}
+
+/// The publish-failure hold's threshold: five runs when unset, the value given
+/// otherwise, `0` for no hold, and a refusal to start on anything else.
+#[test]
+fn the_publish_failure_hold_threshold_resolves_and_is_validated() {
+    use super::ConfigError;
+
+    const NAME: &str = "TCAB_PUBLISH_FAILURE_HOLD_RUNS";
+    let set = |value: Option<&str>| {
+        // SAFETY: this process is this test's alone under nextest, the repo's
+        // runner.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(NAME, value),
+                None => std::env::remove_var(NAME),
+            }
+        }
+    };
+    let resolved = || super::Config::from_env().unwrap().publish_failure_hold_runs;
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path()) };
+
+    set(None);
+    assert_eq!(resolved(), 5);
+    set(Some(""));
+    assert_eq!(resolved(), 5, "empty is unset");
+    set(Some("3"));
+    assert_eq!(resolved(), 3);
+    set(Some("0"));
+    assert_eq!(resolved(), 0, "zero turns the hold off");
+
+    for unreadable in ["five", "-1", "2.5", "99999999999"] {
+        set(Some(unreadable));
+        match super::Config::from_env() {
+            Err(ConfigError::Invalid { name, .. }) => assert_eq!(name, NAME),
+            other => panic!("`{unreadable}` should be refused, got {other:?}"),
+        }
+    }
 }

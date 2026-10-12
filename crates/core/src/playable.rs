@@ -233,6 +233,56 @@ pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidat
     })
 }
 
+/// The names of the files directly inside `dir`, sorted. A directory that does
+/// not exist holds none; any other failure to read it is the caller's to report.
+fn flat_file_names(dir: &Path) -> std::io::Result<Vec<String>> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err),
+    };
+    let mut names = Vec::new();
+    for entry in read {
+        let entry = entry?;
+        if entry.file_type()?.is_file()
+            && let Some(name) = entry.file_name().to_str()
+        {
+            names.push(name.to_string());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// The names of the validation media files a produced run's tree holds: every
+/// name [`serve_validation_file`] would resolve, from the current directory and
+/// the legacy one alike, each once and sorted.
+///
+/// A run's declared outputs are named by its record, but the image store its
+/// recordings share is named by nothing but this directory, so a reader that has
+/// to account for all of a run's media asks for the listing.
+pub fn list_validation_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
+    let implementation = run_dir.join("implementation");
+    let mut names = Vec::new();
+    for dir in [".vendor", LEGACY_VENDOR_DIR] {
+        names.extend(flat_file_names(
+            &implementation.join(dir).join("validation"),
+        )?);
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+/// The names of the showcase files a produced run's tree holds: every name
+/// [`serve_showcase_file`] would resolve, sorted. `showcase.toml` is left out, as
+/// that function refuses it.
+pub fn list_showcase_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
+    let mut names = flat_file_names(&run_dir.join("implementation").join("showcase"))?;
+    names.retain(|name| name != "showcase.toml");
+    Ok(names)
+}
+
 /// A showcase file resolved from a run, ready to write to an HTTP or IPC
 /// response.
 #[derive(Debug, Clone, PartialEq, Eq)]

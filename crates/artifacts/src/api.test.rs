@@ -1313,3 +1313,112 @@ async fn capacity_requires_the_service_token() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
+
+// --- The media listing ---------------------------------------------------------
+
+fn media_request(run_id: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/media"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_media_listing_names_the_validation_and_showcase_files_of_a_tree() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let implementation = store.run_dir("run-here").join("implementation");
+    let validation = implementation.join(".vendor").join("validation");
+    let legacy = implementation.join(".tcab").join("validation");
+    let showcase = implementation.join("showcase");
+    for dir in [&validation, &legacy, &showcase] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::write(validation.join("img.abc.png"), b"png").unwrap();
+    std::fs::write(validation.join("serve__clip.webm"), b"webm").unwrap();
+    std::fs::write(legacy.join("img.old.png"), b"png").unwrap();
+    std::fs::write(legacy.join("img.abc.png"), b"png").unwrap();
+    std::fs::create_dir_all(validation.join("nested")).unwrap();
+    std::fs::write(showcase.join("cover.png"), b"png").unwrap();
+    std::fs::write(showcase.join("showcase.toml"), b"[showcase]").unwrap();
+
+    // No token: the route is as open as the media it lists.
+    let response = app
+        .clone()
+        .oneshot(media_request("run-here"))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({
+            "id": "run-here",
+            "stored": true,
+            "validation": ["img.abc.png", "img.old.png", "serve__clip.webm"],
+            "showcase": ["cover.png"],
+        }),
+        "each name once, from the current and the legacy directory, files only, \
+         and never the showcase manifest"
+    );
+    // Every listed name is one the media routes serve.
+    for uri in [
+        "/runs/run-here/validation/img.old.png",
+        "/runs/run-here/showcase/cover.png",
+    ] {
+        let served = app
+            .clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(served.status(), StatusCode::OK, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn the_media_listing_of_a_tree_with_no_media_is_empty_and_stored() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+
+    let response = app
+        .clone()
+        .oneshot(media_request("run-here"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({ "id": "run-here", "stored": true, "validation": [], "showcase": [] })
+    );
+}
+
+#[tokio::test]
+async fn the_media_listing_answers_not_stored_as_a_body_rather_than_a_404() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let response = app
+        .clone()
+        .oneshot(media_request("run-gone"))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({ "id": "run-gone", "stored": false, "validation": [], "showcase": [] })
+    );
+}
+
+#[tokio::test]
+async fn the_media_listing_refuses_an_unsafe_id() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let response = app.clone().oneshot(media_request("..")).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}

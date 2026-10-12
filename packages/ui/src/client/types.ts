@@ -1087,6 +1087,16 @@ export interface UnreadableRunPage {
   total: number;
 }
 
+// The backend's record that it removed a run's artifact tree on purpose: when,
+// and by which rule of its reclamation sweep.
+export interface ArtifactsReclaimed {
+  // RFC 3339.
+  at: string;
+  // "published" (the release was confirmed), "failed" or "canceled" (the run's
+  // retention passed). A string, so a reason a newer backend adds still reads.
+  reason: string;
+}
+
 // A finished run held by a runner, awaiting review and/or publishing. Also the shape the backend serves for a
 // *published* run (`GET /runs/{id}`): its record (links populated), every review
 // submitted against it, and whether it has been published.
@@ -1104,6 +1114,10 @@ export interface StoredRun {
   // published. Null or absent while unknown, which is every run on a host that
   // does not track it (a worker's produced list, the static gallery).
   artifactsStored?: boolean | null;
+  // When and why the backend's reclamation sweep removed the run's tree on
+  // purpose, or null or absent for a run it did not. Such a run has no stored
+  // tree (`artifactsStored` is false) and nothing was lost.
+  artifactsReclaimed?: ArtifactsReclaimed | null;
   // The run's FUNCTIONAL rating as the store decides it: on a validator-rated run
   // the validator-decided rating (present from completion, never changed by a
   // review); on a legacy run the review aggregate (null while unreviewed). Composed

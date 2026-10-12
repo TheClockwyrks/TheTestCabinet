@@ -857,6 +857,9 @@ pub struct CoveragePlanRuns {
     /// stored artifact tree, which therefore cannot be published. Always present,
     /// empty when the plan holds none.
     pub artifacts_not_stored: Vec<String>,
+    /// The ids, among [`runs`](Self::runs), of the runs whose artifact tree the
+    /// reclamation sweep reclaimed. Disjoint from the list above. Always present.
+    pub artifacts_reclaimed: Vec<String>,
 }
 
 /// The `POST /coverage-plans/{id}/cells/retry` body: the blocked cell to retry.
@@ -1761,6 +1764,7 @@ pub async fn plan_runs(
     Ok(Json(CoveragePlanRuns {
         runs: super::runs::summary_cards(&state.store, &case_names, &runs),
         artifacts_not_stored: super::runs::artifacts_not_stored(&runs),
+        artifacts_reclaimed: super::runs::artifacts_reclaimed(&runs),
     }))
 }
 

@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import {
   ARTIFACTS_NOT_STORED_LABEL,
+  ARTIFACTS_RECLAIMED_LABEL,
   markArtifactsNotStored,
 } from "../../client/artifactPresence";
 import { RunContextMenu, type RunContextMenuHandle } from "./RunContextMenu";
@@ -81,6 +82,32 @@ describe("RunContextMenu publish item", () => {
     const note = screen.getByTestId("artifacts-missing-note");
     expect(note.textContent).toBe(ARTIFACTS_NOT_STORED_LABEL);
     expect(note.getAttribute("role")).toBe("note");
+  });
+
+  it("states that a reclaimed run's artifacts were removed, in place of a publish", () => {
+    const [removed] = markArtifactsNotStored(
+      [unpublishedRun("removed")],
+      null,
+      ["removed"],
+    );
+    openMenuFor(removed!);
+
+    expect(screen.queryByRole("menuitem", { name: "Publish run" })).toBeNull();
+    expect(screen.queryByTestId("artifacts-missing-note")).toBeNull();
+    const note = screen.getByTestId("artifacts-reclaimed-note");
+    expect(note.textContent).toBe(ARTIFACTS_RECLAIMED_LABEL);
+  });
+
+  it("says nothing about a reclaimed tree on a run that is already published", () => {
+    const [published] = markArtifactsNotStored(
+      [{ ...unpublishedRun("old"), publishedAt: "2026-10-01T00:00:00Z" }],
+      null,
+      ["old"],
+    );
+    openMenuFor(published!);
+
+    expect(screen.queryByTestId("artifacts-missing-note")).toBeNull();
+    expect(screen.queryByTestId("artifacts-reclaimed-note")).toBeNull();
   });
 
   it("says nothing about artifacts on a run that is already published", () => {

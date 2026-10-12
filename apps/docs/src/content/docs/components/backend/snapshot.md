@@ -268,6 +268,12 @@ even when the volumes it was originally read from have been lost, such as after
 a cluster is recreated. To re-seed the bucket from a prior snapshot in that
 recovery case, use `scripts/recover-run-media-from-snapshot.sh`.
 
+A file a run lists whose bytes are in neither the backend store nor the artifact
+service is left out of the run's document. The builder reports each such file,
+and each video published as recorded because its transcode failed, against its
+run. The backend uses that report to decide when a published run's tree on the
+artifact service [has no further use](/components/backend/overview/#confirmation).
+
 An upload stores both labels the object is served under: what the resource is
 and how its bytes are framed. A 2D engine's validation recording is stored as
 `application/json` with a gzip content encoding, so a published recording
