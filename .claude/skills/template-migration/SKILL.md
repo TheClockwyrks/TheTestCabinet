@@ -103,8 +103,9 @@ everywhere else.
   project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
   its `.dockerignore`, the project's own files): the Rust image of the same
   commit with the playwright image's engines copied on top (its one argument
-  from the anchor is `PLAYWRIGHT_IMAGE`), which the template's `rust` gate job
-  runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
+  from the anchor is `PLAYWRIGHT_IMAGE`), reopening `/home/dev` with
+  `chmod o+rx` after that copy as the web image does, which the template's
+  `rust` gate job runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
   each rendered file that lists the tracks: the `rust | rust-browser | web`
   cases and usage lines of `scripts/ci/ci-image.sh` and
   `ci/images/build-args.sh`, and the former's `RUST_CI_IMAGE` build argument

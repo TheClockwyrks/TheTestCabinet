@@ -42,6 +42,13 @@ FROM ${RUST_CI_IMAGE}
 # and the web image hold them.
 COPY --from=playwright / /
 
+# The copy carries the account's home with the toolchain image's own owner and
+# mode, which is 0750, and so undoes the `chmod o+rx /home/dev` the Rust image
+# applies. A step runs as Azure's uid, not the account's, and the toolchain on
+# the PATH, CARGO_HOME and RUSTUP_HOME are all under that home, so it is opened
+# again here as ci/images/web.Dockerfile does after its own copy.
+RUN chmod o+rx /home/dev
+
 # The engines are read where the playwright image put them rather than from
 # HOME's cache, which is root's here. Playwright reads this variable when a
 # test launches an engine, so the workspace's own Playwright finds them.

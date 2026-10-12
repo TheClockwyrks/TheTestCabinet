@@ -159,8 +159,8 @@ stages:
     displayName: Gates
     jobs:
       # The Rust track: every check that compiles the workspace, and nothing
-      # else. It runs in the rust-browser image, the Rust image with Node and
-      # Playwright's Chromium on top, so the Rust tests that drive a browser
+      # else. It runs in the rust-browser image, the Rust image with the
+      # playwright image's engines copied on top, so the Rust tests that drive a browser
       # run here rather than skip.
       - job: rust
         displayName: Rust

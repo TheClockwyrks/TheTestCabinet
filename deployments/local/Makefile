@@ -528,7 +528,7 @@ audio-store:
 #
 # It is a BuildKit Dockerfile (`# syntax=…` + `--mount=type=cache` Rust build
 # caches), so the build needs the buildx plugin — the devcontainer ships it in the
-# system cli-plugins dir (see .devcontainer/tools/container.sh); a bare host gets it
+# system cli-plugins dir (the toolchain image it is built on installs it); a bare host gets it
 # from its docker install. DOCKER_CONFIG is pinned to a credsStore-free config dir
 # for the builds (see BUILD_DOCKER_CONFIG above for why).
 #
