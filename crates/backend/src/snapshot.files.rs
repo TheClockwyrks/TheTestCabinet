@@ -77,6 +77,28 @@ pub(super) fn flat_names<'a>(names: impl Iterator<Item = &'a str>) -> Vec<String
     flat
 }
 
+/// The files of `kind` a manifest records, as the names the store holds them by
+/// in that kind's directory, each once and in the order recorded.
+///
+/// This is what a build of a run from its manifest takes in place of a directory
+/// listing. A video recorded under its mp4's name has that name here, which is
+/// the name the store held it under.
+pub(super) fn recorded_names(
+    manifest: &crate::db::MediaManifest,
+    kind: MediaFileKind,
+) -> Vec<String> {
+    let prefix = format!("{}/", media_dir(kind));
+    let mut names: Vec<String> = Vec::new();
+    for file in manifest.files.iter().filter(|file| file.kind == kind) {
+        if let Some(name) = file.name.strip_prefix(&prefix)
+            && !names.iter().any(|seen| seen == name)
+        {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
 /// The scrubbed, uncompressed JSON of a stored document, and whether the scrub
 /// redacted anything. `stored` is gzip or plain JSON, as the store holds either.
 /// An `Err` names why the bytes are not a document.
@@ -116,6 +138,14 @@ impl SnapshotBuilder {
         let Published { kind, file, listed } = published;
         let dir = media_dir(kind);
         let name = format!("{dir}/{file}");
+        // A run built from its manifest references the object recorded for the
+        // file. A file the manifest does not name, or records as unrecoverable,
+        // is left out, as it was by the refresh that confirmed the run.
+        if let Some(manifest) = tree.recorded() {
+            let entry = manifest.file(&name)?;
+            account.files.push(entry.clone());
+            return entry.key.clone();
+        }
         let key = format!("{MEDIA_PREFIX}/{run_id}/{name}");
         if self.existing_media.contains(&key) {
             account
@@ -182,6 +212,15 @@ impl SnapshotBuilder {
         let dir = media_dir(kind);
         let name = format!("{dir}/{file}");
         let mp4_name = format!("{dir}/{mp4_file}");
+        // A run built from its manifest references what was recorded for the
+        // video: the mp4 of a recording, which is what a document names even
+        // when the recording itself is unrecoverable, or the stored file of a
+        // video that was held under the mp4's name.
+        if let Some(manifest) = tree.recorded() {
+            let entry = manifest.file(&name).or_else(|| manifest.file(&mp4_name))?;
+            account.files.push(entry.clone());
+            return entry.transcoded_key.clone().or_else(|| entry.key.clone());
+        }
         let mp4_key = format!("{MEDIA_PREFIX}/{run_id}/{mp4_name}");
         let original_key = format!("{MEDIA_PREFIX}/{run_id}/{ORIGINAL_DIR}/{name}");
         let has_mp4 = self.existing_media.contains(&mp4_key);
@@ -284,6 +323,13 @@ impl SnapshotBuilder {
         let run_id = &record.id;
         let kind = MediaFileKind::Controller;
         let name = test_cabinet_core::TREE_ROOT_CONTROLLER;
+        // A run built from its manifest keeps the entry recorded for the
+        // module. The object is in the bucket or exists nowhere, so there is
+        // nothing to upload either way.
+        if let Some(manifest) = tree.recorded() {
+            account.files.extend(manifest.file(name).cloned());
+            return None;
+        }
         let key = format!("{MEDIA_PREFIX}/{run_id}/{name}");
         if self.existing_media.contains(&key) {
             account

@@ -319,6 +319,12 @@ entry, because it has no object.
 The manifest is written together with the confirmation and cleared with it, so
 a run has one exactly while it is confirmed.
 
+The manifest has two readers. A refresh builds a confirmed run's document from
+it, taking every file name and key from the manifest while the bucket's listing
+holds each object it names, with no read of the run's folder in the backend
+store. The backend's [run file routes](/components/backend/api/#run-files) use
+it to answer from the bucket for a file the store no longer holds.
+
 ### Unrecoverable files
 
 A file the record lists can be missing from everywhere: it was never written, or

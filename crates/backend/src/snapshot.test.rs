@@ -1496,7 +1496,12 @@ async fn per_run_file_exports_proof_media_from_the_record() {
 /// A stored run carrying one debug script with the given image + video outputs, so
 /// the builder enumerates its synthesized *actual* validation media. `present` gates
 /// whether each output is recorded as produced.
-fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: bool) -> StoredRun {
+pub(super) fn validation_run(
+    id: &str,
+    item_id: &str,
+    image_present: bool,
+    video_present: bool,
+) -> StoredRun {
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.debug_scripts = vec![DebugScriptResult {
         item_id: item_id.to_string(),

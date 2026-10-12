@@ -52,6 +52,7 @@ mod models;
 mod publish_gate;
 mod publish_jobs;
 mod publish_retry;
+mod run_files;
 mod runs;
 mod stats;
 mod test_case_groups;
@@ -107,6 +108,7 @@ pub use models::{
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
 pub(crate) use publish_retry::spawn_failed_publish_retry;
+pub use run_files::RunFileBucket;
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
 pub use test_cases::{
     CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
@@ -157,6 +159,10 @@ pub struct AppState {
     /// The OpenRouter reads: a model's list price, and the catalog facts observed
     /// when a run completes and on the periodic refresh.
     pub prices: test_cabinet_core::OpenRouterPrices,
+    /// The public bucket the run file routes read a confirmed run's files back
+    /// from when the store no longer holds them (see [`RunFileBucket`]). `None` on a
+    /// backend with no bucket, whose routes answer from the store alone.
+    pub run_files: Option<RunFileBucket>,
     /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
     /// query endpoints run over. Loaded lazily on the first query and reconciled per
     /// id thereafter, so a deployment that never opens Discover never pays for it.

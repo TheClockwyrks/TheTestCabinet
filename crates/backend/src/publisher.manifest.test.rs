@@ -151,8 +151,17 @@ async fn a_refresh_that_withdraws_a_confirmation_clears_the_manifest() {
             .is_some()
     );
 
-    // The artifact service stops answering, so the next refresh cannot know it
-    // has seen every file of the run.
+    // The bucket loses the run's object, so the manifest no longer describes it
+    // and the run is evaluated from its sources. The artifact service has
+    // stopped answering, so that refresh cannot know it has seen every file.
+    assert!(
+        bucket
+            .objects
+            .lock()
+            .unwrap()
+            .remove("media/runs/proven/proof/title.png")
+            .is_some()
+    );
     trees.set_down(true);
     publisher.refresh_now().await.unwrap();
 
@@ -299,4 +308,76 @@ async fn a_missing_tree_the_backend_records_as_stored_writes_no_file_off() {
         manifest.unrecoverable().collect::<Vec<_>>(),
         ["proof/title.png"]
     );
+}
+
+/// The keys of the run documents in `bucket`.
+fn document_keys(bucket: &Bucket) -> Vec<String> {
+    bucket
+        .keys()
+        .into_iter()
+        .filter(|key| key.starts_with(crate::snapshot::RUN_DOCUMENT_PREFIX))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_confirmed_run_is_refreshed_with_neither_its_store_folder_nor_its_tree() {
+    let dir = TempDir::new().unwrap();
+    let db = Arc::new(Db::connect_in_memory().await.unwrap());
+    let bucket = Arc::new(Bucket::default());
+    let trees = Arc::new(Trees::default());
+    let publisher = bucket_publisher(&dir, &db, &bucket, Some(&trees)).await;
+    seed_published_adversarial(&db, "duel").await;
+    let store = store_of(&dir);
+    for file in ["replay.json", "replay-1.json"] {
+        store.write_run_asset("duel", file, b"{}").unwrap();
+    }
+    store.write_run_controller("duel", b"wasm").unwrap();
+    trees.store("duel", &[("root/controller.wasm", b"wasm")]);
+
+    publisher.refresh_now().await.unwrap();
+    let confirmed = run_columns(&db, "duel").await;
+    assert!(confirmed.media_confirmed_at.is_some());
+    let documents = document_keys(&bucket);
+    assert_eq!(documents.len(), 1, "{documents:?}");
+    let listed = trees.listed().len();
+
+    // Everything but the bucket goes: the run's folder in the store, and the
+    // artifact service altogether.
+    store.delete_run_media("duel").unwrap();
+    trees.set_down(true);
+    publisher.refresh_now().await.unwrap();
+
+    // The run's document is the one already in the bucket, byte for byte: its
+    // key is a digest of its bytes, and no other was written.
+    assert_eq!(document_keys(&bucket), documents);
+    // The run is still confirmed, by the confirmation it had.
+    let after = run_columns(&db, "duel").await;
+    assert_eq!(after.media_confirmed_at, confirmed.media_confirmed_at);
+    assert_eq!(after.media_manifest, confirmed.media_manifest);
+    // And nothing was asked of the artifact service about it.
+    trees.set_down(false);
+    publisher.refresh_now().await.unwrap();
+    assert_eq!(trees.listed().len(), listed);
+    assert_eq!(document_keys(&bucket), documents);
+}
+
+#[tokio::test]
+async fn a_refresh_that_cannot_read_a_confirmed_run_s_manifest_fails() {
+    let dir = TempDir::new().unwrap();
+    let db = Arc::new(Db::connect_in_memory().await.unwrap());
+    let bucket = Arc::new(Bucket::default());
+    let trees = Arc::new(Trees::default());
+    let publisher = bucket_publisher(&dir, &db, &bucket, Some(&trees)).await;
+    seed_published_with_proof(&db, "proven").await;
+    trees.store("proven", &[("proof/title.png", b"png")]);
+    publisher.refresh_now().await.unwrap();
+    let uploaded = bucket.keys();
+
+    crate::db::retention_tests::damage_manifest(&db, "proven").await;
+
+    // Built without the manifest, the run would be read from a store that may
+    // no longer hold its files. The refresh fails instead and uploads nothing.
+    let err = publisher.refresh_now().await.unwrap_err();
+    assert!(err.to_string().contains("file manifests"), "{err}");
+    assert_eq!(bucket.keys(), uploaded);
 }

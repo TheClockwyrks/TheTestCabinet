@@ -810,6 +810,43 @@ impl Db {
         Ok(manifests)
     }
 
+    /// The file manifests of the runs in `run_ids` whose confirmation
+    /// [holds](confirmation_holds) for a backend configured with `bucket`, by run
+    /// id. A run that is not confirmed there has no entry.
+    ///
+    /// For a listing that offers what the bucket can supply, so one damaged row
+    /// costs its own run and not the listing: a confirmed run whose manifest is
+    /// missing or does not parse is logged at `error` and left out, where
+    /// [`run_media_manifest`](Self::run_media_manifest) reports the error.
+    pub async fn media_manifests_of(
+        &self,
+        run_ids: &[String],
+        bucket: Option<&str>,
+    ) -> Result<std::collections::HashMap<String, MediaManifest>> {
+        let mut manifests = std::collections::HashMap::new();
+        if bucket.is_none() {
+            return Ok(manifests);
+        }
+        for chunk in run_ids.chunks(CHUNK) {
+            let rows = manifest_select()
+                .filter(run::Column::Id.is_in(chunk.iter().map(String::as_str)))
+                .filter(run::Column::MediaConfirmedAt.is_not_null())
+                .into_model::<ManifestRow>()
+                .all(&self.conn())
+                .await?;
+            for row in rows {
+                match row.for_bucket(bucket) {
+                    Ok(Some((id, manifest))) => {
+                        manifests.insert(id, manifest);
+                    }
+                    Ok(None) => {}
+                    Err(err) => tracing::error!("{err}; leaving the run out"),
+                }
+            }
+        }
+        Ok(manifests)
+    }
+
     /// How many published runs no snapshot refresh has evaluated the media of
     /// against `bucket` under [`MEDIA_CONFIRMATION_VERSION`].
     ///

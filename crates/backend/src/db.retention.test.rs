@@ -94,6 +94,17 @@ pub(crate) async fn confirm_under_the_first_definition(db: &Db, id: &str) {
         .unwrap();
 }
 
+/// Overwrite run `id`'s manifest column with text that does not parse, leaving
+/// its confirmation as it is.
+pub(crate) async fn damage_manifest(db: &Db, id: &str) {
+    run::Entity::update_many()
+        .col_expr(run::Column::MediaManifest, Expr::value("not json"))
+        .filter(run::Column::Id.eq(id))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+}
+
 /// Write run `id`'s end time column verbatim, valid or not.
 pub(crate) async fn set_finished_at(db: &Db, id: &str, at: &str) {
     run::Entity::update_many()

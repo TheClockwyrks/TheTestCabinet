@@ -11,10 +11,16 @@
 //!   there is nothing in the backend's git checkout for it to publish — the
 //!   publishing side must upload directly.
 //!
-//! Both only ever need `PutObject`, `ListObjectsV2` and `DeleteObjects`, so rather
-//! than pull the full AWS SDK this module signs requests directly with SigV4 over
-//! `hmac`/`sha2` and sends them with the already-vendored `reqwest`. The recipe
-//! follows AWS's Signature Version 4 for a single-chunk, payload-signed request.
+//! The backend also reads a published run's files back from the bucket
+//! ([`R2Client::get_object`]), to serve one its own store no longer holds.
+//!
+//! Between them they need `PutObject`, `GetObject`, `ListObjectsV2` and
+//! `DeleteObjects`, so rather than pull the full AWS SDK this module signs
+//! requests directly with SigV4 over `hmac`/`sha2` and sends them with the
+//! already-vendored `reqwest`. The recipe follows AWS's Signature Version 4 for
+//! a single-chunk, payload-signed request.
+
+use std::time::Duration;
 
 use base64::Engine as _;
 use hmac::{Hmac, Mac};
@@ -99,10 +105,100 @@ const SERVICE: &str = "s3";
 /// chunks anything larger.
 const DELETE_BATCH: usize = 1000;
 
-/// An R2 client that uploads objects to one bucket.
+/// How long [`R2Client::get_object`] waits for the bucket to answer with a
+/// status and headers, and how long [`R2Object::chunk`] waits for the next part
+/// of a body, unless [`R2Client::with_read_timeouts`] says otherwise.
+///
+/// A read has no bound on its whole duration, because an object can be hundreds
+/// of megabytes and a reader may take it as slowly as its own client does. Each
+/// wait for the bucket is bounded instead, so a bucket that stops answering
+/// fails the read within this long.
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The error code S3 and R2 answer a `GetObject` with for a key the bucket has
+/// no object under. Any other `404`, a missing bucket among them, is a failure.
+const NO_SUCH_KEY: &str = "NoSuchKey";
+
+/// An R2 client that reads and writes the objects of one bucket.
+#[derive(Clone)]
 pub struct R2Client {
     config: R2Config,
     http: reqwest::Client,
+    /// How long a read waits for the response to start.
+    response_timeout: Duration,
+    /// How long a read waits for each part of a body.
+    idle_timeout: Duration,
+}
+
+/// One object being read from the bucket: its labels, and its body, which the
+/// reader takes a part at a time ([`chunk`](Self::chunk)) or whole up to a limit
+/// ([`bytes`](Self::bytes)).
+#[derive(Debug)]
+pub struct R2Object {
+    key: String,
+    content_type: Option<String>,
+    content_encoding: Option<String>,
+    content_length: Option<u64>,
+    idle_timeout: Duration,
+    response: reqwest::Response,
+}
+
+impl R2Object {
+    /// The content type the object was stored under, when the bucket named one.
+    pub fn content_type(&self) -> Option<&str> {
+        self.content_type.as_deref()
+    }
+
+    /// The content encoding the object was stored under, when it has one. The
+    /// body is handed over as stored, so a `gzip` here is a body still gzipped.
+    pub fn content_encoding(&self) -> Option<&str> {
+        self.content_encoding.as_deref()
+    }
+
+    /// The length of the body in bytes, when the bucket stated it.
+    pub fn content_length(&self) -> Option<u64> {
+        self.content_length
+    }
+
+    /// The next part of the body, or `None` once the whole body has been read.
+    ///
+    /// An error when the connection fails, or when the bucket sends nothing for
+    /// the client's idle timeout. A reader that sees an error has an incomplete
+    /// body and must not pass it off as the object.
+    pub async fn chunk(&mut self) -> Result<Option<bytes::Bytes>> {
+        match tokio::time::timeout(self.idle_timeout, self.response.chunk()).await {
+            Ok(Ok(chunk)) => Ok(chunk),
+            Ok(Err(e)) => Err(Error::R2(format!(
+                "reading the body of `{}` failed: {e}",
+                self.key
+            ))),
+            Err(_) => Err(Error::R2(format!(
+                "reading the body of `{}` stalled for {:?}",
+                self.key, self.idle_timeout
+            ))),
+        }
+    }
+
+    /// The whole body, when it is at most `limit` bytes. A longer body is an
+    /// error, raised as soon as the limit is passed and without reading the
+    /// rest.
+    pub async fn bytes(mut self, limit: usize) -> Result<Vec<u8>> {
+        let too_long = |key: &str| Error::R2(format!("`{key}` is longer than {limit} bytes"));
+        if self
+            .content_length
+            .is_some_and(|length| length > limit as u64)
+        {
+            return Err(too_long(&self.key));
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = self.chunk().await? {
+            if body.len() + chunk.len() > limit {
+                return Err(too_long(&self.key));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(body)
+    }
 }
 
 impl R2Client {
@@ -111,7 +207,127 @@ impl R2Client {
         Self {
             config,
             http: reqwest::Client::new(),
+            response_timeout: READ_TIMEOUT,
+            idle_timeout: READ_TIMEOUT,
         }
+    }
+
+    /// Bound a read's waits by other durations than the default: `response` for
+    /// the bucket to answer with a status and headers, `idle` for each part of a
+    /// body.
+    pub fn with_read_timeouts(mut self, response: Duration, idle: Duration) -> Self {
+        self.response_timeout = response;
+        self.idle_timeout = idle;
+        self
+    }
+
+    /// Start reading one object: `GET {endpoint}/{bucket}/{key}`, signed with
+    /// SigV4 like every other verb here.
+    ///
+    /// The three outcomes are kept apart, because a caller serving the object
+    /// must never report a fault as a file that does not exist:
+    ///
+    /// - `Ok(Some(object))`: the bucket holds the object, and its body is read
+    ///   from the returned [`R2Object`].
+    /// - `Ok(None)`: the bucket answered that it holds no object under `key`, a
+    ///   `404` carrying the `NoSuchKey` code.
+    /// - `Err`: anything else. The request could not be sent, the bucket did not
+    ///   answer within the response timeout, or it answered with any other
+    ///   status, a `404` for a missing bucket included.
+    ///
+    /// The body is not read here, so an object of any size costs no memory until
+    /// the caller takes it.
+    #[tracing::instrument(name = "r2.get_object", skip(self), fields(r2.key = %key), err)]
+    pub async fn get_object(&self, key: &str) -> Result<Option<R2Object>> {
+        let now = OffsetDateTime::now_utc();
+        let amz_date = now
+            .format(AMZ_DATE)
+            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
+        let scope_date = now
+            .format(SCOPE_DATE)
+            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
+
+        let endpoint = url::trim_scheme(&self.config.endpoint);
+        let host = endpoint.host.clone();
+        let canonical_uri = format!(
+            "/{}/{}",
+            uri_encode(&self.config.bucket, false),
+            encode_key(key)
+        );
+
+        // An empty-body GET: the payload hash is the hash of the empty string.
+        let payload_hash = hex::encode(Sha256::digest(b""));
+        let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+        let canonical_headers =
+            format!("host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n");
+        let canonical_request = format!(
+            "GET\n{canonical_uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+        );
+        let canonical_request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
+
+        let credential_scope =
+            format!("{scope_date}/{}/{SERVICE}/aws4_request", self.config.region);
+        let string_to_sign =
+            format!("AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{canonical_request_hash}");
+        let signature = self.sign(&scope_date, &string_to_sign)?;
+        let authorization = format!(
+            "AWS4-HMAC-SHA256 Credential={}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}",
+            self.config.access_key_id
+        );
+
+        let url = format!("{}{canonical_uri}", scheme_prefix(&self.config.endpoint));
+        let request = self
+            .http
+            .get(&url)
+            .header("Host", host)
+            .header("x-amz-date", amz_date)
+            .header("x-amz-content-sha256", payload_hash)
+            .header("Authorization", authorization)
+            .send();
+        let response = match tokio::time::timeout(self.response_timeout, request).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(e)) => return Err(Error::R2(format!("GET `{key}` failed: {e}"))),
+            Err(_) => {
+                return Err(Error::R2(format!(
+                    "GET `{key}` got no answer in {:?}",
+                    self.response_timeout
+                )));
+            }
+        };
+
+        let status = response.status();
+        if status.is_success() {
+            let header = |name: http::HeaderName| {
+                response
+                    .headers()
+                    .get(name)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string)
+            };
+            return Ok(Some(R2Object {
+                key: key.to_string(),
+                content_type: header(http::header::CONTENT_TYPE),
+                content_encoding: header(http::header::CONTENT_ENCODING),
+                content_length: response.content_length(),
+                idle_timeout: self.idle_timeout,
+                response,
+            }));
+        }
+        // An error body is a short XML document. It is read under the same idle
+        // bound as an object's, and one that cannot be read names no code.
+        let detail = tokio::time::timeout(self.idle_timeout, response.text())
+            .await
+            .ok()
+            .and_then(|read| read.ok())
+            .unwrap_or_default();
+        if status == reqwest::StatusCode::NOT_FOUND
+            && parse_error_code(&detail).as_deref() == Some(NO_SUCH_KEY)
+        {
+            return Ok(None);
+        }
+        Err(Error::R2(format!(
+            "GET `{key}` returned {status}: {detail}"
+        )))
     }
 
     /// Upload one object: `PUT {endpoint}/{bucket}/{key}` with `body` under the given
@@ -475,6 +691,15 @@ fn parse_next_continuation_token(xml: &str) -> Option<String> {
     let close = after.find("</NextContinuationToken>")?;
     let token = xml_unescape(&after[..close]);
     (!token.is_empty()).then_some(token)
+}
+
+/// The `<Code>` of an S3 error response body, or `None` for a body that carries
+/// none.
+fn parse_error_code(xml: &str) -> Option<String> {
+    let open = xml.find("<Code>")?;
+    let after = &xml[open + "<Code>".len()..];
+    let close = after.find("</Code>")?;
+    Some(xml_unescape(&after[..close]))
 }
 
 /// The number of `<Error>` elements in a `DeleteObjects` response, or `None` when

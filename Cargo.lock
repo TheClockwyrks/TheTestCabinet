@@ -5137,6 +5137,7 @@ version = "0.7.0"
 dependencies = [
  "async-trait",
  "base64",
+ "bytes",
  "cuid2",
  "flate2",
  "foray-core",

@@ -37,6 +37,9 @@ tempfile = { workspace = true }
 # framing for the whole path.
 flate2 = { workspace = true }
 reqwest = { workspace = true }
+# The type `reqwest` hands a response body over in, part by part. The R2 client's
+# object read returns each part as it arrives so a caller can pass it on unbuffered.
+bytes = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
 base64 = { workspace = true }

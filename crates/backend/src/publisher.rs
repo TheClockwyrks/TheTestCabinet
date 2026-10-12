@@ -373,6 +373,30 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         None => None,
     };
     let runs = inner.db.all_published().await?;
+    // The confirmed runs' file manifests, which those runs are built from. Read
+    // after the runs: a run stored again in between has lost its manifest by
+    // now and is built from its sources, where the other order could pair a new
+    // record with the manifest of the one it replaced.
+    //
+    // A manifest that cannot be read fails the refresh, which the batching
+    // retries. Building without the manifests would read every confirmed run
+    // from the backend store, which may no longer hold its files, and publish
+    // it with those files left out.
+    let recorded_manifests: std::collections::HashMap<String, crate::db::MediaManifest> =
+        match &confirming {
+            Some((bucket, _)) => inner
+                .db
+                .confirmed_media_manifests(Some(bucket))
+                .await
+                .map_err(|err| {
+                    BackendError::Snapshot(format!(
+                        "reading the confirmed runs' file manifests failed ({err}); refusing                          to rebuild their media from sources that may have been reclaimed"
+                    ))
+                })?
+                .into_iter()
+                .collect(),
+            None => std::collections::HashMap::new(),
+        };
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
@@ -562,6 +586,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
             );
     }
     let snapshot = builder
+        .with_recorded_manifests(recorded_manifests)
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)

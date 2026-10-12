@@ -180,6 +180,7 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         config,
         http: reqwest::Client::new(),
         prices,
+        run_files: None,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     Harness {

@@ -894,6 +894,59 @@ The run's recorded normalized [event stream](/components/core/events/) as a JSON
 array, empty when the run recorded none. Raw harness output is never served.
 `404` for an unknown run.
 
+### Run files
+
+The files a run's driver mirrored into the backend, each served under the name
+its record gives it:
+
+| Route                               | File                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| `GET /runs/{id}/proof/{file}`       | One proof image or video                                             |
+| `GET /runs/{id}/validation/{file}`  | One synthesized validation output, or a file of the image store      |
+| `GET /runs/{id}/asset/{file}`       | One generated asset, adversarial replay, scenario or engine module   |
+| `GET /runs/{id}/showcase/{file}`    | One showcase file                                                    |
+| `GET /runs/{id}/code-analysis`      | The run's code-analysis document                                     |
+| `GET /runs/{id}/controller.wasm`    | An adversarial run's controller module                               |
+| `GET /runs/{id}/replay`             | A gg run's session record                                            |
+
+The content type follows the file's extension. A `.json.gz` file is served as
+JSON with a gzip content encoding. The code-analysis document and the session
+record are stored gzipped and are served that way to a request that accepts
+gzip and decoded for one that does not.
+
+Each route answers from the backend store when the store holds the file.
+Otherwise it answers from the [public
+bucket](/components/backend/snapshot/#the-file-manifest), which is how a
+published run's files are served once the store no longer holds them:
+
+1. The run's file manifest is read. A run with no manifest, which is every run
+   no refresh has confirmed in the configured bucket, answers `404`, as does a
+   backend with no bucket.
+2. A file the manifest does not name answers `404`, and so does one it records
+   as unrecoverable with no transcoded copy.
+3. The object the manifest names is fetched from the bucket and passed through
+   as it arrives, without being held in memory. Its content type follows the
+   extension of the object's key.
+
+A transcoded video is requested by its recorded `.webm` name and is answered
+with the recorded webm, as `video/webm`. When the manifest records that
+recording as unrecoverable and names the mp4 made from it, the route answers
+with the mp4 as `video/mp4` under the same `.webm` name, so a reader takes the
+type from the response and not from the name.
+
+The code-analysis object in the bucket is plain JSON with any leaked credential
+redacted, so a document answered from the bucket differs from the stored one
+only where a credential was redacted.
+
+A bucket that answers that it holds no object under the key answers `404`, and
+the backend logs the run, the file and the key at `error`, since the manifest
+says the object is there. A bucket that does not answer, or answers with any
+other error, answers `502`, and a manifest that cannot be read answers `500`, so
+a fault is never read as a file the run does not have. A session record is in
+no manifest, so its route answers from the store alone.
+
+No route serves a byte range, from the store or from the bucket.
+
 ### `POST /snapshot/refresh`
 
 Force an immediate [public snapshot](/components/backend/snapshot/)

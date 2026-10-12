@@ -68,6 +68,7 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         config,
         http: reqwest::Client::new(),
         prices: test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
+        run_files: None,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
 

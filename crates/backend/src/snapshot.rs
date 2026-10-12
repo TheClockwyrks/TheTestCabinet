@@ -277,6 +277,14 @@ enum FetchFailure {
 enum TreeMedia {
     /// The build did not ask, because it records no confirmation.
     NotAsked,
+    /// The run is confirmed and the bucket's listing holds every object its
+    /// [manifest](crate::db::MediaManifest) names. The manifest answers for
+    /// every file of the run: which exist, under which names, and in which
+    /// object. Nothing is asked of the artifact service, and the run's folder in
+    /// the backend store is neither read nor listed, so the run's document is
+    /// the same whether or not the store still holds its files. See
+    /// [`SnapshotBuilder::with_recorded_manifests`].
+    Recorded(crate::db::MediaManifest),
     /// The run is settled: confirmed in the configured bucket, with its tree
     /// reclaimed. The tree is gone on purpose, so nothing is asked of the artifact
     /// service about the run, neither a listing nor a file.
@@ -307,6 +315,15 @@ enum TreeMedia {
 }
 
 impl TreeMedia {
+    /// The manifest that answers for every file of the run, for a run built
+    /// from its record of what the bucket holds ([`TreeMedia::Recorded`]).
+    fn recorded(&self) -> Option<&crate::db::MediaManifest> {
+        match self {
+            TreeMedia::Recorded(manifest) => Some(manifest),
+            _ => None,
+        }
+    }
+
     /// Whether a `404` from the artifact service for one of the run's media files
     /// is an answer that the tree does not hold it.
     fn answers_for_missing_media(&self) -> bool {
@@ -354,6 +371,9 @@ pub struct SnapshotBuilder {
     /// The runs the backend's own record says the artifact service holds no tree
     /// for. See [`Self::with_recorded_tree_absence`].
     trees_recorded_absent: std::collections::HashSet<String>,
+    /// The file manifest of each confirmed run. See
+    /// [`Self::with_recorded_manifests`].
+    recorded_manifests: std::collections::HashMap<String, crate::db::MediaManifest>,
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
@@ -434,6 +454,7 @@ impl SnapshotBuilder {
             http: reqwest::Client::new(),
             settled_media: None,
             trees_recorded_absent: std::collections::HashSet::new(),
+            recorded_manifests: std::collections::HashMap::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
             reference_sheets: std::collections::HashMap::new(),
@@ -654,6 +675,29 @@ impl SnapshotBuilder {
         recorded_absent: std::collections::HashSet<String>,
     ) -> Self {
         self.trees_recorded_absent = recorded_absent;
+        self
+    }
+
+    /// Supply the [file manifest](crate::db::MediaManifest) of each run whose
+    /// media confirmation holds in the configured bucket, by run id.
+    ///
+    /// A run named here is built from its manifest for as long as the bucket's
+    /// listing ([`Self::with_existing_media`]) holds every object the manifest
+    /// names. Every file name and key in the run's document then comes from the
+    /// manifest: the files its record lists resolve to the objects recorded for
+    /// them, and the two sets only a directory can name, the recordings' image
+    /// store and the showcase files nothing mentions, are the ones the manifest
+    /// recorded. The run's folder in the backend store is neither read nor
+    /// listed and the artifact service is asked nothing, so deleting that folder
+    /// changes nothing the build produces for the run.
+    ///
+    /// A run with an object missing from the listing is built from its sources
+    /// like any other, which is what finds its confirmation no longer true.
+    pub fn with_recorded_manifests(
+        mut self,
+        manifests: std::collections::HashMap<String, crate::db::MediaManifest>,
+    ) -> Self {
+        self.recorded_manifests = manifests;
         self
     }
 
@@ -1358,7 +1402,15 @@ impl SnapshotBuilder {
         // never a video, and it publishes under the very name it is served under —
         // which is what lets a recording's entry resolve it through the resolver the
         // recording itself came from.
-        let mut images: std::collections::BTreeSet<String> =
+        //
+        // A run built from its manifest takes the names from there instead: the
+        // refresh that confirmed it united the three and recorded every file.
+        let mut images: std::collections::BTreeSet<String> = if let Some(manifest) = tree.recorded()
+        {
+            run_files::recorded_names(manifest, crate::db::MediaFileKind::Validation)
+                .into_iter()
+                .collect()
+        } else {
             match self.store.list_run_validation(run_id) {
                 Ok(files) => files.into_iter().collect(),
                 Err(err) => {
@@ -1371,11 +1423,14 @@ impl SnapshotBuilder {
                         .push(STORE_LISTING_UNAVAILABLE.to_string());
                     std::collections::BTreeSet::new()
                 }
-            };
+            }
+        };
         if let TreeMedia::Stored { validation, .. } = tree {
             images.extend(validation.iter().cloned());
         }
-        images.extend(bucket_images.iter().cloned());
+        if tree.recorded().is_none() {
+            images.extend(bucket_images.iter().cloned());
+        }
         for file in images
             .into_iter()
             .filter(|file| test_cabinet_core::is_validation_image_name(file))
@@ -1952,18 +2007,31 @@ impl SnapshotBuilder {
         // several of them know about publishes once. `showcase.toml` is never
         // stored (nor uploaded), but a stray copy is filtered rather than
         // published: the manifest is capture-side input, already on the record.
-        let mut files: Vec<String> = match self.store.list_run_showcase(run_id) {
-            Ok(files) => files,
-            Err(err) => {
-                tracing::warn!(
-                    run.id = %run_id,
-                    "listing the run's stored showcase files failed ({err})"
-                );
-                account
-                    .unconfirmed
-                    .push(STORE_LISTING_UNAVAILABLE.to_string());
-                Vec::new()
-            }
+        //
+        // A run built from its manifest publishes exactly the files recorded
+        // there, in the order they were recorded: the refresh that confirmed it
+        // gathered this same list and entered every file that exists. Nothing
+        // below adds to it, since a name absent from the manifest is a file the
+        // run does not have.
+        let recorded = tree.recorded().map(|manifest| {
+            run_files::recorded_names(manifest, crate::db::MediaFileKind::Showcase)
+        });
+        let from_manifest = recorded.is_some();
+        let mut files: Vec<String> = match recorded {
+            Some(files) => files,
+            None => match self.store.list_run_showcase(run_id) {
+                Ok(files) => files,
+                Err(err) => {
+                    tracing::warn!(
+                        run.id = %run_id,
+                        "listing the run's stored showcase files failed ({err})"
+                    );
+                    account
+                        .unconfirmed
+                        .push(STORE_LISTING_UNAVAILABLE.to_string());
+                    Vec::new()
+                }
+            },
         }
         .into_iter()
         .filter(|file| file != "showcase.toml")
@@ -1981,14 +2049,16 @@ impl SnapshotBuilder {
             }
             listed = files.len();
         }
-        for media in &showcase.media {
-            if !files.contains(&media.file) {
-                files.push(media.file.clone());
+        if !from_manifest {
+            for media in &showcase.media {
+                if !files.contains(&media.file) {
+                    files.push(media.file.clone());
+                }
             }
-        }
-        for file in description_image_references(&showcase.description) {
-            if !files.contains(&file) {
-                files.push(file);
+            for file in description_image_references(&showcase.description) {
+                if !files.contains(&file) {
+                    files.push(file);
+                }
             }
         }
         for (index, file) in files.iter().enumerate() {
@@ -2086,6 +2156,15 @@ impl SnapshotBuilder {
             "{MEDIA_PREFIX}/{run_id}/code-analysis/v{}.json",
             summary.analyzer_version
         );
+        // A run built from its manifest links the object recorded for the
+        // document, or nothing when the manifest records none.
+        if let Some(manifest) = tree.recorded() {
+            let Some(entry) = manifest.file(name) else {
+                return (None, None);
+            };
+            account.files.push(entry.clone());
+            return (entry.key.clone(), None);
+        }
         // Already in the bucket under this exact generation: reference it without
         // reading the source bytes, re-scrubbing or re-uploading. This is the whole
         // point of putting the generation in the key.
@@ -2300,13 +2379,22 @@ impl SnapshotBuilder {
 
     /// What the artifact service says run `run_id`'s tree holds, for a build that
     /// [confirms media](Self::with_media_confirmation) and a run it has yet to
-    /// settle. [`TreeMedia::NotAsked`] otherwise.
+    /// settle. [`TreeMedia::NotAsked`] otherwise, and [`TreeMedia::Recorded`]
+    /// before any of that for a run built from its manifest
+    /// ([`Self::with_recorded_manifests`]).
     ///
     /// `GET {artifacts_url}/runs/{run_id}/media`. Anything but a listing the
     /// service produced is [`TreeMedia::Unknown`]: no service to ask, a request
     /// that failed, a status that is not a success (an artifact service older than
     /// the route answers `404`), or a body that does not parse.
     async fn tree_media(&self, run_id: &str) -> TreeMedia {
+        // A confirmed run whose every object the listing still holds is built
+        // from its manifest, whatever else is known about it.
+        if let Some(manifest) = self.recorded_manifests.get(run_id)
+            && manifest.keys().all(|key| self.existing_media.contains(key))
+        {
+            return TreeMedia::Recorded(manifest.clone());
+        }
         match &self.settled_media {
             None => return TreeMedia::NotAsked,
             Some(settled) if settled.contains(run_id) => return TreeMedia::Settled,
@@ -4502,3 +4590,7 @@ mod hook_tests;
 #[cfg(test)]
 #[path = "snapshot.confirm.test.rs"]
 mod confirm_tests;
+
+#[cfg(test)]
+#[path = "snapshot.manifest.test.rs"]
+mod manifest_tests;

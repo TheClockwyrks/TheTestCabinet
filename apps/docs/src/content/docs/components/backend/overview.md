@@ -78,6 +78,17 @@ each generation was decided against, and a change to that shape fails the
 build's tests until it is either recorded under the current generation, which
 asserts that stored records survive it, or given a new generation.
 
+A run's files are read from the store while it holds them and from the public
+bucket afterwards. Once a refresh has
+[confirmed](#confirmation) a published run, the run's [file
+manifest](/components/backend/snapshot/#the-file-manifest) names the object
+holding each of its files, and every [run file
+route](/components/backend/api/#run-files) answers from that object when the
+store has no copy. The consoles and the arena keep requesting the same routes
+wherever the bytes are. The pushed-controller listing
+(`GET /adversarial/controllers`) offers a run whose controller module is in the
+store or named with an object by its manifest.
+
 A run the build cannot read stays reachable on its own terms. `GET
 /runs/unreadable` lists each such run's lifted identity together with the error
 its stored record produces, paged like every other listing, and `DELETE
@@ -314,10 +325,21 @@ was made from, and for the definition it was made under:
   the next refresh evaluates the run again. A tree already reclaimed stays
   reclaimed.
 
-Once a run is confirmed in this bucket under the current version and its tree is
-reclaimed, nothing about it is left to decide. Later refreshes ask the artifact
-service nothing about it, leave out a file its record lists that the bucket
-lacks, as the refresh that confirmed it did, and do not change its confirmation.
+A refresh builds a confirmed run's document from the run's manifest. While the
+bucket's listing holds every object the manifest names, each file name and key
+in the document comes from the manifest, the image store and the unmentioned
+showcase files included. The refresh reads and lists nothing under the run's
+folder in the backend store and asks the artifact service nothing about the
+run, so the document is the same whether or not the store still holds the run's
+files. A file the manifest records as unrecoverable stays left out. A refresh
+that cannot read the confirmed runs' manifests fails, and the batching retries
+it.
+
+A confirmed run with an object missing from the bucket's listing is evaluated
+from its sources like an unconfirmed one. Once such a run's tree is reclaimed,
+nothing about it is left to decide. Later refreshes ask the artifact service
+nothing about it, leave out a file its record lists that the bucket lacks, as
+the refresh that confirmed it did, and do not change its confirmation.
 
 A run confirmed under an earlier version whose tree was reclaimed is evaluated
 like any other. The artifact service answers that it holds no tree, the backend's

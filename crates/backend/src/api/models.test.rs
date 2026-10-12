@@ -48,6 +48,7 @@ async fn test_state_with_prices(
         config,
         http: reqwest::Client::new(),
         prices,
+        run_files: None,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     (dir, state)

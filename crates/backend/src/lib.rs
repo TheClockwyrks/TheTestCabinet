@@ -267,6 +267,13 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     }
 
     let r2 = config.r2.clone().map(R2Client::new);
+    // The same bucket, for the run file routes to read a confirmed run's files
+    // back from. It is named as the confirmations name it, so a route fetches a
+    // file only for a run confirmed in this very bucket.
+    let run_files = r2
+        .clone()
+        .zip(config.artifact_retention.bucket)
+        .map(|(client, identity)| api::RunFileBucket::new(client, identity));
 
     // The client the auth middleware verifies bearer tokens against, and the
     // publisher fetches reviewer profile pictures from for the public snapshot.
@@ -406,6 +413,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config: Arc::new(config),
         http,
         prices,
+        run_files,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     // A running ladder dispatch and a filling plan are fed when one of their runs

@@ -394,15 +394,23 @@ pub async fn case_showcase(
 
 /// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
 /// `<proof-id>.<ext>`). The content type follows the extension.
+///
+/// Like every run file route, this answers from the store while it holds the
+/// file and from the public bucket afterwards
+/// ([`read_through`](super::run_files::read_through)). A video the bucket holds
+/// only as the mp4 made from it is answered as `video/mp4` under the `.webm`
+/// name it was requested by.
 pub async fn run_proof(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_proof(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    match state.store.read_run_proof(&id, &file) {
+        Ok(bytes) => Ok(bytes_response(&file, bytes)),
+        Err(miss) => {
+            let name = format!("proof/{file}");
+            super::run_files::read_through(&state, &id, &name, labels_for, miss).await
+        }
+    }
 }
 
 /// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
@@ -428,11 +436,13 @@ pub async fn run_validation(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_validation(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    match state.store.read_run_validation(&id, &file) {
+        Ok(bytes) => Ok(bytes_response(&file, bytes)),
+        Err(miss) => {
+            let name = format!("validation/{file}");
+            super::run_files::read_through(&state, &id, &name, labels_for, miss).await
+        }
+    }
 }
 
 /// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
@@ -456,11 +466,13 @@ pub async fn run_asset(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_asset(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    match state.store.read_run_asset(&id, &file) {
+        Ok(bytes) => Ok(bytes_response(&file, bytes)),
+        Err(miss) => {
+            let name = format!("asset/{file}");
+            super::run_files::read_through(&state, &id, &name, labels_for, miss).await
+        }
+    }
 }
 
 /// `POST /runs/{id}/asset/{file}` — store a published asset-generation run's
@@ -488,11 +500,13 @@ pub async fn run_showcase(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_showcase(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    match state.store.read_run_showcase(&id, &file) {
+        Ok(bytes) => Ok(bytes_response(&file, bytes)),
+        Err(miss) => {
+            let name = format!("showcase/{file}");
+            super::run_files::read_through(&state, &id, &name, labels_for, miss).await
+        }
+    }
 }
 
 /// `POST /runs/{id}/showcase/{file}` — store one of a published run's showcase
@@ -511,15 +525,17 @@ pub async fn put_run_showcase(
 
 /// `GET /runs/{id}/controller.wasm` — an adversarial run's pushed controller wasm,
 /// served so the arena can resolve and pit a pushed implementation from any host.
+/// Answered from the bucket for a confirmed run whose module the store no longer
+/// holds, so the arena's fetch is the same request either way.
 pub async fn run_controller(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_controller(&id)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response("controller.wasm", bytes))
+    let name = test_cabinet_core::TREE_ROOT_CONTROLLER;
+    match state.store.read_run_controller(&id) {
+        Ok(bytes) => Ok(bytes_response(name, bytes)),
+        Err(miss) => super::run_files::read_through(&state, &id, name, labels_for, miss).await,
+    }
 }
 
 /// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm,
@@ -543,6 +559,9 @@ pub async fn put_run_controller(
 /// The stored bytes are gzipped, so this is served through [`run_artifact_response`]: a browser
 /// gets them moved verbatim, and a gzip-unaware client (the CLI, the replay driver — anything on
 /// the workspace `reqwest`) gets them decoded here.
+///
+/// The one run file route that answers from the store alone: a session record is
+/// never published, so no manifest names it and the bucket holds no copy.
 pub async fn run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -579,6 +598,11 @@ pub async fn put_run_replay(
 /// per-run Code tab) gets the stored gzip moved verbatim, and a gzip-unaware client on the
 /// workspace `reqwest` gets it decoded here.
 ///
+/// A confirmed run whose document the store no longer holds is answered from the bucket.
+/// That object is the scrubbed document as plain JSON, which is what every reader of this
+/// route parses either way: a browser inflates the store's gzip before a script sees it,
+/// and a client that does not accept gzip is handed the decoded bytes.
+///
 /// Offered for every harness's runs. The gg-only constraint binds on the *aggregate* query
 /// surface, not on a per-run document that costs nothing harness-specific to produce.
 pub async fn run_code_analysis(
@@ -586,11 +610,21 @@ pub async fn run_code_analysis(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_code_analysis(&id)
-        .map_err(ApiError::from)?;
-    run_artifact_response(&headers, crate::store::CODE_ANALYSIS_ARTIFACT, bytes)
+    match state.store.read_run_code_analysis(&id) {
+        Ok(bytes) => run_artifact_response(&headers, crate::store::CODE_ANALYSIS_ARTIFACT, bytes),
+        Err(miss) => {
+            let name = test_cabinet_core::TREE_ROOT_CODE_ANALYSIS;
+            let mut response =
+                super::run_files::read_through(&state, &id, name, labels_for, miss).await?;
+            // The store's copy varies by request header, so every answer of this
+            // route says so, the bucket's included.
+            response.headers_mut().insert(
+                header::VARY,
+                header::HeaderValue::from_static("accept-encoding"),
+            );
+            Ok(response)
+        }
+    }
 }
 
 /// `POST /runs/{id}/code-analysis` — store a run's code-analysis document, mirrored in by

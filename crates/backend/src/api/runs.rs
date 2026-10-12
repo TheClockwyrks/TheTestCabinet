@@ -572,24 +572,58 @@ pub(super) fn summary_cards(
 
 /// `GET /adversarial/controllers?testCase=<slug>` — the pushed adversarial
 /// controllers for a case: every stored run (pending or published) that produced
-/// an adversarial result and uploaded a controller wasm. The arena resolves these
-/// as [`ControllerKind::PushedRun`] (fetching the wasm from
+/// an adversarial result and whose controller wasm can be served. The arena
+/// resolves these as [`ControllerKind::PushedRun`] (fetching the wasm from
 /// `GET /runs/{id}/controller.wasm`), so a reviewer can pit a pushed
 /// implementation from any host. A read; no auth on the private network.
+///
+/// A controller can be served from two places, and the listing offers a run for
+/// either: the backend store holds the module, or the run is confirmed in the
+/// configured bucket and its [file manifest](crate::db::MediaManifest) names the
+/// module with an object, which is where the route reads it from once the store
+/// no longer holds it (see [`RunFileBucket`](super::RunFileBucket)). A module the
+/// manifest records as unrecoverable is one nothing can serve, so its run is not
+/// offered.
 pub async fn adversarial_controllers(
     State(state): State<AppState>,
     Query(params): Query<ControllersParams>,
 ) -> Result<Json<ControllersResponse>, ApiError> {
-    let runs = state
+    let runs: Vec<_> = state
         .db
         .list_for_case(&params.test_case)
         .await
-        .map_err(ApiError::from)?;
-    let controllers = runs
+        .map_err(ApiError::from)?
         .into_iter()
         .filter(|run| run.record.validation.adversarial.is_some())
-        // Only runs whose controller wasm actually landed can be pitted.
-        .filter(|run| state.store.has_run_controller(&run.record.id))
+        .collect();
+    // Only the runs the store cannot answer for are looked up, and only on a
+    // backend with a bucket to read them from.
+    let bucket = state.run_files.as_ref().map(|bucket| bucket.identity());
+    let off_disk: Vec<String> = runs
+        .iter()
+        .map(|run| &run.record.id)
+        .filter(|id| !state.store.has_run_controller(id))
+        .cloned()
+        .collect();
+    let manifests = if bucket.is_some() && !off_disk.is_empty() {
+        state
+            .db
+            .media_manifests_of(&off_disk, bucket)
+            .await
+            .map_err(ApiError::from)?
+    } else {
+        std::collections::HashMap::new()
+    };
+    let in_bucket = |id: &str| {
+        manifests
+            .get(id)
+            .and_then(|manifest| manifest.file(test_cabinet_core::TREE_ROOT_CONTROLLER))
+            .is_some_and(|file| file.key.is_some())
+    };
+    let controllers = runs
+        .into_iter()
+        // Only runs whose controller wasm can actually be served can be pitted.
+        .filter(|run| state.store.has_run_controller(&run.record.id) || in_bucket(&run.record.id))
         .map(|run| ControllerRef {
             id: run.record.id.clone(),
             kind: ControllerKind::PushedRun,
