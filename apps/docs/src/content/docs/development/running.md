@@ -53,7 +53,7 @@ the host's file there before the first start.**
 | --- | --- |
 | macOS, Podman | `cp .devcontainer/.env.macos .devcontainer/.env`. Start `.devcontainer/tools/macos-host-runtime.sh` and the launchd `socat` agent on port 17385 on the Mac first: the runtime and the SSH agent arrive over the Mac's loopback. `.env.macos` describes both |
 | Linux, Podman | `cp .devcontainer/.env.podman .devcontainer/.env`, and set `DEVCONTAINER_SSH_AUTH_SOCK=/run/user/1000/ssh-agent` (or the agent's path) |
-| NixOS, Podman | As Linux Podman, plus `DEVCONTAINER_GID=100` and the `gid=100` in `DEVCONTAINER_USERNS` |
+| NixOS, Podman | As Linux Podman. `DEVCONTAINER_USERNS` keeps the image's `keep-id:uid=1000,gid=1000`, which maps the host account onto the image's whatever its group is |
 | Ubuntu, Docker | No `.env` at all, or one setting only `DEVCONTAINER_SSH_AUTH_SOCK=…` and `DEVCONTAINER_RUNTIME_SOCKET=…`; the defaults bind `/var/run/docker.sock` |
 
 The container user is `dev`. The image carries both the `docker` and the

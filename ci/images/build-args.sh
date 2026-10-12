@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
-# Prints the version pins one CI image consumes, as `NAME=VALUE` lines, for
+# Prints the build arguments one CI image consumes, as `NAME=VALUE` lines, for
 # scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg`.
 #
 # Usage: ci/images/build-args.sh <rust|rust-browser|web>
 #
-# There is one place a version is decided in this workspace and it is the
-# `x-devcontainer-build-args` anchor in .devcontainer/docker-compose.yml. A CI
-# image that kept its own copy of a pin would drift from the container a
-# developer works in, and the first symptom would be a gate that passes on a
-# laptop and fails in the pipeline, or the reverse. So the pins are read out of
-# that anchor as text and handed to the build.
+# Every CI image is built on the images the template publishes, and the one
+# place this workspace names them is the `x-devcontainer-build-args` anchor in
+# .devcontainer/docker-compose.yml, whose TOOLCHAIN_IMAGE,
+# PLAYWRIGHT_IMAGE are full references the devcontainer is
+# built on. A CI image that kept its own copy of one would drift from the
+# container a developer works in, and the first symptom would be a gate that
+# passes on a laptop and fails in the pipeline, or the reverse. So the
+# references are read out of that anchor as text and handed to the build.
 #
-# Which pins is decided by the image itself: this reads the `ARG` lines of
-# ci/images/<track>.Dockerfile and returns the ones the anchor has a literal
-# value for. That is what keeps a pin no CI image consumes — CLAUDE_CODE_VERSION,
-# CODEX_VERSION, LAZYGIT_VERSION — out of every image's build, so a bump of one
-# leaves the layers the image is built from as they were, while a bump of one
-# an image does consume rebuilds the layers that read it.
+# Which arguments is decided by the image itself: this reads the bare `ARG`
+# lines of ci/images/<track>.Dockerfile, the global ones before its first
+# `FROM` among them, and returns the ones the anchor has a literal value for.
+# That is what keeps an entry no CI image consumes, CLAUDE_CODE_VERSION or
+# CODEX_VERSION, out of every image's build, so a bump of one leaves the CI
+# images as they were.
 #
-# Not every version an image installs is in the anchor. The devcontainer's
-# install scripts pin some of their own — uv, pre-commit, kubectl, rustup —
-# and the image pipeline triggers on those scripts as it does on the compose
-# file, so a bump in one builds the images under the commit that bumped it.
-# See "Version pins" in README.md.
+# Every version a CI image holds is the published image's: the template's
+# images/pins.yml decides it and the reference's tag names it, so a change of
+# version reaches a CI image as a new reference in the anchor, which the image
+# pipeline triggers on. See "Version pins" in README.md.
 #
 # The anchor is read with awk rather than with `docker compose config`, for
 # three reasons. It needs no compose on the agent, it behaves identically under
@@ -30,9 +31,9 @@
 # no YAML parser here, by design, and scripts/check-devcontainer.py reads the
 # same file as text for the same reason.
 #
-# A value containing `$` is skipped. Those are the anchor's interpolated
-# entries — USER_UID and USER_GID — and both of them are properties of the
-# host a devcontainer is being built on. A CI image has no host user to match.
+# A value containing `$` is skipped. That is the anchor's interpolated entry,
+# INSTALL_CUDA, which a host states from its environment for the devcontainer
+# alone, and which no CI image reads.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,9 +56,9 @@ if [[ ! -f "$DOCKERFILE" ]]; then
 	exit 1
 fi
 
-# The pins the image asks for. Only a bare `ARG NAME` counts: an `ARG` carrying
-# its own default is a value the Dockerfile decided for itself and is none of
-# this script's business.
+# The arguments the image asks for. Only a bare `ARG NAME` counts: an `ARG`
+# carrying its own default is a value the Dockerfile decided for itself and is
+# none of this script's business.
 mapfile -t declared < <(sed -n 's/^ARG \([A-Z0-9_]*\)$/\1/p' "$DOCKERFILE" | sort -u)
 
 if [[ "${#declared[@]}" -eq 0 ]]; then

@@ -68,8 +68,8 @@ DEST_DIR="$(cd "$GG_SIGNATURES_OUT_DIR" && pwd)"
 # diff of the checkout to say why.
 GRIFFE_VERSION="2.1.0"
 
-# Run through `uv`, which is this repo's Python toolchain — the devcontainer installs it
-# (.devcontainer/tools/uv.sh), `build.sh` requires it, and `scripts/ci/install-uv.sh` puts it on a CI
+# Run through `uv`, which is this repo's Python toolchain — the devcontainer's toolchain image
+# carries it, `build.sh` requires it, and `scripts/ci/install-uv.sh` puts it on a CI
 # agent. It is not a preference: the devcontainer's base image has no usable `pip` and no
 # `ensurepip`, and a CI agent's system Python refuses an install outright (PEP 668), so a private
 # environment created by anything else does not exist on all three machines.

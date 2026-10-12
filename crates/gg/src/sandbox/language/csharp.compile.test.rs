@@ -717,7 +717,7 @@ fn the_parse_classifiers_build_reports_a_runtime_that_could_not_start() {
 ///
 /// This is the whole of the runtime repair, and it is one line that no other test in this crate can
 /// see. Deleting it leaves all eighty-odd C# tests green on any machine that has an ICU of its own —
-/// which is every machine `cargo` runs on, by construction, since `.devcontainer/system/apt.sh`
+/// which is every machine `cargo` runs on, by construction, since `.devcontainer/system/packages.sh`
 /// declares one. The arm would be exactly as dead in the run images as it was, and the suite exactly
 /// as green as it was. So the variable is asserted at the one place it is set, where a third spawn
 /// site added later inherits it rather than remembering it.

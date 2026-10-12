@@ -16,22 +16,24 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# pre-commit is baked into the devcontainer image (.devcontainer/tools/uv.sh). If
-# it's missing (e.g. running outside the devcontainer), install it via uv, and
-# fall back to a clear error if uv isn't available either.
+# pre-commit is baked into the toolchain image the devcontainer is built on
+# (TOOLCHAIN_IMAGE in .devcontainer/docker-compose.yml). If it's missing (e.g.
+# running outside the devcontainer), install it via uv, and fall back to a
+# clear error if uv isn't available either.
 if ! command -v pre-commit >/dev/null 2>&1; then
 	if command -v uv >/dev/null 2>&1; then
 		echo "pre-commit not found; installing it with uv..."
-		# Keep this version on PRE_COMMIT_VERSION in .devcontainer/tools/uv.sh,
-		# which is where the image's own pre-commit is pinned; a clone that falls
-		# through to here should end up with the same framework the devcontainer
-		# has, not a newer one that judges the hooks differently.
+		# Keep this version on the pre-commit the toolchain image holds, which
+		# the template pins; a clone that falls through to here should end up
+		# with the same framework the devcontainer has, not a newer one that
+		# judges the hooks differently.
 		uv tool install "pre-commit==4.6.0"
 		# uv links tools into ~/.local/bin; make sure it's reachable this run.
 		export PATH="$HOME/.local/bin:$PATH"
 	else
 		echo "Error: neither pre-commit nor uv is installed." >&2
-		echo "Install uv first: bash .devcontainer/tools/uv.sh" >&2
+		echo "Install uv first (https://docs.astral.sh/uv/), or work in the devcontainer," >&2
+		echo "whose toolchain image carries both." >&2
 		exit 1
 	fi
 fi

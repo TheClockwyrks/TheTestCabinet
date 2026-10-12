@@ -2,13 +2,14 @@
 
 The Rust suite's browser tests drive Chromium through the workspace's own
 `playwright` package, and the browser itself belongs to the image: the
-rust-browser image installs it at the version the superrepo's devcontainer
-pins as `PLAYWRIGHT_VERSION`. A `playwright` of another version asks for a
-browser build the image does not carry, and every browser test then fails deep
-inside its provider. This gate asks the workspace's Playwright where its
-Chromium is, as the superrepo's `web-browser-test` gate does, and says plainly
-when it is not there, naming the workspace's version and the directory
-Playwright looked in (`PLAYWRIGHT_BROWSERS_PATH`).
+rust-browser image copies it from the playwright image the superrepo's
+devcontainer names as `PLAYWRIGHT_IMAGE`, whose tag is its Playwright version.
+A `playwright` of another version asks for a browser build the image does not
+carry, and every browser test then fails deep inside its provider. This gate
+asks the workspace's Playwright where its Chromium is, as the superrepo's
+`web-browser-test` gate does, and says plainly when it is not there, naming the
+workspace's version and the directory Playwright looked in
+(`PLAYWRIGHT_BROWSERS_PATH`).
 
 Where the browser is required (`TCAB_REQUIRE_BROWSER=1`, which the pipeline's
 Rust job sets) a missing `node`, an uninstalled workspace or an absent browser
@@ -17,7 +18,7 @@ this gate, with a notice.
 
 The fix for a skew is to move the workspace's `playwright` devDependency to the
 image's version. The superrepo's Repositories page holds the rule: an image bump
-that moves `PLAYWRIGHT_VERSION` moves this repository's `playwright` in the same
+that moves the `PLAYWRIGHT_IMAGE` tag moves this repository's `playwright` in the same
 change as the `scripts/repos/render.py --update` that brings the new pins.
 """
 
@@ -78,7 +79,7 @@ if not found.get("present"):
         f"The workspace's playwright {version} finds no Chromium:",
         f"    it looked for {found.get('path') or 'an executable it could not name'}",
         f"    PLAYWRIGHT_BROWSERS_PATH is {browsers}",
-        "The image carries the browser of the superrepo's PLAYWRIGHT_VERSION; move the",
+        "The image carries the browser of the superrepo's PLAYWRIGHT_IMAGE tag; move the",
         "workspace's `playwright` devDependency to that version, or run in an image",
         "built for this one.",
     )

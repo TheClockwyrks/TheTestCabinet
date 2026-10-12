@@ -159,8 +159,8 @@ stages:
     displayName: Gates
     jobs:
       # The Rust track: every check that compiles the workspace, and nothing
-      # else. It runs in the rust-browser image, the Rust image with Node and
-      # Playwright's Chromium on top, so the Rust tests that drive a browser
+      # else. It runs in the rust-browser image, the Rust image with the
+      # playwright image's engines copied on top, so the Rust tests that drive a browser
       # run here rather than skip.
       - job: rust
         displayName: Rust
@@ -191,8 +191,8 @@ stages:
           # task saves, which is the whole reason CARGO_HOME moves at all.
           #
           # The toolchain is deliberately NOT under here. It lives at
-          # RUSTUP_HOME and CARGO_HOME inside the image, under /usr/local, and
-          # /usr/local/cargo/bin is on the image's PATH — so repointing
+          # RUSTUP_HOME and CARGO_HOME inside the image, under /home/dev, and
+          # /home/dev/.cargo/bin is on the image's PATH — so repointing
           # CARGO_HOME leaves cargo, rustup and cargo-nextest exactly where
           # they are, and `cargo nextest` still resolves, because cargo looks
           # for a `cargo-<name>` subcommand on PATH. That is a contract with

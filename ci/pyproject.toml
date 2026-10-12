@@ -24,7 +24,7 @@ dev = [
     "ruff>=0.16.8",
 ]
 
-# uv's own backend, which the pinned uv (.devcontainer/tools/uv.sh) carries, so
+# uv's own backend, which the toolchain image's pinned uv carries, so
 # building the project fetches nothing. It reads the package out of `src/` by
 # the project's name, which is why the module directory is the slug written as
 # an identifier.

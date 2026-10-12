@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Install uv (Astral's Python package/tool manager) from its official installer,
-# so a CI agent has the same Python toolchain the devcontainer does
-# (.devcontainer/tools/uv.sh). Pinned to UV_VERSION so the two match.
+# so a CI agent has the same Python toolchain the devcontainer does (the uv
+# the toolchain image it is built on installs). Pinned to UV_VERSION so the two
+# match.
 #
 # It is uv rather than pip because this repo's Python work does not run against a
 # shared interpreter: the devcontainer's base image ships no usable pip at all

@@ -102,7 +102,9 @@ everywhere else.
 - The CI image tracks: the template renders two, `rust` and `web`, and the
   project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
   its `.dockerignore`, the project's own files): the Rust image of the same
-  commit with Node and Playwright's Chromium on top, which the template's
+  commit with the playwright image's engines copied on top (its one argument
+  from the anchor is `PLAYWRIGHT_IMAGE`), reopening `/home/dev` with
+  `chmod o+rx` after that copy as the web image does, which the template's
   `rust` gate job runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
   each rendered file that lists the tracks: the `rust | rust-browser | web`
   cases and usage lines of `scripts/ci/ci-image.sh` and
@@ -111,8 +113,7 @@ everywhere else.
   `scripts/ci/ci-image.test.sh`; the `rustBrowserImage` job of
   `azure-pipelines-ci-images.yml`, which `dependsOn: rustImage`, the comment
   above the jobs saying why, and the three paths it adds to the trigger's
-  filter (the Dockerfile, its `.dockerignore` and
-  `scripts/ci/install-playwright-chromium.sh`); and the image table and the
+  filter (the Dockerfile and its `.dockerignore`); and the image table and the
   "Rust browser" section of `ci/images/README.md`. The `rust` job's `container:` image in
   `azure-pipelines.yml` is `ubuntu-the-test-cabinet-rust-browser-cicd` and its
   `variables:` carry `TCAB_REQUIRE_BROWSER: 1`, and
@@ -141,3 +142,20 @@ everywhere else.
   itself (`ci/gates/dependency-graph.py`) and its library module
   (`ci/src/the_test_cabinet_ci/graph.py`, `ci/tests/test_graph.py`) are the
   project's own files in the template's directories.
+- The devcontainer's build context and its own steps: the `dev` service in
+  `.devcontainer/docker-compose.yml` builds from the repository root
+  (`context: ..`, `dockerfile: ./.devcontainer/ubuntu.dockerfile`), because
+  the last of the project's steps installs gg's toolchains with the
+  repository's installers; keep it, and write every `COPY` in
+  `ubuntu.dockerfile` from the root (`./.devcontainer/...`), the template's
+  own included. At the comment the template leaves for a project's steps, keep
+  `system/packages.sh` (as root), `languages/rust/targets.sh` (the musl
+  target), `tools/helm.sh` and the gg toolchain step with its staged slice of
+  the repository, each a `COPY` of only what it runs. The anchor keeps the
+  project's `NODE_VERSION` and `NEXTEST_VERSION`, which no Dockerfile reads:
+  `scripts/ci/gg-ci-toolchains.sh` and `scripts/repos/test_render.py` read
+  them, and each moves with the Node or cargo-nextest the toolchain image a
+  new template version names holds. The Rust CI image carries the same
+  packages and musl target in a step of the project's own, and its
+  `.dockerignore` and the image pipeline's path filter admit
+  `.devcontainer/languages/rust/targets.sh`; keep all three.

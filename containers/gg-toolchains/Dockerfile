@@ -467,7 +467,7 @@ COPY scripts/ci/fetch.sh /tmp/gg-cpp/scripts/ci/fetch.sh
 # be copied — which is the opposite of the C# block's `apt` line and not a contradiction: what is
 # forbidden there is a library the run image would have to supply, and what is required here is a
 # library this stage hands to the tree. `libtinfo6` is declared rather than left to arrive with
-# `bash`, for the reason `.devcontainer/system/apt.sh` declares the tools it does.
+# `bash`, for the reason `.devcontainer/system/packages.sh` declares the packages it does.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends libstdc++6 libtinfo6

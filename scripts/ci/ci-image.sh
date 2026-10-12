@@ -6,10 +6,11 @@
 # There is one image per gate track, because the tracks need disjoint
 # toolchains: the Rust track wants a Rust toolchain, the web track wants
 # node, the browser engines and kubectl, and neither wants the other's couple of
-# gigabytes. Each is built from ci/images/<track>.Dockerfile with the workspace root
-# as its context, since those files install with the same .devcontainer/
-# scripts a developer's image is built with. See ci/images/README.md for what is
-# in each one and why.
+# gigabytes. Each is built from ci/images/<track>.Dockerfile on the toolchain
+# image the template publishes, the image a developer's container is built on,
+# rather than from install scripts of its own, so it installs nothing and its
+# context, the workspace root, is ignored whole. See ci/images/README.md for
+# what is in each one and why.
 #
 # `rust-browser` is the one track built on another: the Rust image plus Node and
 # Chromium, for the Rust gate job's browser tests. Its Dockerfile starts
@@ -36,15 +37,16 @@
 # registry that cannot be reached fails at `--push` with the reason in the log
 # rather than being read as an image already there.
 #
-# ## The pins
+# ## The images it is built on
 #
-# This script decides no version. The pins come out of
-# .devcontainer/docker-compose.yml's `x-devcontainer-build-args` anchor, which
-# stays the one place a tool's version is written, and ci/images/build-args.sh
-# reads the ones the track's Dockerfile declares an `ARG` for back out of it as
-# `NAME=VALUE` lines. Each reaches the build as a `--build-arg`. A pin an image
-# consumes is therefore the same pin a developer's image consumes, which is the
-# property that makes a gate pass here exactly when it passes in a terminal.
+# This script decides no version. The references to the published images a CI
+# image is built on come out of .devcontainer/docker-compose.yml's
+# `x-devcontainer-build-args` anchor, which stays the one place they are
+# written, and ci/images/build-args.sh reads the ones the track's Dockerfile
+# declares an `ARG` for back out of it as `NAME=VALUE` lines. Each reaches the
+# build as a `--build-arg`. The toolchain a CI image holds is therefore the one
+# a developer's image holds, which is the property that makes a gate pass here
+# exactly when it passes in a terminal.
 #
 # ## Where it is pushed
 #
@@ -53,8 +55,11 @@
 # both say which track an image belongs to without reading its tag. The layer
 # cache is a repository of its own beside it, `<repository>-cache:latest`.
 # `the-test-cabinet-acr` is the Docker Registry service connection the image
-# pipeline signs in through before this runs; the push reads the credential
-# that sign-in wrote into the agent's docker configuration.
+# pipeline signs in through before this runs, a login to testcabinet.azurecr.io
+# alone; the push reads the credential that sign-in wrote into the agent's
+# docker configuration. The published images the build pulls are
+# nyxsisdev.azurecr.io's, which admits anonymous pulls, so that pull reads no
+# credential.
 #
 # ## One architecture, built natively
 #
@@ -122,7 +127,7 @@ build() {
 	# A process substitution into `mapfile` would swallow a non-zero exit, so
 	# the output is captured first and the failure reported here.
 	if ! pins_text="$(ci/images/build-args.sh "$track")"; then
-		echo "ci-image.sh: ci/images/build-args.sh ${track} failed; refusing to build an image with no pins" >&2
+		echo "ci-image.sh: ci/images/build-args.sh ${track} failed; refusing to build an image on nothing it names" >&2
 		return 1
 	fi
 	local pins=()

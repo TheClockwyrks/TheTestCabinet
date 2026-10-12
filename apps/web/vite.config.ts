@@ -173,6 +173,15 @@ export default defineConfig({
       },
       {
         extends: true,
+        /*
+         * The browser suite is served by a Vite server of its own, on the
+         * port Vitest names for it, and that server takes this file's
+         * `server` options too. A strict port there fails the whole suite
+         * when another run on the machine holds it, so this server moves to
+         * the next free port instead: nothing is pointed at it but the
+         * engines Vitest opens, which are handed the port it took.
+         */
+        server: { strictPort: false },
         test: {
           name: "browser",
           globals: true,

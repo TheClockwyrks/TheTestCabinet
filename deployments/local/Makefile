@@ -79,9 +79,9 @@ OVERLAY := $(REPO)/deployments/k8s/overlays/local
 # default, which tracks whatever k3s was current when that k3d release was cut and so
 # drifts from the deployments as k3d ages. This mirrors the Kubernetes version the
 # staging/prod AKS clusters run, so the API server this stack validates and applies
-# against behaves like the real one; bump it in step with `KUBECTL_VERSION` in
-# .devcontainer/tools/k8s.sh. (k3s tags the image with `-k3s1`, not the `+k3s1` of the
-# upstream release tag.)
+# against behaves like the real one; bump it in step with the kubectl the toolchain
+# image the devcontainer is built on holds. (k3s tags the image with `-k3s1`, not the
+# `+k3s1` of the upstream release tag.)
 K3S_IMAGE ?= rancher/k3s:v1.35.6-k3s1
 
 # The kubelet setting every local node MUST carry. Every image this cluster runs is a
@@ -528,7 +528,7 @@ audio-store:
 #
 # It is a BuildKit Dockerfile (`# syntax=…` + `--mount=type=cache` Rust build
 # caches), so the build needs the buildx plugin — the devcontainer ships it in the
-# system cli-plugins dir (see .devcontainer/tools/container.sh); a bare host gets it
+# system cli-plugins dir (the toolchain image it is built on installs it); a bare host gets it
 # from its docker install. DOCKER_CONFIG is pinned to a credsStore-free config dir
 # for the builds (see BUILD_DOCKER_CONFIG above for why).
 #

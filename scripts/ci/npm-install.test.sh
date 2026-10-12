@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Table test for npm-install.sh. Run it directly: ./npm-install.test.sh
 #
-# The assertion the script exists for is the one worth covering: the agent's
-# Node and the devcontainer's Node are one version, and a disagreement stops the
-# step naming both rather than surfacing later as a gate that fails on one
-# machine. A stub `node` decides the version each case reports, and a stub `npm`
-# records that the install ran rather than performing one.
+# The script installs the workspace from the lockfile, from the workspace root
+# whatever directory it is run in, and asserts no Node version: the Node it
+# runs on is the toolchain image's wherever it runs. A stub `npm` records what
+# it was asked for and where rather than performing an install, and a stub
+# `node` reporting a version no image holds shows the install runs whatever
+# Node answers.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$CI_DIR/../.." && pwd)"
 pass=0
 fail=0
 
@@ -39,62 +41,43 @@ check_contains() { # label needle haystack
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# The version the compose file pins, read the way the script reads it: through
-# lib.sh's own helper, so this test and the script under test cannot disagree
-# about what the anchor says.
-# SC1091 is suppressed because this repository holds `lib.sh.jinja`, so the
-# source above resolves in a render and not here.
-# shellcheck disable=SC1091
-pinned="$(
-	cd "$CI_DIR/../.." && . "$CI_DIR/lib.sh" && build_arg NODE_VERSION
-)"
-if [ -n "$pinned" ]; then
-	ok "the compose file pins NODE_VERSION, $pinned"
-else
-	bad "the compose file pins NODE_VERSION" "the reader printed nothing"
-fi
-
 stubs="$tmp/bin"
 mkdir -p "$stubs"
 cat >"$stubs/npm" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >>"$NPM_LOG"
+printf '%s %s\n' "$PWD" "$*" >>"$NPM_LOG"
+exit "${NPM_STATUS:-0}"
 STUB
-chmod +x "$stubs/npm"
+cat >"$stubs/node" <<'STUB'
+#!/usr/bin/env bash
+echo "v0.0.1"
+STUB
+chmod +x "$stubs/npm" "$stubs/node"
 export NPM_LOG="$tmp/npm.log"
 
-# Runs the script with a stub node reporting $1.
-run() { # reported-version
-	cat >"$stubs/node" <<STUB
-#!/usr/bin/env bash
-echo "$1"
-STUB
-	chmod +x "$stubs/node"
-	(cd / && PATH="$stubs:$PATH" "$CI_DIR/npm-install.sh" 2>&1)
+run() { # npm-status
+	(cd / && NPM_STATUS="$1" PATH="$stubs:$PATH" "$CI_DIR/npm-install.sh" 2>&1)
 }
 
-echo "--- the agent's Node is not the pinned one ---"
+echo "--- the install ---"
 
 : >"$NPM_LOG"
-out="$(run "v20.11.0")"
+out="$(run 0)"
+status=$?
+check_equal "exits 0 whatever Node version answers" 0 "$status"
+check_equal "installs from the lockfile, at the workspace root" "$REPO_ROOT ci" "$(cat "$NPM_LOG")"
+
+echo "--- an install that fails ---"
+
+: >"$NPM_LOG"
+out="$(run 1)"
 status=$?
 if [ "$status" -ne 0 ]; then
 	ok "exits non-zero"
 else
 	bad "exits non-zero" "got exit 0"
 fi
-check_contains "names the version the agent reported" "v20.11.0" "$out"
-check_contains "names the version the compose file pins" "v$pinned" "$out"
-check_contains "names where the pin lives" ".devcontainer/docker-compose.yml" "$out"
-check_equal "does not install" "" "$(cat "$NPM_LOG")"
-
-echo "--- the agent's Node is the pinned one ---"
-
-: >"$NPM_LOG"
-out="$(run "v$pinned")"
-status=$?
-check_equal "exits 0" 0 "$status"
-check_equal "installs from the lockfile" "ci" "$(cat "$NPM_LOG")"
+check_contains "names the command that reproduces it" "npm ci" "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

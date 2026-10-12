@@ -68,21 +68,18 @@ trigger:
       - "*"
   paths:
     include:
-      # The one list of the files an image is built from: every `COPY` source
-      # of a Dockerfile under ci/images/, the Dockerfiles and their
-      # `.dockerignore` files, ci/images/build-args.sh and this pipeline's
-      # script, which decide the build's arguments and command line, and
-      # .devcontainer/docker-compose.yml, whose anchor holds the pins an
-      # image's `ARG` lines read. A file added to an image's `COPY` or `ARG`
-      # lines is added here, or a change to it builds no image and the pin
-      # has no commit to follow. Sorted, one path a line.
+      # The one list of the files an image is built from: the Dockerfiles and
+      # their `.dockerignore` files, ci/images/build-args.sh and this
+      # pipeline's script, which decide the build's arguments and command
+      # line, .devcontainer/docker-compose.yml, whose anchor names the
+      # published images an image's `ARG` lines read, and the one script of
+      # the checkout an image copies, the musl target's, which the rust image
+      # runs as a step of the project's own. Any other version reaches an image
+      # as a new reference in that anchor. A file added to an image's `COPY`
+      # or `ARG` lines is added here, or a change to it builds no image and the
+      # pin has no commit to follow. Sorted, one path a line.
       - .devcontainer/docker-compose.yml
-      - .devcontainer/languages/node
-      - .devcontainer/languages/rust
-      - .devcontainer/system/browser-deps.sh
-      - .devcontainer/tools/browsers.sh
-      - .devcontainer/tools/kubectl.sh
-      - .devcontainer/tools/uv.sh
+      - .devcontainer/languages/rust/targets.sh
       - ci/images/build-args.sh
       - ci/images/rust-browser.Dockerfile
       - ci/images/rust-browser.Dockerfile.dockerignore
@@ -91,7 +88,6 @@ trigger:
       - ci/images/web.Dockerfile
       - ci/images/web.Dockerfile.dockerignore
       - scripts/ci/ci-image.sh
-      - scripts/ci/install-playwright-chromium.sh
 
 # Stated, though Azure Repos does not read it. See the first paragraph of the
 # section above.
@@ -206,7 +202,7 @@ jobs:
         parameters:
           image: web
 
-  # The Rust image plus Node and Playwright's Chromium, which the gates
+  # The Rust image plus the playwright image's browser engines, which the gates
   # pipeline's `rust` job runs in, so that the tests driving a browser run
   # rather than skip (ci/images/rust-browser.Dockerfile). It is built FROM the
   # Rust image of this run's commit, which ci-image.sh passes in, so it waits

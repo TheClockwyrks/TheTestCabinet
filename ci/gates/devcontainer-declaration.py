@@ -1,4 +1,4 @@
-"""Assert the devcontainer mounts the checkout where the container works.
+"""Assert the devcontainer mounts the checkout where the container works, and builds what its anchor names.
 
 The declaration is two files and neither can see the other's half.
 `.devcontainer/devcontainer.json` states the folder the container works in and
@@ -6,7 +6,10 @@ names the compose file and the service; `.devcontainer/docker-compose.yml`
 states what the container is run with, the checkout's mount among it. Without
 the two agreeing, the devcontainer CLI mounts the checkout at its own directory
 name, so a checkout directory named anything but this project's slug starts a
-container whose working directory does not exist.
+container whose working directory does not exist. The Dockerfile the service
+is built from is held to the compose file's build-argument anchor the same way:
+every bare `ARG` it declares has an entry, every published image is named by a
+full reference with its tag, and no entry names the host's ids.
 
 The check itself is `scripts/check-devcontainer.py`, which stays a script of
 its own for two reasons: it reads `devcontainer.json` as the JSONC it is,
