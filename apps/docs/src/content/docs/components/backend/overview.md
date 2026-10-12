@@ -239,11 +239,20 @@ it was written.
 
 A published run's tree is the snapshot refresh's fallback source for media that
 is not yet in the bucket, so it is deleted only once nothing can need it. A
-refresh confirms a run when it uploaded successfully and every media file of the
-run is in the bucket under the key the run's document references: the object
-was listed there before the refresh, or the refresh uploaded it. The
-confirmation is recorded on the run with the refresh's time and the bucket it
-was made against.
+refresh confirms a run when it uploaded successfully and every file of the run
+is in the bucket: the object was listed there before the refresh, or the refresh
+uploaded it. The confirmation is recorded on the run with the refresh's time,
+the bucket it was made against, the version of this definition it was made
+under, and the run's [file
+manifest](/components/backend/snapshot/#the-file-manifest).
+
+Every file means the media the run's document references, the recorded webm of
+each transcoded video, an adversarial run's replays and controller module, a
+performance run's scenarios and engine module, and the code-analysis document.
+The [snapshot page](/components/backend/snapshot/#run-media) gives the key of
+each. A gg run's session record is the one file left out: it is [never
+published](/components/backend/snapshot/#files-with-no-other-copy), so a
+confirmation says nothing about it and the backend store keeps it.
 
 The files of a run are the ones its record lists and the ones only its tree can
 name. Two file sets are on no record: the image store a run's recordings share,
@@ -260,20 +269,30 @@ A run is left unconfirmed, and its tree kept, when any of its files could not be
 published because its bytes could not be read from the backend store or the
 artifact service. A video that could not be transcoded is published as recorded
 and leaves its run unconfirmed as well, since the next refresh reads the source
-again to transcode it. The same holds for a code-analysis document the backend
-store no longer holds. A refresh that finds a confirmed run unconfirmed
-withdraws the confirmation.
+again to transcode it. The same holds for a code-analysis document that is
+stored and does not read as JSON. A refresh that finds a confirmed run
+unconfirmed withdraws the confirmation and clears the manifest.
 
-One case does not count against a run. When the service holds the run's tree and
-answers `404` for a file the record lists, the file was never produced: a
-description that references an image the model did not write, or a frame whose
-preview was not rendered. Keeping the tree could never supply it, so the file is
-left out of the run's document as before and the run can still be confirmed. A
-file the service could not be asked about, an answer other than `404`, and a
-tree that is not there all leave the run unconfirmed.
+The controller module and the code-analysis document sit outside a tree's media
+directories, where no media route reaches them. The refresh reads which of them
+the tree holds from the same listing, and reads one the backend store lacks from
+[`GET /runs/{id}/root/{name}`](/components/artifacts/overview/#routes). A
+listing from an artifact service too old to name them says nothing about them,
+and a run that needs one is left unconfirmed until the service can answer.
 
-A confirmation holds for the bucket it was made against and for the record it
-was made from:
+One case does not count against a run: a file the record lists that is
+[unrecoverable](/components/backend/snapshot/#unrecoverable-files), which the
+bucket, the backend store and the artifact service each answered that they do
+not hold. A description can reference an image the model did not write, a frame's
+preview may never have been rendered, and a volume can be lost. Keeping the tree
+could never supply such a file, so it is left out of the run's document, the
+manifest records it as unrecoverable, and the run can still be confirmed. A file
+the service could not be asked about, an answer other than `404`, a backend
+store read that failed for another reason than the file not being there, and a
+missing tree the backend still records as stored all leave the run unconfirmed.
+
+A confirmation holds for the bucket it was made against, for the record it
+was made from, and for the definition it was made under:
 
 - The sweep deletes a published run's tree only when the run's confirmation
   names the bucket this backend is configured with, by its endpoint and bucket
@@ -288,11 +307,23 @@ was made from:
 - A refresh confirms a run only if the run has not changed since the refresh
   read it. A run that changed in between is left as it was, and the refresh
   requests another to evaluate it.
+- A confirmation counts only when it was made under the current version of the
+  definition above, which is `2`. A confirmation recorded before the definition
+  covered the files with no other copy carries no version. It confirms nothing:
+  the sweep deletes no tree on the strength of it, the run has no manifest, and
+  the next refresh evaluates the run again. A tree already reclaimed stays
+  reclaimed.
 
-Once a run is confirmed in this bucket and its tree is reclaimed, nothing about
-it is left to decide. Later refreshes ask the artifact service nothing about it,
-leave out a file its record lists that the bucket lacks, as the refresh that
-confirmed it did, and do not change its confirmation.
+Once a run is confirmed in this bucket under the current version and its tree is
+reclaimed, nothing about it is left to decide. Later refreshes ask the artifact
+service nothing about it, leave out a file its record lists that the bucket
+lacks, as the refresh that confirmed it did, and do not change its confirmation.
+
+A run confirmed under an earlier version whose tree was reclaimed is evaluated
+like any other. The artifact service answers that it holds no tree, the backend's
+reclaim record agrees, and the refresh publishes the newly covered files from
+the backend store, which still holds them. A file of such a run that the store
+has lost is unrecoverable.
 
 A refresh learns what the bucket holds by listing its `media/` prefix. A refresh
 that cannot list it fails, and the batching retries it. It does not fall back to
@@ -301,8 +332,9 @@ run's media is the tree this sweep deleted: a snapshot built that way would
 publish those runs with their media left out.
 
 Each refresh logs one `warn` line per unconfirmed run, `published run media
-not confirmed in the bucket`, with the run id and the files, and its completion
-line carries the counts `runs_confirmed` and `runs_unconfirmed`. The number of
+not confirmed in the bucket`, with the run id and the files, and one per run it
+newly confirmed with unrecoverable files. Its completion line carries the counts
+`runs_confirmed` and `runs_unconfirmed`. The number of
 unconfirmed runs of the latest refresh is the
 `tcab.artifacts.unconfirmed_runs` gauge. A run whose tree was reclaimed, which
 is not confirmed in the configured bucket and whose media that bucket lacks, has
@@ -318,12 +350,21 @@ asks the artifact service for no listing.
 Every refresh evaluates every published run it has yet to settle, so a publish
 confirms the runs before it as well. A backend that records confirmations and
 starts beside at least one published run no refresh has evaluated against its
-bucket requests one refresh, which goes through the
+bucket under the current version requests one refresh, which goes through the
 [batching](#refresh-batching) like any other request. This is what confirms the
-runs published before the backend recorded confirmations, with no publish needed
-to prompt it. A refresh records every run it evaluated, confirmed or not, so the
-request is made once: a later start finds no run left to evaluate and requests
-nothing.
+runs published before the backend recorded confirmations, and evaluates again
+the ones confirmed under an earlier version, with no publish needed to prompt
+it. A refresh records every run it evaluated, confirmed or not, with the version
+it evaluated under, so the request is made once: a later start finds no run left
+to evaluate and requests nothing.
+
+### Tournament replays
+
+A tournament's match replays live in the backend store and are not exported. Each
+refresh measures what they hold, as the gauges
+`tcab.store.tournament_replay_bytes` and `tcab.store.tournament_replay_files` and
+as the fields `tournament_replay_bytes` and `tournament_replay_files` of its
+completion line. A store that could not be measured reports neither.
 
 ### Guards
 

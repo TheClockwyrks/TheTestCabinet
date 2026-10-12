@@ -1623,6 +1623,46 @@ impl DefinitionStore {
         }
     }
 
+    /// Where the store holds the file of run `run_id` named `name`, a path
+    /// relative to the run's folder: `proof/<file>`, `validation/<file>`,
+    /// `asset/<file>`, `showcase/<file>`, `code-analysis.json`, `controller.wasm`
+    /// or `replay.json`. `None` when the run id or any segment of `name` is not a
+    /// safe path segment.
+    ///
+    /// This is the name a run's [file
+    /// manifest](crate::db::MediaManifestFile::name) records a file under.
+    pub fn run_file_path(&self, run_id: &str, name: &str) -> Option<PathBuf> {
+        if !is_safe_segment(run_id) {
+            return None;
+        }
+        let mut path = self.run_dir(run_id);
+        for segment in name.split('/') {
+            if !is_safe_segment(segment) {
+                return None;
+            }
+            path.push(segment);
+        }
+        Some(path)
+    }
+
+    /// Whether the store answers that it holds no file of run `run_id` named
+    /// `name` (see [`run_file_path`](Self::run_file_path)).
+    ///
+    /// `true` only when the file system reports that nothing is there. A name
+    /// that is not a safe path, and a lookup that fails any other way, are `false`:
+    /// the store could not say. A snapshot refresh records a file as lost for good
+    /// only on a `true` here, which the `read_run_*` methods cannot tell it,
+    /// because they report every failed read as not found.
+    pub fn run_file_absent(&self, run_id: &str, name: &str) -> bool {
+        let Some(path) = self.run_file_path(run_id, name) else {
+            return false;
+        };
+        matches!(
+            std::fs::symlink_metadata(&path),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound
+        )
+    }
+
     /// The directory a published run's proof media is stored under.
     pub fn run_proof_dir(&self, run_id: &str) -> PathBuf {
         self.run_dir(run_id).join("proof")
@@ -2027,6 +2067,53 @@ impl DefinitionStore {
             ))
         })
     }
+}
+
+/// What a part of the store holds on disk.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct StoreUsage {
+    /// The total size of the files, in bytes.
+    pub bytes: u64,
+    /// How many files there are.
+    pub files: u64,
+}
+
+impl DefinitionStore {
+    /// What the tournaments' match replays hold on disk: every file under
+    /// `tournaments/`. A store with no tournament holds nothing.
+    ///
+    /// This walks the directory, so it is for a caller that runs once per pass of
+    /// some periodic work and off the async runtime's threads, never per request.
+    pub fn tournament_replay_usage(&self) -> Result<StoreUsage> {
+        let mut usage = StoreUsage::default();
+        add_usage(&self.root.join("tournaments"), &mut usage)?;
+        Ok(usage)
+    }
+}
+
+/// Add every file under `dir` to `usage`. A directory that is not there, or that
+/// goes away while it is walked, adds nothing.
+fn add_usage(dir: &Path, usage: &mut StoreUsage) -> Result<()> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    for entry in read {
+        let entry = entry?;
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(err.into()),
+        };
+        if metadata.is_dir() {
+            add_usage(&entry.path(), usage)?;
+        } else if metadata.is_file() {
+            usage.bytes += metadata.len();
+            usage.files += 1;
+        }
+    }
+    Ok(())
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.

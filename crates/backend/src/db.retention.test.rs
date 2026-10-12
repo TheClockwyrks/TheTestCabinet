@@ -50,7 +50,7 @@ pub(crate) async fn set_media_confirmed(db: &Db, id: &str, at: Option<&str>) {
 }
 
 /// Write run `id`'s media confirmation column verbatim, as one made against
-/// `bucket`.
+/// `bucket` under the current version of the definition, with an empty manifest.
 pub(crate) async fn set_media_confirmed_in(db: &Db, id: &str, at: Option<&str>, bucket: &str) {
     run::Entity::update_many()
         .col_expr(
@@ -58,6 +58,36 @@ pub(crate) async fn set_media_confirmed_in(db: &Db, id: &str, at: Option<&str>, 
             Expr::value(at.map(str::to_string)),
         )
         .col_expr(run::Column::MediaBucket, Expr::value(bucket))
+        .col_expr(
+            run::Column::MediaConfirmationVersion,
+            Expr::value(MEDIA_CONFIRMATION_VERSION),
+        )
+        .col_expr(
+            run::Column::MediaManifest,
+            Expr::value(at.map(|_| r#"{"files":[]}"#.to_string())),
+        )
+        .filter(run::Column::Id.eq(id))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+}
+
+/// Write run `id`'s confirmation as a backend from before the definition
+/// widened left it: confirmed against [`BUCKET`], with no version and no
+/// manifest.
+pub(crate) async fn confirm_under_the_first_definition(db: &Db, id: &str) {
+    run::Entity::update_many()
+        .col_expr(run::Column::MediaConfirmedAt, Expr::value(FIRST))
+        .col_expr(run::Column::MediaCheckedAt, Expr::value(FIRST))
+        .col_expr(run::Column::MediaBucket, Expr::value(BUCKET))
+        .col_expr(
+            run::Column::MediaConfirmationVersion,
+            Expr::value(Option::<i32>::None),
+        )
+        .col_expr(
+            run::Column::MediaManifest,
+            Expr::value(Option::<String>::None),
+        )
         .filter(run::Column::Id.eq(id))
         .exec(&db.conn())
         .await
@@ -508,8 +538,8 @@ fn owned(ids: &[&str]) -> Vec<String> {
     ids.iter().map(|id| id.to_string()).collect()
 }
 
-const FIRST: &str = "2026-07-01T00:00:00Z";
-const SECOND: &str = "2026-07-02T00:00:00Z";
+pub(crate) const FIRST: &str = "2026-07-01T00:00:00Z";
+pub(crate) const SECOND: &str = "2026-07-02T00:00:00Z";
 
 /// What a refresh reads about the published runs `ids` before it builds.
 async fn states(db: &Db, ids: &[&str]) -> Vec<PublishedMediaState> {
@@ -524,10 +554,37 @@ async fn states(db: &Db, ids: &[&str]) -> Vec<PublishedMediaState> {
         .collect()
 }
 
+/// The manifest the tests' refreshes record for run `id`: one proof.
+pub(crate) fn manifest_of(id: &str) -> MediaManifest {
+    MediaManifest {
+        files: vec![MediaManifestFile::stored(
+            MediaFileKind::Proof,
+            "proof/gameplay.png",
+            format!("media/runs/{id}/proof/gameplay.png"),
+        )],
+    }
+}
+
+/// Each of `states` as a run a refresh found confirmed, with [`manifest_of`] it.
+pub(crate) fn confirmed_media(states: Vec<PublishedMediaState>) -> Vec<ConfirmedMedia> {
+    states
+        .into_iter()
+        .map(|state| ConfirmedMedia {
+            manifest: manifest_of(&state.id),
+            state,
+        })
+        .collect()
+}
+
 /// Record a refresh at `at` that confirmed `confirmed` and could not confirm
 /// `unconfirmed`, having read the runs just now.
-async fn refresh(db: &Db, confirmed: &[&str], unconfirmed: &[&str], at: &str) -> MediaConfirmation {
-    let confirmed = states(db, confirmed).await;
+pub(crate) async fn refresh(
+    db: &Db,
+    confirmed: &[&str],
+    unconfirmed: &[&str],
+    at: &str,
+) -> MediaConfirmation {
+    let confirmed = confirmed_media(states(db, confirmed).await);
     db.record_media_confirmation(&confirmed, &owned(unconfirmed), at, BUCKET)
         .await
         .unwrap()
@@ -620,10 +677,16 @@ async fn only_a_published_run_is_confirmed() {
         updated_at: updated_at.clone(),
         confirmed: false,
         reclaimed: false,
+        tree_recorded_absent: false,
     };
 
     let outcome = db
-        .record_media_confirmation(&[state("pending"), state("ghost")], &[], FIRST, BUCKET)
+        .record_media_confirmation(
+            &confirmed_media(vec![state("pending"), state("ghost")]),
+            &[],
+            FIRST,
+            BUCKET,
+        )
         .await
         .unwrap();
 
@@ -656,7 +719,7 @@ async fn a_run_that_changed_since_the_refresh_read_it_is_not_confirmed() {
     assert_ne!(run_row(&db, "a").await.updated_at, read[0].updated_at);
 
     let outcome = db
-        .record_media_confirmation(&read, &[], FIRST, BUCKET)
+        .record_media_confirmation(&confirmed_media(read.clone()), &[], FIRST, BUCKET)
         .await
         .unwrap();
 

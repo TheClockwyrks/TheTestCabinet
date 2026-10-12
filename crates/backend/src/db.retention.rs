@@ -11,11 +11,18 @@
 //! lost: every writer of a run's [presence](super::artifacts) leaves a reclaimed
 //! run alone, and every reader of "not stored" as "lost" reads the reclaim first.
 //!
-//! A media confirmation holds for the bucket it was made against and for the
-//! record it was made from. Every read here that reports a confirmation is told
-//! which bucket the backend is configured with and reports none for any other,
-//! and [`Db::push`] clears the confirmation of a run whose record is stored again
-//! ([`clear_retention_records`]).
+//! A media confirmation holds for the bucket it was made against, for the record
+//! it was made from, and for the version of the definition it was made under
+//! ([`MEDIA_CONFIRMATION_VERSION`]). Every read here that reports a confirmation
+//! is told which bucket the backend is configured with and reports none for any
+//! other, nor for any other version, and [`Db::push`] clears the confirmation of a
+//! run whose record is stored again ([`clear_retention_records`]). One function
+//! decides whether a row's confirmation holds: [`confirmation_holds`].
+//!
+//! A confirmed run carries its [`MediaManifest`], the list of its files in the
+//! bucket. The manifest is written by the statement that writes the confirmation
+//! and cleared by every statement that clears it, so a run has one exactly while
+//! it is confirmed.
 
 use std::collections::HashSet;
 
@@ -97,6 +104,186 @@ impl ArtifactsReclaimed {
     }
 }
 
+/// The version of the definition of "confirmed" this backend implements.
+///
+/// `1`, which no row carries because the column was added with version `2`,
+/// covered the media a run's document references: proofs, validation media,
+/// generated assets, showcase files and the code-analysis document. `2` adds the
+/// recorded webm of every transcoded video, every replay of an adversarial run,
+/// a performance run's scenarios and engine module, and the controller module.
+/// A gg run's session record is in neither: it is never published.
+///
+/// A confirmation recorded under any other version, a row with no version
+/// included, confirms nothing: [`confirmation_holds`] refuses it, so the sweep
+/// deletes no tree on it and the next refresh evaluates the run again. Raise this
+/// whenever the set of files a confirmation vouches for grows.
+pub const MEDIA_CONFIRMATION_VERSION: i32 = 2;
+
+/// Whether a run row's recorded confirmation holds for a backend configured with
+/// `bucket`: the row is confirmed, against that bucket, under
+/// [`MEDIA_CONFIRMATION_VERSION`]. With no bucket nothing holds.
+///
+/// This is the one definition of "confirmed". Every read that reports a
+/// confirmation or a manifest goes through it.
+pub fn confirmation_holds(
+    confirmed_at: Option<&str>,
+    recorded_bucket: Option<&str>,
+    version: Option<i32>,
+    bucket: Option<&str>,
+) -> bool {
+    confirmed_at.is_some()
+        && bucket.is_some()
+        && recorded_bucket == bucket
+        && version == Some(MEDIA_CONFIRMATION_VERSION)
+}
+
+/// What kind of file a [`MediaManifestFile`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MediaFileKind {
+    /// Proof-of-implementation media, `proof/<file>` in the store.
+    Proof,
+    /// Synthesized validation media and the recordings' image store,
+    /// `validation/<file>`.
+    Validation,
+    /// Generated assets, adversarial replays, and a performance run's scenarios
+    /// and engine module, `asset/<file>`.
+    Asset,
+    /// Showcase files, `showcase/<file>`.
+    Showcase,
+    /// The code-analysis document, `code-analysis.json`.
+    CodeAnalysis,
+    /// An adversarial run's controller module, `controller.wasm`.
+    Controller,
+}
+
+/// One file of a confirmed run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaManifestFile {
+    /// What kind of file this is.
+    pub kind: MediaFileKind,
+    /// The file's path under the run's folder in the backend store, which is also
+    /// how the backend's routes name it: `proof/<file>`, `validation/<file>`,
+    /// `asset/<file>`, `showcase/<file>`, `code-analysis.json` or
+    /// `controller.wasm`.
+    pub name: String,
+    /// The object holding this file's bytes. For a transcoded video this is the
+    /// verbatim recorded webm. For the code-analysis document the object is the
+    /// scrubbed, uncompressed form of the stored file.
+    /// `None` exactly when the file is [`unrecoverable`](Self::unrecoverable).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// The mp4 a video was transcoded to, when it was. It can be present on an
+    /// unrecoverable file: the recorded webm is gone and the mp4 made from it is
+    /// in the bucket.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcoded_key: Option<String>,
+    /// Whether the file's bytes exist nowhere: the bucket, the backend store and
+    /// the artifact service each answered that they do not hold it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unrecoverable: bool,
+}
+
+impl MediaManifestFile {
+    /// A file whose bytes are at `key`.
+    pub fn stored(kind: MediaFileKind, name: impl Into<String>, key: impl Into<String>) -> Self {
+        Self {
+            kind,
+            name: name.into(),
+            key: Some(key.into()),
+            transcoded_key: None,
+            unrecoverable: false,
+        }
+    }
+
+    /// A video whose recorded bytes are at `key` and whose mp4 is at
+    /// `transcoded_key`.
+    pub fn transcoded(
+        kind: MediaFileKind,
+        name: impl Into<String>,
+        key: impl Into<String>,
+        transcoded_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            transcoded_key: Some(transcoded_key.into()),
+            ..Self::stored(kind, name, key)
+        }
+    }
+
+    /// A file whose bytes exist nowhere. `transcoded_key` is the mp4 made from
+    /// it, when the bucket holds one.
+    pub fn unrecoverable(
+        kind: MediaFileKind,
+        name: impl Into<String>,
+        transcoded_key: Option<String>,
+    ) -> Self {
+        Self {
+            kind,
+            name: name.into(),
+            key: None,
+            transcoded_key,
+            unrecoverable: true,
+        }
+    }
+
+    /// Every object key this file names.
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.key
+            .as_deref()
+            .into_iter()
+            .chain(self.transcoded_key.as_deref())
+    }
+}
+
+/// A confirmed run's file manifest: every file of the run that is in the bucket,
+/// and every file of it that exists nowhere.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaManifest {
+    /// The run's files, in the order the refresh that confirmed it found them.
+    pub files: Vec<MediaManifestFile>,
+}
+
+impl MediaManifest {
+    /// The entry for the file the store names `name`, or `None` for a name the
+    /// run has no file under.
+    pub fn file(&self, name: &str) -> Option<&MediaManifestFile> {
+        self.files.iter().find(|file| file.name == name)
+    }
+
+    /// The names of the files recorded as unrecoverable.
+    pub fn unrecoverable(&self) -> impl Iterator<Item = &str> {
+        self.files
+            .iter()
+            .filter(|file| file.unrecoverable)
+            .map(|file| file.name.as_str())
+    }
+
+    /// Every object key the manifest names.
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.files.iter().flat_map(MediaManifestFile::keys)
+    }
+
+    /// Parse the column value of run `run_id`.
+    fn from_column(run_id: &str, json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(|err| {
+            crate::error::BackendError::Internal(format!(
+                "run `{run_id}`'s media manifest does not parse: {err}"
+            ))
+        })
+    }
+}
+
+/// A run a refresh found confirmed, with the manifest to record for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfirmedMedia {
+    /// The run as the refresh read it before it built.
+    pub state: PublishedMediaState,
+    /// Every file of the run the refresh accounted for.
+    pub manifest: MediaManifest,
+}
+
 /// The facts of one run the retention rules are decided from.
 #[derive(Debug, Clone, PartialEq, Eq, FromQueryResult)]
 pub struct RetentionRun {
@@ -109,9 +296,10 @@ pub struct RetentionRun {
     /// Whether the run is published.
     pub published: bool,
     /// RFC 3339 of the refresh that confirmed the run's media in the bucket this
-    /// backend is configured with. `None` for a run confirmed against any other
-    /// bucket, as for one never confirmed: the reads that fill this in are told
-    /// the configured bucket and report no other's confirmation.
+    /// backend is configured with, under [`MEDIA_CONFIRMATION_VERSION`]. `None`
+    /// for a run confirmed against any other bucket or under any other version,
+    /// as for one never confirmed: the reads that fill this in go through
+    /// [`confirmation_holds`].
     pub media_confirmed_at: Option<String>,
     /// The run's recorded artifact presence.
     pub artifacts_stored: Option<bool>,
@@ -130,6 +318,7 @@ struct RetentionRow {
     published: bool,
     media_confirmed_at: Option<String>,
     media_bucket: Option<String>,
+    media_confirmation_version: Option<i32>,
     artifacts_stored: Option<bool>,
     artifacts_reclaimed_at: Option<String>,
     artifacts_reclaimed_reason: Option<String>,
@@ -137,9 +326,14 @@ struct RetentionRow {
 
 impl RetentionRow {
     /// The run's facts for a backend configured with `bucket`: its confirmation
-    /// is reported only when it was made against that bucket.
+    /// is reported only when it [holds](confirmation_holds) there.
     fn for_bucket(self, bucket: Option<&str>) -> RetentionRun {
-        let confirmed_here = bucket.is_some() && self.media_bucket.as_deref() == bucket;
+        let confirmed_here = confirmation_holds(
+            self.media_confirmed_at.as_deref(),
+            self.media_bucket.as_deref(),
+            self.media_confirmation_version,
+            bucket,
+        );
         RetentionRun {
             id: self.id,
             run_state: self.run_state,
@@ -162,10 +356,16 @@ pub struct PublishedMediaState {
     /// The run's mutation timestamp as read. A confirmation is written only while
     /// the row still carries it, which is a run nothing has changed since.
     pub updated_at: String,
-    /// Whether the run is confirmed in the configured bucket.
+    /// Whether the run's confirmation [holds](confirmation_holds) in the
+    /// configured bucket.
     pub confirmed: bool,
     /// Whether the run's tree was reclaimed.
     pub reclaimed: bool,
+    /// Whether the backend's own record says the artifact service holds no tree
+    /// for the run: the tree was reclaimed, or the run's presence is recorded as
+    /// not stored. A refresh takes the service's answer that it holds no tree as
+    /// an answer about the run's files only when this agrees with it.
+    pub tree_recorded_absent: bool,
 }
 
 impl PublishedMediaState {
@@ -199,19 +399,23 @@ fn retention_select() -> sea_orm::Select<run::Entity> {
         run::Column::Published,
         run::Column::MediaConfirmedAt,
         run::Column::MediaBucket,
+        run::Column::MediaConfirmationVersion,
         run::Column::ArtifactsStored,
         run::Column::ArtifactsReclaimedAt,
         run::Column::ArtifactsReclaimedReason,
     ])
 }
 
-/// The runs whose recorded media evaluation was not made against `bucket`: never
-/// evaluated, or evaluated against another bucket.
+/// The runs whose recorded media evaluation was not made against `bucket` under
+/// [`MEDIA_CONFIRMATION_VERSION`]: never evaluated, evaluated against another
+/// bucket, or evaluated under another version of the definition.
 fn not_evaluated_in(bucket: &str) -> Condition {
     Condition::any()
         .add(run::Column::MediaCheckedAt.is_null())
         .add(run::Column::MediaBucket.is_null())
         .add(run::Column::MediaBucket.ne(bucket))
+        .add(run::Column::MediaConfirmationVersion.is_null())
+        .add(run::Column::MediaConfirmationVersion.ne(MEDIA_CONFIRMATION_VERSION))
 }
 
 /// Clear what the sweep and the refresh recorded about run `run_id`, because its
@@ -219,8 +423,9 @@ fn not_evaluated_in(bucket: &str) -> Condition {
 /// had a row, inside its transaction.
 ///
 /// The media confirmation was made from the record the push replaces, so it says
-/// nothing about the new one: cleared, the run must be confirmed again before its
-/// tree qualifies for the `published` rule. Without this the sweep would delete
+/// nothing about the new one: cleared, together with the manifest recorded with
+/// it, the run must be confirmed again before its tree qualifies for the
+/// `published` rule. Without this the sweep would delete
 /// the tree a re-push uploaded on the strength of a confirmation of the old
 /// record, before any refresh had read the new one.
 ///
@@ -237,7 +442,12 @@ pub(super) async fn clear_retention_records<C: ConnectionTrait>(
     let mut update = run::Entity::update_many()
         .col_expr(run::Column::MediaConfirmedAt, none())
         .col_expr(run::Column::MediaCheckedAt, none())
-        .col_expr(run::Column::MediaBucket, none());
+        .col_expr(run::Column::MediaBucket, none())
+        .col_expr(
+            run::Column::MediaConfirmationVersion,
+            Expr::value(Option::<i32>::None),
+        )
+        .col_expr(run::Column::MediaManifest, none());
     if was_reclaimed {
         update = update
             .col_expr(run::Column::ArtifactsReclaimedAt, none())
@@ -426,6 +636,8 @@ impl Db {
             updated_at: String,
             media_confirmed_at: Option<String>,
             media_bucket: Option<String>,
+            media_confirmation_version: Option<i32>,
+            artifacts_stored: Option<bool>,
             artifacts_reclaimed_at: Option<String>,
         }
         let rows = run::Entity::find()
@@ -435,6 +647,8 @@ impl Db {
                 run::Column::UpdatedAt,
                 run::Column::MediaConfirmedAt,
                 run::Column::MediaBucket,
+                run::Column::MediaConfirmationVersion,
+                run::Column::ArtifactsStored,
                 run::Column::ArtifactsReclaimedAt,
             ])
             .filter(run::Column::Published.eq(true))
@@ -446,9 +660,15 @@ impl Db {
             .map(|row| PublishedMediaState {
                 id: row.id,
                 updated_at: row.updated_at,
-                confirmed: row.media_confirmed_at.is_some()
-                    && row.media_bucket.as_deref() == Some(bucket),
+                confirmed: confirmation_holds(
+                    row.media_confirmed_at.as_deref(),
+                    row.media_bucket.as_deref(),
+                    row.media_confirmation_version,
+                    Some(bucket),
+                ),
                 reclaimed: row.artifacts_reclaimed_at.is_some(),
+                tree_recorded_absent: row.artifacts_reclaimed_at.is_some()
+                    || row.artifacts_stored == Some(false),
             })
             .collect())
     }
@@ -463,28 +683,42 @@ impl Db {
     /// was and counted in [`MediaConfirmation::changed`]: the refresh evaluated a
     /// record that may no longer be the run's, and the caller asks for another.
     ///
-    /// A run found unconfirmed loses any confirmation it had, whichever bucket it
-    /// named. Both lists are recorded as evaluated against `bucket`. Only
-    /// published runs are written, and only rows the write changes, so a steady
-    /// state writes nothing. No statement stamps a run's mutation timestamp:
-    /// nothing a console shows has changed.
+    /// A confirmation is written in one statement with the run's
+    /// [manifest](ConfirmedMedia::manifest) and [`MEDIA_CONFIRMATION_VERSION`].
+    ///
+    /// A run found unconfirmed loses any confirmation it had, whichever bucket or
+    /// version it named, and its manifest with it. Both lists are recorded as
+    /// evaluated against `bucket` under the current version. Only published runs
+    /// are written, and only rows the write changes, so a steady state writes
+    /// nothing. No statement stamps a run's mutation timestamp: nothing a console
+    /// shows has changed.
     pub async fn record_media_confirmation(
         &self,
-        confirmed: &[PublishedMediaState],
+        confirmed: &[ConfirmedMedia],
         unconfirmed: &[String],
         at: &str,
         bucket: &str,
     ) -> Result<MediaConfirmation> {
         let mut outcome = MediaConfirmation::default();
-        for run in confirmed {
+        for ConfirmedMedia {
+            state: run,
+            manifest,
+        } in confirmed
+        {
             // Already confirmed here: nothing to write.
             if run.confirmed {
                 continue;
             }
+            let manifest = serde_json::to_string(manifest)?;
             let res = run::Entity::update_many()
                 .col_expr(run::Column::MediaConfirmedAt, Expr::value(at))
                 .col_expr(run::Column::MediaCheckedAt, Expr::value(at))
                 .col_expr(run::Column::MediaBucket, Expr::value(bucket))
+                .col_expr(
+                    run::Column::MediaConfirmationVersion,
+                    Expr::value(MEDIA_CONFIRMATION_VERSION),
+                )
+                .col_expr(run::Column::MediaManifest, Expr::value(manifest))
                 .filter(run::Column::Id.eq(run.id.as_str()))
                 .filter(run::Column::Published.eq(true))
                 .filter(run::Column::UpdatedAt.eq(run.updated_at.as_str()))
@@ -503,15 +737,27 @@ impl Db {
                     run::Column::MediaConfirmedAt,
                     Expr::value(Option::<String>::None),
                 )
+                .col_expr(
+                    run::Column::MediaManifest,
+                    Expr::value(Option::<String>::None),
+                )
                 .filter(run::Column::Id.is_in(ids()))
                 .filter(run::Column::Published.eq(true))
-                .filter(run::Column::MediaConfirmedAt.is_not_null())
+                .filter(
+                    Condition::any()
+                        .add(run::Column::MediaConfirmedAt.is_not_null())
+                        .add(run::Column::MediaManifest.is_not_null()),
+                )
                 .exec(&self.conn())
                 .await?;
             outcome.withdrawn += res.rows_affected;
             run::Entity::update_many()
                 .col_expr(run::Column::MediaCheckedAt, Expr::value(at))
                 .col_expr(run::Column::MediaBucket, Expr::value(bucket))
+                .col_expr(
+                    run::Column::MediaConfirmationVersion,
+                    Expr::value(MEDIA_CONFIRMATION_VERSION),
+                )
                 .filter(run::Column::Id.is_in(ids()))
                 .filter(run::Column::Published.eq(true))
                 .filter(not_evaluated_in(bucket))
@@ -521,8 +767,51 @@ impl Db {
         Ok(outcome)
     }
 
+    /// Run `run_id`'s file manifest, for a backend configured with `bucket`.
+    ///
+    /// `Ok(None)` for a run whose confirmation does not
+    /// [hold](confirmation_holds) there, and for a run that does not exist: a
+    /// manifest is the run's only while the confirmation it was recorded with
+    /// holds. An error for a confirmed run whose manifest is missing or does not
+    /// parse, which a caller must not take for a run with no files.
+    pub async fn run_media_manifest(
+        &self,
+        run_id: &str,
+        bucket: Option<&str>,
+    ) -> Result<Option<MediaManifest>> {
+        let row = manifest_select()
+            .filter(run::Column::Id.eq(run_id))
+            .into_model::<ManifestRow>()
+            .one(&self.conn())
+            .await?;
+        row.map_or(Ok(None), |row| row.for_bucket(bucket))
+            .map(|found| found.map(|(_, manifest)| manifest))
+    }
+
+    /// The file manifest of every run whose confirmation
+    /// [holds](confirmation_holds) for a backend configured with `bucket`, by run
+    /// id. Runs confirmed elsewhere or under another version are left out. An
+    /// error when any confirmed run's manifest is missing or does not parse.
+    pub async fn confirmed_media_manifests(
+        &self,
+        bucket: Option<&str>,
+    ) -> Result<Vec<(String, MediaManifest)>> {
+        let rows = manifest_select()
+            .filter(run::Column::MediaConfirmedAt.is_not_null())
+            .into_model::<ManifestRow>()
+            .all(&self.conn())
+            .await?;
+        let mut manifests = Vec::new();
+        for row in rows {
+            if let Some(found) = row.for_bucket(bucket)? {
+                manifests.push(found);
+            }
+        }
+        Ok(manifests)
+    }
+
     /// How many published runs no snapshot refresh has evaluated the media of
-    /// against `bucket`.
+    /// against `bucket` under [`MEDIA_CONFIRMATION_VERSION`].
     ///
     /// Counted over the runs a refresh includes, which are the readable ones: a
     /// published run whose record no longer reads is in no snapshot, so no refresh
@@ -533,6 +822,49 @@ impl Db {
             .filter(not_evaluated_in(bucket))
             .count(&self.conn())
             .await?)
+    }
+}
+
+/// The select the manifest reads use.
+fn manifest_select() -> sea_orm::Select<run::Entity> {
+    run::Entity::find().select_only().columns([
+        run::Column::Id,
+        run::Column::MediaConfirmedAt,
+        run::Column::MediaBucket,
+        run::Column::MediaConfirmationVersion,
+        run::Column::MediaManifest,
+    ])
+}
+
+/// One run's confirmation and manifest columns.
+#[derive(Debug, FromQueryResult)]
+struct ManifestRow {
+    id: String,
+    media_confirmed_at: Option<String>,
+    media_bucket: Option<String>,
+    media_confirmation_version: Option<i32>,
+    media_manifest: Option<String>,
+}
+
+impl ManifestRow {
+    /// The run's id and manifest when its confirmation holds for `bucket`.
+    fn for_bucket(self, bucket: Option<&str>) -> Result<Option<(String, MediaManifest)>> {
+        if !confirmation_holds(
+            self.media_confirmed_at.as_deref(),
+            self.media_bucket.as_deref(),
+            self.media_confirmation_version,
+            bucket,
+        ) {
+            return Ok(None);
+        }
+        let Some(json) = self.media_manifest.as_deref() else {
+            return Err(crate::error::BackendError::Internal(format!(
+                "run `{}` is confirmed and has no media manifest",
+                self.id
+            )));
+        };
+        let manifest = MediaManifest::from_column(&self.id, json)?;
+        Ok(Some((self.id, manifest)))
     }
 }
 

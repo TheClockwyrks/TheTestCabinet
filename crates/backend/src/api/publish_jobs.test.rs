@@ -151,6 +151,8 @@ fn run_summary_lifts_the_runs_display_identity() {
         media_confirmed_at: None,
         media_checked_at: None,
         media_bucket: None,
+        media_confirmation_version: None,
+        media_manifest: None,
         artifacts_reclaimed_at: None,
         artifacts_reclaimed_reason: None,
         auto_publish_deferred: false,

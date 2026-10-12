@@ -47,7 +47,8 @@ is the run record's id.
 | `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                                           |
 | `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                                           |
 | `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media; the backend, baking a published run's media into the snapshot |
-| `GET /runs/{id}/media`                                                                   | The backend, listing the validation and showcase files of a published run's tree                |
+| `GET /runs/{id}/media`                                                                   | The backend, listing the validation, showcase and root files of a published run's tree          |
+| `GET /runs/{id}/root/{name}`                                                             | The backend, baking a file at the root of a published run's tree into the snapshot              |
 | `GET /runs/{id}/events.jsonl`, `/raw.jsonl`                                              | A console, reading the recorded logs                                                            |
 | `GET /runs/{id}/archive.tar.gz`                                                          | A reviewer, downloading the whole run                                                           |
 
@@ -153,10 +154,11 @@ An upload needs about twice its tree's size while it lands, because the tar is
 spooled onto the volume before it is unpacked there.
 
 `GET /runs/{id}/media` answers `200` with `{ "id", "stored", "validation",
-"showcase" }`. `validation` and `showcase` are the names of the files the tree
-holds in its validation media directory and its showcase directory, each a name
-the `/validation/{file}` or `/showcase/{file}` route serves, and both are empty
-for a run with no tree. The backend's snapshot refresh reads it for a published
+"showcase", "root" }`. `validation` and `showcase` are the names of the files the
+tree holds in its validation media directory and its showcase directory, each a
+name the `/validation/{file}` or `/showcase/{file}` route serves, and both are
+empty for a run with no tree. `root` names the files the `/root/{name}` route
+serves for the run. The backend's snapshot refresh reads it for a published
 run whose media it has not yet confirmed in the bucket. Two of a run's file sets
 are named by nothing but the directory they sit in: the image store its
 recordings share, and showcase files that neither the carousel nor the
@@ -165,6 +167,20 @@ is [confirmed](/components/backend/overview/#artifact-reclamation) only once
 every file listed here is in the bucket. The route is ungated, like the media
 routes whose names it lists. As with the presence check, absence is an answer
 in the body, and an id that is not a single path segment answers `400`.
+
+`GET /runs/{id}/root/{name}` serves one of two files that sit outside the
+tree's media directories, under the name the backend stores each as:
+
+| `{name}`             | The file in the tree                                    |
+| -------------------- | ------------------------------------------------------- |
+| `controller.wasm`    | The controller module an adversarial run's record names |
+| `code-analysis.json` | `code-analysis.json.gz` at the tree's root              |
+
+The bytes are served as stored, so the document arrives gzipped. `404` for
+any other name and for a file the tree does not hold, and `500` for a file that
+could not be read. A caller that has to tell a missing file from a service too
+old to have the route reads `root` in the listing first. The route is ungated,
+like the archive that carries the same files.
 
 ## Auth
 

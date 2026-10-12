@@ -355,6 +355,9 @@ pub fn router(state: AppState) -> Router {
         // The names of the validation and showcase files a run's tree holds
         // (backend → service, ungated like the media reads whose names it lists).
         .route("/runs/{id}/media", get(media_listing))
+        // One of the files at the root of a run's tree that no media route
+        // reaches (backend → service, ungated like the archive that carries them).
+        .route("/runs/{id}/root/{name}", get(root_file))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
         .layer(axum::middleware::from_fn(accept_trace))
@@ -608,6 +611,9 @@ struct MediaListingOut {
     validation: Vec<String>,
     /// The names the `/showcase/{file}` route serves for this run.
     showcase: Vec<String>,
+    /// The names the `/root/{name}` route serves for this run. A caller reads
+    /// the field's presence as this service having that route.
+    root: Vec<String>,
 }
 
 /// `GET /runs/{id}/media` — the names of the validation and showcase files run
@@ -632,19 +638,20 @@ async fn media_listing(
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
     let stored = state.store.has_run_tree(&id).map_err(map_store_error)?;
-    let (validation, showcase) = if stored {
+    let (validation, showcase, root) = if stored {
         let run_dir = state.store.run_dir(&id);
         let listed = tokio::task::spawn_blocking(move || {
             Ok::<_, std::io::Error>((
                 test_cabinet_core::list_validation_files(&run_dir)?,
                 test_cabinet_core::list_showcase_files(&run_dir)?,
+                test_cabinet_core::list_tree_root_files(&run_dir)?,
             ))
         })
         .await
         .map_err(|err| ApiError::internal(format!("listing run `{id}`'s media: {err}")))?;
         listed.map_err(|err| ApiError::internal(format!("listing run `{id}`'s media: {err}")))?
     } else {
-        (Vec::new(), Vec::new())
+        (Vec::new(), Vec::new(), Vec::new())
     };
     Ok((
         StatusCode::OK,
@@ -653,6 +660,7 @@ async fn media_listing(
             stored,
             validation,
             showcase,
+            root,
         }),
     )
         .into_response())
@@ -1081,6 +1089,35 @@ async fn showcase_file(
         served.content_encoding,
         served.body,
     ))
+}
+
+/// `GET /runs/{id}/root/{name}` — one of the files of a run's tree that sit
+/// outside its media directories, under the name the backend stores it as
+/// ([`TREE_ROOT_FILES`](test_cabinet_core::TREE_ROOT_FILES)): the controller
+/// module an adversarial run's record names, and the code-analysis document.
+///
+/// The backend's snapshot refresh reads a published run's file from here when its
+/// own store has lost it. The bytes are served as the tree holds them, so the
+/// document arrives gzipped, exactly as the driver mirrors it into the backend
+/// store. `404` for any other name and for a file the tree does not hold. `500`
+/// for a file that could not be read: the refresh records a file as lost for good
+/// only on a `404`, so a read that failed must not answer one.
+#[tracing::instrument(name = "artifacts.root_file", skip(state), fields(run.id = %id), err(Debug))]
+async fn root_file(
+    State(state): State<AppState>,
+    Path((id, name)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    state.store.has_run_tree(&id).map_err(map_store_error)?;
+    let run_dir = state.store.run_dir(&id);
+    let asked = name.clone();
+    let read =
+        tokio::task::spawn_blocking(move || test_cabinet_core::tree_root_file(&run_dir, &asked))
+            .await
+            .map_err(|err| ApiError::internal(format!("reading `{name}` of run `{id}`: {err}")))?;
+    let bytes = read
+        .map_err(|err| ApiError::internal(format!("reading `{name}` of run `{id}`: {err}")))?
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no root file `{name}`")))?;
+    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response())
 }
 
 /// Build a media response that declares both what the resource is and how the body

@@ -283,6 +283,86 @@ pub fn list_showcase_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
     Ok(names)
 }
 
+/// The name a run's controller module is served under by [`tree_root_file`], and
+/// the name the backend stores it as.
+pub const TREE_ROOT_CONTROLLER: &str = "controller.wasm";
+
+/// The name a run's code-analysis document is served under by
+/// [`tree_root_file`], and the name the backend stores it as.
+pub const TREE_ROOT_CODE_ANALYSIS: &str = "code-analysis.json";
+
+/// Every name [`tree_root_file`] resolves.
+///
+/// A gg run's session record sits at a tree's root too and is deliberately not
+/// one of them: it carries the complete model conversation of its run and is
+/// never published, so nothing has to read it from here.
+pub const TREE_ROOT_FILES: [&str; 2] = [TREE_ROOT_CONTROLLER, TREE_ROOT_CODE_ANALYSIS];
+
+/// Where a produced run's tree holds the file a backend stores as `name`, or
+/// `None` for a name that is not one of [`TREE_ROOT_FILES`] and for a controller
+/// the run's record does not name.
+///
+/// These are the files of a run that sit outside its media directories. The
+/// document is at the tree's root under its gzipped name. The controller is
+/// wherever the record's `controllerModule` says, inside `implementation/`, and a
+/// path that would leave that directory names nothing.
+fn tree_root_file_path(run_dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    match name {
+        TREE_ROOT_CODE_ANALYSIS => Some(run_dir.join(crate::CODE_ANALYSIS_TREE_ARTIFACT)),
+        TREE_ROOT_CONTROLLER => {
+            let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
+            // Read by path and not as a whole record, so a record this build can no
+            // longer parse in full still names its controller.
+            let record: serde_json::Value = serde_json::from_slice(&record_bytes).ok()?;
+            let module = record
+                .pointer("/validation/adversarial/controllerModule")?
+                .as_str()?;
+            let relative = Path::new(module);
+            let inside = !module.is_empty()
+                && relative
+                    .components()
+                    .all(|part| matches!(part, std::path::Component::Normal(_)));
+            inside.then(|| run_dir.join("implementation").join(relative))
+        }
+        _ => None,
+    }
+}
+
+/// Read the file a backend stores as `name` from a produced run's tree, verbatim.
+///
+/// `Ok(None)` when the tree holds no such file, which includes a name that is not
+/// one of [`TREE_ROOT_FILES`]. An error for a file that is there and could not be
+/// read, which a caller must not take for a missing one.
+pub fn tree_root_file(run_dir: &Path, name: &str) -> std::io::Result<Option<Vec<u8>>> {
+    let Some(path) = tree_root_file_path(run_dir, name) else {
+        return Ok(None);
+    };
+    match std::fs::read(&path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+/// The names of [`TREE_ROOT_FILES`] a produced run's tree holds: every name
+/// [`tree_root_file`] would resolve to a file. An error when the tree cannot say
+/// whether it holds one.
+pub fn list_tree_root_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
+    let mut names = Vec::new();
+    for name in TREE_ROOT_FILES {
+        let Some(path) = tree_root_file_path(run_dir, name) else {
+            continue;
+        };
+        match std::fs::metadata(&path) {
+            Ok(found) if found.is_file() => names.push(name.to_string()),
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(names)
+}
+
 /// A showcase file resolved from a run, ready to write to an HTTP or IPC
 /// response.
 #[derive(Debug, Clone, PartialEq, Eq)]

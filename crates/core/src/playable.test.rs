@@ -756,3 +756,135 @@ fn serves_showcase_files_from_the_collected_tree() {
     assert!(serve_showcase_file(dir.path(), "sub/inner.png").is_none());
     assert!(serve_showcase_file(dir.path(), "missing.png").is_none());
 }
+
+// --- The files at a tree's root --------------------------------------------------
+
+/// A run tree whose record names `module` as its controller.
+fn tree_naming_controller(module: &str) -> TempDir {
+    let dir = TempDir::new().expect("temp dir");
+    let record = serde_json::json!({
+        "validation": { "adversarial": { "controllerModule": module } },
+    });
+    fs::write(
+        dir.path().join("run-record.json"),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn the_controller_is_read_from_where_the_record_says_it_is() {
+    let dir = tree_naming_controller("build/out/controller.wasm");
+    let built = dir.path().join("implementation/build/out");
+    fs::create_dir_all(&built).unwrap();
+    fs::write(built.join("controller.wasm"), b"\0asm").unwrap();
+
+    assert_eq!(
+        tree_root_file(dir.path(), TREE_ROOT_CONTROLLER).unwrap(),
+        Some(b"\0asm".to_vec())
+    );
+    assert_eq!(
+        list_tree_root_files(dir.path()).unwrap(),
+        [TREE_ROOT_CONTROLLER]
+    );
+}
+
+#[test]
+fn a_controller_the_tree_does_not_hold_is_missing_not_an_error() {
+    // The record names a module that was never built.
+    let dir = tree_naming_controller("build/controller.wasm");
+    assert_eq!(
+        tree_root_file(dir.path(), TREE_ROOT_CONTROLLER).unwrap(),
+        None
+    );
+    assert!(list_tree_root_files(dir.path()).unwrap().is_empty());
+
+    // A tree with no record, and a record that names no module.
+    let bare = TempDir::new().unwrap();
+    assert_eq!(
+        tree_root_file(bare.path(), TREE_ROOT_CONTROLLER).unwrap(),
+        None
+    );
+    fs::write(bare.path().join("run-record.json"), b"{\"validation\":{}}").unwrap();
+    assert_eq!(
+        tree_root_file(bare.path(), TREE_ROOT_CONTROLLER).unwrap(),
+        None
+    );
+    assert!(list_tree_root_files(bare.path()).unwrap().is_empty());
+}
+
+#[test]
+fn a_controller_path_that_leaves_the_implementation_names_nothing() {
+    for module in [
+        "../secret.wasm",
+        "build/../../secret.wasm",
+        "/etc/passwd",
+        "./controller.wasm",
+        "",
+    ] {
+        let dir = tree_naming_controller(module);
+        fs::create_dir_all(dir.path().join("implementation")).unwrap();
+        fs::write(dir.path().join("secret.wasm"), b"secret").unwrap();
+        fs::write(dir.path().join("implementation/controller.wasm"), b"x").unwrap();
+        assert_eq!(
+            tree_root_file(dir.path(), TREE_ROOT_CONTROLLER).unwrap(),
+            None,
+            "{module:?}"
+        );
+        assert!(
+            list_tree_root_files(dir.path()).unwrap().is_empty(),
+            "{module:?}"
+        );
+    }
+}
+
+#[test]
+fn the_code_analysis_document_is_read_verbatim_under_its_stored_name() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join(crate::CODE_ANALYSIS_TREE_ARTIFACT),
+        b"framed",
+    )
+    .unwrap();
+
+    assert_eq!(
+        tree_root_file(dir.path(), TREE_ROOT_CODE_ANALYSIS).unwrap(),
+        Some(b"framed".to_vec())
+    );
+    assert_eq!(
+        list_tree_root_files(dir.path()).unwrap(),
+        [TREE_ROOT_CODE_ANALYSIS]
+    );
+}
+
+#[test]
+fn no_other_name_is_read_from_a_trees_root() {
+    // The session record and the run record sit at the root too. Neither is one
+    // of the files this serves.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("replay.json"), b"conversation").unwrap();
+    fs::write(dir.path().join("run-record.json"), b"{}").unwrap();
+
+    for name in [
+        "replay.json",
+        "run-record.json",
+        "../run-record.json",
+        "implementation",
+        "",
+    ] {
+        assert_eq!(tree_root_file(dir.path(), name).unwrap(), None, "{name:?}");
+    }
+    assert!(!TREE_ROOT_FILES.contains(&"replay.json"));
+}
+
+#[test]
+fn a_root_file_that_is_there_and_unreadable_is_an_error_and_is_not_listed() {
+    // A directory where the document should be: it is not a file to list, and
+    // reading it fails as something other than a missing file.
+    let dir = TempDir::new().unwrap();
+    fs::create_dir_all(dir.path().join(crate::CODE_ANALYSIS_TREE_ARTIFACT)).unwrap();
+
+    assert!(tree_root_file(dir.path(), TREE_ROOT_CODE_ANALYSIS).is_err());
+    assert!(list_tree_root_files(dir.path()).unwrap().is_empty());
+}

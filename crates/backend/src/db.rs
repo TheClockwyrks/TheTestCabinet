@@ -703,6 +703,8 @@ impl Db {
             media_confirmed_at: NotSet,
             media_checked_at: NotSet,
             media_bucket: NotSet,
+            media_confirmation_version: NotSet,
+            media_manifest: NotSet,
             artifacts_reclaimed_at: NotSet,
             artifacts_reclaimed_reason: NotSet,
             // Automatic publishing's own mark, which a push likewise leaves alone.
@@ -9556,9 +9558,14 @@ mod retention;
 #[cfg(test)]
 #[path = "db.retention.test.rs"]
 pub(crate) mod retention_tests;
+
+#[cfg(test)]
+#[path = "db.manifest.test.rs"]
+mod manifest_tests;
 pub use retention::{
-    ArtifactsReclaimed, MediaConfirmation, PublishedMediaState, ReclaimReason, RetentionRun,
-    past_instant,
+    ArtifactsReclaimed, ConfirmedMedia, MEDIA_CONFIRMATION_VERSION, MediaConfirmation,
+    MediaFileKind, MediaManifest, MediaManifestFile, PublishedMediaState, ReclaimReason,
+    RetentionRun, confirmation_holds, past_instant,
 };
 
 #[path = "db.publish_retry.rs"]

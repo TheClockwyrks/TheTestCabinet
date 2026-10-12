@@ -10,7 +10,7 @@ use test_cabinet_core::validation::ValidationSummary;
 
 use crate::db::StoredReview;
 
-fn record(id: &str) -> RunRecord {
+pub(super) fn record(id: &str) -> RunRecord {
     RunRecord {
         id: id.to_string(),
         started_at: "2026-06-17T20:40:00Z".to_string(),
@@ -55,7 +55,7 @@ fn record(id: &str) -> RunRecord {
 
 /// Push, review, and publish a run so it lands in the published set the snapshot
 /// is built from.
-async fn seed_published(db: &Db, id: &str, published_at: &str) {
+pub(super) async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.push(&record(id), &RunLinks::default(), None, None)
         .await
         .unwrap();
@@ -267,8 +267,8 @@ async fn a_refresh_pending_at_the_last_stop_is_released_at_startup() {
 /// A stand-in bucket: it keeps what is put, lists it by prefix, and can be told to
 /// refuse the listing of one prefix. Requests are not authenticated.
 #[derive(Default)]
-struct Bucket {
-    objects: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+pub(super) struct Bucket {
+    pub(super) objects: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
     /// A prefix whose listing answers `500`.
     unlistable: std::sync::Mutex<Option<String>>,
     /// How many objects were put, `index.json` among them.
@@ -276,7 +276,7 @@ struct Bucket {
 }
 
 impl Bucket {
-    fn keys(&self) -> Vec<String> {
+    pub(super) fn keys(&self) -> Vec<String> {
         self.objects.lock().unwrap().keys().cloned().collect()
     }
 }
@@ -355,13 +355,14 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
 }
 
 /// The bucket name confirmations are recorded against in these tests.
-const BUCKET: &str = crate::db::retention_tests::BUCKET;
+pub(super) const BUCKET: &str = crate::db::retention_tests::BUCKET;
 
 /// A stand-in artifact service: the trees it holds, each a set of
-/// `<kind>/<file>` media files, served on the two routes a refresh reads.
+/// `<kind>/<file>` media files and `root/<name>` root files, served on the routes
+/// a refresh reads.
 #[derive(Default)]
-struct Trees {
-    trees: std::sync::Mutex<
+pub(super) struct Trees {
+    pub(super) trees: std::sync::Mutex<
         std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<u8>>>,
     >,
     /// Whether every request answers `500`.
@@ -372,7 +373,7 @@ struct Trees {
 
 impl Trees {
     /// Hold a tree for `run_id` with `files`, each `(<kind>/<file>, bytes)`.
-    fn store(&self, run_id: &str, files: &[(&str, &[u8])]) {
+    pub(super) fn store(&self, run_id: &str, files: &[(&str, &[u8])]) {
         self.trees.lock().unwrap().insert(
             run_id.to_string(),
             files
@@ -382,11 +383,11 @@ impl Trees {
         );
     }
 
-    fn listed(&self) -> Vec<String> {
+    pub(super) fn listed(&self) -> Vec<String> {
         self.listed.lock().unwrap().clone()
     }
 
-    fn set_down(&self, down: bool) {
+    pub(super) fn set_down(&self, down: bool) {
         self.down.store(down, std::sync::atomic::Ordering::SeqCst);
     }
 }
@@ -419,6 +420,7 @@ async fn spawn_trees(trees: Arc<Trees>) -> String {
             "stored": held.contains_key(&id),
             "validation": names("validation/"),
             "showcase": names("showcase/"),
+            "root": names("root/"),
         }))
         .into_response()
     }
@@ -457,7 +459,7 @@ async fn spawn_trees(trees: Arc<Trees>) -> String {
 /// stand-in artifact service and records media confirmations against [`BUCKET`].
 /// Without, it has no artifact service and records none. A quiet window the tests
 /// never reach, so nothing is released unless forced.
-async fn bucket_publisher(
+pub(super) async fn bucket_publisher(
     dir: &TempDir,
     db: &Arc<Db>,
     bucket: &Arc<Bucket>,
@@ -492,7 +494,7 @@ async fn bucket_publisher(
 
 /// Publish a run that lists one proof image the agent produced. Nothing in these
 /// tests holds its bytes except a bucket that is given them.
-async fn seed_published_with_proof(db: &Db, id: &str) {
+pub(super) async fn seed_published_with_proof(db: &Db, id: &str) {
     use test_cabinet_core::MediaKind;
     use test_cabinet_core::validation::ProofResult;
 
@@ -516,7 +518,7 @@ async fn seed_published_with_proof(db: &Db, id: &str) {
 }
 
 /// Run `id`'s row.
-async fn run_columns(db: &Db, id: &str) -> test_cabinet_entities::run::Model {
+pub(super) async fn run_columns(db: &Db, id: &str) -> test_cabinet_entities::run::Model {
     crate::db::retention_tests::run_row(db, id).await
 }
 
@@ -928,9 +930,12 @@ async fn a_settled_run_is_asked_about_no_further_and_stays_confirmed() {
 }
 
 #[tokio::test]
-async fn a_reclaimed_run_whose_media_is_not_in_the_bucket_loses_its_confirmation() {
+async fn a_reclaimed_run_whose_media_is_nowhere_is_confirmed_without_it() {
     // Confirmed against another bucket and reclaimed there; this backend's bucket
-    // does not hold the proof. The record must stop saying the media is safe.
+    // does not hold the proof, nor does its store, and the artifact service
+    // answers that it holds no tree, as the reclaim record says. Nothing this
+    // backend can reach holds the file, so the run is confirmed here with the
+    // proof recorded as unrecoverable, not left unconfirmed for good.
     let dir = TempDir::new().unwrap();
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let bucket = Arc::new(Bucket::default());
@@ -956,8 +961,28 @@ async fn a_reclaimed_run_whose_media_is_not_in_the_bucket_loses_its_confirmation
     publisher.refresh_now().await.unwrap();
 
     let row = run_columns(&db, "proven").await;
-    assert_eq!(row.media_confirmed_at, None);
+    assert!(row.media_confirmed_at.is_some());
     assert_eq!(row.media_bucket.as_deref(), Some(BUCKET));
+    let manifest = db
+        .run_media_manifest("proven", Some(BUCKET))
+        .await
+        .unwrap()
+        .expect("a confirmed run has a manifest");
+    assert_eq!(
+        manifest.files,
+        [crate::db::MediaManifestFile::unrecoverable(
+            crate::db::MediaFileKind::Proof,
+            "proof/title.png",
+            None
+        )]
+    );
+    assert_eq!(
+        db.run_media_manifest("proven", Some("https://r2.test/other"))
+            .await
+            .unwrap(),
+        None,
+        "the confirmation it had against the other bucket is gone"
+    );
     assert!(
         db.run_artifacts_reclaimed("proven")
             .await

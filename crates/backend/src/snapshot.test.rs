@@ -837,13 +837,17 @@ async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
         .await
         .unwrap();
 
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/clip.webm")),
-        "the raw showcase webm must not be published",
-    );
+    // The recording is published once, verbatim, under `original/`, and never
+    // where the site looks for the clip.
+    let webms: Vec<&SnapshotObject> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key.ends_with("/clip.webm"))
+        .collect();
+    assert_eq!(webms.len(), 1, "the raw showcase webm is kept once");
+    assert_eq!(webms[0].key, "media/runs/s1/original/showcase/clip.webm");
+    assert_eq!(webms[0].bytes, webm);
+    assert_eq!(webms[0].content_type, "video/webm");
     let clip = snapshot
         .objects
         .iter()
@@ -2196,14 +2200,16 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
         .await
         .unwrap();
 
-    // The webm is gone from the snapshot; the exported object is a real mp4.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/rally.webm")),
-        "the raw webm must not be published",
-    );
+    // The recording is published once, verbatim, under `original/`; the object
+    // the document names is a real mp4.
+    let webms: Vec<&SnapshotObject> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key.ends_with("/rally.webm"))
+        .collect();
+    assert_eq!(webms.len(), 1, "the raw webm is kept once");
+    assert_eq!(webms[0].key, "media/runs/p1/original/proof/rally.webm");
+    assert_eq!(webms[0].bytes, webm);
     let rally = snapshot
         .objects
         .iter()
@@ -2246,14 +2252,19 @@ async fn video_validation_media_recorded_as_webm_is_transcoded_to_mp4() {
         .await
         .unwrap();
 
-    // The raw webm is gone; the exported object is a real mp4 under the mp4 key.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/spin__rally.webm")),
-        "the raw validation webm must not be published",
+    // The recording is published once, verbatim, under `original/`; the object
+    // the document names is a real mp4 under the mp4 key.
+    let webms: Vec<&SnapshotObject> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key.ends_with("/spin__rally.webm"))
+        .collect();
+    assert_eq!(webms.len(), 1, "the raw validation webm is kept once");
+    assert_eq!(
+        webms[0].key,
+        "media/runs/v1/original/validation/spin__rally.webm"
     );
+    assert_eq!(webms[0].bytes, webm);
     let rally = snapshot
         .objects
         .iter()
@@ -2946,7 +2957,7 @@ async fn every_published_run_document_is_scrubbed_on_its_way_out() {
 /// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
 /// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
 /// from the contract the moment a metric is added.
-fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
+pub(super) fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
     let tree = TempDir::new().expect("temp dir");
     std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
     std::fs::write(

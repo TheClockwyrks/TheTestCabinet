@@ -545,13 +545,21 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let mut builder = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone());
     if let Some((_, states)) = &confirming {
-        builder = builder.with_media_confirmation(
-            states
-                .iter()
-                .filter(|state| state.settled())
-                .map(|state| state.id.clone())
-                .collect(),
-        );
+        builder = builder
+            .with_media_confirmation(
+                states
+                    .iter()
+                    .filter(|state| state.settled())
+                    .map(|state| state.id.clone())
+                    .collect(),
+            )
+            .with_recorded_tree_absence(
+                states
+                    .iter()
+                    .filter(|state| state.tree_recorded_absent)
+                    .map(|state| state.id.clone())
+                    .collect(),
+            );
     }
     let snapshot = builder
         .with_models(models)
@@ -612,6 +620,8 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .mark_uploaded(&uploaded_at, run_count as i64)
         .await?;
 
+    let tournament_replays = measure_tournament_replays(&inner.store).await;
+
     // One line per completed refresh recording whether the gallery deploy hook
     // fired. `deploy_hook_fired` is false whenever no hook is configured (R2-only)
     // or R2 itself is off — so this is the log to check when a publish uploaded the
@@ -622,6 +632,8 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         deploy_hook_fired,
         runs_confirmed,
         runs_unconfirmed,
+        tournament_replay_bytes = tournament_replays.map(|usage| usage.bytes),
+        tournament_replay_files = tournament_replays.map(|usage| usage.files),
         "snapshot refresh complete"
     );
 
@@ -631,8 +643,35 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     })
 }
 
-/// Record which of the runs of an uploaded snapshot have every media file of
-/// theirs in `bucket`, and report the rest. Returns how many runs the refresh
+/// Measure what the tournaments' match replays hold in the backend store, and
+/// record it as the `tcab.store.tournament_replay_*` gauges. `None` when the
+/// store could not be measured, which records nothing.
+///
+/// Tournament replays are the one part of the store no refresh exports, so their
+/// size is reported here, once per refresh: the walk is too slow for a request
+/// and runs on a blocking thread.
+async fn measure_tournament_replays(store: &DefinitionStore) -> Option<crate::store::StoreUsage> {
+    let store = store.clone();
+    let measured = tokio::task::spawn_blocking(move || store.tournament_replay_usage()).await;
+    match measured {
+        Ok(Ok(usage)) => {
+            crate::metrics::record_tournament_replays(usage);
+            Some(usage)
+        }
+        Ok(Err(err)) => {
+            tracing::warn!("could not measure the tournament replays in the store ({err})");
+            None
+        }
+        Err(err) => {
+            tracing::warn!("measuring the tournament replays in the store did not finish ({err})");
+            None
+        }
+    }
+}
+
+/// Record which of the runs of an uploaded snapshot have every file of theirs in
+/// `bucket`, each with its [manifest](crate::db::MediaManifest), and report the
+/// rest. Returns how many runs the refresh
 /// found confirmed and how many it could not confirm.
 ///
 /// A published run's tree on the artifact service is the fallback source for media
@@ -654,7 +693,13 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
 /// A run whose tree was reclaimed and whose media the build did not find in the
 /// bucket has no source left. That is not a state a refresh can repair, and it is
 /// what a backend pointed at the wrong or an emptied bucket looks like, so it is
-/// logged at `error` with the number of such runs.
+/// logged at `error` with the number of such runs. It is logged the same way when
+/// the build could rule the missing files unrecoverable and the run is confirmed
+/// without them: the record then says the files exist nowhere, which is true of
+/// everything this backend can reach and may not be true of another bucket.
+///
+/// Each run newly confirmed with unrecoverable files is logged at `warn` with the
+/// files.
 ///
 /// Best-effort: a failure to record is logged and does not fail the refresh. The
 /// snapshot is live either way, the trees are kept, and the next refresh evaluates
@@ -669,6 +714,7 @@ async fn record_media_confirmation(
     let mut confirmed = Vec::new();
     let mut unconfirmed = Vec::new();
     let mut sourceless = 0usize;
+    let mut reclaimed_with_lost_files = 0usize;
     for state in states {
         if !snapshot.run_ids.contains(&state.id) {
             continue;
@@ -682,9 +728,32 @@ async fn record_media_confirmation(
         }
         if missing {
             unconfirmed.push(state.id.clone());
-        } else {
-            confirmed.push(state.clone());
+            continue;
         }
+        // Every run the snapshot was built from has a manifest. One without
+        // would be confirmed with no record of its files, so it is left as it
+        // was for the next refresh.
+        let Some(manifest) = snapshot.media_manifests.get(&state.id) else {
+            continue;
+        };
+        if !state.confirmed {
+            let lost: Vec<&str> = manifest.unrecoverable().collect();
+            if !lost.is_empty() {
+                tracing::warn!(
+                    run.id = %state.id,
+                    files = %lost.join(", "),
+                    "published run confirmed with unrecoverable files; the bucket, the \
+                     backend store and the artifact service each hold none of them"
+                );
+                if state.reclaimed {
+                    reclaimed_with_lost_files += 1;
+                }
+            }
+        }
+        confirmed.push(crate::db::ConfirmedMedia {
+            state: state.clone(),
+            manifest: manifest.clone(),
+        });
     }
     for (run_id, files) in &snapshot.unconfirmed_media {
         tracing::warn!(
@@ -699,6 +768,19 @@ async fn record_media_confirmation(
             bucket,
             "published runs whose artifact tree was reclaimed have media that is not in \
              the configured bucket; nothing is left to publish it from"
+        );
+    }
+    if reclaimed_with_lost_files > 0 {
+        // A run whose tree this backend reclaimed had every file that existed in
+        // a bucket when it did. Files of such a run that nothing holds now were
+        // never produced, or they are in the bucket the run was confirmed in and
+        // this backend is configured with another.
+        tracing::error!(
+            runs = reclaimed_with_lost_files,
+            bucket,
+            "published runs whose artifact tree was reclaimed were confirmed with files \
+             that neither the configured bucket nor the backend store holds; a backend \
+             pointed at another bucket than the one they were confirmed in looks like this"
         );
     }
     crate::metrics::record_unconfirmed_runs(unconfirmed.len() as u64);
@@ -798,3 +880,7 @@ fn load_case_manifests(store: &DefinitionStore) -> Result<Vec<crate::store::Stor
 #[cfg(test)]
 #[path = "publisher.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "publisher.manifest.test.rs"]
+mod manifest_tests;

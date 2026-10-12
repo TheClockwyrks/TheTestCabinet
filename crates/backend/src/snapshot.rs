@@ -210,16 +210,24 @@ pub struct Snapshot {
     /// A build that [confirms media](SnapshotBuilder::with_media_confirmation) also
     /// puts a run here when it could not learn which files the run's tree holds,
     /// under the name [`TREE_LISTING_UNAVAILABLE`]; and it leaves out, without
-    /// counting it, a file the record lists that a stored tree does not hold,
-    /// which no tree can supply.
+    /// counting it, a file the record lists that the bucket, the store and the
+    /// artifact service each answered they do not hold, which it records in the
+    /// run's [manifest](Self::media_manifests) as unrecoverable.
     ///
-    /// Every run of the snapshot that is absent from this map has each media file
-    /// it lists in the bucket once the snapshot's objects are uploaded: already
-    /// there under the key its document references, or among `objects`. That is
+    /// Every run of the snapshot that is absent from this map has each of its
+    /// files in the bucket once the snapshot's objects are uploaded: already
+    /// there, or among `objects`. That is
     /// what the publisher records as the run's media confirmation, and what the
     /// artifact reclamation sweep waits for before it deletes a published run's
     /// tree.
     pub unconfirmed_media: std::collections::BTreeMap<String, Vec<String>>,
+    /// Every run's [file manifest](crate::db::MediaManifest): each file of the run
+    /// this build accounted for, with the object it is in once the snapshot's
+    /// objects are uploaded, or the finding that its bytes exist nowhere. The
+    /// publisher records the manifest of each run it confirms. The manifest of a
+    /// run in [`unconfirmed_media`](Self::unconfirmed_media) is incomplete and is
+    /// recorded nowhere.
+    pub media_manifests: std::collections::BTreeMap<String, crate::db::MediaManifest>,
 }
 
 /// The entry [`Snapshot::unconfirmed_media`] carries for a run whose tree the
@@ -230,19 +238,41 @@ pub const TREE_LISTING_UNAVAILABLE: &str = "tree/listing-unavailable";
 /// directories in the backend store could not be listed.
 pub const STORE_LISTING_UNAVAILABLE: &str = "store/listing-unavailable";
 
-/// Why a media file could not be read.
+/// Why a file could not be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Missing {
-    /// The artifact service was asked and answered `404`: it does not hold the
-    /// file.
-    Absent,
-    /// Nothing answered for the file: there is no artifact service to ask, or the
-    /// request failed.
+    /// The file's bytes exist nowhere. The backend store answered that it holds
+    /// no such file, and the artifact service answered for the run's tree: it
+    /// holds the tree and not the file, or it holds no tree and the backend's own
+    /// record says so too. The caller has already found the bucket without it.
+    ///
+    /// The file was never produced (a description that references an image the
+    /// model did not write, a frame whose preview was not rendered) or the volume
+    /// that held it was lost. Either way no source can supply it, so it does not
+    /// keep its run from being confirmed.
+    Unrecoverable,
+    /// The run is settled, so nothing was asked beyond the store. Every file of
+    /// such a run that exists was in the bucket when the run was confirmed.
+    Settled,
+    /// Some source did not answer, so the file may exist: the store read failed
+    /// for another reason than the file not being there, there is no artifact
+    /// service to ask, the request failed, the tree could not be listed, or the
+    /// service holds no tree while the backend records one as stored. The run is
+    /// left unconfirmed.
     Unavailable,
 }
 
-/// What a build knows about the media files in one run's tree on the artifact
-/// service.
+/// Why the artifact service did not return a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FetchFailure {
+    /// The service answered `404`.
+    NotFound,
+    /// Nothing answered for the file: there is no artifact service to ask, or the
+    /// request failed.
+    Failed,
+}
+
+/// What a build knows about the files in one run's tree on the artifact service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TreeMedia {
     /// The build did not ask, because it records no confirmation.
@@ -254,41 +284,36 @@ enum TreeMedia {
     /// The build asked and got no listing. The run is left unconfirmed.
     Unknown,
     /// The service holds no tree for the run.
-    Absent,
-    /// The service holds the run's tree, with these validation and showcase files.
+    Absent {
+        /// Whether the backend's own record agrees: the run's tree was reclaimed,
+        /// or its presence is recorded as not stored. Only then is the service's
+        /// answer taken as one about the run's files. A service that lost sight of
+        /// its volume answers the same way for every run, and a file must not be
+        /// written off on that.
+        recorded: bool,
+    },
+    /// The service holds the run's tree, with these files.
     Stored {
         /// The tree's validation media, the shared image store included.
         validation: Vec<String>,
         /// The tree's showcase files.
         showcase: Vec<String>,
+        /// Which of the files at the tree's root
+        /// ([`TREE_ROOT_FILES`](test_cabinet_core::TREE_ROOT_FILES)) the tree
+        /// holds. `None` from a service too old to say, which is no answer about
+        /// any of them.
+        root: Option<Vec<String>>,
     },
 }
 
 impl TreeMedia {
-    /// Whether a file the record lists that could not be read, for the reason
-    /// `missing`, leaves the run unconfirmed.
-    ///
-    /// It does not when the service holds the run's tree and answered `404` for
-    /// the file. The file was never produced — a description that references an
-    /// image the model did not write, a frame whose preview was not rendered — so
-    /// keeping the tree could never supply it. In every other case of a run with
-    /// a decision still to make, the tree might hold the file, or might have, and
-    /// the run stays unconfirmed.
-    ///
-    /// Nor does it for a settled run. Every file of such a run that exists was in
-    /// the bucket when the run was confirmed, so a listed file the bucket lacks
-    /// is one excused then, and there is no tree left for the answer to keep.
-    fn counts_against(&self, missing: Missing) -> bool {
-        match self {
-            TreeMedia::Settled => false,
-            TreeMedia::Stored { .. } => missing != Missing::Absent,
-            TreeMedia::NotAsked | TreeMedia::Unknown | TreeMedia::Absent => true,
-        }
-    }
-
-    /// Whether the artifact service is asked for a file the store does not hold.
-    fn has_fallback(&self) -> bool {
-        !matches!(self, TreeMedia::Settled)
+    /// Whether a `404` from the artifact service for one of the run's media files
+    /// is an answer that the tree does not hold it.
+    fn answers_for_missing_media(&self) -> bool {
+        matches!(
+            self,
+            TreeMedia::Stored { .. } | TreeMedia::Absent { recorded: true }
+        )
     }
 }
 
@@ -303,6 +328,10 @@ struct TreeListing {
     /// The tree's showcase file names.
     #[serde(default)]
     showcase: Vec<String>,
+    /// The names of the tree's root files. Absent from a service older than the
+    /// field.
+    #[serde(default)]
+    root: Option<Vec<String>>,
 }
 
 /// Builds a [`Snapshot`] from the published set and the case metadata.
@@ -322,6 +351,9 @@ pub struct SnapshotBuilder {
     /// nothing about. `None` builds as a backend that records none does. See
     /// [`Self::with_media_confirmation`].
     settled_media: Option<std::collections::HashSet<String>>,
+    /// The runs the backend's own record says the artifact service holds no tree
+    /// for. See [`Self::with_recorded_tree_absence`].
+    trees_recorded_absent: std::collections::HashSet<String>,
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
@@ -401,6 +433,7 @@ impl SnapshotBuilder {
             artifacts_url: None,
             http: reqwest::Client::new(),
             settled_media: None,
+            trees_recorded_absent: std::collections::HashSet::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
             reference_sheets: std::collections::HashMap::new(),
@@ -605,6 +638,25 @@ impl SnapshotBuilder {
         self
     }
 
+    /// Supply the runs the backend's own record says the artifact service holds
+    /// no tree for: the ones whose tree was reclaimed, and the ones whose presence
+    /// is recorded as not stored.
+    ///
+    /// When the service answers that it holds no tree for a run, a file of the run
+    /// that is in neither the bucket nor the backend store exists nowhere, and the
+    /// build records it as [unrecoverable](crate::db::MediaManifestFile::unrecoverable)
+    /// so the run can still be confirmed. It does that only for a run named here.
+    /// For any other run the answer contradicts what the backend recorded, which
+    /// is what a service that lost sight of its volume looks like, and the run is
+    /// left unconfirmed until the two agree.
+    pub fn with_recorded_tree_absence(
+        mut self,
+        recorded_absent: std::collections::HashSet<String>,
+    ) -> Self {
+        self.trees_recorded_absent = recorded_absent;
+        self
+    }
+
     /// Generate the snapshot. The id is `<rfc3339-compact>-<short-hash>`, where
     /// the hash is over the run ids so a re-run with the same data is stable
     /// enough to debug while never clobbering a prior prefix.
@@ -638,14 +690,17 @@ impl SnapshotBuilder {
         let mut document_keys: Vec<String> = Vec::with_capacity(self.runs.len());
         let mut reused_documents = 0usize;
         let mut unconfirmed_media = std::collections::BTreeMap::new();
+        let mut media_manifests = std::collections::BTreeMap::new();
         let bucket_images = self.bucket_validation_images();
         for run in &self.runs {
-            // The media files this run lists that this build could not account
-            // for; see [`Snapshot::unconfirmed_media`].
-            let mut unconfirmed: Vec<String> = Vec::new();
+            // What this build finds about each of the run's files; see
+            // [`Snapshot::unconfirmed_media`] and [`Snapshot::media_manifests`].
+            let mut account = run_files::RunAccount::default();
             let tree = self.tree_media(&run.record.id).await;
             if matches!(tree, TreeMedia::Unknown) {
-                unconfirmed.push(TREE_LISTING_UNAVAILABLE.to_string());
+                account
+                    .unconfirmed
+                    .push(TREE_LISTING_UNAVAILABLE.to_string());
             }
             let no_images = Vec::new();
             let run_bucket_images = bucket_images.get(&run.record.id).unwrap_or(&no_images);
@@ -661,23 +716,34 @@ impl SnapshotBuilder {
                     ))
                 })?;
             let (proof_media, proof_objects) =
-                self.run_proofs(&run.record, &tree, &mut unconfirmed).await;
+                self.run_proofs(&run.record, &tree, &mut account).await;
             let (validation_media, validation_objects) = self
-                .run_validation_media(&run.record, &tree, run_bucket_images, &mut unconfirmed)
+                .run_validation_media(&run.record, &tree, run_bucket_images, &mut account)
                 .await;
-            let (asset_media, asset_objects) = self.run_assets(run, &tree, &mut unconfirmed).await;
-            let (showcase_media, showcase_objects) = self
-                .run_showcase(&run.record, &tree, &mut unconfirmed)
-                .await;
+            let (asset_media, asset_objects) = self.run_assets(run, &tree, &mut account).await;
+            let (showcase_media, showcase_objects) =
+                self.run_showcase(&run.record, &tree, &mut account).await;
             // The unbounded code-analysis document is the one per-run object whose
             // bytes are not media: it is published beside the run rather than inside
             // it, so it is scrubbed *here*, on its own, before it becomes an object
             // (see [`Self::run_code_analysis`]).
-            let (code_analysis_key, code_analysis_object) =
-                self.run_code_analysis(&run.record, &scrubber, &mut unconfirmed);
-            if !unconfirmed.is_empty() {
-                unconfirmed_media.insert(run.record.id.clone(), unconfirmed);
+            let (code_analysis_key, code_analysis_object) = self
+                .run_code_analysis(&run.record, &scrubber, &tree, &mut account)
+                .await;
+            // The one file of a run that no document names: the controller module
+            // the arena loads, published so that the bucket holds it too. A gg
+            // run's session record is deliberately not: see the note on
+            // `gg-runs.json` below.
+            let controller_object = self.run_controller(&run.record, &tree, &mut account).await;
+            if !account.unconfirmed.is_empty() {
+                unconfirmed_media.insert(run.record.id.clone(), account.unconfirmed);
             }
+            media_manifests.insert(
+                run.record.id.clone(),
+                crate::db::MediaManifest {
+                    files: account.files,
+                },
+            );
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
             // before it becomes a snapshot object bound for R2.
@@ -736,6 +802,7 @@ impl SnapshotBuilder {
             objects.extend(asset_objects);
             objects.extend(showcase_objects);
             objects.extend(code_analysis_object);
+            objects.extend(controller_object);
         }
         tracing::debug!(
             runs = self.runs.len(),
@@ -958,6 +1025,7 @@ impl SnapshotBuilder {
             run_ids: self.runs.iter().map(|run| run.record.id.clone()).collect(),
             run_document_keys: document_keys.into_iter().collect(),
             unconfirmed_media,
+            media_manifests,
         })
     }
 
@@ -1100,7 +1168,7 @@ impl SnapshotBuilder {
         &self,
         record: &RunRecord,
         tree: &TreeMedia,
-        unconfirmed: &mut Vec<String>,
+        account: &mut run_files::RunAccount,
     ) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
@@ -1112,78 +1180,60 @@ impl SnapshotBuilder {
             let published_ext =
                 test_cabinet_core::proof_published_extension(proof.kind, &proof.dest);
             let published_file = format!("{}.{}", proof.id, published_ext);
-            // The stable, snapshot-independent key this proof is published under. When
-            // it is already in the bucket, reference it without touching the source
-            // bytes — no store/artifact read, and (for a video) no re-transcode.
-            let published_key = format!("{MEDIA_PREFIX}/{run_id}/proof/{published_file}");
-            if self.existing_media.contains(&published_key) {
+            let served_ext = test_cabinet_core::proof_served_extension(&proof.dest);
+            let served_file = format!("{}.{}", proof.id, served_ext);
+            // A clip recorded under another extension than the one it is published
+            // under is transcoded, and its recording published beside it. Anything
+            // else publishes as it is stored, under the stable key
+            // `media/runs/<id>/proof/<file>`. Either way an object already in the
+            // bucket is referenced without touching the source bytes.
+            let is_video = proof.kind == test_cabinet_core::MediaKind::Video;
+            let key = if is_video && served_file != published_file {
+                self.publish_video(
+                    run_id,
+                    run_files::Published {
+                        kind: crate::db::MediaFileKind::Proof,
+                        file: &served_file,
+                        listed: false,
+                    },
+                    &published_file,
+                    true,
+                    tree,
+                    account,
+                    &mut objects,
+                )
+                .await
+            } else {
+                // A video publishes under a name the transcode decided, so that
+                // name is what describes it; anything else publishes under its
+                // recorded `dest`'s extension, and only the dest carries a compound
+                // `.json.gz` suffix whole.
+                let labelled = if is_video {
+                    published_file.as_str()
+                } else {
+                    test_cabinet_core::proof_labelled_name(&proof.dest, &published_file)
+                };
+                self.publish_plain(
+                    run_id,
+                    run_files::Published {
+                        kind: crate::db::MediaFileKind::Proof,
+                        file: &published_file,
+                        listed: false,
+                    },
+                    labelled,
+                    tree,
+                    account,
+                    &mut objects,
+                )
+                .await
+            };
+            if let Some(key) = key {
                 metas.push(RunProofOut {
                     id: proof.id.clone(),
                     kind: proof.kind,
-                    key: published_key,
+                    key,
                 });
-                continue;
             }
-
-            // Prefer a copy already at the published extension (an image, or a clip
-            // that is already mp4); otherwise pull the raw webm and transcode it.
-            let (file, bytes) = match self
-                .read_media(run_id, "proof", &published_file, tree)
-                .await
-            {
-                Ok(bytes) => (published_file, bytes),
-                Err(_) if proof.kind == test_cabinet_core::MediaKind::Video => {
-                    let served_ext = test_cabinet_core::proof_served_extension(&proof.dest);
-                    let served_file = format!("{}.{}", proof.id, served_ext);
-                    let raw = match self.read_media(run_id, "proof", &served_file, tree).await {
-                        Ok(raw) => raw,
-                        Err(missing) => {
-                            if tree.counts_against(missing) {
-                                unconfirmed.push(format!("proof/{served_file}"));
-                            }
-                            continue;
-                        }
-                    };
-                    match transcode_webm_to_mp4(&raw).await {
-                        Some(mp4) => (published_file, mp4),
-                        None => {
-                            tracing::warn!(
-                                run_id = %run_id,
-                                proof = %proof.id,
-                                "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
-                            );
-                            // The next build looks for the mp4 key, finds none, and
-                            // reads the source again to transcode it.
-                            unconfirmed.push(format!("proof/{published_file}"));
-                            (served_file, raw)
-                        }
-                    }
-                }
-                Err(missing) => {
-                    if tree.counts_against(missing) {
-                        unconfirmed.push(format!("proof/{published_file}"));
-                    }
-                    continue;
-                }
-            };
-
-            // Key by the produced file name (the transcode-fallback path can publish
-            // the raw webm under its served name rather than the mp4 published name).
-            let key = format!("{MEDIA_PREFIX}/{run_id}/proof/{file}");
-            // A video publishes under a name the transcode decided, so that name is
-            // what describes it; anything else publishes under its recorded `dest`'s
-            // extension, and only the dest carries a compound `.json.gz` suffix whole.
-            let labelled = if proof.kind == test_cabinet_core::MediaKind::Video {
-                file.as_str()
-            } else {
-                test_cabinet_core::proof_labelled_name(&proof.dest, &file)
-            };
-            objects.push(SnapshotObject::media(key.clone(), bytes, labelled));
-            metas.push(RunProofOut {
-                id: proof.id.clone(),
-                kind: proof.kind,
-                key,
-            });
         }
         (metas, objects)
     }
@@ -1220,7 +1270,7 @@ impl SnapshotBuilder {
         record: &RunRecord,
         tree: &TreeMedia,
         bucket_images: &[String],
-        unconfirmed: &mut Vec<String>,
+        account: &mut run_files::RunAccount,
     ) -> (Vec<RunValidationMediaOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
@@ -1244,66 +1294,47 @@ impl SnapshotBuilder {
                     test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
                 let published_ext = test_cabinet_core::validation_published_extension(output.kind);
                 let published_file = format!("{verdict_id}__{}.{published_ext}", output.id);
-                // The stable, snapshot-independent key. When it is already in the
-                // bucket, reference it without touching the source bytes (no store read,
-                // and — for a video — no re-transcode).
-                let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{published_file}");
-                if self.existing_media.contains(&published_key) {
+                // A video is transcoded and its recording published beside it;
+                // anything else publishes as stored. An object already in the
+                // bucket is referenced without touching the source bytes (no store
+                // read, and for a video no second transcode).
+                let published = run_files::Published {
+                    kind: crate::db::MediaFileKind::Validation,
+                    file: &requested_file,
+                    listed: false,
+                };
+                let is_video = output.kind == test_cabinet_core::MediaKind::Video;
+                let key = if is_video && requested_file != published_file {
+                    self.publish_video(
+                        run_id,
+                        published,
+                        &published_file,
+                        true,
+                        tree,
+                        account,
+                        &mut objects,
+                    )
+                    .await
+                } else {
+                    self.publish_plain(
+                        run_id,
+                        run_files::Published {
+                            file: &published_file,
+                            ..published
+                        },
+                        &published_file,
+                        tree,
+                        account,
+                        &mut objects,
+                    )
+                    .await
+                };
+                if let Some(key) = key {
                     metas.push(RunValidationMediaOut {
                         file: requested_file,
-                        key: published_key,
+                        key,
                     });
-                    continue;
                 }
-
-                // Prefer a copy already at the published extension (an image, or a clip
-                // already mp4); otherwise pull the raw webm and transcode it.
-                let (file, bytes) = match self
-                    .read_media(run_id, "validation", &published_file, tree)
-                    .await
-                {
-                    Ok(bytes) => (published_file, bytes),
-                    Err(_) if output.kind == test_cabinet_core::MediaKind::Video => {
-                        let raw = match self
-                            .read_media(run_id, "validation", &requested_file, tree)
-                            .await
-                        {
-                            Ok(raw) => raw,
-                            Err(missing) => {
-                                if tree.counts_against(missing) {
-                                    unconfirmed.push(format!("validation/{requested_file}"));
-                                }
-                                continue;
-                            }
-                        };
-                        match transcode_webm_to_mp4(&raw).await {
-                            Some(mp4) => (published_file, mp4),
-                            None => {
-                                tracing::warn!(
-                                    run_id = %run_id,
-                                    item = %script.item_id,
-                                    output = %output.id,
-                                    "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
-                                );
-                                unconfirmed.push(format!("validation/{published_file}"));
-                                (requested_file.clone(), raw)
-                            }
-                        }
-                    }
-                    Err(missing) => {
-                        if tree.counts_against(missing) {
-                            unconfirmed.push(format!("validation/{published_file}"));
-                        }
-                        continue;
-                    }
-                };
-
-                let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
-                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
-                metas.push(RunValidationMediaOut {
-                    file: requested_file,
-                    key,
-                });
             }
         }
 
@@ -1335,7 +1366,9 @@ impl SnapshotBuilder {
                         run.id = %run_id,
                         "listing the run's stored validation media failed ({err})"
                     );
-                    unconfirmed.push(STORE_LISTING_UNAVAILABLE.to_string());
+                    account
+                        .unconfirmed
+                        .push(STORE_LISTING_UNAVAILABLE.to_string());
                     std::collections::BTreeSet::new()
                 }
             };
@@ -1347,25 +1380,25 @@ impl SnapshotBuilder {
             .into_iter()
             .filter(|file| test_cabinet_core::is_validation_image_name(file))
         {
-            let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
-            if self.existing_media.contains(&published_key) {
-                metas.push(RunValidationMediaOut {
-                    file,
-                    key: published_key,
-                });
-                continue;
-            }
             // Unlike a file the record lists, one a listing named exists, so a
             // read that finds nothing is a file that could not be published.
-            let Ok(bytes) = self.read_media(run_id, "validation", &file, tree).await else {
-                unconfirmed.push(format!("validation/{file}"));
-                continue;
-            };
-            objects.push(SnapshotObject::media(published_key.clone(), bytes, &file));
-            metas.push(RunValidationMediaOut {
-                file,
-                key: published_key,
-            });
+            let key = self
+                .publish_plain(
+                    run_id,
+                    run_files::Published {
+                        kind: crate::db::MediaFileKind::Validation,
+                        file: &file,
+                        listed: true,
+                    },
+                    &file,
+                    tree,
+                    account,
+                    &mut objects,
+                )
+                .await;
+            if let Some(key) = key {
+                metas.push(RunValidationMediaOut { file, key });
+            }
         }
         (metas, objects)
     }
@@ -1733,7 +1766,7 @@ impl SnapshotBuilder {
         &self,
         run: &StoredRun,
         tree: &TreeMedia,
-        unconfirmed: &mut Vec<String>,
+        account: &mut run_files::RunAccount,
     ) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
@@ -1827,38 +1860,51 @@ impl SnapshotBuilder {
                 files.push("preview.png".to_string());
             }
             files
-        } else if run.record.validation.adversarial.is_some() {
-            vec!["replay.json".to_string()]
+        } else if let Some(adversarial) = run.record.validation.adversarial.as_ref() {
+            // Every opponent's replay, under the name the record gives it, which
+            // is the name a console requests it by. The canonical replay leads the
+            // list, and stands alone for a record that carries no list (a forfeit
+            // before any match, or a record older than the list).
+            run_files::flat_names(
+                std::iter::once(adversarial.replay_json.as_str())
+                    .chain(adversarial.replays.iter().map(|r| r.replay_json.as_str())),
+            )
+        } else if let Some(performance) = run.record.validation.performance.as_ref() {
+            // Each scored case's scenario and the run's own engine module, under
+            // the names the record gives them. Browser playback loads the module
+            // and steps it over each scenario. A case the engine got wrong records
+            // no scenario, and a build that emitted no module records none.
+            run_files::flat_names(
+                performance
+                    .cases
+                    .iter()
+                    .filter_map(|case| case.scenario_json.as_deref())
+                    .chain(performance.module_wasm.as_deref()),
+            )
         } else {
             return (metas, objects);
         };
         let run_id = &run.record.id;
-        for file in &files {
-            let file = file.as_str();
-            let key = format!("{MEDIA_PREFIX}/{run_id}/asset/{file}");
-            // Already uploaded (immutable per run): reference it without reading the
+        for file in files {
+            // Already uploaded (immutable per run): referenced without reading the
             // source bytes or re-uploading.
-            if self.existing_media.contains(&key) {
-                metas.push(RunAssetOut {
-                    file: file.to_string(),
-                    key,
-                });
-                continue;
+            let key = self
+                .publish_plain(
+                    run_id,
+                    run_files::Published {
+                        kind: crate::db::MediaFileKind::Asset,
+                        file: &file,
+                        listed: false,
+                    },
+                    &file,
+                    tree,
+                    account,
+                    &mut objects,
+                )
+                .await;
+            if let Some(key) = key {
+                metas.push(RunAssetOut { file, key });
             }
-            let bytes = match self.read_media(run_id, "asset", file, tree).await {
-                Ok(bytes) => bytes,
-                Err(missing) => {
-                    if tree.counts_against(missing) {
-                        unconfirmed.push(format!("asset/{file}"));
-                    }
-                    continue;
-                }
-            };
-            objects.push(SnapshotObject::media(key.clone(), bytes, file));
-            metas.push(RunAssetOut {
-                file: file.to_string(),
-                key,
-            });
         }
         (metas, objects)
     }
@@ -1893,7 +1939,7 @@ impl SnapshotBuilder {
         &self,
         record: &RunRecord,
         tree: &TreeMedia,
-        unconfirmed: &mut Vec<String>,
+        account: &mut run_files::RunAccount,
     ) -> (Vec<RunShowcaseOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
@@ -1913,7 +1959,9 @@ impl SnapshotBuilder {
                     run.id = %run_id,
                     "listing the run's stored showcase files failed ({err})"
                 );
-                unconfirmed.push(STORE_LISTING_UNAVAILABLE.to_string());
+                account
+                    .unconfirmed
+                    .push(STORE_LISTING_UNAVAILABLE.to_string());
                 Vec::new()
             }
         }
@@ -1951,48 +1999,37 @@ impl SnapshotBuilder {
             } else {
                 file.to_string()
             };
-            // The stable, snapshot-independent key. When it is already in the bucket,
-            // reference it without touching the source bytes (no store read, and — for
-            // a video — no re-transcode).
-            let published_key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
-            if self.existing_media.contains(&published_key) {
+            // A file a listing named exists, so a read that finds nothing is a
+            // file that could not be published. A name only the carousel or the
+            // description gave may be one that was never written.
+            let published = run_files::Published {
+                kind: crate::db::MediaFileKind::Showcase,
+                file,
+                listed: index < listed,
+            };
+            // An object already in the bucket is referenced without touching the
+            // source bytes (no store read, and for a video no second transcode).
+            let key = if is_video {
+                self.publish_video(
+                    run_id,
+                    published,
+                    &published_file,
+                    false,
+                    tree,
+                    account,
+                    &mut objects,
+                )
+                .await
+            } else {
+                self.publish_plain(run_id, published, file, tree, account, &mut objects)
+                    .await
+            };
+            if let Some(key) = key {
                 metas.push(RunShowcaseOut {
                     file: file.to_string(),
-                    key: published_key,
+                    key,
                 });
-                continue;
             }
-            let raw = match self.read_media(run_id, "showcase", file, tree).await {
-                Ok(raw) => raw,
-                Err(missing) => {
-                    if index < listed || tree.counts_against(missing) {
-                        unconfirmed.push(format!("showcase/{file}"));
-                    }
-                    continue;
-                }
-            };
-            let (published_file, bytes) = if is_video {
-                match transcode_webm_to_mp4(&raw).await {
-                    Some(mp4) => (published_file, mp4),
-                    None => {
-                        tracing::warn!(
-                            run_id = %run_id,
-                            file = %file,
-                            "webm→mp4 transcode unavailable; publishing raw showcase webm (not iOS-playable)"
-                        );
-                        unconfirmed.push(format!("showcase/{published_file}"));
-                        (file.to_string(), raw)
-                    }
-                }
-            } else {
-                (published_file, raw)
-            };
-            let key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
-            objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
-            metas.push(RunShowcaseOut {
-                file: file.to_string(),
-                key,
-            });
         }
         (metas, objects)
     }
@@ -2029,20 +2066,22 @@ impl SnapshotBuilder {
     /// the gzip magic, exactly as the serving route does. Anything unreadable or
     /// unparseable yields `None` and a warning rather than failing the refresh: the
     /// bounded summary still reaches the card and the record, so the surface degrades to
-    /// the figures instead of offering a link that 404s. There is no artifact-service
-    /// fallback for this document (the service exposes no route for a tree-root file), so
-    /// a run whose ephemeral store copy is lost before its first publish keeps its summary
-    /// and loses its explorer.
-    fn run_code_analysis(
+    /// the figures instead of offering a link that 404s. A document the store has
+    /// lost is read from the root of the run's tree ([`Self::read_root`]), and one
+    /// that is in neither place is recorded as unrecoverable.
+    async fn run_code_analysis(
         &self,
         record: &RunRecord,
         scrubber: &SecretScrubber,
-        unconfirmed: &mut Vec<String>,
+        tree: &TreeMedia,
+        account: &mut run_files::RunAccount,
     ) -> (Option<String>, Option<SnapshotObject>) {
         let Some(summary) = record.code_analysis.as_ref() else {
             return (None, None);
         };
         let run_id = &record.id;
+        let kind = crate::db::MediaFileKind::CodeAnalysis;
+        let name = test_cabinet_core::TREE_ROOT_CODE_ANALYSIS;
         let key = format!(
             "{MEDIA_PREFIX}/{run_id}/code-analysis/v{}.json",
             summary.analyzer_version
@@ -2051,56 +2090,64 @@ impl SnapshotBuilder {
         // reading the source bytes, re-scrubbing or re-uploading. This is the whole
         // point of putting the generation in the key.
         if self.existing_media.contains(&key) {
+            account.files.push(crate::db::MediaManifestFile::stored(
+                kind,
+                name,
+                key.clone(),
+            ));
             return (Some(key), None);
         }
 
-        // The document is listed by the record and could not be published. The run
-        // tree holds the only other copy, so the run is reported unconfirmed.
+        // The name a document that could not be published is reported under.
         let unpublished = || format!("code-analysis/v{}.json", summary.analyzer_version);
-        let Ok(stored) = self.store.read_run_code_analysis(run_id) else {
-            tracing::warn!(
-                run.id = %run_id,
-                "run record carries a code analysis but its document is not stored; \
-                 publishing the summary without the explorer"
-            );
-            unconfirmed.push(unpublished());
-            return (None, None);
-        };
-        let plain = match decode_maybe_gzip(&stored) {
-            Some(plain) => plain,
-            None => {
+        let stored = match self.read_root(run_id, name, tree).await {
+            Ok(stored) => stored,
+            Err(missing) => {
                 tracing::warn!(
                     run.id = %run_id,
-                    "decoding the stored code-analysis document failed; publishing the \
-                     summary without the explorer"
+                    "run record carries a code analysis but its document could not be \
+                     read; publishing the summary without the explorer"
                 );
-                unconfirmed.push(unpublished());
+                match missing {
+                    Missing::Unrecoverable => {
+                        account
+                            .files
+                            .push(crate::db::MediaManifestFile::unrecoverable(
+                                kind, name, None,
+                            ))
+                    }
+                    Missing::Settled => {}
+                    Missing::Unavailable => account.unconfirmed.push(unpublished()),
+                }
                 return (None, None);
             }
         };
-        let mut document: serde_json::Value = match serde_json::from_slice(&plain) {
-            Ok(document) => document,
-            Err(err) => {
+        let bytes = match run_files::scrubbed_json(&stored, scrubber) {
+            Ok((bytes, redacted)) => {
+                if redacted {
+                    tracing::warn!(
+                        run.id = %run_id,
+                        "redacted leaked API key(s) from a published code-analysis document"
+                    );
+                }
+                bytes
+            }
+            Err(reason) => {
                 tracing::warn!(
                     run.id = %run_id,
-                    error = %err,
-                    "the stored code-analysis document is not JSON; publishing the \
-                     summary without the explorer"
+                    reason,
+                    "the stored code-analysis document could not be published; \
+                     publishing the summary without the explorer"
                 );
-                unconfirmed.push(unpublished());
+                account.unconfirmed.push(unpublished());
                 return (None, None);
             }
         };
-        if scrubber.scrub_json(&mut document) {
-            tracing::warn!(
-                run.id = %run_id,
-                "redacted leaked API key(s) from a published code-analysis document"
-            );
-        }
-        let Ok(bytes) = serde_json::to_vec(&document) else {
-            unconfirmed.push(unpublished());
-            return (None, None);
-        };
+        account.files.push(crate::db::MediaManifestFile::stored(
+            kind,
+            name,
+            key.clone(),
+        ));
         (
             Some(key.clone()),
             Some(SnapshotObject {
@@ -2122,10 +2169,17 @@ impl SnapshotBuilder {
     /// tree durably and serves it under the same `<kind>/<file>` names, so it backs
     /// the miss. An `Err` says why the file could not be read ([`Missing`]) — the
     /// caller then omits that media from the snapshot, and decides from the reason
-    /// whether the run can still be confirmed ([`TreeMedia::counts_against`]).
+    /// whether the run can still be confirmed.
     ///
     /// A settled run (`tree`) has no tree to fall back to, so the artifact service
-    /// is not asked and a store miss is [`Missing::Absent`].
+    /// is not asked and a store miss is [`Missing::Settled`].
+    ///
+    /// [`Missing::Unrecoverable`] takes three answers. The caller reads a file
+    /// only after finding the bucket without it. The store must report that no
+    /// such file is there, which a read that failed some other way does not. And
+    /// the artifact service must answer `404` for a run whose tree it holds, or
+    /// whose tree the backend itself recorded as gone
+    /// ([`TreeMedia::answers_for_missing_media`]).
     async fn read_media(
         &self,
         run_id: &str,
@@ -2142,47 +2196,104 @@ impl SnapshotBuilder {
         if let Ok(bytes) = from_store {
             return Ok(bytes);
         }
-        if !tree.has_fallback() {
-            return Err(Missing::Absent);
+        if matches!(tree, TreeMedia::Settled) {
+            return Err(Missing::Settled);
         }
-        self.fetch_artifact(run_id, kind, file).await
+        let name = format!("{kind}/{file}");
+        let store_answered = self.store.run_file_absent(run_id, &name);
+        match self.fetch_artifact(run_id, &name).await {
+            Ok(bytes) => Ok(bytes),
+            Err(FetchFailure::NotFound) if store_answered && tree.answers_for_missing_media() => {
+                Err(Missing::Unrecoverable)
+            }
+            Err(_) => Err(Missing::Unavailable),
+        }
     }
 
-    /// Fetch one run media file from the artifact service over the backend's
-    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, an ungated
-    /// media read).
+    /// Resolve one of the files at the root of a run
+    /// ([`TREE_ROOT_FILES`](test_cabinet_core::TREE_ROOT_FILES): the controller
+    /// module and the code-analysis document) to its stored bytes, preferring the local store and falling back to the artifact service.
     ///
-    /// [`Missing::Absent`] only when the service answered `404`: it was asked and
-    /// does not hold the file. Everything else is [`Missing::Unavailable`] — the
-    /// fallback is disabled (`artifacts_url` unset) or the request failed. A
-    /// non-404 failure is logged — it means the durable copy could not be read, so
-    /// the media will be missing from the snapshot until the next refresh.
+    /// No media route reaches these files, so the service names the ones a tree
+    /// holds in its listing and serves them from `GET /runs/{id}/root/{name}`.
+    /// The listing is what answers for a file here, never a `404`: a service too
+    /// old to have the route answers `404` for every name, and its listing carries
+    /// no `root` to mistake that for an answer. So:
+    ///
+    /// - a file the listing names is fetched, and a failure to fetch it is
+    ///   [`Missing::Unavailable`];
+    /// - a file the listing does not name, of a tree the service holds or of one
+    ///   the backend recorded as gone, is [`Missing::Unrecoverable`] when the
+    ///   store also answered that it holds no such file;
+    /// - anything else is [`Missing::Unavailable`].
+    async fn read_root(
+        &self,
+        run_id: &str,
+        name: &str,
+        tree: &TreeMedia,
+    ) -> std::result::Result<Vec<u8>, Missing> {
+        let from_store = match name {
+            test_cabinet_core::TREE_ROOT_CONTROLLER => self.store.read_run_controller(run_id),
+            _ => self.store.read_run_code_analysis(run_id),
+        };
+        if let Ok(bytes) = from_store {
+            return Ok(bytes);
+        }
+        let store_answered = self.store.run_file_absent(run_id, name);
+        match tree {
+            TreeMedia::Settled => Err(Missing::Settled),
+            TreeMedia::Stored {
+                root: Some(names), ..
+            } if names.iter().any(|held| held == name) => self
+                .fetch_artifact(run_id, &format!("root/{name}"))
+                .await
+                .map_err(|_| Missing::Unavailable),
+            TreeMedia::Stored { root: Some(_), .. } | TreeMedia::Absent { recorded: true }
+                if store_answered =>
+            {
+                Err(Missing::Unrecoverable)
+            }
+            _ => Err(Missing::Unavailable),
+        }
+    }
+
+    /// Fetch one file of a run's tree from the artifact service over the backend's
+    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{path}`, an ungated
+    /// read). `path` is `<kind>/<file>` for media and `root/<name>` for a root
+    /// file.
+    ///
+    /// [`FetchFailure::NotFound`] only when the service answered `404`. Everything
+    /// else is [`FetchFailure::Failed`] — the fallback is disabled (`artifacts_url`
+    /// unset) or the request failed. A non-404 failure is logged — it means the
+    /// durable copy could not be read, so the file will be missing from the
+    /// snapshot until the next refresh.
     async fn fetch_artifact(
         &self,
         run_id: &str,
-        kind: &str,
-        file: &str,
-    ) -> std::result::Result<Vec<u8>, Missing> {
+        path: &str,
+    ) -> std::result::Result<Vec<u8>, FetchFailure> {
         let Some(base) = self.artifacts_url.as_deref() else {
-            return Err(Missing::Unavailable);
+            return Err(FetchFailure::Failed);
         };
-        let url = format!("{base}/runs/{run_id}/{kind}/{file}");
+        let url = format!("{base}/runs/{run_id}/{path}");
         match self.http.get(&url).send().await {
             Ok(resp) if resp.status().is_success() => match resp.bytes().await {
                 Ok(bytes) => Ok(bytes.to_vec()),
                 Err(err) => {
                     tracing::warn!(run.id = run_id, %url, error = %err, "reading artifact media body failed");
-                    Err(Missing::Unavailable)
+                    Err(FetchFailure::Failed)
                 }
             },
-            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => Err(Missing::Absent),
+            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+                Err(FetchFailure::NotFound)
+            }
             Ok(resp) => {
                 tracing::warn!(run.id = run_id, %url, status = %resp.status(), "artifact media fetch failed");
-                Err(Missing::Unavailable)
+                Err(FetchFailure::Failed)
             }
             Err(err) => {
                 tracing::warn!(run.id = run_id, %url, error = %err, "artifact media request failed");
-                Err(Missing::Unavailable)
+                Err(FetchFailure::Failed)
             }
         }
     }
@@ -2208,7 +2319,7 @@ impl SnapshotBuilder {
         let asked = self
             .http
             .get(&url)
-            // The answer is two directory listings on the service's side, so a
+            // The answer is a few directory listings on the service's side, so a
             // slow one is a service that is not answering.
             .timeout(std::time::Duration::from_secs(30))
             .send()
@@ -2228,8 +2339,11 @@ impl SnapshotBuilder {
             Ok(listing) if listing.stored => TreeMedia::Stored {
                 validation: listing.validation,
                 showcase: listing.showcase,
+                root: listing.root,
             },
-            Ok(_) => TreeMedia::Absent,
+            Ok(_) => TreeMedia::Absent {
+                recorded: self.trees_recorded_absent.contains(run_id),
+            },
             Err(err) => {
                 tracing::warn!(run.id = run_id, %url, error = %err, "the run tree's media listing did not parse");
                 TreeMedia::Unknown
@@ -2531,6 +2645,7 @@ fn media_labels(file: &str) -> ContentLabels {
         "md" => ContentLabels::plain("text/markdown; charset=utf-8"),
         "glb" => ContentLabels::plain("model/gltf-binary"),
         "wav" => ContentLabels::plain("audio/wav"),
+        "wasm" => ContentLabels::plain("application/wasm"),
         "mid" | "midi" => ContentLabels::plain("audio/midi"),
         _ => ContentLabels::plain("application/octet-stream"),
     }
@@ -4369,9 +4484,16 @@ fn core_review_validation(
     }
 }
 
+#[path = "snapshot.files.rs"]
+mod run_files;
+
 #[cfg(test)]
 #[path = "snapshot.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "snapshot.files.test.rs"]
+mod files_tests;
 
 #[cfg(test)]
 #[path = "snapshot.hook.test.rs"]

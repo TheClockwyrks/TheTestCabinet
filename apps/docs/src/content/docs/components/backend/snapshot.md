@@ -76,7 +76,9 @@ media/runs/<run-id>/proof/<file>
 media/runs/<run-id>/asset/<file>
 media/runs/<run-id>/validation/<file>
 media/runs/<run-id>/showcase/<file>
+media/runs/<run-id>/original/<kind>/<file>
 media/runs/<run-id>/code-analysis/v<generation>.json
+media/runs/<run-id>/controller.wasm
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png
 media/cases/<slug>/<version>/validation-baseline/<engine>/<variant>/<digest>-<file>
 media/cases/<slug>/<version>/showcase/<variant>/<digest>-<file>
@@ -261,6 +263,86 @@ published key ends `.mp4`, so a reader follows the key rather than composing one
 from the name. A `replay` recorded as `.webm` is published as recorded, because
 the player decodes its frames and timestamps as the engine wrote them.
 
+The recorded webm of a transcoded video is published too, verbatim, under
+`media/runs/<run-id>/original/<kind>/<file>`, where `<kind>` is `proof`,
+`validation` or `showcase` and `<file>` is the recorded name. No document names
+that key, and the site keeps playing the mp4. It is there so that the bucket
+holds the bytes the run produced and not only a derivative of them. The prefix
+is its own so that the key can meet neither the mp4 nor the recorded webm a
+failed transcode publishes under `<kind>/<file>`.
+
+### Files with no other copy
+
+A run's other files are published under the same per-run prefix, so that the
+bucket holds every file of a published run:
+
+- An adversarial run's replays, one per opponent the record lists, as
+  `asset/<file>` under the name the record gives each (`replay.json`,
+  `replay-1.json` and so on).
+- A performance run's scored scenarios and its engine module, as `asset/<file>`
+  under the names its record gives them (`scenario.json`, `scenario-1.json`,
+  `engine.wasm`).
+- An adversarial run's controller module, as `controller.wasm`, when the record
+  names one.
+
+The asset files are named in `assetMedia` like any other asset. The controller
+is named by no document.
+
+One file of a run is not published. A gg run's [session
+record](/gg/analysis/session-records/) carries the complete model conversation
+of its run, and an object in this bucket can be fetched by anyone who can
+compose its key. The record therefore stays in the backend store, which holds
+its only copy besides the run's tree, and no refresh reads it.
+
+### The file manifest
+
+When a refresh [confirms](/components/backend/overview/#confirmation) a run, it
+records on the run every file of the run that is in the bucket. Each entry
+carries:
+
+| Field           | Meaning                                                                     |
+| --------------- | --------------------------------------------------------------------------- |
+| `kind`          | `proof`, `validation`, `asset`, `showcase`, `code-analysis` or `controller` |
+| `name`          | The file's path under the run's folder in the backend store                 |
+| `key`           | The object holding the bytes of that file                                   |
+| `transcodedKey` | The mp4 a video was transcoded to, when it was                              |
+| `unrecoverable` | Set on a file whose bytes exist nowhere; see below                          |
+
+`name` is what the backend's own routes serve the file as: `proof/<file>`,
+`validation/<file>`, `asset/<file>`, `showcase/<file>`, `code-analysis.json` and
+`controller.wasm`. For a transcoded video `name` is the recorded `.webm`, `key`
+is the verbatim copy under `original/` and `transcodedKey` is the mp4. The
+code-analysis object is the scrubbed, uncompressed form of the stored file, and
+every other object holds the stored bytes unchanged. The session record has no
+entry, because it has no object.
+
+The manifest is written together with the confirmation and cleared with it, so
+a run has one exactly while it is confirmed.
+
+### Unrecoverable files
+
+A file the record lists can be missing from everywhere: it was never written, or
+the volume that held it was lost. Such a file is recorded as unrecoverable, with
+no `key`, and does not keep its run from being confirmed. The refresh records it
+only when each of the three places a file can be answered that it does not hold
+it:
+
+1. The bucket's listing lacks the object.
+2. The backend store reports no such file. A read that fails any other way is
+   not an answer.
+3. The artifact service holds the run's tree and answers `404` for the file, or
+   it holds no tree and the backend's own record agrees: the run's tree was
+   reclaimed, or its [artifact
+   presence](/components/backend/overview/#artifact-presence) is recorded as not
+   stored. A service that could not be reached, a tree that could not be
+   listed, and a missing tree the backend still records as stored are not
+   answers.
+
+A transcoded video whose recorded webm is unrecoverable keeps its
+`transcodedKey` when the mp4 is in the bucket. Each refresh that confirms a run
+with unrecoverable files logs one `warn` line, `published run confirmed with
+unrecoverable files`, naming the run and the files.
+
 Two consequences follow. A publish stays cheap as asset-generation runs
 accumulate, because it uploads only new media. Media already in the bucket is
 referenced without needing its source bytes, so a publish keeps a run's media
@@ -269,10 +351,11 @@ a cluster is recreated. To re-seed the bucket from a prior snapshot in that
 recovery case, use `scripts/recover-run-media-from-snapshot.sh`.
 
 A file a run lists whose bytes are in neither the backend store nor the artifact
-service is left out of the run's document. The builder reports each such file,
-and each video published as recorded because its transcode failed, against its
-run. The backend uses that report to decide when a published run's tree on the
-artifact service [has no further use](/components/backend/overview/#confirmation).
+service is left out of the run's document. The builder reports each such file
+that it could not rule [unrecoverable](#unrecoverable-files), and each video
+published as recorded because its transcode failed, against its run. The backend
+uses that report to decide when a published run's tree on the artifact service
+[has no further use](/components/backend/overview/#confirmation).
 
 An upload stores both labels the object is served under: what the resource is
 and how its bytes are framed. A 2D engine's validation recording is stored as

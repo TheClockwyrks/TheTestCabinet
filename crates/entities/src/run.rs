@@ -191,6 +191,18 @@ pub struct Model {
     /// at.
     #[sea_orm(nullable)]
     pub media_bucket: Option<String>,
+    /// The version of the definition of "confirmed" the evaluation recorded in the
+    /// three columns above was made under. `NULL` for a run no refresh has looked
+    /// at, and for one evaluated before the definition covered every file of a run.
+    /// A confirmation counts only under the version the backend implements.
+    #[sea_orm(nullable)]
+    pub media_confirmation_version: Option<i32>,
+    /// The run's file manifest, as JSON: every file of the run that is in the
+    /// bucket, each with the name the backend store knows it by and its object
+    /// key or keys. Written together with
+    /// [`media_confirmed_at`](Self::media_confirmed_at) and cleared with it.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub media_manifest: Option<String>,
     /// RFC 3339 of when the artifact reclamation sweep deleted this run's tree on
     /// purpose, or `NULL` for a run whose tree was never reclaimed.
     #[sea_orm(nullable)]

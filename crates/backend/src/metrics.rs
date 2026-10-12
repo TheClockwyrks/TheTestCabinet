@@ -79,6 +79,31 @@ static ARTIFACTS_UNCONFIRMED_RUNS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
+/// Bytes the tournaments' match replays hold in the backend store, as of the
+/// latest snapshot refresh.
+static TOURNAMENT_REPLAY_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.store.tournament_replay_bytes")
+        .with_description("Bytes held by tournament match replays in the backend store.")
+        .with_unit("By")
+        .build()
+});
+
+/// How many tournament match replay files the backend store holds, as of the
+/// latest snapshot refresh.
+static TOURNAMENT_REPLAY_FILES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.store.tournament_replay_files")
+        .with_description("Tournament match replay files in the backend store.")
+        .build()
+});
+
+/// Record what the tournaments' match replays hold in the backend store.
+pub fn record_tournament_replays(usage: crate::store::StoreUsage) {
+    TOURNAMENT_REPLAY_BYTES.record(usage.bytes, &[]);
+    TOURNAMENT_REPLAY_FILES.record(usage.files, &[]);
+}
+
 /// Record one run tree the [reclamation sweep](crate::artifacts) deleted. `reason`
 /// is `orphan`, `published`, `failed` or `canceled`.
 pub fn record_tree_reclaimed(reason: &'static str) {

@@ -1359,6 +1359,7 @@ async fn the_media_listing_names_the_validation_and_showcase_files_of_a_tree() {
             "stored": true,
             "validation": ["img.abc.png", "img.old.png", "serve__clip.webm"],
             "showcase": ["cover.png"],
+            "root": [],
         }),
         "each name once, from the current and the legacy directory, files only, \
          and never the showcase manifest"
@@ -1391,7 +1392,13 @@ async fn the_media_listing_of_a_tree_with_no_media_is_empty_and_stored() {
 
     assert_eq!(
         json_body(response).await,
-        serde_json::json!({ "id": "run-here", "stored": true, "validation": [], "showcase": [] })
+        serde_json::json!({
+            "id": "run-here",
+            "stored": true,
+            "validation": [],
+            "showcase": [],
+            "root": [],
+        })
     );
 }
 
@@ -1409,8 +1416,145 @@ async fn the_media_listing_answers_not_stored_as_a_body_rather_than_a_404() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         json_body(response).await,
-        serde_json::json!({ "id": "run-gone", "stored": false, "validation": [], "showcase": [] })
+        serde_json::json!({
+            "id": "run-gone",
+            "stored": false,
+            "validation": [],
+            "showcase": [],
+            "root": [],
+        })
     );
+}
+
+// --- The root files ------------------------------------------------------------
+
+fn root_request(run_id: &str, name: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/root/{name}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+/// Give run `run_id`'s stored tree a record naming `module` as its controller.
+fn name_controller(store: &crate::store::LocalFsStore, run_id: &str, module: &str) {
+    let record = serde_json::json!({
+        "id": run_id,
+        "validation": { "adversarial": { "controllerModule": module } },
+    });
+    std::fs::write(
+        store.run_dir(run_id).join("run-record.json"),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn the_root_route_serves_its_files_as_stored_and_the_listing_names_them() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let run_dir = store.run_dir("run-here");
+    name_controller(&store, "run-here", "build/controller.wasm");
+    let build = run_dir.join("implementation").join("build");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(build.join("controller.wasm"), b"wasm:controller").unwrap();
+    std::fs::write(run_dir.join("code-analysis.json.gz"), b"gz:analysis").unwrap();
+    // A gg session record sits beside them and is not one of the route's files.
+    std::fs::write(run_dir.join("replay.json.gz"), b"gz:session").unwrap();
+
+    for (name, bytes) in [
+        ("controller.wasm", &b"wasm:controller"[..]),
+        ("code-analysis.json", b"gz:analysis"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(root_request("run-here", name))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{name}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], bytes, "{name}");
+    }
+
+    let listing = json_body(
+        app.clone()
+            .oneshot(media_request("run-here"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        listing["root"],
+        serde_json::json!(["controller.wasm", "code-analysis.json"])
+    );
+    let session = app
+        .clone()
+        .oneshot(root_request("run-here", "replay.json"))
+        .await
+        .unwrap();
+    assert_eq!(session.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_root_route_answers_404_for_a_missing_file_and_an_unknown_name() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    // A file the tree does hold, which no name of the route reaches.
+    std::fs::write(store.run_dir("run-here").join("secret.txt"), b"x").unwrap();
+
+    for (run, name) in [
+        ("run-here", "controller.wasm"),
+        ("run-here", "code-analysis.json"),
+        ("run-here", "secret.txt"),
+        ("run-here", "run-record.json"),
+        ("run-gone", "code-analysis.json"),
+    ] {
+        let response = app.clone().oneshot(root_request(run, name)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{run}/{name}");
+    }
+}
+
+#[tokio::test]
+async fn the_root_route_serves_no_controller_outside_the_implementation_directory() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    name_controller(&store, "run-here", "../run-record.json");
+
+    let response = app
+        .clone()
+        .oneshot(root_request("run-here", "controller.wasm"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let listing = json_body(
+        app.clone()
+            .oneshot(media_request("run-here"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(listing["root"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn the_root_route_answers_500_for_a_file_that_cannot_be_read() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    // A directory where the file belongs: there, and not readable as a file.
+    std::fs::create_dir_all(store.run_dir("run-here").join("code-analysis.json.gz")).unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(root_request("run-here", "code-analysis.json"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 #[tokio::test]
