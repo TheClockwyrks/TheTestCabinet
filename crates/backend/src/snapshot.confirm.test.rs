@@ -7,7 +7,8 @@ use std::collections::{HashMap, HashSet};
 use test_cabinet_core::MediaKind;
 
 use super::tests::{
-    empty_store, manifest, now, proof, proof_run, run_document_json, stored_run, stub_artifacts,
+    answering_store, empty_store, manifest, now, proof, proof_run, run_document_json, stored_run,
+    stub_artifacts,
 };
 use super::*;
 
@@ -217,7 +218,7 @@ async fn a_showcase_file_only_the_tree_names_is_published() {
 async fn a_referenced_file_a_stored_tree_does_not_hold_does_not_count_against_the_run() {
     // The description references an image the model never wrote. The service
     // holds the run's tree and answers `404` for it: no tree could supply it.
-    let (_tmp, store) = empty_store();
+    let (_tmp, store) = answering_store();
     let (base, _) = stub_artifacts(files(&[
         ("/runs/r1/media", listing(&[], &["title.png"])),
         ("/runs/r1/showcase/title.png", b"png:title".to_vec()),

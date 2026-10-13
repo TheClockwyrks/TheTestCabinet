@@ -63,6 +63,16 @@ is a JSON document travelling compressed, so the media routes serve
 `<verdict>__<output>.json.gz` as `application/json` with a gzip content
 encoding, and the browser inflates the body before any script reads it.
 
+The four media routes answer `404` only for a file the tree does not hold: the
+run has no tree, its record names no such file, or the path the record gives is
+not there. A tree the service cannot answer for is a `500`: the tree is on the
+volume and its `run-record.json` is missing or does not parse, or the file is
+there and could not be read. The backend's snapshot refresh takes a `404` from
+a stored tree as the file existing nowhere, so a fault must never read as one.
+A link that leads out of the run's tree names no file, on these routes and on
+`/root/{name}`. A `HEAD` request reports the file's length without its body,
+which is how the refresh compares a tree's copy with the backend store's.
+
 A recording's images travel beside it as flat files of the same directory,
 `img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer,
 served by the validation media route as `image/png` and

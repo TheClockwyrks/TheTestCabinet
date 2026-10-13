@@ -327,8 +327,20 @@ async fn an_upload_after_the_reclaim_is_kept_until_a_refresh_has_published_it() 
     // and the sweep leaves the file where it is.
     let row = run_columns(&flow.state.db, RUN).await;
     assert_eq!(row.media_confirmed_at, None);
-    assert_eq!(row.media_manifest, None);
     assert_eq!(row.state_reclaimed_at, None);
+    // The manifest stays as the record of where the reclaimed files are, so
+    // every one of them is still served, and so is the upload, between the
+    // upload and the refresh it asked for.
+    assert!(row.media_manifest.is_some());
+    for (path, bytes) in FILES {
+        let (status, body) = flow.get(path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(body, bytes, "{path}");
+    }
+    let (status, late) = flow.get("/runs/duel/validation/img.late.png").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(late, b"late image");
+    assert_eq!(flow.controllers().await, [RUN]);
     let kept = flow.sweep().await;
     assert_eq!(kept.reclaimed, 0);
     assert_eq!(kept.unconfirmed, 1);
@@ -375,7 +387,47 @@ async fn an_upload_after_the_reclaim_is_kept_until_a_refresh_has_published_it() 
 }
 
 #[tokio::test]
-async fn a_file_no_refresh_publishes_keeps_its_run_s_folder_whole() {
+async fn a_run_pushed_again_after_the_reclaim_still_serves_its_files() {
+    let flow = flow().await;
+    seed_run(&flow).await;
+    for (path, bytes) in FILES {
+        flow.upload(path, bytes).await;
+    }
+    flow.state.publisher.refresh_now().await.unwrap();
+    assert_eq!(flow.sweep().await.reclaimed_published, 1);
+    assert!(flow.stored().is_empty());
+
+    // The record is pushed again, which makes the confirmation one of a record
+    // that was replaced. The files it vouched for are where they were.
+    let db = &flow.state.db;
+    let stored = db.get_run(RUN).await.unwrap().expect("the run is stored");
+    db.push(&stored.record, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.run_media_manifest(RUN, Some(BUCKET)).await.unwrap(),
+        None
+    );
+
+    for (path, bytes) in FILES {
+        let (status, body) = flow.get(path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(body, bytes, "{path}");
+    }
+    assert_eq!(flow.controllers().await, [RUN]);
+
+    // The refresh that follows confirms the run again from the bucket alone.
+    flow.state.publisher.refresh_now().await.unwrap();
+    assert!(
+        db.run_media_manifest(RUN, Some(BUCKET))
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn a_file_no_refresh_publishes_is_kept_and_the_published_ones_removed() {
     let flow = flow().await;
     seed_run(&flow).await;
     for (path, bytes) in FILES {
@@ -395,15 +447,18 @@ async fn a_file_no_refresh_publishes_keeps_its_run_s_folder_whole() {
     );
     let outcome = flow.sweep().await;
 
-    // Nothing of the folder is removed, the files the bucket holds included.
-    assert_eq!(outcome.reclaimed, 0);
+    // The files the bucket holds go, and the one it does not stays and is
+    // served from the store.
+    assert_eq!(outcome.reclaimed_published, 1);
+    assert_eq!(outcome.removed_files, 4);
     assert_eq!(outcome.kept_unaccounted, 1);
-    assert_eq!(flow.stored().len(), 5);
-    assert_eq!(
-        run_columns(&flow.state.db, RUN).await.state_reclaimed_at,
-        None
-    );
+    assert_eq!(flow.stored(), ["proof/unlisted.png"]);
     let (status, body) = flow.get("/runs/duel/proof/unlisted.png").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, b"unlisted");
+    for (path, bytes) in FILES {
+        let (status, body) = flow.get(path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(body, bytes, "{path}");
+    }
 }

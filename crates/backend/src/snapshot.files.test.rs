@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use test_cabinet_core::MediaKind;
 
 use super::tests::{
-    code_analysis_summary, empty_store, manifest, now, proof, proof_run, run_document_json,
-    stored_run, stub_artifacts,
+    answering_store, code_analysis_summary, empty_store, manifest, now, proof, proof_run,
+    run_document_json, stored_run, stub_artifacts,
 };
 use super::*;
 use crate::db::{MediaFileKind, MediaManifest, MediaManifestFile};
@@ -455,8 +455,13 @@ async fn a_controller_neither_the_store_nor_the_tree_holds_is_unrecoverable() {
         ))
     );
     assert!(object(&snapshot, "media/runs/r1/controller.wasm").is_none());
-    // The listing answered. The route is not asked for a file it does not name.
-    assert_eq!(*seen.lock().unwrap(), ["/runs/r1/media"]);
+    // The listing answered. The root route is not asked for a file the listing
+    // does not name; the one other request is the length of the tree's copy of
+    // the replay the store holds.
+    assert_eq!(
+        *seen.lock().unwrap(),
+        ["/runs/r1/media", "/runs/r1/asset/replay.json"]
+    );
 }
 
 #[tokio::test]
@@ -527,7 +532,7 @@ async fn a_code_analysis_held_nowhere_is_unrecoverable_and_one_unasked_about_is_
     run.record.code_analysis = Some(code_analysis_summary());
 
     // The tree is stored and its listing names no document.
-    let (_tmp, store) = empty_store();
+    let (_tmp, store) = answering_store();
     let (base, _) = stub_artifacts(files(&[("/runs/r1/media", listing(&[]))])).await;
     let snapshot = confirming(run.clone(), store, base, &[], false).await;
     assert!(snapshot.unconfirmed_media.is_empty());
@@ -688,7 +693,7 @@ async fn the_recordings_of_validation_and_showcase_videos_are_kept_too() {
 async fn a_lost_recording_keeps_the_mp4_made_from_it() {
     // The mp4 is in the bucket. The recording is in none of the bucket, the
     // store and the tree, which the service holds and answers `404` from.
-    let (_tmp, store) = empty_store();
+    let (_tmp, store) = answering_store();
     let (base, _) = stub_artifacts(files(&[("/runs/r1/media", listing(&[]))])).await;
 
     let snapshot = confirming(
@@ -731,7 +736,7 @@ fn lost_title() -> MediaManifestFile {
 
 #[tokio::test]
 async fn a_file_a_stored_tree_answers_404_for_is_unrecoverable() {
-    let (_tmp, store) = empty_store();
+    let (_tmp, store) = answering_store();
     let (base, _) = stub_artifacts(files(&[("/runs/r1/media", listing(&[]))])).await;
 
     let snapshot = confirming(image_proof_run(), store, base, &[], false).await;
@@ -749,7 +754,7 @@ async fn a_file_a_stored_tree_answers_404_for_is_unrecoverable() {
 
 #[tokio::test]
 async fn a_file_of_a_tree_recorded_as_gone_is_unrecoverable() {
-    let (_tmp, store) = empty_store();
+    let (_tmp, store) = answering_store();
     let (base, _) = stub_artifacts(files(&[("/runs/r1/media", no_tree())])).await;
 
     let snapshot = confirming(image_proof_run(), store, base, &[], true).await;

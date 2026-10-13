@@ -199,9 +199,7 @@ async fn an_upload_over_a_confirmation_leaves_the_run_unevaluated() {
     let row = run_row(&db, "r1").await;
     assert_eq!(row.media_confirmed_at, None);
     assert_eq!(row.media_checked_at, None);
-    assert_eq!(row.media_bucket, None);
     assert_eq!(row.media_confirmation_version, None);
-    assert_eq!(row.media_manifest, None);
     assert_eq!(row.state_reclaimed_at, None);
     assert_eq!(row.state_reclaimed_reason, None);
     assert!(row.published, "the run stays published");
@@ -212,6 +210,14 @@ async fn an_upload_over_a_confirmation_leaves_the_run_unevaluated() {
     assert_eq!(
         db.run_media_manifest("r1", Some(BUCKET)).await.unwrap(),
         None
+    );
+    // The run's files were removed from the store, so the manifest is the only
+    // record of where they are. The upload must not take it from the routes.
+    assert!(
+        db.run_file_locations("r1", Some(BUCKET))
+            .await
+            .unwrap()
+            .is_some()
     );
 
     // The refresh that read the run as confirmed before the upload writes
@@ -235,7 +241,7 @@ async fn an_upload_for_a_published_run_stops_a_refresh_in_flight_confirming_it()
 
     assert_eq!(
         db.note_run_file_uploaded("r1").await.unwrap(),
-        UploadedOver::Published
+        UploadedOver::Pending
     );
 
     // The manifest the refresh built does not name the uploaded file, and is not
@@ -271,4 +277,89 @@ async fn a_push_of_the_run_clears_the_state_reclaim_record() {
     let row = run_row(&db, "r1").await;
     assert_eq!(row.state_reclaimed_at, None);
     assert_eq!(row.state_reclaimed_reason, None);
+}
+
+#[tokio::test]
+async fn only_the_upload_that_makes_a_run_unevaluated_asks_for_a_refresh() {
+    // A mirror of a run's files is dozens of uploads. One refresh evaluates the
+    // run, so one request is enough.
+    let db = Db::connect_in_memory().await.unwrap();
+    confirmed(&db, "r1").await;
+
+    let first = db.note_run_file_uploaded("r1").await.unwrap();
+    assert_eq!(first, UploadedOver::Confirmation);
+    assert!(first.needs_refresh());
+    for _ in 0..3 {
+        let later = db.note_run_file_uploaded("r1").await.unwrap();
+        assert_eq!(later, UploadedOver::Pending);
+        assert!(!later.needs_refresh());
+    }
+
+    // A run a refresh evaluated and left unconfirmed is unevaluated again by
+    // its first upload, and waiting after that.
+    seed_run(&db, "r2", RunState::Completed, ENDED).await;
+    force_published(&db, "r2").await;
+    db.record_media_confirmation(&[], &["r2".to_string()], FIRST, BUCKET)
+        .await
+        .unwrap();
+    assert_eq!(db.published_runs_unconfirmed(BUCKET).await.unwrap(), 1);
+    let first = db.note_run_file_uploaded("r2").await.unwrap();
+    assert_eq!(first, UploadedOver::Published);
+    assert!(first.needs_refresh());
+    assert_eq!(run_row(&db, "r2").await.media_checked_at, None);
+    assert_eq!(
+        db.note_run_file_uploaded("r2").await.unwrap(),
+        UploadedOver::Pending
+    );
+}
+
+#[tokio::test]
+async fn every_upload_for_a_published_run_stamps_it_as_changed() {
+    // Also the ones that ask for no refresh: a refresh evaluating the run at
+    // that moment must not confirm it with a manifest the file is missing from.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_run(&db, "r1", RunState::Completed, ENDED).await;
+    force_published(&db, "r1").await;
+    db.note_run_file_uploaded("r1").await.unwrap();
+    let read_before = db.published_media_states(BUCKET).await.unwrap();
+
+    assert_eq!(
+        db.note_run_file_uploaded("r1").await.unwrap(),
+        UploadedOver::Pending
+    );
+
+    let recorded = db
+        .record_media_confirmation(&confirmed_media(read_before), &[], AT, BUCKET)
+        .await
+        .unwrap();
+    assert_eq!((recorded.confirmed, recorded.changed), (0, 1));
+}
+
+#[tokio::test]
+async fn a_withdrawal_names_the_confirmation_it_withdraws_and_keeps_the_manifest() {
+    let db = Db::connect_in_memory().await.unwrap();
+    confirmed(&db, "r1").await;
+    let run = seen(&db, "r1").await;
+
+    assert!(db.withdraw_media_confirmation(&run).await.unwrap());
+
+    let row = run_row(&db, "r1").await;
+    assert_eq!(row.media_confirmed_at, None);
+    assert_eq!(row.media_checked_at, None);
+    assert!(row.media_manifest.is_some());
+    assert_eq!(db.published_runs_unchecked(BUCKET).await.unwrap(), 1);
+    assert!(
+        db.run_file_locations("r1", Some(BUCKET))
+            .await
+            .unwrap()
+            .is_some()
+    );
+    // The confirmation is gone, so the same facts withdraw nothing more, and a
+    // run that was never confirmed has nothing to withdraw.
+    assert!(!db.withdraw_media_confirmation(&run).await.unwrap());
+    assert!(
+        !db.withdraw_media_confirmation(&seen(&db, "r1").await)
+            .await
+            .unwrap()
+    );
 }

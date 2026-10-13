@@ -264,8 +264,9 @@ async fn a_refresh_pending_at_the_last_stop_is_released_at_startup() {
 // Media confirmation
 // ---------------------------------------------------------------------------
 
-/// A stand-in bucket: it keeps what is put, lists it by prefix, and can be told to
-/// refuse the listing of one prefix. Requests are not authenticated.
+/// A stand-in bucket: it keeps what is put, lists it by prefix with each object's
+/// size and MD5, and can be told to refuse the listing of one prefix or the
+/// writing of another. Requests are not authenticated.
 #[derive(Default)]
 pub(crate) struct Bucket {
     pub(crate) objects: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
@@ -273,6 +274,10 @@ pub(crate) struct Bucket {
     unlistable: std::sync::Mutex<Option<String>>,
     /// How many objects were put, `index.json` among them.
     puts: std::sync::atomic::AtomicUsize,
+    /// A key prefix whose `PUT` answers `500`.
+    pub(crate) refused: std::sync::Mutex<Option<String>>,
+    /// The key of every object that was put, in order.
+    pub(crate) put_keys: std::sync::Mutex<Vec<String>>,
 }
 
 impl Bucket {
@@ -300,6 +305,11 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
             .to_string();
         let method = request.method().clone();
         if method == Method::PUT {
+            let refused = bucket.refused.lock().unwrap().clone();
+            if refused.is_some_and(|prefix| key.starts_with(&prefix)) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, Vec::new());
+            }
+            bucket.put_keys.lock().unwrap().push(key.clone());
             let bytes = axum::body::to_bytes(request.into_body(), usize::MAX)
                 .await
                 .unwrap();
@@ -318,9 +328,20 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
                 .objects
                 .lock()
                 .unwrap()
-                .keys()
-                .filter(|key| key.starts_with(&prefix))
-                .map(|key| format!("<Contents><Key>{key}</Key></Contents>"))
+                .iter()
+                .filter(|(key, _)| key.starts_with(&prefix))
+                .map(|(key, bytes)| {
+                    use md5::Digest as _;
+                    let etag: String = md5::Md5::digest(bytes)
+                        .iter()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect();
+                    format!(
+                        "<Contents><Key>{key}</Key><Size>{}</Size>\
+                         <ETag>&quot;{etag}&quot;</ETag></Contents>",
+                        bytes.len()
+                    )
+                })
                 .collect();
             return (
                 StatusCode::OK,
@@ -496,6 +517,16 @@ pub(crate) async fn bucket_publisher(
             confirm_media: trees.map(|_| BUCKET),
         },
     )
+}
+
+/// Give the store under `dir` a file of a run no test here publishes. A store
+/// holding no run folder at all says nothing about what a run is missing, so a
+/// test about a file being written off needs the store to hold something.
+pub(crate) fn hold_another_run(dir: &TempDir) {
+    DefinitionStore::open(dir.path().join("store"))
+        .unwrap()
+        .write_run_asset("another-run", "replay.json", b"{}")
+        .unwrap();
 }
 
 /// Publish a run that lists one proof image the agent produced. Nothing in these
@@ -813,6 +844,7 @@ async fn a_listed_file_a_stored_tree_does_not_hold_does_not_keep_the_tree() {
     // The record lists a proof the run never wrote: the service holds the run's
     // tree and answers `404` for the file. Keeping the tree could never supply it.
     let dir = TempDir::new().unwrap();
+    hold_another_run(&dir);
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let bucket = Arc::new(Bucket::default());
     let trees = Arc::new(Trees::default());
@@ -943,6 +975,7 @@ async fn a_reclaimed_run_whose_media_is_nowhere_is_confirmed_without_it() {
     // backend can reach holds the file, so the run is confirmed here with the
     // proof recorded as unrecoverable, not left unconfirmed for good.
     let dir = TempDir::new().unwrap();
+    hold_another_run(&dir);
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let bucket = Arc::new(Bucket::default());
     let trees = Arc::new(Trees::default());

@@ -766,7 +766,7 @@ async fn storing_a_run_again_clears_its_confirmation() {
     assert!(row.published, "a re-push keeps the run published");
     assert_eq!(row.media_confirmed_at, None);
     assert_eq!(row.media_checked_at, None);
-    assert_eq!(row.media_bucket, None);
+    assert_eq!(row.media_confirmation_version, None);
     assert_eq!(db.published_runs_unchecked(BUCKET).await.unwrap(), 1);
 }
 

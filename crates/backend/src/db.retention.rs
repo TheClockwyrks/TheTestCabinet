@@ -20,9 +20,21 @@
 //! decides whether a row's confirmation holds: [`confirmation_holds`].
 //!
 //! A confirmed run carries its [`MediaManifest`], the list of its files in the
-//! bucket. The manifest is written by the statement that writes the confirmation
-//! and cleared by every statement that clears it, so a run has one exactly while
-//! it is confirmed.
+//! bucket, written by the statement that writes the confirmation. The manifest
+//! does two jobs, and they end at different moments:
+//!
+//! - It is the **authority for deleting**: the sweeps remove a run's tree and its
+//!   files in the backend store on it, and a refresh builds the run from it
+//!   without reading either. It is that only while the confirmation it was
+//!   written with [holds](confirmation_holds), which the strict reads enforce
+//!   ([`Db::run_media_manifest`], [`Db::confirmed_media_manifests`]).
+//! - It is the **record of where the run's files are**, which the run file routes
+//!   answer from once the store no longer holds a file
+//!   ([`Db::run_file_locations`]). It stays that after the confirmation is
+//!   withdrawn, for as long as the row names the bucket it was made in, until a
+//!   later confirmation replaces it. A run whose files were removed from the
+//!   store has no other pointer to them, so withdrawing a confirmation must not
+//!   make them unreachable.
 
 use std::collections::HashSet;
 
@@ -443,11 +455,17 @@ fn not_evaluated_in(bucket: &str) -> Condition {
 /// had a row, inside its transaction.
 ///
 /// The media confirmation was made from the record the push replaces, so it says
-/// nothing about the new one: cleared, together with the manifest recorded with
-/// it, the run must be confirmed again before its tree qualifies for the
-/// `published` rule. Without this the sweep would delete
-/// the tree a re-push uploaded on the strength of a confirmation of the old
-/// record, before any refresh had read the new one.
+/// nothing about the new one: cleared, the run must be confirmed again before
+/// its tree qualifies for the `published` rule. Without this the sweep would
+/// delete the tree a re-push uploaded on the strength of a confirmation of the
+/// old record, before any refresh had read the new one.
+///
+/// The manifest and the bucket it names are kept. They no longer authorize
+/// anything, since no confirmation holds, and they are still where the files of
+/// the run's earlier record are: a run whose files the state sweep removed is
+/// served from them until a refresh has confirmed the new record and written a
+/// new manifest. A file the push's driver mirrored again is in the store, which
+/// the routes read first.
 ///
 /// A reclaim record (`was_reclaimed`) is cleared too. A push follows a driver
 /// that ran the run again and uploaded its tree again, so the run is no longer
@@ -462,12 +480,10 @@ pub(super) async fn clear_retention_records<C: ConnectionTrait>(
     let mut update = run::Entity::update_many()
         .col_expr(run::Column::MediaConfirmedAt, none())
         .col_expr(run::Column::MediaCheckedAt, none())
-        .col_expr(run::Column::MediaBucket, none())
         .col_expr(
             run::Column::MediaConfirmationVersion,
             Expr::value(Option::<i32>::None),
         )
-        .col_expr(run::Column::MediaManifest, none())
         // The push follows a driver that mirrored the run's files into the
         // backend store again, so the run is no longer one whose files there
         // were removed on purpose.
@@ -712,7 +728,10 @@ impl Db {
     /// [manifest](ConfirmedMedia::manifest) and [`MEDIA_CONFIRMATION_VERSION`].
     ///
     /// A run found unconfirmed loses any confirmation it had, whichever bucket or
-    /// version it named, and its manifest with it. Both lists are recorded as
+    /// version it named. Its manifest stays as the record of where its files are
+    /// when it was made in `bucket`, and is cleared when it was made in another:
+    /// the row is about to name `bucket`, and a manifest must never be read
+    /// against a bucket other than its own. Both lists are recorded as
     /// evaluated against `bucket` under the current version. Only published runs
     /// are written, and only rows the write changes, so a steady state writes
     /// nothing. No statement stamps a run's mutation timestamp: nothing a console
@@ -762,20 +781,27 @@ impl Db {
                     run::Column::MediaConfirmedAt,
                     Expr::value(Option::<String>::None),
                 )
+                .filter(run::Column::Id.is_in(ids()))
+                .filter(run::Column::Published.eq(true))
+                .filter(run::Column::MediaConfirmedAt.is_not_null())
+                .exec(&self.conn())
+                .await?;
+            outcome.withdrawn += res.rows_affected;
+            run::Entity::update_many()
                 .col_expr(
                     run::Column::MediaManifest,
                     Expr::value(Option::<String>::None),
                 )
                 .filter(run::Column::Id.is_in(ids()))
                 .filter(run::Column::Published.eq(true))
+                .filter(run::Column::MediaManifest.is_not_null())
                 .filter(
                     Condition::any()
-                        .add(run::Column::MediaConfirmedAt.is_not_null())
-                        .add(run::Column::MediaManifest.is_not_null()),
+                        .add(run::Column::MediaBucket.is_null())
+                        .add(run::Column::MediaBucket.ne(bucket)),
                 )
                 .exec(&self.conn())
                 .await?;
-            outcome.withdrawn += res.rows_affected;
             run::Entity::update_many()
                 .col_expr(run::Column::MediaCheckedAt, Expr::value(at))
                 .col_expr(run::Column::MediaBucket, Expr::value(bucket))
@@ -796,9 +822,14 @@ impl Db {
     ///
     /// `Ok(None)` for a run whose confirmation does not
     /// [hold](confirmation_holds) there, and for a run that does not exist: a
-    /// manifest is the run's only while the confirmation it was recorded with
-    /// holds. An error for a confirmed run whose manifest is missing or does not
-    /// parse, which a caller must not take for a run with no files.
+    /// manifest is the authority for deleting a run's files, and for building
+    /// the run without reading them, only while the confirmation it was
+    /// recorded with holds. An error for a confirmed run whose manifest is
+    /// missing or does not parse, which a caller must not take for a run with no
+    /// files.
+    ///
+    /// A route that only needs to know where a file is reads
+    /// [`run_file_locations`](Self::run_file_locations).
     pub async fn run_media_manifest(
         &self,
         run_id: &str,
@@ -835,15 +866,39 @@ impl Db {
         Ok(manifests)
     }
 
-    /// The file manifests of the runs in `run_ids` whose confirmation
-    /// [holds](confirmation_holds) for a backend configured with `bucket`, by run
-    /// id. A run that is not confirmed there has no entry.
+    /// Where run `run_id`'s files are in `bucket`: the manifest the run's last
+    /// confirmation there recorded, whether or not that confirmation still holds.
+    ///
+    /// `Ok(None)` with no bucket, for a run with no manifest, for one whose
+    /// manifest was made in another bucket, and for a run that does not exist. An
+    /// error for a manifest that does not parse.
+    ///
+    /// This is what a route serves a file from when the store does not hold it.
+    /// It decides no deletion: a manifest read here may be older than the run's
+    /// record, and may lack a file uploaded since.
+    pub async fn run_file_locations(
+        &self,
+        run_id: &str,
+        bucket: Option<&str>,
+    ) -> Result<Option<MediaManifest>> {
+        let row = manifest_select()
+            .filter(run::Column::Id.eq(run_id))
+            .into_model::<ManifestRow>()
+            .one(&self.conn())
+            .await?;
+        row.map_or(Ok(None), |row| row.located_in(bucket))
+            .map(|found| found.map(|(_, manifest)| manifest))
+    }
+
+    /// Where the files of the runs in `run_ids` are in `bucket`, by run id, by the
+    /// rule of [`run_file_locations`](Self::run_file_locations). A run with no
+    /// manifest there has no entry.
     ///
     /// For a listing that offers what the bucket can supply, so one damaged row
-    /// costs its own run and not the listing: a confirmed run whose manifest is
-    /// missing or does not parse is logged at `error` and left out, where
-    /// [`run_media_manifest`](Self::run_media_manifest) reports the error.
-    pub async fn media_manifests_of(
+    /// costs its own run and not the listing: a run whose manifest does not parse
+    /// is logged at `error` and left out, where
+    /// [`run_file_locations`](Self::run_file_locations) reports the error.
+    pub async fn file_locations_of(
         &self,
         run_ids: &[String],
         bucket: Option<&str>,
@@ -855,12 +910,12 @@ impl Db {
         for chunk in run_ids.chunks(CHUNK) {
             let rows = manifest_select()
                 .filter(run::Column::Id.is_in(chunk.iter().map(String::as_str)))
-                .filter(run::Column::MediaConfirmedAt.is_not_null())
+                .filter(run::Column::MediaManifest.is_not_null())
                 .into_model::<ManifestRow>()
                 .all(&self.conn())
                 .await?;
             for row in rows {
-                match row.for_bucket(bucket) {
+                match row.located_in(bucket) {
                     Ok(Some((id, manifest))) => {
                         manifests.insert(id, manifest);
                     }
@@ -870,6 +925,26 @@ impl Db {
             }
         }
         Ok(manifests)
+    }
+
+    /// How many published runs a refresh evaluated against `bucket` under
+    /// [`MEDIA_CONFIRMATION_VERSION`] and left unconfirmed. Counted over the
+    /// readable runs, as [`published_runs_unchecked`](Self::published_runs_unchecked)
+    /// is.
+    ///
+    /// A run is left unconfirmed for a reason that may pass (the artifact
+    /// service was restarting, a transcode failed) or may not. Nothing else
+    /// evaluates such a run again until some unrelated change requests a
+    /// refresh, so the publisher asks for one while this is not zero.
+    pub async fn published_runs_unconfirmed(&self, bucket: &str) -> Result<u64> {
+        Ok(super::readable_runs()
+            .filter(run::Column::Published.eq(true))
+            .filter(run::Column::MediaConfirmedAt.is_null())
+            .filter(run::Column::MediaCheckedAt.is_not_null())
+            .filter(run::Column::MediaBucket.eq(bucket))
+            .filter(run::Column::MediaConfirmationVersion.eq(MEDIA_CONFIRMATION_VERSION))
+            .count(&self.conn())
+            .await?)
     }
 
     /// How many published runs no snapshot refresh has evaluated the media of
@@ -925,6 +1000,19 @@ impl ManifestRow {
                 self.id
             )));
         };
+        let manifest = MediaManifest::from_column(&self.id, json)?;
+        Ok(Some((self.id, manifest)))
+    }
+
+    /// The run's id and manifest when the manifest was made in `bucket`,
+    /// whatever became of the confirmation it was made with.
+    fn located_in(self, bucket: Option<&str>) -> Result<Option<(String, MediaManifest)>> {
+        let Some(json) = self.media_manifest.as_deref() else {
+            return Ok(None);
+        };
+        if bucket.is_none() || self.media_bucket.as_deref() != bucket {
+            return Ok(None);
+        }
         let manifest = MediaManifest::from_column(&self.id, json)?;
         Ok(Some((self.id, manifest)))
     }

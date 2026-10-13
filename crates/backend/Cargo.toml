@@ -48,6 +48,7 @@ sea-orm = { workspace = true }
 libsqlite3-sys = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
+md-5 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 percent-encoding = { workspace = true }

@@ -11,6 +11,30 @@ fn store() -> (TempDir, DefinitionStore) {
     (dir, store)
 }
 
+/// The file of run `run_id` named `name` as a listing of its folder finds it, or
+/// a stand-in for a name no listing would give.
+fn listed(store: &DefinitionStore, run_id: &str, name: &str) -> RunFolderFile {
+    store
+        .run_folder(run_id)
+        .ok()
+        .and_then(|folder| folder.files.into_iter().find(|file| file.name == name))
+        .unwrap_or(RunFolderFile {
+            name: name.to_string(),
+            bytes: 0,
+            modified: std::time::SystemTime::UNIX_EPOCH,
+        })
+}
+
+/// Remove the file of run `run_id` named `name` as a listing made now finds it.
+fn remove(store: &DefinitionStore, run_id: &str, name: &str) -> Result<Removal> {
+    store.remove_run_file_as_listed(run_id, &listed(store, run_id, name), None)
+}
+
+fn md5_of(bytes: &[u8]) -> [u8; 16] {
+    use md5::Digest;
+    md5::Md5::digest(bytes).into()
+}
+
 fn names(folder: &RunFolder) -> Vec<&str> {
     folder.files.iter().map(|file| file.name.as_str()).collect()
 }
@@ -130,8 +154,14 @@ fn a_file_is_removed_by_name_and_a_missing_one_reports_so() {
     store.write_run_proof("r1", "title.png", b"png").unwrap();
     store.write_run_proof("r1", "other.png", b"png").unwrap();
 
-    assert!(store.remove_run_file("r1", "proof/title.png").unwrap());
-    assert!(!store.remove_run_file("r1", "proof/title.png").unwrap());
+    assert_eq!(
+        remove(&store, "r1", "proof/title.png").unwrap(),
+        Removal::Removed
+    );
+    assert_eq!(
+        remove(&store, "r1", "proof/title.png").unwrap(),
+        Removal::Gone
+    );
 
     assert_eq!(names(&store.run_folder("r1").unwrap()), ["proof/other.png"]);
 }
@@ -142,10 +172,10 @@ fn the_session_record_and_a_name_outside_the_folder_are_refused() {
     store.write_run_replay("r1", b"session").unwrap();
     std::fs::write(dir.path().join("store").join("outside.txt"), b"keep").unwrap();
 
-    assert!(store.remove_run_file("r1", "replay.json").is_err());
-    assert!(store.remove_run_file("r1", "../../outside.txt").is_err());
-    assert!(store.remove_run_file("r1", "/etc/hostname").is_err());
-    assert!(store.remove_run_file("../r1", "replay.json").is_err());
+    assert!(remove(&store, "r1", "replay.json").is_err());
+    assert!(remove(&store, "r1", "../../outside.txt").is_err());
+    assert!(remove(&store, "r1", "/etc/hostname").is_err());
+    assert!(remove(&store, "../r1", "replay.json").is_err());
 
     assert_eq!(store.read_run_replay("r1").unwrap(), b"session");
     assert!(dir.path().join("store").join("outside.txt").is_file());
@@ -156,7 +186,7 @@ fn pruning_removes_only_directories_that_hold_nothing() {
     let (_dir, store) = store();
     store.write_run_proof("r1", "title.png", b"png").unwrap();
     store.write_run_asset("r1", "replay.json", b"{}").unwrap();
-    store.remove_run_file("r1", "proof/title.png").unwrap();
+    remove(&store, "r1", "proof/title.png").unwrap();
 
     store.prune_run_dirs("r1");
 
@@ -168,7 +198,7 @@ fn pruning_removes_only_directories_that_hold_nothing() {
 
     // With the last file gone the folder goes too, and a file written afterwards
     // makes it again.
-    store.remove_run_file("r1", "asset/replay.json").unwrap();
+    remove(&store, "r1", "asset/replay.json").unwrap();
     store.prune_run_dirs("r1");
     assert!(!store.run_dir("r1").exists());
     store.write_run_proof("r1", "again.png", b"png").unwrap();
@@ -196,4 +226,157 @@ fn a_write_and_a_prune_never_lose_the_file() {
     writer.join().unwrap();
 
     assert_eq!(store.run_folder("r1").unwrap().files.len(), 200);
+}
+
+#[test]
+fn a_failed_write_leaves_the_file_that_was_there_untouched() {
+    // A write to a full volume lands some of its bytes and then fails. The file
+    // already at the name must survive it whole, and no part of the new one may
+    // be left where a refresh would publish it.
+    let (_dir, store) = store();
+    store
+        .write_run_proof("r1", "title.png", b"the whole image")
+        .unwrap();
+
+    store
+        .fail_writes
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        store
+            .write_run_proof("r1", "title.png", b"a newer image")
+            .is_err()
+    );
+    assert!(
+        store
+            .write_run_proof("r1", "other.png", b"never lands")
+            .is_err()
+    );
+    store
+        .fail_writes
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+
+    assert_eq!(
+        store.read_run_proof("r1", "title.png").unwrap(),
+        b"the whole image"
+    );
+    assert_eq!(names(&store.run_folder("r1").unwrap()), ["proof/title.png"]);
+    // Nothing is left in the staging directory either.
+    let staged = std::fs::read_dir(store.root().join("run-uploads.tmp"))
+        .unwrap()
+        .count();
+    assert_eq!(staged, 0);
+}
+
+#[test]
+fn a_staged_file_is_in_no_run_folder_and_is_cleared_at_startup() {
+    let (_dir, store) = store();
+    store.write_run_proof("r1", "title.png", b"png").unwrap();
+    let staging = store.root().join("run-uploads.tmp");
+    std::fs::write(staging.join("left-by-a-crash"), b"half").unwrap();
+
+    assert_eq!(store.list_run_folders().unwrap(), ["r1"]);
+
+    store.clear_staged_uploads();
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+    assert_eq!(store.read_run_proof("r1", "title.png").unwrap(), b"png");
+}
+
+#[test]
+fn a_file_written_again_since_the_listing_is_not_removed() {
+    let (_dir, store) = store();
+    store.write_run_proof("r1", "title.png", b"old").unwrap();
+    let before = listed(&store, "r1", "proof/title.png");
+
+    // Same name, same length: only the file itself tells the two apart.
+    store.write_run_proof("r1", "title.png", b"new").unwrap();
+    let path = store.run_file_path("r1", "proof/title.png").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(before.modified + std::time::Duration::from_secs(5))
+        .unwrap();
+
+    assert_eq!(
+        store
+            .remove_run_file_as_listed("r1", &before, None)
+            .unwrap(),
+        Removal::Changed
+    );
+    assert_eq!(store.read_run_proof("r1", "title.png").unwrap(), b"new");
+}
+
+#[test]
+fn a_file_is_removed_only_when_it_is_what_the_bucket_holds() {
+    let (_dir, store) = store();
+    store.write_run_proof("r1", "title.png", b"newer").unwrap();
+    let file = listed(&store, "r1", "proof/title.png");
+
+    // Another size.
+    let other_size = PublishedCopy { size: 3, md5: None };
+    assert_eq!(
+        store
+            .remove_run_file_as_listed("r1", &file, Some(&other_size))
+            .unwrap(),
+        Removal::Differs
+    );
+    // The same size and other bytes.
+    let other_bytes = PublishedCopy {
+        size: 5,
+        md5: Some(md5_of(b"older")),
+    };
+    assert_eq!(
+        store
+            .remove_run_file_as_listed("r1", &file, Some(&other_bytes))
+            .unwrap(),
+        Removal::Differs
+    );
+    assert_eq!(store.read_run_proof("r1", "title.png").unwrap(), b"newer");
+
+    let same = PublishedCopy {
+        size: 5,
+        md5: Some(md5_of(b"newer")),
+    };
+    assert_eq!(
+        store
+            .remove_run_file_as_listed("r1", &file, Some(&same))
+            .unwrap(),
+        Removal::Removed
+    );
+    assert!(store.read_run_proof("r1", "title.png").is_err());
+}
+
+#[test]
+fn an_object_with_no_md5_is_held_to_its_size_alone() {
+    let (_dir, store) = store();
+    store.write_run_proof("r1", "title.png", b"bytes").unwrap();
+    let file = listed(&store, "r1", "proof/title.png");
+    let sized = PublishedCopy { size: 5, md5: None };
+    assert_eq!(
+        store
+            .remove_run_file_as_listed("r1", &file, Some(&sized))
+            .unwrap(),
+        Removal::Removed
+    );
+}
+
+#[test]
+fn an_empty_file_is_no_copy_and_a_missing_one_is_absent() {
+    let (_dir, store) = store();
+    store.write_run_proof("r1", "full.png", b"png").unwrap();
+    store.write_run_proof("r1", "empty.png", b"").unwrap();
+
+    assert!(!store.run_file_absent("r1", "proof/full.png"));
+    assert!(store.run_file_absent("r1", "proof/empty.png"));
+    assert!(store.run_file_absent("r1", "proof/never.png"));
+    assert_eq!(store.run_file_size("r1", "proof/full.png"), Some(3));
+    assert_eq!(store.run_file_size("r1", "proof/never.png"), None);
+}
+
+#[test]
+fn a_store_says_whether_it_holds_any_run_folder() {
+    let (_dir, store) = store();
+    assert!(!store.holds_run_folders());
+    store.write_run_proof("r1", "title.png", b"png").unwrap();
+    assert!(store.holds_run_folders());
 }

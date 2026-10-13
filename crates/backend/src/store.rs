@@ -87,10 +87,14 @@ pub struct DefinitionStore {
     /// directories, so a directory a write has just made sure of is still there
     /// when the write lands. Shared by every clone of the store a process opened.
     run_writes: std::sync::Arc<std::sync::RwLock<()>>,
-    /// Makes every [`remove_run_file`](Self::remove_run_file) fail, so a test can
+    /// Makes every [`remove_run_file_as_listed`](Self::remove_run_file_as_listed) fail, so a test can
     /// see what a removal that removes nothing leaves behind.
     #[cfg(test)]
     pub(crate) fail_removals: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// When set, every write of a run's file fails part-way, as a write to a full
+    /// volume does.
+    #[cfg(test)]
+    pub(crate) fail_writes: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
@@ -942,6 +946,8 @@ impl DefinitionStore {
             run_writes: std::sync::Arc::default(),
             #[cfg(test)]
             fail_removals: std::sync::Arc::default(),
+            #[cfg(test)]
+            fail_writes: std::sync::Arc::default(),
         })
     }
 
@@ -1659,22 +1665,25 @@ impl DefinitionStore {
         Some(path)
     }
 
-    /// Whether the store answers that it holds no file of run `run_id` named
-    /// `name` (see [`run_file_path`](Self::run_file_path)).
+    /// Whether the store answers that it holds no copy of the file of run `run_id`
+    /// named `name` (see [`run_file_path`](Self::run_file_path)).
     ///
-    /// `true` only when the file system reports that nothing is there. A name
-    /// that is not a safe path, and a lookup that fails any other way, are `false`:
-    /// the store could not say. A snapshot refresh records a file as lost for good
-    /// only on a `true` here, which the `read_run_*` methods cannot tell it,
-    /// because they report every failed read as not found.
+    /// `true` when the file system reports that nothing is there, and when what is
+    /// there is a regular file with no bytes: an empty file is what a write cut
+    /// off by a full volume left behind before writes became atomic, and it is a
+    /// copy of nothing. A name that is not a safe path, and a lookup that fails
+    /// any other way, are `false`: the store could not say. A snapshot refresh
+    /// records a file as lost for good only on a `true` here, which the
+    /// `read_run_*` methods cannot tell it, because they report every failed read
+    /// as not found.
     pub fn run_file_absent(&self, run_id: &str, name: &str) -> bool {
         let Some(path) = self.run_file_path(run_id, name) else {
             return false;
         };
-        matches!(
-            std::fs::symlink_metadata(&path),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound
-        )
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata.is_file() && metadata.len() == 0,
+            Err(err) => err.kind() == std::io::ErrorKind::NotFound,
+        }
     }
 
     /// The directory a published run's proof media is stored under.
@@ -2245,7 +2254,9 @@ fn is_safe_segment(segment: &str) -> bool {
 
 #[path = "store.state.rs"]
 mod state;
-pub use state::{RunFolder, RunFolderFile, SESSION_RECORD_FILE, StateVolume};
+pub use state::{
+    PublishedCopy, Removal, RunFolder, RunFolderFile, SESSION_RECORD_FILE, StateVolume,
+};
 
 #[cfg(test)]
 #[path = "store.test.rs"]

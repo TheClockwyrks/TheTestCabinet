@@ -394,3 +394,103 @@ fn an_error_code_is_read_from_an_error_body() {
     assert_eq!(parse_error_code("<Error></Error>"), None);
     assert_eq!(parse_error_code(""), None);
 }
+
+#[test]
+fn a_listing_reads_each_object_s_size_and_entity_tag() {
+    let xml = "<ListBucketResult>\
+        <Contents><Key>media/runs/r1/proof/a.png</Key><Size>4</Size>\
+        <ETag>&quot;0cc175b9c0f1b6a831c399e269772661&quot;</ETag></Contents>\
+        <Contents><Key>media/runs/r1/proof/b.webm</Key><Size>12</Size>\
+        <ETag>\"0cc175b9c0f1b6a831c399e269772661-3\"</ETag></Contents>\
+        <Contents><Key>media/runs/r1/asset/c.json</Key><Size>many</Size></Contents>\
+        <Contents><Size>9</Size></Contents>\
+        </ListBucketResult>";
+
+    let objects = parse_list_objects(xml);
+
+    assert_eq!(
+        objects,
+        [
+            ListedObject {
+                key: "media/runs/r1/proof/a.png".to_string(),
+                size: Some(4),
+                etag: Some("0cc175b9c0f1b6a831c399e269772661".to_string()),
+            },
+            ListedObject {
+                key: "media/runs/r1/proof/b.webm".to_string(),
+                size: Some(12),
+                etag: Some("0cc175b9c0f1b6a831c399e269772661-3".to_string()),
+            },
+            // A size that does not read as a number is no size, and an entry
+            // with no key is no object.
+            ListedObject {
+                key: "media/runs/r1/asset/c.json".to_string(),
+                size: None,
+                etag: None,
+            },
+        ]
+    );
+    // One `PUT`'s entity tag is the MD5 of the bytes. A multipart upload's is
+    // not, and neither is a missing one.
+    assert_eq!(
+        objects[0].md5(),
+        Some([
+            0x0c, 0xc1, 0x75, 0xb9, 0xc0, 0xf1, 0xb6, 0xa8, 0x31, 0xc3, 0x99, 0xe2, 0x69, 0x77,
+            0x26, 0x61
+        ])
+    );
+    assert_eq!(objects[1].md5(), None);
+    assert_eq!(objects[2].md5(), None);
+    let not_hex = ListedObject {
+        etag: Some("z".repeat(32)),
+        ..objects[0].clone()
+    };
+    assert_eq!(not_hex.md5(), None);
+}
+
+#[tokio::test]
+async fn a_prefix_is_listed_with_sizes_through_a_signed_request() {
+    let body = b"<ListBucketResult><Contents><Key>media/runs/r1/a.png</Key><Size>4</Size>\
+        <ETag>&quot;0cc175b9c0f1b6a831c399e269772661&quot;</ETag></Contents></ListBucketResult>"
+        .to_vec();
+    let (client, heads) = stand_in(Answer::Whole("200 OK", "", body)).await;
+
+    let objects = client.list_objects("media/runs/r1/").await.unwrap();
+
+    assert_eq!(objects.len(), 1);
+    assert_eq!(objects[0].size, Some(4));
+    assert!(objects[0].md5().is_some());
+    assert_eq!(
+        client.list_keys("media/runs/r1/").await.unwrap(),
+        ["media/runs/r1/a.png"]
+    );
+    let heads = heads.lock().unwrap();
+    assert!(
+        heads[0].starts_with("GET /bucket?list-type=2&prefix=media%2Fruns%2Fr1%2F "),
+        "{}",
+        heads[0]
+    );
+    assert!(
+        heads[0]
+            .to_lowercase()
+            .contains("authorization: aws4-hmac-sha256")
+    );
+}
+
+#[tokio::test]
+async fn a_listing_the_bucket_never_answers_fails_at_the_response_timeout() {
+    let (client, _) = stand_in(Answer::Silent).await;
+    let client = client.with_read_timeouts(Duration::from_millis(50), Duration::from_secs(30));
+
+    let err = client.list_objects("media/").await.expect_err("a failure");
+
+    assert!(err.to_string().contains("LIST"), "{err}");
+}
+
+#[tokio::test]
+async fn a_listing_page_that_stalls_part_way_fails_at_the_response_timeout() {
+    let (client, _) = stand_in(Answer::Stalled(b"<ListBucketResult>".to_vec())).await;
+    let client = client.with_read_timeouts(Duration::from_millis(50), Duration::from_secs(30));
+
+    assert!(client.list_keys("media/").await.is_err());
+}

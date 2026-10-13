@@ -30,8 +30,8 @@
 //!   reads.
 //!
 //! The serve handlers **reuse the core resolvers**
-//! ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
-//! [`serve_asset_file`]) exactly as the
+//! ([`find_build_output`], [`serve_build_file`], [`read_proof_file`],
+//! [`read_asset_file`]) exactly as the
 //! worker did, only reading from the artifact store's per-run root instead of the
 //! worker's out_dir — so the per-run base-href rewrite and the path-traversal
 //! guard are identical.
@@ -56,8 +56,8 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use test_cabinet_core::{
-    find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_showcase_file,
-    serve_validation_file,
+    find_build_output, read_asset_file, read_proof_file, read_showcase_file, read_validation_file,
+    serve_build_file,
 };
 
 use crate::auth::{verify_job_token, verify_publish_job_token};
@@ -1014,81 +1014,125 @@ fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, A
     Ok(([(header::CONTENT_TYPE, file.content_type)], file.body).into_response())
 }
 
+/// Read one media file of run `id`'s tree with `read`, off the async runtime, and
+/// answer with it.
+///
+/// `404` only when the tree positively holds no such file. A tree that could not
+/// say answers `500`: its run record is missing, unreadable or does not parse, or
+/// the file is there and could not be read. The backend's snapshot refresh
+/// records a file as existing nowhere on a `404` from here, and the tree is
+/// deleted once its run is confirmed, so a read that failed must never answer
+/// one.
+async fn tree_media<T, F>(
+    state: &AppState,
+    id: &str,
+    file: &str,
+    what: &'static str,
+    read: F,
+    respond: fn(T) -> Response,
+) -> Result<Response, ApiError>
+where
+    T: Send + 'static,
+    F: FnOnce(&std::path::Path, &str) -> std::io::Result<Option<T>> + Send + 'static,
+{
+    let run_dir = state.store.run_dir(id);
+    let asked = file.to_string();
+    let fault = |detail: String| {
+        ApiError::internal(format!("reading {what} `{file}` of run `{id}`: {detail}"))
+    };
+    let served = tokio::task::spawn_blocking(move || read(&run_dir, &asked))
+        .await
+        .map_err(|err| fault(err.to_string()))?
+        .map_err(|err| fault(err.to_string()))?
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no {what} `{file}`")))?;
+    Ok(respond(served))
+}
+
 /// `GET /runs/{id}/proof/{file}` — a produced run's proof-of-implementation media
 /// (`{file}` is `<proof-id>.<ext>`), resolved from the run record's
-/// `validation.proofs` via [`serve_proof_file`], the same resolver the worker
+/// `validation.proofs` via [`read_proof_file`], the same resolver the worker
 /// used. Ungated (browser-loaded). `404` when the run, the proof, or the file is
-/// absent.
+/// absent, and `500` when the tree could not say (see [`tree_media`]).
+#[tracing::instrument(name = "artifacts.proof_file", skip(state), fields(run.id = %id), err(Debug))]
 async fn proof_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_proof_file(&run_dir, &file)
-        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no proof media `{file}`")))?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    tree_media(
+        &state,
+        &id,
+        &file,
+        "proof media",
+        read_proof_file,
+        |served| media_response(served.content_type, served.content_encoding, served.body),
+    )
+    .await
 }
 
 /// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
 /// final preview, or action log (or an adversarial replay), resolved from the run
-/// record's `validation` frame via [`serve_asset_file`], the same resolver the
-/// worker used. Ungated (browser-loaded as `<img src>`/animation frames).
+/// record's `validation` frame via [`read_asset_file`], the same resolver the
+/// worker used. Ungated (browser-loaded as `<img src>`/animation frames). `404`
+/// when the run or the file is absent, and `500` when the tree could not say (see
+/// [`tree_media`]).
+#[tracing::instrument(name = "artifacts.asset_file", skip(state), fields(run.id = %id), err(Debug))]
 async fn asset_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_asset_file(&run_dir, &file)
-        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no asset media `{file}`")))?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    tree_media(
+        &state,
+        &id,
+        &file,
+        "asset media",
+        read_asset_file,
+        |served| media_response(served.content_type, served.content_encoding, served.body),
+    )
+    .await
 }
 
 /// `GET /runs/{id}/validation/{file}` — a run's synthesized validation media
 /// (`{file}` is the flat `<item>__<output>[.baseline].<ext>` a debug script
-/// produced), resolved from the collected tree via [`serve_validation_file`], the
+/// produced), resolved from the collected tree via [`read_validation_file`], the
 /// same resolver the worker used. Ungated (browser-loaded). `404` when the run or
-/// the media is absent.
+/// the media is absent, and `500` when it is there and could not be read.
+#[tracing::instrument(name = "artifacts.validation_file", skip(state), fields(run.id = %id), err(Debug))]
 async fn validation_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_validation_file(&run_dir, &file).ok_or_else(|| {
-        ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
-    })?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    tree_media(
+        &state,
+        &id,
+        &file,
+        "validation media",
+        read_validation_file,
+        |served| media_response(served.content_type, served.content_encoding, served.body),
+    )
+    .await
 }
 
 /// `GET /runs/{id}/showcase/{file}` — one of a run's showcase files (`{file}` is
 /// the plain file name in the produced tree's `showcase/` — a carousel media file,
 /// or an image the description references), resolved from the collected tree via
-/// [`serve_showcase_file`]. Ungated (browser-loaded). A `.json.gz` replay serves
+/// [`read_showcase_file`]. Ungated (browser-loaded). A `.json.gz` replay serves
 /// as JSON travelling gzip-framed, exactly as validation replays do, so a browser
-/// inflates it transparently. `404` when the run or the file is absent.
+/// inflates it transparently. `404` when the run or the file is absent, and `500`
+/// when it is there and could not be read.
+#[tracing::instrument(name = "artifacts.showcase_file", skip(state), fields(run.id = %id), err(Debug))]
 async fn showcase_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_showcase_file(&run_dir, &file)
-        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no showcase file `{file}`")))?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    tree_media(
+        &state,
+        &id,
+        &file,
+        "showcase file",
+        read_showcase_file,
+        |served| media_response(served.content_type, served.content_encoding, served.body),
+    )
+    .await
 }
 
 /// `GET /runs/{id}/root/{name}` — one of the files of a run's tree that sit

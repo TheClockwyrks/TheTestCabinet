@@ -17,6 +17,11 @@ use crate::error::{BackendError, Result};
 /// [manifest](crate::db::MediaManifest) names it and no sweep removes it.
 pub const SESSION_RECORD_FILE: &str = "replay.json";
 
+/// The directory at the store's root that holds a run file while it is being
+/// written, before it is renamed into its run's folder. Not under `runs/`, so no
+/// listing of a run's folder ever sees a file that is half written.
+const UPLOAD_STAGING_DIR: &str = "run-uploads.tmp";
+
 /// One file in a run's folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunFolderFile {
@@ -25,6 +30,33 @@ pub struct RunFolderFile {
     pub name: String,
     /// The file's size.
     pub bytes: u64,
+    /// When the file was last written.
+    pub modified: SystemTime,
+}
+
+/// What a caller that removes a file must have found the bucket to hold for it,
+/// for the removal to go ahead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishedCopy {
+    /// The size of the object that holds the file's bytes.
+    pub size: u64,
+    /// The MD5 of that object's bytes, when the bucket reported one.
+    pub md5: Option<[u8; 16]>,
+}
+
+/// How [`DefinitionStore::remove_run_file_as_listed`] ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Removal {
+    /// The file was removed.
+    Removed,
+    /// Nothing was there to remove.
+    Gone,
+    /// The file is not the one that was listed: it was written again since, or it
+    /// is no longer a regular file. It is left where it is.
+    Changed,
+    /// The file's bytes are not the ones the bucket holds for it. It is left
+    /// where it is.
+    Differs,
 }
 
 /// What a run's folder in the store holds.
@@ -70,11 +102,22 @@ pub struct StateVolume {
 impl DefinitionStore {
     /// Write one file of a run at `path`, creating its directory.
     ///
+    /// The bytes are written to a file of their own in the store's staging
+    /// directory and renamed into place once all of them are down. A write that
+    /// fails, which on a full volume is every write, therefore leaves the file
+    /// that was at `path` exactly as it was, and never leaves a truncated one:
+    /// a refresh publishes whatever the store holds under a run's name, and the
+    /// sweep then removes every other copy.
+    ///
     /// Every write of a run's file goes through here, holding the store's write
-    /// lock shared from before the directory is made sure of until the bytes are
-    /// written. [`prune_run_dirs`](Self::prune_run_dirs) holds it exclusively, so
-    /// it never removes a directory between those two steps.
+    /// lock shared from before the directory is made sure of until the file is in
+    /// place. [`prune_run_dirs`](Self::prune_run_dirs) and
+    /// [`remove_run_file_as_listed`](Self::remove_run_file_as_listed) hold it
+    /// exclusively, so neither removes a directory between those two steps, nor a
+    /// file while it is being replaced.
     pub(super) fn write_run_file(&self, path: &Path, bytes: &[u8]) -> Result<()> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
         let _writing = self
             .run_writes
             .read()
@@ -82,8 +125,67 @@ impl DefinitionStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, bytes)?;
+        let staging = self.root.join(UPLOAD_STAGING_DIR);
+        std::fs::create_dir_all(&staging)?;
+        let staged = staging.join(format!(
+            "{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        #[cfg(test)]
+        let cut_short = self.fail_writes.load(std::sync::atomic::Ordering::SeqCst);
+        #[cfg(not(test))]
+        let cut_short = false;
+        let written = if cut_short {
+            // What a full volume does: some of the bytes land, then the write fails.
+            std::fs::write(&staged, &bytes[..bytes.len() / 2]).and_then(|()| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::StorageFull,
+                    "the write was made to fail",
+                ))
+            })
+        } else {
+            std::fs::write(&staged, bytes)
+        };
+        let placed = written.and_then(|()| std::fs::rename(&staged, path));
+        if let Err(err) = placed {
+            // Best-effort: a staged file left behind is removed at the next start.
+            let _ = std::fs::remove_file(&staged);
+            return Err(err.into());
+        }
         Ok(())
+    }
+
+    /// Remove what earlier processes left in the staging directory: the files of
+    /// writes that were cut off by a crash. Called once at startup, before any
+    /// upload is accepted. Best-effort: a file that cannot be removed costs its
+    /// space until the next start.
+    pub fn clear_staged_uploads(&self) {
+        let Ok(read) = std::fs::read_dir(self.root.join(UPLOAD_STAGING_DIR)) else {
+            return;
+        };
+        for entry in read.flatten() {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+
+    /// The size of the file of run `run_id` named `name` (see
+    /// [`run_file_path`](Self::run_file_path)), when the store holds a regular
+    /// file there that can be read as one. `None` otherwise.
+    pub fn run_file_size(&self, run_id: &str, name: &str) -> Option<u64> {
+        let path = self.run_file_path(run_id, name)?;
+        std::fs::symlink_metadata(path)
+            .ok()
+            .filter(std::fs::Metadata::is_file)
+            .map(|metadata| metadata.len())
+    }
+
+    /// Whether the store holds any run's folder at all. `false` as well when the
+    /// `runs/` directory cannot be listed: a store that cannot say what it holds
+    /// is not one whose silence about a file means anything.
+    pub fn holds_run_folders(&self) -> bool {
+        self.list_run_folders()
+            .is_ok_and(|folders| !folders.is_empty())
     }
 
     /// The ids of the runs the store holds a folder for: the names of the
@@ -128,13 +230,31 @@ impl DefinitionStore {
         Ok(folder)
     }
 
-    /// Remove the file of run `run_id` named `name`, a path under the run's
-    /// folder as [`run_folder`](Self::run_folder) reports it. Returns whether a
-    /// file was removed: `false` for one that was already gone.
+    /// Remove the file of run `run_id` named `name`, provided it is still the file
+    /// `listed` describes and, when `published` is given, its bytes are the ones
+    /// the bucket holds.
+    ///
+    /// The checks, in order:
+    ///
+    /// 1. The entry is a regular file of the listed size and modification time.
+    ///    A file written again since the listing is [`Removal::Changed`].
+    /// 2. With `published`, the file's size is the object's, and its MD5 is the
+    ///    object's when the bucket reported one. Anything else is
+    ///    [`Removal::Differs`]: the object under the file's name does not hold
+    ///    this file's bytes, so the file is the only copy of them.
+    /// 3. Under the store's write lock, held exclusively so that no upload is
+    ///    replacing the file, the entry is read once more and must be unchanged
+    ///    since step 1. Then it is removed.
     ///
     /// The [session record](SESSION_RECORD_FILE) is refused, whatever the caller
     /// decided: it has no other copy.
-    pub fn remove_run_file(&self, run_id: &str, name: &str) -> Result<bool> {
+    pub fn remove_run_file_as_listed(
+        &self,
+        run_id: &str,
+        listed: &RunFolderFile,
+        published: Option<&PublishedCopy>,
+    ) -> Result<Removal> {
+        let name = listed.name.as_str();
         if name == SESSION_RECORD_FILE {
             return Err(BackendError::BadRequest(format!(
                 "run `{run_id}`'s session record is never removed from the store"
@@ -143,16 +263,40 @@ impl DefinitionStore {
         let path = self.run_file_path(run_id, name).ok_or_else(|| {
             BackendError::BadRequest(format!("invalid run file `{run_id}/{name}`"))
         })?;
+        let Some(before) = file_identity(&path)? else {
+            return Ok(Removal::Gone);
+        };
+        if before.len != listed.bytes || before.modified != Some(listed.modified) {
+            return Ok(Removal::Changed);
+        }
+        if let Some(published) = published {
+            if before.len != published.size {
+                return Ok(Removal::Differs);
+            }
+            if let Some(md5) = published.md5
+                && file_md5(&path)? != md5
+            {
+                return Ok(Removal::Differs);
+            }
+        }
         #[cfg(test)]
         if self.fail_removals.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(BackendError::Internal(format!(
                 "removing `{run_id}/{name}` was made to fail"
             )));
         }
-        match std::fs::remove_file(&path) {
-            Ok(()) => Ok(true),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(err) => Err(err.into()),
+        let _removing = self
+            .run_writes
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match file_identity(&path)? {
+            None => Ok(Removal::Gone),
+            Some(now) if now != before => Ok(Removal::Changed),
+            Some(_) => match std::fs::remove_file(&path) {
+                Ok(()) => Ok(Removal::Removed),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Removal::Gone),
+                Err(err) => Err(err.into()),
+            },
         }
     }
 
@@ -217,12 +361,61 @@ fn walk_run_folder(root: &Path, dir: &Path, folder: &mut RunFolder) -> Result<()
             folder.files.push(RunFolderFile {
                 name,
                 bytes: metadata.len(),
+                modified,
             });
         } else {
             folder.irregular.push(name);
         }
     }
     Ok(())
+}
+
+/// What tells one file at a path from another written there later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    /// The file's size.
+    len: u64,
+    /// When it was last written.
+    modified: Option<SystemTime>,
+    /// Its inode, which a file renamed into place does not share with the one it
+    /// replaced.
+    inode: Option<u64>,
+}
+
+/// The identity of the regular file at `path`. `Ok(None)` when nothing is there.
+/// An entry that is not a regular file has an identity no listed file equals.
+fn file_identity(path: &Path) -> Result<Option<FileIdentity>> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err.into()),
+    };
+    if !metadata.is_file() {
+        return Ok(Some(FileIdentity {
+            len: u64::MAX,
+            modified: None,
+            inode: None,
+        }));
+    }
+    #[cfg(unix)]
+    let inode = Some(std::os::unix::fs::MetadataExt::ino(&metadata));
+    #[cfg(not(unix))]
+    let inode = None;
+    Ok(Some(FileIdentity {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+        inode,
+    }))
+}
+
+/// The MD5 of the file at `path`, read in parts.
+fn file_md5(path: &Path) -> Result<[u8; 16]> {
+    use md5::Digest;
+
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = md5::Md5::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    Ok(hasher.finalize().into())
 }
 
 /// Remove `dir` and every directory under it that holds nothing. Returns whether

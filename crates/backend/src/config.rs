@@ -391,9 +391,10 @@ impl Config {
 
         let state_reclaim = on_unless_off("TCAB_STATE_RECLAIM")?;
 
-        let artifact_sweep_grace_hours = std::env::var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
+        // Read strictly: this window decides which run-less trees and run-less
+        // folders are deleted, on two volumes, so a value that does not read as
+        // hours must not quietly become the default.
+        let artifact_sweep_grace_hours = whole_number("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")?
             .unwrap_or(DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS);
 
         let artifact_capacity = capacity_settings()?;

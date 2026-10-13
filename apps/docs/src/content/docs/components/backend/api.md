@@ -937,9 +937,12 @@ Otherwise it answers from the [public
 bucket](/components/backend/snapshot/#the-file-manifest), which is how a
 published run's files are served once the store no longer holds them:
 
-1. The run's file manifest is read. A run with no manifest, which is every run
-   no refresh has confirmed in the configured bucket, answers `404`, as does a
-   backend with no bucket.
+1. The run's file manifest is read. A run with no manifest recorded against
+   the configured bucket, which is every run no refresh has ever confirmed
+   there, answers `404`, as does a backend with no bucket. The manifest is read
+   whether or not the run's confirmation still holds: an upload, a push of the
+   run's record or a refresh can withdraw the confirmation, and the objects are
+   where the manifest says all the same.
 2. A file the manifest does not name answers `404`, and so does one it records
    as unrecoverable with no transcoded copy.
 3. The object the manifest names is fetched from the bucket and passed through
@@ -966,11 +969,13 @@ no manifest, so its route answers from the store alone.
 No route serves a byte range, from the store or from the bucket.
 
 Each `GET` route but the session record's has a `POST` on the same path, which
-a driver uploads the file to. An upload for a run that is published
-[withdraws the run's confirmation and requests a snapshot
-refresh](/components/backend/overview/#uploads-after-a-confirmation), so the
-file is published before the store's copy can be removed. The session record is
-uploaded to `POST /runs/{id}/replay` and changes neither.
+a driver uploads the file to. The file is written whole or not at all: a
+request that fails leaves no part of it under the run's name. An upload for a
+run that is published [withdraws the run's confirmation and has a snapshot
+refresh requested](/components/backend/overview/#uploads-after-a-confirmation),
+so the file is published before the store's copy can be removed, and the run's
+other files stay served meanwhile. The session record is uploaded to
+`POST /runs/{id}/replay` and changes neither.
 
 ### `POST /snapshot/refresh`
 

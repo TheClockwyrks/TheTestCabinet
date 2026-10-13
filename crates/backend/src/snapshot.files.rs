@@ -99,6 +99,30 @@ pub(super) fn recorded_names(
     names
 }
 
+/// The object keys of `files`, one run's manifest entries, that two files are
+/// published under: a key that holds one file's own bytes and is also another
+/// entry's, as its bytes or as its transcode. Each once, sorted.
+///
+/// An entry repeated for one name is not a contest, and neither is a key two
+/// entries name only as a transcode.
+pub(super) fn contested_keys(files: &[MediaManifestFile]) -> Vec<String> {
+    let mut contested = std::collections::BTreeSet::new();
+    for (index, file) in files.iter().enumerate() {
+        let Some(key) = file.key.as_deref() else {
+            continue;
+        };
+        let contest = files.iter().enumerate().any(|(other_index, other)| {
+            other_index != index
+                && other.name != file.name
+                && other.keys().any(|other_key| other_key == key)
+        });
+        if contest {
+            contested.insert(key.to_string());
+        }
+    }
+    contested.into_iter().collect()
+}
+
 /// The scrubbed, uncompressed JSON of a stored document, and whether the scrub
 /// redacted anything. `stored` is gzip or plain JSON, as the store holds either.
 /// An `Err` names why the bytes are not a document.
@@ -247,7 +271,13 @@ impl SnapshotBuilder {
         let raw = match self.read_media(run_id, dir, file, tree).await {
             Ok(raw) => raw,
             Err(missing) => {
-                if has_mp4 && probe_published && !self.store.run_file_absent(run_id, &mp4_name) {
+                // Positively there, not merely "not found absent": a lookup that
+                // failed says nothing, and the recording may yet be readable.
+                let stored_as_mp4 = self
+                    .store
+                    .run_file_size(run_id, &mp4_name)
+                    .is_some_and(|bytes| bytes > 0);
+                if has_mp4 && probe_published && stored_as_mp4 {
                     // The store holds the mp4 itself and no recording, so the mp4
                     // in the bucket is the stored file.
                     account

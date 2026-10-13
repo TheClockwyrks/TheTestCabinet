@@ -250,7 +250,30 @@ from it, and each run's files until they are published. The backend
 bucket holds them, so the volume's use follows the runs in flight and awaiting
 publish. It needs no script and no manual step: a deploy of a backend with
 files to reclaim requests one snapshot refresh at startup and its sweep frees
-the space in the passes that follow.
+the space in the passes that follow. That first refresh uploads every file the
+bucket lacks, one run at a time, so its length follows what the volume holds.
+
+The volume does not drain to nothing. What stays is what has no other copy:
+
+- Every gg run's session record, for as long as the run exists.
+- The files of a completed run that is not published, whatever its age.
+- A failed or canceled run's code-analysis document and controller module, and
+  all of its files while nothing has reported on its tree.
+- A published run's file that no refresh published, or whose bytes differ from
+  the object the bucket holds under its name.
+- Every published run's files, on a backend that records no confirmations: one
+  with no artifact service, or with `TCAB_ARTIFACT_RECLAIM_PUBLISHED` off.
+- Tournament match replays.
+
+The state sweep's completion line reports the session records as
+`session_records` and `session_record_bytes`, and each refresh reports the
+tournament replays as `tournament_replay_bytes`, which is how to watch the two
+that only grow.
+
+Once the sweep has removed files, the backend can only be rolled forward. An
+image from before the run file routes read the bucket serves a reclaimed run's
+files from a folder that no longer holds them, and nothing copies them back.
+`TCAB_STATE_RECLAIM=false` stops further removals and restores nothing.
 
 The backend puts new runs on hold under 1.5 GiB free on this volume, warning
 under 3 GiB, and reports both on the console beside the artifact store. Both

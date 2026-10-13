@@ -54,44 +54,55 @@ impl RunFileBucket {
 ///
 /// A run that was confirmed is unevaluated again, so a refresh is requested to
 /// export what the upload brought and confirm the run again; until it has, the
-/// state sweep removes nothing of the run. A published run with no confirmation
-/// is stamped as changed and a refresh requested for it as well, so a refresh
-/// already evaluating it does not confirm it without the file. A run whose files
-/// the sweep had removed stops reading as one with none. An upload for any other
-/// run, which is every driver mirroring a run for the first time, writes nothing.
+/// state sweep removes nothing of the run. The run's files go on being served
+/// meanwhile: its manifest stays as the record of where they are. A published
+/// run a refresh had left unconfirmed is stamped as changed and a refresh
+/// requested for it as well, so a refresh already evaluating it does not confirm
+/// it without the file. A run whose files the sweep had removed stops reading as
+/// one with none. An upload for any other run, which is every driver mirroring a
+/// run for the first time, writes nothing.
+///
+/// One refresh is requested per run, by the upload that made the run
+/// unevaluated. The uploads that follow it, which for a mirror of a run's files
+/// are dozens, find the run already waiting and request nothing, so a burst of
+/// uploads does not fill a refresh batch by itself.
 ///
 /// A record that cannot be written does not fail the upload: the file is
 /// stored, and the sweep removes a file only when the run's manifest records an
-/// object for it, so a confirmation left in place deletes nothing it should not.
+/// object for it that holds the file's bytes, so a confirmation left in place
+/// deletes nothing it should not.
 pub(super) async fn file_uploaded(state: &AppState, run_id: &str) {
-    match state.db.note_run_file_uploaded(run_id).await {
-        Ok(crate::db::UploadedOver::Nothing) => {}
-        Ok(crate::db::UploadedOver::Reclaim) => tracing::info!(
+    let over = match state.db.note_run_file_uploaded(run_id).await {
+        Ok(over) => over,
+        Err(error) => {
+            tracing::warn!(
+                run.id = %run_id,
+                %error,
+                "could not record a file upload on its run; the run's media confirmation is as it was"
+            );
+            return;
+        }
+    };
+    match over {
+        crate::db::UploadedOver::Nothing | crate::db::UploadedOver::Pending => {}
+        crate::db::UploadedOver::Reclaim => tracing::info!(
             run.id = %run_id,
             "a file was uploaded for a run whose files the state sweep had removed; \
              cleared the reclaim record"
         ),
-        Ok(crate::db::UploadedOver::Published) => {
-            tracing::debug!(
-                run.id = %run_id,
-                "a file was uploaded for a published run; requested a snapshot refresh \
-                 to evaluate it"
-            );
-            state.publisher.queue_refresh();
-        }
-        Ok(crate::db::UploadedOver::Confirmation) => {
-            tracing::info!(
-                run.id = %run_id,
-                "a file was uploaded for a confirmed run; cleared its media confirmation \
-                 and requested a snapshot refresh to evaluate it again"
-            );
-            state.publisher.queue_refresh();
-        }
-        Err(error) => tracing::warn!(
+        crate::db::UploadedOver::Published => tracing::debug!(
             run.id = %run_id,
-            %error,
-            "could not record a file upload on its run; the run's media confirmation is as it was"
+            "a file was uploaded for a published run; requested a snapshot refresh \
+             to evaluate it"
         ),
+        crate::db::UploadedOver::Confirmation => tracing::info!(
+            run.id = %run_id,
+            "a file was uploaded for a confirmed run; withdrew its media confirmation \
+             and requested a snapshot refresh to evaluate it again"
+        ),
+    }
+    if over.needs_refresh() {
+        state.publisher.queue_refresh();
     }
 }
 
@@ -105,8 +116,12 @@ pub(super) async fn file_uploaded(state: &AppState, run_id: &str) {
 /// - the store refused the request for another reason than the file not being
 ///   there (a name that is not a safe path segment);
 /// - the backend has no bucket;
-/// - the run has no manifest, which is every run no refresh has confirmed in
-///   the configured bucket under the current definition;
+/// - the run has no manifest in the configured bucket, which is every run no
+///   refresh has ever confirmed there. A run whose confirmation was withdrawn
+///   since (a file was uploaded for it, its record was stored again, a refresh
+///   found an object missing) still has the manifest that confirmation recorded,
+///   and is served from it: see
+///   [`Db::run_file_locations`](crate::db::Db::run_file_locations);
 /// - the manifest does not name the file, or records it as unrecoverable with
 ///   no transcoded copy;
 /// - the bucket answered that it holds no object under the key. The manifest
@@ -133,7 +148,7 @@ pub(super) async fn read_through(
     };
     let Some(manifest) = state
         .db
-        .run_media_manifest(run_id, Some(bucket.identity))
+        .run_file_locations(run_id, Some(bucket.identity))
         .await
         .map_err(ApiError::from)?
     else {

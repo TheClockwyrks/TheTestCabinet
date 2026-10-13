@@ -393,6 +393,8 @@ pub async fn reconcile_presence(
 /// protects a run that has uploaded its tree but not yet reported terminal, which
 /// is a run with no row through no fault of its own.
 ///
+/// A `grace` of zero selects nothing: the orphan rule is off.
+///
 /// An empty `live` spares every tree. A backend that holds no run rows cannot tell
 /// an orphan from a tree whose row it failed to see, and the two states it reaches
 /// that way — a database fault, and a fresh or restored database sharing a
@@ -403,7 +405,9 @@ pub fn orphaned_trees(
     now: OffsetDateTime,
     grace: Duration,
 ) -> Vec<String> {
-    if live.is_empty() {
+    // A window of zero turns the rule off, as a retention of zero does: with no
+    // window every tree a driver has uploaded and not yet reported is an orphan.
+    if live.is_empty() || grace.is_zero() {
         return Vec::new();
     }
     // Compare each tree's age against the window rather than each tree against a

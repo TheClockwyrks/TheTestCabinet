@@ -442,7 +442,26 @@ impl R2Client {
     /// Returns an error when a request cannot be sent or R2 responds non-2xx.
     #[tracing::instrument(name = "r2.list_keys", skip(self), fields(r2.prefix = %prefix), err)]
     pub async fn list_keys(&self, prefix: &str) -> Result<Vec<String>> {
-        let mut keys = Vec::new();
+        Ok(self
+            .list_objects(prefix)
+            .await?
+            .into_iter()
+            .map(|object| object.key)
+            .collect())
+    }
+
+    /// List every object under `prefix` with its size, following the bucket's
+    /// pagination to completion. The request is [`list_keys`](Self::list_keys)'s.
+    ///
+    /// The size is what lets a caller tell an object that holds a file's bytes
+    /// from one that merely has the file's name: the backend compares it with the
+    /// size of the file it is about to treat as published, or to delete.
+    ///
+    /// Each page must begin to arrive, and then arrive whole, within the client's
+    /// response timeout, so a connection that stalls fails the listing instead of
+    /// holding its caller for ever.
+    pub async fn list_objects(&self, prefix: &str) -> Result<Vec<ListedObject>> {
+        let mut objects = Vec::new();
         let mut continuation: Option<String> = None;
         loop {
             // The canonical query string is the params sorted by name, each name and
@@ -462,15 +481,13 @@ impl R2Client {
                 .join("&");
 
             let body = self.list_page(&canonical_query).await?;
-            for key in parse_list_keys(&body) {
-                keys.push(key);
-            }
+            objects.extend(parse_list_objects(&body));
             match parse_next_continuation_token(&body) {
                 Some(token) => continuation = Some(token),
                 None => break,
             }
         }
-        Ok(keys)
+        Ok(objects)
     }
 
     /// Delete every listed key, chunking into 1000-key
@@ -630,25 +647,39 @@ impl R2Client {
             "{}{canonical_uri}?{canonical_query}",
             scheme_prefix(&self.config.endpoint)
         );
-        let response = self
+        let request = self
             .http
             .get(&url)
             .header("Host", host)
             .header("x-amz-date", amz_date)
             .header("x-amz-content-sha256", payload_hash)
             .header("Authorization", authorization)
-            .send()
+            .send();
+        let response = tokio::time::timeout(self.response_timeout, request)
             .await
+            .map_err(|_| {
+                Error::R2(format!(
+                    "LIST did not answer within {:?}",
+                    self.response_timeout
+                ))
+            })?
             .map_err(|e| Error::R2(format!("LIST failed: {e}")))?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let detail = response.text().await.unwrap_or_default();
-            return Err(Error::R2(format!("LIST returned {status}: {detail}")));
-        }
-        response
-            .text()
+        let status = response.status();
+        let body = tokio::time::timeout(self.response_timeout, response.text())
             .await
-            .map_err(|e| Error::R2(format!("reading the LIST body: {e}")))
+            .map_err(|_| {
+                Error::R2(format!(
+                    "the LIST body did not arrive within {:?}",
+                    self.response_timeout
+                ))
+            })?;
+        if !status.is_success() {
+            return Err(Error::R2(format!(
+                "LIST returned {status}: {}",
+                body.unwrap_or_default()
+            )));
+        }
+        body.map_err(|e| Error::R2(format!("reading the LIST body: {e}")))
     }
 
     /// Compute the SigV4 signing key chain and sign the string-to-sign.
@@ -681,6 +712,62 @@ fn parse_list_keys(xml: &str) -> Vec<String> {
         rest = &after[close + "</Key>".len()..];
     }
     keys
+}
+
+/// One object of a bucket listing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedObject {
+    /// The object's key.
+    pub key: String,
+    /// The object's size in bytes, or `None` when the listing gave none that
+    /// reads as a number.
+    pub size: Option<u64>,
+    /// The object's entity tag without its quotes, or `None` when the listing
+    /// gave none. For an object written by one `PUT`, which is every object
+    /// [`R2Client::put_object`] writes, this is the MD5 of its bytes in hex. An
+    /// object written in parts by another tool has a tag of another shape.
+    pub etag: Option<String>,
+}
+
+impl ListedObject {
+    /// The MD5 of the object's bytes, when its entity tag is one: 32 hex digits.
+    pub fn md5(&self) -> Option<[u8; 16]> {
+        let etag = self.etag.as_deref()?;
+        let mut md5 = [0u8; 16];
+        (etag.len() == 32).then_some(())?;
+        hex::decode_to_slice(etag, &mut md5).ok()?;
+        Some(md5)
+    }
+}
+
+/// Extract every `<Contents>` entry of a `ListObjectsV2` XML response body as its
+/// key and size, by the flat scan [`parse_list_keys`] makes. An entry with no key
+/// is left out.
+fn parse_list_objects(xml: &str) -> Vec<ListedObject> {
+    let mut objects = Vec::new();
+    let mut rest = xml;
+    while let Some(open) = rest.find("<Contents>") {
+        let after = &rest[open + "<Contents>".len()..];
+        let Some(close) = after.find("</Contents>") else {
+            break;
+        };
+        let entry = &after[..close];
+        if let Some(key) = parse_list_keys(entry).into_iter().next() {
+            let size = entry.find("<Size>").and_then(|at| {
+                let digits = &entry[at + "<Size>".len()..];
+                digits[..digits.find("</Size>")?].trim().parse().ok()
+            });
+            let etag = entry.find("<ETag>").and_then(|at| {
+                let tag = &entry[at + "<ETag>".len()..];
+                let tag = xml_unescape(&tag[..tag.find("</ETag>")?]);
+                let tag = tag.trim().trim_matches('"');
+                (!tag.is_empty()).then(|| tag.to_string())
+            });
+            objects.push(ListedObject { key, size, etag });
+        }
+        rest = &after[close + "</Contents>".len()..];
+    }
+    objects
 }
 
 /// The `<NextContinuationToken>` of a truncated `ListObjectsV2` response, or `None`

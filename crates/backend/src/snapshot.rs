@@ -229,7 +229,24 @@ pub struct Snapshot {
     /// run in [`unconfirmed_media`](Self::unconfirmed_media) is incomplete and is
     /// recorded nowhere.
     pub media_manifests: std::collections::BTreeMap<String, crate::db::MediaManifest>,
+    /// What the build uploaded as it went, which is therefore not among
+    /// `objects`. See [`SnapshotBuilder::with_object_sink`].
+    pub streamed: StreamedObjects,
 }
+
+/// The objects a build uploaded to its [sink](SnapshotBuilder::with_object_sink)
+/// as it made them.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct StreamedObjects {
+    /// How many objects.
+    pub objects: usize,
+    /// The bytes they held.
+    pub bytes: u64,
+}
+
+/// The prefix of the entry [`Snapshot::unconfirmed_media`] carries for a run two
+/// of whose files would be published under one object key.
+pub const CONTESTED_OBJECT: &str = "object/contested";
 
 /// The entry [`Snapshot::unconfirmed_media`] carries for a run whose tree the
 /// artifact service could not list, so the build cannot know it saw every file.
@@ -375,6 +392,12 @@ pub struct SnapshotBuilder {
     /// The file manifest of each confirmed run. See
     /// [`Self::with_recorded_manifests`].
     recorded_manifests: std::collections::HashMap<String, crate::db::MediaManifest>,
+    /// Where each run's content-stable objects are uploaded as the build makes
+    /// them. See [`Self::with_object_sink`].
+    object_sink: Option<R2Client>,
+    /// Whether the backend store holds any run's folder, read once per build. See
+    /// [`Self::store_answers`].
+    store_holds_runs: std::sync::OnceLock<bool>,
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
@@ -456,6 +479,8 @@ impl SnapshotBuilder {
             settled_media: None,
             trees_recorded_absent: std::collections::HashSet::new(),
             recorded_manifests: std::collections::HashMap::new(),
+            object_sink: None,
+            store_holds_runs: std::sync::OnceLock::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
             reference_sheets: std::collections::HashMap::new(),
@@ -701,6 +726,86 @@ impl SnapshotBuilder {
         self
     }
 
+    /// Upload each run's content-stable objects to `sink` as the build makes
+    /// them, instead of returning them in [`Snapshot::objects`] for the caller to
+    /// upload at the end.
+    ///
+    /// Those are a run's media under `media/runs/` and its document under
+    /// [`RUN_DOCUMENT_PREFIX`]. Each has a key that belongs to its run or to its
+    /// own bytes and that nothing reads until a later `index.json` names it, so
+    /// writing one early changes nothing a reader sees. What it changes is what a
+    /// build holds: the bytes of one run at a time, where a build that returned
+    /// them held every new file of every run at once. A refresh that has a whole
+    /// cabinet's recordings and replays to publish would otherwise need all of
+    /// them in memory before the first was uploaded.
+    ///
+    /// It also makes a refresh that fails part-way keep what it did: the objects
+    /// it uploaded are in the bucket's listing for the next one, which reads and
+    /// uploads only the rest.
+    ///
+    /// An upload that fails fails the build.
+    pub fn with_object_sink(mut self, sink: Option<R2Client>) -> Self {
+        self.object_sink = sink;
+        self
+    }
+
+    /// Whether the backend store's silence about a file means the file is not
+    /// there: the store holds at least one run's folder.
+    ///
+    /// A store with no run folder at all is what a volume that failed to mount,
+    /// a new volume, or a wrong store path looks like, and every file of every
+    /// run is missing from it. A refresh must not take that for each of those
+    /// files having been lost, record them as existing nowhere, and confirm
+    /// their runs without them.
+    fn store_answers(&self) -> bool {
+        *self
+            .store_holds_runs
+            .get_or_init(|| self.store.holds_run_folders())
+    }
+
+    /// Upload `objects`, the content-stable objects of run `run_id`, to the
+    /// [sink](Self::with_object_sink), and return the ones that are not its to
+    /// take. Without a sink every object is returned.
+    async fn sink_run_objects(
+        &self,
+        run_id: &str,
+        objects: Vec<SnapshotObject>,
+        streamed: &mut StreamedObjects,
+    ) -> Result<Vec<SnapshotObject>> {
+        use futures_util::TryStreamExt;
+
+        let Some(sink) = self.object_sink.as_ref() else {
+            return Ok(objects);
+        };
+        let (stable, rest): (Vec<_>, Vec<_>) = objects.into_iter().partition(|object| {
+            object.key.starts_with(&format!("{MEDIA_PREFIX}/"))
+                || object.key.starts_with(&format!("{RUN_DOCUMENT_PREFIX}/"))
+        });
+        streamed.objects += stable.len();
+        streamed.bytes += stable
+            .iter()
+            .map(|object| object.bytes.len() as u64)
+            .sum::<u64>();
+        futures_util::stream::iter(stable.into_iter().map(Ok::<_, BackendError>))
+            .try_for_each_concurrent(UPLOAD_CONCURRENCY, |object| async move {
+                sink.put_object(
+                    &object.key,
+                    object.bytes,
+                    &object.content_type,
+                    object.content_encoding.as_deref(),
+                )
+                .await
+                .map_err(|err| {
+                    BackendError::Snapshot(format!(
+                        "uploading `{}` of run {run_id} failed: {err}",
+                        object.key
+                    ))
+                })
+            })
+            .await?;
+        Ok(rest)
+    }
+
     /// Generate the snapshot. The id is `<rfc3339-compact>-<short-hash>`, where
     /// the hash is over the run ids so a re-run with the same data is stable
     /// enough to debug while never clobbering a prior prefix.
@@ -736,6 +841,8 @@ impl SnapshotBuilder {
         let mut unconfirmed_media = std::collections::BTreeMap::new();
         let mut media_manifests = std::collections::BTreeMap::new();
         let bucket_images = self.bucket_validation_images();
+        let bucket_showcases = self.bucket_showcase_files();
+        let mut streamed = StreamedObjects::default();
         for run in &self.runs {
             // What this build finds about each of the run's files; see
             // [`Snapshot::unconfirmed_media`] and [`Snapshot::media_manifests`].
@@ -765,8 +872,11 @@ impl SnapshotBuilder {
                 .run_validation_media(&run.record, &tree, run_bucket_images, &mut account)
                 .await;
             let (asset_media, asset_objects) = self.run_assets(run, &tree, &mut account).await;
-            let (showcase_media, showcase_objects) =
-                self.run_showcase(&run.record, &tree, &mut account).await;
+            let no_files = Vec::new();
+            let run_bucket_showcase = bucket_showcases.get(&run.record.id).unwrap_or(&no_files);
+            let (showcase_media, showcase_objects) = self
+                .run_showcase(&run.record, &tree, run_bucket_showcase, &mut account)
+                .await;
             // The unbounded code-analysis document is the one per-run object whose
             // bytes are not media: it is published beside the run rather than inside
             // it, so it is scrubbed *here*, on its own, before it becomes an object
@@ -779,6 +889,34 @@ impl SnapshotBuilder {
             // run's session record is deliberately not: see the note on
             // `gg-runs.json` below.
             let controller_object = self.run_controller(&run.record, &tree, &mut account).await;
+            // One object per key. Two files of a run that would be published
+            // under one key (a showcase holding both `x.webm` and the `x.mp4` its
+            // transcode is named) cannot both be in the bucket, so the run is
+            // left unconfirmed and the first of them is the one uploaded.
+            let mut run_objects: Vec<SnapshotObject> = Vec::new();
+            for object in proof_objects
+                .into_iter()
+                .chain(validation_objects)
+                .chain(asset_objects)
+                .chain(showcase_objects)
+                .chain(code_analysis_object)
+                .chain(controller_object)
+            {
+                if !run_objects.iter().any(|seen| seen.key == object.key) {
+                    run_objects.push(object);
+                }
+            }
+            for key in run_files::contested_keys(&account.files) {
+                tracing::warn!(
+                    run.id = %run.record.id,
+                    r2.key = %key,
+                    "two files of a published run are published under one object key; \
+                     the run is left unconfirmed"
+                );
+                account
+                    .unconfirmed
+                    .push(format!("{CONTESTED_OBJECT}: {key}"));
+            }
             if !account.unconfirmed.is_empty() {
                 unconfirmed_media.insert(run.record.id.clone(), account.unconfirmed);
             }
@@ -833,7 +971,7 @@ impl SnapshotBuilder {
             if self.existing_documents.contains(&key) {
                 reused_documents += 1;
             } else {
-                objects.push(SnapshotObject {
+                run_objects.push(SnapshotObject {
                     key: key.clone(),
                     bytes,
                     content_type: "application/json".to_string(),
@@ -841,12 +979,12 @@ impl SnapshotBuilder {
                 });
             }
             document_keys.push(key);
-            objects.extend(proof_objects);
-            objects.extend(validation_objects);
-            objects.extend(asset_objects);
-            objects.extend(showcase_objects);
-            objects.extend(code_analysis_object);
-            objects.extend(controller_object);
+            // With a sink the run's objects go to the bucket now and their bytes
+            // are dropped, so the build never holds more than one run's.
+            objects.extend(
+                self.sink_run_objects(&run.record.id, run_objects, &mut streamed)
+                    .await?,
+            );
         }
         tracing::debug!(
             runs = self.runs.len(),
@@ -1070,6 +1208,7 @@ impl SnapshotBuilder {
             run_document_keys: document_keys.into_iter().collect(),
             unconfirmed_media,
             media_manifests,
+            streamed,
         })
     }
 
@@ -1994,6 +2133,7 @@ impl SnapshotBuilder {
         &self,
         record: &RunRecord,
         tree: &TreeMedia,
+        bucket_files: &[String],
         account: &mut run_files::RunAccount,
     ) -> (Vec<RunShowcaseOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
@@ -2058,6 +2198,21 @@ impl SnapshotBuilder {
             for file in description_image_references(&showcase.description) {
                 if !files.contains(&file) {
                     files.push(file);
+                }
+            }
+            // The bucket is the only place that still names a file nothing
+            // mentions, for a run whose folder and tree are both gone: without
+            // its names such a file would drop out of the run's document and
+            // manifest the first time the run is built from its sources again.
+            // The mp4 of a recording already in the list is that recording's
+            // transcode and no file of its own.
+            for file in bucket_files {
+                let transcode_of = file.strip_suffix(".mp4").map(|stem| format!("{stem}.webm"));
+                let is_transcode = transcode_of.is_some_and(|recording| {
+                    files.contains(&recording) || bucket_files.contains(&recording)
+                });
+                if file != "showcase.toml" && !is_transcode && !files.contains(file) {
+                    files.push(file.clone());
                 }
             }
         }
@@ -2272,14 +2427,17 @@ impl SnapshotBuilder {
             "showcase" => self.store.read_run_showcase(run_id, file),
             _ => self.store.read_run_asset(run_id, file),
         };
-        if let Ok(bytes) = from_store {
-            return Ok(bytes);
+        let name = format!("{kind}/{file}");
+        // An empty file is a copy of nothing: see `run_file_absent`.
+        if let Ok(bytes) = from_store
+            && !bytes.is_empty()
+        {
+            return self.checked_against_tree(run_id, &name, bytes, tree).await;
         }
         if matches!(tree, TreeMedia::Settled) {
             return Err(Missing::Settled);
         }
-        let name = format!("{kind}/{file}");
-        let store_answered = self.store.run_file_absent(run_id, &name);
+        let store_answered = self.store_answers() && self.store.run_file_absent(run_id, &name);
         match self.fetch_artifact(run_id, &name).await {
             Ok(bytes) => Ok(bytes),
             Err(FetchFailure::NotFound) if store_answered && tree.answers_for_missing_media() => {
@@ -2287,6 +2445,83 @@ impl SnapshotBuilder {
             }
             Err(_) => Err(Missing::Unavailable),
         }
+    }
+
+    /// Hold `stored`, the bytes the backend store has for the file of run
+    /// `run_id` the tree's routes name `path`, against the copy in the run's tree,
+    /// and return the bytes to publish.
+    ///
+    /// The tree is the original: the driver mirrored the file into the store from
+    /// it. The store's copy can be shorter, cut off by a write to a full volume
+    /// before writes were atomic, and once a run is confirmed both the tree and
+    /// the store's copy are deleted, leaving what was published as the only one.
+    /// So while a build knows the service holds the run's tree, it asks the
+    /// service how long its copy is, and where the two differ it publishes the
+    /// tree's.
+    ///
+    /// The store's bytes stand when there is no tree to ask, when the service
+    /// does not hold the file or does not give a length, and when the lengths
+    /// agree. A tree's copy that differs and then cannot be read is
+    /// [`Missing::Unavailable`]: the store's copy is in doubt and is not
+    /// published.
+    async fn checked_against_tree(
+        &self,
+        run_id: &str,
+        path: &str,
+        stored: Vec<u8>,
+        tree: &TreeMedia,
+    ) -> std::result::Result<Vec<u8>, Missing> {
+        if !matches!(tree, TreeMedia::Stored { .. }) {
+            return Ok(stored);
+        }
+        match self.artifact_length(run_id, path).await {
+            Some(length) if length != stored.len() as u64 => {
+                tracing::warn!(
+                    run.id = run_id,
+                    file = path,
+                    store_bytes = stored.len(),
+                    tree_bytes = length,
+                    "the backend store's copy of a run's file is not the size of the \
+                     copy in the run's tree; publishing the tree's"
+                );
+                self.fetch_artifact(run_id, path)
+                    .await
+                    .map_err(|_| Missing::Unavailable)
+            }
+            _ => Ok(stored),
+        }
+    }
+
+    /// The length of the file the artifact service serves at `path` of run
+    /// `run_id`'s tree, from a `HEAD` request. `None` when there is no service,
+    /// the request failed, the service does not hold the file, or it gave no
+    /// length.
+    async fn artifact_length(&self, run_id: &str, path: &str) -> Option<u64> {
+        let base = self.artifacts_url.as_deref()?;
+        let url = format!("{base}/runs/{run_id}/{path}");
+        let response = self
+            .http
+            .head(&url)
+            // The length asked for is the file's own, not a compressed body's.
+            .header(reqwest::header::ACCEPT_ENCODING, "identity")
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+            .ok()?;
+        if !response.status().is_success()
+            || response
+                .headers()
+                .contains_key(reqwest::header::CONTENT_ENCODING)
+        {
+            return None;
+        }
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)?
+            .to_str()
+            .ok()?
+            .parse()
+            .ok()
     }
 
     /// Resolve one of the files at the root of a run
@@ -2315,10 +2550,21 @@ impl SnapshotBuilder {
             test_cabinet_core::TREE_ROOT_CONTROLLER => self.store.read_run_controller(run_id),
             _ => self.store.read_run_code_analysis(run_id),
         };
-        if let Ok(bytes) = from_store {
-            return Ok(bytes);
+        if let Ok(bytes) = from_store
+            && !bytes.is_empty()
+        {
+            let in_tree = matches!(
+                tree,
+                TreeMedia::Stored { root: Some(names), .. } if names.iter().any(|held| held == name)
+            );
+            return if in_tree {
+                self.checked_against_tree(run_id, &format!("root/{name}"), bytes, tree)
+                    .await
+            } else {
+                Ok(bytes)
+            };
         }
-        let store_answered = self.store.run_file_absent(run_id, name);
+        let store_answered = self.store_answers() && self.store.run_file_absent(run_id, name);
         match tree {
             TreeMedia::Settled => Err(Missing::Settled),
             TreeMedia::Stored {
@@ -2466,6 +2712,44 @@ impl SnapshotBuilder {
             }
         }
         images
+    }
+
+    /// The showcase files each run already has in the bucket, by run id and under
+    /// the names the store held them by: every `media/runs/<id>/showcase/<file>`
+    /// key of [`existing_media`](Self::with_existing_media), and the recording of
+    /// every `media/runs/<id>/original/showcase/<file>`. As for the image store
+    /// ([`Self::bucket_validation_images`]), the bucket is the only place that
+    /// still names a showcase file neither the carousel nor the description
+    /// mentions, once the run's folder and tree are gone.
+    fn bucket_showcase_files(&self) -> std::collections::HashMap<String, Vec<String>> {
+        let mut files: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        let mut keys: Vec<&String> = self.existing_media.iter().collect();
+        keys.sort();
+        for key in keys {
+            let Some(rest) = key
+                .strip_prefix(MEDIA_PREFIX)
+                .and_then(|rest| rest.strip_prefix('/'))
+            else {
+                continue;
+            };
+            let Some((run_id, rest)) = rest.split_once('/') else {
+                continue;
+            };
+            let file = rest
+                .strip_prefix("showcase/")
+                .or_else(|| rest.strip_prefix(&format!("{}/showcase/", run_files::ORIGINAL_DIR)));
+            if let Some(file) = file
+                && !file.is_empty()
+                && !file.contains('/')
+            {
+                let names = files.entry(run_id.to_string()).or_default();
+                if !names.iter().any(|seen| seen == file) {
+                    names.push(file.to_string());
+                }
+            }
+        }
+        files
     }
 
     /// Compute the snapshot id: a compact RFC-3339 timestamp plus a short hash of
@@ -2796,6 +3080,17 @@ fn decode_maybe_gzip(stored: &[u8]) -> Option<Vec<u8>> {
     )
     .ok()?;
     Some(plain)
+}
+
+/// The bytes a stored code-analysis document is published as: its scrubbed,
+/// uncompressed JSON. `None` for bytes that are not a document.
+///
+/// The state sweep publishes a stored document again with this, in memory, to
+/// learn whether the object under the document's name holds this document.
+pub(crate) fn published_code_analysis(stored: &[u8]) -> Option<Vec<u8>> {
+    run_files::scrubbed_json(stored, &SecretScrubber::new())
+        .ok()
+        .map(|(bytes, _)| bytes)
 }
 
 /// Serialize a value to a pretty JSON [`SnapshotObject`].
@@ -4594,3 +4889,7 @@ mod confirm_tests;
 #[cfg(test)]
 #[path = "snapshot.manifest.test.rs"]
 mod manifest_tests;
+
+#[cfg(test)]
+#[path = "snapshot.sources.test.rs"]
+mod sources_tests;

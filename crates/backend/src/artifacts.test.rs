@@ -179,6 +179,15 @@ fn a_run_less_tree_past_the_grace_window_is_selected() {
 }
 
 #[test]
+fn no_grace_window_selects_no_run_less_tree() {
+    // Zero is how the orphan rule is turned off. It is not a window every tree
+    // is past: the tree of a run that is still finishing has no row either.
+    let trees = vec![tree("orphan", 48), tree("just-uploaded", 0)];
+    let selected = orphaned_trees(&trees, &live(&["another-run"]), now(), Duration::ZERO);
+    assert!(selected.is_empty(), "{selected:?}");
+}
+
+#[test]
 fn an_empty_listing_selects_nothing() {
     let selected = orphaned_trees(&[], &live(&["a", "b"]), now(), Duration::from_secs(0));
     assert!(selected.is_empty(), "{selected:?}");

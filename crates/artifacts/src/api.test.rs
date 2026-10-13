@@ -1329,6 +1329,7 @@ async fn the_media_listing_names_the_validation_and_showcase_files_of_a_tree() {
     let stub = spawn_stub().await;
     let (app, store, _dir) = app(&stub).await;
     seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
     let implementation = store.run_dir("run-here").join("implementation");
     let validation = implementation.join(".vendor").join("validation");
     let legacy = implementation.join(".tcab").join("validation");
@@ -1381,8 +1382,9 @@ async fn the_media_listing_names_the_validation_and_showcase_files_of_a_tree() {
 #[tokio::test]
 async fn the_media_listing_of_a_tree_with_no_media_is_empty_and_stored() {
     let stub = spawn_stub().await;
-    let (app, _store, _dir) = app(&stub).await;
+    let (app, store, _dir) = app(&stub).await;
     seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
 
     let response = app
         .clone()
@@ -1434,6 +1436,16 @@ fn root_request(run_id: &str, name: &str) -> Request<Body> {
         .uri(format!("/runs/{run_id}/root/{name}"))
         .body(Body::empty())
         .unwrap()
+}
+
+/// Give run `run_id`'s stored tree a record that names no controller, as every
+/// tree a driver uploads carries one.
+fn give_record(store: &crate::store::LocalFsStore, run_id: &str) {
+    std::fs::write(
+        store.run_dir(run_id).join("run-record.json"),
+        serde_json::to_vec(&serde_json::json!({ "id": run_id })).unwrap(),
+    )
+    .unwrap();
 }
 
 /// Give run `run_id`'s stored tree a record naming `module` as its controller.
@@ -1503,6 +1515,7 @@ async fn the_root_route_answers_404_for_a_missing_file_and_an_unknown_name() {
     let stub = spawn_stub().await;
     let (app, store, _dir) = app(&stub).await;
     seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
     // A file the tree does hold, which no name of the route reaches.
     std::fs::write(store.run_dir("run-here").join("secret.txt"), b"x").unwrap();
 
@@ -1546,6 +1559,7 @@ async fn the_root_route_answers_500_for_a_file_that_cannot_be_read() {
     let stub = spawn_stub().await;
     let (app, store, _dir) = app(&stub).await;
     seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
     // A directory where the file belongs: there, and not readable as a file.
     std::fs::create_dir_all(store.run_dir("run-here").join("code-analysis.json.gz")).unwrap();
 
@@ -1565,4 +1579,149 @@ async fn the_media_listing_refuses_an_unsafe_id() {
     let response = app.clone().oneshot(media_request("..")).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+fn media_get(run_id: &str, path: &str) -> Request<Body> {
+    Request::builder()
+        .uri(format!("/runs/{run_id}/{path}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_media_route_answers_404_only_when_the_tree_positively_lacks_the_file() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+
+    // A showcase and a validation file that are not there, and a run with no
+    // tree at all.
+    for (run, path) in [
+        ("run-here", "showcase/demo.png"),
+        ("run-here", "validation/img.abc.png"),
+        ("run-gone", "proof/title.png"),
+        ("run-gone", "asset/replay.json"),
+        ("run-gone", "showcase/demo.png"),
+    ] {
+        let response = app.clone().oneshot(media_get(run, path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{run}/{path}");
+    }
+}
+
+#[tokio::test]
+async fn a_media_route_answers_500_when_the_tree_cannot_say() {
+    // The backend's refresh records a file as existing nowhere on a 404 from
+    // these routes and the tree is then deleted, so no read that failed may
+    // answer one.
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+
+    // A record that does not parse: nothing says which files the run has.
+    seed_upload(&app, "run-damaged").await;
+    std::fs::write(
+        store.run_dir("run-damaged").join("run-record.json"),
+        b"{ nope",
+    )
+    .unwrap();
+    // A tree that lost its record.
+    seed_upload(&app, "run-recordless").await;
+    for run in ["run-damaged", "run-recordless"] {
+        for path in ["proof/title.png", "asset/replay.json", "asset/engine.wasm"] {
+            let response = app.clone().oneshot(media_get(run, path)).await.unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "{run}/{path}"
+            );
+        }
+    }
+
+    // A file that is there and cannot be read as one.
+    seed_upload(&app, "run-here").await;
+    let implementation = store.run_dir("run-here").join("implementation");
+    std::fs::create_dir_all(implementation.join("showcase/demo.png")).unwrap();
+    std::fs::create_dir_all(implementation.join(".vendor/validation/img.abc.png")).unwrap();
+    for path in ["showcase/demo.png", "validation/img.abc.png"] {
+        let response = app
+            .clone()
+            .oneshot(media_get("run-here", path))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{path}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_head_request_for_a_media_file_reports_its_length() {
+    // The backend asks for the length of a tree's copy to hold its own against.
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let showcase = store.run_dir("run-here").join("implementation/showcase");
+    std::fs::create_dir_all(&showcase).unwrap();
+    std::fs::write(showcase.join("demo.png"), b"twelve bytes").unwrap();
+
+    let head = Request::builder()
+        .method("HEAD")
+        .uri("/runs/run-here/showcase/demo.png")
+        .header("accept-encoding", "identity")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(head).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-length"], "12");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_link_out_of_the_tree_is_served_by_no_media_or_root_route() {
+    // A tree is unpacked with the links a model wrote. One that leads out of the
+    // tree names no file of the run, and its target must reach no reader: the
+    // backend publishes what these routes serve.
+    let stub = spawn_stub().await;
+    let (app, store, dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let secret = dir.path().join("secret.bin");
+    std::fs::write(&secret, b"not the run's").unwrap();
+    let run_dir = store.run_dir("run-here");
+    let implementation = run_dir.join("implementation");
+    name_controller(&store, "run-here", "build/controller.wasm");
+    std::fs::create_dir_all(implementation.join("build")).unwrap();
+    std::fs::create_dir_all(implementation.join("showcase")).unwrap();
+    std::fs::create_dir_all(implementation.join(".vendor/validation")).unwrap();
+    for link in [
+        implementation.join("build/controller.wasm"),
+        implementation.join("showcase/demo.png"),
+        implementation.join(".vendor/validation/img.abc.png"),
+        run_dir.join("code-analysis.json.gz"),
+    ] {
+        std::os::unix::fs::symlink(&secret, link).unwrap();
+    }
+
+    for path in [
+        "root/controller.wasm",
+        "root/code-analysis.json",
+        "showcase/demo.png",
+        "validation/img.abc.png",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(media_get("run-here", path))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    let listing = json_body(
+        app.clone()
+            .oneshot(media_request("run-here"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(listing["root"], serde_json::json!([]));
 }

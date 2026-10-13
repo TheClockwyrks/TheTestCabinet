@@ -5069,6 +5069,7 @@ dependencies = [
  "hmac",
  "http",
  "libsqlite3-sys",
+ "md-5",
  "opentelemetry",
  "percent-encoding",
  "reqwest 0.12.28",

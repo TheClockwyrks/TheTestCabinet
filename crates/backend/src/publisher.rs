@@ -172,8 +172,10 @@ impl Publisher {
 
     /// Count one refresh request: one change to what the public snapshot shows (a
     /// run's publish, a review on a published run, a published comparison, an
-    /// ingest that changed the store, a catalog or price change). Every request
-    /// counts as one, whatever its kind.
+    /// ingest that changed the store, a catalog or price change), or one
+    /// published run that has to be evaluated again (the first file uploaded for
+    /// it since it was last evaluated, and the publisher's own periodic check).
+    /// Every request counts as one, whatever its kind.
     ///
     /// Returns immediately; the background task releases the request with its
     /// batch. Returns whether a refresh was queued, which is always `true`.
@@ -192,6 +194,19 @@ impl Publisher {
         // background refresh's trace (a refresh is not tied to one request), so
         // `run_refresh`'s spans nest under it rather than floating free.
         let task_span = tracing::info_span!("publisher.refresher");
+        // The periodic check for published runs still waiting on a media
+        // confirmation, on a backend that records them.
+        let recheck = self
+            .inner
+            .confirm_media
+            .filter(|_| self.inner.r2.is_some())
+            .map(|_| {
+                let inner = Arc::clone(&self.inner);
+                AbortOnDrop(tokio::spawn(
+                    async move { inner.recheck_confirmations().await }
+                        .instrument(tracing::info_span!("publisher.confirmation_recheck")),
+                ))
+            });
         let handle = tokio::spawn(
             async move {
                 let recover = inner.recovery().await;
@@ -206,6 +221,7 @@ impl Publisher {
         RefresherHandle {
             _shutdown: shutdown_tx,
             handle,
+            _recheck: recheck,
         }
     }
 
@@ -288,6 +304,138 @@ impl PublisherInner {
     }
 }
 
+/// How often the publisher looks for published runs still waiting on a media
+/// confirmation.
+const CONFIRMATION_RECHECK: Duration = Duration::from_secs(10 * 60);
+
+/// The longest the publisher waits between two refreshes requested for runs a
+/// refresh keeps leaving unconfirmed.
+const UNCONFIRMED_RETRY_MAX: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// When to ask for another refresh on account of runs a refresh evaluated and
+/// left unconfirmed.
+///
+/// Such a run may be confirmable a minute later (the artifact service was
+/// restarting when it was evaluated) or never (its video does not transcode).
+/// Nothing tells the two apart from here, so the request is repeated with a
+/// delay that doubles from [`CONFIRMATION_RECHECK`] to
+/// [`UNCONFIRMED_RETRY_MAX`]: a passing fault is retried within minutes, and a
+/// run that can never be confirmed costs one refresh a day. The delay starts
+/// over once no run is left unconfirmed, and with the process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UnconfirmedRetry {
+    /// How long after the next request the one after it may be made.
+    delay: Duration,
+    /// The earliest instant of the next request. `None` before the first.
+    next: Option<tokio::time::Instant>,
+}
+
+impl Default for UnconfirmedRetry {
+    fn default() -> Self {
+        Self {
+            delay: CONFIRMATION_RECHECK,
+            next: None,
+        }
+    }
+}
+
+impl UnconfirmedRetry {
+    /// Whether to request a refresh at `now`, given how many published runs are
+    /// evaluated and unconfirmed.
+    pub(crate) fn due(&mut self, unconfirmed: u64, now: tokio::time::Instant) -> bool {
+        if unconfirmed == 0 {
+            *self = Self::default();
+            return false;
+        }
+        if self.next.is_some_and(|next| now < next) {
+            return false;
+        }
+        self.next = Some(now + self.delay);
+        self.delay = self.delay.saturating_mul(2).min(UNCONFIRMED_RETRY_MAX);
+        true
+    }
+}
+
+impl PublisherInner {
+    /// Every [`CONFIRMATION_RECHECK`], request a refresh while published runs are
+    /// waiting on a media confirmation
+    /// ([`request_pending_confirmation`](Self::request_pending_confirmation)).
+    /// Runs for the publisher's lifetime.
+    async fn recheck_confirmations(&self) {
+        let mut retry = UnconfirmedRetry::default();
+        let mut ticker = tokio::time::interval(CONFIRMATION_RECHECK);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // The first tick is immediate, and the startup check covers that moment.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            self.request_pending_confirmation(&mut retry, tokio::time::Instant::now())
+                .await;
+        }
+    }
+
+    /// Request one refresh when published runs are waiting on a media
+    /// confirmation in the configured bucket. Returns whether it did.
+    ///
+    /// Two kinds of run wait. One **no refresh has evaluated**: published before
+    /// the backend recorded confirmations, changed while a refresh was reading
+    /// it, or made unevaluated again by an upload or by the state sweep. A
+    /// refresh is requested for these at every check, since one refresh
+    /// evaluates them all. And one a refresh **evaluated and left unconfirmed**,
+    /// which is retried on the schedule of [`UnconfirmedRetry`].
+    ///
+    /// Without this check both kinds wait for an unrelated publish, ingest or
+    /// price change to bring a refresh about, and a deployment whose queue is
+    /// held for lack of space has none coming: its runs would never be confirmed,
+    /// their files never reclaimed, and the hold never lifted.
+    pub(crate) async fn request_pending_confirmation(
+        &self,
+        retry: &mut UnconfirmedRetry,
+        now: tokio::time::Instant,
+    ) -> bool {
+        let Some(bucket) = self.confirm_media.filter(|_| self.r2.is_some()) else {
+            return false;
+        };
+        let counted = async {
+            Ok::<_, BackendError>((
+                self.db.published_runs_unchecked(bucket).await?,
+                self.db.published_runs_unconfirmed(bucket).await?,
+            ))
+        };
+        let (unchecked, unconfirmed) = match counted.await {
+            Ok(counts) => counts,
+            Err(err) => {
+                tracing::warn!(
+                    "could not count the published runs awaiting a media confirmation ({err}); \
+                     counting again at the next check"
+                );
+                return false;
+            }
+        };
+        let retry_due = retry.due(unconfirmed, now);
+        if unchecked == 0 && !retry_due {
+            return false;
+        }
+        tracing::info!(
+            unchecked,
+            unconfirmed,
+            "published runs are waiting on a media confirmation; requesting a snapshot \
+             refresh to evaluate them"
+        );
+        self.batcher.request();
+        true
+    }
+}
+
+/// A task that is aborted when its handle is dropped.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// How long a startup recovery waits: what is left of `min_interval` since the
 /// last upload, so the interval between two releases holds across a restart.
 ///
@@ -339,6 +487,8 @@ impl RefreshTarget for PublisherInner {
 pub struct RefresherHandle {
     _shutdown: mpsc::Sender<()>,
     handle: tokio::task::JoinHandle<()>,
+    /// The periodic confirmation check, stopped with the handle.
+    _recheck: Option<AbortOnDrop>,
 }
 
 impl RefresherHandle {
@@ -348,8 +498,13 @@ impl RefresherHandle {
     /// resolves and the task breaks; awaiting the handle while still holding the
     /// sender would deadlock, since nothing would ever signal the loop to stop.
     pub async fn join(self) {
-        let Self { _shutdown, handle } = self;
+        let Self {
+            _shutdown,
+            handle,
+            _recheck,
+        } = self;
         drop(_shutdown);
+        drop(_recheck);
         let _ = handle.await;
     }
 }
@@ -585,7 +740,11 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
                     .collect(),
             );
     }
+    // Each run's media and document go to the bucket as the build makes them,
+    // so the build holds one run's new files at a time and a refresh that fails
+    // part-way keeps what it uploaded.
     let snapshot = builder
+        .with_object_sink(inner.r2.clone())
         .with_recorded_manifests(recorded_manifests)
         .with_models(models)
         .with_reference_builds(reference_builds)
@@ -657,6 +816,8 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         deploy_hook_fired,
         runs_confirmed,
         runs_unconfirmed,
+        streamed_objects = snapshot.streamed.objects,
+        streamed_bytes = snapshot.streamed.bytes,
         tournament_replay_bytes = tournament_replays.map(|usage| usage.bytes),
         tournament_replay_files = tournament_replays.map(|usage| usage.files),
         "snapshot refresh complete"
@@ -909,3 +1070,7 @@ pub(crate) mod tests;
 #[cfg(test)]
 #[path = "publisher.manifest.test.rs"]
 mod manifest_tests;
+
+#[cfg(test)]
+#[path = "publisher.recheck.test.rs"]
+mod recheck_tests;

@@ -8,7 +8,7 @@ use tempfile::TempDir;
 use test_cabinet_core::run_record::RunLinks;
 
 use super::tests::{
-    BUCKET, Bucket, Trees, bucket_publisher, record, run_columns, seed_published,
+    BUCKET, Bucket, Trees, bucket_publisher, hold_another_run, record, run_columns, seed_published,
     seed_published_with_proof,
 };
 use super::*;
@@ -135,7 +135,7 @@ async fn a_confirming_refresh_records_the_manifest_of_every_file() {
 }
 
 #[tokio::test]
-async fn a_refresh_that_withdraws_a_confirmation_clears_the_manifest() {
+async fn a_refresh_that_withdraws_a_confirmation_keeps_the_manifest_as_a_record() {
     let dir = TempDir::new().unwrap();
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let bucket = Arc::new(Bucket::default());
@@ -167,10 +167,18 @@ async fn a_refresh_that_withdraws_a_confirmation_clears_the_manifest() {
 
     let row = run_columns(&db, "proven").await;
     assert_eq!(row.media_confirmed_at, None);
-    assert_eq!(row.media_manifest, None);
+    // Nothing deletes on the manifest any longer, and it is still the record of
+    // where the run's files were published.
     assert_eq!(
         db.run_media_manifest("proven", Some(BUCKET)).await.unwrap(),
         None
+    );
+    assert!(row.media_manifest.is_some());
+    assert!(
+        db.run_file_locations("proven", Some(BUCKET))
+            .await
+            .unwrap()
+            .is_some()
     );
 }
 
@@ -244,9 +252,11 @@ async fn a_run_settled_before_the_version_has_its_new_files_published_from_the_s
 
 #[tokio::test]
 async fn a_run_settled_before_the_version_whose_new_files_are_lost_is_confirmed_without_them() {
-    // As above, with a backend store that was wiped. The second replay and the
-    // controller are in none of the bucket, the store and the tree.
+    // As above, with a backend store that holds other runs and has lost this
+    // one's files. The second replay and the controller are in none of the
+    // bucket, the store and the tree.
     let dir = TempDir::new().unwrap();
+    hold_another_run(&dir);
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let bucket = Arc::new(Bucket::default());
     let trees = Arc::new(Trees::default());
@@ -281,6 +291,7 @@ async fn a_missing_tree_the_backend_records_as_stored_writes_no_file_off() {
     // record says the tree is stored. A service that lost sight of its volume
     // answers like this for every run, so nothing is recorded as lost for good.
     let dir = TempDir::new().unwrap();
+    hold_another_run(&dir);
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let bucket = Arc::new(Bucket::default());
     let trees = Arc::new(Trees::default());

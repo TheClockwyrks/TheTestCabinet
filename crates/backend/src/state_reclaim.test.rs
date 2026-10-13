@@ -347,9 +347,14 @@ fn a_canceled_retention_under_the_floor_behaves_as_the_floor() {
 }
 
 fn file(name: &str) -> RunFolderFile {
+    sized(name, 1)
+}
+
+fn sized(name: &str, bytes: u64) -> RunFolderFile {
     RunFolderFile {
         name: name.to_string(),
-        bytes: 1,
+        bytes,
+        modified: WRITTEN.into(),
     }
 }
 
@@ -365,6 +370,32 @@ fn stored(name: &str) -> MediaManifestFile {
     MediaManifestFile::stored(MediaFileKind::Proof, name, format!("media/runs/r1/{name}"))
 }
 
+/// A bucket listing that holds, for every key `manifest` names, an object one
+/// byte long: the size of every file [`folder`] makes.
+fn listing(manifest: &MediaManifest) -> HashMap<String, BucketObject> {
+    manifest
+        .keys()
+        .map(|key| {
+            (
+                key.to_string(),
+                BucketObject {
+                    size: Some(1),
+                    md5: None,
+                },
+            )
+        })
+        .collect()
+}
+
+/// The names of the files an accounting would remove.
+fn removed(accounting: &Accounting) -> Vec<&str> {
+    accounting
+        .remove
+        .iter()
+        .map(|removable| removable.file.name.as_str())
+        .collect()
+}
+
 #[test]
 fn a_folder_whose_every_file_has_an_object_is_removed_whole() {
     let manifest = MediaManifest {
@@ -376,29 +407,30 @@ fn a_folder_whose_every_file_has_an_object_is_removed_whole() {
                 "media/runs/r1/original/proof/play.webm",
                 "media/runs/r1/proof/play.mp4",
             ),
-            stored("controller.wasm"),
-            stored("code-analysis.json"),
+            MediaManifestFile::stored(
+                MediaFileKind::Controller,
+                "controller.wasm",
+                "media/runs/r1/controller.wasm",
+            ),
         ],
     };
     let accounting = account_folder(
-        &folder(&[
-            "code-analysis.json",
-            "controller.wasm",
-            "proof/play.webm",
-            "proof/title.png",
-        ]),
+        &folder(&["controller.wasm", "proof/play.webm", "proof/title.png"]),
         &manifest,
+        &listing(&manifest),
     );
     assert_eq!(
-        accounting.remove,
-        [
-            "code-analysis.json",
-            "controller.wasm",
-            "proof/play.webm",
-            "proof/title.png"
-        ]
+        removed(&accounting),
+        ["controller.wasm", "proof/play.webm", "proof/title.png"]
     );
-    assert!(accounting.unaccounted.is_empty());
+    // Each is held to its object: the recording to the recording's, not the mp4's.
+    assert!(
+        accounting
+            .remove
+            .iter()
+            .all(|removable| { removable.published == Some(PublishedCopy { size: 1, md5: None }) })
+    );
+    assert_eq!(accounting.kept().count(), 0);
 }
 
 #[test]
@@ -413,8 +445,9 @@ fn a_file_the_manifest_does_not_name_is_unaccounted() {
             "showcase/showcase.toml",
         ]),
         &manifest,
+        &listing(&manifest),
     );
-    assert_eq!(accounting.remove, ["proof/title.png"]);
+    assert_eq!(removed(&accounting), ["proof/title.png"]);
     assert_eq!(
         accounting.unaccounted,
         ["asset/notes.txt", "showcase/showcase.toml"]
@@ -422,7 +455,7 @@ fn a_file_the_manifest_does_not_name_is_unaccounted() {
 }
 
 #[test]
-fn a_file_the_manifest_wrote_off_is_unaccounted_when_the_folder_holds_it() {
+fn a_file_the_manifest_wrote_off_is_unpublished_when_the_folder_holds_it() {
     // The refresh found the recording nowhere and kept the mp4 made from it.
     // The recording turning up later is a file nothing has uploaded.
     let manifest = MediaManifest {
@@ -438,10 +471,11 @@ fn a_file_the_manifest_wrote_off_is_unaccounted_when_the_folder_holds_it() {
     let accounting = account_folder(
         &folder(&["asset/replay.json", "proof/play.webm"]),
         &manifest,
+        &listing(&manifest),
     );
     assert!(accounting.remove.is_empty());
     assert_eq!(
-        accounting.unaccounted,
+        accounting.unpublished,
         ["asset/replay.json", "proof/play.webm"]
     );
 }
@@ -454,8 +488,13 @@ fn a_name_recorded_twice_counts_only_when_every_entry_has_an_object() {
             MediaManifestFile::unrecoverable(MediaFileKind::Proof, "proof/title.png", None),
         ],
     };
-    let accounting = account_folder(&folder(&["proof/title.png"]), &manifest);
-    assert_eq!(accounting.unaccounted, ["proof/title.png"]);
+    let accounting = account_folder(
+        &folder(&["proof/title.png"]),
+        &manifest,
+        &listing(&manifest),
+    );
+    assert_eq!(accounting.unpublished, ["proof/title.png"]);
+    assert!(accounting.remove.is_empty());
 }
 
 #[test]
@@ -463,12 +502,140 @@ fn the_session_record_is_neither_removed_nor_a_reason_to_keep_the_rest() {
     let manifest = MediaManifest {
         files: vec![stored("proof/title.png")],
     };
-    let accounting = account_folder(&folder(&["proof/title.png", "replay.json"]), &manifest);
-    assert_eq!(accounting.remove, ["proof/title.png"]);
-    assert!(accounting.unaccounted.is_empty());
+    let accounting = account_folder(
+        &folder(&["proof/title.png", "replay.json"]),
+        &manifest,
+        &listing(&manifest),
+    );
+    assert_eq!(removed(&accounting), ["proof/title.png"]);
+    assert_eq!(accounting.kept().count(), 0);
     // An adversarial run's replay shares the file name and not the place.
-    let accounting = account_folder(&folder(&["asset/replay.json"]), &MediaManifest::default());
+    let accounting = account_folder(
+        &folder(&["asset/replay.json"]),
+        &MediaManifest::default(),
+        &HashMap::new(),
+    );
     assert_eq!(accounting.unaccounted, ["asset/replay.json"]);
+}
+
+#[test]
+fn a_file_whose_object_is_another_size_is_the_only_copy_of_its_bytes() {
+    // A file uploaded again under a name the bucket already holds an object for:
+    // the object is the older file's, and removing this one would lose it.
+    let manifest = MediaManifest {
+        files: vec![stored("proof/title.png"), stored("proof/other.png")],
+    };
+    let mut objects = listing(&manifest);
+    objects.insert(
+        "media/runs/r1/proof/title.png".to_string(),
+        BucketObject {
+            size: Some(7),
+            md5: None,
+        },
+    );
+    let accounting = account_folder(
+        &folder(&["proof/other.png", "proof/title.png"]),
+        &manifest,
+        &objects,
+    );
+    assert_eq!(removed(&accounting), ["proof/other.png"]);
+    assert_eq!(accounting.differing, ["proof/title.png"]);
+}
+
+#[test]
+fn an_object_the_bucket_gave_no_size_for_vouches_for_nothing() {
+    let manifest = MediaManifest {
+        files: vec![stored("proof/title.png")],
+    };
+    let objects = HashMap::from([(
+        "media/runs/r1/proof/title.png".to_string(),
+        BucketObject {
+            size: None,
+            md5: None,
+        },
+    )]);
+    let accounting = account_folder(&folder(&["proof/title.png"]), &manifest, &objects);
+    assert!(accounting.remove.is_empty());
+    assert_eq!(accounting.differing, ["proof/title.png"]);
+}
+
+#[test]
+fn an_empty_file_the_manifest_names_is_removed_whatever_its_entry_says() {
+    // What a write cut off by a full volume left: a copy of nothing.
+    let manifest = MediaManifest {
+        files: vec![
+            stored("proof/title.png"),
+            MediaManifestFile::unrecoverable(MediaFileKind::Asset, "asset/replay.json", None),
+        ],
+    };
+    let empty = RunFolder {
+        files: vec![sized("asset/replay.json", 0), sized("proof/title.png", 0)],
+        irregular: Vec::new(),
+        modified: Some(WRITTEN.into()),
+    };
+    let mut objects = listing(&manifest);
+    objects.insert(
+        "media/runs/r1/proof/title.png".to_string(),
+        BucketObject {
+            size: Some(900),
+            md5: None,
+        },
+    );
+    let accounting = account_folder(&empty, &manifest, &objects);
+    assert_eq!(
+        removed(&accounting),
+        ["asset/replay.json", "proof/title.png"]
+    );
+    assert!(
+        accounting
+            .remove
+            .iter()
+            .all(|file| file.published.is_none())
+    );
+    assert_eq!(accounting.kept().count(), 0);
+    // One no manifest entry names is still nothing's to remove.
+    let accounting = account_folder(&empty, &MediaManifest::default(), &HashMap::new());
+    assert_eq!(
+        accounting.unaccounted,
+        ["asset/replay.json", "proof/title.png"]
+    );
+}
+
+#[test]
+fn the_code_analysis_document_is_set_aside_to_be_compared_as_published() {
+    // Its object is the scrubbed, uncompressed form of the file, so no size of
+    // the file's says whether the object is this document's.
+    let manifest = MediaManifest {
+        files: vec![MediaManifestFile::stored(
+            MediaFileKind::CodeAnalysis,
+            "code-analysis.json",
+            "media/runs/r1/code-analysis/v3.json",
+        )],
+    };
+    let object = BucketObject {
+        size: Some(4096),
+        md5: None,
+    };
+    let objects = HashMap::from([("media/runs/r1/code-analysis/v3.json".to_string(), object)]);
+    let accounting = account_folder(&folder(&["code-analysis.json"]), &manifest, &objects);
+    assert!(accounting.remove.is_empty());
+    assert_eq!(
+        accounting.transformed,
+        Some((file("code-analysis.json"), object))
+    );
+}
+
+#[test]
+fn orphans_are_held_when_there_are_too_many_to_believe() {
+    // A few orphans are ordinary, however small the store.
+    assert!(!orphans_held(20, 20));
+    assert!(!orphans_held(3, 4));
+    // Many, and a large share of the folders: a database older than the store.
+    assert!(orphans_held(21, 80));
+    assert!(orphans_held(500, 1999));
+    // Many, and a small share: a large store's ordinary leftovers.
+    assert!(!orphans_held(21, 84));
+    assert!(!orphans_held(500, 2000));
 }
 
 #[test]
@@ -478,10 +645,10 @@ fn a_folder_is_an_orphan_only_past_the_grace_window() {
     assert!(orphan_expired(hours(25), NOW, grace));
     assert!(!orphan_expired(hours(24), NOW, grace));
     assert!(!orphan_expired(hours(1), NOW, grace));
+    // No window is no orphan rule, not a window every folder is past.
+    assert!(!orphan_expired(hours(25), NOW, Duration::ZERO));
     // Written after now: a clock that is wrong keeps the folder.
     assert!(!orphan_expired(hours(-1), NOW, grace));
     // A window past the representable range spares everything.
     assert!(!orphan_expired(hours(25), NOW, Duration::MAX));
-    // No grace at all still needs the folder to be in the past.
-    assert!(orphan_expired(hours(1), NOW, Duration::ZERO));
 }

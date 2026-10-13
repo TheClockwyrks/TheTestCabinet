@@ -88,8 +88,9 @@ bucket afterwards. Once a refresh has
 manifest](/components/backend/snapshot/#the-file-manifest) names the object
 holding each of its files, and every [run file
 route](/components/backend/api/#run-files) answers from that object when the
-store has no copy. The consoles and the arena keep requesting the same routes
-wherever the bytes are. The pushed-controller listing
+store has no copy. The run keeps that manifest when its confirmation is later
+withdrawn, so the routes go on answering. The consoles and the arena keep
+requesting the same routes wherever the bytes are. The pushed-controller listing
 (`GET /adversarial/controllers`) offers a run whose controller module is in the
 store or named with an object by its manifest.
 
@@ -159,7 +160,11 @@ Each refresh ends in a full site rebuild, so the backend releases refreshes in
 batches. A request is one change to what the public snapshot shows: a run's
 publish, a review on a published run, a published comparison, an ingest that
 changed the definition store, or a change to the model catalog or a list price.
-Each request counts as one, whatever its kind.
+Two more kinds change no document and exist to get a run's files into the
+bucket: the first [upload of a file](#uploads-after-a-confirmation) to a
+published run a refresh had already evaluated, and the [periodic
+check](#runs-waiting-on-a-confirmation) that finds published runs waiting on a
+confirmation. Each request counts as one, whatever its kind.
 
 A batch is released by whichever of two conditions comes first:
 
@@ -222,7 +227,7 @@ of four reasons:
 
 | Reason      | The tree's run                                                       | Deleted                                                          |
 | ----------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `orphan`    | Has no run row                                                       | Once the tree is older than the grace window                     |
+| `orphan`    | Has no run row                                                       | Once the tree is older than the grace window, when there is one  |
 | `published` | Is published                                                         | Once a snapshot refresh has [confirmed its media](#confirmation) |
 | `failed`    | Is unpublished and ended in any state but `completed` and `canceled` | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` after the run ended       |
 | `canceled`  | Is unpublished and ended `canceled`                                  | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` after the run ended     |
@@ -248,7 +253,9 @@ partial tree for ten minutes after the cancel, so the canceled retention is at
 least fifteen minutes whatever the setting says. A tree that lands for a run
 already reclaimed is kept for the retention from when it landed and then deleted
 by the pass that follows, and the run's record of its first reclaim is left as
-it was written.
+it was written. A grace window of `0` turns the `orphan` rule off, here and in
+the [state sweep](#state-volume): with no window, the tree of every run that is
+still finishing would be an orphan's.
 
 ### Confirmation
 
@@ -286,7 +293,23 @@ artifact service. A video that could not be transcoded is published as recorded
 and leaves its run unconfirmed as well, since the next refresh reads the source
 again to transcode it. The same holds for a code-analysis document that is
 stored and does not read as JSON. A refresh that finds a confirmed run
-unconfirmed withdraws the confirmation and clears the manifest.
+unconfirmed withdraws the confirmation. The manifest stays on the run as the
+record of [where its files are](/components/backend/snapshot/#the-file-manifest),
+and nothing deletes on the strength of it until a refresh confirms the run
+again.
+
+Two files of one run can be bound for one object: a recording whose transcode
+is published as `clip.mp4`, beside a file the run itself wrote as `clip.mp4`.
+One object cannot hold both, so the first is the one uploaded and the run is
+left unconfirmed, reported as `object/contested` with the key. Neither the tree
+nor the folder of such a run is reclaimed.
+
+The backend store's copy of a file is not taken on its name alone. While the
+artifact service holds the run's tree, the refresh asks the service how long
+the tree's copy is, and where the two lengths differ it publishes the tree's
+copy: the store's is what an upload that was cut off left. An empty file in the
+store is a copy of nothing and is read past, to the tree. A store copy stands
+when there is no tree to ask or the tree does not hold the file.
 
 The controller module and the code-analysis document sit outside a tree's media
 directories, where no media route reaches them. The refresh reads which of them
@@ -305,6 +328,12 @@ manifest records it as unrecoverable, and the run can still be confirmed. A file
 the service could not be asked about, an answer other than `404`, a backend
 store read that failed for another reason than the file not being there, and a
 missing tree the backend still records as stored all leave the run unconfirmed.
+
+A backend store that holds no run folder at all answers for nothing. That is
+what a state volume that did not mount, a new volume and a wrong store path look
+like, and every file of every run is missing from each. A refresh that finds the
+store so records no file as unrecoverable; the runs that need the store are
+left unconfirmed until it holds runs again.
 
 A confirmation holds for the bucket it was made against, for the record it
 was made from, and for the definition it was made under:
@@ -373,16 +402,33 @@ trees: one with a bucket, an artifact service and a service token, the sweep on
 and `TCAB_ARTIFACT_RECLAIM_PUBLISHED` on. Any other backend records none and
 asks the artifact service for no listing.
 
+### Runs waiting on a confirmation
+
 Every refresh evaluates every published run it has yet to settle, so a publish
-confirms the runs before it as well. A backend that records confirmations and
-starts beside at least one published run no refresh has evaluated against its
-bucket under the current version requests one refresh, which goes through the
-[batching](#refresh-batching) like any other request. This is what confirms the
-runs published before the backend recorded confirmations, and evaluates again
-the ones confirmed under an earlier version, with no publish needed to prompt
-it. A refresh records every run it evaluated, confirmed or not, with the version
-it evaluated under, so the request is made once: a later start finds no run left
-to evaluate and requests nothing.
+confirms the runs before it as well. A backend that records confirmations does
+not wait for a publish to bring a refresh about. At startup, and every ten
+minutes after, it counts the published runs that wait on a confirmation in its
+bucket and requests one refresh when there are any, which goes through the
+[batching](#refresh-batching) like any other request. Two kinds of run wait:
+
+- A run **no refresh has evaluated** against the bucket under the current
+  version: one published before the backend recorded confirmations, one
+  confirmed under an earlier version, one that changed while a refresh was
+  reading it, and one an upload or the state sweep made unevaluated again. A
+  refresh is requested at every check while any is left, since one refresh
+  evaluates them all.
+- A run a refresh **evaluated and left unconfirmed**. The artifact service may
+  have been restarting, or the run's video may never transcode, and nothing
+  tells the two apart. The request is repeated on a delay that starts at ten
+  minutes and doubles to one day, and starts over once no run is left
+  unconfirmed or the backend restarts.
+
+A refresh records every run it evaluated, confirmed or not, with the version it
+evaluated under, so a backend whose published runs are all confirmed requests
+nothing, at startup or after. Without the check a deployment whose queue is
+[held for lack of space](#low-space) would have no refresh coming: its runs
+would never be confirmed, their files never reclaimed and the hold never
+lifted.
 
 ### Tournament replays
 
@@ -430,7 +476,7 @@ gives a delete two minutes to answer.
 | ---------------------------------------- | -------------------------------------------------------------------------- | ------- |
 | `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`   | Time between passes; `0` disables the sweep                                | `10`    |
 | `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`     | The same in hours, used only while the minutes setting is unset            | —       |
-| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`        | The grace window of the `orphan` rule                                      | `24`    |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`        | The grace window of the `orphan` rule; `0` turns the rule off              | `24`    |
 | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS`   | The `failed` rule's retention; `0` keeps every failed run's tree           | `24`    |
 | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` | The `canceled` rule's retention; `0` keeps every canceled run's tree       | `1`     |
 | `TCAB_ARTIFACT_RECLAIM_PUBLISHED`        | Whether the `published` rule applies; `false` keeps every published tree   | `true`  |
@@ -439,7 +485,7 @@ The interval runs from the end of one pass to the start of the next, and one
 task runs every pass, so two passes never overlap. The first pass runs one
 minute after the backend starts.
 
-The interval and retention settings and the switch are read strictly: a value
+The interval, grace and retention settings and the switch are read strictly: a value
 that is not a whole number, or a switch that is neither on (`1`, `true`, `yes`,
 `on`) nor off (`0`, `false`, `no`, `off`), stops the backend at startup with an
 error naming the variable. A misspelled "off" therefore never leaves a deletion
@@ -485,15 +531,21 @@ on [every route reads the bucket](/components/backend/api/#run-files) for a file
 the store no longer holds. A periodic sweep removes the files nothing reads from
 the store any more.
 
+An upload is written beside the folders, under `run-uploads.tmp/` at the store's
+root, and moved into place once it is whole. A reader and the sweep therefore
+never see part of a file under a run's name, and an upload that a full volume
+or a restart cut off leaves nothing in the run's folder. The backend empties
+`run-uploads.tmp/` when it starts.
+
 Each pass lists the folders under `runs/` and removes files from a folder for
 exactly one of four reasons:
 
 | Reason      | The folder's run                                                     | Files removed                                                                                                       |
 | ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `published` | Is published                                                         | Once the run is [confirmed](#confirmation) and every file in the folder is in the bucket                            |
+| `published` | Is published                                                         | Once the run is [confirmed](#confirmation), each file once the bucket holds its bytes                               |
 | `failed`    | Is unpublished and ended in any state but `completed` and `canceled` | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` after the run ended, once the artifact service holds no tree for the run     |
 | `canceled`  | Is unpublished and ended `canceled`                                  | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` after the run ended, once the artifact service holds no tree for the run   |
-| `orphan`    | Has no run row                                                       | Once the folder's newest file is older than `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`                                       |
+| `orphan`    | Has no run row                                                       | Once the folder's newest file is older than `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`, unless that is `0`                   |
 
 Every other folder is kept. The files of a completed run that is not published
 are kept whatever their age. A folder is also kept while a job of its run is
@@ -503,21 +555,60 @@ dispatched.
 The session record of a gg run, `runs/<id>/replay.json`, is kept under every
 reason, the `orphan` reason included. No refresh publishes it, so once the
 run's tree is reclaimed the store's copy is the only one. Deleting the run is
-what removes it.
+what removes it. The code-analysis document and the controller module of a
+`failed` or `canceled` run are kept the same way: the console reads the one and
+the arena the other from the backend alone, and no bucket holds a copy of an
+unpublished run's.
+
+Orphans are removed only while there are few of them. A pass that finds more
+than twenty folders with no run row, making up more than a quarter of the
+folders it listed, removes none of them and logs one `error` line with their
+number. A backend started against a database older than its volume, restored
+from a backup or simply the wrong one, sees every run made since as an orphan,
+and among those are unpublished runs whose files have no other copy. The pass
+holds them at every interval until the database and the volume agree again or
+an operator deletes the folders.
 
 ### What a published run's folder must satisfy
 
-A published run's files are removed only when all of these hold at the moment of
-the removal:
+Nothing of a published run's folder is removed unless all of these hold at the
+moment of the removal:
 
 - The run's confirmation holds for the configured bucket under the current
   version of the [confirmation](#confirmation), and its manifest reads.
-- Every file in the folder, the session record aside, is one the manifest
-  records an object for. A folder holding any other file is kept whole: a file
-  no refresh published, a file the manifest records as unrecoverable, or an
-  entry that is neither a file nor a directory.
 - The bucket's listing of the run's prefix contains every object the manifest
-  names. A listing that fails removes nothing.
+  names. A listing that fails, or that has not answered within two minutes,
+  removes nothing, and the next pass asks again.
+
+Each file is then decided on its own. A file is removed when the manifest
+records an object for it and that object holds the file's bytes: the object is
+the file's size, and its MD5 is the file's wherever the bucket reports one. An
+object written by one `PUT`, which is every object the backend writes, reports
+one. The code-analysis document is published scrubbed and uncompressed, so it is
+compared as it would be published now. The session record aside, every other
+file stays, and the files beside it are removed regardless:
+
+- A file the manifest does not name. No refresh published it, and it stays
+  until the run is deleted or an operator removes it from the volume.
+- A file whose object is another size or holds other bytes, or whose size the
+  bucket did not report. The folder's copy is the only one of what it holds.
+  The backend never overwrites an object to settle this. To publish the
+  folder's copy, delete the object from the bucket and request a refresh with
+  [`POST /snapshot/refresh`](/components/backend/api/#post-snapshotrefresh): it
+  finds the object missing, evaluates the run from its sources, uploads the file
+  from the store and confirms the run again.
+- An entry that is neither a file nor a directory, which keeps the whole folder.
+
+An empty file the manifest names is removed whatever the bucket holds. It is
+what an upload cut off by a full volume left before uploads were [written
+whole](#state-volume), and a copy of nothing.
+
+A folder that holds a file the manifest records as
+[unrecoverable](/components/backend/snapshot/#unrecoverable-files) has a file to
+publish after all: the volume it is on was not mounted when the refresh looked,
+or the file was restored since. The pass removes nothing from the folder and
+withdraws the run's confirmation, so that the next refresh publishes the file
+and confirms the run with a manifest that names its object.
 
 A backend records confirmations only where its [artifact
 sweep](#confirmation) deletes published trees, so a backend with no bucket, with
@@ -545,30 +636,44 @@ it read. It then records on the run that its files were removed from the store,
 when and for which reason, reads the run's jobs once more, and takes the record
 back if a job or a publish job appeared in between. Only then does it remove the
 files it listed, one at a time and by name, and afterwards the directories that
-emptied. A file written into the folder after the listing is therefore left in
-place. A removal in which no file could be removed takes the record back, and
-the next pass tries again.
+emptied. Each removal is made while no upload can write, and only if the file
+is still the one that was listed, by its size, its modification time and its
+identity on the volume, and still holds its object's bytes. A file written into
+the folder after the listing is therefore left in place, under a new name or
+over an old one. A removal in which no file could be removed takes the record
+back, and the next pass tries again.
 
 ### Uploads after a confirmation
 
 An upload of a file for a run writes the file and then withdraws what the upload
-made untrue. A confirmed run loses its confirmation and its manifest, and the
-record that its files were removed is cleared. The run then reads as one no
-refresh has evaluated: the sweep removes nothing of it, the upload requests a
-snapshot refresh, and that refresh publishes whatever the bucket lacks and
-confirms the run again with a manifest that names the new file. An upload for a
-published run with no confirmation stamps the run as changed, so a refresh
-already evaluating it records no confirmation without the file, and requests a
-refresh as well. An upload of a session record changes neither, since no
-manifest names one.
+made untrue. A confirmed run loses its confirmation, and the record that its
+files were removed is cleared. The run then reads as one no refresh has
+evaluated: the sweep removes nothing of it, and the next refresh publishes
+whatever the bucket lacks and confirms the run again with a manifest that names
+the new file. An upload for a published run with no confirmation stamps the run
+as changed, so a refresh already evaluating it records no confirmation without
+the file. An upload of a session record changes none of this, since no manifest
+names one.
+
+The run keeps its manifest through all of it. The manifest is the only record
+of where the files the sweep removed are, and the [run file
+routes](/components/backend/api/#run-files) go on answering from it, so every
+file of the run is served between the upload and the refresh that follows.
+
+A driver mirrors a run file by file. The first upload that makes a run
+unevaluated requests one snapshot refresh, and the uploads after it find the
+run already waiting and request nothing, so a mirror of a hundred files is one
+request and not a batch released on its own.
 
 A file whose name the bucket already holds an object for is not published
 again, so the bucket's copy is the one that is served once the store's is
-removed.
+removed. Where the two differ the sweep [keeps the store's
+copy](#what-a-published-runs-folder-must-satisfy) and says so.
 
-Pushing a run again clears its confirmation, its manifest and both reclaim
-records with the rest of its retention facts. Deleting a run removes its whole
-folder, the session record included.
+Pushing a run again clears its confirmation and both reclaim records with the
+rest of its retention facts, and keeps its manifest for the same reason an
+upload does. Deleting a run removes its whole folder, the session record
+included.
 
 ### Runs stored before the sweep
 
@@ -627,13 +732,17 @@ files from the backend store`, with the run id, the reason, the number of
 pass complete`, with the `folders` listed, the folders `reclaimed` and those by
 reason (`reclaimed_published`, `reclaimed_failed`, `reclaimed_canceled`,
 `reclaimed_orphans`), the folders a re-read `skipped`, the removals that
-`failed`, the published folders kept for a file the manifest does not account
-for (`kept_unaccounted`) or an object the bucket does not list
-(`kept_unlisted`), the published runs still `unconfirmed`, `removed_files`,
-`freed_bytes`, and the number and size of the session records the store holds
-(`session_records`, `session_record_bytes`). A folder kept as unaccounted logs
-one `warn` line naming the run and the files. An abandoned pass logs one `warn`
-line, `state sweep pass abandoned`, with its `reason`.
+`failed`, the published folders that keep a file nothing accounts for
+(`kept_unaccounted`), the files among those whose object holds other bytes
+(`differing_files`), the folders kept for an object the bucket does not list
+(`kept_unlisted`), the runs whose confirmation the pass withdrew (`withdrawn`),
+the orphans it held back (`orphans_held`), the published runs still
+`unconfirmed`, `removed_files`, `freed_bytes`, and the number and size of the
+session records the store holds (`session_records`, `session_record_bytes`). A
+file kept as unaccounted or differing logs one `warn` line naming the run, the
+file and why, the first time a backend process finds it so, and `debug` lines
+after. An abandoned pass logs one `warn` line, `state sweep pass abandoned`,
+with its `reason`.
 
 Removed folders are counted by `tcab.state.reclaimed_runs` and their bytes by
 `tcab.state.reclaimed_bytes`, each by reason. `tcab.state.kept_unaccounted_runs`

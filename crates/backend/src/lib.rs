@@ -288,6 +288,10 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.auth_url.clone(),
     ));
 
+    // Files a write left half-made in the store's staging directory when the
+    // last process died. Nothing reads them, and nothing else removes them.
+    store.clear_staged_uploads();
+
     // Give the space of the backend's own store back once nothing needs a run's
     // files there (see `crate::state_reclaim`). It reads the same bucket, to see
     // every object a run's manifest names before it removes the run's files.

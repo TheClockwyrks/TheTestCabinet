@@ -61,6 +61,17 @@ pub(super) fn empty_store() -> (TempDir, DefinitionStore) {
     (dir, store)
 }
 
+/// A store holding one file of a run no test builds. A store holding no run
+/// folder at all says nothing about what a run is missing, so a test about a
+/// file being written off as unrecoverable starts from this one.
+pub(super) fn answering_store() -> (TempDir, DefinitionStore) {
+    let (dir, store) = empty_store();
+    store
+        .write_run_asset("another-run", "replay.json", b"{}")
+        .expect("seed another run");
+    (dir, store)
+}
+
 pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
     StoredRun {
         record: RunRecord {
@@ -1396,9 +1407,10 @@ pub(super) fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> Pro
 }
 
 /// A throwaway HTTP server standing in for the artifact service: it answers `200`
-/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path and `404`
-/// otherwise, recording every path it is asked for so a test can assert the store
-/// fast-path skipped it. Returns its base URL and that request log.
+/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path (the length
+/// alone for a `HEAD`) and `404` otherwise, recording every path it is asked for
+/// so a test can assert the store fast-path skipped it. Returns its base URL and
+/// that request log.
 pub(super) async fn stub_artifacts(
     files: HashMap<String, Vec<u8>>,
 ) -> (String, Arc<Mutex<Vec<String>>>) {
@@ -1423,13 +1435,17 @@ pub(super) async fn stub_artifacts(
                     .and_then(|line| line.split_whitespace().nth(1))
                     .unwrap_or("")
                     .to_string();
+                let head = req.starts_with("HEAD ");
                 sink.lock().expect("lock").push(path.clone());
                 let resp = match files.get(&path) {
                     Some(body) => {
                         let mut r =
                             format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
                                 .into_bytes();
-                        r.extend_from_slice(body);
+                        // A `HEAD` is answered with the length and no body.
+                        if !head {
+                            r.extend_from_slice(body);
+                        }
                         r
                     }
                     None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(),

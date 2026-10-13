@@ -43,28 +43,85 @@ const RULES: SweepRules = SweepRules {
 };
 
 /// A stand-in bucket listing: the keys it holds, and whether it is failing.
-#[derive(Default)]
+///
+/// An object is what the store holds under the same name, in size and MD5,
+/// unless a test put another in `objects`: the bucket of a run whose files were
+/// published from this store.
 struct Listing {
     keys: Mutex<HashSet<String>>,
+    /// Objects that differ from the store's files, by key.
+    objects: Mutex<HashMap<String, BucketObject>>,
     failing: AtomicBool,
+    /// When set, a listing never answers.
+    stalled: AtomicBool,
     /// The runs whose keys were asked for.
     asked: Mutex<Vec<String>>,
+    store: DefinitionStore,
+}
+
+impl Listing {
+    fn of(store: DefinitionStore) -> Self {
+        Self {
+            keys: Mutex::default(),
+            objects: Mutex::default(),
+            failing: AtomicBool::default(),
+            stalled: AtomicBool::default(),
+            asked: Mutex::default(),
+            store,
+        }
+    }
+
+    /// The object under `key` of run `run_id`.
+    fn object(&self, run_id: &str, key: &str) -> BucketObject {
+        if let Some(object) = self.objects.lock().unwrap().get(key) {
+            return *object;
+        }
+        let name = key
+            .strip_prefix(&format!("media/runs/{run_id}/"))
+            .map(|name| name.strip_prefix("original/").unwrap_or(name))
+            .unwrap_or_default();
+        let held = self
+            .store
+            .run_file_path(run_id, name)
+            .and_then(|path| std::fs::read(path).ok())
+            .unwrap_or_default();
+        object_of(&held)
+    }
+}
+
+/// The object a bucket holds for `bytes` written by one `PUT`.
+fn object_of(bytes: &[u8]) -> BucketObject {
+    use md5::Digest;
+    BucketObject {
+        size: Some(bytes.len() as u64),
+        md5: Some(md5::Md5::digest(bytes).into()),
+    }
 }
 
 impl RunBucket for Listing {
-    async fn run_keys(&self, run_id: &str) -> Result<HashSet<String>, String> {
+    async fn run_objects(&self, run_id: &str) -> Result<HashMap<String, BucketObject>, String> {
         self.asked.lock().unwrap().push(run_id.to_string());
+        if self.stalled.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
         if self.failing.load(Ordering::SeqCst) {
             return Err("the bucket answered HTTP 500".to_string());
         }
         let prefix = format!("media/runs/{run_id}/");
-        Ok(self
+        let keys: Vec<String> = self
             .keys
             .lock()
             .unwrap()
             .iter()
             .filter(|key| key.starts_with(&prefix))
             .cloned()
+            .collect();
+        Ok(keys
+            .into_iter()
+            .map(|key| {
+                let object = self.object(run_id, &key);
+                (key, object)
+            })
             .collect())
     }
 }
@@ -78,10 +135,11 @@ struct Harness {
 
 async fn harness() -> Harness {
     let dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(dir.path().join("store")).unwrap();
     Harness {
         db: Db::connect_in_memory().await.unwrap(),
-        store: DefinitionStore::open(dir.path().join("store")).unwrap(),
-        bucket: Listing::default(),
+        bucket: Listing::of(store.clone()),
+        store,
         dir,
     }
 }
@@ -278,7 +336,7 @@ async fn the_session_record_is_kept_and_its_size_reported() {
 }
 
 #[tokio::test]
-async fn a_folder_holding_a_file_the_manifest_does_not_account_for_is_kept_whole() {
+async fn a_file_the_manifest_does_not_account_for_is_kept_and_the_rest_removed() {
     let h = harness().await;
     h.confirm("r1", &["proof/title.png"]).await;
     h.write("r1", "proof/title.png", b"png!");
@@ -286,17 +344,149 @@ async fn a_folder_holding_a_file_the_manifest_does_not_account_for_is_kept_whole
 
     let outcome = h.pass().await;
 
+    // One file that nothing published does not hold the published ones on the
+    // volume with it.
+    assert_eq!(outcome.reclaimed_published, 1);
+    assert_eq!(outcome.removed_files, 1);
+    assert_eq!(outcome.freed_bytes, 4);
     assert_eq!(outcome.kept_unaccounted, 1);
-    assert_eq!(outcome.reclaimed, 0);
-    assert_eq!(outcome.removed_files, 0);
-    assert_eq!(h.files("r1"), ["asset/unlisted.bin", "proof/title.png"]);
-    assert_eq!(run_row(&h.db, "r1").await.state_reclaimed_at, None);
-    // The bucket is not asked about a folder that is kept anyway.
-    assert!(h.bucket.asked.lock().unwrap().is_empty());
+    assert_eq!(outcome.differing_files, 0);
+    assert_eq!(h.files("r1"), ["asset/unlisted.bin"]);
+    assert_eq!(
+        run_row(&h.db, "r1").await.state_reclaimed_at.as_deref(),
+        Some(NOW_TEXT)
+    );
+
+    // The file stays at every pass after, and is counted at each.
+    let again = h.pass().await;
+    assert_eq!(again.reclaimed, 0);
+    assert_eq!(again.kept_unaccounted, 1);
+    assert_eq!(h.files("r1"), ["asset/unlisted.bin"]);
 }
 
 #[tokio::test]
-async fn a_file_the_manifest_wrote_off_keeps_the_folder_it_turned_up_in() {
+async fn a_file_whose_object_is_another_size_is_kept() {
+    let h = harness().await;
+    h.confirm("r1", &["proof/title.png", "asset/replay.json"])
+        .await;
+    h.write("r1", "proof/title.png", b"png!");
+    h.write("r1", "asset/replay.json", b"{\"m\":2}");
+    // The bucket holds an earlier, shorter replay under the name.
+    h.bucket.objects.lock().unwrap().insert(
+        "media/runs/r1/asset/replay.json".to_string(),
+        object_of(b"{}"),
+    );
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.removed_files, 1);
+    assert_eq!(outcome.differing_files, 1);
+    assert_eq!(outcome.kept_unaccounted, 1);
+    assert_eq!(h.files("r1"), ["asset/replay.json"]);
+    assert_eq!(
+        h.store.read_run_asset("r1", "replay.json").unwrap(),
+        b"{\"m\":2}"
+    );
+}
+
+#[tokio::test]
+async fn a_file_of_its_object_s_size_and_other_bytes_is_kept() {
+    let h = harness().await;
+    h.confirm("r1", &["proof/title.png"]).await;
+    h.write("r1", "proof/title.png", b"png!");
+    // Four bytes under the name, and not these four.
+    h.bucket.objects.lock().unwrap().insert(
+        "media/runs/r1/proof/title.png".to_string(),
+        object_of(b"gif!"),
+    );
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.reclaimed, 0);
+    assert_eq!(outcome.removed_files, 0);
+    assert_eq!(outcome.differing_files, 1);
+    assert_eq!(outcome.kept_unaccounted, 1);
+    assert_eq!(h.files("r1"), ["proof/title.png"]);
+    // A removal that removed nothing leaves no record of one.
+    assert_eq!(run_row(&h.db, "r1").await.state_reclaimed_at, None);
+}
+
+#[tokio::test]
+async fn an_object_with_no_md5_vouches_by_its_size() {
+    let h = harness().await;
+    h.confirm("r1", &["proof/title.png"]).await;
+    h.write("r1", "proof/title.png", b"png!");
+    // A multipart upload's entity tag is not an MD5, and the bucket reports none.
+    h.bucket.objects.lock().unwrap().insert(
+        "media/runs/r1/proof/title.png".to_string(),
+        BucketObject {
+            size: Some(4),
+            md5: None,
+        },
+    );
+
+    assert_eq!(h.pass().await.removed_files, 1);
+    assert!(h.files("r1").is_empty());
+}
+
+#[tokio::test]
+async fn an_empty_file_the_manifest_names_is_removed_as_a_stub() {
+    let h = harness().await;
+    h.confirm("r1", &["proof/title.png"]).await;
+    // What a write cut off by a full volume left behind.
+    h.write("r1", "proof/title.png", b"");
+    h.bucket.objects.lock().unwrap().insert(
+        "media/runs/r1/proof/title.png".to_string(),
+        object_of(b"png!"),
+    );
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.removed_files, 1);
+    assert_eq!(outcome.freed_bytes, 0);
+    assert!(h.files("r1").is_empty());
+}
+
+#[tokio::test]
+async fn the_code_analysis_document_is_removed_when_its_object_is_what_it_publishes_as() {
+    let h = harness().await;
+    seed_run(&h.db, "r1", RunState::Completed, ENDED).await;
+    force_published(&h.db, "r1").await;
+    let document = br#"{"files":[{"path":"src/main.ts","lines":10}]}"#;
+    h.write("r1", "code-analysis.json", document);
+    let published = crate::snapshot::published_code_analysis(document).expect("it publishes");
+    let key = "media/runs/r1/code-analysis/v1.json".to_string();
+    h.bucket
+        .objects
+        .lock()
+        .unwrap()
+        .insert(key.clone(), object_of(&published));
+    h.bucket.keys.lock().unwrap().insert(key.clone());
+    h.confirm_with(
+        "r1",
+        MediaManifest {
+            files: vec![MediaManifestFile::stored(
+                MediaFileKind::CodeAnalysis,
+                "code-analysis.json",
+                key.clone(),
+            )],
+        },
+    )
+    .await;
+
+    assert_eq!(h.pass().await.removed_files, 1);
+    assert!(h.files("r1").is_empty());
+
+    // A document that publishes as something else than its object is kept.
+    h.write("r1", "code-analysis.json", br#"{"files":[]}"#);
+    let outcome = h.pass().await;
+    assert_eq!(outcome.removed_files, 0);
+    assert_eq!(outcome.differing_files, 1);
+    assert_eq!(h.files("r1"), ["code-analysis.json"]);
+}
+
+#[tokio::test]
+async fn a_file_the_manifest_wrote_off_has_the_run_s_confirmation_withdrawn() {
     let h = harness().await;
     seed_run(&h.db, "r1", RunState::Completed, ENDED).await;
     force_published(&h.db, "r1").await;
@@ -311,11 +501,25 @@ async fn a_file_the_manifest_wrote_off_keeps_the_folder_it_turned_up_in() {
         },
     )
     .await;
+    // The file is here after all: the volume it is on was not mounted when the
+    // refresh looked, or it was restored since.
     h.write("r1", "asset/replay.json", b"{}");
 
     let outcome = h.pass().await;
 
-    assert_eq!(outcome.kept_unaccounted, 1);
+    assert_eq!(outcome.withdrawn, 1);
+    assert_eq!(outcome.reclaimed, 0);
+    assert_eq!(h.files("r1"), ["asset/replay.json"]);
+    let row = run_row(&h.db, "r1").await;
+    assert_eq!(row.media_confirmed_at, None);
+    assert!(row.media_manifest.is_some(), "the record of the rest stays");
+    // No refresh has evaluated the run now, which is what requests one.
+    assert_eq!(h.db.published_runs_unchecked(BUCKET).await.unwrap(), 1);
+
+    // Until that refresh, the folder is one of an unconfirmed run.
+    let again = h.pass().await;
+    assert_eq!(again.withdrawn, 0);
+    assert_eq!(again.unconfirmed, 1);
     assert_eq!(h.files("r1"), ["asset/replay.json"]);
 }
 
@@ -597,7 +801,13 @@ async fn a_file_uploaded_after_the_reclaim_has_the_run_evaluated_again() {
     let row = run_row(&h.db, "r1").await;
     assert_eq!(row.state_reclaimed_at, None);
     assert_eq!(row.media_confirmed_at, None);
-    assert_eq!(row.media_manifest, None);
+    // The manifest stays as the record of where the run's files are. Nothing
+    // deletes on it while the confirmation does not hold.
+    assert!(row.media_manifest.is_some());
+    assert_eq!(
+        h.db.run_media_manifest("r1", Some(BUCKET)).await.unwrap(),
+        None
+    );
     // No refresh has evaluated the run now, which is what requests one at the
     // next start as well.
     assert_eq!(h.db.published_runs_unchecked(BUCKET).await.unwrap(), 1);
@@ -796,6 +1006,115 @@ async fn a_store_with_no_run_folder_completes_a_pass_that_does_nothing() {
     seed_run(&h.db, "r1", RunState::Completed, ENDED).await;
 
     assert_eq!(h.pass().await, StateSweepOutcome::default());
+}
+
+#[tokio::test]
+async fn a_bucket_listing_that_never_answers_is_an_error_once_its_time_is_up() {
+    let h = harness().await;
+    h.bucket.stalled.store(true, Ordering::SeqCst);
+
+    let listed = run_objects_within(&h.bucket, "r1", Duration::from_millis(20)).await;
+
+    assert_eq!(
+        listed,
+        Err("the bucket did not answer within 0s".to_string())
+    );
+    // One that answers in time is passed through as it answered.
+    h.bucket.stalled.store(false, Ordering::SeqCst);
+    assert_eq!(
+        run_objects_within(&h.bucket, "r1", BUCKET_LISTING_TIMEOUT).await,
+        Ok(HashMap::new())
+    );
+}
+
+#[tokio::test]
+async fn a_failed_run_keeps_its_code_analysis_document_and_its_controller() {
+    let h = harness().await;
+    h.ended_and_tree_reclaimed("failed", RunState::TimedOut, ReclaimReason::Failed)
+        .await;
+    h.write("failed", "proof/title.png", b"png!");
+    h.write("failed", "asset/replay.json", b"{}");
+    h.write("failed", "code-analysis.json", b"{}");
+    h.write("failed", "controller.wasm", b"wasm");
+    h.ended_and_tree_reclaimed("canceled", RunState::Canceled, ReclaimReason::Canceled)
+        .await;
+    h.write("canceled", "code-analysis.json", b"{}");
+
+    let outcome = h.pass().await;
+
+    // The console reads the document, and the arena the module, from the backend
+    // alone: no bucket holds a copy of an unpublished run's.
+    assert_eq!(outcome.reclaimed_failed, 1);
+    assert_eq!(outcome.removed_files, 2);
+    assert_eq!(h.files("failed"), ["code-analysis.json", "controller.wasm"]);
+    assert!(h.store.has_run_controller("failed"));
+    assert_eq!(h.files("canceled"), ["code-analysis.json"]);
+    assert_eq!(outcome.reclaimed_canceled, 0);
+
+    // What is left is not decided again at every pass.
+    let again = h.pass().await;
+    assert_eq!(again.reclaimed + again.skipped + again.failed, 0);
+}
+
+#[tokio::test]
+async fn no_grace_window_is_no_orphan_rule() {
+    let h = harness().await;
+    seed_run(&h.db, "other", RunState::Completed, ENDED).await;
+    h.write("gone", "proof/title.png", b"png!");
+    let rules = SweepRules {
+        grace: Duration::ZERO,
+        ..RULES
+    };
+
+    let outcome = h.pass_with(&rules).await;
+
+    assert_eq!(outcome.reclaimed_orphans, 0);
+    assert_eq!(h.files("gone"), ["proof/title.png"]);
+    assert_eq!(
+        reclaim_orphan_folder(&h.db, &h.store, "gone", NOW, Duration::ZERO).await,
+        StateReclaim::Skipped
+    );
+}
+
+#[tokio::test]
+async fn too_many_orphans_to_believe_are_all_left_alone() {
+    let h = harness().await;
+    // A database older than the volume: it knows one run, and the store holds
+    // the folders of every run made since.
+    seed_run(&h.db, "known", RunState::Completed, ENDED).await;
+    h.write("known", "proof/title.png", b"png!");
+    let unknown: Vec<String> = (0..=ORPHAN_HOLD_FLOOR)
+        .map(|n| format!("unknown-{n:02}"))
+        .collect();
+    for id in &unknown {
+        h.write(id, "proof/title.png", b"png!");
+    }
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.orphans_held, unknown.len());
+    assert_eq!(outcome.reclaimed_orphans, 0);
+    assert_eq!(outcome.removed_files, 0);
+    for id in &unknown {
+        assert_eq!(h.files(id), ["proof/title.png"], "{id}");
+    }
+}
+
+#[tokio::test]
+async fn a_few_orphans_among_many_folders_are_removed() {
+    let h = harness().await;
+    for n in 0..4 {
+        let id = format!("run-{n}");
+        seed_run(&h.db, &id, RunState::Completed, ENDED).await;
+        h.write(&id, "proof/title.png", b"png!");
+    }
+    h.write("gone", "proof/title.png", b"png!");
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.orphans_held, 0);
+    assert_eq!(outcome.reclaimed_orphans, 1);
+    assert!(h.files("gone").is_empty());
 }
 
 #[tokio::test]

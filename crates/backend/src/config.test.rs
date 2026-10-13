@@ -186,6 +186,25 @@ fn the_artifact_sweep_timings_are_read_in_their_units() {
         super::Config::from_env().unwrap().artifact_sweep_interval,
         Duration::from_secs(15 * 60)
     );
+
+    // The grace window decides which run-less trees and folders are deleted, so
+    // it is read as strictly: `0` is a zero window, which turns the orphan rule
+    // off, and a value that is not whole hours stops the start.
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS", "0") };
+    assert_eq!(
+        super::Config::from_env().unwrap().artifact_sweep_grace,
+        Duration::ZERO
+    );
+    for unreadable in ["1d", "24h", "-1", "0.5"] {
+        // SAFETY: as above.
+        unsafe { std::env::set_var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS", unreadable) };
+        let error = super::Config::from_env().unwrap_err().to_string();
+        assert!(
+            error.contains("TCAB_ARTIFACT_SWEEP_GRACE_HOURS"),
+            "{unreadable}: {error}"
+        );
+    }
 }
 
 /// The retention settings: a failed run's tree for a day and a canceled run's for

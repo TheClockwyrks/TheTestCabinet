@@ -578,10 +578,13 @@ pub(super) fn summary_cards(
 /// implementation from any host. A read; no auth on the private network.
 ///
 /// A controller can be served from two places, and the listing offers a run for
-/// either: the backend store holds the module, or the run is confirmed in the
-/// configured bucket and its [file manifest](crate::db::MediaManifest) names the
+/// either: the backend store holds the module, or the run has a [file
+/// manifest](crate::db::MediaManifest) in the configured bucket that names the
 /// module with an object, which is where the route reads it from once the store
-/// no longer holds it (see [`RunFileBucket`](super::RunFileBucket)). A module the
+/// no longer holds it (see [`RunFileBucket`](super::RunFileBucket)). The manifest
+/// counts whether or not the confirmation it was recorded with still holds
+/// ([`Db::file_locations_of`](crate::db::Db::file_locations_of)), so a run does
+/// not leave the listing while it waits to be confirmed again. A module the
 /// manifest records as unrecoverable is one nothing can serve, so its run is not
 /// offered.
 pub async fn adversarial_controllers(
@@ -608,7 +611,7 @@ pub async fn adversarial_controllers(
     let manifests = if bucket.is_some() && !off_disk.is_empty() {
         state
             .db
-            .media_manifests_of(&off_disk, bucket)
+            .file_locations_of(&off_disk, bucket)
             .await
             .map_err(ApiError::from)?
     } else {

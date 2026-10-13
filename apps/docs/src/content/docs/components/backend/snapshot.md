@@ -255,7 +255,19 @@ once. On each publish the builder lists what is already under `media/` and
 references any object already there without reading the source bytes or
 re-uploading. Only media not yet in the bucket is read, from the backend store
 or the [artifact service](/components/artifacts/overview/), and uploaded, so a
-run's media is exported exactly once across all snapshots.
+run's media is exported exactly once across all snapshots. An object is never
+overwritten: once a key holds bytes, those are the bytes every later snapshot
+serves for it.
+
+A refresh uploads each run's media and its document as soon as it has built
+that run, and holds the bytes of one run at a time. Both kinds of object have a
+key that belongs to the run or to the object's own bytes, and no reader fetches
+either until an `index.json` names it, so writing them early shows nothing. A
+refresh with a whole cabinet's recordings to publish therefore needs no more
+memory than its largest run. One that fails part-way keeps what it uploaded: the
+objects are in the bucket's listing for the next refresh, which reads and
+uploads only the rest. The completion line reports the objects uploaded this way
+as `streamed_objects` and `streamed_bytes`.
 
 A `video` is transcoded from webm to mp4, for iOS playback, exactly once. A
 transcoded video's recorded file name keeps its `.webm` spelling while its
@@ -288,6 +300,12 @@ bucket holds every file of a published run:
 The asset files are named in `assetMedia` like any other asset. The controller
 is named by no document.
 
+These files are published as the run wrote them. The secret scrubber that every
+run document and code-analysis document passes through reads neither a replay's
+or a scenario's JSON nor a wasm module, so a model that wrote a credential into
+its own replay publishes it. The same holds for the proof, validation and
+showcase media.
+
 One file of a run is not published. A gg run's [session
 record](/gg/analysis/session-records/) carries the complete model conversation
 of its run, and an object in this bucket can be fetched by anyone who can
@@ -318,16 +336,26 @@ code-analysis object is the scrubbed, uncompressed form of the stored file, and
 every other object holds the stored bytes unchanged. The session record has no
 entry, because it has no object.
 
-The manifest is written together with the confirmation and cleared with it, so
-a run has one exactly while it is confirmed.
+The manifest does two jobs, and they end at different moments.
 
-The manifest has three readers. A refresh builds a confirmed run's document from
-it, taking every file name and key from the manifest while the bucket's listing
-holds each object it names, with no read of the run's folder in the backend
-store. The backend's [run file routes](/components/backend/api/#run-files) use
-it to answer from the bucket for a file the store no longer holds. The
-[state sweep](/components/backend/overview/#state-volume) removes a file from
-the store only when the manifest records an object for it.
+It is the **authority to delete**. A refresh builds a confirmed run's document
+from it, taking every file name and key from the manifest while the bucket's
+listing holds each object it names, with no read of the run's folder in the
+backend store. The [state sweep](/components/backend/overview/#state-volume)
+removes a file from the store only when the manifest records an object for it.
+Both read the manifest only while the run's confirmation holds, for the
+configured bucket and under the current version.
+
+It is also the **record of where the run's files are**, and once the sweep has
+removed them from the store it is the only one. The backend's [run file
+routes](/components/backend/api/#run-files) and its controllers listing read it
+for that, and for them it outlives the confirmation: a confirmation is
+withdrawn by an upload, by a push of the run's record, by a refresh that could
+not account for a file and by the sweep, and after each of those the objects the
+manifest names are where they were. The manifest is kept through all of them
+and replaced by the next confirmation. It is cleared only when the run is
+evaluated against another bucket than the one it was recorded for, where its
+keys name nothing.
 
 ### Unrecoverable files
 
@@ -338,8 +366,10 @@ only when each of the three places a file can be answered that it does not hold
 it:
 
 1. The bucket's listing lacks the object.
-2. The backend store reports no such file. A read that fails any other way is
-   not an answer.
+2. The backend store reports no such file, or holds it empty. A read that fails
+   any other way is not an answer, and neither is the silence of a store that
+   holds no run folder at all, which is what a volume that did not mount looks
+   like.
 3. The artifact service holds the run's tree and answers `404` for the file, or
    it holds no tree and the backend's own record agrees: the run's tree was
    reclaimed, or its [artifact
@@ -351,7 +381,17 @@ it:
 A transcoded video whose recorded webm is unrecoverable keeps its
 `transcodedKey` when the mp4 is in the bucket. Each refresh that confirms a run
 with unrecoverable files logs one `warn` line, `published run confirmed with
-unrecoverable files`, naming the run and the files.
+unrecoverable files`, naming the run and the files. A file recorded so that
+turns up in the run's folder later is published after all: the state sweep
+[withdraws the
+confirmation](/components/backend/overview/#what-a-published-runs-folder-must-satisfy)
+of a run it finds one for, and the next refresh uploads it.
+
+The showcase files that neither the carousel nor the description mentions are
+named by the run's folder and by its tree. Once both are gone the bucket's
+listing is the last place that names them, so a refresh that evaluates such a
+run from its sources takes the names under the run's `showcase/` prefix from
+the listing as well, and the files stay in the run's document and manifest.
 
 Two consequences follow. A publish stays cheap as asset-generation runs
 accumulate, because it uploads only new media. Media already in the bucket is

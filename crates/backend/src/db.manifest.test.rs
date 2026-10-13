@@ -8,8 +8,8 @@ use test_cabinet_core::run_record::RunState;
 use test_cabinet_entities::run;
 
 use super::retention_tests::{
-    BUCKET, FIRST, SECOND, confirm_under_the_first_definition, confirmed_media, force_published,
-    manifest_of, refresh, run_row, seed_run,
+    BUCKET, FIRST, SECOND, confirm_under_the_first_definition, confirmed_media, damage_manifest,
+    force_published, manifest_of, refresh, run_row, seed_run,
 };
 use super::*;
 use crate::db::tests::{links, record};
@@ -236,18 +236,21 @@ async fn a_manifest_is_read_only_where_its_confirmation_holds() {
 }
 
 #[tokio::test]
-async fn a_withdrawn_confirmation_clears_the_manifest() {
+async fn a_withdrawn_confirmation_keeps_the_manifest_as_the_record_of_where_the_files_are() {
+    // The manifest stops being the authority for deleting, and stays the only
+    // pointer to the files of a run the store no longer holds.
     let db = Db::connect_in_memory().await.unwrap();
     published_run(&db, "a").await;
     refresh(&db, &["a"], &[], FIRST).await;
-    assert!(run_row(&db, "a").await.media_manifest.is_some());
+    let recorded = db.run_media_manifest("a", Some(BUCKET)).await.unwrap();
+    assert!(recorded.is_some());
 
     let outcome = refresh(&db, &[], &["a"], SECOND).await;
 
     assert_eq!(outcome.withdrawn, 1);
     let row = run_row(&db, "a").await;
     assert_eq!(row.media_confirmed_at, None);
-    assert_eq!(row.media_manifest, None);
+    // Nothing that deletes reads it any more.
     assert_eq!(
         db.run_media_manifest("a", Some(BUCKET)).await.unwrap(),
         None
@@ -258,23 +261,133 @@ async fn a_withdrawn_confirmation_clears_the_manifest() {
             .unwrap()
             .is_empty()
     );
+    // The routes still do.
+    assert_eq!(
+        db.run_file_locations("a", Some(BUCKET)).await.unwrap(),
+        recorded
+    );
+    assert_eq!(
+        db.file_locations_of(&["a".to_string()], Some(BUCKET))
+            .await
+            .unwrap()
+            .get("a"),
+        recorded.as_ref()
+    );
 }
 
 #[tokio::test]
-async fn storing_a_run_again_clears_its_manifest_and_version() {
+async fn storing_a_run_again_withdraws_the_confirmation_and_keeps_the_locations() {
     let db = Db::connect_in_memory().await.unwrap();
     published_run(&db, "a").await;
     refresh(&db, &["a"], &[], FIRST).await;
+    let recorded = db.run_media_manifest("a", Some(BUCKET)).await.unwrap();
 
     db.push(&record("a"), &links(), None, None).await.unwrap();
 
     let row = run_row(&db, "a").await;
     assert_eq!(row.media_confirmed_at, None);
-    assert_eq!(row.media_manifest, None);
     assert_eq!(row.media_confirmation_version, None);
     assert_eq!(
         db.run_media_manifest("a", Some(BUCKET)).await.unwrap(),
         None
+    );
+    assert_eq!(
+        db.run_file_locations("a", Some(BUCKET)).await.unwrap(),
+        recorded
+    );
+}
+
+#[tokio::test]
+async fn file_locations_are_read_only_against_the_bucket_they_were_made_in() {
+    let db = Db::connect_in_memory().await.unwrap();
+    published_run(&db, "a").await;
+    refresh(&db, &["a"], &[], FIRST).await;
+
+    assert_eq!(db.run_file_locations("a", None).await.unwrap(), None);
+    assert_eq!(
+        db.run_file_locations("a", Some("another-bucket"))
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.run_file_locations("nobody", Some(BUCKET)).await.unwrap(),
+        None
+    );
+    assert!(
+        db.file_locations_of(&["a".to_string()], Some("another-bucket"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_run_found_unconfirmed_in_another_bucket_loses_the_manifest_of_the_first() {
+    // The row is about to name the new bucket, and a manifest must never be
+    // read against a bucket other than the one it was made in.
+    let db = Db::connect_in_memory().await.unwrap();
+    published_run(&db, "a").await;
+    refresh(&db, &["a"], &[], FIRST).await;
+
+    db.record_media_confirmation(&[], &["a".to_string()], SECOND, "another-bucket")
+        .await
+        .unwrap();
+
+    let row = run_row(&db, "a").await;
+    assert_eq!(row.media_manifest, None);
+    assert_eq!(row.media_bucket.as_deref(), Some("another-bucket"));
+    assert_eq!(
+        db.run_file_locations("a", Some("another-bucket"))
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.run_file_locations("a", Some(BUCKET)).await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_damaged_manifest_is_an_error_to_a_route_and_costs_a_listing_one_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    published_run(&db, "good").await;
+    published_run(&db, "garbled").await;
+    refresh(&db, &["good", "garbled"], &[], FIRST).await;
+    damage_manifest(&db, "garbled").await;
+
+    assert!(
+        db.run_file_locations("garbled", Some(BUCKET))
+            .await
+            .is_err()
+    );
+    let listed = db
+        .file_locations_of(&["good".to_string(), "garbled".to_string()], Some(BUCKET))
+        .await
+        .unwrap();
+    assert_eq!(listed.keys().collect::<Vec<_>>(), ["good"]);
+}
+
+#[tokio::test]
+async fn runs_a_refresh_left_unconfirmed_are_counted_apart_from_the_unevaluated() {
+    let db = Db::connect_in_memory().await.unwrap();
+    published_run(&db, "confirmed").await;
+    published_run(&db, "unconfirmed").await;
+    published_run(&db, "unevaluated").await;
+    assert_eq!(db.published_runs_unconfirmed(BUCKET).await.unwrap(), 0);
+    assert_eq!(db.published_runs_unchecked(BUCKET).await.unwrap(), 3);
+
+    refresh(&db, &["confirmed"], &["unconfirmed"], FIRST).await;
+
+    assert_eq!(db.published_runs_unconfirmed(BUCKET).await.unwrap(), 1);
+    assert_eq!(db.published_runs_unchecked(BUCKET).await.unwrap(), 1);
+    // Evaluated against one bucket says nothing of another.
+    assert_eq!(
+        db.published_runs_unconfirmed("another-bucket")
+            .await
+            .unwrap(),
+        0
     );
 }
 

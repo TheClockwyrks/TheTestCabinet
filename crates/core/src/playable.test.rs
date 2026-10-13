@@ -800,12 +800,8 @@ fn a_controller_the_tree_does_not_hold_is_missing_not_an_error() {
     );
     assert!(list_tree_root_files(dir.path()).unwrap().is_empty());
 
-    // A tree with no record, and a record that names no module.
+    // A record that names no module.
     let bare = TempDir::new().unwrap();
-    assert_eq!(
-        tree_root_file(bare.path(), TREE_ROOT_CONTROLLER).unwrap(),
-        None
-    );
     fs::write(bare.path().join("run-record.json"), b"{\"validation\":{}}").unwrap();
     assert_eq!(
         tree_root_file(bare.path(), TREE_ROOT_CONTROLLER).unwrap(),
@@ -842,6 +838,7 @@ fn a_controller_path_that_leaves_the_implementation_names_nothing() {
 #[test]
 fn the_code_analysis_document_is_read_verbatim_under_its_stored_name() {
     let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("run-record.json"), b"{}").unwrap();
     fs::write(
         dir.path().join(crate::CODE_ANALYSIS_TREE_ARTIFACT),
         b"framed",
@@ -883,8 +880,130 @@ fn a_root_file_that_is_there_and_unreadable_is_an_error_and_is_not_listed() {
     // A directory where the document should be: it is not a file to list, and
     // reading it fails as something other than a missing file.
     let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("run-record.json"), b"{}").unwrap();
     fs::create_dir_all(dir.path().join(crate::CODE_ANALYSIS_TREE_ARTIFACT)).unwrap();
 
     assert!(tree_root_file(dir.path(), TREE_ROOT_CODE_ANALYSIS).is_err());
     assert!(list_tree_root_files(dir.path()).unwrap().is_empty());
+}
+
+#[test]
+fn a_tree_that_cannot_say_whether_it_holds_a_file_is_an_error_not_a_missing_file() {
+    // The record is what names a run's proofs, assets and controller. With no
+    // record in a tree, or one that does not parse, nothing says which files the
+    // run has, and "the tree lacks it" would be a guess a caller deletes on.
+    let recordless = TempDir::new().unwrap();
+    let damaged = TempDir::new().unwrap();
+    fs::write(damaged.path().join("run-record.json"), b"{ nope").unwrap();
+    for dir in [recordless.path(), damaged.path()] {
+        assert!(read_proof_file(dir, "title.png").is_err());
+        assert!(read_asset_file(dir, "replay.json").is_err());
+        assert!(tree_root_file(dir, TREE_ROOT_CONTROLLER).is_err());
+        assert!(list_tree_root_files(dir).is_err());
+        // The readers that answer `None` for both keep doing so.
+        assert_eq!(serve_proof_file(dir, "title.png"), None);
+        assert_eq!(serve_asset_file(dir, "replay.json"), None);
+    }
+
+    // No tree at all is a positive answer: there is no such file.
+    let gone = recordless.path().join("never-uploaded");
+    assert!(read_proof_file(&gone, "title.png").unwrap().is_none());
+    assert!(read_asset_file(&gone, "replay.json").unwrap().is_none());
+    assert!(
+        read_validation_file(&gone, "img.abc.png")
+            .unwrap()
+            .is_none()
+    );
+    assert!(read_showcase_file(&gone, "demo.png").unwrap().is_none());
+    assert_eq!(tree_root_file(&gone, TREE_ROOT_CONTROLLER).unwrap(), None);
+}
+
+#[test]
+fn a_file_that_is_there_and_unreadable_is_an_error_in_every_media_directory() {
+    let dir = TempDir::new().unwrap();
+    let implementation = dir.path().join("implementation");
+    // A directory where each file belongs: there, and not readable as a file.
+    fs::create_dir_all(implementation.join("showcase/demo.png")).unwrap();
+    fs::create_dir_all(implementation.join(".vendor/validation/img.abc.png")).unwrap();
+
+    assert!(read_showcase_file(dir.path(), "demo.png").is_err());
+    assert!(read_validation_file(dir.path(), "img.abc.png").is_err());
+    assert!(
+        read_showcase_file(dir.path(), "other.png")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        read_validation_file(dir.path(), "img.other.png")
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_that_leads_out_of_the_tree_names_no_file_of_the_run() {
+    let outside = TempDir::new().unwrap();
+    fs::write(outside.path().join("secret"), b"not the run's").unwrap();
+    let dir = tree_naming_controller("build/controller.wasm");
+    let implementation = dir.path().join("implementation");
+    fs::create_dir_all(implementation.join("build")).unwrap();
+    fs::create_dir_all(implementation.join("showcase")).unwrap();
+    let link = |at: std::path::PathBuf| {
+        std::os::unix::fs::symlink(outside.path().join("secret"), at).unwrap();
+    };
+    link(implementation.join("build/controller.wasm"));
+    link(implementation.join("showcase/demo.png"));
+    link(dir.path().join(crate::CODE_ANALYSIS_TREE_ARTIFACT));
+
+    assert_eq!(
+        tree_root_file(dir.path(), TREE_ROOT_CONTROLLER).unwrap(),
+        None
+    );
+    assert_eq!(
+        tree_root_file(dir.path(), TREE_ROOT_CODE_ANALYSIS).unwrap(),
+        None
+    );
+    assert!(list_tree_root_files(dir.path()).unwrap().is_empty());
+    assert!(
+        read_showcase_file(dir.path(), "demo.png")
+            .unwrap()
+            .is_none()
+    );
+
+    // A link that stays inside the tree is the run's own file.
+    fs::write(implementation.join("build/real.wasm"), b"wasm").unwrap();
+    fs::remove_file(implementation.join("build/controller.wasm")).unwrap();
+    std::os::unix::fs::symlink(
+        implementation.join("build/real.wasm"),
+        implementation.join("build/controller.wasm"),
+    )
+    .unwrap();
+    assert_eq!(
+        tree_root_file(dir.path(), TREE_ROOT_CONTROLLER).unwrap(),
+        Some(b"wasm".to_vec())
+    );
+    assert_eq!(
+        list_tree_root_files(dir.path()).unwrap(),
+        [TREE_ROOT_CONTROLLER]
+    );
+}
+
+#[test]
+fn a_proof_is_missing_only_when_the_record_was_read_and_nothing_is_at_its_place() {
+    let dir = run_dir_with_proofs(
+        &[
+            ("title", "shots/title.png", MediaKind::Image),
+            ("rally", "shots/rally.png", MediaKind::Image),
+        ],
+        &[],
+    );
+    // The record names the proof and nothing is at its place.
+    assert!(read_proof_file(dir.path(), "title.png").unwrap().is_none());
+    // The record names no such proof.
+    assert!(read_proof_file(dir.path(), "other.png").unwrap().is_none());
+    // Something is at its place and cannot be read as a file.
+    fs::create_dir_all(dir.path().join("implementation/shots/rally.png")).unwrap();
+    assert!(read_proof_file(dir.path(), "rally.png").is_err());
+    assert_eq!(serve_proof_file(dir.path(), "rally.png"), None);
 }
