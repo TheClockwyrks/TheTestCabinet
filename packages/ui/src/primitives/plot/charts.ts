@@ -67,17 +67,17 @@ interface AxisLabels {
   /**
    * Degrees to rotate the x-axis tick labels (e.g. `40`, down to the right). Use
    * it to fit many long category labels (model ids) along the axis without
-   * overlap; the chart widens its bottom and right margins to make room for the
-   * tilted text, and asks for a least width so each category keeps a legible
-   * slot. A negative rotation tilts the labels down to the left, where a long
+   * overlap; the chart widens its bottom margin to make room for the tilted
+   * text, and asks for the width that gives each category a legible slot and
+   * the last labels their full length, which `Chart` scrolls to. A negative rotation tilts the labels down to the left, where a long
    * first label has nowhere to go but past the chart's edge.
    */
   xTickRotate?: number;
   /**
    * The width of the container the chart is drawn into, as `Chart` hands it to
-   * a spec. With it the right margin under tilted labels is sized for the width
-   * the chart is really drawn at, so a chart with room to spare is not pushed
-   * off-centre by a margin only a cramped one needs.
+   * a spec. With it a chart with tilted labels fills the container with its
+   * bars, and is made wider than the container, and scrolled, by whatever its
+   * last labels reach past the last bar.
    */
   availableWidth?: number;
   /**
@@ -123,51 +123,24 @@ function rotatedBottomMargin(
   );
 }
 
-// The right margin a chart `width` wide needs so that no label tilted down to
-// the right runs past its edge. A label starts under the middle of its own slot
-// and extends `chars · glyph · cos θ` to the right, over the slots after it, so
-// only what reaches past the last slot needs margin. The slots share what the
-// margins leave, so the margin and the slot width depend on each other: for a
-// label `k` half-slots-and-slots from the right edge of the last slot, the
-// margin `m` has to satisfy `m ≥ extent − k · (width − left − m) / n`, which
-// is solved for `m` here. A wide chart with few bars therefore gets no more
-// than Plot's default, and stays centred in its card.
-function rotatedRightMargin(
-  order: readonly string[],
-  rotateDeg: number,
-  marginLeft: number,
-  width: number,
-): number {
-  const cos = Math.cos((rotateDeg * Math.PI) / 180);
-  const n = order.length;
-  const needed = order.reduce((widest, label, index) => {
-    const k = n - 1 - index + 0.5;
-    const extent = label.length * GLYPH_PX * cos;
-    return Math.max(
-      widest,
-      (extent - (k * (width - marginLeft)) / n) / (1 - k / n),
-    );
-  }, 0);
-  return Math.max(DEFAULT_RIGHT_MARGIN, Math.ceil(needed));
-}
-
-// The least width a chart of `n` categories is drawn at when its right margin
-// is `marginRight`: a slot of `MIN_ROTATED_SLOT` each.
-function leastWidth(n: number, marginLeft: number, marginRight: number) {
-  return marginLeft + n * MIN_ROTATED_SLOT + marginRight;
-}
-
 // The layout a chart with tilted x labels takes, for the categories `order`
 // names left to right: the bottom margin the labels need, the right margin the
 // last of them need when they tilt down to the right (a positive rotation, which
-// Plot anchors at the tick), and the least `width` the chart may be drawn at, a
-// slot of `MIN_ROTATED_SLOT` per category. `Chart` reads that width as a floor:
-// it draws the chart at its container's width when that is wider, and lets the
-// container scroll sideways when it is not.
+// Plot anchors at the tick), and the `width` the chart is to be drawn at.
 //
-// `available` is the container's width, when the caller knows it. The right
-// margin is sized for the width the chart will really be drawn at, the wider of
-// that and the floor; without it, for the floor.
+// The bars always fill the container: the plot area is what the container
+// leaves after the left margin and Plot's own right margin, `available` being
+// the container's width, and never less than a slot of `MIN_ROTATED_SLOT` per
+// category. A label starts under the middle of its own slot and extends
+// `chars · glyph · cos θ` to the right, over the slots after it. Whatever
+// reaches past the last slot is given to the right margin, which makes the
+// chart that much wider than its container instead of narrowing the bars to
+// keep the label in view. `Chart` draws the chart at this width and lets the
+// container scroll sideways to it, so both a chart with too many bars and one
+// whose last labels run off the edge are scrolled, and neither is squeezed.
+//
+// Without `available` the layout is that of the narrowest chart, a least slot
+// per category.
 function rotatedAxisLayout(
   order: readonly string[],
   rotateDeg: number,
@@ -175,31 +148,26 @@ function rotatedAxisLayout(
   available: number | undefined,
 ): Pick<PlotOptions, "marginBottom" | "marginRight" | "width"> {
   const marginBottom = rotatedBottomMargin(order, rotateDeg);
-  if (rotateDeg <= 0 || order.length === 0) {
-    return {
-      marginBottom,
-      marginRight: DEFAULT_RIGHT_MARGIN,
-      width: leastWidth(order.length, marginLeft, DEFAULT_RIGHT_MARGIN),
-    };
-  }
-  // At the floor every slot is `MIN_ROTATED_SLOT` wide whatever the margin, so
-  // a label's room there is a plain count of slots.
-  const cos = Math.cos((rotateDeg * Math.PI) / 180);
-  const floorMargin = Math.max(
-    DEFAULT_RIGHT_MARGIN,
-    Math.ceil(
-      order.reduce((widest, label, index) => {
-        const room = (order.length - 1 - index + 0.5) * MIN_ROTATED_SLOT;
-        return Math.max(widest, label.length * GLYPH_PX * cos - room);
-      }, 0),
-    ),
+  const n = order.length;
+  const plotArea = Math.max(
+    n * MIN_ROTATED_SLOT,
+    (available ?? 0) - marginLeft - DEFAULT_RIGHT_MARGIN,
   );
-  const floor = leastWidth(order.length, marginLeft, floorMargin);
-  const marginRight =
-    available !== undefined && available > floor
-      ? rotatedRightMargin(order, rotateDeg, marginLeft, available)
-      : floorMargin;
-  return { marginBottom, marginRight, width: floor };
+  const slot = n > 0 ? plotArea / n : 0;
+  const cos = Math.cos((rotateDeg * Math.PI) / 180);
+  const overhang =
+    rotateDeg > 0
+      ? order.reduce((widest, label, index) => {
+          const room = (n - 1 - index + 0.5) * slot;
+          return Math.max(widest, label.length * GLYPH_PX * cos - room);
+        }, 0)
+      : 0;
+  const marginRight = Math.max(DEFAULT_RIGHT_MARGIN, Math.ceil(overhang));
+  return {
+    marginBottom,
+    marginRight,
+    width: marginLeft + plotArea + marginRight,
+  };
 }
 
 // The categories of an ordinal axis left to right: the stated domain, or the
@@ -461,9 +429,9 @@ interface StackedAxisLabels {
   xTickRotate?: number;
   /**
    * The width of the container the chart is drawn into, as `Chart` hands it to
-   * a spec. With it the right margin under tilted labels is sized for the width
-   * the chart is really drawn at, so a chart with room to spare is not pushed
-   * off-centre by a margin only a cramped one needs.
+   * a spec. With it a chart with tilted labels fills the container with its
+   * bars, and is made wider than the container, and scrolled, by whatever its
+   * last labels reach past the last bar.
    */
   availableWidth?: number;
   /**

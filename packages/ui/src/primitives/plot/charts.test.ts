@@ -810,17 +810,32 @@ describe("tilted x labels", () => {
   it("keeps Plot's own right margin when the chart has room for its labels", () => {
     const long = "a-very-long-model-name · some-harness";
     const order = ["a", "b", "c", long];
-    const cramped = barChart(bars(order), palette, {
-      xTickRotate: 40,
-      xDomain: order,
-    });
     const roomy = barChart(bars(order), palette, {
       xTickRotate: 40,
       xDomain: order,
       availableWidth: 1600,
     });
-    expect(Number(cramped.marginRight)).toBeGreaterThan(20);
     expect(roomy.marginRight).toBe(20);
+    expect(roomy.width).toBe(1600);
+  });
+
+  // The bars are never narrowed to keep a label in view: they fill the
+  // container, and the label's length past the last bar widens the chart, which
+  // the container then scrolls to.
+  it("fills the container with its bars and widens the chart by a label's overhang", () => {
+    const long = "a-very-long-model-name · some-harness";
+    const order = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", long];
+    const options = barChart(bars(order), palette, {
+      xTickRotate: 40,
+      xDomain: order,
+      availableWidth: 900,
+    });
+    const plotArea =
+      Number(options.width) -
+      Number(options.marginLeft) -
+      Number(options.marginRight);
+    expect(plotArea).toBe(900 - Number(options.marginLeft) - 20);
+    expect(Number(options.width)).toBeGreaterThan(900);
   });
 
   it("draws every label inside a chart of any width", () => {

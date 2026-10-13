@@ -46,9 +46,10 @@ export function Chart({ spec, title, className }: ChartProps) {
       if (width === lastWidth) return;
       lastWidth = width;
       const options = spec(readChartPalette(), width > 0 ? width : undefined);
-      // A spec's own `width` is the least the chart can be drawn at and stay
-      // legible (a slot per category under tilted labels). A container narrower
-      // than that gets the chart at that width and scrolls it sideways.
+      // A spec's own `width` is the width the chart needs: a legible slot per
+      // category under tilted labels, and the length of the last labels past
+      // the last bar. A container narrower than that gets the chart at that
+      // width and scrolls it sideways.
       const least = typeof options.width === "number" ? options.width : 0;
       const figure = Plot.plot(
         width > 0 ? { ...options, width: Math.max(width, least) } : options,
