@@ -40,6 +40,7 @@ pub mod readiness;
 pub mod relay;
 pub mod render;
 pub mod snapshot;
+pub mod state_reclaim;
 pub mod stats;
 pub mod store;
 
@@ -69,6 +70,11 @@ pub struct Backend {
     /// not configured: no in-cluster artifact URL, no service token, or a zero
     /// interval.
     pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
+    /// The periodic [state reclamation sweep](crate::state_reclaim) of the
+    /// backend's own store; kept alive for the server's lifetime (dropping it
+    /// aborts the loop). `None` when `TCAB_STATE_RECLAIM` is off or the sweep
+    /// interval is zero.
+    pub state_sweeper: Option<tokio::task::JoinHandle<()>>,
     /// The [artifact capacity](crate::capacity) poll loop's task, which runs for
     /// the server's lifetime. `None` when no artifact
     /// service is configured, in which case nothing is watched and no run is held.
@@ -282,6 +288,16 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.auth_url.clone(),
     ));
 
+    // Give the space of the backend's own store back once nothing needs a run's
+    // files there (see `crate::state_reclaim`). It reads the same bucket, to see
+    // every object a run's manifest names before it removes the run's files.
+    let state_sweeper = crate::state_reclaim::spawn_state_sweeper(
+        Arc::clone(&db),
+        store.clone(),
+        r2.clone(),
+        config.state_sweep_timing(),
+    );
+
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
@@ -379,6 +395,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.service_token.clone(),
         relay.notifier().clone(),
         db.clone(),
+        store.clone(),
     )
     .await;
 
@@ -435,6 +452,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         refresher,
         price_refresher,
         artifact_sweeper,
+        state_sweeper,
         capacity_monitor,
     })
 }

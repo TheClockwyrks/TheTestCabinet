@@ -31,6 +31,10 @@ mod tests;
 #[path = "api/flow_harness.test.rs"]
 mod flow_harness;
 
+#[cfg(test)]
+#[path = "api/state_reclaim_flow.test.rs"]
+mod state_reclaim_flow;
+
 mod auto_publish;
 mod comparisons;
 mod coverage;
@@ -64,7 +68,9 @@ mod tournaments;
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
-pub use crate::capacity::{ArtifactStorageState, ArtifactStorageStatus, HoldReason};
+pub use crate::capacity::{
+    ArtifactStorageState, ArtifactStorageStatus, HoldReason, StateVolumeLevel, StateVolumeStatus,
+};
 pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{

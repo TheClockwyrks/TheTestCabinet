@@ -307,6 +307,20 @@ pub struct RetentionRun {
     pub artifacts_reclaimed_at: Option<String>,
     /// The reason of that earlier reclaim.
     pub artifacts_reclaimed_reason: Option<String>,
+    /// RFC 3339 of an earlier reclaim of this run's files in the backend's own
+    /// store ([`crate::state_reclaim`]).
+    pub state_reclaimed_at: Option<String>,
+    /// The reason of that earlier reclaim.
+    pub state_reclaimed_reason: Option<String>,
+}
+
+impl RetentionRun {
+    /// Whether the backend's record says the artifact service holds no tree for
+    /// the run: the sweep reclaimed it, or the run's presence is recorded as not
+    /// stored. An unknown presence is not this.
+    pub fn tree_recorded_absent(&self) -> bool {
+        self.artifacts_reclaimed_at.is_some() || self.artifacts_stored == Some(false)
+    }
 }
 
 /// A [`RetentionRun`] as stored, with the bucket its confirmation names.
@@ -322,6 +336,8 @@ struct RetentionRow {
     artifacts_stored: Option<bool>,
     artifacts_reclaimed_at: Option<String>,
     artifacts_reclaimed_reason: Option<String>,
+    state_reclaimed_at: Option<String>,
+    state_reclaimed_reason: Option<String>,
 }
 
 impl RetentionRow {
@@ -343,6 +359,8 @@ impl RetentionRow {
             artifacts_stored: self.artifacts_stored,
             artifacts_reclaimed_at: self.artifacts_reclaimed_at,
             artifacts_reclaimed_reason: self.artifacts_reclaimed_reason,
+            state_reclaimed_at: self.state_reclaimed_at,
+            state_reclaimed_reason: self.state_reclaimed_reason,
         }
     }
 }
@@ -403,6 +421,8 @@ fn retention_select() -> sea_orm::Select<run::Entity> {
         run::Column::ArtifactsStored,
         run::Column::ArtifactsReclaimedAt,
         run::Column::ArtifactsReclaimedReason,
+        run::Column::StateReclaimedAt,
+        run::Column::StateReclaimedReason,
     ])
 }
 
@@ -447,7 +467,12 @@ pub(super) async fn clear_retention_records<C: ConnectionTrait>(
             run::Column::MediaConfirmationVersion,
             Expr::value(Option::<i32>::None),
         )
-        .col_expr(run::Column::MediaManifest, none());
+        .col_expr(run::Column::MediaManifest, none())
+        // The push follows a driver that mirrored the run's files into the
+        // backend store again, so the run is no longer one whose files there
+        // were removed on purpose.
+        .col_expr(run::Column::StateReclaimedAt, none())
+        .col_expr(run::Column::StateReclaimedReason, none());
     if was_reclaimed {
         update = update
             .col_expr(run::Column::ArtifactsReclaimedAt, none())

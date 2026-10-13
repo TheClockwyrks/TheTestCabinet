@@ -707,6 +707,8 @@ impl Db {
             media_manifest: NotSet,
             artifacts_reclaimed_at: NotSet,
             artifacts_reclaimed_reason: NotSet,
+            state_reclaimed_at: NotSet,
+            state_reclaimed_reason: NotSet,
             // Automatic publishing's own mark, which a push likewise leaves alone.
             auto_publish_deferred: NotSet,
             record_json: Set(record_json),
@@ -9567,6 +9569,14 @@ pub use retention::{
     MediaFileKind, MediaManifest, MediaManifestFile, PublishedMediaState, ReclaimReason,
     RetentionRun, confirmation_holds, past_instant,
 };
+
+#[path = "db.state_reclaim.rs"]
+mod state_reclaim;
+pub use state_reclaim::UploadedOver;
+
+#[cfg(test)]
+#[path = "db.state_reclaim.test.rs"]
+mod state_reclaim_tests;
 
 #[path = "db.publish_retry.rs"]
 mod publish_retry;

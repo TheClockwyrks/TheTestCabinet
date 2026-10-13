@@ -49,6 +49,52 @@ impl RunFileBucket {
     }
 }
 
+/// Record that a file of run `run_id` was just written into the store by an
+/// upload ([`Db::note_run_file_uploaded`](crate::db::Db::note_run_file_uploaded)).
+///
+/// A run that was confirmed is unevaluated again, so a refresh is requested to
+/// export what the upload brought and confirm the run again; until it has, the
+/// state sweep removes nothing of the run. A published run with no confirmation
+/// is stamped as changed and a refresh requested for it as well, so a refresh
+/// already evaluating it does not confirm it without the file. A run whose files
+/// the sweep had removed stops reading as one with none. An upload for any other
+/// run, which is every driver mirroring a run for the first time, writes nothing.
+///
+/// A record that cannot be written does not fail the upload: the file is
+/// stored, and the sweep removes a file only when the run's manifest records an
+/// object for it, so a confirmation left in place deletes nothing it should not.
+pub(super) async fn file_uploaded(state: &AppState, run_id: &str) {
+    match state.db.note_run_file_uploaded(run_id).await {
+        Ok(crate::db::UploadedOver::Nothing) => {}
+        Ok(crate::db::UploadedOver::Reclaim) => tracing::info!(
+            run.id = %run_id,
+            "a file was uploaded for a run whose files the state sweep had removed; \
+             cleared the reclaim record"
+        ),
+        Ok(crate::db::UploadedOver::Published) => {
+            tracing::debug!(
+                run.id = %run_id,
+                "a file was uploaded for a published run; requested a snapshot refresh \
+                 to evaluate it"
+            );
+            state.publisher.queue_refresh();
+        }
+        Ok(crate::db::UploadedOver::Confirmation) => {
+            tracing::info!(
+                run.id = %run_id,
+                "a file was uploaded for a confirmed run; cleared its media confirmation \
+                 and requested a snapshot refresh to evaluate it again"
+            );
+            state.publisher.queue_refresh();
+        }
+        Err(error) => tracing::warn!(
+            run.id = %run_id,
+            %error,
+            "could not record a file upload on its run; the run's media confirmation is as it was"
+        ),
+    }
+}
+
 /// Answer for the file of run `run_id` the store names `name` (see
 /// [`MediaManifestFile::name`](crate::db::MediaManifestFile::name)) after the
 /// store failed to read it with `store_miss`, labelling the body by `labels`.

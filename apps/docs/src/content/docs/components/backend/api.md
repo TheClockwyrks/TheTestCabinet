@@ -101,7 +101,14 @@ The backend's current reading of the artifact store's
   "totalBytes": 21474836480,
   "writable": true,
   "warnBytes": 3221225472,
-  "stopBytes": 2147483648
+  "stopBytes": 2147483648,
+  "stateVolume": {
+    "level": "ok",
+    "freeBytes": 9663676416,
+    "totalBytes": 16776658944,
+    "warnBytes": 3221225472,
+    "stopBytes": 1610612736
+  }
 }
 ```
 
@@ -109,10 +116,13 @@ The backend's current reading of the artifact store's
   `unmonitored`.
 - `runsOnHold` says whether the run queue is being held.
 - `holdReason` is present while it is: `unreadable`, `low-space`, `unwritable`,
-  `uploads-waiting`, `write-check-pending`, `publish-failing` or
-  `proving-store`. Under `proving-store` the queue hands out one run at a time
-  rather than none; see [the hold](/components/backend/overview/#the-hold).
-  `publish-failing` is reported under any `state`, `unmonitored` included.
+  `uploads-waiting`, `write-check-pending`, `state-low-space`,
+  `publish-failing` or `proving-store`. Under `proving-store` the queue hands
+  out one run at a time rather than none; see [the
+  hold](/components/backend/overview/#the-hold). `publish-failing` is reported
+  under any `state`, `unmonitored` included. `state-low-space` is about the
+  backend's own volume and is reported while `state` describes the artifact
+  store as it reads, `ok` included.
 - `runsWaitingToStore` is the number of jobs in the `storing` state.
 - `detail` is the error text behind the hold when there is one: the failed
   poll's error, the write check's error, the reason the latest failed upload
@@ -126,6 +136,13 @@ The backend's current reading of the artifact store's
 - `freeBytes`, `totalBytes` and `writable` are the latest reading and are absent
   until one has arrived.
 - The two thresholds are always present.
+- `stateVolume` is the backend's own [state
+  volume](/components/backend/overview/#low-space), present once it has been
+  read. Its `level` is `ok`, `low`, `blocked` or `unreadable`. `freeBytes` and
+  `totalBytes` are the latest reading that succeeded, `warnBytes` and
+  `stopBytes` are its two thresholds with `0` for one that is turned off, and
+  `error` is present while the latest reading failed. A change of `level` is
+  announced on the console stream.
 
 ## `POST /ingest`
 
@@ -631,9 +648,10 @@ run already carries, when the run is already published.
 
 ### `DELETE /runs/{id}`
 
-Permanently delete a run: its record, its reviews, its links, and its stored
-media. A published run whose record this build can read is refused (`422`),
-because a public run is in the snapshot and the gallery. A published run whose
+Permanently delete a run: its record, its reviews, its links, and its folder in
+the backend store, a gg run's session record included. A published run whose
+record this build can read is refused (`422`), because a public run is in the
+snapshot and the gallery. A published run whose
 record this build cannot read is deleted, since it is already absent from both.
 `404` if unknown. The response reports the run id and `deleted: true`.
 
@@ -946,6 +964,13 @@ a fault is never read as a file the run does not have. A session record is in
 no manifest, so its route answers from the store alone.
 
 No route serves a byte range, from the store or from the bucket.
+
+Each `GET` route but the session record's has a `POST` on the same path, which
+a driver uploads the file to. An upload for a run that is published
+[withdraws the run's confirmation and requests a snapshot
+refresh](/components/backend/overview/#uploads-after-a-confirmation), so the
+file is published before the store's copy can be removed. The session record is
+uploaded to `POST /runs/{id}/replay` and changes neither.
 
 ### `POST /snapshot/refresh`
 

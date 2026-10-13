@@ -22,7 +22,7 @@ The backend is also a caller in its own right, over an in-cluster URL of its own
 (`TCAB_ARTIFACTS_URL`). It prunes a deleted run's tree, enumerates stored trees
 for its [reclamation sweep](/components/backend/overview/#artifact-reclamation),
 and reads a published run's media here when baking the public snapshot, for the
-runs whose media has aged out of its own ephemeral store. The sweep decides how
+files its own store does not hold. The sweep decides how
 long each tree is kept: the service stores a tree until the backend deletes
 it. The two URLs are
 separate because the advertised one is whatever a browser can resolve, which in

@@ -82,6 +82,15 @@ pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
     root: PathBuf,
+    /// Held shared by every write of a run's file and exclusively while the
+    /// [state reclamation sweep](crate::state_reclaim) removes a run's emptied
+    /// directories, so a directory a write has just made sure of is still there
+    /// when the write lands. Shared by every clone of the store a process opened.
+    run_writes: std::sync::Arc<std::sync::RwLock<()>>,
+    /// Makes every [`remove_run_file`](Self::remove_run_file) fail, so a test can
+    /// see what a removal that removes nothing leaves behind.
+    #[cfg(test)]
+    pub(crate) fail_removals: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
@@ -928,7 +937,12 @@ impl DefinitionStore {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         std::fs::create_dir_all(&root)?;
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            run_writes: std::sync::Arc::default(),
+            #[cfg(test)]
+            fail_removals: std::sync::Arc::default(),
+        })
     }
 
     /// The store root directory.
@@ -1678,10 +1692,7 @@ impl DefinitionStore {
                 "invalid run id or proof file".to_string(),
             ));
         }
-        let dir = self.run_proof_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_proof_dir(run_id).join(file), bytes)
     }
 
     /// List a run's stored proof media file names (`<proof-id>.<ext>`), sorted.
@@ -1739,10 +1750,7 @@ impl DefinitionStore {
                 "invalid run id or validation file".to_string(),
             ));
         }
-        let dir = self.run_validation_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_validation_dir(run_id).join(file), bytes)
     }
 
     /// List a run's stored synthesized validation media file names, sorted. A run
@@ -1816,12 +1824,7 @@ impl DefinitionStore {
                 "invalid run id or artifact name".to_string(),
             ));
         }
-        let path = self.run_artifact_path(run_id, name);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_artifact_path(run_id, name), bytes)
     }
 
     /// Read one of a run's stored [run-tree artifacts](Self::run_artifact_path). A run that
@@ -1900,10 +1903,7 @@ impl DefinitionStore {
                 "invalid run id or asset file".to_string(),
             ));
         }
-        let dir = self.run_asset_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_asset_dir(run_id).join(file), bytes)
     }
 
     /// Read one asset media file for a run.
@@ -1942,10 +1942,7 @@ impl DefinitionStore {
                 "invalid run id or showcase file".to_string(),
             ));
         }
-        let dir = self.run_showcase_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_showcase_dir(run_id).join(file), bytes)
     }
 
     /// List a run's stored showcase file names, sorted. A run with no stored
@@ -1996,12 +1993,7 @@ impl DefinitionStore {
         if !is_safe_segment(run_id) {
             return Err(BackendError::BadRequest("invalid run id".to_string()));
         }
-        let path = self.run_controller_path(run_id);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_controller_path(run_id), bytes)
     }
 
     /// Whether a run has an uploaded controller wasm (so it can be pitted in the
@@ -2251,6 +2243,14 @@ fn is_safe_segment(segment: &str) -> bool {
         && !segment.contains('\\')
 }
 
+#[path = "store.state.rs"]
+mod state;
+pub use state::{RunFolder, RunFolderFile, SESSION_RECORD_FILE, StateVolume};
+
 #[cfg(test)]
 #[path = "store.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "store.state.test.rs"]
+mod state_tests;

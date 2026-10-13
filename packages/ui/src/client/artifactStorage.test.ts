@@ -203,6 +203,81 @@ describe("storageNotice", () => {
     expect(notice?.detail).toMatch(/^Several runs in a row could not/);
   });
 
+  it("names the backend's own storage when the state volume holds the queue", () => {
+    // The artifact store reads fine: the hold is not about it.
+    const held = status({
+      runsOnHold: true,
+      holdReason: "state-low-space",
+      stateVolume: {
+        level: "blocked",
+        freeBytes: GIB,
+        totalBytes: 16 * GIB,
+        warnBytes: 3 * GIB,
+        stopBytes: 1.5 * GIB,
+      },
+    });
+    const notice = storageNotice(held);
+    expect(notice).toEqual({
+      tone: "hold",
+      title: "New runs are on hold: the backend's own storage is nearly full",
+      detail:
+        "Less than 1.5 GiB is free on the backend's state volume, which is separate from artifact storage and takes every run's files before they are published. Queued runs start once space is freed there, which the backend does itself as published runs are confirmed in the bucket. Publishing is unaffected.",
+    });
+    // It must not read as the artifact store's hold.
+    expect(notice?.title).not.toContain("artifact");
+    expect(storageHoldReason(held)).toBe(notice?.title);
+
+    // A status with the reason and no figures still reads as a sentence.
+    expect(
+      storageNotice(status({ runsOnHold: true, holdReason: "state-low-space" }))
+        ?.detail,
+    ).toMatch(/^Too little is free on the backend's state volume/);
+  });
+
+  it("warns that the backend's storage is running low when nothing else applies", () => {
+    const stateVolume = {
+      level: "low" as const,
+      freeBytes: 2 * GIB,
+      totalBytes: 16 * GIB,
+      warnBytes: 3 * GIB,
+      stopBytes: 1.5 * GIB,
+    };
+    expect(storageNotice(status({ stateVolume }))).toEqual({
+      tone: "warn",
+      title: "Backend storage is running low",
+      detail:
+        "Less than 3 GiB is free on the backend's state volume, which is separate from artifact storage. New runs go on hold under 1.5 GiB.",
+    });
+    // With the hold turned off there is no threshold to quote.
+    expect(
+      storageNotice(status({ stateVolume: { ...stateVolume, stopBytes: 0 } }))
+        ?.detail,
+    ).toBe(
+      "Less than 3 GiB is free on the backend's state volume, which is separate from artifact storage.",
+    );
+    // It is advisory: no run is held by it.
+    expect(storageHoldReason(status({ stateVolume }))).toBeNull();
+    // The artifact store's own warning and any hold are shown in its place.
+    expect(storageNotice(status({ state: "low", stateVolume }))?.title).toBe(
+      "Artifact storage is running low",
+    );
+    expect(
+      storageNotice(
+        status({
+          runsOnHold: true,
+          holdReason: "publish-failing",
+          stateVolume,
+        }),
+      )?.title,
+    ).toBe("New runs are on hold: publishing is failing");
+    // A volume that reads fine, or could not be read, calls for no notice.
+    for (const level of ["ok", "unreadable"] as const) {
+      expect(
+        storageNotice(status({ stateVolume: { ...stateVolume, level } })),
+      ).toBeNull();
+    }
+  });
+
   it("reads a hold from the state when the backend names no reason", () => {
     // What a backend older than `holdReason` sends.
     expect(

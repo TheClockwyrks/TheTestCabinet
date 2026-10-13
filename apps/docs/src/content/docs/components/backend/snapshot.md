@@ -292,7 +292,9 @@ One file of a run is not published. A gg run's [session
 record](/gg/analysis/session-records/) carries the complete model conversation
 of its run, and an object in this bucket can be fetched by anyone who can
 compose its key. The record therefore stays in the backend store, which holds
-its only copy besides the run's tree, and no refresh reads it.
+its only copy besides the run's tree, and no refresh reads it. The backend's
+[state sweep](/components/backend/overview/#state-volume) keeps it for as long
+as the run exists.
 
 ### The file manifest
 
@@ -319,11 +321,13 @@ entry, because it has no object.
 The manifest is written together with the confirmation and cleared with it, so
 a run has one exactly while it is confirmed.
 
-The manifest has two readers. A refresh builds a confirmed run's document from
+The manifest has three readers. A refresh builds a confirmed run's document from
 it, taking every file name and key from the manifest while the bucket's listing
 holds each object it names, with no read of the run's folder in the backend
 store. The backend's [run file routes](/components/backend/api/#run-files) use
-it to answer from the bucket for a file the store no longer holds.
+it to answer from the bucket for a file the store no longer holds. The
+[state sweep](/components/backend/overview/#state-volume) removes a file from
+the store only when the manifest records an object for it.
 
 ### Unrecoverable files
 

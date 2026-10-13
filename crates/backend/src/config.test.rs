@@ -477,6 +477,7 @@ fn the_artifact_capacity_settings_resolve_and_are_validated() {
             // `0` is how an operator removes the margin.
             recover_bytes: 0,
             poll_interval: Duration::from_secs(5),
+            ..CapacitySettings::default()
         }
     );
 
@@ -540,4 +541,132 @@ fn the_publish_failure_hold_threshold_resolves_and_is_validated() {
             other => panic!("`{unreadable}` should be refused, got {other:?}"),
         }
     }
+}
+
+/// The state volume's settings: the reclaim switch, on unless turned off and
+/// refused when misspelled, and the two free-space thresholds, each read strictly
+/// with `0` turning it off.
+#[test]
+fn the_state_volume_settings_resolve_and_are_validated() {
+    use super::ConfigError;
+    use crate::capacity::MIB;
+
+    const NAMES: [&str; 3] = [
+        "TCAB_STATE_RECLAIM",
+        "TCAB_STATE_FREE_WARN_MB",
+        "TCAB_STATE_FREE_STOP_MB",
+    ];
+    let set = |values: [Option<&str>; 3]| {
+        for (name, value) in NAMES.iter().zip(values) {
+            // SAFETY: this process is this test's alone under nextest, the repo's
+            // runner.
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    };
+    let invalid = || match super::Config::from_env() {
+        Err(ConfigError::Invalid { name, .. }) => name,
+        other => panic!("expected an invalid setting, got {other:?}"),
+    };
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path()) };
+
+    // Unset: the sweep is on, warn under 3 GiB, stop under 1.5 GiB.
+    set([None; 3]);
+    let config = super::Config::from_env().unwrap();
+    assert!(config.state_reclaim);
+    assert_eq!(config.artifact_capacity.state_warn_bytes, 3072 * MIB);
+    assert_eq!(config.artifact_capacity.state_stop_bytes, 1536 * MIB);
+    assert!(config.artifact_capacity.watches_state_volume());
+
+    for (spelling, on) in [
+        ("0", false),
+        ("false", false),
+        ("OFF", false),
+        ("no", false),
+        ("1", true),
+        ("true", true),
+        ("", true),
+    ] {
+        set([Some(spelling), None, None]);
+        let config = super::Config::from_env().unwrap();
+        assert_eq!(config.state_reclaim, on, "{spelling:?}");
+        // Off, the sweep has no timing and is never spawned.
+        assert_eq!(config.state_sweep_timing().is_some(), on, "{spelling:?}");
+    }
+    // A misspelled "off" must not leave the deletion on.
+    set([Some("disabled"), None, None]);
+    assert_eq!(invalid(), "TCAB_STATE_RECLAIM");
+
+    set([None, Some("4096"), Some("1024")]);
+    let capacity = super::Config::from_env().unwrap().artifact_capacity;
+    assert_eq!(capacity.state_warn_bytes, 4096 * MIB);
+    assert_eq!(capacity.state_stop_bytes, 1024 * MIB);
+
+    // `0` turns each off, and both off leaves the volume unread.
+    set([None, Some("0"), None]);
+    let capacity = super::Config::from_env().unwrap().artifact_capacity;
+    assert_eq!(capacity.state_warn_bytes, 0);
+    assert_eq!(capacity.state_stop_bytes, 1536 * MIB);
+    set([None, None, Some("0")]);
+    let capacity = super::Config::from_env().unwrap().artifact_capacity;
+    assert_eq!(capacity.state_stop_bytes, 0);
+    assert!(capacity.watches_state_volume());
+    set([None, Some("0"), Some("0")]);
+    let capacity = super::Config::from_env().unwrap().artifact_capacity;
+    assert!(!capacity.watches_state_volume());
+
+    // Equal thresholds are allowed, and a warning under the hold is not.
+    set([None, Some("2048"), Some("2048")]);
+    assert!(super::Config::from_env().is_ok());
+    set([None, Some("1024"), Some("2048")]);
+    assert_eq!(invalid(), "TCAB_STATE_FREE_WARN_MB");
+    set([None, None, Some("4096")]);
+    assert_eq!(invalid(), "TCAB_STATE_FREE_WARN_MB");
+
+    // A value that is not a whole number is refused rather than defaulted.
+    set([None, None, Some("1.5GiB")]);
+    assert_eq!(invalid(), "TCAB_STATE_FREE_STOP_MB");
+    set([None, Some("-1"), None]);
+    assert_eq!(invalid(), "TCAB_STATE_FREE_WARN_MB");
+}
+
+/// The state sweep runs by the artifact sweep's clocks, and removes a published
+/// run's files only on a backend that records media confirmations.
+#[test]
+fn the_state_sweep_takes_the_artifact_sweep_s_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_STATE_RECLAIM");
+        std::env::remove_var("TCAB_ARTIFACT_RECLAIM_PUBLISHED");
+        for name in R2_VARIABLES {
+            std::env::remove_var(name);
+        }
+    }
+    let config = super::Config::from_env().unwrap();
+    let timing = config.state_sweep_timing().expect("on unless turned off");
+    assert_eq!(timing.interval, config.artifact_sweep_interval);
+    assert_eq!(timing.rules.grace, config.artifact_sweep_grace);
+    assert_eq!(
+        timing.rules.retention.failed,
+        config.artifact_retention.failed
+    );
+    assert_eq!(
+        timing.rules.retention.canceled,
+        config.artifact_retention.canceled
+    );
+    // No bucket: nothing confirms a published run's files, so none is removed.
+    assert_eq!(timing.rules.retention.bucket, None);
+    assert!(!timing.rules.retention.published);
+    assert_eq!(
+        timing.rules.retention.published,
+        config.publisher_timing().confirm_media.is_some()
+    );
 }

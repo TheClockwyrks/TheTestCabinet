@@ -211,6 +211,16 @@ pub struct Model {
     /// together with [`artifacts_reclaimed_at`](Self::artifacts_reclaimed_at).
     #[sea_orm(nullable)]
     pub artifacts_reclaimed_reason: Option<String>,
+    /// RFC 3339 of when the backend's state reclamation sweep removed this run's
+    /// files from the backend's own store on purpose, or `NULL` for a run whose
+    /// files were never reclaimed. Cleared when the run's record is stored again
+    /// and when a file is uploaded for the run.
+    #[sea_orm(nullable)]
+    pub state_reclaimed_at: Option<String>,
+    /// Why the files were reclaimed (`published`, `failed` or `canceled`); set
+    /// together with [`state_reclaimed_at`](Self::state_reclaimed_at).
+    #[sea_orm(nullable)]
+    pub state_reclaimed_reason: Option<String>,
     /// Whether automatic publishing passed this run over because its artifact tree
     /// could not be confirmed, which hands the run to the backend's periodic retry.
     /// Cleared once the run is published or has a publish job.

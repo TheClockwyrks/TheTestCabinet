@@ -155,6 +155,8 @@ fn run_summary_lifts_the_runs_display_identity() {
         media_manifest: None,
         artifacts_reclaimed_at: None,
         artifacts_reclaimed_reason: None,
+        state_reclaimed_at: None,
+        state_reclaimed_reason: None,
         auto_publish_deferred: false,
         record_json: "{}".to_string(),
         record_readable: true,

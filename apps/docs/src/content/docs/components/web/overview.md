@@ -170,8 +170,12 @@ running low" while the state is `low`. While the queue is on hold it reads "New
 runs are on hold" with the condition holding it: the storage is full, the
 artifact service cannot be reached, the artifact store cannot be written to,
 finished runs are waiting to store their artifacts, the store is being
-checked after failed uploads, or
+checked after failed uploads, the backend's own
+[state volume](/components/backend/overview/#low-space) is nearly full, or
 [publishing is failing](/components/backend/overview/#publish-failures). The
+state volume's notice names it as the backend's storage, apart from the
+artifact store, and reads "Backend storage is running low" while that volume is
+`low` and no other notice applies. The
 publishing notice says how many runs in a row could not be published, that
 publishing is retried automatically, and that queued runs start once a publish
 succeeds. While the backend is

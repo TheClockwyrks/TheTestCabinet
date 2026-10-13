@@ -881,8 +881,45 @@ export type HoldReason =
   | "unwritable"
   | "uploads-waiting"
   | "write-check-pending"
+  | "state-low-space"
   | "publish-failing"
   | "proving-store";
+
+/**
+ * What the latest reading of the backend's own state volume amounts to.
+ */
+export type StateVolumeLevel = "ok" | "low" | "blocked" | "unreadable";
+
+/**
+ * The backend's own state volume, as of the latest reading: the volume its
+ * store is on, which is not the artifact store's.
+ */
+export type StateVolumeStatus = {
+  /**
+   * What the latest reading amounts to.
+   */
+  level: StateVolumeLevel;
+  /**
+   * Free bytes on the volume as of the latest reading that succeeded.
+   */
+  freeBytes?: number;
+  /**
+   * The size of the volume as of the latest reading that succeeded.
+   */
+  totalBytes?: number;
+  /**
+   * Free space under which the level is `low`. `0` when the warning is off.
+   */
+  warnBytes: number;
+  /**
+   * Free space under which the level is `blocked`. `0` when the hold is off.
+   */
+  stopBytes: number;
+  /**
+   * Why the latest reading failed, when it did.
+   */
+  error?: string;
+};
 
 /**
  * The backend's current reading of the artifact store: the body of
@@ -948,6 +985,12 @@ export type ArtifactStorageStatus = {
    * Free space under which the state is `blocked`.
    */
   stopBytes: number;
+  /**
+   * The backend's own state volume. Absent on a backend that does not read
+   * it: one with no artifact service to poll, or with both of the volume's
+   * thresholds turned off. Absent until the first reading too.
+   */
+  stateVolume?: StateVolumeStatus;
 };
 
 /**

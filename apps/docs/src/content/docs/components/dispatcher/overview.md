@@ -62,7 +62,7 @@ name starts with `tcab-publisher-` and a run otherwise.
 
 ## Backend-enforced admission rules
 
-Three admission rules are enforced by the backend at the claim, not by the
+These admission rules are enforced by the backend at the claim, not by the
 dispatcher.
 
 - Per-harness maximum parallelism. The backend hands back only a job whose
@@ -82,6 +82,10 @@ dispatcher.
   the claim hands back one run at a time, and only while no run is in flight,
   until a tree lands.
   The publish lane's claim is unaffected.
+- State volume. While the backend's own
+  [state volume](/components/backend/overview/#low-space) is under its stop
+  threshold, the run claim hands back nothing and every waiting run is held in
+  `pending`. The publish lane's claim is unaffected.
 - Publish failures. While publishes are
   [failing across several runs](/components/backend/overview/#publish-failures),
   the run claim hands back nothing and every waiting run is held in `pending`.

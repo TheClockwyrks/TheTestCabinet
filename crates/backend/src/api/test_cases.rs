@@ -415,6 +415,11 @@ pub async fn run_proof(
 
 /// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
 /// by the publisher alongside the run record. The raw request body is the bytes.
+///
+/// Like every upload of a run's file but the session record's, this ends with
+/// [`file_uploaded`](super::run_files::file_uploaded): a run that was confirmed,
+/// or whose files the state sweep had removed, is evaluated again by the next
+/// refresh.
 pub async fn put_run_proof(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
@@ -424,6 +429,7 @@ pub async fn put_run_proof(
         .store
         .write_run_proof(&id, &file, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
@@ -456,6 +462,7 @@ pub async fn put_run_validation(
         .store
         .write_run_validation(&id, &file, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
@@ -486,6 +493,7 @@ pub async fn put_run_asset(
         .store
         .write_run_asset(&id, &file, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
@@ -520,6 +528,7 @@ pub async fn put_run_showcase(
         .store
         .write_run_showcase(&id, &file, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
@@ -549,6 +558,7 @@ pub async fn put_run_controller(
         .store
         .write_run_controller(&id, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
@@ -577,6 +587,9 @@ pub async fn run_replay(
 /// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the terminal
 /// status post that creates the run row, so there is nothing here to patch, and the store keeps the
 /// body opaque: it is never parsed.
+///
+/// The one upload that leaves a run's media confirmation alone: no manifest names a session
+/// record and no sweep removes one, so its arrival changes nothing a confirmation says.
 pub async fn put_run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -644,6 +657,7 @@ pub async fn put_run_code_analysis(
         .store
         .write_run_code_analysis(&id, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 

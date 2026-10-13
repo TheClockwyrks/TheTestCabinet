@@ -215,6 +215,10 @@ pub struct Config {
     /// (`TCAB_ARTIFACT_FAILED_RETENTION_HOURS`,
     /// `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS`, `TCAB_ARTIFACT_RECLAIM_PUBLISHED`).
     pub artifact_retention: crate::artifacts::RetentionPolicy,
+    /// Whether the [state reclamation sweep](crate::state_reclaim) removes
+    /// anything from the backend's own store (`TCAB_STATE_RECLAIM`). On unless
+    /// turned off.
+    pub state_reclaim: bool,
     /// How old a tree with no run row must be before a sweep deletes it
     /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
     /// uploaded its tree but not yet reported terminal is protected from the sweep.
@@ -385,6 +389,8 @@ impl Config {
             }),
         };
 
+        let state_reclaim = on_unless_off("TCAB_STATE_RECLAIM")?;
+
         let artifact_sweep_grace_hours = std::env::var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -416,6 +422,7 @@ impl Config {
             artifacts_internal_url,
             artifact_sweep_interval,
             artifact_retention,
+            state_reclaim,
             artifact_sweep_grace: Duration::from_secs(
                 artifact_sweep_grace_hours.saturating_mul(3600),
             ),
@@ -459,6 +466,31 @@ impl Config {
             && !self.artifact_sweep_interval.is_zero()
             && self.artifacts_internal_url.is_some()
             && self.service_token.is_some()
+    }
+}
+
+impl Config {
+    /// How often the [state reclamation sweep](crate::state_reclaim) runs and
+    /// what a pass removes by, or `None` when `TCAB_STATE_RECLAIM` is off and the
+    /// sweep removes nothing.
+    ///
+    /// The interval, the grace window and the two retentions are the artifact
+    /// sweep's own, so a failed run's files leave both volumes by one clock. The
+    /// `published` rule is on only for a backend that records media
+    /// confirmations ([`publisher_timing`](Self::publisher_timing)): a
+    /// confirmation no refresh keeps current is not one to remove a published
+    /// run's files on.
+    pub fn state_sweep_timing(&self) -> Option<crate::artifacts::SweepTiming> {
+        self.state_reclaim.then(|| crate::artifacts::SweepTiming {
+            interval: self.artifact_sweep_interval,
+            rules: crate::artifacts::SweepRules {
+                grace: self.artifact_sweep_grace,
+                retention: crate::artifacts::RetentionPolicy {
+                    published: self.publisher_timing().confirm_media.is_some(),
+                    ..self.artifact_retention
+                },
+            },
+        })
     }
 }
 
@@ -512,7 +544,21 @@ fn capacity_settings() -> Result<crate::capacity::CapacitySettings, ConfigError>
             "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS",
             defaults.poll_interval,
         )?,
+        state_warn_bytes: megabytes("TCAB_STATE_FREE_WARN_MB", defaults.state_warn_bytes)?,
+        state_stop_bytes: megabytes("TCAB_STATE_FREE_STOP_MB", defaults.state_stop_bytes)?,
     };
+    // The same rule for the state volume, whose warning `0` turns off.
+    if settings.state_warn_bytes != 0 && settings.state_warn_bytes < settings.state_stop_bytes {
+        return Err(ConfigError::Invalid {
+            name: "TCAB_STATE_FREE_WARN_MB",
+            reason: format!(
+                "the warn threshold ({} MiB) is below the stop threshold \
+                 `TCAB_STATE_FREE_STOP_MB` ({} MiB); `0` turns the warning off",
+                settings.state_warn_bytes / MIB,
+                settings.state_stop_bytes / MIB
+            ),
+        });
+    }
     // A warning that fires only after the queue has already stopped warns nobody.
     if settings.warn_bytes < settings.stop_bytes {
         return Err(ConfigError::Invalid {

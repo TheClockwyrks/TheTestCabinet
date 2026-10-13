@@ -69,7 +69,7 @@ struct PublisherInner {
     /// The artifact service's **in-cluster** base URL
     /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
     /// passed to the snapshot builder so it can fall back for run media missing from
-    /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
+    /// the store. `None` in a dev/single-box setup with no separate
     /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
     /// How long a superseded snapshot generation is kept before the post-upload
@@ -904,7 +904,7 @@ fn load_case_manifests(store: &DefinitionStore) -> Result<Vec<crate::store::Stor
 
 #[cfg(test)]
 #[path = "publisher.test.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "publisher.manifest.test.rs"]

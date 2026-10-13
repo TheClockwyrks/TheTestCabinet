@@ -10,7 +10,7 @@ use test_cabinet_core::validation::ValidationSummary;
 
 use crate::db::StoredReview;
 
-pub(super) fn record(id: &str) -> RunRecord {
+pub(crate) fn record(id: &str) -> RunRecord {
     RunRecord {
         id: id.to_string(),
         started_at: "2026-06-17T20:40:00Z".to_string(),
@@ -55,7 +55,7 @@ pub(super) fn record(id: &str) -> RunRecord {
 
 /// Push, review, and publish a run so it lands in the published set the snapshot
 /// is built from.
-pub(super) async fn seed_published(db: &Db, id: &str, published_at: &str) {
+pub(crate) async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.push(&record(id), &RunLinks::default(), None, None)
         .await
         .unwrap();
@@ -267,8 +267,8 @@ async fn a_refresh_pending_at_the_last_stop_is_released_at_startup() {
 /// A stand-in bucket: it keeps what is put, lists it by prefix, and can be told to
 /// refuse the listing of one prefix. Requests are not authenticated.
 #[derive(Default)]
-pub(super) struct Bucket {
-    pub(super) objects: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+pub(crate) struct Bucket {
+    pub(crate) objects: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
     /// A prefix whose listing answers `500`.
     unlistable: std::sync::Mutex<Option<String>>,
     /// How many objects were put, `index.json` among them.
@@ -276,7 +276,7 @@ pub(super) struct Bucket {
 }
 
 impl Bucket {
-    pub(super) fn keys(&self) -> Vec<String> {
+    pub(crate) fn keys(&self) -> Vec<String> {
         self.objects.lock().unwrap().keys().cloned().collect()
     }
 }
@@ -290,7 +290,7 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
         bucket: Arc<Bucket>,
         Query(query): Query<std::collections::HashMap<String, String>>,
         request: Request,
-    ) -> (StatusCode, String) {
+    ) -> (StatusCode, Vec<u8>) {
         let key = request
             .uri()
             .path()
@@ -307,12 +307,12 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
             bucket
                 .puts
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            return (StatusCode::OK, String::new());
+            return (StatusCode::OK, Vec::new());
         }
         if method == Method::GET && query.contains_key("list-type") {
             let prefix = query.get("prefix").cloned().unwrap_or_default();
             if bucket.unlistable.lock().unwrap().as_deref() == Some(prefix.as_str()) {
-                return (StatusCode::INTERNAL_SERVER_ERROR, String::new());
+                return (StatusCode::INTERNAL_SERVER_ERROR, Vec::new());
             }
             let contents: String = bucket
                 .objects
@@ -324,18 +324,18 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
                 .collect();
             return (
                 StatusCode::OK,
-                format!("<ListBucketResult>{contents}</ListBucketResult>"),
+                format!("<ListBucketResult>{contents}</ListBucketResult>").into_bytes(),
             );
         }
         if method == Method::GET {
             return match bucket.objects.lock().unwrap().get(&key) {
-                Some(bytes) => (StatusCode::OK, String::from_utf8_lossy(bytes).into_owned()),
-                None => (StatusCode::NOT_FOUND, String::new()),
+                Some(bytes) => (StatusCode::OK, bytes.clone()),
+                None => (StatusCode::NOT_FOUND, Vec::new()),
             };
         }
         // A batch delete, answered as a quiet success that removes nothing: no
         // test here is about pruning.
-        (StatusCode::OK, String::new())
+        (StatusCode::OK, Vec::new())
     }
 
     let app = axum::Router::new().fallback(move |query, request| serve(bucket, query, request));
@@ -354,15 +354,21 @@ async fn spawn_bucket(bucket: Arc<Bucket>) -> test_cabinet_core::r2::R2Config {
     }
 }
 
+/// A client of its own that reaches `bucket`, for a reader other than the
+/// publisher: the state sweep's listing and the run file routes' reads.
+pub(crate) async fn bucket_client(bucket: &Arc<Bucket>) -> R2Client {
+    R2Client::new(spawn_bucket(Arc::clone(bucket)).await)
+}
+
 /// The bucket name confirmations are recorded against in these tests.
-pub(super) const BUCKET: &str = crate::db::retention_tests::BUCKET;
+pub(crate) const BUCKET: &str = crate::db::retention_tests::BUCKET;
 
 /// A stand-in artifact service: the trees it holds, each a set of
 /// `<kind>/<file>` media files and `root/<name>` root files, served on the routes
 /// a refresh reads.
 #[derive(Default)]
-pub(super) struct Trees {
-    pub(super) trees: std::sync::Mutex<
+pub(crate) struct Trees {
+    pub(crate) trees: std::sync::Mutex<
         std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<u8>>>,
     >,
     /// Whether every request answers `500`.
@@ -373,7 +379,7 @@ pub(super) struct Trees {
 
 impl Trees {
     /// Hold a tree for `run_id` with `files`, each `(<kind>/<file>, bytes)`.
-    pub(super) fn store(&self, run_id: &str, files: &[(&str, &[u8])]) {
+    pub(crate) fn store(&self, run_id: &str, files: &[(&str, &[u8])]) {
         self.trees.lock().unwrap().insert(
             run_id.to_string(),
             files
@@ -383,11 +389,11 @@ impl Trees {
         );
     }
 
-    pub(super) fn listed(&self) -> Vec<String> {
+    pub(crate) fn listed(&self) -> Vec<String> {
         self.listed.lock().unwrap().clone()
     }
 
-    pub(super) fn set_down(&self, down: bool) {
+    pub(crate) fn set_down(&self, down: bool) {
         self.down.store(down, std::sync::atomic::Ordering::SeqCst);
     }
 }
@@ -459,7 +465,7 @@ async fn spawn_trees(trees: Arc<Trees>) -> String {
 /// stand-in artifact service and records media confirmations against [`BUCKET`].
 /// Without, it has no artifact service and records none. A quiet window the tests
 /// never reach, so nothing is released unless forced.
-pub(super) async fn bucket_publisher(
+pub(crate) async fn bucket_publisher(
     dir: &TempDir,
     db: &Arc<Db>,
     bucket: &Arc<Bucket>,
@@ -494,7 +500,7 @@ pub(super) async fn bucket_publisher(
 
 /// Publish a run that lists one proof image the agent produced. Nothing in these
 /// tests holds its bytes except a bucket that is given them.
-pub(super) async fn seed_published_with_proof(db: &Db, id: &str) {
+pub(crate) async fn seed_published_with_proof(db: &Db, id: &str) {
     use test_cabinet_core::MediaKind;
     use test_cabinet_core::validation::ProofResult;
 
@@ -518,7 +524,7 @@ pub(super) async fn seed_published_with_proof(db: &Db, id: &str) {
 }
 
 /// Run `id`'s row.
-pub(super) async fn run_columns(db: &Db, id: &str) -> test_cabinet_entities::run::Model {
+pub(crate) async fn run_columns(db: &Db, id: &str) -> test_cabinet_entities::run::Model {
     crate::db::retention_tests::run_row(db, id).await
 }
 

@@ -242,6 +242,22 @@ restarted sidecar finds the marker its earlier start left on the volume
 step that was killed and idles, so the pod stays ready and `verify` fails with
 the cause instead of the backend leaving its Service on every restart.
 
+#### What the state volume holds
+
+The `state` volume holds the catalog checkout, the definition store ingested
+from it, and each run's files until they are published. The backend
+[removes a run's files](/components/backend/overview/#state-volume) once the
+bucket holds them, so the volume's use follows the runs in flight and awaiting
+publish. It needs no script and no manual step: a deploy of a backend with
+files to reclaim requests one snapshot refresh at startup and its sweep frees
+the space in the passes that follow.
+
+The backend puts new runs on hold under 1.5 GiB free on this volume, warning
+under 3 GiB, and reports both on the console beside the artifact store. Both
+thresholds are backend settings, `TCAB_STATE_FREE_STOP_MB` and
+`TCAB_STATE_FREE_WARN_MB`, and the overlays leave them at their defaults.
+`TCAB_STATE_RECLAIM=false` stops the sweep from removing anything.
+
 #### Growing the state volume
 
 The `state` volume is the `tcab-backend-state` claim, 16Gi, declared once in

@@ -25,6 +25,24 @@ fn settings() -> CapacitySettings {
     CapacitySettings::default()
 }
 
+/// A store in a directory of its own, for a monitor that is handed one. These
+/// tests are about the artifact store, so their settings leave the volume the
+/// store is on unread: what it holds is the machine's, not the test's.
+fn test_store() -> (tempfile::TempDir, crate::store::DefinitionStore) {
+    let dir = tempfile::tempdir().unwrap();
+    let store = crate::store::DefinitionStore::open(dir.path().join("store")).unwrap();
+    (dir, store)
+}
+
+/// The shipped settings with the state volume's two thresholds turned off.
+fn artifact_store_only() -> CapacitySettings {
+    CapacitySettings {
+        state_warn_bytes: 0,
+        state_stop_bytes: 0,
+        ..settings()
+    }
+}
+
 fn reading(free_bytes: u64) -> StoreCapacity {
     StoreCapacity::writable(free_bytes, 20 * GIB)
 }
@@ -305,6 +323,7 @@ fn the_status_serializes_in_the_shape_the_console_reads() {
         writable: Some(true),
         warn_bytes: 3 * GIB,
         stop_bytes: 2 * GIB,
+        state_volume: None,
     };
     assert_eq!(
         serde_json::to_value(&status).unwrap(),
@@ -617,18 +636,20 @@ async fn read_capacity_carries_the_reason_the_service_gave_for_refusing() {
 
 #[tokio::test]
 async fn with_no_artifact_service_configured_nothing_is_watched() {
+    let (_dir, store) = test_store();
     for (url, token) in [
         (None, None),
         (Some("http://tcab-artifacts:8790".to_string()), None),
         (None, Some(TOKEN.to_string())),
     ] {
         let (monitor, task) = spawn_capacity_monitor(
-            settings(),
+            artifact_store_only(),
             reqwest::Client::new(),
             url,
             token,
             Notifier::new(),
             test_db().await,
+            store.clone(),
         )
         .await;
         assert!(task.is_none(), "no loop is spawned");
@@ -639,16 +660,18 @@ async fn with_no_artifact_service_configured_nothing_is_watched() {
 
 #[tokio::test]
 async fn a_configured_artifact_service_is_read_before_the_monitor_is_handed_out() {
+    let (_dir, store) = test_store();
     let base = spawn_capacity_stub(StatusCode::OK).await;
     let notifier = Notifier::new();
     let mut stream = notifier.open_stream();
     let (monitor, task) = spawn_capacity_monitor(
-        settings(),
+        artifact_store_only(),
         reqwest::Client::new(),
         Some(base),
         Some(TOKEN.to_string()),
         notifier,
         test_db().await,
+        store.clone(),
     )
     .await;
 
@@ -665,14 +688,16 @@ async fn a_configured_artifact_service_is_read_before_the_monitor_is_handed_out(
 
 #[tokio::test]
 async fn a_service_that_does_not_answer_at_startup_leaves_the_monitor_unavailable() {
+    let (_dir, store) = test_store();
     let failing = spawn_capacity_stub(StatusCode::INTERNAL_SERVER_ERROR).await;
     let (monitor, task) = spawn_capacity_monitor(
-        settings(),
+        artifact_store_only(),
         reqwest::Client::new(),
         Some(failing),
         Some(TOKEN.to_string()),
         Notifier::new(),
         test_db().await,
+        store.clone(),
     )
     .await;
 
@@ -693,6 +718,8 @@ fn change_to(state: ArtifactStorageState, hold_reason: Option<HoldReason>) -> Ca
         previous: ArtifactStorageState::Ok,
         previously_on_hold: false,
         previous_hold_reason: None,
+        previous_state_volume: None,
+        state_volume_only: false,
         status: ArtifactStorageStatus {
             state,
             runs_on_hold: hold_reason.is_some(),
@@ -705,6 +732,7 @@ fn change_to(state: ArtifactStorageState, hold_reason: Option<HoldReason>) -> Ca
             writable: Some(true),
             warn_bytes: 3 * GIB,
             stop_bytes: 2 * GIB,
+            state_volume: None,
         },
     }
 }

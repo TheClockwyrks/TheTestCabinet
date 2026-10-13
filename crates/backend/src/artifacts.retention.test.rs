@@ -63,6 +63,8 @@ fn run(state: &str, minutes: i64) -> RetentionRun {
         artifacts_stored: Some(true),
         artifacts_reclaimed_at: None,
         artifacts_reclaimed_reason: None,
+        state_reclaimed_at: None,
+        state_reclaimed_reason: None,
     }
 }
 

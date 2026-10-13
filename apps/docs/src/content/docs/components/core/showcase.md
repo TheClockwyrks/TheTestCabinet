@@ -83,7 +83,7 @@ validation media:
   stored file under `media/runs/<run-id>/showcase/<file>` and names it on the
   per-run document as `showcaseMedia`. The builder derives the file set from the
   store listing and from the record itself, meaning the carousel entries plus the
-  image references extracted from the description. A name the ephemeral store no
+  image references extracted from the description. A name the store no
   longer holds is fetched through the artifact service, so a description-only
   image survives a store loss the same way a carousel entry does.
 

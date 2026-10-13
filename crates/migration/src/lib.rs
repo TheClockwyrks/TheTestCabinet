@@ -86,6 +86,7 @@ mod m20261012_000059_add_run_auto_publish_deferred;
 mod m20261012_000060_add_job_held_report;
 mod m20261012_000061_add_run_artifact_retention;
 mod m20261012_000062_add_run_media_manifest;
+mod m20261012_000063_add_run_state_reclaim;
 
 pub struct Migrator;
 
@@ -159,6 +160,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261012_000060_add_job_held_report::Migration),
             Box::new(m20261012_000061_add_run_artifact_retention::Migration),
             Box::new(m20261012_000062_add_run_media_manifest::Migration),
+            Box::new(m20261012_000063_add_run_state_reclaim::Migration),
         ]
     }
 }

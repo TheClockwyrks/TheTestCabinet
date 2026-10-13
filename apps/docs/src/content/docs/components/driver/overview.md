@@ -336,13 +336,12 @@ service, is what the backend exports the public snapshot from and what a console
 reads a run's media from. Each mirror is best-effort: a failure is logged and
 the run's record still reports.
 
-The store is the fast path rather than the record of truth. It is an ephemeral
-volume in production, so it can be empty for a run published after a backend
-restart. The [snapshot builder](/components/backend/overview/) falls back to the
-artifact service for any run media missing from the store and re-exports it to
-durable R2, so a store wipe self-heals on the next refresh.
-`scripts/backfill-run-media.sh` populates the store and triggers a refresh
-immediately rather than waiting for the next publish.
+The store is a staging area rather than the record of truth. A snapshot refresh
+publishes a published run's files from it to the bucket, and the backend then
+[removes them from the store](/components/backend/overview/#state-volume) and
+serves them from the bucket. For a file the store does not hold, the snapshot
+builder falls back to the run's tree on the artifact service, so a store that
+lost a file is repaired by the next refresh.
 
 ## RBAC
 

@@ -19,6 +19,12 @@ import type { InProgressRun } from "./types";
 // cannot be published would fill it. That hold is reported through the same
 // status, under any state of the store, and reads as its own notice.
 //
+// The backend's own volume is a third condition. Every run's files land on it
+// before they are published, so the backend stops handing out runs while it is
+// nearly full and warns while it is running low. It is reported beside the
+// artifact store, under any state of that store, and its notices name it as the
+// backend's storage so it is not taken for the artifact store.
+//
 // The wording lives here, framework-free, so the notice and the held run's
 // tooltip state the same reason in the same words.
 
@@ -144,6 +150,14 @@ export function storageNotice(
           status.detail,
         ),
       };
+    case "state-low-space": {
+      const stop = status.stateVolume?.stopBytes;
+      return {
+        tone: "hold",
+        title: "New runs are on hold: the backend's own storage is nearly full",
+        detail: `${stop ? `Less than ${formatGib(stop)} is free` : "Too little is free"} on the backend's state volume, which is separate from artifact storage and takes every run's files before they are published.${waitingSentence(status)} Queued runs start once space is freed there, which the backend does itself as published runs are confirmed in the bucket. Publishing is unaffected.`,
+      };
+    }
     case "publish-failing":
       return {
         tone: "hold",
@@ -173,7 +187,25 @@ export function storageNotice(
       detail: `Less than ${formatGib(status.warnBytes)} is free. New runs go on hold under ${formatGib(status.stopBytes)}.`,
     };
   }
-  return null;
+  return stateVolumeWarning(status);
+}
+
+// The advisory for the backend's own volume, shown when nothing else is: a hold
+// and a warning about the artifact store both say more about the operator's runs.
+function stateVolumeWarning(
+  status: ArtifactStorageStatus,
+): StorageNotice | null {
+  const volume = status.stateVolume;
+  if (volume?.level !== "low") return null;
+  const hold =
+    volume.stopBytes > 0
+      ? ` New runs go on hold under ${formatGib(volume.stopBytes)}.`
+      : "";
+  return {
+    tone: "warn",
+    title: "Backend storage is running low",
+    detail: `Less than ${formatGib(volume.warnBytes)} is free on the backend's state volume, which is separate from artifact storage.${hold}`,
+  };
 }
 
 /**

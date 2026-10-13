@@ -63,6 +63,13 @@ flate2 = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 
+# `statvfs`, for the free space of the volume the backend's own store is on (see
+# `crate::capacity`). A safe wrapper over the one syscall, and already in the build
+# through the artifact service, so naming it adds no crate. Unix
+# only, which is every platform the backend is deployed on.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [features]
 # Derive `ts_rs::TS` + `schemars::JsonSchema` on the backend API + snapshot wire
 # types for the `contract-codegen` generator. Never enabled by a normal build.

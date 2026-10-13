@@ -29,9 +29,10 @@
 //! a refresh that finds an object already there references it without touching the
 //! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
 //! the bucket is read from the local store (where the driver mirrors it at run time),
-//! falling back to the artifact service for anything missing — the store is an
-//! ephemeral volume in production, so this fallback lets a refresh export new media to
-//! durable R2 even after a restart wiped it (see [`SnapshotBuilder::with_artifacts`]).
+//! falling back to the artifact service for anything missing — the store is a staging
+//! area whose files the [state sweep](crate::state_reclaim) removes, and a volume that
+//! can lose them, so this fallback lets a refresh export new media to durable R2 from
+//! the run's tree (see [`SnapshotBuilder::with_artifacts`]).
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -75,7 +76,7 @@ const UPLOAD_CONCURRENCY: usize = 16;
 /// even when the ephemeral store and the artifact service have both lost the bytes
 /// (as after a cluster recreate): if the object already exists here, the builder
 /// references it without needing the source bytes at all.
-const MEDIA_PREFIX: &str = "media/runs";
+pub(crate) const MEDIA_PREFIX: &str = "media/runs";
 
 /// The bucket prefix a **case version's** media — its rendered reference baselines
 /// and its committed validation baselines — is stored under, likewise **outside**
@@ -621,9 +622,8 @@ impl SnapshotBuilder {
     /// service's in-cluster base URL, the one the backend itself can reach) using
     /// `http`.
     ///
-    /// The backend store that media is normally mirrored into is an ephemeral
-    /// emptyDir in production, so it can be wiped between a run finishing and a later
-    /// snapshot refresh. The artifact service holds the run tree durably, so this
+    /// The backend store that media is normally mirrored into can have lost a
+    /// file between a run finishing and a later snapshot refresh. The artifact service holds the run tree durably, so this
     /// fallback lets a refresh re-export the media (to durable R2) even after the
     /// store loses it — without it a backend restart would silently drop media from
     /// the published site. A `None` URL leaves behavior store-only.
@@ -640,7 +640,7 @@ impl SnapshotBuilder {
     /// A run's record does not name all of its files: the image store its
     /// recordings share, and showcase files neither the carousel nor the
     /// description mentions, are named only by the directories that hold them. The
-    /// backend store's copy of those directories is ephemeral. So for each run not
+    /// backend store's copy of those directories can be gone. So for each run not
     /// in `settled`, the build asks the artifact service which validation and
     /// showcase files the run's tree holds, publishes them, and
     /// reports the run unconfirmed when the service could not say.
@@ -1977,8 +1977,8 @@ impl SnapshotBuilder {
     /// the store listing misses — a carousel entry, or an image reference
     /// extracted from the record's description ([`description_image_references`])
     /// — is still tried through the store-then-artifact-service fallback
-    /// ([`Self::read_media`]): the backend store is an ephemeral emptyDir, so a
-    /// run mirrored before a restart may list nothing at publish time, and a
+    /// ([`Self::read_media`]): the backend store can have lost the run's files, so a
+    /// run's folder may list nothing at publish time, and a
     /// description-only image is named nowhere else on the record. A file whose
     /// bytes are in neither place contributes nothing.
     ///
@@ -2243,8 +2243,8 @@ impl SnapshotBuilder {
     /// artifact service.
     ///
     /// The store is the fast path — the driver mirrors a run's media there at run
-    /// time — but it is an ephemeral emptyDir in production, so it may be empty for a
-    /// run published before a backend restart. The artifact service holds the run
+    /// time — but it is a staging area that can have lost a file, so it may be empty
+    /// for a run by the time the run is published. The artifact service holds the run
     /// tree durably and serves it under the same `<kind>/<file>` names, so it backs
     /// the miss. An `Err` says why the file could not be read ([`Missing`]) — the
     /// caller then omits that media from the snapshot, and decides from the reason

@@ -59,9 +59,13 @@ catalog so the store returns to a format it can serve.
 
 The stored [run records](/components/core/run-records/) with their reviews and
 links, persisted in a relational database (embedded SQLite by default, or
-PostgreSQL). A run's proof, asset and validation media is written beside the
-definitions in the on-disk store rather than into that database. This is the
-system of record for every run, published or not.
+PostgreSQL). This is the system of record for every run, published or not.
+
+A run's files are written beside the definitions in the on-disk store, under
+`runs/<id>/`: its proof, validation, asset and showcase media, its controller
+module, its code-analysis document and a gg run's session record. The store is
+where a driver's uploads land and where a snapshot refresh reads them from. The
+[state volume](#state-volume) section describes how long each file stays there.
 
 A stored record can predate a change to the run record contract, leaving it
 unreadable by the running build. The backend records, per run, whether the build
@@ -470,6 +474,173 @@ An abandoned pass logs one `warn` line in place of the `info` one, `artifact
 sweep pass abandoned`, with the `reason` (`no_runs`, `runs_unreadable` or
 `listing_failed`). Every pass therefore logs exactly one of the two lines.
 
+## State volume
+
+The backend's store is on the backend's own volume, the state volume, mounted at
+`/state` in a deployment. A run's folder there, `runs/<id>/`, is a staging area:
+a driver uploads the run's files into it, a snapshot refresh publishes them to
+the bucket and records the object that holds each in the run's
+[file manifest](/components/backend/snapshot/#the-file-manifest), and from then
+on [every route reads the bucket](/components/backend/api/#run-files) for a file
+the store no longer holds. A periodic sweep removes the files nothing reads from
+the store any more.
+
+Each pass lists the folders under `runs/` and removes files from a folder for
+exactly one of four reasons:
+
+| Reason      | The folder's run                                                     | Files removed                                                                                                       |
+| ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `published` | Is published                                                         | Once the run is [confirmed](#confirmation) and every file in the folder is in the bucket                            |
+| `failed`    | Is unpublished and ended in any state but `completed` and `canceled` | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` after the run ended, once the artifact service holds no tree for the run     |
+| `canceled`  | Is unpublished and ended `canceled`                                  | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` after the run ended, once the artifact service holds no tree for the run   |
+| `orphan`    | Has no run row                                                       | Once the folder's newest file is older than `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`                                       |
+
+Every other folder is kept. The files of a completed run that is not published
+are kept whatever their age. A folder is also kept while a job of its run is
+queued, running or storing, and while a publish job for its run is queued or
+dispatched.
+
+The session record of a gg run, `runs/<id>/replay.json`, is kept under every
+reason, the `orphan` reason included. No refresh publishes it, so once the
+run's tree is reclaimed the store's copy is the only one. Deleting the run is
+what removes it.
+
+### What a published run's folder must satisfy
+
+A published run's files are removed only when all of these hold at the moment of
+the removal:
+
+- The run's confirmation holds for the configured bucket under the current
+  version of the [confirmation](#confirmation), and its manifest reads.
+- Every file in the folder, the session record aside, is one the manifest
+  records an object for. A folder holding any other file is kept whole: a file
+  no refresh published, a file the manifest records as unrecoverable, or an
+  entry that is neither a file nor a directory.
+- The bucket's listing of the run's prefix contains every object the manifest
+  names. A listing that fails removes nothing.
+
+A backend records confirmations only where its [artifact
+sweep](#confirmation) deletes published trees, so a backend with no bucket, with
+no artifact service, or with `TCAB_ARTIFACT_RECLAIM_PUBLISHED` off removes no
+published run's files from the store.
+
+A `failed` or `canceled` run's retention runs from the later of the run's end
+and the moment the folder's newest file was written. Its files are removed only
+once the backend's record says the artifact service holds no tree for the run:
+the tree was [reclaimed](#what-a-reclaim-records) or was recorded as [not
+stored](#artifact-presence). A run whose tree nothing has reported on keeps its
+files.
+
+### How a removal is made
+
+The pass follows the [guards](#guards) of the artifact sweep. It acts only on a
+run set the backend read and found at least one run in, and a `runs/` directory
+it could list; any of the three failing abandons the pass until the next
+interval. Times are compared by the backend, so SQLite and PostgreSQL decide
+alike.
+
+Immediately before a folder's files are removed the backend reads the run, its
+jobs, its manifest, the folder and the bucket again and decides again from what
+it read. It then records on the run that its files were removed from the store,
+when and for which reason, reads the run's jobs once more, and takes the record
+back if a job or a publish job appeared in between. Only then does it remove the
+files it listed, one at a time and by name, and afterwards the directories that
+emptied. A file written into the folder after the listing is therefore left in
+place. A removal in which no file could be removed takes the record back, and
+the next pass tries again.
+
+### Uploads after a confirmation
+
+An upload of a file for a run writes the file and then withdraws what the upload
+made untrue. A confirmed run loses its confirmation and its manifest, and the
+record that its files were removed is cleared. The run then reads as one no
+refresh has evaluated: the sweep removes nothing of it, the upload requests a
+snapshot refresh, and that refresh publishes whatever the bucket lacks and
+confirms the run again with a manifest that names the new file. An upload for a
+published run with no confirmation stamps the run as changed, so a refresh
+already evaluating it records no confirmation without the file, and requests a
+refresh as well. An upload of a session record changes neither, since no
+manifest names one.
+
+A file whose name the bucket already holds an object for is not published
+again, so the bucket's copy is the one that is served once the store's is
+removed.
+
+Pushing a run again clears its confirmation, its manifest and both reclaim
+records with the rest of its retention facts. Deleting a run removes its whole
+folder, the session record included.
+
+### Runs stored before the sweep
+
+A run needs no migration to be reclaimed. At startup the backend counts the
+published runs no refresh has evaluated against the configured bucket under the
+current confirmation version and requests one snapshot refresh when there is at
+least one; a start with every published run evaluated requests none. That
+refresh publishes each file the bucket lacks from the store or from the run's
+tree, records a file whose bytes are in none of the three as unrecoverable, and
+confirms the run. The passes after it remove the files the manifest accounts
+for.
+
+### Low space
+
+The backend reads the free space of the state volume at every [capacity
+poll](#artifact-capacity) and derives a level from the latest reading:
+
+| Level        | Condition                                                               | Runs       |
+| ------------ | ----------------------------------------------------------------------- | ---------- |
+| `ok`         | Free space is at or above `TCAB_STATE_FREE_WARN_MB`                     | Dispatched |
+| `low`        | Free space is under `TCAB_STATE_FREE_WARN_MB` (default 3 GiB)           | Dispatched |
+| `blocked`    | Free space is under `TCAB_STATE_FREE_STOP_MB` (default 1.5 GiB)         | On hold    |
+| `unreadable` | The latest reading failed                                               | Dispatched |
+
+A `blocked` state volume [holds new runs](#the-hold) for the reason
+`state-low-space`: a full volume takes neither a finishing run's uploads nor a
+write to an embedded database. A reading that fails holds nothing, because the
+backend then has no evidence that the volume is full; the failure is logged and
+reported, and the level the volume last read as is kept for the reading that
+follows. Setting either threshold to `0` turns it off, and with both off the
+volume is not read.
+
+The levels move with the [hysteresis](#thresholds) of the artifact store's and
+share its recovery margin, `TCAB_ARTIFACT_FREE_RECOVER_MB`. The volume is read
+by the capacity poll, so a backend with no artifact service configured reads
+neither volume.
+
+### State volume settings and logging
+
+| Variable                  | Meaning                                                                         | Default |
+| ------------------------- | ------------------------------------------------------------------------------- | ------- |
+| `TCAB_STATE_RECLAIM`      | Whether the sweep removes anything from the store; `false` keeps every file     | `true`  |
+| `TCAB_STATE_FREE_WARN_MB` | Free space on the state volume, in MiB, under which it is `low`; `0` for never  | `3072`  |
+| `TCAB_STATE_FREE_STOP_MB` | Free space, in MiB, under which new runs are put on hold; `0` for never         | `1536`  |
+
+The sweep runs at the artifact sweep's interval, `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`,
+and an interval of `0` disables both. One task runs every pass, so two passes
+never overlap, and the first pass runs ninety seconds after the backend starts.
+All three settings are read strictly, as the artifact sweep's are: a value that
+does not read stops the backend at startup with an error naming the variable. A
+warn threshold below the stop threshold is refused the same way.
+
+Each folder files were removed from logs one `info` line, `reclaimed a run's
+files from the backend store`, with the run id, the reason, the number of
+`files` and the `freed_bytes`. Every pass logs one `info` line, `state sweep
+pass complete`, with the `folders` listed, the folders `reclaimed` and those by
+reason (`reclaimed_published`, `reclaimed_failed`, `reclaimed_canceled`,
+`reclaimed_orphans`), the folders a re-read `skipped`, the removals that
+`failed`, the published folders kept for a file the manifest does not account
+for (`kept_unaccounted`) or an object the bucket does not list
+(`kept_unlisted`), the published runs still `unconfirmed`, `removed_files`,
+`freed_bytes`, and the number and size of the session records the store holds
+(`session_records`, `session_record_bytes`). A folder kept as unaccounted logs
+one `warn` line naming the run and the files. An abandoned pass logs one `warn`
+line, `state sweep pass abandoned`, with its `reason`.
+
+Removed folders are counted by `tcab.state.reclaimed_runs` and their bytes by
+`tcab.state.reclaimed_bytes`, each by reason. `tcab.state.kept_unaccounted_runs`
+is the number of folders the last pass kept as unaccounted, and
+`tcab.state.free_bytes` and `tcab.state.total_bytes` are the volume's latest
+reading.
+
 ## Artifact presence
 
 A run can be released only from its stored tree, so the backend records for each
@@ -578,6 +749,7 @@ reported reason:
 | `unwritable`          | The state is `unwritable`                                                                         |
 | `uploads-waiting`     | A run in flight is [waiting to store its tree](/components/driver/overview/#waiting-on-the-store) |
 | `write-check-pending` | An upload failed while the store read as faulty, and no passing reading has arrived since         |
+| `state-low-space`     | The backend's own [state volume](#low-space) is `blocked`                                         |
 | `publish-failing`     | [Publishes are failing](#publish-failures) across several runs                                    |
 | `proving-store`       | An upload failed while the store read as healthy, and no tree has landed since                    |
 
@@ -743,23 +915,31 @@ the stop threshold can still admit a run the reserve has to absorb.
 
 Each change of the state, the hold, its reason, the number of waiting runs or
 the reported error logs one line. Entering a hold logs at `error` for `blocked`,
-`unwritable` and `unavailable`, and at `warn` for the three reasons that come
-from uploads and for `publish-failing`, whose line carries the number of failing
-runs and the latest publish error. The end of a `publish-failing` hold logs at
-`info`, as publish failures no longer holding new runs, whether or not another
-reason still holds them. Entering `low` logs at `warn`, and a change that leaves
-the queue open at `ok` logs at `info`. Every line carries the hold's reason, the
-number of runs waiting to store, and the error text of the condition: the failed
-poll's error, the write check's error, or the latest reason a driver reported.
-The first reading the backend takes when it starts is logged the same way, so a
-backend that starts beside a store it cannot read says so.
+`unwritable`, `unavailable` and `state-low-space`, and at `warn` for the three
+reasons that come from uploads and for `publish-failing`, whose line carries the
+number of failing runs and the latest publish error. The end of a
+`publish-failing` hold logs at `info`, as publish failures no longer holding new
+runs, whether or not another reason still holds them. Entering `low` logs at
+`warn`, and a change that leaves the queue open at `ok` logs at `info`. Every
+line carries the hold's reason, the number of runs waiting to store, and the
+error text of the condition: the failed poll's error, the write check's error,
+or the latest reason a driver reported. The first reading the backend takes when
+it starts is logged the same way, so a backend that starts beside a store it
+cannot read says so.
+
+A change of the state volume's level logs a line of its own, naming the volume
+as the backend's: `warn` on entering `low` and on a reading that fails, `error`
+when it becomes `blocked` while another reason already holds the queue, and
+`info` when it returns to `ok`.
 
 The free space of each reading is the `tcab.artifacts.free_bytes` gauge, beside
 `tcab.artifacts.total_bytes`.
 [`GET /artifacts/capacity`](/components/backend/api/#get-artifactscapacity)
 reports the state, and the [console stream](/components/backend/api/#the-console-stream)
-carries each change. The hold deletes nothing to make room: space returns as
-runs are deleted and the [reclamation sweep](#artifact-reclamation) runs.
+carries each change. Both report the state volume beside the artifact store.
+The hold deletes nothing to make room: space returns as runs are deleted and
+the two sweeps, of the [artifact store](#artifact-reclamation) and of the
+[state volume](#state-volume), run.
 
 ### A driver lost while it waits
 
@@ -893,6 +1073,9 @@ regenerates the snapshot, skipping the upload and the rebuild.
 | `TCAB_ARTIFACT_FREE_STOP_MB`             | Free space, in MiB, under which new runs are put on hold.                                                                                                                                                                                                                                                      | `2048`                                    |
 | `TCAB_ARTIFACT_FREE_RECOVER_MB`          | Free space, in MiB, a reading must exceed a crossed threshold by before the state recovers.                                                                                                                                                                                                                    | `256`                                     |
 | `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`    | Interval between capacity readings. At least `1`.                                                                                                                                                                                                                                                              | `10`                                      |
+| `TCAB_STATE_RECLAIM`                     | Whether the [state sweep](#state-volume) removes run files from the backend's own store.                                                                                                                                                                                                                       | `true`                                    |
+| `TCAB_STATE_FREE_WARN_MB`                | Free space on the state volume, in MiB, under which it reads [`low`](#low-space); `0` turns the warning off.                                                                                                                                                                                                   | `3072`                                    |
+| `TCAB_STATE_FREE_STOP_MB`                | Free space on the state volume, in MiB, under which new runs are put on hold; `0` turns the hold off.                                                                                                                                                                                                          | `1536`                                    |
 | `TCAB_PUBLISH_FAILURE_HOLD_RUNS`         | How many different runs must fail to publish in a row before [new runs are put on hold](#publish-failures); `0` turns the hold off.                                                                                                                                                                            | `5`                                       |
 | `TCAB_ARENA_PUBLIC_URL`                  | Arena service base URL, advertised to the web console.                                                                                                                                                                                                                                                         | —                                         |
 | `TCAB_GRAFANA_PUBLIC_URL`                | Grafana base URL, advertised to the web console.                                                                                                                                                                                                                                                               | —                                         |

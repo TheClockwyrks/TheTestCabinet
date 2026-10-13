@@ -24,12 +24,13 @@
 //!
 //! # What holds the queue
 //!
-//! Seven conditions, the first that applies being the [reason](HoldReason)
+//! Eight conditions, the first that applies being the [reason](HoldReason)
 //! reported: the store cannot be read, its free space is under the stop threshold,
 //! its write check failed, a run in flight is waiting to store its tree, an upload
 //! failed while the store read as faulty and no passing reading has arrived since,
-//! publishes are failing across several runs, or an upload failed while the store
-//! read as healthy and no tree has landed since.
+//! the backend's own state volume is under its stop threshold, publishes are
+//! failing across several runs, or an upload failed while the store read as
+//! healthy and no tree has landed since.
 //!
 //! # Publish failures
 //!
@@ -76,6 +77,22 @@
 //! the write check is blind to, so a passing reading proves nothing: the claim is
 //! then [limited to one run in flight](ClaimGate::Trial) until a tree lands
 //! ([`tree_landed`](CapacityMonitor::tree_landed)).
+//!
+//! # The state volume
+//!
+//! The backend's own store is a volume too, and every run mirrors its files into
+//! it before a refresh publishes them, so the same poll reads that volume's free
+//! space ([`CapacityMonitor::with_state_volume`]) and holds new runs while it is
+//! under its stop threshold ([`HoldReason::StateLowSpace`]). It is classified by
+//! the rule the artifact store's free space is ([`classify_state_volume`]), with
+//! thresholds of its own and the same recovery margin.
+//!
+//! A reading that fails holds nothing. The artifact store's reading is the
+//! service saying whether it can take a tree, and no answer is a reason to stop.
+//! This one is a `statvfs` of a local path, whose failure says nothing about the
+//! space, and a hold on it would stop every run for a quirk of the filesystem.
+//! The failure is logged and reported, and the volume is read again at the next
+//! poll.
 //!
 //! # Recovery
 //!
@@ -135,6 +152,12 @@ pub struct CapacitySettings {
     pub recover_bytes: u64,
     /// Interval between two readings (`TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`).
     pub poll_interval: Duration,
+    /// Free space on the backend's own state volume under which that volume is
+    /// running low (`TCAB_STATE_FREE_WARN_MB`). `0` turns the warning off.
+    pub state_warn_bytes: u64,
+    /// Free space on the backend's own state volume under which new runs are put
+    /// on hold (`TCAB_STATE_FREE_STOP_MB`). `0` turns the hold off.
+    pub state_stop_bytes: u64,
 }
 
 impl Default for CapacitySettings {
@@ -154,12 +177,20 @@ impl Default for CapacitySettings {
     /// Ten seconds between readings is frequent next to the minutes a run takes
     /// from its claim to its upload, and a `statvfs` and a one-block write each is
     /// no load.
+    ///
+    /// The state volume's stop threshold is the room the runs in flight need to
+    /// mirror their files into the backend's store before a refresh has published
+    /// any of them. What a run mirrors is a fraction of its tree, so the reserve
+    /// is smaller than the artifact store's, and its warn threshold sits as far
+    /// above it as that store's does.
     fn default() -> Self {
         Self {
             warn_bytes: 3072 * MIB,
             stop_bytes: 2048 * MIB,
             recover_bytes: 256 * MIB,
             poll_interval: Duration::from_secs(10),
+            state_warn_bytes: 3072 * MIB,
+            state_stop_bytes: 1536 * MIB,
         }
     }
 }
@@ -174,6 +205,12 @@ impl CapacitySettings {
     /// behind it.
     pub fn pause_after(&self) -> Duration {
         self.poll_interval.saturating_mul(PAUSE_AFTER_POLLS)
+    }
+
+    /// Whether the state volume is watched at all: either of its thresholds is
+    /// set. With both at `0` the volume is not read.
+    pub fn watches_state_volume(&self) -> bool {
+        self.state_warn_bytes > 0 || self.state_stop_bytes > 0
     }
 }
 
@@ -209,6 +246,75 @@ pub fn classify(previous: Level, free_bytes: u64, settings: &CapacitySettings) -
         Level::Ok if free_bytes < settings.warn_bytes => Level::Low,
         _ => Level::Ok,
     }
+}
+
+/// Classify the state volume's `free_bytes` against its own thresholds, given the
+/// level its previous reading was classified as.
+///
+/// The rule is [`classify`]'s, with the state volume's two thresholds and the
+/// artifact store's recovery margin, so the two volumes enter and leave a level
+/// alike. A threshold of `0` is turned off: no free space is under it, and with
+/// the warn threshold off the volume never reads [`Level::Low`].
+pub fn classify_state_volume(
+    previous: Level,
+    free_bytes: u64,
+    settings: &CapacitySettings,
+) -> Level {
+    let level = classify(
+        previous,
+        free_bytes,
+        &CapacitySettings {
+            warn_bytes: settings.state_warn_bytes,
+            stop_bytes: settings.state_stop_bytes,
+            ..*settings
+        },
+    );
+    if level == Level::Low && settings.state_warn_bytes == 0 {
+        Level::Ok
+    } else {
+        level
+    }
+}
+
+/// What the latest reading of the backend's own state volume amounts to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum StateVolumeLevel {
+    /// Free space is at or above the warn threshold.
+    Ok,
+    /// Free space is under the warn threshold. Runs are still dispatched.
+    Low,
+    /// Free space is under the stop threshold. New runs are on hold.
+    Blocked,
+    /// The latest reading failed. Nothing is held on it.
+    Unreadable,
+}
+
+/// The backend's own state volume, as of the latest reading: the volume its
+/// store is on, which is not the artifact store's.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct StateVolumeStatus {
+    /// What the latest reading amounts to.
+    pub level: StateVolumeLevel,
+    /// Free bytes on the volume as of the latest reading that succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub free_bytes: Option<u64>,
+    /// The size of the volume as of the latest reading that succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub total_bytes: Option<u64>,
+    /// Free space under which the level is `low`. `0` when the warning is off.
+    pub warn_bytes: u64,
+    /// Free space under which the level is `blocked`. `0` when the hold is off.
+    pub stop_bytes: u64,
+    /// Why the latest reading failed, when it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub error: Option<String>,
 }
 
 /// The state of the artifact store as the backend sees it.
@@ -251,6 +357,12 @@ pub enum HoldReason {
     /// An upload failed while the store read as faulty, and no passing reading has
     /// arrived since with no run waiting.
     WriteCheckPending,
+    /// Free space on the backend's own state volume is under its stop threshold
+    /// ([`StateVolumeLevel::Blocked`]). Ahead of
+    /// [`PublishFailing`](Self::PublishFailing) because a run that finishes with
+    /// no room to mirror its files into loses them, and after the artifact
+    /// store's own reasons because those lose a whole tree.
+    StateLowSpace,
     /// Publishes are failing: the most recent finished publish jobs are failures
     /// of several different runs with no success among them
     /// ([`crate::publish_health`]). Ahead of [`ProvingStore`](Self::ProvingStore)
@@ -317,6 +429,12 @@ pub struct ArtifactStorageStatus {
     pub warn_bytes: u64,
     /// Free space under which the state is `blocked`.
     pub stop_bytes: u64,
+    /// The backend's own state volume. Absent on a backend that does not read
+    /// it: one with no artifact service to poll, or with both of the volume's
+    /// thresholds turned off. Absent until the first reading too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub state_volume: Option<StateVolumeStatus>,
 }
 
 /// One reading of the artifact store: the artifact service's `GET /capacity` body.
@@ -455,7 +573,51 @@ type Announced = (
     u32,
     Option<String>,
     Option<u32>,
+    Option<StateVolumeLevel>,
 );
+
+/// What the monitor remembers of the backend's own state volume.
+#[derive(Debug, Clone)]
+struct StateVolumeTrack {
+    /// The level the latest successful reading was classified as. Kept across a
+    /// failed reading, so the hysteresis resumes from where the volume was.
+    level: Level,
+    /// The latest successful reading.
+    reading: Option<crate::store::StateVolume>,
+    /// Why the latest reading failed. Cleared by one that succeeds.
+    error: Option<String>,
+}
+
+impl StateVolumeTrack {
+    /// The level a console is told: the classified one, or unreadable while the
+    /// latest reading failed.
+    fn reported(&self) -> StateVolumeLevel {
+        if self.error.is_some() {
+            return StateVolumeLevel::Unreadable;
+        }
+        match self.level {
+            Level::Ok => StateVolumeLevel::Ok,
+            Level::Low => StateVolumeLevel::Low,
+            Level::Blocked => StateVolumeLevel::Blocked,
+        }
+    }
+
+    /// Whether the volume holds new runs: its latest reading succeeded and is
+    /// under the stop threshold. A reading that failed holds nothing.
+    fn holds(&self) -> bool {
+        self.reported() == StateVolumeLevel::Blocked
+    }
+}
+
+/// How the monitor reads the backend's own state volume.
+#[derive(Clone)]
+struct StateVolumeReader(Arc<dyn Fn() -> std::io::Result<crate::store::StateVolume> + Send + Sync>);
+
+impl std::fmt::Debug for StateVolumeReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("StateVolumeReader")
+    }
+}
 
 /// What the monitor holds whether or not a store is watched.
 #[derive(Debug)]
@@ -463,6 +625,8 @@ struct Shared {
     /// The hold publish failures call for, as last derived from the publish job
     /// table.
     publish_hold: Option<PublishHold>,
+    /// The backend's own state volume. `None` until it has been read once.
+    state_volume: Option<StateVolumeTrack>,
     /// What [`CapacityMonitor::take_change`] last returned. `None` until the first
     /// call of a watching monitor, which therefore always reports.
     announced: Option<Announced>,
@@ -533,6 +697,12 @@ pub struct CapacityChange {
     pub previous: ArtifactStorageState,
     /// Whether runs were on hold before the change.
     pub previously_on_hold: bool,
+    /// What the state volume read as before the change. `None` while it had not
+    /// been read.
+    pub previous_state_volume: Option<StateVolumeLevel>,
+    /// Whether the state volume's level is all that changed: the store's state,
+    /// the hold, the waiting runs and the reported error are as they were.
+    pub state_volume_only: bool,
     /// The reason runs were on hold for before the change, if they were.
     pub previous_hold_reason: Option<HoldReason>,
     /// The status after it.
@@ -550,6 +720,9 @@ pub struct CapacityMonitor {
     /// The publish-failure hold and the last announcement. Locked after the
     /// tracker wherever both are.
     shared: Arc<Mutex<Shared>>,
+    /// How the poll reads the backend's own state volume. `None` on a monitor
+    /// that reads none.
+    state_reader: Option<StateVolumeReader>,
 }
 
 impl CapacityMonitor {
@@ -562,10 +735,12 @@ impl CapacityMonitor {
             tracker: None,
             shared: Arc::new(Mutex::new(Shared {
                 publish_hold: None,
+                state_volume: None,
                 // An unwatched store has no starting state to report, so only a
                 // change from this one is announced.
-                announced: Some((ArtifactStorageState::Unmonitored, None, 0, None, None)),
+                announced: Some((ArtifactStorageState::Unmonitored, None, 0, None, None, None)),
             })),
+            state_reader: None,
         }
     }
 
@@ -586,9 +761,76 @@ impl CapacityMonitor {
             }))),
             shared: Arc::new(Mutex::new(Shared {
                 publish_hold: None,
+                state_volume: None,
                 announced: None,
             })),
+            state_reader: None,
         }
+    }
+
+    /// Read the backend's own state volume through `read` at every poll, and hold
+    /// new runs while it is under its stop threshold. A monitor whose settings
+    /// turn both of the volume's thresholds off reads nothing.
+    pub fn with_state_volume<R>(mut self, read: R) -> Self
+    where
+        R: Fn() -> std::io::Result<crate::store::StateVolume> + Send + Sync + 'static,
+    {
+        if self.settings.watches_state_volume() {
+            self.state_reader = Some(StateVolumeReader(Arc::new(read)));
+        }
+        self
+    }
+
+    /// Record one reading of the backend's own state volume, or why it failed.
+    ///
+    /// A reading that fails holds nothing and keeps the level the volume last
+    /// read as, so the next one that succeeds is judged from there.
+    pub fn record_state_volume(&self, reading: Result<crate::store::StateVolume, String>) {
+        let mut shared = self.shared.lock().expect("capacity shared mutex poisoned");
+        let previous = shared.state_volume.take();
+        let level = previous.as_ref().map_or(Level::Ok, |track| track.level);
+        shared.state_volume = Some(match reading {
+            Ok(volume) => StateVolumeTrack {
+                level: classify_state_volume(level, volume.free_bytes, &self.settings),
+                reading: Some(volume),
+                error: None,
+            },
+            Err(error) => StateVolumeTrack {
+                level,
+                reading: previous.and_then(|track| track.reading),
+                error: Some(error),
+            },
+        });
+    }
+
+    /// Read the backend's own state volume once and record what came back. Does
+    /// nothing on a monitor that reads none.
+    ///
+    /// The read is a `statvfs`, made on a blocking thread and given
+    /// the capacity read's timeout, so a volume that hangs costs the poll that long and is
+    /// recorded as a reading that failed.
+    pub async fn poll_state_volume(&self) {
+        let Some(reader) = self.state_reader.clone() else {
+            return;
+        };
+        let read = tokio::task::spawn_blocking(move || (reader.0)());
+        let reading = match tokio::time::timeout(READ_TIMEOUT, read).await {
+            Ok(Ok(Ok(volume))) => Ok(volume),
+            Ok(Ok(Err(err))) => Err(err.to_string()),
+            Ok(Err(err)) => Err(format!("the reading did not finish: {err}")),
+            Err(_) => Err("the reading timed out".to_string()),
+        };
+        match &reading {
+            Ok(volume) => {
+                crate::metrics::record_state_volume(volume.free_bytes, volume.total_bytes);
+            }
+            // Debug, for the reason a failed capacity poll is: it repeats every
+            // interval, and the change it leads to is logged once.
+            Err(error) => {
+                tracing::debug!(%error, "could not read the state volume's free space");
+            }
+        }
+        self.record_state_volume(reading);
     }
 
     /// The settings this monitor classifies with.
@@ -776,14 +1018,27 @@ impl CapacityMonitor {
         self.claim_gate_with(publish_held)
     }
 
+    /// Whether the backend's own state volume holds new runs right now.
+    fn state_volume_holds(&self) -> bool {
+        self.shared
+            .lock()
+            .expect("capacity shared mutex poisoned")
+            .state_volume
+            .as_ref()
+            .is_some_and(StateVolumeTrack::holds)
+    }
+
     /// [`claim_gate`](Self::claim_gate) for a caller that has just derived whether
     /// publish failures hold new runs: the store's own gate with `publish_held`
     /// laid over it, whatever answer the monitor last recorded. The run claim asks
     /// this, so it never rests on a copy another caller may have overwritten.
     ///
     /// The publish hold holds the queue wherever the store would hand out a run,
-    /// including the one run at a time of [`ClaimGate::Trial`].
+    /// including the one run at a time of [`ClaimGate::Trial`]. So does the
+    /// backend's own [state volume](HoldReason::StateLowSpace) while it is under
+    /// its stop threshold, which this reads from the monitor's latest reading.
     pub fn claim_gate_with(&self, publish_held: bool) -> ClaimGate {
+        let publish_held = publish_held || self.state_volume_holds();
         let Some(tracker) = &self.tracker else {
             return if publish_held {
                 ClaimGate::Hold
@@ -832,23 +1087,38 @@ impl CapacityMonitor {
             status.runs_waiting_to_store,
             status.detail.clone(),
             status.publish_failing_runs,
+            status.state_volume.as_ref().map(|volume| volume.level),
         );
         if shared.announced.as_ref() == Some(&now) {
             return None;
         }
         // A monitor that has announced nothing was holding the queue on a store it
         // had never read.
-        let (previous, previous_hold_reason) = match shared.announced.replace(now) {
-            Some((state, reason, _, _, _)) => (state, reason),
-            None => (
-                ArtifactStorageState::Unavailable,
-                Some(HoldReason::Unreadable),
-            ),
-        };
+        // Whether everything but the state volume's level is as it was announced.
+        let state_volume_only = shared.announced.as_ref().is_some_and(|announced| {
+            (
+                &announced.0,
+                &announced.1,
+                &announced.2,
+                &announced.3,
+                &announced.4,
+            ) == (&now.0, &now.1, &now.2, &now.3, &now.4)
+        });
+        let (previous, previous_hold_reason, previous_state_volume) =
+            match shared.announced.replace(now) {
+                Some((state, reason, _, _, _, volume)) => (state, reason, volume),
+                None => (
+                    ArtifactStorageState::Unavailable,
+                    Some(HoldReason::Unreadable),
+                    None,
+                ),
+            };
         Some(CapacityChange {
             previous,
             previously_on_hold: previous_hold_reason.is_some(),
             previous_hold_reason,
+            previous_state_volume,
+            state_volume_only,
             status,
         })
     }
@@ -868,10 +1138,11 @@ impl CapacityMonitor {
     /// own status, or the unmonitored one with no tracker, with the publish-failure
     /// hold laid over it.
     ///
-    /// The publish hold is the reported reason when the store gives none, and in
-    /// place of [`HoldReason::ProvingStore`], under which a run would still be
-    /// handed out. Every other reason of the store's leads, being the one that
-    /// loses a tree.
+    /// The state volume's hold and the publish hold are each the reported reason
+    /// when nothing ahead of them gives one, and in place of
+    /// [`HoldReason::ProvingStore`], under which a run would still be handed
+    /// out. Every other reason of the store's leads, being the one that loses a
+    /// tree, and the state volume's leads the publish hold.
     fn status_of(
         &self,
         tracker: Option<&Tracker>,
@@ -892,8 +1163,27 @@ impl CapacityMonitor {
                 writable: None,
                 warn_bytes: self.settings.warn_bytes,
                 stop_bytes: self.settings.stop_bytes,
+                state_volume: None,
             },
         };
+        if let Some(track) = &shared.state_volume {
+            status.state_volume = Some(StateVolumeStatus {
+                level: track.reported(),
+                free_bytes: track.reading.map(|volume| volume.free_bytes),
+                total_bytes: track.reading.map(|volume| volume.total_bytes),
+                warn_bytes: self.settings.state_warn_bytes,
+                stop_bytes: self.settings.state_stop_bytes,
+                error: track.error.clone(),
+            });
+            // Every reason of the store's own leads but the one under which a run
+            // would still be handed out.
+            if track.holds() && matches!(status.hold_reason, None | Some(HoldReason::ProvingStore))
+            {
+                status.hold_reason = Some(HoldReason::StateLowSpace);
+                status.runs_on_hold = true;
+                status.detail = None;
+            }
+        }
         if let Some(hold) = &shared.publish_hold {
             status.publish_failing_runs = Some(hold.failing_runs);
             if matches!(status.hold_reason, None | Some(HoldReason::ProvingStore)) {
@@ -956,7 +1246,8 @@ impl CapacityMonitor {
                     .as_ref()
                     .and_then(|unproven| unproven.reason.clone())
             }),
-            Some(HoldReason::LowSpace | HoldReason::PublishFailing) | None => None,
+            Some(HoldReason::LowSpace | HoldReason::StateLowSpace | HoldReason::PublishFailing)
+            | None => None,
         };
         let reading = tracker.reading.as_ref().map(|reading| &reading.capacity);
         ArtifactStorageStatus {
@@ -971,6 +1262,7 @@ impl CapacityMonitor {
             writable: reading.map(|capacity| capacity.writable),
             warn_bytes: self.settings.warn_bytes,
             stop_bytes: self.settings.stop_bytes,
+            state_volume: None,
         }
     }
 }
@@ -999,6 +1291,10 @@ fn announcement(change: &CapacityChange) -> Option<(tracing::Level, &'static str
             Some((Log::INFO, PUBLISH_HOLD_ENDED))
         }
         (ArtifactStorageState::Unmonitored, _) => None,
+        (_, Some(HoldReason::StateLowSpace)) => Some((
+            Log::ERROR,
+            "the backend's state volume is nearly full; new runs are on hold until space is freed",
+        )),
         (_, Some(HoldReason::LowSpace)) => Some((
             Log::ERROR,
             "artifact storage is full; new runs are on hold until space is freed",
@@ -1044,10 +1340,92 @@ fn publish_hold_ended_under_another(change: &CapacityChange) -> bool {
         && change.status.publish_failing_runs.is_none()
 }
 
+/// The log line a change of the state volume's level is announced with, apart
+/// from the hold's own line: its level and its message. `None` when the level did
+/// not change, and when the hold's line already says it.
+///
+/// Entering `low` and a reading that fails are warnings, the volume filling
+/// under another reason's hold is an error, and a volume back at `ok` is `info`.
+/// The first reading of a volume with room is not announced.
+fn state_volume_announcement(change: &CapacityChange) -> Option<(tracing::Level, &'static str)> {
+    use tracing::Level as Log;
+    let level = change.status.state_volume.as_ref()?.level;
+    if change.previous_state_volume == Some(level) {
+        return None;
+    }
+    match level {
+        StateVolumeLevel::Blocked
+            if change.status.hold_reason == Some(HoldReason::StateLowSpace) =>
+        {
+            None
+        }
+        StateVolumeLevel::Blocked => Some((
+            Log::ERROR,
+            "the backend's state volume is nearly full; new runs are already on hold for another reason",
+        )),
+        StateVolumeLevel::Low => Some((
+            Log::WARN,
+            "the backend's state volume is running low; new runs are being dispatched",
+        )),
+        StateVolumeLevel::Unreadable => Some((
+            Log::WARN,
+            "the backend's state volume could not be read; no run is held on it",
+        )),
+        StateVolumeLevel::Ok => change.previous_state_volume.map(|_| {
+            (
+                Log::INFO,
+                "the backend's state volume has room; it holds no run",
+            )
+        }),
+    }
+}
+
+/// Log a change of the state volume's level on a line of its own.
+fn log_state_volume_change(change: &CapacityChange) {
+    let Some((level, message)) = state_volume_announcement(change) else {
+        return;
+    };
+    let Some(volume) = &change.status.state_volume else {
+        return;
+    };
+    let (free_bytes, total_bytes) = (volume.free_bytes, volume.total_bytes);
+    let (warn_bytes, stop_bytes) = (volume.warn_bytes, volume.stop_bytes);
+    let (state, previous, error) = (
+        volume.level,
+        change.previous_state_volume,
+        volume.error.as_deref(),
+    );
+    macro_rules! emit {
+        ($macro:ident) => {
+            tracing::$macro!(
+                state_volume = ?state,
+                previous = ?previous,
+                free_bytes,
+                total_bytes,
+                warn_bytes,
+                stop_bytes,
+                error,
+                "{message}"
+            )
+        };
+    }
+    match level {
+        tracing::Level::ERROR => emit!(error),
+        tracing::Level::WARN => emit!(warn),
+        _ => emit!(info),
+    }
+}
+
 /// Log one change, at the level it calls for. Every line carries the same fields:
 /// the reason for the hold, the number of runs waiting to store, and the error
 /// text behind the condition.
 fn log_change(change: &CapacityChange) {
+    log_state_volume_change(change);
+    // Nothing about the store or the hold moved, so its line would repeat the
+    // one already logged for it.
+    if change.state_volume_only {
+        return;
+    }
     let Some((level, message)) = announcement(change) else {
         return;
     };
@@ -1065,6 +1443,11 @@ fn log_change(change: &CapacityChange) {
     );
     let (writable, error) = (status.writable, status.detail.as_deref());
     let publish_failing_runs = status.publish_failing_runs;
+    let state_free_bytes = status
+        .state_volume
+        .as_ref()
+        .and_then(|volume| volume.free_bytes);
+    let state_stop_bytes = status.state_volume.as_ref().map(|volume| volume.stop_bytes);
     // A publish hold that ends under another reason is said on a line of its own:
     // the line below is the other reason's, and would otherwise be the only one.
     if publish_hold_ended_under_another(change) {
@@ -1086,6 +1469,8 @@ fn log_change(change: &CapacityChange) {
                 free_bytes,
                 warn_bytes,
                 stop_bytes,
+                state_free_bytes,
+                state_stop_bytes,
                 writable,
                 previous = ?previous,
                 resumed,
@@ -1133,6 +1518,7 @@ async fn poll_once<R, F, W, G>(
             monitor.record_failure(&err);
         }
     }
+    monitor.poll_state_volume().await;
     monitor.announce(notifier);
 }
 
@@ -1180,9 +1566,13 @@ pub async fn waiting_runs(db: &crate::db::Db) -> Option<WaitingRuns> {
 /// leaves the monitor unavailable with the queue on hold until a poll gets a
 /// reading.
 ///
+/// The same poll reads the free space of the volume `store` is on, the backend's
+/// own state volume, and holds new runs while it is under its stop threshold.
+///
 /// With no in-cluster artifact URL or no service token there is no service to
 /// read, so the monitor is [unmonitored](CapacityMonitor::unmonitored) and no task
-/// is spawned: a single-box development setup holds nothing. The returned handle is
+/// is spawned: a single-box development setup holds nothing, and reads neither
+/// volume. The returned handle is
 /// the loop's task, which runs until it is aborted or the runtime shuts down;
 /// dropping the handle detaches it.
 pub async fn spawn_capacity_monitor(
@@ -1192,11 +1582,13 @@ pub async fn spawn_capacity_monitor(
     service_token: Option<String>,
     notifier: Notifier,
     db: Arc<crate::db::Db>,
+    store: crate::store::DefinitionStore,
 ) -> (CapacityMonitor, Option<tokio::task::JoinHandle<()>>) {
     let (Some(base), Some(token)) = (artifacts_url, service_token) else {
         return (CapacityMonitor::unmonitored(settings), None);
     };
-    let monitor = CapacityMonitor::watching(settings);
+    let monitor =
+        CapacityMonitor::watching(settings).with_state_volume(move || store.state_volume());
     // The memory of a failed upload died with the previous process. The one trace
     // it left is the last finished run's recorded presence.
     match db.latest_finished_tree_stored().await {
@@ -1238,3 +1630,7 @@ mod hold_tests;
 #[cfg(test)]
 #[path = "capacity.publish.test.rs"]
 mod publish_tests;
+
+#[cfg(test)]
+#[path = "capacity.state.test.rs"]
+mod state_tests;
