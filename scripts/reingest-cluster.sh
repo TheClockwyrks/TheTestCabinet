@@ -201,6 +201,13 @@ case "$verdict" in
       "above; it ends in 'REINGEST ok' or 'REINGEST failed'."
     exit 1
     ;;
+  4)
+    echo >&2 "reingest-cluster.sh: AKS ended the re-ingest command at its time limit, above."
+    remediation \
+      "Whether the backend finished the ingest is not known, and nothing was undone." \
+      "The backend's log says how it ended; run this again to ingest once more."
+    exit 1
+    ;;
   *)
     echo >&2 "reingest-cluster.sh: the command could not be handed to ${cluster}, above."
     remediation "Nothing was ingested. Sign in with az and run this again."

@@ -61,7 +61,11 @@
 #   verify     Once the backend's rollout is ready, in the cluster. It reads the
 #              result the sidecar recorded (/tmp/ingest-result in the `ingest`
 #              container), waiting while the sidecar is still working, for at most
-#              TCAB_INGEST_WAIT_SECONDS (600). It fails, printing the step that failed
+#              TCAB_INGEST_WAIT_SECONDS (600). AKS ends a command after ten minutes
+#              and keeps none of its output, so the wait is spent in calls of at
+#              most TCAB_INGEST_CALL_SECONDS (240), one after another, and a wait
+#              that ends with no outcome prints what the last read answered and
+#              the sidecar's log. It fails, printing the step that failed
 #              and the sidecar's message, unless the result is `ok`. It changes
 #              nothing: a sidecar that failed ingested nothing, so the backend is
 #              serving the catalog and the baselines it had, and stays rolled out.
@@ -82,7 +86,7 @@
 #   THE_TEST_CABINET_CLUSTER         The cluster's name
 #   THE_TEST_CABINET_NAMESPACE       The namespace the backend runs in
 #
-# And six settings:
+# And eight settings:
 #
 #   TCAB_CATALOG_REPO            The mirror the sidecar clones (the public GitHub mirror)
 #   TCAB_INGEST_MANIFEST         The render about to be applied, an absolute path
@@ -91,6 +95,8 @@
 #   TCAB_INGEST_COLD_STORAGE_MB  What a fetch of cold storage needs on top of it (2560)
 #   TCAB_INGEST_WAIT_SECONDS     How long verify waits on a sidecar still working (600)
 #   TCAB_INGEST_POLL_SECONDS     How often it reads the result while it waits (5)
+#   TCAB_INGEST_CALL_SECONDS     The longest one call into the cluster waits (240)
+#   TCAB_INGEST_READ_SECONDS     How long one read of the result is given (30)
 set -euo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -546,25 +552,61 @@ verify() {
 	done
 
 	local wait_seconds="${TCAB_INGEST_WAIT_SECONDS:-600}" poll_seconds="${TCAB_INGEST_POLL_SECONDS:-5}"
+	local call_seconds="${TCAB_INGEST_CALL_SECONDS:-240}" read_seconds="${TCAB_INGEST_READ_SECONDS:-30}"
 	[[ "$wait_seconds" =~ ^[0-9]+$ ]] || wait_seconds=600
 	[[ "$poll_seconds" =~ ^[0-9]+$ ]] || poll_seconds=5
+	[[ "$call_seconds" =~ ^[1-9][0-9]*$ ]] || call_seconds=240
+	[[ "$read_seconds" =~ ^[1-9][0-9]*$ ]] || read_seconds=30
 
-	# The script that runs in the cluster. Its settings are written at its head; the
-	# rest is quoted, so it reaches the cluster as written here.
+	# The script that runs in the cluster, once for each call: `bash <script> <wait>
+	# <waited>`, the seconds this call may wait and the seconds the calls before it
+	# did. Its settings are written at its head; the rest is quoted, so it reaches
+	# the cluster as written here. It runs in the image AKS gives a command, which
+	# carries no sed, so it reads the result with the shell alone.
 	local script="${work}/catalog-ingest-verify.sh"
 	{
-		printf 'NAMESPACE=%q\nBACKEND=%q\nRESULT_PATH=%q\nWAIT=%q\nPOLL=%q\n' \
-			"$NAMESPACE" "$BACKEND" "$RESULT_PATH" "$wait_seconds" "$poll_seconds"
+		printf 'NAMESPACE=%q\nBACKEND=%q\nRESULT_PATH=%q\nPOLL=%q\nREAD=%q\n' \
+			"$NAMESPACE" "$BACKEND" "$RESULT_PATH" "$poll_seconds" "$read_seconds"
 		cat <<'SCRIPT'
 set -u
+WAIT="$1"
+BEFORE="$2"
 k() { kubectl -n "$NAMESPACE" "$@"; }
 
+# The value of the result's first `<name>=` line.
+field() { # name
+	local line
+	while IFS= read -r line; do
+		case "$line" in
+			"$1="*)
+				printf '%s\n' "${line#*=}"
+				return 0
+				;;
+		esac
+	done <<<"$result"
+}
+
+# One read of the result file, given READ seconds: a read that hangs is a read
+# that failed, and its READ seconds count against the wait. What a failed read
+# answered is kept, to be printed when the wait ends with no outcome.
 waited=0
 result=""
 status=""
+refusal=""
 while :; do
-	result="$(k exec "deployment/${BACKEND}" -c ingest -- cat "$RESULT_PATH" 2>/dev/null)" || result=""
-	status="$(sed -n 's/^status=//p' <<<"$result" | head -n 1)"
+	if answer="$(timeout "$READ" kubectl -n "$NAMESPACE" exec "deployment/${BACKEND}" -c ingest -- cat "$RESULT_PATH" 2>&1)"; then
+		result="$answer"
+		refusal=""
+	else
+		code=$?
+		result=""
+		refusal="$answer"
+		if [ "$code" -eq 124 ]; then
+			refusal="the read did not answer in ${READ}s"
+			waited=$((waited + READ))
+		fi
+	fi
+	status="$(field status)"
 	case "$status" in
 		ok | failed) break ;;
 	esac
@@ -573,7 +615,8 @@ while :; do
 	waited=$((waited + POLL))
 done
 
-step="$(sed -n 's/^step=//p' <<<"$result" | head -n 1)"
+step="$(field step)"
+total=$((BEFORE + waited))
 case "$status" in
 	ok)
 		echo "INGEST ok"
@@ -587,10 +630,11 @@ case "$status" in
 		;;
 esac
 if [ -n "$result" ]; then
-	echo "INGEST unfinished: still at step '${step}' after ${waited}s"
+	echo "INGEST unfinished: still at step '${step}' after ${total}s"
 	printf '%s\n' "$result"
 else
-	echo "INGEST unknown: the ingest container of ${BACKEND} recorded no result in ${waited}s"
+	echo "INGEST unknown: the ingest container of ${BACKEND} recorded no result in ${total}s"
+	[ -z "$refusal" ] || printf 'The last read of %s answered:\n%s\n' "$RESULT_PATH" "$refusal"
 fi
 echo "=== the ingest container's log ==="
 k logs "deployment/${BACKEND}" -c ingest --tail=40 || true
@@ -598,21 +642,54 @@ exit 1
 SCRIPT
 	} >"$script"
 
+	# The wait is spent a call at a time, each well inside the ten minutes AKS gives
+	# a command, so a sidecar still working is reported by the script and not by AKS
+	# ending it. Only the last call's answer is printed in full.
 	echo "Reading the catalog ingest of ${NAMESPACE} on ${CLUSTER}."
-	local verdict=0
-	aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$script" "bash $(basename "$script")" || verdict=$?
-	case "$verdict" in
-		0)
+	local waited=0 share answer outcome verdict
+	while :; do
+		share=$((wait_seconds - waited))
+		((share <= call_seconds)) || share="$call_seconds"
+		verdict=0
+		answer="$(aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$script" "bash $(basename "$script") ${share} ${waited}")" || verdict=$?
+		waited=$((waited + share))
+		outcome="$(grep -m 1 '^INGEST ' <<<"$answer")" || outcome=""
+		case "$outcome" in
+			"INGEST unfinished"* | "INGEST unknown"*)
+				((waited < wait_seconds)) || break
+				echo "${outcome}; reading again."
+				;;
+			*) break ;;
+		esac
+	done
+	[[ -z "$answer" ]] || printf '%s\n' "$answer"
+
+	case "${verdict}:${outcome}" in
+		0:*)
 			echo "The ${ENVIRONMENT} backend ingested the tip of ${BRANCH}."
 			;;
-		1)
+		1:"INGEST unfinished"* | 1:"INGEST unknown"*)
+			echo >&2 "catalog-ingest.sh: the ingest sidecar of the ${ENVIRONMENT} backend recorded no outcome in ${waited}s; what it recorded and its log are above."
+			remediation \
+				"Nothing was rolled back, and whether the backend ingested the tip of ${BRANCH} is" \
+				"not known. A sidecar still working is read again with:" \
+				"    scripts/ci/catalog-ingest.sh verify ${ENVIRONMENT}" \
+				"One that stopped is replaced by an ingest without a deployment:" \
+				"    scripts/reingest-cluster.sh --env ${ENVIRONMENT}"
+			exit 1
+			;;
+		1:*)
 			echo >&2 "catalog-ingest.sh: the ${ENVIRONMENT} backend did not ingest the tip of ${BRANCH}; the sidecar's step and message are above."
 			remediation \
 				"Nothing was ingested and nothing was rolled back: the backend is rolled out and" \
 				"serves the catalog and the baselines it had. Fix what the message names, then" \
 				"ingest without a deployment, which fails the same way when the fetch does:" \
-				"    scripts/reingest-cluster.sh --env ${ENVIRONMENT}" \
-				"A sidecar still working when the wait ran out is read again with:" \
+				"    scripts/reingest-cluster.sh --env ${ENVIRONMENT}"
+			exit 1
+			;;
+		4:*)
+			echo >&2 "catalog-ingest.sh: AKS ended the read of the ingest sidecar's result on ${CLUSTER}, above, so the result is not known."
+			remediation "Nothing was rolled back. Read it again with:" \
 				"    scripts/ci/catalog-ingest.sh verify ${ENVIRONMENT}"
 			exit 1
 			;;
