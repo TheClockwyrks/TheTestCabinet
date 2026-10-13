@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { storingRunNotice } from "../../../../client/artifactStorage";
 import { useWorkers } from "../../../../client/context";
 import type {
   AssetPreview,
@@ -62,6 +63,7 @@ export function RunMonitorPage() {
   // slots the asset view shows as soon as the page loads, before the model has
   // drawn anything.
   const inProgress = runtime.inProgress.find((r) => r.runId === runId);
+  const storingNotice = storingRunNotice(inProgress);
   // The declared slots come off the case's `sheet`/`model`, which are detail —
   // not part of the catalog listing — so the run's own case is fetched by slug.
   const { testCase: caseSummary } = useTestCase(inProgress?.testCaseSlug);
@@ -179,6 +181,14 @@ export function RunMonitorPage() {
         <p className={`${styles.notice} ${styles.warn}`}>
           No worker connected. The live stream comes from the worker that ran
           this job.
+        </p>
+      )}
+
+      {/* The run is over and its driver is waiting on the artifact store. The feed
+          has gone quiet for a reason, and this is the only place that says it. */}
+      {status.kind === "running" && storingNotice && (
+        <p className={`${styles.notice} ${styles.warn}`} role="status">
+          {storingNotice}
         </p>
       )}
 

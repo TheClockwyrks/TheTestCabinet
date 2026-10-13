@@ -171,4 +171,31 @@ describe("reconcileActiveRuns", () => {
     );
     expect(toUpdate).toEqual([]);
   });
+
+  it("moves a tracked run into storing with the reason the worker reports", () => {
+    const storing = { ...run("a", "storing"), detail: "disk full" };
+    expect(
+      reconcileActiveRuns([run("a", "running")], [ok(storing)]).toUpdate,
+    ).toEqual([{ runId: "a", state: "storing", detail: "disk full" }]);
+  });
+
+  it("refreshes a storing run's reason and clears it once the run moves on", () => {
+    const storing = { ...run("a", "storing"), detail: "disk full" };
+    expect(
+      reconcileActiveRuns(
+        [storing],
+        [ok({ ...storing, detail: "artifact service returned HTTP 503" })],
+      ).toUpdate,
+    ).toEqual([
+      {
+        runId: "a",
+        state: "storing",
+        detail: "artifact service returned HTTP 503",
+      },
+    ]);
+    expect(reconcileActiveRuns([storing], [ok(storing)]).toUpdate).toEqual([]);
+    expect(
+      reconcileActiveRuns([storing], [ok(run("a", "running"))]).toUpdate,
+    ).toEqual([{ runId: "a", state: "running", detail: null }]);
+  });
 });

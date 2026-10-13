@@ -58,13 +58,17 @@ sha2 = { workspace = true }
 
 # Uploading the produced run tree (`src/artifacts.rs`). The tarball is built into an
 # unnamed `tempfile` on the driver's scratch disk and streamed to the artifact
-# service through `ReaderStream`, rather than assembled in memory: a run tree grows
+# service a chunk at a time, rather than assembled in memory: a run tree grows
 # with the case, and the driver holding a whole one at once is what made its memory
 # footprint unsizeable. `tempfile_in` is load-bearing beyond convenience — the file it
 # returns has no directory entry, so the kernel reclaims it when the fd closes even
 # if the driver dies mid-upload, leaving nothing to garbage-collect.
 tempfile = { workspace = true }
-tokio-util = { workspace = true }
+# The upload's body is a stream of chunks read from the tarball at explicit
+# offsets (`futures-util` builds the stream, `bytes` is its item), so each attempt
+# reads the archive from its start whatever an earlier attempt left behind.
+futures-util = { workspace = true }
+bytes = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

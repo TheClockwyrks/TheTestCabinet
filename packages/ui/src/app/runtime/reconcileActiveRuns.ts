@@ -1,4 +1,5 @@
 import type { InProgressRun } from "../../client/types";
+import { detailPatch } from "./runLifecycle";
 
 // One worker's answer when asked to enumerate its active runs: either the runs it
 // is currently executing, or a failure to reach it at all. A failure is NOT the
@@ -14,11 +15,14 @@ export type ActiveRunsResult =
 // `state` is always carried, even when only the start changed, so applying an entry
 // is one patch either way. `startedAt` is carried only when the active set names a
 // start the tracked copy does not already show: a report that simply omits one must
-// never erase a start the row already learned from the event stream.
+// never erase a start the row already learned from the event stream. `detail` is
+// carried when the row's reason changes: it belongs to the `storing` phase alone,
+// so it is the driver's latest reason while the run waits there and null otherwise.
 export interface TrackedRunUpdate {
   runId: string;
   state: InProgressRun["state"];
   startedAt?: string;
+  detail?: string | null;
 }
 
 // The reconciliation plan: which active runs are newly seen (track them), which
@@ -106,11 +110,19 @@ export function reconcileActiveRuns(
       active.startedAt && active.startedAt !== run.startedAt
         ? active.startedAt
         : undefined;
-    if (active.state === run.state && startedAt === undefined) continue;
+    const detail = detailPatch(run, active.state, active.detail);
+    if (
+      active.state === run.state &&
+      startedAt === undefined &&
+      !("detail" in detail)
+    ) {
+      continue;
+    }
     toUpdate.push({
       runId: run.runId,
       state: active.state,
       ...(startedAt !== undefined ? { startedAt } : {}),
+      ...detail,
     });
   }
 

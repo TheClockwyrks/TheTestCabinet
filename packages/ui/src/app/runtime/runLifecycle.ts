@@ -11,7 +11,9 @@ import { runPhase } from "../../client/runPhase";
 // An `update` carries `startedAt` only when the event actually named one, so it stays
 // a patch of what this event knows: every event up to `dispatched` reports no start,
 // and a row that already learned when its run began must not be walked back to a dash
-// by one of them.
+// by one of them. It carries `detail` when the row's reason changes: `detail`
+// belongs to the `storing` phase alone, so it is the driver's reason while the run
+// is there and null once it has left.
 export type RunListAction =
   | { kind: "track"; run: InProgressRun }
   | {
@@ -19,6 +21,7 @@ export type RunListAction =
       runId: string;
       state: InProgressRun["state"];
       startedAt?: string;
+      detail?: string | null;
     }
   | { kind: "remove"; runId: string; refresh: boolean }
   | { kind: "ignore" };
@@ -71,6 +74,7 @@ export function runListAction(
     // shows as a dash rather than as a duration counting from nothing.
     startedAt: event.startedAt ?? null,
     state: phase,
+    ...(phase === "storing" ? { detail: event.detail ?? null } : {}),
   };
 
   if (event.kind === "enqueued") return { kind: "track", run };
@@ -79,9 +83,8 @@ export function runListAction(
   // list — it was enqueued while the topic was off, or before this session began.
   // Tracking it here is the same repair the reconcile would eventually make, just
   // sooner, and the event carries everything the row needs.
-  if (!inProgress.some((existing) => existing.runId === event.runId)) {
-    return { kind: "track", run };
-  }
+  const existing = inProgress.find((row) => row.runId === event.runId);
+  if (!existing) return { kind: "track", run };
 
   // A run already in the list is patched in place rather than re-tracked, because
   // tracking moves a run to the head — and a run must not jump around the list as
@@ -94,5 +97,27 @@ export function runListAction(
     runId: event.runId,
     state: phase,
     ...(event.startedAt ? { startedAt: event.startedAt } : {}),
+    ...detailPatch(existing, phase, event.detail),
   };
+}
+
+// The reason a row carries: the driver's account of the failed upload while the
+// run is `storing`, and nothing in any other phase, where an event's detail says
+// something else or nothing at all.
+export function storingDetail(
+  phase: InProgressRun["state"],
+  detail: string | null | undefined,
+): string | null {
+  return phase === "storing" ? (detail ?? null) : null;
+}
+
+// The patch that brings a tracked row's reason in line with what a source just
+// reported for it: empty when the row already shows that reason.
+export function detailPatch(
+  tracked: InProgressRun,
+  phase: InProgressRun["state"],
+  detail: string | null | undefined,
+): { detail?: string | null } {
+  const next = storingDetail(phase, detail);
+  return next === (tracked.detail ?? null) ? {} : { detail: next };
 }

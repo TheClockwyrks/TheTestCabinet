@@ -9,6 +9,7 @@ import {
 import type { TestCaseSummary } from "../data/testCases";
 import type { InProgressRun } from "../../client/types";
 import { RunLog, sortStateToQuery, useRunTable } from "./RunLog";
+import { markArtifactsNotStored } from "../../client/artifactPresence";
 
 // A run summary carrying only the fields the run log reads.
 function summary(
@@ -402,6 +403,44 @@ describe("RunLog", () => {
 // a third-party-harness run is its model, a gg run is the configuration it was
 // launched from (its models are per-agent bindings, so no single harness model
 // names it). One listing routinely holds both kinds of row.
+describe("RunLog artifact marker", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("marks an unpublished row whose artifacts are not stored, and only that row", () => {
+    // All three are unpublished (no publish timestamp); the backend named one as
+    // having no stored tree.
+    const runs = markArtifactsNotStored(RUNS, ["r-alpha"]);
+    const { container } = renderSelectable(runs);
+
+    const marked = [
+      ...container.querySelectorAll("[data-artifacts-missing='true']"),
+    ];
+    expect(marked).toHaveLength(1);
+    const row = marked[0]!.closest("a") ?? marked[0]!.closest("[role='row']");
+    expect(row?.textContent).toContain("Alpha");
+    expect(marked[0]!.getAttribute("title")).toContain("cannot be published");
+    // Every row still carries its unpublished marker.
+    expect(screen.getAllByRole("img", { name: /^Unpublished/ })).toHaveLength(
+      3,
+    );
+  });
+
+  it("leaves a published row unmarked even when its tree is no longer stored", () => {
+    // A published run's release is done; whether its tree is still held changes
+    // nothing for it, and it is not an unpublished row at all.
+    const published = {
+      ...summary("r-pub", "beta"),
+      publishedAt: "2026-01-02T00:00:00Z",
+    } as RunSummary;
+    const { container } = renderSelectable(
+      markArtifactsNotStored([published], ["r-pub"]),
+    );
+
+    expect(container.querySelector("[data-artifacts-missing]")).toBeNull();
+    expect(screen.queryByRole("img", { name: /^Unpublished/ })).toBeNull();
+  });
+});
+
 describe("RunLog model/config cell", () => {
   beforeEach(() => localStorage.clear());
 

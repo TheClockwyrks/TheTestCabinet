@@ -1214,3 +1214,122 @@ fn a_manifest_stored_before_validator_engine_scoping_reads_as_unrestricted() {
 
     assert!(stored.engines.is_empty());
 }
+
+// --- A run's files by manifest name ---------------------------------------------
+
+#[test]
+fn a_runs_file_is_found_at_the_path_its_writer_used() {
+    let (_dir, store) = temp_store();
+    store.write_run_proof("r1", "title.png", b"p").unwrap();
+    store.write_run_validation("r1", "shot.png", b"v").unwrap();
+    store.write_run_asset("r1", "replay-1.json", b"a").unwrap();
+    store.write_run_showcase("r1", "clip.webm", b"s").unwrap();
+    store.write_run_code_analysis("r1", b"c").unwrap();
+    store.write_run_controller("r1", b"w").unwrap();
+    store.write_run_replay("r1", b"r").unwrap();
+
+    for (name, bytes) in [
+        ("proof/title.png", b"p"),
+        ("validation/shot.png", b"v"),
+        ("asset/replay-1.json", b"a"),
+        ("showcase/clip.webm", b"s"),
+        ("code-analysis.json", b"c"),
+        ("controller.wasm", b"w"),
+        ("replay.json", b"r"),
+    ] {
+        let path = store.run_file_path("r1", name).expect(name);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes, "{name}");
+        assert!(!store.run_file_absent("r1", name), "{name}");
+    }
+}
+
+#[test]
+fn a_name_that_leaves_the_runs_folder_has_no_path_and_is_not_called_absent() {
+    let (_dir, store) = temp_store();
+    for (run, name) in [
+        ("r1", "../r2/controller.wasm"),
+        ("r1", "proof/../../x"),
+        ("r1", "/etc/passwd"),
+        ("r1", "proof//title.png"),
+        ("r1", ""),
+        ("..", "controller.wasm"),
+        ("a/b", "controller.wasm"),
+    ] {
+        assert_eq!(store.run_file_path(run, name), None, "{run} {name}");
+        assert!(!store.run_file_absent(run, name), "{run} {name}");
+    }
+}
+
+#[test]
+fn a_file_is_absent_only_when_the_file_system_says_nothing_is_there() {
+    let (_dir, store) = temp_store();
+    // Nothing of the run, then a run folder without the file's own folder, then
+    // the folder without the file.
+    assert!(store.run_file_absent("r1", "proof/title.png"));
+    store.write_run_controller("r1", b"w").unwrap();
+    assert!(store.run_file_absent("r1", "proof/title.png"));
+    store.write_run_proof("r1", "other.png", b"p").unwrap();
+    assert!(store.run_file_absent("r1", "proof/title.png"));
+    assert!(!store.run_file_absent("r1", "proof/other.png"));
+
+    // Something that is there and is not a readable file is not an absence.
+    std::fs::create_dir_all(store.run_proof_dir("r1").join("title.png")).unwrap();
+    assert!(!store.run_file_absent("r1", "proof/title.png"));
+    assert!(store.read_run_proof("r1", "title.png").is_err());
+    // Nor is a lookup that fails because a file stands where a folder should.
+    assert!(!store.run_file_absent("r1", "controller.wasm/inner"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_dangling_link_at_a_files_path_is_not_an_absence() {
+    let (_dir, store) = temp_store();
+    std::fs::create_dir_all(store.run_proof_dir("r1")).unwrap();
+    std::os::unix::fs::symlink(
+        "/nonexistent/target",
+        store.run_proof_dir("r1").join("title.png"),
+    )
+    .unwrap();
+    assert!(!store.run_file_absent("r1", "proof/title.png"));
+}
+
+// --- What the tournament replays hold --------------------------------------------
+
+#[test]
+fn a_store_with_no_tournament_holds_no_replay_bytes() {
+    let (_dir, store) = temp_store();
+    assert_eq!(
+        store.tournament_replay_usage().unwrap(),
+        StoreUsage::default()
+    );
+}
+
+#[test]
+fn the_tournament_replays_are_measured_across_every_tournament_and_match() {
+    let (_dir, store) = temp_store();
+    store.write_tournament_match("t1", "m1", &[0; 10]).unwrap();
+    store.write_tournament_match("t1", "m2", &[0; 20]).unwrap();
+    store.write_tournament_match("t2", "m1", &[0; 300]).unwrap();
+    // A run's own files are not tournament replays.
+    store
+        .write_run_asset("r1", "replay.json", &[0; 4000])
+        .unwrap();
+
+    assert_eq!(
+        store.tournament_replay_usage().unwrap(),
+        StoreUsage {
+            bytes: 330,
+            files: 3
+        }
+    );
+
+    // Overwriting a match counts its new size, not both.
+    store.write_tournament_match("t1", "m1", &[0; 15]).unwrap();
+    assert_eq!(
+        store.tournament_replay_usage().unwrap(),
+        StoreUsage {
+            bytes: 335,
+            files: 3
+        }
+    );
+}

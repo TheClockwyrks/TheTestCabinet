@@ -154,9 +154,11 @@ pub use orchestrator::{
 pub use performance_validator::PerformanceValidator;
 pub use playable::{
     BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, ServedShowcaseFile,
-    ServedValidationFile, find_build_output, proof_labelled_name, proof_published_extension,
-    proof_served_extension, serve_asset_file, serve_build_file, serve_proof_file,
-    serve_showcase_file, serve_validation_file,
+    ServedValidationFile, TREE_ROOT_CODE_ANALYSIS, TREE_ROOT_CONTROLLER, TREE_ROOT_FILES,
+    find_build_output, list_showcase_files, list_tree_root_files, list_validation_files,
+    proof_labelled_name, proof_published_extension, proof_served_extension, read_asset_file,
+    read_proof_file, read_showcase_file, read_validation_file, serve_asset_file, serve_build_file,
+    serve_proof_file, serve_showcase_file, serve_validation_file, tree_root_file,
 };
 pub use post_run::{PostRunContext, PostRunReport, PostRunStage};
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};

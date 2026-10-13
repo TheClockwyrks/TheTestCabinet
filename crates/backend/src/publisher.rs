@@ -1,17 +1,18 @@
-//! The synchronized publish path: coalesced snapshot regeneration + upload +
+//! The synchronized publish path: batched snapshot regeneration + upload +
 //! deploy-hook fire (§1.4, §3 and the backend overview's "Publishing and
 //! Synchronization").
 //!
-//! Being a single central entity is the point: the backend serializes publishes
-//! so two operators cannot race on the shared snapshot state, and it **coalesces**
-//! a burst of publishes into one regeneration, one upload, and one site rebuild.
+//! Being a single central entity is the point: the backend serializes refreshes
+//! so two of them cannot race on the shared snapshot state, and it **batches** the
+//! requests for one, because every refresh ends in a full site rebuild.
 //!
-//! The coalescing is a debounce: a publish marks the store dirty and pings the
-//! refresher; the refresher waits the coalescing window, draining any further
-//! pings that arrive during it, then regenerates the **full** published set
-//! (idempotent — re-running converges on the same snapshot), uploads it
-//! atomically, and fires the hook. A forced refresh (`POST /snapshot/refresh`)
-//! bypasses the debounce and runs immediately.
+//! A change to what the snapshot shows counts one request
+//! ([`Publisher::queue_refresh`]). The [`batch`] module decides when the pending
+//! requests are released: at a threshold count, or once no request has arrived for
+//! a quiet window, with a minimum interval between two releases. A release
+//! regenerates the **full** published set (idempotent — re-running converges on
+//! the same snapshot), uploads it atomically, and fires the hook. A forced refresh
+//! (`POST /snapshot/refresh`) bypasses the batching and runs immediately.
 //!
 //! Regenerating the full set is a statement about *correctness*, not about work: the
 //! run and case media, and each run's own JSON document, are content-addressed under
@@ -25,8 +26,14 @@ use std::time::Duration;
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::mpsc;
 use tracing::Instrument;
+
+#[path = "publisher.batch.rs"]
+pub mod batch;
+
+pub use batch::BatchTiming;
+use batch::{Batch, Batcher, RefreshTarget};
 
 use crate::db::Db;
 use crate::error::{BackendError, Result};
@@ -62,33 +69,58 @@ struct PublisherInner {
     /// The artifact service's **in-cluster** base URL
     /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
     /// passed to the snapshot builder so it can fall back for run media missing from
-    /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
+    /// the store. `None` in a dev/single-box setup with no separate
     /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
-    coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (see [`prune_stale_snapshots`]).
     snapshot_retention: Duration,
-    /// Pinged when a publish marks the store dirty, waking the debounce loop.
-    wake: Notify,
-    /// How many refreshes the background loop has finished, so a test can wait for the loop to
-    /// act rather than poll the database on a timer.
+    /// The bucket media confirmations are recorded against, on a backend that
+    /// records them (see [`PublisherTiming::confirm_media`]).
+    confirm_media: Option<&'static str>,
+    /// Counts the refresh requests and decides when a batch of them is released.
+    batcher: Batcher,
+    /// How many refreshes have finished, so a test can wait for the loop to act
+    /// rather than poll the database on a timer.
     #[cfg(test)]
     refreshes: tokio::sync::watch::Sender<u64>,
+    /// How many times pending requests have been recorded durably, for the same
+    /// reason.
+    #[cfg(test)]
+    recordings: tokio::sync::watch::Sender<u64>,
 }
 
-/// The timing knobs a publisher is built with, grouped so the two `Duration`s
-/// cannot be transposed at the call site (they are adjacent, same-typed and mean
-/// very different things) and so adding a third does not widen
-/// [`Publisher::new`] again.
+/// The timing knobs a publisher is built with, grouped so the `Duration`s cannot
+/// be transposed at the call site (they are same-typed and mean very different
+/// things) and so adding another does not widen [`Publisher::new`] again.
+/// [`Config::publisher_timing`](crate::config::Config::publisher_timing) builds it
+/// from the environment.
 #[derive(Debug, Clone, Copy)]
 pub struct PublisherTiming {
-    /// The sliding debounce a burst of publishes is coalesced over
-    /// (`TCAB_SNAPSHOT_COALESCE_MS`).
-    pub coalesce: Duration,
+    /// When a batch of refresh requests is released (`TCAB_SNAPSHOT_BATCH_SIZE`,
+    /// `TCAB_SNAPSHOT_COALESCE_MS`, `TCAB_SNAPSHOT_MIN_INTERVAL_MS`).
+    pub batch: BatchTiming,
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (`TCAB_SNAPSHOT_RETENTION_HOURS`).
     pub snapshot_retention: Duration,
+    /// `Some` on a backend that records [media
+    /// confirmations](crate::db::Db::record_media_confirmation): the name of the
+    /// bucket they are made against
+    /// ([`media_bucket_identity`](crate::artifacts::media_bucket_identity)).
+    ///
+    /// Set for a backend whose artifact reclamation sweep deletes published runs'
+    /// trees, which it does only for a run a refresh has confirmed in this bucket.
+    /// Any other backend has no use for a confirmation: it records none, and its
+    /// refreshes ask the artifact service for no tree listing.
+    ///
+    /// A publisher with this set that starts beside published runs no refresh has
+    /// evaluated against the bucket requests one refresh to evaluate them. Runs
+    /// published before the backend recorded confirmations have none, and on a
+    /// deployment whose queue is on hold for lack of space no publish will arrive
+    /// to prompt the refresh that would give them one. The request is made only
+    /// while such a run exists, and a refresh records every run it evaluated, so
+    /// a later start requests nothing.
+    pub confirm_media: Option<&'static str>,
 }
 
 impl Publisher {
@@ -127,81 +159,327 @@ impl Publisher {
                 auth,
                 http: reqwest::Client::new(),
                 artifacts_url,
-                coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
-                wake: Notify::new(),
+                confirm_media: timing.confirm_media,
+                batcher: Batcher::new(timing.batch),
                 #[cfg(test)]
                 refreshes: tokio::sync::watch::channel(0).0,
+                #[cfg(test)]
+                recordings: tokio::sync::watch::channel(0).0,
             }),
         }
     }
 
-    /// Notify the refresher that a publish has landed (the store is dirty). This
-    /// returns immediately; the actual regeneration is coalesced and run on the
-    /// background task. Returns whether a refresh was queued — always `true`
-    /// here, since the debounce loop is what coalesces.
+    /// Count one refresh request: one change to what the public snapshot shows (a
+    /// run's publish, a review on a published run, a published comparison, an
+    /// ingest that changed the store, a catalog or price change), or one
+    /// published run that has to be evaluated again (the first file uploaded for
+    /// it since it was last evaluated, and the publisher's own periodic check).
+    /// Every request counts as one, whatever its kind.
+    ///
+    /// Returns immediately; the background task releases the request with its
+    /// batch. Returns whether a refresh was queued, which is always `true`.
     pub fn queue_refresh(&self) -> bool {
-        self.inner.wake.notify_one();
+        self.inner.batcher.request();
         true
     }
 
-    /// Spawn the background debounce loop. It runs until the returned shutdown
+    /// Spawn the background batching loop. It runs until the returned shutdown
     /// channel is dropped or signaled. On startup it checks the persisted dirty
     /// flag so a refresh pending at the last restart is not lost.
     pub fn spawn(&self) -> RefresherHandle {
         let inner = Arc::clone(&self.inner);
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
-        // Give the detached coalescing task its own span. It is the root of every
+        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
+        // Give the detached batching task its own span. It is the root of every
         // background refresh's trace (a refresh is not tied to one request), so
         // `run_refresh`'s spans nest under it rather than floating free.
         let task_span = tracing::info_span!("publisher.refresher");
+        // The periodic check for published runs still waiting on a media
+        // confirmation, on a backend that records them.
+        let recheck = self
+            .inner
+            .confirm_media
+            .filter(|_| self.inner.r2.is_some())
+            .map(|_| {
+                let inner = Arc::clone(&self.inner);
+                AbortOnDrop(tokio::spawn(
+                    async move { inner.recheck_confirmations().await }
+                        .instrument(tracing::info_span!("publisher.confirmation_recheck")),
+                ))
+            });
         let handle = tokio::spawn(
             async move {
-                // Recover a refresh that was pending when the process last stopped.
-                if matches!(inner.db.snapshot_state().await, Ok(state) if state.dirty)
-                    && let Err(err) = run_refresh(&inner).await
-                {
-                    tracing::error!("startup snapshot refresh failed: {err}");
-                }
-                loop {
-                    tokio::select! {
-                        _ = inner.wake.notified() => {
-                            // Debounce: wait the coalescing window, draining further
-                            // wakes that arrive during it into this one refresh.
-                            loop {
-                                tokio::select! {
-                                    _ = tokio::time::sleep(inner.coalesce) => break,
-                                    _ = inner.wake.notified() => continue,
-                                }
-                            }
-                            if let Err(err) = run_refresh(&inner).await {
-                                tracing::error!("coalesced snapshot refresh failed: {err}");
-                            }
-                            #[cfg(test)]
-                            inner.refreshes.send_modify(|finished| *finished += 1);
-                        }
-                        _ = shutdown_rx.recv() => break,
-                    }
-                }
+                let recover = inner.recovery().await;
+                inner.request_startup_confirmation().await;
+                inner
+                    .batcher
+                    .run(inner.as_ref(), recover, shutdown_rx)
+                    .await;
             }
             .instrument(task_span),
         );
         RefresherHandle {
             _shutdown: shutdown_tx,
             handle,
+            _recheck: recheck,
         }
     }
 
-    /// A receiver that changes each time the background loop finishes a coalesced refresh.
+    /// A receiver that changes each time a refresh finishes.
     #[cfg(test)]
     pub(crate) fn refreshes(&self) -> tokio::sync::watch::Receiver<u64> {
         self.inner.refreshes.subscribe()
     }
 
-    /// Force an immediate refresh, bypassing the debounce (operator recovery via
-    /// `POST /snapshot/refresh`). Regenerates, uploads, and fires the hook now.
+    /// A receiver that changes each time pending requests are recorded durably.
+    #[cfg(test)]
+    pub(crate) fn recordings(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.inner.recordings.subscribe()
+    }
+
+    /// Force an immediate refresh, bypassing the batching (operator recovery via
+    /// `POST /snapshot/refresh`). Regenerates, uploads, and fires the hook now. It
+    /// waits for a refresh already running, carries every pending request, and
+    /// starts the minimum interval before the next batch.
     pub async fn refresh_now(&self) -> Result<RefreshOutcome> {
-        run_refresh(&self.inner).await
+        self.inner.batcher.forced(self.inner.as_ref()).await
+    }
+}
+
+impl PublisherInner {
+    /// Whether a refresh was pending when the process last stopped, and how long
+    /// the batcher holds its release for.
+    ///
+    /// A state that cannot be read is taken as pending. A refresh nobody needed
+    /// republishes what is already live, while one skipped leaves the gallery
+    /// behind until some later request.
+    async fn recovery(&self) -> Option<Duration> {
+        match self.db.snapshot_state().await {
+            Ok(state) if state.dirty => Some(recovery_hold(
+                state.last_uploaded.as_deref(),
+                OffsetDateTime::now_utc(),
+                self.batcher.timing().min_interval,
+            )),
+            Ok(_) => None,
+            Err(err) => {
+                tracing::warn!(
+                    "could not read whether a snapshot refresh was pending ({err});                      refreshing as though one was"
+                );
+                Some(Duration::ZERO)
+            }
+        }
+    }
+}
+
+impl PublisherInner {
+    /// Request one refresh when published runs exist that no refresh has evaluated
+    /// the media of against the configured bucket, so their confirmations are
+    /// established without waiting for a publish. See
+    /// [`PublisherTiming::confirm_media`].
+    ///
+    /// The request is an ordinary one: it is counted with any others and released
+    /// by the batching, so it adds no refresh to a start that was going to refresh
+    /// anyway. Without a bucket there is nothing to confirm against and nothing is
+    /// requested. A count that cannot be read requests nothing either, since the
+    /// next publish evaluates every run all the same.
+    async fn request_startup_confirmation(&self) {
+        let Some(bucket) = self.confirm_media.filter(|_| self.r2.is_some()) else {
+            return;
+        };
+        match self.db.published_runs_unchecked(bucket).await {
+            Ok(0) => {}
+            Ok(runs) => {
+                tracing::info!(
+                    runs,
+                    "published runs have no media confirmation on record; requesting a \
+                     snapshot refresh to establish it"
+                );
+                self.batcher.request();
+            }
+            Err(err) => tracing::warn!(
+                "could not count the published runs awaiting a media confirmation ({err}); \
+                 the next refresh evaluates them"
+            ),
+        }
+    }
+}
+
+/// How often the publisher looks for published runs still waiting on a media
+/// confirmation.
+const CONFIRMATION_RECHECK: Duration = Duration::from_secs(10 * 60);
+
+/// The longest the publisher waits between two refreshes requested for runs a
+/// refresh keeps leaving unconfirmed.
+const UNCONFIRMED_RETRY_MAX: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// When to ask for another refresh on account of runs a refresh evaluated and
+/// left unconfirmed.
+///
+/// Such a run may be confirmable a minute later (the artifact service was
+/// restarting when it was evaluated) or never (its video does not transcode).
+/// Nothing tells the two apart from here, so the request is repeated with a
+/// delay that doubles from [`CONFIRMATION_RECHECK`] to
+/// [`UNCONFIRMED_RETRY_MAX`]: a passing fault is retried within minutes, and a
+/// run that can never be confirmed costs one refresh a day. The delay starts
+/// over once no run is left unconfirmed, and with the process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UnconfirmedRetry {
+    /// How long after the next request the one after it may be made.
+    delay: Duration,
+    /// The earliest instant of the next request. `None` before the first.
+    next: Option<tokio::time::Instant>,
+}
+
+impl Default for UnconfirmedRetry {
+    fn default() -> Self {
+        Self {
+            delay: CONFIRMATION_RECHECK,
+            next: None,
+        }
+    }
+}
+
+impl UnconfirmedRetry {
+    /// Whether to request a refresh at `now`, given how many published runs are
+    /// evaluated and unconfirmed.
+    pub(crate) fn due(&mut self, unconfirmed: u64, now: tokio::time::Instant) -> bool {
+        if unconfirmed == 0 {
+            *self = Self::default();
+            return false;
+        }
+        if self.next.is_some_and(|next| now < next) {
+            return false;
+        }
+        self.next = Some(now + self.delay);
+        self.delay = self.delay.saturating_mul(2).min(UNCONFIRMED_RETRY_MAX);
+        true
+    }
+}
+
+impl PublisherInner {
+    /// Every [`CONFIRMATION_RECHECK`], request a refresh while published runs are
+    /// waiting on a media confirmation
+    /// ([`request_pending_confirmation`](Self::request_pending_confirmation)).
+    /// Runs for the publisher's lifetime.
+    async fn recheck_confirmations(&self) {
+        let mut retry = UnconfirmedRetry::default();
+        let mut ticker = tokio::time::interval(CONFIRMATION_RECHECK);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // The first tick is immediate, and the startup check covers that moment.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            self.request_pending_confirmation(&mut retry, tokio::time::Instant::now())
+                .await;
+        }
+    }
+
+    /// Request one refresh when published runs are waiting on a media
+    /// confirmation in the configured bucket. Returns whether it did.
+    ///
+    /// Two kinds of run wait. One **no refresh has evaluated**: published before
+    /// the backend recorded confirmations, changed while a refresh was reading
+    /// it, or made unevaluated again by an upload or by the state sweep. A
+    /// refresh is requested for these at every check, since one refresh
+    /// evaluates them all. And one a refresh **evaluated and left unconfirmed**,
+    /// which is retried on the schedule of [`UnconfirmedRetry`].
+    ///
+    /// Without this check both kinds wait for an unrelated publish, ingest or
+    /// price change to bring a refresh about, and a deployment whose queue is
+    /// held for lack of space has none coming: its runs would never be confirmed,
+    /// their files never reclaimed, and the hold never lifted.
+    pub(crate) async fn request_pending_confirmation(
+        &self,
+        retry: &mut UnconfirmedRetry,
+        now: tokio::time::Instant,
+    ) -> bool {
+        let Some(bucket) = self.confirm_media.filter(|_| self.r2.is_some()) else {
+            return false;
+        };
+        let counted = async {
+            Ok::<_, BackendError>((
+                self.db.published_runs_unchecked(bucket).await?,
+                self.db.published_runs_unconfirmed(bucket).await?,
+            ))
+        };
+        let (unchecked, unconfirmed) = match counted.await {
+            Ok(counts) => counts,
+            Err(err) => {
+                tracing::warn!(
+                    "could not count the published runs awaiting a media confirmation ({err}); \
+                     counting again at the next check"
+                );
+                return false;
+            }
+        };
+        let retry_due = retry.due(unconfirmed, now);
+        if unchecked == 0 && !retry_due {
+            return false;
+        }
+        tracing::info!(
+            unchecked,
+            unconfirmed,
+            "published runs are waiting on a media confirmation; requesting a snapshot \
+             refresh to evaluate them"
+        );
+        self.batcher.request();
+        true
+    }
+}
+
+/// A task that is aborted when its handle is dropped.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// How long a startup recovery waits: what is left of `min_interval` since the
+/// last upload, so the interval between two releases holds across a restart.
+///
+/// Nothing is left when there has been no upload, when its time cannot be read,
+/// or when it lies in the future, which is a clock that moved rather than an
+/// upload to wait behind.
+fn recovery_hold(
+    last_uploaded: Option<&str>,
+    now: OffsetDateTime,
+    min_interval: Duration,
+) -> Duration {
+    let Some(uploaded) = last_uploaded.and_then(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+    else {
+        return Duration::ZERO;
+    };
+    match Duration::try_from(now - uploaded) {
+        Ok(since) => min_interval.saturating_sub(since),
+        Err(_) => Duration::ZERO,
+    }
+}
+
+impl RefreshTarget for PublisherInner {
+    type Output = RefreshOutcome;
+
+    async fn refresh(&self, _batch: Batch) -> Result<RefreshOutcome> {
+        let result = run_refresh(self).await;
+        #[cfg(test)]
+        self.refreshes.send_modify(|finished| *finished += 1);
+        result
+    }
+
+    /// The persisted dirty flag is the durable record. A publish sets it in its
+    /// own transaction; a request that changed only the catalog or the store has
+    /// set nothing, and a refresh clears the flag under requests that arrived
+    /// while it ran.
+    async fn persist_pending(&self) {
+        if let Err(err) = self.db.mark_dirty().await {
+            tracing::warn!(
+                "could not record the pending snapshot refresh ({err}); \
+                 a restart before it is released would drop it"
+            );
+        }
+        #[cfg(test)]
+        self.recordings.send_modify(|recorded| *recorded += 1);
     }
 }
 
@@ -209,6 +487,8 @@ impl Publisher {
 pub struct RefresherHandle {
     _shutdown: mpsc::Sender<()>,
     handle: tokio::task::JoinHandle<()>,
+    /// The periodic confirmation check, stopped with the handle.
+    _recheck: Option<AbortOnDrop>,
 }
 
 impl RefresherHandle {
@@ -218,15 +498,20 @@ impl RefresherHandle {
     /// resolves and the task breaks; awaiting the handle while still holding the
     /// sender would deadlock, since nothing would ever signal the loop to stop.
     pub async fn join(self) {
-        let Self { _shutdown, handle } = self;
+        let Self {
+            _shutdown,
+            handle,
+            _recheck,
+        } = self;
         drop(_shutdown);
+        drop(_recheck);
         let _ = handle.await;
     }
 }
 
 /// Regenerate the full snapshot, upload it (when R2 is configured), fire the
 /// deploy hook, and clear the dirty flag. This is the one place the snapshot is
-/// produced; both the debounce loop and the forced path call it.
+/// produced; both the batching loop and the forced path reach it.
 #[tracing::instrument(
     name = "snapshot.run_refresh",
     skip(inner),
@@ -234,7 +519,51 @@ impl RefresherHandle {
     err,
 )]
 async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
+    // What each published run's confirmation is recorded against, read before the
+    // runs themselves: a confirmation is written only for a run whose row still
+    // carries the mutation timestamp read here, so the record this refresh
+    // evaluates is never older than the one it vouches for.
+    let confirming = match inner.confirm_media.filter(|_| inner.r2.is_some()) {
+        Some(bucket) => Some((bucket, inner.db.published_media_states(bucket).await?)),
+        None => None,
+    };
     let runs = inner.db.all_published().await?;
+    // The confirmed runs' file manifests, which those runs are built from. Read
+    // after the runs: a run stored again in between has lost its manifest by
+    // now and is built from its sources, where the other order could pair a new
+    // record with the manifest of the one it replaced.
+    //
+    // A manifest that cannot be read fails the refresh, which the batching
+    // retries. Building without the manifests would read every confirmed run
+    // from the backend store, which may no longer hold its files, and publish
+    // it with those files left out.
+    let recorded_manifests: std::collections::HashMap<String, crate::db::MediaManifest> =
+        match &confirming {
+            Some((bucket, _)) => inner
+                .db
+                .confirmed_media_manifests(Some(bucket))
+                .await
+                .map_err(|err| {
+                    BackendError::Snapshot(format!(
+                        "reading the confirmed runs' file manifests failed ({err}); refusing                          to rebuild their media from sources that may have been reclaimed"
+                    ))
+                })?
+                .into_iter()
+                .collect(),
+            None => std::collections::HashMap::new(),
+        };
+    let recorded_session_records = match &confirming {
+        Some((bucket, _)) => inner
+            .db
+            .runs_with_recorded_session_record(Some(bucket))
+            .await
+            .map_err(|err| {
+                BackendError::Snapshot(format!(
+                    "reading which runs a session record was published for failed ({err})"
+                ))
+            })?,
+        None => std::collections::HashSet::new(),
+    };
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
@@ -287,21 +616,37 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // (`files/cases/<slug>/<version>/…`).
     //
     // Only when R2 is configured — the dev path has no bucket to list, and re-uploads
-    // nothing anyway. A list failure is not fatal: fall back to an empty set (re-export
-    // everything) rather than abort the whole refresh, so a transient list error
-    // degrades to the old behavior.
+    // nothing anyway.
+    //
+    // A failure to list `media/` fails the refresh, which the batching retries.
+    // Falling back to an empty set would have the builder read every run's media
+    // from its source again, and the source of a published run's media may be gone
+    // on purpose: the artifact reclamation sweep deletes a published run's tree
+    // once a refresh has confirmed its media in this bucket. A run whose bytes are
+    // only in the bucket would then be published with its media left out. The
+    // `files/` prefix holds case files read from the definition store, which is
+    // always there to read again, so a failure to list it degrades to re-exporting
+    // them.
     let existing_media = match &inner.r2 {
         Some(r2) => {
-            let mut keys = std::collections::HashSet::new();
-            for prefix in ["media/", "files/"] {
-                match r2.list_keys(prefix).await {
-                    Ok(listed) => keys.extend(listed),
-                    Err(err) => {
-                        tracing::warn!(
-                            "listing existing snapshot `{prefix}` objects failed ({err}); \
-                             re-exporting everything under it"
-                        );
-                    }
+            let mut keys: std::collections::HashSet<String> = r2
+                .list_keys("media/")
+                .await
+                .map_err(|err| {
+                    BackendError::Snapshot(format!(
+                        "listing the bucket's existing `media/` objects failed ({err}); \
+                         refusing to rebuild run media from sources that may have been reclaimed"
+                    ))
+                })?
+                .into_iter()
+                .collect();
+            match r2.list_keys("files/").await {
+                Ok(listed) => keys.extend(listed),
+                Err(err) => {
+                    tracing::warn!(
+                        "listing existing snapshot `files/` objects failed ({err}); \
+                         re-exporting everything under it"
+                    );
                 }
             }
             keys
@@ -375,7 +720,8 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // numbers, so gating it on publication would export almost nothing), filtered
     // against the experimental catalog gate, and field-redacted — all three composed in
     // `gg_docs::public_documents`, which is the only door the site's gg data comes
-    // through. **Replay records are never exported**; nothing here loads one.
+    // through. **No session record is in the corpus**; nothing here loads one, and
+    // the builder publishes a record only as the object of a published run.
     let gg_documents = crate::gg_docs::public_documents(inner.db.as_ref(), &inner.store).await?;
 
     // The ingested test-case-group set, read from the store slot the whole-catalog
@@ -388,8 +734,32 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .map(crate::api::TestCaseGroupOut::from)
         .collect();
 
-    let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
-        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
+    let mut builder = SnapshotBuilder::new(runs, cases, inner.store.clone())
+        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone());
+    if let Some((_, states)) = &confirming {
+        builder = builder
+            .with_media_confirmation(
+                states
+                    .iter()
+                    .filter(|state| state.settled())
+                    .map(|state| state.id.clone())
+                    .collect(),
+            )
+            .with_recorded_tree_absence(
+                states
+                    .iter()
+                    .filter(|state| state.tree_recorded_absent)
+                    .map(|state| state.id.clone())
+                    .collect(),
+            );
+    }
+    // Each run's media and document go to the bucket as the build makes them,
+    // so the build holds one run's new files at a time and a refresh that fails
+    // part-way keeps what it uploaded.
+    let snapshot = builder
+        .with_object_sink(inner.r2.clone())
+        .with_recorded_manifests(recorded_manifests)
+        .with_recorded_session_records(recorded_session_records)
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)
@@ -404,19 +774,31 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let run_count = snapshot.run_count;
     tracing::Span::current().record("run_count", run_count);
 
+    let mut confirmation = None;
     let deploy_hook_fired = match &inner.r2 {
         Some(r2) => {
-            let fired = crate::snapshot::upload_snapshot(
-                &snapshot,
-                r2,
-                inner.deploy_hook_url.as_deref(),
-                &inner.http,
-            )
-            .await?;
+            crate::snapshot::upload_snapshot(&snapshot, r2).await?;
+            // Every object is in the bucket and `index.json` names this generation,
+            // so what the build found about each run's media now holds of the
+            // bucket. Recorded before the hook: a hook that fails changes nothing
+            // about where the media is.
+            if let Some((bucket, states)) = &confirming {
+                confirmation = Some(
+                    record_media_confirmation(inner, bucket, states, &snapshot, generated_at).await,
+                );
+            }
             // Only after the atomic `index.json` cut-over: until it lands, the
             // previous generation is still the live one and must not be touched.
+            // Before the hook, so a hook that keeps failing does not also keep the
+            // generations its retries upload from ever being pruned.
             prune_stale_snapshots(r2, &snapshot.snapshot_id, inner.snapshot_retention).await;
-            fired
+            match inner.deploy_hook_url.as_deref() {
+                Some(url) => {
+                    crate::snapshot::fire_deploy_hook(url, &inner.http).await?;
+                    true
+                }
+                None => false,
+            }
         }
         None => {
             // Dev mode: no R2 credentials. The snapshot was still regenerated
@@ -436,16 +818,203 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .mark_uploaded(&uploaded_at, run_count as i64)
         .await?;
 
+    let tournament_replays = measure_tournament_replays(&inner.store).await;
+
     // One line per completed refresh recording whether the gallery deploy hook
     // fired. `deploy_hook_fired` is false whenever no hook is configured (R2-only)
     // or R2 itself is off — so this is the log to check when a publish uploaded the
     // snapshot to R2 but the public gallery never rebuilt.
-    tracing::info!(run_count, deploy_hook_fired, "snapshot refresh complete");
+    let (runs_confirmed, runs_unconfirmed) = confirmation.unzip();
+    tracing::info!(
+        run_count,
+        deploy_hook_fired,
+        runs_confirmed,
+        runs_unconfirmed,
+        streamed_objects = snapshot.streamed.objects,
+        streamed_bytes = snapshot.streamed.bytes,
+        tournament_replay_bytes = tournament_replays.map(|usage| usage.bytes),
+        tournament_replay_files = tournament_replays.map(|usage| usage.files),
+        "snapshot refresh complete"
+    );
 
     Ok(RefreshOutcome {
         run_count,
         deploy_hook_fired,
     })
+}
+
+/// Measure what the tournaments' match replays hold in the backend store, and
+/// record it as the `tcab.store.tournament_replay_*` gauges. `None` when the
+/// store could not be measured, which records nothing.
+///
+/// Tournament replays are the one part of the store no refresh exports, so their
+/// size is reported here, once per refresh: the walk is too slow for a request
+/// and runs on a blocking thread.
+async fn measure_tournament_replays(store: &DefinitionStore) -> Option<crate::store::StoreUsage> {
+    let store = store.clone();
+    let measured = tokio::task::spawn_blocking(move || store.tournament_replay_usage()).await;
+    match measured {
+        Ok(Ok(usage)) => {
+            crate::metrics::record_tournament_replays(usage);
+            Some(usage)
+        }
+        Ok(Err(err)) => {
+            tracing::warn!("could not measure the tournament replays in the store ({err})");
+            None
+        }
+        Err(err) => {
+            tracing::warn!("measuring the tournament replays in the store did not finish ({err})");
+            None
+        }
+    }
+}
+
+/// Record which of the runs of an uploaded snapshot have every file of theirs in
+/// `bucket`, each with its [manifest](crate::db::MediaManifest), and report the
+/// rest. Returns how many runs the refresh
+/// found confirmed and how many it could not confirm.
+///
+/// A published run's tree on the artifact service is the fallback source for media
+/// that is not in the bucket yet, and the reclamation sweep deletes the tree only
+/// for a run recorded here as confirmed. Each run left unconfirmed is logged with
+/// its files, and the count is the `tcab.artifacts.unconfirmed_runs` gauge.
+///
+/// `states` is what the refresh read about each published run before it read the
+/// runs. Three kinds of run are left as they are:
+///
+/// - A **settled** run, confirmed in this bucket with its tree reclaimed. The
+///   build asked nothing about it, and there is no tree left for a withdrawn
+///   confirmation to keep.
+/// - A run the snapshot was not built from although it was published when
+///   `states` was read, and one published since: the build did not evaluate it.
+/// - A run that changed while the refresh ran. The database refuses its
+///   confirmation, and this requests another refresh to evaluate it.
+///
+/// A run whose tree was reclaimed and whose media the build did not find in the
+/// bucket has no source left. That is not a state a refresh can repair, and it is
+/// what a backend pointed at the wrong or an emptied bucket looks like, so it is
+/// logged at `error` with the number of such runs. It is logged the same way when
+/// the build could rule the missing files unrecoverable and the run is confirmed
+/// without them: the record then says the files exist nowhere, which is true of
+/// everything this backend can reach and may not be true of another bucket.
+///
+/// Each run newly confirmed with unrecoverable files is logged at `warn` with the
+/// files.
+///
+/// Best-effort: a failure to record is logged and does not fail the refresh. The
+/// snapshot is live either way, the trees are kept, and the next refresh evaluates
+/// every run again.
+async fn record_media_confirmation(
+    inner: &PublisherInner,
+    bucket: &str,
+    states: &[crate::db::PublishedMediaState],
+    snapshot: &crate::snapshot::Snapshot,
+    uploaded_at: OffsetDateTime,
+) -> (usize, usize) {
+    let mut confirmed = Vec::new();
+    let mut unconfirmed = Vec::new();
+    let mut sourceless = 0usize;
+    let mut reclaimed_with_lost_files = 0usize;
+    for state in states {
+        if !snapshot.run_ids.contains(&state.id) {
+            continue;
+        }
+        let missing = snapshot.unconfirmed_media.contains_key(&state.id);
+        if missing && state.reclaimed {
+            sourceless += 1;
+        }
+        if state.settled() {
+            continue;
+        }
+        if missing {
+            unconfirmed.push(state.id.clone());
+            continue;
+        }
+        // Every run the snapshot was built from has a manifest. One without
+        // would be confirmed with no record of its files, so it is left as it
+        // was for the next refresh.
+        let Some(manifest) = snapshot.media_manifests.get(&state.id) else {
+            continue;
+        };
+        if !state.confirmed {
+            let lost: Vec<&str> = manifest.unrecoverable().collect();
+            if !lost.is_empty() {
+                tracing::warn!(
+                    run.id = %state.id,
+                    files = %lost.join(", "),
+                    "published run confirmed with unrecoverable files; the bucket, the \
+                     backend store and the artifact service each hold none of them"
+                );
+                if state.reclaimed {
+                    reclaimed_with_lost_files += 1;
+                }
+            }
+        }
+        confirmed.push(crate::db::ConfirmedMedia {
+            state: state.clone(),
+            manifest: manifest.clone(),
+        });
+    }
+    for (run_id, files) in &snapshot.unconfirmed_media {
+        tracing::warn!(
+            run.id = %run_id,
+            files = %files.join(", "),
+            "published run media not confirmed in the bucket; its artifact tree is kept"
+        );
+    }
+    if sourceless > 0 {
+        tracing::error!(
+            runs = sourceless,
+            bucket,
+            "published runs whose artifact tree was reclaimed have media that is not in \
+             the configured bucket; nothing is left to publish it from"
+        );
+    }
+    if reclaimed_with_lost_files > 0 {
+        // A run whose tree this backend reclaimed had every file that existed in
+        // a bucket when it did. Files of such a run that nothing holds now were
+        // never produced, or they are in the bucket the run was confirmed in and
+        // this backend is configured with another.
+        tracing::error!(
+            runs = reclaimed_with_lost_files,
+            bucket,
+            "published runs whose artifact tree was reclaimed were confirmed with files \
+             that neither the configured bucket nor the backend store holds; a backend \
+             pointed at another bucket than the one they were confirmed in looks like this"
+        );
+    }
+    crate::metrics::record_unconfirmed_runs(unconfirmed.len() as u64);
+    let recorded = match uploaded_at.format(&Rfc3339) {
+        Ok(at) => {
+            inner
+                .db
+                .record_media_confirmation(&confirmed, &unconfirmed, &at, bucket)
+                .await
+        }
+        Err(err) => Err(err.into()),
+    };
+    match recorded {
+        Ok(changed) => {
+            if changed.confirmed > 0 || changed.withdrawn > 0 || changed.changed > 0 {
+                tracing::info!(
+                    newly_confirmed = changed.confirmed,
+                    withdrawn = changed.withdrawn,
+                    changed_meanwhile = changed.changed,
+                    "recorded the published runs' media confirmations"
+                );
+            }
+            if changed.changed > 0 {
+                // The runs that moved were evaluated from a record that may no
+                // longer be theirs. Evaluate them again.
+                inner.batcher.request();
+            }
+        }
+        Err(err) => tracing::warn!(
+            "could not record the published runs' media confirmations ({err}); \
+             their artifact trees are kept and the next refresh records them"
+        ),
+    }
+    (confirmed.len(), unconfirmed.len())
 }
 
 /// Delete the snapshot generations nothing points at any more, keeping the one just
@@ -510,4 +1079,16 @@ fn load_case_manifests(store: &DefinitionStore) -> Result<Vec<crate::store::Stor
 
 #[cfg(test)]
 #[path = "publisher.test.rs"]
-mod tests;
+pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "publisher.manifest.test.rs"]
+mod manifest_tests;
+
+#[cfg(test)]
+#[path = "publisher.recheck.test.rs"]
+mod recheck_tests;
+
+#[cfg(test)]
+#[path = "publisher.session_record.test.rs"]
+mod session_record_tests;

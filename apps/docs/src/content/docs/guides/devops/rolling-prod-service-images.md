@@ -93,6 +93,23 @@ az aks command invoke -g testcabinet-prod-westus2-rg -n testcabinet-prod-westus2
 Every `tcab-*` workload's image column shows
 `testcabinet.azurecr.io/<image>:<sha>`.
 
+### Runs in flight during a roll
+
+A roll does not wait for runs to finish, so for a while drivers of the previous
+build report to the new backend, and the workloads restart at different
+moments. The job states and the status reports are read tolerantly for that
+reason:
+
+- A dispatcher reads a job state it does not know as a job that is not
+  terminal, so it still reports a dead driver. It does not look for a
+  [lost driver](/components/dispatcher/overview/#lost-drivers) behind such a
+  job until it is the new build itself.
+- A driver of the previous build reports nothing the new backend requires. A
+  report that says nothing of the artifact store is read as saying nothing.
+- A backend that starts applies its database migrations before it serves, so a
+  rollback to a build older than a migration leaves that migration's columns in
+  place, unused.
+
 ## The catalog
 
 The roll also publishes the catalog. Every deploy changes the backend's image
@@ -101,6 +118,14 @@ tag, so the backend pod restarts, and its ingest sidecar force-ingests the
 deployed. The catalog the backend serves is therefore the one that shipped with
 the commit. `scripts/reingest-cluster.sh --env prod` refreshes it between
 deploys.
+
+The roll fails when that did not happen. Before it applies anything it checks
+that the `master` tip and the cold-storage commit it pins can be fetched, and
+after the rollout it reads the sidecar's result and prints the step that failed
+and why. A roll that fails there has rolled the images and left the catalog and
+its baselines as they were; fix what the message names and run
+`scripts/reingest-cluster.sh --env prod`. See [Deploys and the
+catalog](/deployment/kubernetes/control-plane/#deploys-and-the-catalog).
 
 ## Rolling back
 

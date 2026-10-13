@@ -103,3 +103,17 @@
   font-size: t.$font-sm;
   color: t.$color-text-muted;
 }
+
+// In place of the Publish control on a failure whose artifact tree is not
+// stored: the run cannot be released, and the reason is in the tooltip.
+.reclaimedTag {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  cursor: help;
+}
+
+.missingTag {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+  cursor: help;
+}

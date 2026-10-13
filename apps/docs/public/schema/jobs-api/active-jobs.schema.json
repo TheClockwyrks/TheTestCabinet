@@ -3,6 +3,10 @@
     "ActiveJobOut": {
       "description": "One in-flight job, as `GET /jobs/active` reports it: the live/job id, the\nrun's display identity (flattened), and its current state.",
       "properties": {
+        "detail": {
+          "description": "Why the job is in its state, when the state has a reason: the driver's\naccount of the failed upload while `state` is `storing`.",
+          "type": ["string", "null"]
+        },
         "engine": {
           "description": "The [engine](crate::engine) the run is built on, as its slug. `None` is the\n`none` engine, exactly as an absent `engine` on the launch request is.\n\nIt rides with the harness and the model because those three plus the case pin\nare a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),\nand an in-flight run has no record to read one out of. A console listing the runs\nbehind one cell — a ladder rung, a plan's cell — would otherwise show a live row\nfrom every other engine's cell of the same case, and count it toward a figure it\nwill never join.",
           "type": ["string", "null"]
@@ -65,7 +69,7 @@
         },
         {
           "const": "pending",
-          "description": "Enqueued, but intentionally held back: the run's harness is already at its\nconfigured maximum parallelism, so the backend will not hand it to a\ndispatcher until an in-flight run of the same harness finishes. Distinct from\n`queued` (which is free to be claimed the moment a dispatcher has capacity) so\nan operator can see a run is deliberately waiting rather than merely next in\nline.",
+          "description": "Enqueued, but intentionally held back: the run's harness is already at its\nconfigured maximum parallelism, so the backend will not hand it to a\ndispatcher until an in-flight run of the same harness finishes; or the whole\nqueue is on hold because the artifact store cannot take another run's tree.\nDistinct from `queued` (which is free to be claimed the moment a dispatcher\nhas capacity) so an operator can see a run is deliberately waiting rather\nthan merely next in line.",
           "type": "string"
         },
         {
@@ -81,6 +85,11 @@
         {
           "const": "running",
           "description": "The driver is executing the run.",
+          "type": "string"
+        },
+        {
+          "const": "storing",
+          "description": "The run has finished and its driver is waiting to store its artifact tree,\nbecause the artifact store could not take it. The driver holds the only copy\nand keeps retrying. While any job is in this state the backend hands out no\nnew run.",
           "type": "string"
         },
         {

@@ -6,6 +6,8 @@ import type { InProgressRun } from "./types";
 // (claimed, the driver pod being created) and `starting` (the pod up, running
 // pre-run setup) are one waiting-to-begin phase to a viewer; only the queue cares
 // which. A held-back run reads as "pending", a free-but-unclaimed one as "queued".
+// `storing` is kept apart from `running`: the run itself is over and its driver is
+// waiting on the artifact store, which is a condition an operator has to act on.
 //
 // Terminal states map to `null` rather than to a phase: a finished run is not
 // in-progress at all, and every caller has something better to do with it than
@@ -28,6 +30,8 @@ export function runPhase(state: string): InProgressRun["state"] | null {
       return "starting";
     case "running":
       return "running";
+    case "storing":
+      return "storing";
     default:
       return null;
   }

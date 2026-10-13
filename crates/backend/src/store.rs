@@ -82,6 +82,25 @@ pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
     root: PathBuf,
+    /// Held shared by every write of a run's file and exclusively while the
+    /// [state reclamation sweep](crate::state_reclaim) removes a run's emptied
+    /// directories, so a directory a write has just made sure of is still there
+    /// when the write lands. Shared by every clone of the store a process opened.
+    run_writes: std::sync::Arc<std::sync::RwLock<()>>,
+    /// Makes every [`remove_run_file_as_listed`](Self::remove_run_file_as_listed) fail, so a test can
+    /// see what a removal that removes nothing leaves behind.
+    #[cfg(test)]
+    pub(crate) fail_removals: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Run once by the next
+    /// [`remove_published_document`](Self::remove_published_document), after it
+    /// compared the document and before it takes the write lock, so a test can
+    /// replace the document at exactly the moment a race would.
+    #[cfg(test)]
+    pub(crate) before_document_removal: state::RemovalHook,
+    /// When set, every write of a run's file fails part-way, as a write to a full
+    /// volume does.
+    #[cfg(test)]
+    pub(crate) fail_writes: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
@@ -928,7 +947,16 @@ impl DefinitionStore {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         std::fs::create_dir_all(&root)?;
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            run_writes: std::sync::Arc::default(),
+            #[cfg(test)]
+            fail_removals: std::sync::Arc::default(),
+            #[cfg(test)]
+            before_document_removal: state::RemovalHook::default(),
+            #[cfg(test)]
+            fail_writes: std::sync::Arc::default(),
+        })
     }
 
     /// The store root directory.
@@ -1623,6 +1651,49 @@ impl DefinitionStore {
         }
     }
 
+    /// Where the store holds the file of run `run_id` named `name`, a path
+    /// relative to the run's folder: `proof/<file>`, `validation/<file>`,
+    /// `asset/<file>`, `showcase/<file>`, `code-analysis.json`, `controller.wasm`
+    /// or `replay.json`. `None` when the run id or any segment of `name` is not a
+    /// safe path segment.
+    ///
+    /// This is the name a run's [file
+    /// manifest](crate::db::MediaManifestFile::name) records a file under.
+    pub fn run_file_path(&self, run_id: &str, name: &str) -> Option<PathBuf> {
+        if !is_safe_segment(run_id) {
+            return None;
+        }
+        let mut path = self.run_dir(run_id);
+        for segment in name.split('/') {
+            if !is_safe_segment(segment) {
+                return None;
+            }
+            path.push(segment);
+        }
+        Some(path)
+    }
+
+    /// Whether the store answers that it holds no copy of the file of run `run_id`
+    /// named `name` (see [`run_file_path`](Self::run_file_path)).
+    ///
+    /// `true` when the file system reports that nothing is there, and when what is
+    /// there is a regular file with no bytes: an empty file is what a write cut
+    /// off by a full volume left behind before writes became atomic, and it is a
+    /// copy of nothing. A name that is not a safe path, and a lookup that fails
+    /// any other way, are `false`: the store could not say. A snapshot refresh
+    /// records a file as lost for good only on a `true` here, which the
+    /// `read_run_*` methods cannot tell it, because they report every failed read
+    /// as not found.
+    pub fn run_file_absent(&self, run_id: &str, name: &str) -> bool {
+        let Some(path) = self.run_file_path(run_id, name) else {
+            return false;
+        };
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata.is_file() && metadata.len() == 0,
+            Err(err) => err.kind() == std::io::ErrorKind::NotFound,
+        }
+    }
+
     /// The directory a published run's proof media is stored under.
     pub fn run_proof_dir(&self, run_id: &str) -> PathBuf {
         self.run_dir(run_id).join("proof")
@@ -1638,10 +1709,7 @@ impl DefinitionStore {
                 "invalid run id or proof file".to_string(),
             ));
         }
-        let dir = self.run_proof_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_proof_dir(run_id).join(file), bytes)
     }
 
     /// List a run's stored proof media file names (`<proof-id>.<ext>`), sorted.
@@ -1699,10 +1767,7 @@ impl DefinitionStore {
                 "invalid run id or validation file".to_string(),
             ));
         }
-        let dir = self.run_validation_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_validation_dir(run_id).join(file), bytes)
     }
 
     /// List a run's stored synthesized validation media file names, sorted. A run
@@ -1776,12 +1841,7 @@ impl DefinitionStore {
                 "invalid run id or artifact name".to_string(),
             ));
         }
-        let path = self.run_artifact_path(run_id, name);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_artifact_path(run_id, name), bytes)
     }
 
     /// Read one of a run's stored [run-tree artifacts](Self::run_artifact_path). A run that
@@ -1860,10 +1920,7 @@ impl DefinitionStore {
                 "invalid run id or asset file".to_string(),
             ));
         }
-        let dir = self.run_asset_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_asset_dir(run_id).join(file), bytes)
     }
 
     /// Read one asset media file for a run.
@@ -1902,10 +1959,7 @@ impl DefinitionStore {
                 "invalid run id or showcase file".to_string(),
             ));
         }
-        let dir = self.run_showcase_dir(run_id);
-        std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(file), bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_showcase_dir(run_id).join(file), bytes)
     }
 
     /// List a run's stored showcase file names, sorted. A run with no stored
@@ -1956,12 +2010,7 @@ impl DefinitionStore {
         if !is_safe_segment(run_id) {
             return Err(BackendError::BadRequest("invalid run id".to_string()));
         }
-        let path = self.run_controller_path(run_id);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, bytes)?;
-        Ok(())
+        self.write_run_file(&self.run_controller_path(run_id), bytes)
     }
 
     /// Whether a run has an uploaded controller wasm (so it can be pitted in the
@@ -2027,6 +2076,53 @@ impl DefinitionStore {
             ))
         })
     }
+}
+
+/// What a part of the store holds on disk.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct StoreUsage {
+    /// The total size of the files, in bytes.
+    pub bytes: u64,
+    /// How many files there are.
+    pub files: u64,
+}
+
+impl DefinitionStore {
+    /// What the tournaments' match replays hold on disk: every file under
+    /// `tournaments/`. A store with no tournament holds nothing.
+    ///
+    /// This walks the directory, so it is for a caller that runs once per pass of
+    /// some periodic work and off the async runtime's threads, never per request.
+    pub fn tournament_replay_usage(&self) -> Result<StoreUsage> {
+        let mut usage = StoreUsage::default();
+        add_usage(&self.root.join("tournaments"), &mut usage)?;
+        Ok(usage)
+    }
+}
+
+/// Add every file under `dir` to `usage`. A directory that is not there, or that
+/// goes away while it is walked, adds nothing.
+fn add_usage(dir: &Path, usage: &mut StoreUsage) -> Result<()> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    for entry in read {
+        let entry = entry?;
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(err.into()),
+        };
+        if metadata.is_dir() {
+            add_usage(&entry.path(), usage)?;
+        } else if metadata.is_file() {
+            usage.bytes += metadata.len();
+            usage.files += 1;
+        }
+    }
+    Ok(())
 }
 
 /// Read a directory's immediate subdirectory names, sorted lexically.
@@ -2164,6 +2260,17 @@ fn is_safe_segment(segment: &str) -> bool {
         && !segment.contains('\\')
 }
 
+#[path = "store.state.rs"]
+mod state;
+pub use state::{
+    PublishedCopy, Removal, RunFolder, RunFolderFile, SESSION_RECORD_FILE, StateVolume,
+    is_scrubbed_document,
+};
+
 #[cfg(test)]
 #[path = "store.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "store.state.test.rs"]
+mod state_tests;

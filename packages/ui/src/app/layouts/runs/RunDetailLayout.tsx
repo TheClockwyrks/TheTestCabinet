@@ -29,8 +29,33 @@ import {
 } from "../../data/ratings";
 import { frameReviews } from "../../data/frameReview";
 import { describeRunState, hasPlayableBuild } from "../../data/runState";
+import {
+  runDownload,
+  type RunDownload,
+} from "../../../client/artifactPresence";
 import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
+
+// The download link's accessible name and tooltip, by what it downloads.
+const DOWNLOAD_COPY: Record<
+  RunDownload["kind"],
+  { label: string; title: string }
+> = {
+  tree: {
+    label: "Download run archive",
+    title:
+      "Download this run's produced tree (source, build, media, and logs) as a single .tar.gz",
+  },
+  archive: {
+    label: "Download released source",
+    title:
+      "Download this run's released source as a .zip from its GitHub repository",
+  },
+  page: {
+    label: "Open released source repository",
+    title: "Open this run's released source repository",
+  },
+};
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
 // link reads as active. The `play` key names the run's landing tab (the bare run
@@ -63,8 +88,10 @@ interface RunDetailLayoutProps {
    * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
    * tabs read reviews from here rather than the console's global reviews map —
    * whether the run is already published (the review editor offers no Publish
-   * action once it is), and whether it is validator-rated (its verdict is read off
-   * the record — reviewer overrides folded in — and reviews add the run-wide
+   * action once it is), whether its artifact tree is missing (an unpublished run
+   * with no stored tree cannot be published, so the editor says so in place of
+   * the action), and whether it is validator-rated (its verdict is read off the
+   * record — reviewer overrides folded in — and reviews add the run-wide
    * aesthetic channel).
    */
   children: (ctx: {
@@ -72,6 +99,11 @@ interface RunDetailLayoutProps {
     review: ParsedWriteup | undefined;
     reviews: StoredReview[];
     published: boolean;
+    artifactsMissing: boolean;
+    /** The run is unpublished and its artifact tree was removed after its
+     * retention period, so it cannot be published. Never set together with
+     * `artifactsMissing`. */
+    artifactsReclaimed: boolean;
     validatorRated: boolean;
   }) => ReactNode;
 }
@@ -232,6 +264,17 @@ export function RunDetailLayout({
       ]
     : [];
   const isLocal = localIds.has(run.id);
+  // An unpublished run whose artifact tree the backend records as not stored: it
+  // has no build to play and cannot be published. Read off the detail this page
+  // resolved, so it holds for a run the produced worklist does not list.
+  // A tree the backend reclaimed on purpose is not a missing one: the run reads
+  // as plainly unpublished, with the reason in the marker's tooltip.
+  const treeReclaimed = detail?.artifactsReclaimed != null;
+  const artifactsReclaimed = detail?.published === false && treeReclaimed;
+  const artifactsMissing =
+    detail?.published === false &&
+    detail.artifactsStored === false &&
+    !treeReclaimed;
   // The run's per-reviewer breakdown, fetched with the record — the detail layer's
   // source of truth for reviews (the console's global reviews map is no longer
   // read here). Passed to the tab body so the Verdict/review/editor tabs render
@@ -365,7 +408,12 @@ export function RunDetailLayout({
               overallGrade && <GradeBadge status={overallGrade} />
             )}
             {overallAesthetic && <AestheticBadge rating={overallAesthetic} />}
-            {isLocal && <UnpublishedTag />}
+            {(isLocal || artifactsMissing || artifactsReclaimed) && (
+              <UnpublishedTag
+                artifactsMissing={artifactsMissing}
+                artifactsReclaimed={artifactsReclaimed}
+              />
+            )}
           </h2>
           <span className={styles.harness}>{subject.harnessSlug}</span>
         </div>
@@ -468,12 +516,18 @@ export function RunDetailLayout({
             since it reads the worker context the static site does not provide
             (mirroring how GalleryApp gates the worker-reading NotificationsLayer)
             — without this gate `useWorkers` throws and blanks the run page. */}
-          {/* Download the run's whole produced tree — source, build, media, and logs
-            — as one gzip tar from the artifact service. Gated on `canExecute`: this
-            is an internal affordance for the web console, not something
-            the public gallery offers, and the static site supplies no resolver
-            anyway. A run whose tree the host cannot serve resolves to null and the
-            link is simply absent.
+          {/* The run's one download. What it downloads follows the run's state
+            (`runDownload`): an unpublished run's whole produced tree (source,
+            build, media, and logs) as one gzip tar from the artifact service,
+            and a published run's released source from its repository, since the
+            backend deletes a published run's tree once the release is
+            confirmed. A run whose tree is gone and that released nothing has no
+            link at all, in place of one that answers 404.
+
+            Gated on `canExecute`: this is an internal affordance for the web
+            console, not something the public gallery offers, and the static
+            site supplies no resolver anyway. It waits for the run's detail,
+            which is what says whether the run is published.
 
             A plain anchor rather than a fetch-and-blob download (the pattern the
             GIF export uses): the archive is the whole run and runs to tens of
@@ -482,15 +536,26 @@ export function RunDetailLayout({
             — the artifact service is a different origin, where the anchor's own
             `download` attribute is ignored. */}
           {(() => {
-            if (!canExecute) return null;
-            const archiveUrl = runArchiveUrl?.(run.id) ?? null;
-            if (!archiveUrl) return null;
+            if (!canExecute || !detail) return null;
+            const download = runDownload({
+              published: detail.published,
+              artifactsStored: detail.artifactsStored,
+              artifactsReclaimed: treeReclaimed,
+              sourceRepo: run.links?.sourceRepo,
+              treeUrl: runArchiveUrl?.(run.id) ?? null,
+            });
+            if (!download) return null;
+            const { label, title } = DOWNLOAD_COPY[download.kind];
             return (
               <a
                 className={styles.downloadLink}
-                href={archiveUrl}
-                aria-label="Download run archive"
-                title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
+                href={download.href}
+                aria-label={label}
+                title={title}
+                data-download={download.kind}
+                {...(download.kind === "page"
+                  ? { target: "_blank", rel: "noreferrer" }
+                  : {})}
               >
                 <DownloadIcon className={styles.controlIcon} />
               </a>
@@ -536,6 +601,8 @@ export function RunDetailLayout({
         review,
         reviews,
         published: detail?.published ?? false,
+        artifactsMissing,
+        artifactsReclaimed,
         validatorRated,
       })}
     </PageLayout>

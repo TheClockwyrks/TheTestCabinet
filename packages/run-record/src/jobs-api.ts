@@ -16,6 +16,7 @@ import type { HarnessSlug, RunRecord, TokenPrices } from "./index";
 export type DriverState =
   | "starting"
   | "running"
+  | "storing"
   | "succeeded"
   | "failed"
   | "canceled";
@@ -246,13 +247,42 @@ export type StatusUpdate = {
   /**
    * The produced run record, required when `state` is `succeeded` and carried on
    * a `canceled` report too (the record a killed gg run wound down to produce). Its
-   * `links` are authoritative and stored with it.
+   * `links` are authoritative and stored with it. The first `storing` report
+   * carries it as well, for the backend to keep while the driver waits.
    */
   record?: RunRecord;
   /**
-   * A human-readable failure reason, used when `state` is `failed`.
+   * A human-readable reason: why the run failed when `state` is `failed`, and why
+   * the tree could not be stored when it is `storing`.
    */
   detail?: string;
+  /**
+   * Whether the artifact service acknowledged the run's tree, on a terminal
+   * report: `true` when the upload landed and `false` when every attempt failed,
+   * so the run has nothing to release. Absent when the driver has no artifact
+   * service to upload to, and on every non-terminal report but one: the
+   * `running` report that ends a wait on the store carries `true` when the wait
+   * ended with the tree stored. The backend leaves what it has recorded for the
+   * run as it is when the field is absent.
+   */
+  artifactsStored?: boolean;
+  /**
+   * Why the tree was not stored, when `artifactsStored` is `false` and the cause
+   * was a condition of the artifact store rather than something about this run's
+   * tree: the last failure of the upload. The backend reads it as evidence that
+   * the store cannot take a tree, whatever state the job is in. Absent when the
+   * tree was stored, when the failure was the run's own, and on a report that
+   * carries no `artifactsStored`.
+   */
+  storeFault?: string;
+  /**
+   * On a `storing` report that carries the `record`: the reason the run failed,
+   * when the terminal report the driver is holding is a `failed` one. Absent
+   * when it is holding a `succeeded` report. The backend keeps the record and
+   * this reason, and finishes the run from them if the driver is lost while it
+   * waits.
+   */
+  runFailure?: string;
 };
 
 /**
@@ -264,6 +294,7 @@ export type JobState =
   | "dispatched"
   | "starting"
   | "running"
+  | "storing"
   | "succeeded"
   | "failed"
   | "canceled";
@@ -355,6 +386,11 @@ export type ActiveJobOut = {
    */
   state: JobState;
   /**
+   * Why the job is in its state, when the state has a reason: the driver's
+   * account of the failed upload while `state` is `storing`.
+   */
+  detail?: string;
+  /**
    * The test-case slug being run (e.g. `carom`).
    */
   testCaseSlug: string;
@@ -439,7 +475,8 @@ export type JobStatusOut = {
    */
   recordId?: string;
   /**
-   * A human-readable failure reason, present when `state` is `failed`.
+   * A human-readable reason: why the job failed or was canceled, or why its
+   * driver is waiting while `state` is `storing`.
    */
   detail?: string;
 };
@@ -696,8 +733,9 @@ export type RunEvent = {
    */
   recordId?: string;
   /**
-   * The terminal reason, present on a `finished` event that failed or was
-   * canceled.
+   * The reason behind the state: the terminal reason on a `finished` event that
+   * failed or was canceled, and the driver's account of the failed upload on a
+   * `state-changed` event into `storing`.
    */
   detail?: string;
   /**
@@ -821,6 +859,138 @@ export type StreamTopicsBody = {
    * noisier than its alerts.
    */
   runs?: boolean;
+};
+
+/**
+ * The state of the artifact store as the backend sees it.
+ */
+export type ArtifactStorageState =
+  | "ok"
+  | "low"
+  | "blocked"
+  | "unwritable"
+  | "unavailable"
+  | "unmonitored";
+
+/**
+ * Which condition is holding the run queue.
+ */
+export type HoldReason =
+  | "unreadable"
+  | "low-space"
+  | "unwritable"
+  | "uploads-waiting"
+  | "write-check-pending"
+  | "state-low-space"
+  | "publish-failing"
+  | "proving-store";
+
+/**
+ * What the latest reading of the backend's own state volume amounts to.
+ */
+export type StateVolumeLevel = "ok" | "low" | "blocked" | "unreadable";
+
+/**
+ * The backend's own state volume, as of the latest reading: the volume its
+ * store is on, which is not the artifact store's.
+ */
+export type StateVolumeStatus = {
+  /**
+   * What the latest reading amounts to.
+   */
+  level: StateVolumeLevel;
+  /**
+   * Free bytes on the volume as of the latest reading that succeeded.
+   */
+  freeBytes?: number;
+  /**
+   * The size of the volume as of the latest reading that succeeded.
+   */
+  totalBytes?: number;
+  /**
+   * Free space under which the level is `low`. `0` when the warning is off.
+   */
+  warnBytes: number;
+  /**
+   * Free space under which the level is `blocked`. `0` when the hold is off.
+   */
+  stopBytes: number;
+  /**
+   * Why the latest reading failed, when it did.
+   */
+  error?: string;
+};
+
+/**
+ * The backend's current reading of the artifact store: the body of
+ * `GET /artifacts/capacity` and the payload of the console stream's `storage`
+ * frame.
+ */
+export type ArtifactStorageStatus = {
+  /**
+   * The state the latest reading amounts to.
+   */
+  state: ArtifactStorageState;
+  /**
+   * Whether the run queue is being held. It is `true` exactly when
+   * [`hold_reason`](Self::hold_reason) is present. No queued run is handed to
+   * the dispatcher while it is, except under
+   * [`HoldReason::ProvingStore`], which hands out one run at a time.
+   */
+  runsOnHold: boolean;
+  /**
+   * Which condition is holding the queue: the first that applies, in the order
+   * [`HoldReason`] lists them. Absent while the queue is open.
+   */
+  holdReason?: HoldReason;
+  /**
+   * How many runs in flight are waiting to store their trees: the jobs in the
+   * `storing` state.
+   */
+  runsWaitingToStore: number;
+  /**
+   * The error text behind the hold, when there is one: why the latest poll
+   * brought no reading back, why the write check failed, the latest reason a
+   * driver reported for an upload that failed, or under
+   * [`HoldReason::PublishFailing`] the reason the latest failed publish job
+   * recorded.
+   */
+  detail?: string;
+  /**
+   * How many different runs have failed to publish since a publish last
+   * succeeded. Present while that is enough to hold the queue, under whichever
+   * reason is reported.
+   */
+  publishFailingRuns?: number;
+  /**
+   * Free bytes on the store's volume as of the latest reading. Absent until a
+   * reading has arrived.
+   */
+  freeBytes?: number;
+  /**
+   * The size of the store's volume as of the latest reading. Absent until a
+   * reading has arrived.
+   */
+  totalBytes?: number;
+  /**
+   * Whether the store's write check passed as of the latest reading. Absent
+   * until a reading has arrived.
+   */
+  writable?: boolean;
+  /**
+   * Free space under which the state is `low`.
+   */
+  warnBytes: number;
+  /**
+   * Free space under which the state is `blocked`.
+   */
+  stopBytes: number;
+  /**
+   * The backend's own state volume. Absent on a backend that does not read
+   * it: one with no artifact service to poll, or with both of the volume's
+   * thresholds turned off. Absent until the first reading too.
+   */
+  stateVolume?: StateVolumeStatus;
 };
 
 /**

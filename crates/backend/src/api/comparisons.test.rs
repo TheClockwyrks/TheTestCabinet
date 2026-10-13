@@ -528,3 +528,93 @@ async fn publishing_a_comparison_enqueues_only_the_runs_not_already_releasing() 
     releasing.sort();
     assert_eq!(releasing, ["run-releasing", "run-waiting"]);
 }
+
+/// A comparison publish goes through the same gate as every other publish: an arm
+/// run with no stored artifact tree is skipped with that reason, and the runs
+/// beside it are still enqueued.
+#[tokio::test]
+async fn publishing_a_comparison_skips_a_run_with_no_stored_tree() {
+    use crate::api::flow_harness::{
+        GREAT, OWNER, enqueue_other, finish, owner, publishing, run_of, test_state,
+        with_artifact_service,
+    };
+    use crate::artifacts::presence_tests::{STUB_TOKEN, spawn_artifact_stub};
+
+    let (_dir, mut state) = test_state().await;
+    for job_id in ["kept", "lost"] {
+        enqueue_other(&state, job_id, "pong", None).await;
+        finish(
+            &state,
+            job_id,
+            run_of(&format!("run-{job_id}"), "pong", GREAT),
+        )
+        .await;
+    }
+    let (base, _stub) = spawn_artifact_stub(&["run-kept"]).await;
+    with_artifact_service(&mut state, &base, STUB_TOKEN);
+
+    let mut pi = pi_arm();
+    pi.run_ids = vec!["kept".into()];
+    let mut kilo = kilo_arm();
+    kilo.run_ids = vec!["lost".into()];
+    let input = ComparisonInput {
+        config: config_of(vec![pi, kilo], 1),
+        ..sample_input("arms")
+    };
+    let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
+    state.db.insert_comparison(OWNER, &stored).await.unwrap();
+
+    let Json(outcome) = publish_comparison(State(state.clone()), owner(), Path("c1".to_string()))
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.enqueued, ["run-kept"]);
+    assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
+    assert_eq!(outcome.skipped[0].run_id, "run-lost");
+    assert!(
+        outcome.skipped[0]
+            .reason
+            .contains("artifact tree is not stored"),
+        "{}",
+        outcome.skipped[0].reason
+    );
+    assert_eq!(publishing(&state).await, ["run-kept"]);
+}
+
+/// A service that cannot be asked skips the run rather than failing the whole
+/// comparison publish, and says the service is the reason.
+#[tokio::test]
+async fn publishing_a_comparison_skips_a_run_the_service_cannot_be_asked_about() {
+    use crate::api::flow_harness::{
+        GREAT, OWNER, enqueue_other, finish, owner, publish_jobs, run_of, test_state,
+        with_artifact_service,
+    };
+    use crate::artifacts::presence_tests::{STUB_TOKEN, unreachable_base};
+
+    let (_dir, mut state) = test_state().await;
+    enqueue_other(&state, "j", "pong", None).await;
+    finish(&state, "j", run_of("run-j", "pong", GREAT)).await;
+    with_artifact_service(&mut state, &unreachable_base().await, STUB_TOKEN);
+
+    let mut pi = pi_arm();
+    pi.run_ids = vec!["j".into()];
+    let input = ComparisonInput {
+        config: config_of(vec![pi, kilo_arm()], 1),
+        ..sample_input("arms")
+    };
+    let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
+    state.db.insert_comparison(OWNER, &stored).await.unwrap();
+
+    let Json(outcome) = publish_comparison(State(state.clone()), owner(), Path("c1".to_string()))
+        .await
+        .unwrap();
+
+    assert!(outcome.enqueued.is_empty());
+    assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
+    assert!(
+        outcome.skipped[0].reason.contains("could not check"),
+        "{}",
+        outcome.skipped[0].reason
+    );
+    assert!(publish_jobs(&state).await.is_empty());
+}

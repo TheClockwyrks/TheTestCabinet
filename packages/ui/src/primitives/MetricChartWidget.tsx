@@ -14,8 +14,10 @@ import type { BarPoint, DistributionPoint, ScatterGroup } from "./plot/charts";
 import { summarizeValues, type DistributionStats } from "./plot/distribution";
 import type { ChartPalette } from "./plot/theme";
 
-// Tilt the model labels so a large roster fits along the axis without overlap.
-const LABEL_ROTATE = -40;
+// Tilt the model labels down to the right so a large roster fits along the axis
+// without overlap. Tilted that way a label starts under its own bar, so the
+// first bar's label stays inside the chart.
+const LABEL_ROTATE = 40;
 
 /**
  * How the bar chart reduces runs to bars:
@@ -226,10 +228,15 @@ export function MetricChartWidget({
     };
     if (scatter) {
       const groups = scatterGroups(ordered);
-      return (palette: ChartPalette) =>
-        scatterChart(groups, palette, { ...labels, formatValue });
+      return (palette: ChartPalette, availableWidth?: number) =>
+        scatterChart(groups, palette, {
+          ...labels,
+          formatValue,
+          availableWidth,
+        });
     }
-    return (palette: ChartPalette) => barChart(ordered, palette, labels);
+    return (palette: ChartPalette, availableWidth?: number) =>
+      barChart(ordered, palette, { ...labels, availableWidth });
   }, [ordered, unit, yTickFormat, scatter, formatValue]);
 
   const modeControl = modal ? (

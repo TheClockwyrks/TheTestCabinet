@@ -54,6 +54,11 @@ components:
   # per-env patch is needed. See components/postgres-azure-ad and the deployment runbook
   # for the cutover order.
   - ../../components/postgres-azure-ad
+  # The catalog ingest sidecar in the backend pod: it shares /state, brings the
+  # checkout and its cold storage to the catalog branch tip, and POSTs /ingest over
+  # localhost. Listed after postgres, whose backend Deployment it patches;
+  # patch-backend-ingest.yaml below sets its branch.
+  - ../../components/catalog-ingest
 
 # Every Test Cabinet image, at the Test Cabinet ACR and the tag `unpinned`, which
 # nothing pushes: applied as it stands, the overlay fails to pull rather than running
@@ -110,8 +115,8 @@ patches:
   # Hold telemetry for 3 days rather than the component's 24h default — a prod issue
   # is often investigated a day or more after the run that caused it.
   - path: patch-lgtm-retention.yaml
-  # Catalog ingest sidecar in the backend pod (shares /state, POSTs /ingest over
-  # localhost) — the base CronJob can't reach the backend or share its checkout volume.
+  # The catalog ingest sidecar's branch (`master`) and environment name; the sidecar
+  # itself is ../../components/catalog-ingest.
   - path: patch-backend-ingest.yaml
-  # …and suspend that now-superseded base CronJob so it stops failing every 30 min.
+  # Suspend the base CronJob the sidecar supersedes, so it stops failing every 30 min.
   - path: patch-suspend-ingest-cronjob.yaml

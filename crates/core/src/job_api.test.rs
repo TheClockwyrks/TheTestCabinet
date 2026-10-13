@@ -157,3 +157,37 @@ fn a_selected_engine_round_trips_as_its_slug() {
     let parsed: LaunchBody = serde_json::from_value(value).expect("deserialize");
     assert_eq!(parsed.engine.as_deref(), Some("simple-2d"));
 }
+
+#[test]
+fn a_job_waiting_to_store_its_tree_is_in_flight() {
+    assert_eq!(JobState::from_db("storing"), JobState::Storing);
+    assert!(!JobState::Storing.is_terminal());
+    assert_eq!(serde_json::to_value(JobState::Storing).unwrap(), "storing");
+    assert_eq!(
+        serde_json::to_value(DriverState::Storing).unwrap(),
+        "storing"
+    );
+}
+
+#[test]
+fn a_storing_run_event_carries_the_drivers_reason() {
+    let event = RunEvent::storing("job-1", summary(), Some("HTTP 500: no space left"));
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["kind"], "state-changed");
+    assert_eq!(json["state"], "storing");
+    assert_eq!(json["detail"], "HTTP 500: no space left");
+
+    // Every other in-flight row omits the reason.
+    let active = ActiveJobOut {
+        run_id: "job-1".to_string(),
+        summary: summary(),
+        state: JobState::Running,
+        detail: None,
+    };
+    assert!(
+        serde_json::to_value(&active)
+            .unwrap()
+            .get("detail")
+            .is_none()
+    );
+}

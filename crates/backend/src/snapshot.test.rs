@@ -37,7 +37,7 @@ fn run_document<'a>(snapshot: &'a Snapshot, run_id: &str) -> &'a SnapshotObject 
 }
 
 /// The parsed per-run document for `run_id`.
-fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
+pub(super) fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
     serde_json::from_slice(&run_document(snapshot, run_id).bytes)
         .expect("the run document is valid JSON")
 }
@@ -55,13 +55,24 @@ fn runs_index(snapshot: &Snapshot) -> serde_json::Value {
 
 /// An empty definition store rooted at a fresh temp dir. The `TempDir` is
 /// returned so the caller keeps it alive for the test's duration.
-fn empty_store() -> (TempDir, DefinitionStore) {
+pub(super) fn empty_store() -> (TempDir, DefinitionStore) {
     let dir = TempDir::new().expect("temp dir");
     let store = DefinitionStore::open(dir.path()).expect("open store");
     (dir, store)
 }
 
-fn stored_run(id: &str, published_at: &str) -> StoredRun {
+/// A store holding one file of a run no test builds. A store holding no run
+/// folder at all says nothing about what a run is missing, so a test about a
+/// file being written off as unrecoverable starts from this one.
+pub(super) fn answering_store() -> (TempDir, DefinitionStore) {
+    let (dir, store) = empty_store();
+    store
+        .write_run_asset("another-run", "replay.json", b"{}")
+        .expect("seed another run");
+    (dir, store)
+}
+
+pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
     StoredRun {
         record: RunRecord {
             id: id.to_string(),
@@ -136,6 +147,8 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             playable_build: Some("https://abc.pages.dev".to_string()),
         },
         published: true,
+        artifacts_stored: None,
+        artifacts_reclaimed: None,
         published_at: Some(published_at.to_string()),
         events_json: None,
     }
@@ -162,7 +175,7 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
     run
 }
 
-fn manifest() -> StoredManifest {
+pub(super) fn manifest() -> StoredManifest {
     StoredManifest {
         toolchain: None,
         engine_format: false,
@@ -246,7 +259,7 @@ fn manifest() -> StoredManifest {
     }
 }
 
-fn now() -> OffsetDateTime {
+pub(super) fn now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(1_718_660_880).unwrap()
 }
 
@@ -835,13 +848,17 @@ async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
         .await
         .unwrap();
 
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/clip.webm")),
-        "the raw showcase webm must not be published",
-    );
+    // The recording is published once, verbatim, under `original/`, and never
+    // where the site looks for the clip.
+    let webms: Vec<&SnapshotObject> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key.ends_with("/clip.webm"))
+        .collect();
+    assert_eq!(webms.len(), 1, "the raw showcase webm is kept once");
+    assert_eq!(webms[0].key, "media/runs/s1/original/showcase/clip.webm");
+    assert_eq!(webms[0].bytes, webm);
+    assert_eq!(webms[0].content_type, "video/webm");
     let clip = snapshot
         .objects
         .iter()
@@ -1371,14 +1388,14 @@ async fn snapshot_id_changes_with_the_run_set() {
 /// A stored run carrying the given proof results (end-to-end). The recorded proofs
 /// are what the builder enumerates from — the store/artifact-service only supply the
 /// bytes.
-fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
+pub(super) fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.proofs = proofs;
     run
 }
 
 /// A proof result the agent did (or did not) produce at `dest`.
-fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
+pub(super) fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
     ProofResult {
         id: id.into(),
         name: id.into(),
@@ -1390,10 +1407,13 @@ fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
 }
 
 /// A throwaway HTTP server standing in for the artifact service: it answers `200`
-/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path and `404`
-/// otherwise, recording every path it is asked for so a test can assert the store
-/// fast-path skipped it. Returns its base URL and that request log.
-async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
+/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path (the length
+/// alone for a `HEAD`) and `404` otherwise, recording every path it is asked for
+/// so a test can assert the store fast-path skipped it. Returns its base URL and
+/// that request log.
+pub(super) async fn stub_artifacts(
+    files: HashMap<String, Vec<u8>>,
+) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -1415,13 +1435,17 @@ async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<V
                     .and_then(|line| line.split_whitespace().nth(1))
                     .unwrap_or("")
                     .to_string();
+                let head = req.starts_with("HEAD ");
                 sink.lock().expect("lock").push(path.clone());
                 let resp = match files.get(&path) {
                     Some(body) => {
                         let mut r =
                             format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
                                 .into_bytes();
-                        r.extend_from_slice(body);
+                        // A `HEAD` is answered with the length and no body.
+                        if !head {
+                            r.extend_from_slice(body);
+                        }
                         r
                     }
                     None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(),
@@ -1488,7 +1512,12 @@ async fn per_run_file_exports_proof_media_from_the_record() {
 /// A stored run carrying one debug script with the given image + video outputs, so
 /// the builder enumerates its synthesized *actual* validation media. `present` gates
 /// whether each output is recorded as produced.
-fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: bool) -> StoredRun {
+pub(super) fn validation_run(
+    id: &str,
+    item_id: &str,
+    image_present: bool,
+    video_present: bool,
+) -> StoredRun {
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.debug_scripts = vec![DebugScriptResult {
         item_id: item_id.to_string(),
@@ -2192,14 +2221,16 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
         .await
         .unwrap();
 
-    // The webm is gone from the snapshot; the exported object is a real mp4.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/rally.webm")),
-        "the raw webm must not be published",
-    );
+    // The recording is published once, verbatim, under `original/`; the object
+    // the document names is a real mp4.
+    let webms: Vec<&SnapshotObject> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key.ends_with("/rally.webm"))
+        .collect();
+    assert_eq!(webms.len(), 1, "the raw webm is kept once");
+    assert_eq!(webms[0].key, "media/runs/p1/original/proof/rally.webm");
+    assert_eq!(webms[0].bytes, webm);
     let rally = snapshot
         .objects
         .iter()
@@ -2242,14 +2273,19 @@ async fn video_validation_media_recorded_as_webm_is_transcoded_to_mp4() {
         .await
         .unwrap();
 
-    // The raw webm is gone; the exported object is a real mp4 under the mp4 key.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/spin__rally.webm")),
-        "the raw validation webm must not be published",
+    // The recording is published once, verbatim, under `original/`; the object
+    // the document names is a real mp4 under the mp4 key.
+    let webms: Vec<&SnapshotObject> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key.ends_with("/spin__rally.webm"))
+        .collect();
+    assert_eq!(webms.len(), 1, "the raw validation webm is kept once");
+    assert_eq!(
+        webms[0].key,
+        "media/runs/v1/original/validation/spin__rally.webm"
     );
+    assert_eq!(webms[0].bytes, webm);
     let rally = snapshot
         .objects
         .iter()
@@ -2870,27 +2906,42 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 // ── run-tree artifacts and the public snapshot ──────────────────────────────
 
 #[tokio::test]
-async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
-    // R7, and owner decision Q1. The **session record** is never published: it is a
-    // private, whole-run capture of everything the model was sent, so it never goes to
-    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
-    // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
-    // now, but only when the run **record** says the run was analysed — the store
-    // holding one is not the authority, exactly as it is not for proofs. This run's
-    // record carries none, so neither artifact becomes an object.
+async fn a_stored_run_tree_artifact_reaches_the_public_snapshot_only_as_its_own_object() {
+    // The two run-tree artifacts the store holds for a published run. The
+    // **session record** is published as one object of the run, scrubbed, and
+    // is in no other: not the run's document, not the index. A code-analysis
+    // document is published only when the run **record** says the run was
+    // analysed, and the store holding one is not the authority, exactly as it
+    // is not for proofs. This run's record carries none.
     //
     // This is the regression that would be silent: adding a new sibling object to the
     // snapshot is a two-line change, and nothing else in the builder would notice.
     let (_tmp, store) = empty_store();
     store
-        .write_run_artifact("r1", "replay", b"prompt sk-ant-leaked-key-from-the-env")
+        .write_run_artifact(
+            "r1",
+            "replay",
+            br#"{"entries":[{"text":"the-whole-conversation sk-ant-leaked-key-from-the-env"}]}"#,
+        )
         .unwrap();
     store
         .write_run_artifact("r1", "code-analysis", b"{\"files\":1}")
         .unwrap();
+    // A record that is no document is published as nothing: there is no form
+    // of it the scrubber has read.
+    store
+        .write_run_artifact(
+            "r2",
+            "replay",
+            b"undocumented-prompt sk-ant-leaked-key-from-the-env",
+        )
+        .unwrap();
 
     let snapshot = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![
+            stored_run("r1", "2026-06-17T21:40:00Z"),
+            stored_run("r2", "2026-06-17T21:41:00Z"),
+        ],
         vec![],
         store,
     )
@@ -2898,6 +2949,7 @@ async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
     .await
     .unwrap();
 
+    let mut records = Vec::new();
     for object in snapshot
         .objects
         .iter()
@@ -2914,7 +2966,16 @@ async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
             "run-tree artifact bytes leaked into `{}`",
             object.key
         );
+        assert!(
+            !body.contains("undocumented-prompt"),
+            "a record that is no document leaked into `{}`",
+            object.key
+        );
+        if body.contains("the-whole-conversation") {
+            records.push(object.key.as_str());
+        }
     }
+    assert_eq!(records, ["media/runs/r1/session-record.json"]);
 }
 
 #[tokio::test]
@@ -2942,7 +3003,7 @@ async fn every_published_run_document_is_scrubbed_on_its_way_out() {
 /// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
 /// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
 /// from the contract the moment a metric is added.
-fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
+pub(super) fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
     let tree = TempDir::new().expect("temp dir");
     std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
     std::fs::write(
@@ -3345,15 +3406,22 @@ async fn the_builder_redacts_the_corpus_itself_rather_than_trusting_its_caller()
 }
 
 #[tokio::test]
-async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
-    // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
-    // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a
-    // short step away. A session record is the complete model conversation verbatim; the
-    // exported documents are configuration ids and outcome numbers. Only the second
-    // travels.
+async fn a_session_record_reaches_the_snapshot_only_as_a_published_run_s_own_object() {
+    // A session record is the complete model conversation verbatim; the exported
+    // documents are configuration ids and outcome numbers. The corpus covers gg
+    // runs that are not published, so a record must never travel with it: the
+    // only record in a snapshot is the one object of a published run.
     let (_tmp, store) = empty_store();
     store
-        .write_run_artifact("r1", "replay", b"{\"text\":\"the-verbatim-conversation\"}")
+        .write_run_artifact("r1", "replay", b"{\"text\":\"the-published-conversation\"}")
+        .unwrap();
+    // A gg run that is in the corpus and is not published.
+    store
+        .write_run_artifact(
+            "r2",
+            "replay",
+            b"{\"text\":\"the-unpublished-conversation\"}",
+        )
         .unwrap();
 
     let snapshot = SnapshotBuilder::new(
@@ -3361,27 +3429,58 @@ async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_co
         vec![],
         store,
     )
-    .with_gg_documents(vec![gg_doc("r1")])
+    .with_gg_documents(vec![gg_doc("r1"), gg_doc("r2")])
     .build(now())
     .await
     .unwrap();
 
+    const RECORD: &str = "media/runs/r1/session-record.json";
+    assert_eq!(
+        snapshot
+            .objects
+            .iter()
+            .filter(|object| object.key.contains("session-record"))
+            .map(|object| object.key.as_str())
+            .collect::<Vec<_>>(),
+        [RECORD]
+    );
     for object in snapshot
         .objects
         .iter()
         .chain(std::iter::once(&snapshot.index))
     {
+        let body = String::from_utf8_lossy(&object.bytes);
         assert!(
             !object.key.contains("replay"),
             "a replay artifact was published as `{}`",
             object.key
         );
         assert!(
-            !String::from_utf8_lossy(&object.bytes).contains("the-verbatim-conversation"),
+            !object.key.contains("/r2/"),
+            "a file of an unpublished run was published as `{}`",
+            object.key
+        );
+        assert!(
+            !body.contains("the-unpublished-conversation"),
+            "an unpublished run's conversation leaked into `{}`",
+            object.key
+        );
+        assert!(
+            object.key == RECORD || !body.contains("the-published-conversation"),
             "recorded conversation text leaked into `{}`",
             object.key
         );
     }
+    let corpus = snapshot
+        .objects
+        .iter()
+        .find(|object| object.key.ends_with("/gg-runs.json"))
+        .expect("the corpus");
+    let corpus = String::from_utf8_lossy(&corpus.bytes);
+    assert!(
+        corpus.contains("r2"),
+        "the corpus covers the unpublished run"
+    );
 }
 
 // --- Validator-rated runs in the snapshot ---------------------------------------

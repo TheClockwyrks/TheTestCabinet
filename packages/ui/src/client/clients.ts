@@ -54,6 +54,7 @@ import type {
   TestCaseGroupOut,
 } from "@clockwyrks/run-record/backend-api";
 import type {
+  ArtifactStorageStatus,
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
@@ -857,6 +858,11 @@ export interface RunSubscription {
 export interface NotificationSubscription {
   onNotification: (notification: RunNotification) => void;
   onRunLifecycle?: (event: RunLifecycleEvent) => void;
+  /**
+   * The artifact store's status: once after every (re)connect, and again whenever
+   * its state or its hold on the run queue changes. Delivered whatever the topics.
+   */
+  onStorage?: (status: ArtifactStorageStatus) => void;
   onResync?: () => void;
   onError?: (error: unknown) => void;
   onOpen?: () => void;

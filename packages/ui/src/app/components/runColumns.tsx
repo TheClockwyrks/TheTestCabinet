@@ -35,6 +35,14 @@ import {
 import { RunSelectBox, type RunSelectionContext } from "./RunSelect";
 import { sortRows, type SortState } from "./useTableSort";
 import { UnpublishedTag } from "./UnpublishedTag";
+import {
+  artifactsNotStored,
+  artifactsReclaimed,
+} from "../../client/artifactPresence";
+import {
+  selectStorageHoldReason,
+  useArtifactStorage,
+} from "../runtime/artifactStorage";
 import styles from "./RunLog.module.scss";
 
 /**
@@ -63,6 +71,12 @@ export interface EnrichedRun {
   /** Whether the run is still unpublished — a produced run awaiting review or
    * publish — and so carries the UNPUBLISHED tag. */
   local: boolean;
+  /** Whether the run is unpublished and its artifact tree is not stored, so it
+   * cannot be published. The UNPUBLISHED tag then says so. */
+  artifactsMissing: boolean;
+  /** Whether the run is unpublished and its artifact tree was removed after its
+   * retention period. The UNPUBLISHED tag stays plain and says so. */
+  artifactsReclaimed: boolean;
   displayName: string;
   /** The model's catalog display name, resolved once so the cell and its sort
    * both read it; falls back to the canonical model id when the catalog doesn't
@@ -147,14 +161,50 @@ function categoryLabel(testType: string): string {
 // an ellipsis (work is pending and will proceed on its own); "pending" is a
 // deliberate hold — the harness is at its parallelism cap, or the run is a game-jam
 // entry waiting for the same model's earlier entry of that jam to finish — shown
-// without one so it reads as a settled state rather than imminent progress.
+// without one so it reads as a settled state rather than imminent progress. The
+// whole queue is also held in "pending" while the artifact store cannot take
+// another run's tree, and `ActiveStatus` then says so in the cell's tooltip.
+// "storing" is a finished run whose driver is waiting on the artifact store; it
+// carries an ellipsis because the driver keeps retrying on its own.
 const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
   queued: "queued…",
   pending: "pending",
   starting: "starting…",
   running: "running…",
+  storing: "storing…",
   failed: "failed",
 };
+
+// What a "storing" run's tooltip says before the driver's own reason, and on its
+// own when the backend reported none.
+const STORING_TITLE = "Waiting to store artifacts";
+
+// An in-progress run's status cell. A run the artifact store is holding back
+// carries the reason as its tooltip, since "pending" alone cannot tell that hold
+// from a harness at its cap. A run waiting on the store says so, with the driver's
+// reason when the backend reported one.
+function ActiveStatus({
+  state,
+  detail,
+}: {
+  state: InProgressRun["state"];
+  detail?: string | null;
+}) {
+  const holdReason = useArtifactStorage(selectStorageHoldReason);
+  const title =
+    state === "pending"
+      ? (holdReason ?? undefined)
+      : state === "storing"
+        ? detail
+          ? `${STORING_TITLE}: ${detail}`
+          : STORING_TITLE
+        : undefined;
+  return (
+    <span className={styles.activeStatus} data-state={state} title={title}>
+      {ACTIVE_STATE_LABEL[state]}
+    </span>
+  );
+}
 
 // A muted em-dash placeholder for a cell an in-progress run can't fill yet —
 // either a figure that only the finished run carries (its metrics, its rating) or
@@ -280,7 +330,13 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     render: (row) => (
       <span className={styles.test}>
         <span className={styles.testName}>{row.displayName}</span>
-        {row.local && <UnpublishedTag className={styles.tag} />}
+        {row.local && (
+          <UnpublishedTag
+            className={styles.tag}
+            artifactsMissing={row.artifactsMissing}
+            artifactsReclaimed={row.artifactsReclaimed}
+          />
+        )}
       </span>
     ),
     renderActive: (run, ctx) => (
@@ -351,7 +407,11 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {row.summary.subject.harnessSlug}
         {/* Without a TEST column to host it, flag unpublished runs here. */}
         {!ctx.visible.has("test") && row.local && (
-          <UnpublishedTag className={styles.tag} />
+          <UnpublishedTag
+            className={styles.tag}
+            artifactsMissing={row.artifactsMissing}
+            artifactsReclaimed={row.artifactsReclaimed}
+          />
         )}
       </span>
     ),
@@ -620,9 +680,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     },
     renderActive: (run) => (
       <span className={styles.rating} data-label="Status">
-        <span className={styles.activeStatus} data-state={run.state}>
-          {ACTIVE_STATE_LABEL[run.state]}
-        </span>
+        <ActiveStatus state={run.state} detail={run.detail} />
       </span>
     ),
   },
@@ -718,6 +776,11 @@ export function useEnrichedRuns(
         return {
           summary,
           local: localIds.has(summary.id) || !summary.publishedAt,
+          // Only an unpublished run is marked: a published run's release is
+          // done, so whether its tree is still held changes nothing for it.
+          artifactsMissing: !summary.publishedAt && artifactsNotStored(summary),
+          artifactsReclaimed:
+            !summary.publishedAt && artifactsReclaimed(summary),
           displayName: testCaseName(summary.subject.testCaseSlug),
           modelName:
             findModel(summary.subject.modelId, summary.subject.harnessSlug)

@@ -12,7 +12,7 @@
 //! - is the **system of record** for published runs + reviews in a SeaORM store
 //!   (SQLite locally and in tests, PostgreSQL in deployments); and
 //! - owns the **synchronized publish path**: a publish ingests into SQLite, then
-//!   a coalesced background task regenerates the full public snapshot, uploads it
+//!   a batching background task regenerates the full public snapshot, uploads it
 //!   atomically to R2, and fires the site deploy hook.
 //!
 //! There is **no app-level auth**: the backend sits on a private network and
@@ -22,6 +22,7 @@ pub mod api;
 pub mod artifacts;
 pub mod auth;
 pub mod bootstrap;
+pub mod capacity;
 pub mod config;
 pub mod coverage;
 pub mod db;
@@ -32,12 +33,14 @@ pub mod logo;
 pub mod metrics;
 pub mod model_seed;
 pub mod probe;
+pub mod publish_health;
 pub mod publish_relay;
 pub mod publisher;
 pub mod readiness;
 pub mod relay;
 pub mod render;
 pub mod snapshot;
+pub mod state_reclaim;
 pub mod stats;
 pub mod store;
 
@@ -67,6 +70,15 @@ pub struct Backend {
     /// not configured: no in-cluster artifact URL, no service token, or a zero
     /// interval.
     pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
+    /// The periodic [state reclamation sweep](crate::state_reclaim) of the
+    /// backend's own store; kept alive for the server's lifetime (dropping it
+    /// aborts the loop). `None` when `TCAB_STATE_RECLAIM` is off or the sweep
+    /// interval is zero.
+    pub state_sweeper: Option<tokio::task::JoinHandle<()>>,
+    /// The [artifact capacity](crate::capacity) poll loop's task, which runs for
+    /// the server's lifetime. `None` when no artifact
+    /// service is configured, in which case nothing is watched and no run is held.
+    pub capacity_monitor: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -261,6 +273,13 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     }
 
     let r2 = config.r2.clone().map(R2Client::new);
+    // The same bucket, for the run file routes to read a confirmed run's files
+    // back from. It is named as the confirmations name it, so a route fetches a
+    // file only for a run confirmed in this very bucket.
+    let run_files = r2
+        .clone()
+        .zip(config.artifact_retention.bucket)
+        .map(|(client, identity)| api::RunFileBucket::new(client, identity));
 
     // The client the auth middleware verifies bearer tokens against, and the
     // publisher fetches reviewer profile pictures from for the public snapshot.
@@ -269,6 +288,20 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.auth_url.clone(),
     ));
 
+    // Files a write left half-made in the store's staging directory when the
+    // last process died. Nothing reads them, and nothing else removes them.
+    store.clear_staged_uploads();
+
+    // Give the space of the backend's own store back once nothing needs a run's
+    // files there (see `crate::state_reclaim`). It reads the same bucket, to see
+    // every object a run's manifest names before it removes the run's files.
+    let state_sweeper = crate::state_reclaim::spawn_state_sweeper(
+        Arc::clone(&db),
+        store.clone(),
+        r2.clone(),
+        config.state_sweep_timing(),
+    );
+
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
@@ -276,10 +309,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.deploy_hook_url.clone(),
         config.artifacts_internal_url.clone(),
         Arc::clone(&auth),
-        crate::publisher::PublisherTiming {
-            coalesce: config.coalesce,
-            snapshot_retention: config.snapshot_retention,
-        },
+        config.publisher_timing(),
     );
     let refresher = publisher.spawn();
 
@@ -333,8 +363,8 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
         tracing::warn!(
             "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
-             tree pruning, the reclamation sweep and the snapshot's artifact media fallback \
-             are all off"
+             tree pruning, the reclamation sweep, the capacity hold on new runs and the \
+             snapshot's artifact media fallback are all off"
         );
     }
 
@@ -350,9 +380,28 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.service_token.clone(),
         crate::artifacts::SweepTiming {
             interval: config.artifact_sweep_interval,
-            grace: config.artifact_sweep_grace,
+            rules: crate::artifacts::SweepRules {
+                grace: config.artifact_sweep_grace,
+                retention: config.artifact_retention,
+            },
         },
     );
+
+    // Watch the artifact store, and hold the run queue while any condition for
+    // storing a run's tree is not green (see `crate::capacity`). The
+    // relay is built here rather than in the state literal below because the watch
+    // announces each change of state on its console stream.
+    let relay = crate::relay::Relay::new();
+    let (capacity, capacity_monitor) = crate::capacity::spawn_capacity_monitor(
+        config.artifact_capacity,
+        http.clone(),
+        config.artifacts_internal_url.clone(),
+        config.service_token.clone(),
+        relay.notifier().clone(),
+        db.clone(),
+        store.clone(),
+    )
+    .await;
 
     let bind = config.bind.clone();
     // Every test-case resolution reads the definition store, and on a deployment
@@ -379,11 +428,13 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         ready: readiness,
         publisher,
         auth,
-        relay: crate::relay::Relay::new(),
+        relay,
+        capacity,
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),
         http,
         prices,
+        run_files,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     // A running ladder dispatch and a filling plan are fed when one of their runs
@@ -391,6 +442,12 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // not finished dies with the process. Run a launch pass of each once, as soon as the
     // store can be served.
     api::spawn_startup_passes(state.clone());
+    // Offer the runs automatic publishing could not publish when they finished to
+    // it again, on an interval, for as long as the process lives.
+    api::spawn_auto_publish_retry(state.clone());
+    // Give each failed publish another attempt on its schedule, and keep probing
+    // while publish failures hold new runs, for as long as the process lives.
+    api::spawn_failed_publish_retry(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
@@ -399,6 +456,8 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         refresher,
         price_refresher,
         artifact_sweeper,
+        state_sweeper,
+        capacity_monitor,
     })
 }
 

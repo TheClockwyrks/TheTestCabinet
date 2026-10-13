@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useArtifactStorage } from "../runtime/artifactStorage";
 import { PageLayout } from "./PageLayout";
 import { routes } from "../routes";
 
@@ -59,5 +60,42 @@ describe("PageLayout section nav", () => {
       "href",
       routes.other(),
     );
+  });
+});
+
+// The standing notice about the artifact store sits in the chrome, so it is on
+// whatever page the operator is on.
+describe("PageLayout storage notice", () => {
+  beforeEach(() => {
+    useArtifactStorage.setState({ byWorker: {} });
+  });
+
+  it("shows nothing while no backend has reported a problem", () => {
+    gallery.canExecute = true;
+    renderLayout();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("states a hold on new runs above the page body", () => {
+    gallery.canExecute = true;
+    useArtifactStorage.getState().setStatus("w1", {
+      state: "blocked",
+      runsOnHold: true,
+      runsWaitingToStore: 0,
+      warnBytes: 3 * 1024 ** 3,
+      stopBytes: 2 * 1024 ** 3,
+    });
+    renderLayout();
+
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent(
+      "New runs are on hold: artifact storage is full",
+    );
+    // Before the body in document order: under the topbar, not after the page.
+    const body = screen.getByText("body");
+    expect(
+      notice.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

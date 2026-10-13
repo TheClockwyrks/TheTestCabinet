@@ -14,7 +14,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     /// The lifecycle state: `queued`, `pending`, `dispatched`, `starting`,
-    /// `running`, `succeeded`, `failed`, or `canceled`.
+    /// `running`, `storing`, `succeeded`, `failed`, or `canceled`.
     ///
     /// `pending` is a *held back* job, distinct from `queued`: it is eligible but
     /// deliberately not dispatched yet, because its harness is at its parallelism cap
@@ -176,6 +176,18 @@ pub struct Model {
     /// rung is never decided on an attempt whose retry is still to come.
     #[sea_orm(nullable)]
     pub retried_by: Option<String>,
+    /// The terminal report a driver handed over when it began waiting on the
+    /// artifact store, as JSON: the run's record, the failure reason when the run
+    /// failed, and whether the tree was stored once the wait ended. `NULL` for a
+    /// job whose driver never waited, and cleared when the driver's own terminal
+    /// report lands.
+    ///
+    /// The record otherwise exists only in the driver's pod for the whole wait. A
+    /// driver lost during it is finished from this, so a run that had already
+    /// ended keeps its outcome instead of failing as infrastructure with no
+    /// record.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub held_report_json: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -48,6 +48,7 @@ sea-orm = { workspace = true }
 libsqlite3-sys = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
+md-5 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 percent-encoding = { workspace = true }
@@ -62,6 +63,13 @@ flate2 = { workspace = true }
 # run-record types derive as well.
 ts-rs = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
+
+# `statvfs`, for the free space of the volume the backend's own store is on (see
+# `crate::capacity`). A safe wrapper over the one syscall, and already in the build
+# through the artifact service, so naming it adds no crate. Unix
+# only, which is every platform the backend is deployed on.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
 
 [features]
 # Derive `ts_rs::TS` + `schemars::JsonSchema` on the backend API + snapshot wire

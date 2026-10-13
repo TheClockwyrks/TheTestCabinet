@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -14,7 +14,11 @@ import type {
 } from "@clockwyrks/run-record/gg";
 import type { RunRecord } from "@clockwyrks/run-record";
 import type { SystemStage, SystemStatus } from "@clockwyrks/run-record/event";
-import type { HarnessEvent } from "../../../../client/types";
+import type { HarnessEvent, InProgressRun } from "../../../../client/types";
+import {
+  RunsRuntimeProvider,
+  useRunsRuntime,
+} from "../../../runtime/runsRuntime";
 import {
   WorkersProvider,
   type WorkersContextValue,
@@ -757,6 +761,51 @@ describe("GgRunMonitorPage", () => {
   // this whole span is reported from the orchestrator's setup stages — and the three
   // cases below are three genuinely different situations that used to read identically
   // as "waiting for a runner and container".
+  it("says a run waiting on the artifact store has finished, and why it waits", () => {
+    // The in-flight list, as the notifications layer keeps it, has this run `storing`.
+    const storing: InProgressRun = {
+      runId: "job-1",
+      testCaseSlug: "pong",
+      testCaseVersion: "v1.0.0",
+      variant: "base",
+      harnessSlug: "gg",
+      modelId: "m",
+      state: "storing",
+      detail: "the artifact service rejected the upload: HTTP 500",
+    };
+    function Tracked() {
+      const { track } = useRunsRuntime();
+      useEffect(() => track(storing), [track]);
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={["/runs/gg/job-1/live"]}>
+        <WorkersProvider value={workersValue(EVENTS)}>
+          <RunsRuntimeProvider>
+            <Tracked />
+            <Routes>
+              <Route
+                path="/runs/gg/:jobId/live"
+                element={<GgRunMonitorPage />}
+              />
+            </Routes>
+          </RunsRuntimeProvider>
+        </WorkersProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Storing")).toBeInTheDocument();
+    expect(
+      screen.getByText("finished; waiting on the artifact store"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /The run has finished and is waiting to store its artifacts\..*Reported: the artifact service rejected the upload: HTTP 500/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+  });
+
   it("says it is waiting for a runner only while nothing has been allocated", () => {
     // An empty stream is the one case the wording is true of: the dispatcher has not
     // claimed the run, so there is no container and nothing has begun.

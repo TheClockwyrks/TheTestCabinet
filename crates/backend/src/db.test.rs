@@ -24,10 +24,20 @@ fn only_a_completed_validator_rated_run_publishes_itself() {
     }
 }
 
+/// The ids [`Db::auto_publish_candidates`] names among `asked`.
+async fn auto_publish_candidate_ids(db: &Db, asked: &[String]) -> Vec<String> {
+    db.auto_publish_candidates(asked)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|candidate| candidate.run_id)
+        .collect()
+}
+
 /// The candidates of automatic publishing: unpublished runs the rule admits that
 /// have never had a publish job, in the order asked for and named once.
 #[tokio::test]
-async fn auto_publishable_among_names_each_qualifying_run_once() {
+async fn auto_publish_candidates_names_each_qualifying_run_once() {
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     for id in ["rated", "queued", "failed", "public"] {
@@ -61,14 +71,14 @@ async fn auto_publishable_among_names_each_qualifying_run_once() {
     .iter()
     .map(|id| id.to_string())
     .collect();
-    assert_eq!(db.auto_publishable_among(&asked).await.unwrap(), ["rated"]);
-    assert!(db.auto_publishable_among(&[]).await.unwrap().is_empty());
+    assert_eq!(auto_publish_candidate_ids(&db, &asked).await, ["rated"]);
+    assert!(auto_publish_candidate_ids(&db, &[]).await.is_empty());
 }
 
 /// The attempt an automatic retry replaced is not the run that stands, so it never
 /// publishes itself, whatever state it was stored in.
 #[tokio::test]
-async fn auto_publishable_among_passes_over_a_retried_attempt() {
+async fn auto_publish_candidates_passes_over_a_retried_attempt() {
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     for id in ["first", "second"] {
@@ -104,7 +114,7 @@ async fn auto_publishable_among_passes_over_a_retried_attempt() {
         .unwrap();
 
     let asked = vec!["first".to_string(), "second".to_string()];
-    assert_eq!(db.auto_publishable_among(&asked).await.unwrap(), ["second"]);
+    assert_eq!(auto_publish_candidate_ids(&db, &asked).await, ["second"]);
 }
 
 #[test]
@@ -1357,6 +1367,64 @@ async fn claim_respects_harness_max_parallelism_and_holds_pending() {
 }
 
 #[tokio::test]
+async fn a_held_queue_claims_nothing_and_releases_in_order() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // One Claude slot, so j2 is held back by its harness whatever the gate says.
+    db.set_harness_max_parallelism("claude", Some(1), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j1", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j2", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j3", "2026-06-23T00:02:00Z", "codex"))
+        .await
+        .unwrap();
+    async fn states(db: &Db) -> Vec<String> {
+        let mut out = Vec::new();
+        for id in ["j1", "j2", "j3"] {
+            out.push(db.get_job(id).await.unwrap().unwrap().state);
+        }
+        out
+    }
+
+    // Held: nothing is claimed, and every waiting job is reported as moved to
+    // `pending`, the claimable ones included.
+    let held = db
+        .claim_next_gated("2026-06-23T00:03:00Z", ClaimGate::Hold)
+        .await
+        .unwrap();
+    assert!(held.claimed.is_none());
+    assert_eq!(
+        held.reconciled
+            .iter()
+            .map(|job| job.id.as_str())
+            .collect::<Vec<_>>(),
+        ["j1", "j2", "j3"]
+    );
+    assert_eq!(states(&db).await, ["pending", "pending", "pending"]);
+
+    // A second held pass has nothing left to move.
+    let again = db
+        .claim_next_gated("2026-06-23T00:03:01Z", ClaimGate::Hold)
+        .await
+        .unwrap();
+    assert!(again.claimed.is_none());
+    assert!(again.reconciled.is_empty());
+
+    // Open: the oldest is claimed, and the rest read as the per-job rules alone
+    // leave them. j2 is still held by its harness; j3 is next in line.
+    let opened = db
+        .claim_next_gated("2026-06-23T00:04:00Z", ClaimGate::Open)
+        .await
+        .unwrap();
+    assert_eq!(opened.claimed.expect("j1 is claimable").id, "j1");
+    assert_eq!(states(&db).await, ["dispatched", "pending", "queued"]);
+}
+
+#[tokio::test]
 async fn claim_skips_a_capped_harness_for_another_that_has_room() {
     let db = Db::connect_in_memory().await.unwrap();
     db.set_harness_max_parallelism("claude", Some(1), "2026-06-23T00:00:00Z")
@@ -2051,7 +2119,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
 
 // --- Publish queue ----------------------------------------------------------
 
-fn new_publish_job(id: &str, run_id: &str, created_at: &str) -> NewPublishJob {
+pub(crate) fn new_publish_job(id: &str, run_id: &str, created_at: &str) -> NewPublishJob {
     NewPublishJob {
         id: id.to_string(),
         run_id: run_id.to_string(),
@@ -9356,4 +9424,37 @@ async fn set_list_price_refuses_an_unknown_slug() {
     })
     .await
     .expect_err("an unknown slug is refused");
+}
+
+/// A run recorded as having no stored artifact tree is refused by the publish
+/// endpoint, so the publish worklist leaves it out; a run whose presence is unknown
+/// or recorded stored stays.
+#[tokio::test]
+async fn publishable_slice_leaves_out_a_run_with_no_stored_tree() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for id in ["unknown", "stored", "lost"] {
+        db.push(&record(id), &links(), None, None).await.unwrap();
+        db.add_review(id, &review_by("u1", Rating::Great), None, None)
+            .await
+            .unwrap();
+    }
+    db.set_run_artifacts_stored("stored", true).await.unwrap();
+    db.set_run_artifacts_stored("lost", false).await.unwrap();
+
+    let filter = SummaryFilter {
+        state: SummaryState::Publishable,
+        ..SummaryFilter::default()
+    };
+    let mut listed = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    listed.sort();
+    assert_eq!(listed, ["stored", "unknown"]);
+
+    // It is still an unpublished run, so the listings that mark it still hold it.
+    let filter = SummaryFilter {
+        state: SummaryState::Unpublished,
+        ..SummaryFilter::default()
+    };
+    let mut listed = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    listed.sort();
+    assert_eq!(listed, ["lost", "stored", "unknown"]);
 }

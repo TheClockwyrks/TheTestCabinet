@@ -52,7 +52,8 @@ snapshot from them.
 
 1. Definition store. Re-ingested by the in-pod ingest sidecar on backend start,
    or on demand with `scripts/reingest-cluster.sh --env <env>`. This restores
-   case metadata, reference baselines, and seeded specs.
+   case metadata, reference baselines, validation baselines and seeded specs
+   (see [Restoring baselines](/deployment/kubernetes/control-plane/#restoring-baselines)).
 2. Run media. The proof and asset bytes are gone from both wiped volumes, and
    the previous snapshot still holds them in R2. Re-seed them with
    `scripts/recover-run-media-from-snapshot.sh`, passing `--env <env>`,

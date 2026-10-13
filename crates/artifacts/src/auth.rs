@@ -117,7 +117,7 @@ pub async fn verify_publish_job_token(
 /// which case deletion is disabled and every caller is rejected.
 pub fn verify_service_token(headers: &HeaderMap, expected: Option<&str>) -> Result<(), ApiError> {
     let expected = expected.ok_or_else(|| {
-        ApiError::unauthorized("run-tree deletion is not enabled on this service")
+        ApiError::unauthorized("the control-plane routes are not enabled on this service")
     })?;
     let presented =
         bearer(headers).ok_or_else(|| ApiError::unauthorized("missing service token"))?;

@@ -81,6 +81,12 @@ mod m20261002_000054_ladder_plain_flow;
 mod m20261002_000055_ladder_dispatch;
 mod m20261009_000056_add_retry_count;
 mod m20261010_000057_drop_model_price_rates;
+mod m20261012_000058_add_run_artifacts_stored;
+mod m20261012_000059_add_run_auto_publish_deferred;
+mod m20261012_000060_add_job_held_report;
+mod m20261012_000061_add_run_artifact_retention;
+mod m20261012_000062_add_run_media_manifest;
+mod m20261012_000063_add_run_state_reclaim;
 
 pub struct Migrator;
 
@@ -149,6 +155,12 @@ impl MigratorTrait for Migrator {
             Box::new(m20261002_000055_ladder_dispatch::Migration),
             Box::new(m20261009_000056_add_retry_count::Migration),
             Box::new(m20261010_000057_drop_model_price_rates::Migration),
+            Box::new(m20261012_000058_add_run_artifacts_stored::Migration),
+            Box::new(m20261012_000059_add_run_auto_publish_deferred::Migration),
+            Box::new(m20261012_000060_add_job_held_report::Migration),
+            Box::new(m20261012_000061_add_run_artifact_retention::Migration),
+            Box::new(m20261012_000062_add_run_media_manifest::Migration),
+            Box::new(m20261012_000063_add_run_state_reclaim::Migration),
         ]
     }
 }

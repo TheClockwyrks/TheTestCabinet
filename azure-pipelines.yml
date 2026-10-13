@@ -644,7 +644,10 @@ stages:
     jobs:
       - deployment: staging
         displayName: staging
-        timeoutInMinutes: 30
+        # The backend's rollout (ten minutes), the settling of the other
+        # workloads (fourteen) and the wait on the ingest sidecar's result (ten)
+        # can each run their whole bound in one deployment.
+        timeoutInMinutes: 45
         environment: ${{ variables.deployEnvironment }}
         strategy:
           runOnce:

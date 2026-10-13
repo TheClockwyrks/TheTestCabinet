@@ -14,7 +14,7 @@ use test_cabinet_core::{PublishResult, PublishState};
 
 use tcab_publisher::client::PublishJobClient;
 use tcab_publisher::config::Config;
-use tcab_publisher::download::download_run_tree;
+use tcab_publisher::download::{DownloadError, download_run_tree};
 use tcab_publisher::publish::{ReleasedLinks, release};
 
 #[tokio::main]
@@ -146,7 +146,12 @@ async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks
         &config.work_dir,
     )
     .await
-    .map_err(|err| format!("downloading the run source tree: {err}"))?;
+    .map_err(|err| match err {
+        // Stated on its own: this detail is what the operator's publish-failed
+        // notification shows, and the cause is the run, not the download.
+        DownloadError::NoStoredTree { .. } => err.to_string(),
+        err => format!("downloading the run source tree: {err}"),
+    })?;
 
     progress(client, "releasing source and deploying the playable build").await;
     let links = release(&run_dir).await.map_err(|err| err.to_string())?;

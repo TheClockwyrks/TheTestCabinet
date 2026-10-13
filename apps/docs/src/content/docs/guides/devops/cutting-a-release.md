@@ -195,8 +195,9 @@ do to production, and its tip is what Phase 3 promotes.
    and namespace. The run images recompile Rust and wasm, so the image jobs are
    the slow part.
 2. **Confirm the catalog.** The deploy restarts the backend, whose ingest
-   sidecar force-ingests the `staging` tip. That is what makes the merged catalog
-   visible, including the cases that just stopped being experimental.
+   sidecar force-ingests the `staging` tip, and the deploy fails if it did not.
+   That is what makes the merged catalog visible, including the cases that just
+   stopped being experimental.
 3. **Exercise it.** Enqueue runs of the cases that changed in this release,
    through the harness they will actually be run with, and review one end to end.
    A validator repair that was verified locally against a reference build is not

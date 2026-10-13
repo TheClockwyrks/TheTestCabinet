@@ -294,6 +294,11 @@ the baselines each stored version already has and logs a warning that it did. A
 version ingested for the first time from such a checkout has no baseline media
 until a later ingest finds the submodule.
 
+A deployed environment ingests only from a checkout whose cold storage is at the
+commit it pins, so its store never meets the case above in normal operation. An
+environment that has lost its baselines gets them back as [Restoring
+baselines](/deployment/kubernetes/control-plane/#restoring-baselines) describes.
+
 A version captured before engines existed keeps its baselines one level
 shallower, at `validation-baseline/<variant>/`. Those are the baselines of its
 engineless build, so the backend serves and snapshots them as the `none` engine's

@@ -70,3 +70,14 @@
   margin: t.$space-xs t.$space-sm;
   background: color-mix(in srgb, t.$color-accent 24%, transparent);
 }
+
+// A line of explanation in place of an action the run cannot take: why Publish is
+// not offered for a run whose artifact tree is not stored. Wraps within the menu
+// rather than widening it.
+.note {
+  max-width: 16rem;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  line-height: 1.35;
+}

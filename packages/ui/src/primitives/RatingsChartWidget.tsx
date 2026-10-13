@@ -5,9 +5,10 @@ import { orderBars, type ChartSort, type ChartTieBreak } from "./chartSort";
 import { stackedBarChart, type StackedBarSegment } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
 
-// Tilt the model labels so a large roster fits along the axis without overlap
-// (matching MetricChartWidget).
-const LABEL_ROTATE = -40;
+// Tilt the model labels down to the right so a large roster fits along the axis
+// without overlap (matching MetricChartWidget). Tilted that way a label starts
+// under its own bar, so the first bar's label stays inside the chart.
+const LABEL_ROTATE = 40;
 
 // Static fallbacks for the rating colors, mirroring the `--tcab-rating-*` tokens
 // (styles/tokens.css). Used during SSR/prerender, where the live custom
@@ -152,7 +153,7 @@ export function RatingsChartWidget({
   // client, so the chart tracks a live theme swap. Memoized on the segments and
   // their order so it only re-plots when the data or the order changes.
   const spec = useMemo(
-    () => (palette: ChartPalette) => {
+    () => (palette: ChartPalette, availableWidth?: number) => {
       const colors = readRatingColors();
       const series = RATINGS.map((rating) => ({
         name: RATING_META[rating].label,
@@ -163,6 +164,7 @@ export function RatingsChartWidget({
         yTickFormat: integerTick,
         xTickRotate: LABEL_ROTATE,
         xDomain: order,
+        availableWidth,
       });
     },
     [segments, order],
