@@ -32,6 +32,9 @@ export const TICK_HZ = 60;
 /** Where the fixture sounds: every fourth tick of live play, and no other. */
 export const CUE_EVERY = 4;
 
+/** How many ticks after it is asked for the fixture's looping bed starts. */
+export const BED_AFTER = 5;
+
 /** The landmark the fixture paints at a fixed logical point, as `[r, g, b, a]`. */
 export const LANDMARK = { x: 105, y: 55, rgba: [255, 0, 0, 255] } as const;
 
@@ -93,7 +96,8 @@ export interface FixtureDebug {
   reset(options?: { seed: number }): Promise<void>;
   startPlaying(): Promise<void>;
   blip(): Promise<void>;
-  /** Ask for the looping bed, which starts a turn of the event loop later. */
+  /** Ask for the looping bed, which starts a turn of the event loop after the
+   * {@link BED_AFTER}-th tick from here. */
   bed(): Promise<void>;
   /** Put the moving landmark somewhere, so a batch of calls has an argument. */
   setX(value: number): Promise<void>;
