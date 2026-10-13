@@ -70,16 +70,16 @@ This issue precedes
 
 ## Done when
 
-- [ ] The contracts crate holds the run record, asset contract and harness
+- [x] The contracts crate holds the run record, asset contract and harness
       contract types, and `contract-codegen` generates `run-record` and
       `asset-contract` from it in the contracts repository.
-- [ ] `crates/core` depends on the contracts crate for those types and
+- [x] `crates/core` depends on the contracts crate for those types and
       declares none of them itself.
 - [ ] `crates/gg` builds against the contracts crate with no dependency on
       `test-cabinet-core`.
 - [ ] The web console and site consume the generated packages from the
       contracts repository at a pinned tag.
-- [ ] The contracts pipeline runs the drift gate and mirrors to GitHub.
-- [ ] The docs describe the contracts repository as the source of the shared
+- [x] The contracts pipeline runs the drift gate and mirrors to GitHub.
+- [x] The docs describe the contracts repository as the source of the shared
       shapes, and `CLAUDE.md` points there.
 - [ ] Gates green in both repositories.

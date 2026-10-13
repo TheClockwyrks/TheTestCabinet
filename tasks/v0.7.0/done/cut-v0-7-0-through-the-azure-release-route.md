@@ -80,11 +80,11 @@ they describe.
 - [x] `rel/v0.7.0` is recreated from `feat/gg` and holds the changelog page,
       registered in the sidebar.
 - [x] The reference-implementation gate passes on the release branch.
-- [ ] `staging` deployed automatically, was rehearsed with real runs, and
+- [x] `staging` deployed automatically, was rehearsed with real runs, and
       `master` deployed automatically to prod.
-- [ ] The `v0.7.0` tag exists on Azure and on the GitHub mirror at the same
+- [x] The `v0.7.0` tag exists on Azure and on the GitHub mirror at the same
       commit.
-- [ ] Prod serves the v0.7.0 catalog.
-- [ ] The quickstart, the guide, and `development/releasing.md` describe the
+- [x] Prod serves the v0.7.0 catalog.
+- [x] The quickstart, the guide, and `development/releasing.md` describe the
       route that was actually followed.
-- [ ] Gates green.
+- [x] Gates green.
