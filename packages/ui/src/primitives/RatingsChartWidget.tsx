@@ -153,7 +153,7 @@ export function RatingsChartWidget({
   // client, so the chart tracks a live theme swap. Memoized on the segments and
   // their order so it only re-plots when the data or the order changes.
   const spec = useMemo(
-    () => (palette: ChartPalette) => {
+    () => (palette: ChartPalette, availableWidth?: number) => {
       const colors = readRatingColors();
       const series = RATINGS.map((rating) => ({
         name: RATING_META[rating].label,
@@ -164,6 +164,7 @@ export function RatingsChartWidget({
         yTickFormat: integerTick,
         xTickRotate: LABEL_ROTATE,
         xDomain: order,
+        availableWidth,
       });
     },
     [segments, order],

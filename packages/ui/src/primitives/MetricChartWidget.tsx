@@ -228,10 +228,15 @@ export function MetricChartWidget({
     };
     if (scatter) {
       const groups = scatterGroups(ordered);
-      return (palette: ChartPalette) =>
-        scatterChart(groups, palette, { ...labels, formatValue });
+      return (palette: ChartPalette, availableWidth?: number) =>
+        scatterChart(groups, palette, {
+          ...labels,
+          formatValue,
+          availableWidth,
+        });
     }
-    return (palette: ChartPalette) => barChart(ordered, palette, labels);
+    return (palette: ChartPalette, availableWidth?: number) =>
+      barChart(ordered, palette, { ...labels, availableWidth });
   }, [ordered, unit, yTickFormat, scatter, formatValue]);
 
   const modeControl = modal ? (

@@ -8,10 +8,12 @@ import styles from "./Chart.module.scss";
 interface ChartProps {
   /**
    * Builds the Plot spec for the chart. It receives the live palette (read from
-   * the theme on the client) so marks can be themed. Use the helpers in
-   * `plot/charts.ts` (e.g. `barChart`) to build the returned options.
+   * the theme on the client) so marks can be themed, and the width of the
+   * container the chart is drawn into, for a helper whose layout depends on it
+   * (`availableWidth`). Use the helpers in `plot/charts.ts` (e.g. `barChart`)
+   * to build the returned options.
    */
-  spec: (palette: ChartPalette) => PlotOptions;
+  spec: (palette: ChartPalette, width?: number) => PlotOptions;
   /** Accessible title describing what the chart shows. */
   title: string;
   /** Extra class on the figure wrapper, for layout-specific sizing. */
@@ -43,7 +45,7 @@ export function Chart({ spec, title, className }: ChartProps) {
       const width = container.clientWidth;
       if (width === lastWidth) return;
       lastWidth = width;
-      const options = spec(readChartPalette());
+      const options = spec(readChartPalette(), width > 0 ? width : undefined);
       // A spec's own `width` is the least the chart can be drawn at and stay
       // legible (a slot per category under tilted labels). A container narrower
       // than that gets the chart at that width and scrolls it sideways.

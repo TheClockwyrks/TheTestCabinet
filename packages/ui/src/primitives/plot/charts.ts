@@ -74,6 +74,13 @@ interface AxisLabels {
    */
   xTickRotate?: number;
   /**
+   * The width of the container the chart is drawn into, as `Chart` hands it to
+   * a spec. With it the right margin under tilted labels is sized for the width
+   * the chart is really drawn at, so a chart with room to spare is not pushed
+   * off-centre by a margin only a cramped one needs.
+   */
+  availableWidth?: number;
+  /**
    * The bar order along x, as the full list of category labels. Pass it whenever
    * the bars carry a meaningful order — Plot otherwise sorts the ordinal domain
    * it infers, which silently overrides a caller's chosen ranking. Omit for
@@ -116,21 +123,38 @@ function rotatedBottomMargin(
   );
 }
 
-// The right margin a chart needs so that no label tilted down to the right
-// runs past its edge. A label starts under the middle of its own slot and
-// extends `width · cos θ` to the right, over the slots after it, so only what
-// reaches past the last slot needs margin. Measured at the narrowest slot the
-// chart is drawn with, which is the case with the least room.
+// The right margin a chart `width` wide needs so that no label tilted down to
+// the right runs past its edge. A label starts under the middle of its own slot
+// and extends `chars · glyph · cos θ` to the right, over the slots after it, so
+// only what reaches past the last slot needs margin. The slots share what the
+// margins leave, so the margin and the slot width depend on each other: for a
+// label `k` half-slots-and-slots from the right edge of the last slot, the
+// margin `m` has to satisfy `m ≥ extent − k · (width − left − m) / n`, which
+// is solved for `m` here. A wide chart with few bars therefore gets no more
+// than Plot's default, and stays centred in its card.
 function rotatedRightMargin(
   order: readonly string[],
   rotateDeg: number,
+  marginLeft: number,
+  width: number,
 ): number {
   const cos = Math.cos((rotateDeg * Math.PI) / 180);
-  const overhang = order.reduce((widest, label, index) => {
-    const room = (order.length - 1 - index + 0.5) * MIN_ROTATED_SLOT;
-    return Math.max(widest, label.length * GLYPH_PX * cos - room);
+  const n = order.length;
+  const needed = order.reduce((widest, label, index) => {
+    const k = n - 1 - index + 0.5;
+    const extent = label.length * GLYPH_PX * cos;
+    return Math.max(
+      widest,
+      (extent - (k * (width - marginLeft)) / n) / (1 - k / n),
+    );
   }, 0);
-  return Math.max(DEFAULT_RIGHT_MARGIN, Math.ceil(overhang));
+  return Math.max(DEFAULT_RIGHT_MARGIN, Math.ceil(needed));
+}
+
+// The least width a chart of `n` categories is drawn at when its right margin
+// is `marginRight`: a slot of `MIN_ROTATED_SLOT` each.
+function leastWidth(n: number, marginLeft: number, marginRight: number) {
+  return marginLeft + n * MIN_ROTATED_SLOT + marginRight;
 }
 
 // The layout a chart with tilted x labels takes, for the categories `order`
@@ -140,18 +164,42 @@ function rotatedRightMargin(
 // slot of `MIN_ROTATED_SLOT` per category. `Chart` reads that width as a floor:
 // it draws the chart at its container's width when that is wider, and lets the
 // container scroll sideways when it is not.
+//
+// `available` is the container's width, when the caller knows it. The right
+// margin is sized for the width the chart will really be drawn at, the wider of
+// that and the floor; without it, for the floor.
 function rotatedAxisLayout(
   order: readonly string[],
   rotateDeg: number,
   marginLeft: number,
+  available: number | undefined,
 ): Pick<PlotOptions, "marginBottom" | "marginRight" | "width"> {
+  const marginBottom = rotatedBottomMargin(order, rotateDeg);
+  if (rotateDeg <= 0 || order.length === 0) {
+    return {
+      marginBottom,
+      marginRight: DEFAULT_RIGHT_MARGIN,
+      width: leastWidth(order.length, marginLeft, DEFAULT_RIGHT_MARGIN),
+    };
+  }
+  // At the floor every slot is `MIN_ROTATED_SLOT` wide whatever the margin, so
+  // a label's room there is a plain count of slots.
+  const cos = Math.cos((rotateDeg * Math.PI) / 180);
+  const floorMargin = Math.max(
+    DEFAULT_RIGHT_MARGIN,
+    Math.ceil(
+      order.reduce((widest, label, index) => {
+        const room = (order.length - 1 - index + 0.5) * MIN_ROTATED_SLOT;
+        return Math.max(widest, label.length * GLYPH_PX * cos - room);
+      }, 0),
+    ),
+  );
+  const floor = leastWidth(order.length, marginLeft, floorMargin);
   const marginRight =
-    rotateDeg > 0 ? rotatedRightMargin(order, rotateDeg) : DEFAULT_RIGHT_MARGIN;
-  return {
-    marginBottom: rotatedBottomMargin(order, rotateDeg),
-    marginRight,
-    width: marginLeft + order.length * MIN_ROTATED_SLOT + marginRight,
-  };
+    available !== undefined && available > floor
+      ? rotatedRightMargin(order, rotateDeg, marginLeft, available)
+      : floorMargin;
+  return { marginBottom, marginRight, width: floor };
 }
 
 // The categories of an ordinal axis left to right: the stated domain, or the
@@ -251,6 +299,7 @@ export function barChart(
           ),
           labels.xTickRotate,
           Number(base.marginLeft),
+          labels.availableWidth,
         )
       : {}),
     x: {
@@ -411,6 +460,13 @@ interface StackedAxisLabels {
   yTickFormat?: string | ((value: number) => string);
   xTickRotate?: number;
   /**
+   * The width of the container the chart is drawn into, as `Chart` hands it to
+   * a spec. With it the right margin under tilted labels is sized for the width
+   * the chart is really drawn at, so a chart with room to spare is not pushed
+   * off-centre by a margin only a cramped one needs.
+   */
+  availableWidth?: number;
+  /**
    * The bar order along x, as the full list of group names. Pass it whenever the
    * groups have a meaningful order that is not their sorted order — Plot sorts an
    * ordinal domain it infers, which puts `"100"` before `"70"` and silently
@@ -451,6 +507,7 @@ export function stackedBarChart(
           ),
           labels.xTickRotate,
           Number(base.marginLeft),
+          labels.availableWidth,
         )
       : {}),
     x: {
@@ -1203,7 +1260,12 @@ export function scatterChart(
   return {
     ...base,
     ...(labels.xTickRotate
-      ? rotatedAxisLayout(order, labels.xTickRotate, Number(base.marginLeft))
+      ? rotatedAxisLayout(
+          order,
+          labels.xTickRotate,
+          Number(base.marginLeft),
+          labels.availableWidth,
+        )
       : {}),
     x: {
       label: labels.x ?? null,

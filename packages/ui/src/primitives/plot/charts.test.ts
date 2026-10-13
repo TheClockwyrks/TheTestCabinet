@@ -807,6 +807,43 @@ describe("tilted x labels", () => {
     );
   });
 
+  it("keeps Plot's own right margin when the chart has room for its labels", () => {
+    const long = "a-very-long-model-name · some-harness";
+    const order = ["a", "b", "c", long];
+    const cramped = barChart(bars(order), palette, {
+      xTickRotate: 40,
+      xDomain: order,
+    });
+    const roomy = barChart(bars(order), palette, {
+      xTickRotate: 40,
+      xDomain: order,
+      availableWidth: 1600,
+    });
+    expect(Number(cramped.marginRight)).toBeGreaterThan(20);
+    expect(roomy.marginRight).toBe(20);
+  });
+
+  it("draws every label inside a chart of any width", () => {
+    const long = "a-very-long-model-name · some-harness";
+    const order = ["short", "mid-length-name", long, long + "-2"];
+    for (const availableWidth of [300, 500, 700, 1000, 1600]) {
+      const options = barChart(bars(order), palette, {
+        xTickRotate: 40,
+        xDomain: order,
+        availableWidth,
+      });
+      const width = Math.max(availableWidth, Number(options.width));
+      const slot =
+        (width - Number(options.marginLeft) - Number(options.marginRight)) /
+        order.length;
+      order.forEach((label, index) => {
+        const start = Number(options.marginLeft) + (index + 0.5) * slot;
+        const end = start + label.length * 7.2 * Math.cos((40 * Math.PI) / 180);
+        expect(end).toBeLessThanOrEqual(width);
+      });
+    }
+  });
+
   it("draws every label inside the chart at its least width", () => {
     const long = "a-very-long-model-name · some-harness";
     const order = ["short", long, "mid-length-name", long + "-2"];
