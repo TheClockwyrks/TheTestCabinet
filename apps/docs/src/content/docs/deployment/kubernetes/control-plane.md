@@ -184,6 +184,18 @@ other, through `scripts/ci/catalog-ingest.sh`:
   and the sidecar's message. It undoes nothing, because a sidecar that failed
   left the backend serving what it served before.
 
+`verify` spends its wait in calls of at most `TCAB_INGEST_CALL_SECONDS` (240)
+each, because AKS ends a command after ten minutes and keeps none of its
+output. A call that ends with the sidecar still working is followed by another
+until the wait is spent. Each read of the result is given
+`TCAB_INGEST_READ_SECONDS` (30), and a wait that ends with no outcome prints
+what the last read answered together with the sidecar's log.
+
+The script a deploy step runs inside the cluster runs in the image AKS provides
+for a command, so it uses only what that image carries: `bash`, `kubectl`, `jq`
+and the common text tools `awk`, `grep`, `head`, `tail`, `cut` and `tr`. The
+image has no `sed`.
+
 Only a volume reading that is too low fails the preflight. An environment with
 no backend has no volume to read, and a volume that cannot be read is noted and
 left to `verify`, since the deploy may be what repairs the backend. A fetch that

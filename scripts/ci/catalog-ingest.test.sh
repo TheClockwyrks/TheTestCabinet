@@ -13,6 +13,10 @@
 # kubectl, on the deploying machine's PATH, answers `kustomize` with a render whose
 # claim asks for the size the case set.
 #
+# The cluster's script runs with the stubs and with nothing else on PATH but the
+# tools the image AKS gives a command carries, which has no sed, so a script that
+# reaches for a tool the image lacks fails here as it does there.
+#
 # The subject is what each check refuses and says, that the preflight reads the
 # state volume only once the mirror has answered and fails only on a reading that
 # is too low, that it counts the growth a deployment applies to the volume and
@@ -79,7 +83,9 @@ fresh_repo() {
 
 	# `exec ... cat <path>` prints the case's result file, or fails when the case
 	# wrote none. STUB_RESULT_AFTER makes that many reads fail first, which is a
-	# sidecar that has recorded nothing yet. `exec ... df` answers STUB_FREE_KB
+	# sidecar that has recorded nothing yet, and STUB_READ_REFUSAL makes every read
+	# fail saying that. STUB_READ_HANGS makes every read end as `timeout` ends one
+	# that outlasted its seconds. `exec ... df` answers STUB_FREE_KB
 	# kilobytes free, or fails when the case set none; `exec ... git` answers
 	# STUB_COLD_STORAGE. `get deployment` names the backend unless
 	# STUB_NO_BACKEND is set. `get pvc` answers a 10Gi claim of the class
@@ -142,6 +148,11 @@ case "$1" in
 				echo "$STUB_COLD_STORAGE"
 				;;
 			*)
+				[ -z "${STUB_READ_HANGS:-}" ] || exit 124
+				if [ -n "${STUB_READ_REFUSAL:-}" ]; then
+					echo "$STUB_READ_REFUSAL" >&2
+					exit 1
+				fi
 				reads="$(grep -c ' exec ' "$STUB_KUBECTL_LOG")"
 				[ "$reads" -gt "${STUB_RESULT_AFTER:-0}" ] || exit 1
 				cat "$STUB_RESULT" 2>/dev/null || exit 1
@@ -158,12 +169,24 @@ STUB
 printf '%s\n' "$*" >>"$STUB_SLEEP_LOG"
 STUB
 	chmod +x "$repo/cluster/bin/kubectl" "$repo/cluster/bin/sleep"
+	# What the image AKS runs a command in carries, of what a script here might
+	# reach for. It has no sed.
+	mkdir -p "$repo/cluster/image"
+	local tool
+	for tool in bash sh awk grep head tail cut tr sort cat date basename wc jq timeout; do
+		ln -s "$(command -v "$tool")" "$repo/cluster/image/$tool"
+	done
 
 	cat >"$repo/bin/az" <<'STUB'
 #!/usr/bin/env bash
 set -uo pipefail
 printf '%s\n' "$*" >>"$STUB_AZ_LOG"
 [ -z "${STUB_AZ_BROKEN:-}" ] || { echo "ERROR: the stub refuses" >&2; exit 1; }
+# A command AKS ended at its time limit, as AKS reports one.
+if [ -n "${STUB_AZ_CUT_OFF:-}" ]; then
+	jq -n '{exitCode: null, finishedAt: null, id: "stub", logs: null, provisioningState: "Failed", reason: "timeout", startedAt: null}'
+	exit 0
+fi
 command=""
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -172,7 +195,7 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
-logs="$(cd "$STUB_SENT" && PATH="$STUB_CLUSTER_BIN:$PATH" bash -c "$command" 2>&1)"
+logs="$(cd "$STUB_SENT" && PATH="$STUB_CLUSTER_BIN:$STUB_CLUSTER_IMAGE" "$STUB_CLUSTER_IMAGE/bash" -c "$command" 2>&1)"
 code=$?
 jq -n --arg logs "$logs" --argjson code "$code" \
 	'{exitCode: $code, id: "stub", logs: $logs, provisioningState: "Succeeded"}'
@@ -256,7 +279,8 @@ run() { # repo [env-assignment...] -- [argument...]
 		env -u THE_TEST_CABINET_RESOURCE_GROUP -u THE_TEST_CABINET_CLUSTER -u THE_TEST_CABINET_NAMESPACE \
 			-u TCAB_INGEST_MANIFEST \
 			PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="$repo/sent" \
-			STUB_CLUSTER_BIN="$repo/cluster/bin" STUB_KUBECTL_LOG="$repo/kubectl.log" \
+			STUB_CLUSTER_BIN="$repo/cluster/bin" STUB_CLUSTER_IMAGE="$repo/cluster/image" \
+			STUB_KUBECTL_LOG="$repo/kubectl.log" \
 			STUB_SLEEP_LOG="$repo/sleep.log" STUB_RESULT="$repo/result" STUB_RENDER_LOG="$repo/render.log" \
 			"${assignments[@]}" "$repo/scripts/ci/catalog-ingest.sh" "$@" 2>&1
 	)
@@ -719,6 +743,72 @@ status=$?
 check_equal "a container that recorded nothing fails" 1 "$status"
 check_contains "saying so" "INGEST unknown: the ingest container of the-test-cabinet-backend recorded no result in 0s" "$out"
 
+check_contains "says no outcome was recorded" "recorded no outcome in 0s" "$out"
+check_lacks "and does not say the backend did not ingest" "did not ingest" "$out"
+
+echo "--- verify: a wait longer than one call into the cluster ---"
+
+repo="$(fresh_repo)"
+write_result "$repo" running cold-storage
+out="$(run "$repo" TCAB_INGEST_WAIT_SECONDS=20 TCAB_INGEST_POLL_SECONDS=10 TCAB_INGEST_CALL_SECONDS=10 -- verify staging)"
+status=$?
+check_equal "fails when the wait runs out" 1 "$status"
+check_equal "having spent it in two calls" 2 "$(wc -l <"$repo/az.log")"
+check_contains "the second told what the first waited" "catalog-ingest-verify.sh 10 10" "$(sed -n 2p "$repo/az.log")"
+check_equal "each waiting its share" "10
+10" "$(cat "$repo/sleep.log")"
+check_contains "says the first call ended with the sidecar working" \
+	"INGEST unfinished: still at step 'cold-storage' after 10s; reading again." "$out"
+check_contains "and names the whole wait at the end" "INGEST unfinished: still at step 'cold-storage' after 20s" "$out"
+check_equal "printing the sidecar's log once" 1 "$(grep -c "a line of the sidecar's log" <<<"$out")"
+
+repo="$(fresh_repo)"
+write_result "$repo" ok ingest
+out="$(run "$repo" STUB_RESULT_AFTER=3 TCAB_INGEST_WAIT_SECONDS=30 TCAB_INGEST_POLL_SECONDS=10 TCAB_INGEST_CALL_SECONDS=10 \
+	-- verify staging)"
+check_equal "a result that lands in a later call passes" 0 "$?"
+check_equal "in the call that read it" 2 "$(wc -l <"$repo/az.log")"
+
+echo "--- verify: a result that cannot be read ---"
+
+repo="$(fresh_repo)"
+write_result "$repo" ok ingest
+out="$(run "$repo" STUB_READ_REFUSAL='Error from server (Forbidden): cannot create resource "pods/exec"' \
+	TCAB_INGEST_WAIT_SECONDS=10 -- verify staging)"
+status=$?
+check_equal "fails" 1 "$status"
+check_contains "says no result was read" "INGEST unknown: the ingest container of the-test-cabinet-backend recorded no result in 10s" "$out"
+check_contains "and what the read answered" \
+	'The last read of /tmp/ingest-result answered:
+Error from server (Forbidden): cannot create resource "pods/exec"' "$out"
+check_lacks "and does not say the backend did not ingest" "did not ingest" "$out"
+
+# A read that hangs is ended, and the seconds it was given count as waited.
+repo="$(fresh_repo)"
+write_result "$repo" ok ingest
+out="$(run "$repo" STUB_READ_HANGS=1 TCAB_INGEST_WAIT_SECONDS=60 TCAB_INGEST_READ_SECONDS=25 -- verify staging)"
+check_equal "a read that never answers fails" 1 "$?"
+check_contains "saying how long each was given" "the read did not answer in 25s" "$out"
+check_equal "after as many reads as the wait holds" 3 "$(grep -c ' exec ' "$repo/kubectl.log")"
+
+echo "--- verify: the image AKS runs a command in ---"
+
+repo="$(fresh_repo)"
+check_equal "the cluster's script finds no sed" "" \
+	"$(PATH="$repo/cluster/bin:$repo/cluster/image" "$repo/cluster/image/bash" -c 'command -v sed')"
+
+echo "--- verify: a command AKS ended at its time limit ---"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_AZ_CUT_OFF=1 -- verify staging)"
+status=$?
+check_equal "fails" 1 "$status"
+check_contains "says AKS ended the command" "AKS ended the command at its time limit, ten minutes, and kept none of what it wrote." "$out"
+check_contains "and that the result is not known" "so the result is not known" "$out"
+check_lacks "does not say the command never ran" "never ran" "$out"
+check_lacks "and does not say the sidecar failed" "did not ingest" "$out"
+check_equal "without calling again" 1 "$(wc -l <"$repo/az.log")"
+
 echo "--- verify: a cluster that cannot be reached ---"
 
 repo="$(fresh_repo)"
@@ -727,6 +817,7 @@ status=$?
 check_equal "fails" 1 "$status"
 check_contains "says the result could not be read" "the ingest sidecar's result could not be read" "$out"
 check_lacks "and does not say the sidecar failed" "did not ingest" "$out"
+check_contains "says the command never ran" "reported no exit code, so the command never ran" "$out"
 
 echo "--- refusals ---"
 

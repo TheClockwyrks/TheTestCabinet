@@ -1,16 +1,18 @@
 /// <reference types="vite/client" />
 
-// Build-time published dataset, supplied by `vite-plugin-snapshot` from the
-// backend's public R2 snapshot. Inlined into the bundle at build time; empty in
-// dev and when no snapshot URL is configured.
+// The INDEX of the published dataset, supplied by `vite-plugin-snapshot` from the
+// backend's public R2 snapshot and inlined into the bundle at build time; empty
+// in dev and when no snapshot URL is configured.
+//
+// It holds what a listing shows for every run and every case, and nothing else.
+// A run's record, reviews and media and a case's variants, changelog, errata and
+// media are static files the build writes beside the bundle, read through
+// `staticFiles.ts` when a page of that run or case opens.
 declare module "virtual:tcab-snapshot" {
   import type { RunSummary } from "@clockwyrks/run-record/snapshot";
-  import type { StoredReview, WorkspaceFileRef } from "@clockwyrks/ui/client";
   import type {
-    SeededInput,
-    TestCaseDetail,
     TestCaseGroupSummary,
-    VariantSummary,
+    TestCaseSummary,
   } from "@clockwyrks/ui/app";
   import type { Model } from "@clockwyrks/ui/client";
   import type { Comparison } from "@clockwyrks/run-record/comparison";
@@ -18,57 +20,14 @@ declare module "virtual:tcab-snapshot" {
 
   /**
    * The flat summary index (`runs.json`), newest first — the bounded run-summary
-   * cards the run log and list pages consume. Full records are NOT inlined; they
-   * are fetched lazily by id from the emitted `runs/<id>.json` asset.
+   * cards the run log and list pages consume.
    */
   export const runSummaries: RunSummary[];
   /**
-   * Reconstructed `writeup.md` framing per run id (rating frontmatter + body).
-   * The *aggregate* writeup when a run carries more than one review.
+   * One listing card per published case. A version is listed in a card's
+   * `versions` exactly when the build wrote its `cases/<slug>/<version>.json`.
    */
-  export const writeups: Record<string, string>;
-  /** Each published run's individual reviews, keyed by run id. */
-  export const reviews: Record<string, StoredReview[]>;
-  /**
-   * The published test-case catalog, inlined in FULL at build time. The site has
-   * no backend to fetch a case from, so each entry carries the detail
-   * (variants, changelog, errata) a case page needs as well as the listing
-   * fields; `staticGallery` serves both halves of the contract from this array.
-   */
-  export const testCases: SnapshotTestCase[];
-
-  /**
-   * One variant as the snapshot carries it: the gallery's {@link VariantSummary}
-   * (the engineless rendering) plus the same prompt and specs re-rendered for
-   * each engine the version declares that vendors a runtime. A case's prompt and
-   * `.hbs` specs branch on the selected engine, so a run's Inputs tab reads the
-   * entry for the engine its run recorded.
-   */
-  export interface SnapshotVariant extends VariantSummary {
-    engineRenderings: Record<
-      string,
-      {
-        prompt: string;
-        seededInputs: SeededInput[];
-        /** The variant's effective starter-workspace set for this engine — a
-         * starter project is written against a runtime, so each rendering
-         * carries its own (the engineless set is the variant's own
-         * `workspace`). */
-        workspace: WorkspaceFileRef[];
-      }
-    >;
-  }
-
-  /**
-   * One case as the snapshot carries it: the gallery's {@link TestCaseDetail}
-   * (whose `variants` are the latest version's) plus every older published
-   * version's variants, so a run of an older version resolves the inputs it was
-   * itself given.
-   */
-  export interface SnapshotTestCase extends Omit<TestCaseDetail, "variants"> {
-    variants: SnapshotVariant[];
-    priorVariantsByVersion: Record<string, SnapshotVariant[]>;
-  }
+  export const testCases: TestCaseSummary[];
   /** The composed model catalog (wire `Model` shape); mapped via `toModelSummary`. */
   export const models: Model[];
   /** The published harness comparisons, each the full read model (rendered read-only). */
@@ -91,73 +50,12 @@ declare module "virtual:tcab-snapshot" {
    */
   export const ggRuns: { generatedAt: string; documents: GgRunDoc[] } | null;
   /**
-   * Resolved proof-of-implementation media URLs, keyed by run id then by served
-   * file name (`<proof-id>.<ext>`).
+   * The media each case's catalog card previews (its `showcase`), resolved to
+   * absolute URLs and keyed by the previewed `<slug>/<version>/<variant>` subject
+   * then by the authored file name (a video's `.webm` request resolving to its
+   * published `.mp4`). The catalog is a listing, so this one slice of a case
+   * version's showcase media is index data; the version's own file carries the
+   * same addresses with the rest of its media.
    */
-  export const proofMediaUrls: Record<string, Record<string, string>>;
-  /**
-   * Resolved asset-generation media URLs, keyed by run id then by served file name
-   * — a single sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json`
-   * or a sprite sheet's per-frame `regenerated-<index>.png` (etc.).
-   */
-  export const assetMediaUrls: Record<string, Record<string, string>>;
-  /**
-   * Resolved *actual* automated-validation media URLs (the model build's debug-script
-   * outputs), keyed by run id then by the flat `<item>__<output>.<ext>` name the
-   * reviewer UI requests.
-   */
-  export const validationMediaUrls: Record<string, Record<string, string>>;
-  /**
-   * Where a run's recordings keep their shared image store, as an absolute URL
-   * prefix, keyed by run id. One string per run rather than one entry per file: a
-   * store holds a file per unique image a run's recordings drew, this module is
-   * inlined into the chunk every visitor downloads, and the names are content
-   * addressed and published verbatim — so the prefix plus the name a recording
-   * carries is the URL.
-   */
-  export const validationStorePrefixes: Record<string, string>;
-  /**
-   * Resolved showcase media URLs (the run's carousel media plus any image the
-   * description references), keyed by run id then by the recorded file name (a
-   * video's `.webm` request resolving to its published `.mp4`).
-   */
-  export const showcaseMediaUrls: Record<string, Record<string, string>>;
-  /**
-   * Resolved **case** showcase media URLs (a variant's authored carousel,
-   * captured from the reference implementation), keyed by a
-   * `<slug>/<version>/<variant>` subject key then by the authored file name (a
-   * video's `.webm` request resolving to its published `.mp4`). Case-scoped,
-   * like the validation baselines — the showcase is committed with the version,
-   * not produced by a run.
-   */
-  export const caseShowcaseMediaUrls: Record<string, Record<string, string>>;
-  /**
-   * Resolved code-analysis document URLs, keyed by run id — one per run, since a run
-   * has exactly one analysis.
-   *
-   * A run id **absent** from this map was never analysed, which is most of the corpus:
-   * analysis is deliberately not backfilled, so it starts on the day the analyzer
-   * shipped. That absence means "not measured", never "wrote no code".
-   */
-  export const codeAnalysisUrls: Record<string, string>;
-  /**
-   * Resolved *baseline* automated-validation media URLs (the reference
-   * implementation's debug-script outputs), keyed by a `<slug>/<version>/<variant>`
-   * subject key then by the flat `<item>__<output>.<ext>` name. Case-scoped.
-   */
-  export const validationBaselineUrls: Record<string, Record<string, string>>;
-  /**
-   * Where a case version's committed baselines keep their shared image store, as an
-   * absolute URL prefix, keyed by the same `<slug>/<version>/<engine>/<variant>`
-   * subject key. The case-scoped counterpart of {@link validationStorePrefixes}.
-   */
-  export const baselineStorePrefixes: Record<string, string>;
-  /**
-   * Resolved **asset-reference** media URLs (an asset-generation case variant's
-   * published reference frames), keyed by a `<slug>/<version>/<variant>` subject key
-   * then by the file below that variant's prefix — `frames/<index>.png` and the
-   * `frames/<index>.actions.json` log it was drawn from. Case-scoped, like the
-   * validation baselines.
-   */
-  export const referenceMediaUrls: Record<string, Record<string, string>>;
+  export const catalogShowcaseMediaUrls: Record<string, Record<string, string>>;
 }

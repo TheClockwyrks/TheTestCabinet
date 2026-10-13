@@ -5,11 +5,12 @@
 // count inside ONE evaluation in the page, where nothing the page awaits can
 // settle. These two waits step a frame at a time for exactly that reason, and the
 // fixture's bed reproduces it: it is asked for on one frame and starts a turn of
-// the event loop later.
+// the event loop after a fixed number of frames, however long the test takes to
+// step them.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { stepUntilBed, stepUntilSound } from "../src/index";
-import { CUE_EVERY, createHarness, type Harness } from "./fixture";
+import { BED_AFTER, CUE_EVERY, createHarness, type Harness } from "./fixture";
 
 let h: Harness;
 
@@ -34,11 +35,15 @@ it("steps until the build has sounded at all", async () => {
 
 it("steps until a bed that starts late is running, and counts its start", async () => {
   await h.debug.startPlaying();
-  // Asked for here, and unobservable on this frame by construction.
+  // Asked for here, and unobservable until its frame has been stepped.
   await h.debug.bed();
   expect(await h.loopingSounds()).toBe(0);
+  await h.step(BED_AFTER - 1);
+  expect(await h.loopingSounds()).toBe(0);
 
+  // The wait keeps stepping past the frames a late bed is still absent on.
   expect(await stepUntilBed(h)).toBe(1);
+  expect(h.frame()).toBeGreaterThanOrEqual(BED_AFTER);
   expect(await h.loopingSounds()).toBe(1);
   expect(await h.loopStarts()).toBe(1);
 });

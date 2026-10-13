@@ -92,10 +92,11 @@ scrubbed like every other public object. Each is assembled by the same
 experiment's runs rather than only the published ones, so the public numbers
 match the console's exactly.
 
-The static site reads those objects at build time
-(`apps/site/vite-plugin-snapshot.ts` and `apps/site/src/staticGallery.ts`),
-exactly as it inlines runs and cases. A snapshot published without a comparisons
-index renders as no comparisons rather than failing the build.
+The static site reads those objects at build time into its
+[index](/components/site/overview/#where-the-data-lives), in
+`apps/site/vite-plugin-snapshot.ts` and `apps/site/src/staticGallery.ts`. A
+snapshot published without a comparisons index renders as no comparisons rather
+than failing the build.
 
 The pages under `packages/ui/src/app/pages/comparisons/` render for both hosts.
 Create, edit, trigger, and publish affordances are gated on `canExecute`

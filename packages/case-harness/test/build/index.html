@@ -58,6 +58,8 @@
       heldTicks: 0,
       clicks: 0,
       taken: 0,
+      /** How many times the build was reset, which withdraws a bed not yet started. */
+      resets: 0,
       pointer: { x: -1, y: -1 },
       /**
        * Every call the SECONDS-FRAMES step operation received, as
@@ -92,23 +94,32 @@
       state.sounds += 1;
     }
 
-    // A looping bed, started well after the tick that asked for it — the way a
-    // build whose bed waits on a decoded file starts its own. Nothing can observe
-    // it on that tick, which is what a wait for it has to survive. The delay is
-    // long enough that no single crossing into this page can cover it, and short
-    // enough that a wait stepping one tick per crossing finds it easily.
-    const BED_DELAY_MS = 100;
+    // A looping bed, started some ticks after it was asked for — the way a build
+    // whose bed waits on a decoded file starts its own. Asking only arms it: the
+    // BED_AFTER-th tick from then hands the start to the event loop, so it lands
+    // a turn later than that tick, whatever the wall clock does in between.
+    // Nothing can observe it before that tick has run, a drive that runs its
+    // whole count inside one evaluation never sees it, and a wait stepping one
+    // tick per crossing finds it a few ticks in.
+    const BED_AFTER = 5;
+    let bedTicksLeft = 0;
     let bedSource = null;
     function bed() {
       audio ??= new (window.AudioContext || window.webkitAudioContext)();
+      bedTicksLeft = BED_AFTER;
+    }
+    function startBedLater() {
+      const asked = state.resets;
       setTimeout(() => {
+        // A reset since the tick withdraws the bed it had not started yet.
+        if (state.resets !== asked) return;
         const source = audio.createBufferSource();
         source.buffer = audio.createBuffer(1, 128, audio.sampleRate);
         source.loop = true;
         source.connect(audio.destination);
         source.start();
         bedSource = source;
-      }, BED_DELAY_MS);
+      }, 0);
     }
 
     function fit() {
@@ -150,6 +161,10 @@
     }
 
     function tick() {
+      if (bedTicksLeft > 0) {
+        bedTicksLeft -= 1;
+        if (bedTicksLeft === 0) startBedLater();
+      }
       state.taken += pending.length;
       pending.length = 0;
       state.frames += 1;
@@ -195,6 +210,8 @@
         state.spans = [];
         state.seed = options?.seed ?? null;
         held.clear();
+        state.resets += 1;
+        bedTicksLeft = 0;
         bedSource?.stop();
         bedSource = null;
         draw();

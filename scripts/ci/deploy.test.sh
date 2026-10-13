@@ -103,7 +103,8 @@ STUB
 
 	# Records every invocation's arguments, one per line, and answers the
 	# result STUB_AZ_EXIT_CODE declares. STUB_AZ_BROKEN makes the invocation
-	# itself fail without a result. STUB_AZ_FAIL_CALL names one invocation, by
+	# itself fail without a result. STUB_AZ_CUT_OFF makes it answer as AKS does
+	# for a command it ended at its time limit. STUB_AZ_FAIL_CALL names one invocation, by
 	# its place in the run, whose command fails. STUB_AZ_RUNNING makes the first invocation
 	# answer with its command still running, and that many reads of the result
 	# answer the same before the result carries the exit code. The two forms
@@ -118,6 +119,10 @@ n="$(wc -l <"$STUB_AZ_LOG")"
 if [ -n "${STUB_AZ_BROKEN:-}" ]; then
 	echo "ERROR: (AuthorizationFailed) the stub refuses" >&2
 	exit 1
+fi
+if [ -n "${STUB_AZ_CUT_OFF:-}" ]; then
+	printf '{\n  "exitCode": null,\n  "finishedAt": null,\n  "id": "stub-command",\n  "logs": null,\n  "provisioningState": "Failed",\n  "reason": "timeout",\n  "startedAt": null\n}\n'
+	exit 0
 fi
 if [ "$n" -le "${STUB_AZ_RUNNING:-0}" ]; then
 	if [ "$1 $2 $3" = "aks command result" ]; then
@@ -424,6 +429,18 @@ check_failed "fails" "$status"
 check_contains "prints what az said" "(AuthorizationFailed) the stub refuses" "$out"
 check_contains "says the command never ran" "reported no exit code, so the command never ran" "$out"
 check_equal "rolls nothing back" 1 "$(wc -l <"$repo/az.log")"
+
+echo "--- a command AKS ended at its time limit ---"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_AZ_CUT_OFF=1 "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+status=$?
+check_failed "fails" "$status"
+check_contains "says AKS ended the command" "AKS ended the command at its time limit, ten minutes, and kept none of what it wrote." "$out"
+check_lacks "does not say the command never ran" "never ran" "$out"
+check_contains "says nothing was rolled back" "Nothing was rolled back: the apply ran" "$out"
+check_lacks "rolls nothing back" "Rolling back" "$out"
+check_equal "and reaches the cluster once" 1 "$(wc -l <"$repo/az.log")"
 
 echo "--- a render missing one image ---"
 

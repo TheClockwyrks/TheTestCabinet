@@ -195,6 +195,12 @@ case "$verdict" in
 		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"kubectl -n ${NAMESPACE} get deployment -o wide\""
 	exit 1
 	;;
+4)
+	remediation "Nothing was rolled back: the apply ran, and the rollout may still be" \
+		"under way or may have finished. The cluster reports what it runs:" \
+		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"kubectl -n ${NAMESPACE} get deployment -o wide\""
+	exit 1
+	;;
 esac
 
 # A rollout that never becomes ready leaves the cluster holding a new revision

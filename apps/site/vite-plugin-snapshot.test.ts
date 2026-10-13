@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSnapshotFetcher, type SnapshotFetch } from "./snapshot-fetch";
-import { loadSnapshot, serialize } from "./vite-plugin-snapshot";
+import {
+  loadSnapshot,
+  PAGES_FILE_LIMIT_BYTES,
+  reportSizes,
+  serialize,
+} from "./vite-plugin-snapshot";
 
 const BASE = "https://snapshot.example";
 const RUNS = 12;
@@ -130,8 +135,13 @@ async function load(source: Bucket, concurrency: number): Promise<Loaded> {
   const fetcher = createSnapshotFetcher({ fetch: source.fetch });
   const pending = loadSnapshot(
     BASE,
-    (id, json) => emitted.push(`events ${id} ${json}`),
-    (id, json) => emitted.push(`record ${id} ${json}`),
+    {
+      run: (id, json) => emitted.push(`run ${id} ${json}`),
+      events: (id, json) => emitted.push(`events ${id} ${json}`),
+      caseDetail: (slug, json) => emitted.push(`case ${slug} ${json}`),
+      caseVersion: (slug, version, json) =>
+        emitted.push(`version ${slug}/${version} ${json}`),
+    },
     fetcher,
     concurrency,
   ).then(
@@ -146,6 +156,83 @@ async function load(source: Bucket, concurrency: number): Promise<Loaded> {
     emitted,
     fetched: fetcher.fetched,
     retried: fetcher.retried,
+  };
+}
+
+/** What one kind of file was emitted with, by the id its line names. */
+function emittedAs<T>(loaded: Loaded, kind: string): Map<string, T> {
+  const files = new Map<string, T>();
+  for (const line of loaded.emitted) {
+    const [lineKind, id, ...json] = line.split(" ");
+    if (lineKind === kind && id !== undefined) {
+      files.set(id, JSON.parse(json.join(" ")) as T);
+    }
+  }
+  return files;
+}
+
+/** One exported constant of the serialized index. */
+function exported<T>(loaded: Loaded, name: string): T {
+  const match = new RegExp(`^export const ${name} = (.*);$`, "m").exec(
+    loaded.module ?? "",
+  );
+  if (!match?.[1]) throw new Error(`the index exports no ${name}`);
+  return JSON.parse(match[1]) as T;
+}
+
+/** A case version's snapshot file with one variant that declares a showcase. */
+function caseFile(
+  slug: string,
+  version: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    slug,
+    version,
+    name: slug,
+    difficulty: "easy",
+    tags: ["t"],
+    summary: "a summary",
+    description: `${slug} ${version} described`,
+    changelog: `${version} changed`,
+    domains: [{ id: "play", name: "Play", description: "" }],
+    variants: [
+      {
+        slug: "base",
+        name: "Base",
+        description: null,
+        prompt: `${version} prompt`,
+        engineRenderings: { tide: { prompt: `${version} prompt for tide` } },
+        showcase: {
+          description: "shown",
+          media: [
+            {
+              file: "clip.webm",
+              name: "Clip",
+              kind: "video",
+              key: `media/${slug}/${version}/clip.mp4`,
+            },
+          ],
+        },
+        referenceSheet: { frames: [2] },
+      },
+    ],
+    validationBaselines: [
+      {
+        engine: "tide",
+        variant: "base",
+        file: "item__shot.png",
+        key: `base/${slug}/${version}/item__shot.png`,
+      },
+      {
+        engine: "tide",
+        variant: "base",
+        file: "img.abc.png",
+        key: `base/${slug}/${version}/store/img.abc.png`,
+      },
+    ],
+    ...extra,
   };
 }
 
@@ -175,7 +262,7 @@ describe("loadSnapshot", () => {
     expect(source.peak()).toBe(8);
   });
 
-  it("emits a run's record before its events, one run after another", async () => {
+  it("emits a run's file before its events, then each case before its versions", async () => {
     const { emitted } = await load(
       bucket(snapshotObjects(), { delay: reversed }),
       8,
@@ -183,8 +270,11 @@ describe("loadSnapshot", () => {
 
     const expected: string[] = [];
     for (let index = 0; index < RUNS; index += 1) {
-      expected.push(`record ${runId(index)}`);
+      expected.push(`run ${runId(index)}`);
       if (index % 3 !== 0) expected.push(`events ${runId(index)}`);
+    }
+    for (const slug of CASES) {
+      expected.push(`case ${slug}`, `version ${slug}/1.0.0`);
     }
     expect(
       emitted.map((line) => line.split(" ").slice(0, 2).join(" ")),
@@ -298,7 +388,250 @@ describe("loadSnapshot", () => {
       ),
     ).toEqual(["alpha", "gamma"]);
     expect(
-      loaded.emitted.filter((line) => line.startsWith("record")),
+      loaded.emitted.filter((line) => line.startsWith("run ")),
     ).toHaveLength(RUNS);
+    // A case whose file was left out has no file of its own to ask for either.
+    expect([...emittedAs(loaded, "case").keys()]).toEqual(["alpha", "gamma"]);
+    expect([...emittedAs(loaded, "version").keys()]).toEqual([
+      "alpha/1.0.0",
+      "gamma/1.0.0",
+    ]);
+  });
+
+  it("writes a run's record, reviews and media to the run's own file", async () => {
+    const objects = snapshotObjects();
+    objects.set("docs/run-01.json", {
+      schemaVersion: 1,
+      record: { id: "run-01", payload: 1 },
+      reviews: [
+        {
+          reviewerId: "u1",
+          reviewer: "Ada",
+          ratings: [{ domain: "play", rating: "great" }],
+          aesthetics: [
+            { domain: "play", rating: "good" },
+            { domain: "feel", rating: "okay" },
+          ],
+          writeup: "Plays well.",
+          pictureKey: "pfp/u1",
+        },
+      ],
+      proofMedia: [{ id: "p", kind: "image", key: "media/run-01/proof.png" }],
+      assetMedia: [{ file: "preview.png", key: "media/run-01/preview.png" }],
+      validationMedia: [
+        { file: "item__clip.webm", key: "val/run-01/item__clip.mp4" },
+        { file: "img.one.png", key: "val/run-01/store/img.one.png" },
+        { file: "img.two.png", key: "val/run-01/store/img.two.png" },
+      ],
+      showcaseMedia: [{ file: "hero.png", key: "show/run-01/hero.png" }],
+      codeAnalysisKey: "code/run-01/7.json",
+      events: [{ seq: 1 }],
+    });
+
+    const loaded = await load(bucket(objects), 8);
+
+    expect(emittedAs(loaded, "run").get("run-01")).toEqual({
+      record: { id: "run-01", payload: 1 },
+      reviews: [
+        {
+          reviewerId: "u1",
+          reviewer: "Ada",
+          ratings: [{ domain: "play", rating: "great" }],
+          aesthetic: "okay",
+          aesthetics: [
+            { domain: "play", rating: "good" },
+            { domain: "feel", rating: "okay" },
+          ],
+          writeup: "Plays well.",
+          checklist: [],
+          reviewedAt: null,
+          reviewerPictureUrl: `${BASE}/pfp/u1`,
+        },
+      ],
+      media: {
+        proof: { "proof.png": `${BASE}/media/run-01/proof.png` },
+        asset: { "preview.png": `${BASE}/media/run-01/preview.png` },
+        validation: {
+          "item__clip.webm": `${BASE}/val/run-01/item__clip.mp4`,
+        },
+        validationStorePrefix: `${BASE}/val/run-01/store/`,
+        showcase: { "hero.png": `${BASE}/show/run-01/hero.png` },
+        codeAnalysisUrl: `${BASE}/code/run-01/7.json`,
+      },
+    });
+    // A run that published none of it still has every field, empty.
+    expect(emittedAs(loaded, "run").get("run-00")).toEqual({
+      record: { id: "run-00", payload: 0 },
+      reviews: [],
+      media: {
+        proof: { "proof.png": `${BASE}/media/run-00/proof.png` },
+        asset: {},
+        validation: {},
+        validationStorePrefix: null,
+        showcase: {},
+        codeAnalysisUrl: null,
+      },
+    });
+  });
+
+  it("keeps the index independent of what any one run carries", async () => {
+    const plain = await load(bucket(snapshotObjects()), 8);
+    const objects = snapshotObjects();
+    for (let index = 0; index < RUNS; index += 1) {
+      const key = `docs/${runId(index)}.json`;
+      objects.set(key, {
+        ...(objects.get(key) as object),
+        reviews: [{ reviewer: "Ada", ratings: [], writeup: "x".repeat(4096) }],
+        validationMedia: Array.from({ length: 64 }, (_unused, item) => ({
+          file: `item-${item}__shot.png`,
+          key: `val/${runId(index)}/item-${item}__shot.png`,
+        })),
+        showcaseMedia: [{ file: "hero.png", key: `show/${runId(index)}.png` }],
+        codeAnalysisKey: `code/${runId(index)}.json`,
+      });
+    }
+
+    const heavy = await load(bucket(objects), 8);
+
+    expect(heavy.module).toBe(plain.module);
+  });
+
+  it("splits a case into its listing card, its detail and a file per version", async () => {
+    const objects = snapshotObjects();
+    const runs = objects.get("s1/runs.json") as {
+      runs: Array<{
+        subject: { testCaseSlug: string; testCaseVersion: string };
+      }>;
+    };
+    // The oldest alpha run was of an older version, referenced after the newer.
+    const oldest = runs.runs[9];
+    if (oldest) oldest.subject.testCaseVersion = "0.9.0";
+    objects.set("s1/cases/alpha/1.0.0.json", caseFile("alpha", "1.0.0"));
+    objects.set(
+      "s1/cases/alpha/0.9.0.json",
+      caseFile("alpha", "0.9.0", { changelog: null }),
+    );
+
+    const loaded = await load(bucket(objects), 8);
+
+    // The index: the listing card alone, and the media that card previews.
+    expect(
+      exported<Array<{ slug: string }>>(loaded, "testCases").find(
+        (entry) => entry.slug === "alpha",
+      ),
+    ).toEqual({
+      slug: "alpha",
+      name: "alpha",
+      testType: "end-to-end",
+      assetKind: null,
+      difficulty: "easy",
+      tags: ["t"],
+      summary: "a summary",
+      versions: ["1.0.0", "0.9.0"],
+      latestVersion: "1.0.0",
+      showcase: {
+        version: "1.0.0",
+        variant: "base",
+        media: [{ file: "clip.webm", name: "Clip", kind: "video" }],
+      },
+    });
+    expect(exported(loaded, "catalogShowcaseMediaUrls")).toEqual({
+      "alpha/1.0.0/base": {
+        "clip.webm": `${BASE}/media/alpha/1.0.0/clip.mp4`,
+      },
+    });
+    expect(loaded.module).not.toContain("prompt");
+    expect(loaded.module).not.toContain("described");
+
+    // The case's own file: what spans its versions.
+    expect(emittedAs(loaded, "case").get("alpha")).toEqual({
+      description: "alpha 1.0.0 described",
+      descriptionsByVersion: {
+        "1.0.0": "alpha 1.0.0 described",
+        "0.9.0": "alpha 0.9.0 described",
+      },
+      changelog: [{ version: "1.0.0", body: "1.0.0 changed" }],
+      errata: [],
+      variantsByVersion: {
+        "1.0.0": [{ slug: "base", name: "Base" }],
+        "0.9.0": [{ slug: "base", name: "Base" }],
+      },
+      enginesByVersion: {
+        "1.0.0": ["none", "tide"],
+        "0.9.0": ["none", "tide"],
+      },
+      domains: [{ id: "play", name: "Play", description: "" }],
+      sheet: null,
+    });
+
+    // One file per version, each with its own variants and media.
+    const versions = emittedAs<{
+      variants: Array<{
+        prompt: string;
+        engineRenderings: Record<string, { prompt: string }>;
+      }>;
+      media: unknown;
+    }>(loaded, "version");
+    expect(
+      [...versions.keys()].filter((id) => id.startsWith("alpha/")),
+    ).toEqual(["alpha/1.0.0", "alpha/0.9.0"]);
+    const older = versions.get("alpha/0.9.0");
+    expect(older?.variants[0]?.prompt).toBe("0.9.0 prompt");
+    expect(older?.variants[0]?.engineRenderings.tide?.prompt).toBe(
+      "0.9.0 prompt for tide",
+    );
+    expect(older?.media).toEqual({
+      baselines: {
+        "tide/base": {
+          "item__shot.png": `${BASE}/base/alpha/0.9.0/item__shot.png`,
+        },
+      },
+      baselineStorePrefixes: {
+        "tide/base": `${BASE}/base/alpha/0.9.0/store/`,
+      },
+      showcase: {
+        base: { "clip.webm": `${BASE}/media/alpha/0.9.0/clip.mp4` },
+      },
+      reference: {
+        base: {
+          "frames/2.png": `${BASE}/media/references/alpha/0.9.0/base/frames/2.png`,
+          "frames/2.actions.json": `${BASE}/media/references/alpha/0.9.0/base/frames/2.actions.json`,
+        },
+      },
+    });
+  });
+});
+
+describe("reportSizes", () => {
+  const files = [
+    { fileName: "assets/index-abc.js", bytes: 4_000_000 },
+    { fileName: "assets/VoxelViewer-def.js", bytes: 1_300 },
+    { fileName: "assets/index-abc.css", bytes: 9_000_000 },
+    { fileName: "runs/r1.json", bytes: 150_000 },
+    { fileName: "run-events/r1.json", bytes: 60_000 },
+    { fileName: "cases/alpha/1.0.0.json", bytes: 900_000 },
+    { fileName: "cases/alpha.json", bytes: 20_000 },
+  ];
+
+  it("names the bundle and the largest data file", () => {
+    expect(reportSizes(files)).toEqual({
+      bundle: { fileName: "assets/index-abc.js", bytes: 4_000_000 },
+      data: { fileName: "cases/alpha/1.0.0.json", bytes: 900_000 },
+      oversized: [],
+    });
+  });
+
+  it("accepts a file of exactly the limit and names every file over it", () => {
+    const report = reportSizes([
+      ...files,
+      { fileName: "assets/exact.js", bytes: PAGES_FILE_LIMIT_BYTES },
+      { fileName: "runs/r2.json", bytes: PAGES_FILE_LIMIT_BYTES + 1 },
+      { fileName: "assets/huge.js", bytes: 32_000_000 },
+    ]);
+
+    expect(report.oversized).toEqual([
+      { fileName: "assets/huge.js", bytes: 32_000_000 },
+      { fileName: "runs/r2.json", bytes: PAGES_FILE_LIMIT_BYTES + 1 },
+    ]);
   });
 });
