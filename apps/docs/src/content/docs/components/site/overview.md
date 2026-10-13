@@ -25,18 +25,54 @@ Signing in and launching runs stay with the console.
 The dataset is the public snapshot the
 [backend](/components/backend/overview/#public-snapshot) exports to a Cloudflare
 R2 bucket. A build-time Vite plugin fetches that snapshot once from
-`TCAB_SNAPSHOT_URL` and inlines it, so the shipped output never queries the
-backend or R2 at runtime. A backend deploy hook triggers a rebuild whenever the
-snapshot changes. An unset URL, or a bucket whose `index.json` is absent because
-nothing has been published yet, resolves to an empty dataset and still builds; a
-reachable but broken snapshot fails the build.
+`TCAB_SNAPSHOT_URL` and writes it into the build, so the shipped output never
+queries the backend at runtime. A backend deploy hook triggers a rebuild whenever
+the snapshot changes. An unset URL, or a bucket whose `index.json` is absent
+because nothing has been published yet, resolves to an empty dataset and still
+builds; a reachable but broken snapshot fails the build.
 
-The build inlines the snapshot's [summary
-index](/components/backend/snapshot/#runsjson--the-run-index), one `RunSummary`
-card per published run, as the in-memory dataset every list, card, leaderboard,
-and metric reads. Each run's full record is emitted as a per-run `runs/<id>.json`
-static asset, fetched when that run's detail page opens, so the bundle does not
-grow with each record.
+### Where the data lives
+
+The build places each piece of the snapshot by the kind of data it is, the same
+way for every run and every case:
+
+| Data | Location in the build | Read |
+| --- | --- | --- |
+| The index | Inlined into the application bundle | With the page |
+| One run's detail | `runs/<id>.json` | When a page of that run opens |
+| One run's event log | `run-events/<id>.json` | When its Events tab opens |
+| One case's detail | `cases/<slug>.json` | When a page of that case opens |
+| One case version | `cases/<slug>/<version>.json` | When that version is shown |
+
+The index is what a listing shows for every run and every case. It holds the
+snapshot's [summary index](/components/backend/snapshot/#runsjson--the-run-index),
+one `RunSummary` card per published run, which every list, card, leaderboard and
+metric reads. It also holds one listing card per case, the address of the
+showcase media each card previews, the model catalog, the test-case groups, the
+comparisons and the gg document corpus.
+
+A run's file holds its full record, its reviews and the address of every media
+file the run published. A case's file holds what spans its versions: each
+version's description, the changelog, the errata, and the variants and engines
+each version offers. A case version's file holds that version's variants, with
+their prompts, seeded specs and checklists rendered for each engine, and the
+address of the version's baseline, showcase and reference media.
+
+The files are copies made at build time and deployed with the site, so the
+browser reads them from the site's own domain. Images, videos, starter-workspace
+files and code-analysis documents stay in the bucket, and a page loads them from
+there by the address its run or case file recorded.
+
+A listing therefore costs one index entry per run, and a detail costs nothing
+until a visitor opens it. The bundle grows with the number of runs and cases and
+is independent of how much any one of them carries.
+
+Cloudflare Pages refuses a deployment that holds a file over 25 MiB. The build
+reports the size of the bundle and of its largest data file, and fails naming
+the file when one exceeds that limit.
+
+A request for a file the deployment does not hold is answered with the
+application shell. The site reads that answer as the file's absence.
 
 ### Fetching the snapshot
 
@@ -74,7 +110,7 @@ The site presents published runs as a browsable gallery. Each run is attributed
 to the [variant](/testing/end-to-end/overview/#variants) of the case it built,
 taken from its [run record](/components/core/run-records/#subject). Listings are
 paged rather than loaded whole, and their search and sorting run client-side
-over the inlined run index. The authoritative ranking of models for a given case
+over the run index. The authoritative ranking of models for a given case
 and variant lives in that case's [leaderboard](#leaderboard).
 
 A validator-rated run carries a read-only browser of its automated
@@ -145,7 +181,8 @@ least one. A published validator-rated run may carry none, standing on its
 functional rating and score alone until someone rates its aesthetics. A run may
 carry several reviews from different reviewers, and its overall rating on the
 reviewer-given channel is the worst across them. Reviews travel to the site in
-the exported snapshot alongside the run record.
+the exported snapshot alongside the run record, and the run's page reads them
+from the run's file.
 
 ## Hosting
 

@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * The suite of the build-time plugins, which run in Node beside the Vite config.
+ * The suite of the build-time plugins, which run in Node beside the Vite config,
+ * and of the reader of the static files they write.
  *
  * It is a config of its own so that the tests do not load `vite.config.ts`,
  * whose plugins would read the environment and the repository's `runs/`
@@ -10,7 +11,7 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
-    include: ["*.test.ts"],
+    include: ["*.test.ts", "src/**/*.test.ts"],
     environment: "node",
     passWithNoTests: false,
   },
