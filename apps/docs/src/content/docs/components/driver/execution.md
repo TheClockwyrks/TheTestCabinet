@@ -40,7 +40,8 @@ stack. Each image is the shared base plus what that kind needs: an
 [end-to-end](/testing/end-to-end/overview/) run gets the base plus the shared
 Rust to WebAssembly toolchain, each
 [asset-generation](/testing/asset-generation/overview/) kind gets the base plus
-that kind's baked-in tool binary, and a
+that kind's baked-in tool binary, built from its `tool-*`
+[repository](/development/repositories/), and a
 [full-stack](/testing/full-stack/overview/) run gets that toolchain plus the
 asset-generation binaries of its dimension. The Blender kinds are the exception,
 running in a self-contained image built from Ubuntu that carries headless
@@ -80,7 +81,7 @@ none.
 
 The image is pulled at run start when it is absent locally. Whatever image
 actually runs is resolved to its registry digest where it has one and recorded
-in the [run record](/components/core/run-records/#environment), so a run pins
+in the [run record](/components/contracts/run-records/#environment), so a run pins
 the exact image bytes it used even when launched by a mutable tag.
 
 ## Seeding
@@ -163,7 +164,7 @@ from `/opt/audio`, which staging writes once the container has started.
 
 The base image ships no agent harness. Once the container starts, the run
 installs the selected harness's CLI into it by running that harness's [install
-command](/components/core/harnesses/#installation). Installing at run time is
+command](/components/driver/harnesses/#installation). Installing at run time is
 what lets a run pick up the harness's most recently published version.
 
 - The install step runs after the container starts and before the test case's
@@ -205,14 +206,14 @@ guarantee that a run's fate is always decided by the Test Cabinet rather than by
 the platform underneath it.
 
 - The maximum runtime is the wall-clock cap on the harness session: the test
-  case's `max_runtime_hours`, overridable per invocation with
-  `tcab run --max-runtime`. It bounds each in-container setup step on its own
+  case's `max_runtime_hours`, overridable per launch on the enqueue body. It
+  bounds each in-container setup step on its own
   as well. Tree collection, analysis, and validation run after the session and
   outside the cap. A session stopped by it is recorded as
-  [`timed_out`](/components/core/run-records/).
+  [`timed_out`](/components/contracts/run-records/).
 - The idle watchdog bounds silence rather than duration. A harness that produces
   no output at all for 30 minutes is killed and the run is recorded as
-  [`hung`](/components/core/run-records/). This catches a harness that has
+  [`hung`](/components/contracts/run-records/). This catches a harness that has
   stopped doing anything, such as a stalled provider request or a subagent that
   never returns.
 
@@ -235,7 +236,7 @@ back everything it accumulated, so the run completes tree collection, metrics,
 and the record, and skips only validation. The wait is bounded at every layer: a
 grace on the session's wind-down and a longer one on the driver's. A run that
 overruns those graces falls back to a bare record. Either way the run is
-recorded as [`canceled`](/components/core/run-records/#status): it crossed no
+recorded as [`canceled`](/components/contracts/run-records/#status): it crossed no
 bound and carries no fault to attribute, so it is retained for inspection only
 and stays unpublishable.
 
@@ -257,6 +258,15 @@ its own work.
 
 ## Artifact collection
 
-When a run finishes, the testing harness must collect the run's working tree as
-the run's primary artifact. This produced repository is what gets validated and,
-if published, released. See [Results](/components/core/results/).
+When a run finishes, the driver must collect the run's working tree as the
+run's primary artifact. This produced repository is what gets validated and,
+if published, released. See [Results](/components/backend/results/).
+
+Once the post-run stages have measured the tree, the driver commits the model's
+work on top of the seed commit, with the contract's `SEED_COMMIT_MESSAGE`
+convention marking the boundary between what the run was given and what the
+model wrote, and writes the repository as a `git bundle --all`. It uploads the
+run tree to the [artifacts service](/components/artifacts/overview/) and the
+bundle to the [repos service](/components/repos/overview/), each with its
+per-job token, before it reports the run's terminal status. Code analysis runs
+on the local tree before the upload.

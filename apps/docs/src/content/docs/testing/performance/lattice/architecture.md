@@ -342,7 +342,7 @@ input is never revealed.
 
 Playback re-steps the run's own module, so at a tick the run graded, the frame
 the module emits must carry the checksum the run
-[recorded](/components/core/run-records/). The player compares the two and shows
+[recorded](/components/contracts/run-records/). The player compares the two and shows
 a standing warning when they disagree, because the factory on screen is then not
 the one the verdict covers. The gate compares the checksums the two paths report
 and re-derives nothing — the renderer holds no rules — which is why it is paired

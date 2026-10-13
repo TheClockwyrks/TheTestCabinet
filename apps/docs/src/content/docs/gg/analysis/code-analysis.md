@@ -194,7 +194,8 @@ with no per-metric code. It is bounded because the record is deserialized on
 every run listing.
 
 A full document is written to the run tree as `code-analysis.json.gz` at the run
-root, mirrored into the backend store and served per run. It carries the
+root, which the driver uploads to the artifacts service, and is served per run
+from there. It carries the
 unbounded detail: every file, every symbol with its complexity and reference
 count, every import edge, every cycle, every clone group. A consumer holding the
 document never needs the record.
@@ -239,7 +240,8 @@ host is not analysed at all, and its record carries no summary.
 
 ## Offline analysis
 
-The analyzer is a library with a one-way dependency on the core contract.
+The analyzer is a module of the driver with a one-way dependency on the
+`contracts` crate.
 [`tcab analyze <dir>`](/components/cli/overview/#commands) points the same pass
 at any tree on disk and prints the result, with no run, no container, no backend
 and no credentials.

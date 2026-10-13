@@ -61,7 +61,7 @@ A run receives the seeded brief plus the orchestrator-written
    - `[particle]` with `width`, `height`, `duration_ms` and `fps` all greater
      than zero, plus `depth` for `particle-3d` only, `loop`, and `background`;
    - `[tool]` naming the `binary` and the `preview` path, and `[output]` naming
-     the `actions` log. Core emits `system.json` automatically;
+     the `actions` log. The driver emits `system.json` automatically;
    - one `[[domain]]` with `id = "overall"`, the single rating the produced
      effect is judged on.
 5. Write each variant file under `variants/`, giving it a `slug`, a `name`, a

@@ -5,7 +5,7 @@ title: Reviewing Test Run Results
 ## Overview
 
 The Test Cabinet evaluates a run in two stages. Automated
-[validation](/components/core/validation/) catches gross failures cheaply and,
+[validation](/components/driver/validation/) catches gross failures cheaply and,
 through a case's [instrumentation](/testing/end-to-end/instrumentation/), drives
 the build to decide the checklist verdicts. A person's review then judges the
 build's visuals, polish, and feel.
@@ -21,36 +21,31 @@ is rated by its reviewers: the per-domain
 [functional rating](#rate-a-legacy-run) and the checklist verdicts.
 
 A review is curatorial, authored by a person after playing the build, so it sits
-outside the [run record](/components/core/run-records/) contract. Every review is
-attributed to the [account](/components/backend/overview/#authentication) that wrote
-it, and a run may carry several reviews, one per account. Across them the run's
-overall rating on the reviewer-given channel is the worst. A completed
-validator-rated run
-[publishes itself](/components/core/results/#automatic-publishing) with no
+outside the [run record](/components/contracts/run-records/) contract. Every
+review is attributed to the [identity](/components/auth/overview/) the
+reviewer's Access assertion carries, and a run may carry several reviews, one
+per identity. Across them the run's overall rating on the reviewer-given
+channel is the worst. A completed validator-rated run
+[publishes itself](/components/backend/results/#automatic-publishing) with no
 review and gains an aesthetic rating later; a legacy run needs at least one
 review before it can be [published](/guides/devops/publishing-a-test-run-result/).
 
-## Review entry points
+## Review entry point
 
-You review a [produced](/components/core/results/#automatic-storage) run: one
-whose record is stored on the backend and whose build is playable off the
-[artifact service](/components/artifacts/overview/). Either path requires being
-[signed in](/quickstarts/setup/register-and-login/).
-
-- From the web console. Open the run in the
-  [web console](/components/web/overview/) and submit a review. The console
-  plays the build, shows the validation media side by side with the case's
-  baselines, and writes the review file for you.
-- From the CLI. `tcab review <run-id> --writeup writeup.md` submits a review
-  attributed to your logged-in account. `--writeup` defaults to `writeup.md` in
-  the working directory.
+You review a [produced](/components/backend/results/#automatic-storage) run:
+one whose record is stored on the backend and whose build is playable off the
+[artifacts service](/components/artifacts/overview/). Open the run in the
+[console](/components/web/overview/), which you reach through Cloudflare
+Access, and submit a review. The console plays the build, shows the validation
+media side by side with the case's baselines, and writes the review document
+for you.
 
 ## Read the automated signals
 
-The run record summarizes [validation](/components/core/validation/): the
+The run record summarizes [validation](/components/driver/validation/): the
 dependency install, the static build, whether the implementation loaded in a
 headless browser, and a similarity signal for each declared
-[check](/components/core/validation/#checks).
+[check](/components/driver/validation/#checks).
 
 Validation also decides the checklist items through the case's
 [validators](/testing/end-to-end/instrumentation/), and fails any whose check
@@ -75,18 +70,8 @@ Play the build the way a visitor would and check it against the spec: do the
 mechanics match, are the screens present, are there bugs, and do any of them
 affect playability.
 
-The gallery dev server also previews runs held on disk, before anything is
-published:
-
-```sh
-npm run dev -w @clockwyrks/site
-```
-
-The dev-only plugin scans `runs/` for `<id>/run-record.json` and embeds the build
-under `<id>/implementation/` when a `dist/`, `build/`, or `out/` directory exists
-there. Each such run shows as Unpublished. `TTC_RUNS_DIR` points the plugin at a
-different directory. The plugin is serve-time only, so a production `vite build`
-stays fully static and previewing publishes nothing.
+An unpublished run is played in the console, which serves its build from the
+artifacts service behind Access; the gallery shows only published runs.
 
 ## Read the checklist
 
@@ -129,7 +114,7 @@ weight. An erratum may retire a point from scoring entirely; see
 ### Overriding and restoring an automated verdict
 
 A point validation answered arrives already filled in the review editor, shown
-**desaturated** to mark it as the machine's call rather than yours. Click it to
+desaturated to mark it as the machine's call rather than yours. Click it to
 override; the option fills in full color to show the verdict is now yours.
 Overriding is the exception, for a validator whose precondition could not be
 met, or a build that clearly does the right thing despite broken
@@ -146,16 +131,17 @@ of their effective ratings; while the run has no reviews the validators' own
 figures stand.
 
 An override is undoable at any time, including in a later edit of an
-already-submitted review: an overridden point grows a **Restore** control beside its
-note, and the checklist rail offers **Restore validator verdicts** to put every
-overridden point back at once. Both restore only the pass/fail — validation writes
-no notes, so yours are kept, and yours to clear. The controls appear only where your
-answer actually differs from a verdict validation decided; a subjective point, or one
-whose check could not run, has no machine value to restore and is never touched.
+already-submitted review: an overridden point grows a Restore control beside
+its note, and the checklist rail offers Restore validator verdicts to put every
+overridden point back at once. Both restore only the pass/fail: validation
+writes no notes, so yours are kept, and yours to clear. The controls appear
+only where your answer actually differs from a verdict validation decided; a
+subjective point, or one whose check could not run, has no machine value to
+restore and is never touched.
 
 This works however many edits later because the machine's verdicts live in the
-run record, which never changes, rather than in the review — a stored verdict itself
-keeps no memory of having been auto-set.
+run record, which never changes, rather than in the review. A stored verdict
+itself keeps no memory of having been auto-set.
 
 ## Write the review
 
@@ -197,10 +183,9 @@ Single player feels right. Versus has a serve bug that resets the score, so it's
 playable but scuffed.
 ```
 
-The web console writes this file for you. The format is documented here because the
-file is also hand-editable, and because the CLI paths read it from disk:
-`tcab review` reads `writeup.md` (or the `--writeup` path), and `tcab publish`
-reads `<run-id>.md` from the working directory.
+The console writes this document and submits it. The format is the review's
+contract: `Writeup` in the contracts crate parses it on the backend, so a
+document written by hand in the console's editor is read the same way.
 
 A review of a validator-rated run is rejected while the aesthetic tier is
 missing, and if it carries a `rating.*` line, since the functional rating is
@@ -273,10 +258,7 @@ point score.
 ## Next step
 
 A completed validator-rated run
-[publishes itself](/components/core/results/#automatic-publishing), so a review
-of one needs no publish step. A legacy run is ready to
-[publish](/guides/devops/publishing-a-test-run-result/) once it has at least one
-review. If you reviewed a run
-someone else produced, an operator can now publish it. If you ran, reviewed, and
-are publishing it yourself, `tcab publish` does the self-review and publish in
-one step.
+[publishes itself](/components/backend/results/#automatic-publishing), so a
+review of one needs no publish step. A legacy run is ready to
+[publish](/guides/devops/publishing-a-test-run-result/) from the console once
+it has at least one review.

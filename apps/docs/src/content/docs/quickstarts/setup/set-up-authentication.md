@@ -8,7 +8,7 @@ A run's harness authenticates to its model provider in one of two modes: an API
 key, or an account subscription. The deployment that executes the run supplies
 the credential to the run container, so the credential is configured where the
 run executes rather than where it is launched. The full contract is in
-[Agent Harnesses](/components/core/harnesses/#authentication).
+[Agent Harnesses](/components/driver/harnesses/#authentication).
 
 ## API key
 
@@ -75,8 +75,8 @@ Accepted modes are `auto`, `subscription`, and `api-key`. `auto` is the default
 and uses a subscription when its credentials are present, an API key otherwise.
 Lock the mode at one of three levels:
 
-- Per run: `tcab run --auth-mode subscription …`, forwarded to the backend and
-  applied by the driver.
+- Per run: the launch form's authentication mode, carried on the enqueue body
+  and applied by the driver.
 - Per deployment: the dispatcher's `TCAB_DISPATCHER_DRIVER_AUTH_MODE`, forwarded
   into every driver Job.
 - Per process: `TCAB_AUTH_MODE`, or `TCAB_AUTH_MODE_<SLUG>` for a single harness,
@@ -84,16 +84,9 @@ Lock the mode at one of three levels:
 
 ## Verify
 
-`tcab harnesses` reports, for each harness, whether the credentials its resolved
-mode needs are present on this machine. It reads configuration only and starts no
-container:
-
-```sh
-tcab harnesses          # add --json for machine output
-```
-
-From a source checkout, substitute
-`cargo run -p test-cabinet-cli -- harnesses`.
+The console's harness configuration view reports, for each harness, whether
+the credentials its resolved mode needs are present in the deployment. It
+reads configuration only and starts no container.
 
 ## Next steps
 

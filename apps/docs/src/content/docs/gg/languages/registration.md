@@ -211,7 +211,8 @@ below.
     the `build-context` gate catches a missing re-inclusion. Add the arm's
     documentation tool to `scripts/ci/install-gg-toolchains.sh`.
 11. Add the console's row: one name in `PROGRAM_LANGUAGE_NAMES`
-    (`packages/ui/src/app/pages/gg/programLanguages.ts`). The capability
+    (`packages/ui/src/app/pages/gg/programLanguages.ts` in the `ui-common`
+    repository). The capability
     editor's picker spreads that same table, so it needs an entry only when the
     arm requires an annotation a reader choosing it must have. Both are a
     `Record` over the `GgProgramLanguage` union, so a missing key is a

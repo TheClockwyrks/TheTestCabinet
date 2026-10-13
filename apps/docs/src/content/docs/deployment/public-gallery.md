@@ -2,69 +2,80 @@
 title: Public Gallery
 ---
 
-The public gallery runs on its own plane, separate from the clusters that hold
-the run queue, the harness credentials, and the definition store. This section
-covers standing that plane up. The clusters themselves are
+The public gallery runs on Cloudflare, on a plane of its own, separate from the
+clusters that hold the run queue, the harness credentials, and the definition
+store. This section covers standing that plane up. The clusters themselves are
 [Kubernetes](/deployment/kubernetes/overview/).
 
 ## What runs there
 
-| Thing                                                        | Deployed as                                                                            |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| [Gallery origin](/components/site/serving/) (`tcab-gallery`) | An Azure Container App, one image, minimum one replica                                 |
-| [Public projection](/components/backend/projection/)         | An Azure Database for PostgreSQL Flexible Server instance, sized for the published set |
-| Published documents and media                                | A Cloudflare R2 bucket                                                                 |
-| Per-run playable builds, [docs](/components/docs/overview/)  | Cloudflare Pages sites                                                                 |
+| Thing                                                                                 | Deployed as                                                           |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [The gallery shell](/components/site/serving/) (`apps/site`)                          | The Pages project `the-test-cabinet`, custom domain `testcabinet.ai`  |
+| The preview-tag Worker (`tcab-preview-tags`)                                          | A Worker on the route `testcabinet.ai/runs/*`, bound to the bucket    |
+| The share-link Worker (`tcab-share-links`)                                            | A Worker on the route `tcab.ai/*`, bound to the bucket                |
+| [Published documents, media, index objects, and codes](/components/backend/snapshot/) | The R2 bucket `snapshot.testcabinet.ai`, served at that custom domain |
+| Per-run playable builds, [docs](/components/docs/overview/)                           | Cloudflare Pages sites                                                |
 
-The origin is one stateless service, so it runs as a Container App rather than a
-cluster of its own. The playable builds stay on Pages, where each run's build
-holds its own origin and the browser isolates one run's generated code from
-another's.
+Nothing on the plane is a server of the project's own. The shell and the per-run
+builds are static files on Pages, where each run's build holds its own origin
+and the browser isolates one run's generated code from another's, and the two
+Workers are the only code that runs at request time.
 
 ## The boundary
 
-The backend opens every connection between the planes. It writes objects to the
-bucket and rows to the projection, and both are outbound from the private
-network.
+The [artifacts service](/components/artifacts/overview/) is the one writer of the
+bucket, over an R2 API token scoped to that bucket with object read and write,
+held in the cluster. The backend writes the public snapshot through it, so every
+connection between the planes is outbound from the cluster and nothing on the
+public plane holds a route into it. The clusters are reached through the
+[edge](/deployment/kubernetes/edge/) alone.
 
-The gallery's subnet routes to the projection database. The projection database
-sits in its own subnet, peered to the private network for the backend's writes,
-so the origin holds no route toward the clusters. The clusters keep the internal
-`Ingress` described in
-[Internal ingress](/deployment/kubernetes/internal-ingress/) and stay reachable
-over the VPN.
+Each Worker's bucket binding is read-only, and the bucket's custom domain is a
+public read. The credentials that spend money at a model provider live on the
+private plane, and starting a run remains an action behind Access.
 
-The origin therefore holds read access to published data and nothing else. The
-credentials that spend money at a model provider live on the private plane, and
-starting a run remains a VPN-only action.
+## The Workers
 
-## Identity
+Both Workers live in the `testcabinet.ai` repository, each with its own
+`wrangler.toml`, and are deployed with `wrangler deploy`.
 
-The origin authenticates to the projection as a user-assigned managed identity
-mapped to a PostgreSQL role holding SELECT on the projection schema. This is the
-same passwordless path the backend and auth service use; see
-[Passwordless auth with Microsoft Entra](/deployment/kubernetes/postgres/#passwordless-auth-with-microsoft-entra).
+The preview-tag Worker declares the bucket as the R2 binding `SNAPSHOT` and
+takes the Pages project's origin as the variable `SHELL_ORIGIN`, which it
+fetches the shell from. Its route is `testcabinet.ai/runs/*`.
 
-Bucket access is a read-only credential scoped to the public bucket.
+The share-link Worker declares the same binding and takes the gallery's public
+origin as `GALLERY_ORIGIN`, the prefix of every redirect it issues. Its route
+is `tcab.ai/*`.
 
 ## DNS and TLS
 
-Cloudflare holds the `testcabinet.ai` and `tcab.ai` zones. Both resolve to the
-origin through proxied records, so the CDN fronts it and absorbs traffic the
-origin would otherwise serve. The origin accepts requests from the CDN's address
-ranges.
+Cloudflare holds the `testcabinet.ai` and `tcab.ai` zones. `testcabinet.ai` is
+the gallery Pages project's custom domain, `snapshot.testcabinet.ai` is the
+bucket's custom domain, and `tcab.ai` is the share-link Worker's route, each a
+proxied record whose certificate Cloudflare issues. `docs.testcabinet.ai` is the
+docs Pages project's custom domain.
 
-The Container App holds a managed certificate for each custom hostname.
+## Deploying
+
+The `testcabinet.ai` repository's pipeline builds the shell and deploys it with
+`wrangler pages deploy`, and deploys both Workers with `wrangler deploy`, under
+an API token holding Pages and Workers edit on the account. A publish writes the
+bucket, which the shell and the Workers read at request time, so nothing on the
+plane redeploys when a run publishes.
 
 ## Staging
 
-Staging mirrors the plane: its own Container App, its own projection database,
-its own bucket, and its own hostnames. Keep the two identical apart from names
-and scale, so staging rehearses a change faithfully.
+Staging mirrors the plane under its own names: the Pages project
+`the-test-cabinet-staging` at `staging.testcabinet.ai`, the bucket
+`snapshot.staging.testcabinet.ai` at that custom domain, the preview-tag Worker
+on `staging.testcabinet.ai/runs/*`, and the share-link Worker on
+`staging.tcab.ai/*`, each bound to the staging bucket. Keep the two identical
+apart from names, so staging rehearses a change faithfully.
 
 ## Environment
 
-The origin reads its projection connection string, its bucket base URL, and its
-`TCAB_ENV` tag from the environment. The `TCAB_ENV` tag names the environment in
-[telemetry](/development/observability/) and logs, as it does for every other
-service.
+The shell's build takes `TCAB_SNAPSHOT_URL`, the bucket's public base it fetches
+`index.json` from, so the prod and staging builds differ in that one value. Each
+Worker takes its bucket binding and its origin variable from its `wrangler.toml`
+environment.

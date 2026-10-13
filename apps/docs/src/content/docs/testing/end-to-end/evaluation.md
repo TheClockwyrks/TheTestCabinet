@@ -12,9 +12,9 @@ run's functional rating and its score, so both stand the moment the run
 completes. The review is where subjective judgement is made: one run-wide
 aesthetic rating covering how the whole build looks, sounds, and feels to play.
 
-The mechanism behind each stage lives under Core:
-[Validation](/components/core/validation/) for the automated pass and
-[Results](/components/core/results/) for publishing and reviews. This page
+The mechanism behind each stage lives with the driver and the backend:
+[Validation](/components/driver/validation/) for the automated pass and
+[Results](/components/backend/results/) for publishing and reviews. This page
 covers how the two combine into a run's score.
 
 ## Load check
@@ -135,7 +135,7 @@ The rating is derived from the run record alone:
   no failing point names stays `flawless`; a failure in the versus controls
   lowers only the versus domain.
 - The run's overall functional rating is the worst across its domains, and the
-  [toolchain gate](/components/core/validation/#the-toolchain-gate) applies on
+  [toolchain gate](/components/driver/validation/#the-toolchain-gate) applies on
   top of it: a build whose typecheck failed is `broken` whatever its validators
   decided.
 
@@ -157,7 +157,7 @@ The figures and per-domain ratings shown are the effective ones, with any review
 
 ## Review
 
-The [review](/components/core/results/#reviews) is a person playing the finished
+The [review](/components/backend/results/#reviews) is a person playing the finished
 build and writing it up. On a validator-rated run it carries three things.
 
 - A short writeup the site shows before the playable build.

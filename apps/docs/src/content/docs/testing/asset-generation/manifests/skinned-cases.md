@@ -52,7 +52,7 @@ volume is a variant axis in the same way. Its `[model]` table declares only the
 required animations, again exactly as a meshed animated case does. The skeleton,
 joints, and weights are the model's to invent.
 
-Core emits the skinned `mesh.glb`, carrying the geometry plus the glTF skin of
+The driver emits the skinned `mesh.glb`, carrying the geometry plus the glTF skin of
 per-vertex bone weights and inverse-bind matrices, and the `rig.json`, carrying
 the skeleton, the joint interface, and the F-curve animations. Neither is
 manifest-declared.

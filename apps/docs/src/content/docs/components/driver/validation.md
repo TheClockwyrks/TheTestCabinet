@@ -7,14 +7,14 @@ title: Validation
 Validation is the automated pass over a finished implementation. It builds and
 load-checks the produced tree, then decides the objective, mechanically
 verifiable review points and synthesizes their evidence. A run under an
-[engine](/components/core/engines/) decides those points with a vitest suite that
+[engine](/components/engines/engines/) decides those points with a vitest suite that
 imports the game the build produced, run in Node for a 2D engine and in a browser
 page for a 3D one. A run under no engine drives the build's
 [instrumentation](/testing/end-to-end/instrumentation/) in a browser.
 
 Validation assesses part of an implementation. A game's feel and quality are
 graded by a person playing the build and writing its
-[review](/components/core/results/#reviews), which is where the run-wide
+[review](/components/backend/results/#reviews), which is where the run-wide
 aesthetic rating comes from. An objective point backed by a validator is scored
 from that validator's result. On a
 [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
@@ -70,12 +70,12 @@ present. After the last attempt, a non-zero exit fails the install as a failed
 command, and a zero exit fails it with a detail naming the packages still
 missing. The install result records a bounded excerpt of its captured output and
 the number of attempts it took. An install that fails on a run's collected tree
-ends the run as an [`infrastructure`](/components/core/run-records/#status)
+ends the run as an [`infrastructure`](/components/contracts/run-records/#status)
 failure, since the model's output was never given a chance to build.
 
 ## Validators
 
-A case that supports an [engine](/components/core/engines/) ships a validator per
+A case that supports an [engine](/components/engines/engines/) ships a validator per
 verdict unit per engine that validator covers, written as a TypeScript test file
 and run by vitest. Validators live with the case, are never seeded into the run
 workspace, and run after the produced repository's dependencies are installed.
@@ -160,7 +160,8 @@ Deciding the run's points means running that project:
   measured it.
 - Stage the shared validator harness beside it, at `validation/case-harness/`.
   The engineless validators of every case that has them are written over this one
-  harness, which the repository holds as the `@clockwyrks/case-harness` package.
+  harness, which the [engines repository](/components/engines/overview/) holds
+  as the `@clockwyrks/case-harness` package.
   It is TypeScript source vitest transpiles rather than a dependency the tree
   installs, so one import line resolves it both in the case's
   `validation/<engine>/` directory and in the staged project. It is read from the
@@ -217,7 +218,7 @@ A validator captures each output its verdict unit declares, in the form the
 manifest gives it.
 
 For a `replay` it arms the engine's
-[recorder](/components/core/engines/#recording) once its scenario is posed,
+[recorder](/components/engines/engines/#recording) once its scenario is posed,
 disarms it once the behavior under test has happened, and writes what came back.
 The evidence is therefore what the build itself submitted to be drawn over
 exactly the stretch of the scenario the check is about.
@@ -270,20 +271,22 @@ build's recording and the reference's frame for frame.
 
 ### Where baselines live
 
-Baseline media is committed to the `cold-storage` submodule at the repository
-root, not beside the case. Its tree mirrors the repository's, so a version's
-baselines sit under the same path with `cold-storage/` in front:
+Baseline media is committed to the `cold-storage` repository, a submodule of
+the superrepo beside `test-suites`, rather than beside the case. Its tree
+mirrors `test-suites`', so a version's baselines sit under the same path with
+`cold-storage/` in front:
 
 ```text
 cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline/<engine>/<variant>/
 ```
 
-Core's `ColdStorage::validation_baseline_dir` is the one resolver from a version
-folder to that directory. The cold-storage root defaults to
-`<checkout>/cold-storage`, and `TCAB_COLD_STORAGE_DIR` replaces it. The capture
-commands write through the resolver and backend ingest reads through it. The
-backend's `TCAB_COLD_STORAGE_ROOT` takes precedence over `TCAB_COLD_STORAGE_DIR`
-for ingest, and the root mirrors the backend's definitions root rather than the
+The contracts crate's `ColdStorage::validation_baseline_dir` is the one resolver
+from a version folder to that directory. The cold-storage root defaults to the
+`cold-storage` directory beside the `test-suites` checkout, and
+`TCAB_COLD_STORAGE_DIR` replaces it. The capture commands write through the
+resolver and backend ingest reads through it. The backend's
+`TCAB_COLD_STORAGE_ROOT` takes precedence over `TCAB_COLD_STORAGE_DIR` for
+ingest, and the root mirrors the backend's definitions root rather than the
 checkout (see [backend configuration](/components/backend/overview/#configuration)).
 
 Ingest copies each version's baselines into the stored version under
@@ -343,7 +346,7 @@ evidence that a feature works. Validation records, for each declared proof,
 whether the file turned up in the produced tree and is non-empty, judges no
 proof's contents, and uploads each present proof when the run finishes to be
 served back as per-run media (see
-[run records](/components/core/run-records/)). A proof is informational, so a
+[run records](/components/contracts/run-records/)). A proof is informational, so a
 missing one leaves the run's load result and status untouched. A case version
 that declares proofs has them collected; a case version that ships validators
 captures its media from them, from a scenario the case controls.
@@ -481,7 +484,7 @@ output, and a reviewer may still play and score the build.
 ## Results
 
 Validation output is summarized into the
-[run record](/components/core/run-records/) so the site can surface what
+[run record](/components/contracts/run-records/) so the site can surface what
 validation did. Building an implementation is reported as its constituent steps.
 The dependency install and the static build are required steps that every run
 performs, and each is reported as its own result with its outcome rather than
@@ -506,12 +509,13 @@ implementation loaded. It also carries:
   count for its [asset kind](/testing/asset-generation/overview/#asset-kinds).
 
 The summary's types are defined in the
-[contracts crate](/components/core/overview/#the-contracts-crate)
+[contracts crate](/components/contracts/overview/#the-contracts-crate)
 (`test_cabinet_contracts::validation`), because the run record carries it. The
 validators that produce it, and the `Validator` seam they implement, live in the
-core. The runners a validator project runs through, a case's vitest runner and a
-suite's validator runner, live in the
-[suites crate](/components/core/overview/#the-suites-crate) beside the static server
-and browser driver they share with the core's browser drive. A suite-defined case's
-per-requirement outcomes are part of the [test suite format](/test-suites/overview/),
-which is defined in the contracts crate.
+driver. The runners a validator project runs through, a case's vitest runner and
+a suite's validator runner, live in the
+[suites crate](/components/contracts/overview/#the-suites-crate) beside the
+static server and browser driver they share with the driver's browser drive. A
+suite-defined case's per-requirement outcomes are part of the
+[test suite format](/test-suites/overview/), which is defined in the contracts
+crate.

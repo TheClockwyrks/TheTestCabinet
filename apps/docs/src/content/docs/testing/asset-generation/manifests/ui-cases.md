@@ -74,6 +74,6 @@ token and a single-element case whose preview carries it.
 `[output].actions` is a single interleaved operation log and must not carry
 `{element}`, because the two binaries share one recorded stream. The flattened
 per-element PNGs and the `ui.json` carrying element sizes, nine-slice insets, and
-atlas rectangles are emitted by core to paths it provides, so neither is
+atlas rectangles are emitted by the driver to paths it provides, so neither is
 manifest-declared. See
 [the output contract](/testing/asset-generation/ui-binaries/#the-output-contract).

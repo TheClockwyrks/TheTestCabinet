@@ -6,8 +6,9 @@ The per-test-case graphs group runs by the `(harness, model)` pair, so the same
 model under two harnesses stays two series. Merging them would average a
 multiple-fold cost gap into one meaningless number.
 
-The graphs live in the shared `@clockwyrks/ui` package, so the internal
-console and the public site group runs identically.
+The graphs live in `@clockwyrks/ui` in `ui-common`, so the console and the
+public gallery group runs identically. The paths below are relative to that
+repository.
 
 ## Aggregators
 
@@ -29,7 +30,7 @@ and then drawn in the order the reader picked — see [Bar order](#bar-order).
 ## Key rules
 
 Model ids stay canonicalized. `canonicalModelId` (`packages/ui/src/modelId.ts`,
-mirrored in Rust at `crates/core/src/model_id.rs`) strips an `openrouter/`
+mirrored in Rust by `model_id.rs` in `microservice-backend`) strips an `openrouter/`
 prefix and, for OpenRouter-backed harnesses, a trailing `:tag`. Splitting on
 harness is orthogonal: `openrouter/anthropic/claude-opus-4.8` and
 `anthropic/claude-opus-4.8` are the same model and canonicalize together.
@@ -39,7 +40,7 @@ provider, so one model's several harness bars share a provider hue and are
 distinguished by their labels.
 
 Harness and model are separate fields on every [run
-record](/components/core/run-records/) (`RunSubject.harnessSlug` and
+record](/components/contracts/run-records/) (`RunSubject.harnessSlug` and
 `RunSubject.modelId`), and the `run` table lifts both into their own columns, so
 the split needs no schema support of its own.
 

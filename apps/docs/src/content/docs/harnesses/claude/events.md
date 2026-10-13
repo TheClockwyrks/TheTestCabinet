@@ -5,7 +5,7 @@ title: Events
 Claude Code is run with `claude --print --output-format stream-json --verbose`,
 which emits a line-delimited JSON stream on standard output. Each non-empty line
 is a complete JSON object carrying a top-level `type`. The harness layer parses
-that stream into the normalized [harness events](/components/core/events/) every
+that stream into the normalized [harness events](/components/driver/events/) every
 caller consumes.
 
 The stream is stateful. An `assistant` event introduces a tool use, and the
@@ -36,22 +36,22 @@ warning. Output on standard error is surfaced as a warning as well.
 
 | Raw stream input                                                                              | Normalized event                                    |
 | --------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `assistant` `text` blocks, joined per message                                                 | [agent](/components/core/events/#agent-message)     |
-| `assistant` `thinking` blocks, joined per message                                             | [reasoning](/components/core/events/#reasoning)     |
+| `assistant` `text` blocks, joined per message                                                 | [agent](/components/driver/events/#agent-message)   |
+| `assistant` `thinking` blocks, joined per message                                             | [reasoning](/components/driver/events/#reasoning)   |
 | `assistant` `redacted_thinking` block                                                         | consumed, since it carries no readable text         |
 | `assistant` `tool_use` block                                                                  | recorded, and resolved when its tool-result arrives |
 | `user` `tool_result` block                                                                    | the recorded tool use's event(s)                    |
 | `user` `text` block                                                                           | consumed as echoed prompt or injected context       |
-| `rate_limit_event` with a non-`allowed` status                                                | [warning](/components/core/events/#warning)         |
-| terminal `result` reporting an error                                                          | [error](/components/core/events/#harness-error)     |
+| `rate_limit_event` with a non-`allowed` status                                                | [warning](/components/driver/events/#warning)       |
+| terminal `result` reporting an error                                                          | [error](/components/driver/events/#harness-error)   |
 | `system` recognized subtypes, `stream_event`, allowed `rate_limit_event`, successful `result` | consumed                                            |
-| unrecognized output                                                                           | [unknown](/components/core/events/#unknown)         |
+| unrecognized output                                                                           | [unknown](/components/driver/events/#unknown)       |
 
 Reasoning is emitted ahead of the agent message it leads into, so a thought
 split across blocks is reported once. An unrecognized tool, a malformed tool-use
 block, and an unrecognized `system` subtype each become unknown events, so
 nothing is dropped. Claude Code has no
-[orchestration](/components/core/events/#orchestration) source.
+[orchestration](/components/driver/events/#orchestration) source.
 
 ## Tool mapping
 
@@ -62,16 +62,16 @@ read result that arrives with no recorded tool use is recovered as a read event
 from the file metadata it carries; any other unpaired result becomes an unknown
 event.
 
-| Claude Code tool                             | Normalized event                                                                                                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Read`                                       | [read](/components/core/events/#file-read), with the line range derived from the `offset` and `limit` input                                                         |
-| `Write`, `Edit`, `MultiEdit`, `NotebookEdit` | [write](/components/core/events/#file-write)                                                                                                                        |
-| `Grep`, `Glob`                               | [search](/components/core/events/#file-search)                                                                                                                      |
-| `LS`                                         | [list](/components/core/events/#directory-list)                                                                                                                     |
-| `Bash`                                       | [command](/components/core/events/#command), or a recognized file operation reclassified into read, search, or list from the command, exactly as a Codex command is |
-| `Skill`                                      | [skill](/components/core/events/#skill), with the path synthesized as `skills/<name>/SKILL.md` under the workspace                                                  |
-| `StructuredOutput`                           | Native delivery of `--json-schema` output; it produces no event                                                                                                     |
-| any other tool                               | [unknown](/components/core/events/#unknown)                                                                                                                         |
+| Claude Code tool                             | Normalized event                                                                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Read`                                       | [read](/components/driver/events/#file-read), with the line range derived from the `offset` and `limit` input                                                         |
+| `Write`, `Edit`, `MultiEdit`, `NotebookEdit` | [write](/components/driver/events/#file-write)                                                                                                                        |
+| `Grep`, `Glob`                               | [search](/components/driver/events/#file-search)                                                                                                                      |
+| `LS`                                         | [list](/components/driver/events/#directory-list)                                                                                                                     |
+| `Bash`                                       | [command](/components/driver/events/#command), or a recognized file operation reclassified into read, search, or list from the command, exactly as a Codex command is |
+| `Skill`                                      | [skill](/components/driver/events/#skill), with the path synthesized as `skills/<name>/SKILL.md` under the workspace                                                  |
+| `StructuredOutput`                           | Native delivery of `--json-schema` output; it produces no event                                                                                                       |
+| any other tool                               | [unknown](/components/driver/events/#unknown)                                                                                                                         |
 
 Claude Code reports no stable exit code for `Bash` results, so a command event
 carries success without an exit code.

@@ -4,9 +4,9 @@ title: Publishing a Reference Implementation
 
 ## Overview
 
-A [reference implementation](/components/core/results/#reference-implementations)
+A [reference implementation](/components/backend/results/#reference-implementations)
 is the authored, in-repo, correct static build of a test-case variant on one
-[engine](/components/core/engines/). It is authored under the case's version
+[engine](/components/engines/engines/). It is authored under the case's version
 folder (by convention `references/<engine>/<variant>/`), declared by a variant's
 optional `reference_implementation` key, and offered from the case page's Play
 tab. It is kept out of every run's seed, so it is deployed out-of-band by a
@@ -22,17 +22,18 @@ launches the one recorded for the page's anchored engine.
 `tcab publish-reference` builds each targeted reference project with
 the case's own [`[build]` commands](/testing/end-to-end/manifests/), scrubs the
 output with the same
-[secret-redaction](/components/core/results/#secret-redaction) pass the run
+[secret-redaction](/components/backend/results/#secret-redaction) pass the run
 publisher uses, deploys the static build to the reference Cloudflare Pages
 project for the named environment, and reads the served URL back from `wrangler`.
 Cloudflare truncates long subdomains, so the URL is parsed from `wrangler`'s
 output rather than constructed.
 
-The command then records that URL in a committed lockfile. Staging and production
-backends are private and cannot be pushed to, so the deployed URL is written into
-`test-cases/reference-builds.lock.json`, committed, and picked up when the
-backend ingests its own git checkout. Publishing a reference is therefore three
-operator steps: deploy, commit and push the lockfile, and re-ingest.
+The command then records that URL in a committed lockfile. A backend serves the
+catalog it ingested from its `test-suites` checkout, so the deployed URL is
+written into `test-cases/reference-builds.lock.json` in the `test-suites`
+repository, committed, and picked up when the backend ingests the branch tip.
+Publishing a reference is therefore three operator steps: deploy, commit and
+push the lockfile, and re-ingest.
 
 ## Reference forms
 
@@ -57,7 +58,8 @@ An [asset-generation](/testing/asset-generation/overview/) case declares no
 frame, and its reference is a
 [`draw.sh`](/testing/asset-generation/manifests/overview/) of drawing-binary
 calls that `publish-reference` runs, uploading the produced frames to the public
-snapshot bucket. See [Asset-generation references](#asset-generation-references).
+bucket through the artifacts service. See
+[Asset-generation references](#asset-generation-references).
 
 ### Bundled references
 
@@ -100,26 +102,30 @@ reference build" as a single gate, verified before the release goes out.
 
 ## Prerequisites
 
-`tcab publish-reference` never talks to the backend, so there is no login, token,
-or backend URL to configure:
+`tcab publish-reference` never talks to the backend for a buildable reference,
+so there is no backend URL to configure:
 
 - `wrangler` on `PATH`, authenticated with `CLOUDFLARE_API_TOKEN` (a token
   carrying the Cloudflare Pages: Edit permission) and `CLOUDFLARE_ACCOUNT_ID` for
   the account that owns the Pages project. The command shells out to
   `wrangler pages deploy`.
 - Node and npm, so the case's `[build]` install and build commands run.
-- The repository's npm workspace installed and its packages built, with
-  `npm ci && npm run build:packages` at the repository root. An engine-backed
-  reference resolves its engine from `packages/<slug>/` by a relative `file:`
-  path, so the built package must exist before the reference is built. The same
-  holds for `tcab capture-baselines`, which builds the same reference.
+- The engine an engine-backed reference resolves: from the feed at the version
+  its manifest names, or inside the superrepo from the `engines` checkout
+  through the package links, built with `npm ci && npm run build` in `engines/`
+  and linked with `scripts/repos/link-packages.sh` at the superrepo root; see
+  [Reference implementations](/development/building/#reference-implementations).
+  The same holds for `tcab capture-baselines`, which builds the same reference.
 - The target Cloudflare Pages project: `test-cabinet-references` for production,
   `test-cabinet-references-staging` for staging. Each is a Direct Upload project
   created once in the Cloudflare dashboard; see
   [Releasing](/development/releasing/#reference-implementations-cloudflare-pages-one-time).
-- A checkout you can commit and push, for the lockfile.
-- For the [re-ingest](#refresh-the-backend), an authenticated `az`, run from a
-  machine with cluster access.
+- A `test-suites` checkout you can commit and push, for the lockfile.
+- For the [re-ingest](#refresh-the-backend), and for an asset-generation
+  reference's upload, the environment's Access service token in
+  `TCAB_ACCESS_CLIENT_ID` and `TCAB_ACCESS_CLIENT_SECRET`, with
+  `TCAB_BACKEND_URL` at the origin's `/api` path; see
+  [Sign In](/quickstarts/setup/sign-in/#automation).
 
 ## Choose an environment
 
@@ -195,7 +201,7 @@ implementation. The reference implementation is a fixed property of the case
 version, so that media is captured once and committed to the `cold-storage`
 submodule under the version's mirrored
 `validation-baseline/<engine>/<variant>/` (see [where baselines
-live](/components/core/validation/#where-baselines-live)). It is keyed by engine
+live](/components/driver/validation/#where-baselines-live)). It is keyed by engine
 because a variant has one reference implementation per engine, and a run is only
 comparable against the one it was itself built on.
 
@@ -218,7 +224,7 @@ variant, and engine selection is identical to `publish-reference`'s. The whole
 or removed output never lingers as a stale committed file.
 
 A case that declares its validators per engine has its baseline recorded by
-running those in-process [vitest suites](/components/core/validation/) against
+running those in-process [vitest suites](/components/driver/validation/) against
 the reference implementation, exactly as a run's own media is recorded by
 running them against the model's build. A case that declares browser scripts
 instead has its reference build served and driven. The path is chosen the same
@@ -246,17 +252,19 @@ command's runtime.
 
 ## Refresh the backend
 
-Commit the lockfile and push it to the branch the target environment tracks
-(`master` for production, `staging` for staging), then re-ingest:
+Commit the lockfile in `test-suites` and push it to the branch the target
+environment tracks (`master` for production, `staging` for staging), then
+re-ingest with the service token:
 
 ```sh
-git add test-cases/reference-builds.lock.json
-git commit -m "chore(references): record carom reference builds for prod"
-git push
+git -C test-suites add test-cases/reference-builds.lock.json
+git -C test-suites commit -m "chore(references): record carom reference builds for prod"
+git -C test-suites push
 tcab ingest --env prod --changed
 ```
 
-The re-ingest refreshes the backend's checkout to the branch tip and ingests it.
+The re-ingest calls `POST /ingest` through the edge; the backend refreshes its
+checkout to the branch tip and ingests it.
 The backend then loads the lockfile, reads the entries for its own `TCAB_ENV`,
 and reconciles its `case_reference_build` table to match, upserting each URL and
 pruning any it no longer lists. The version's API response and the public
@@ -277,7 +285,8 @@ For each targeted variant the command seeds a scratch workspace from the case
 manifest, then runs `reference-impl/<variant>/draw.sh` in it with the case's
 drawing binary on `PATH`. That seeding is the same one a real run gets, so the
 canvas size and declared frames come from the manifest. Every declared frame's
-rendered image and recorded action log is uploaded to the public snapshot bucket:
+rendered image and recorded action log is written to the public bucket through
+the artifacts service's `PUT /public/{key}`, at the origin's `/artifacts/` path:
 
 ```text
 media/references/<slug>/<version>/<variant>/frames/<index>.png
@@ -289,19 +298,19 @@ run is [scored on](/testing/asset-generation/evaluation/).
 
 This path takes its own prerequisites:
 
-- The target environment's R2 credentials: `TCAB_R2_ACCOUNT_ID`,
-  `TCAB_R2_BUCKET`, `TCAB_R2_ACCESS_KEY_ID`, and `TCAB_R2_SECRET_ACCESS_KEY`.
-  These address the same public snapshot bucket the backend writes. `--env`
-  selects the deployment rather than the bucket, so supply the credentials for
-  the environment you named. The command echoes the bucket it is about to write.
+- The environment's Access service token and `TCAB_BACKEND_URL`, as for the
+  re-ingest. `--env` selects the deployment, and the writes go to the bucket
+  that environment's artifacts service owns, so no bucket credential is needed
+  on your machine. The command echoes the origin it is about to write through.
 - The drawing binary, resolved from `TCAB_ASSET_BIN_DIR`, else the cargo target
   directory's `release/`, else `PATH`. Build it first (for example
   `cargo build --release -p test-cabinet-draw`); when it cannot be found the
   command fails naming every location it tried.
 
-R2 keys are constructible, so this path keeps no lockfile: the backend learns
-which references exist by listing the `media/references/` prefix at ingest and
-reconciling its `case_reference_sheet` table. The flow is one step shorter:
+The object keys are constructible, so this path keeps no lockfile: the backend
+learns which references exist by listing the `media/references/` prefix through
+the artifacts service at ingest and reconciling its `case_reference_sheet`
+table. The flow is one step shorter:
 
 ```sh
 tcab publish-reference --env prod <slug>    # runs the script, uploads the frames
@@ -312,9 +321,9 @@ Re-running the command after editing a script overwrites the objects in place,
 which is the whole update path, and is why the images and the logs stay out of
 version control.
 
-When the backend has no R2 configuration, the reconcile is skipped rather than
-reconciling to empty, mirroring how a missing lockfile leaves the build table
-untouched.
+When the backend has no artifacts service configured, the reconcile is skipped
+rather than reconciling to empty, mirroring how a missing lockfile leaves the
+build table untouched.
 
 ## Reference implementation and reference mockup
 
@@ -322,4 +331,4 @@ A `[[reference]]` visual mockup is a rendered screenshot of a single view that i
 seeded into the run as a target the model builds toward. A reference
 implementation is the whole playable build, is kept out of the seed, and is
 deployed and shown as a live build. See
-[Results](/components/core/results/#reference-implementations).
+[Results](/components/backend/results/#reference-implementations).

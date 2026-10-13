@@ -94,8 +94,8 @@ alone rather than for the whole catalog.
 
 If neither the catalog nor a live lookup can answer, the launch is rejected.
 There is no default window and no guess from the model id. The check is enforced
-three times over: the backend refuses to enqueue such a run, `core` refuses to
-launch one, and gg refuses to start a session.
+three times over: the backend refuses to enqueue such a run, the driver refuses
+to launch one, and gg refuses to start a session.
 
 The window is the denominator of every fullness figure, it decides when
 compaction fires, and it is the denominator of every share in the context-usage

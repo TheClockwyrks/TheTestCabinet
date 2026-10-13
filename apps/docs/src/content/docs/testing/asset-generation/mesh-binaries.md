@@ -24,12 +24,13 @@ operation, so each part is a separate field with its own log and preview, and it
 adds rig subcommands that build the parts-and-joints hierarchy and author the
 animations.
 
-The mesher lives in `crates/voxel-mesh`, holding the SDF field type, sampling,
-and the three extraction algorithms. The shared record and preview plumbing, rig
-model, color, config, and generic renderer live in `crates/model-core`, the same
-library the voxel binaries use. Each binary has its own crate (`crates/mc`,
-`crates/mc-anim`, and so on) and is baked into its own
-[run-container image](/components/core/execution/#containerization), one image
+The mesher lives in `voxel-mesh`, holding the SDF field type, sampling, and the
+three extraction algorithms. The shared record and preview plumbing, rig model,
+color, config, and generic renderer live in `model-core`, the same library the
+voxel binaries use; both are the `tool-model-core` repository's. The binaries
+live in `tool-mc`, `tool-sn` and `tool-dc`, each a crate of its own (`mc`,
+`mc-anim` and `mc-skin` in `tool-mc`, and so on), and each is baked into its own
+[run-container image](/components/driver/execution/#containerization), one image
 per `asset_kind`, so a run carries only the tool it uses.
 
 ## The signed-distance field
@@ -199,9 +200,10 @@ emitted data plus a reviewer's read of the rendered previews.
 ### The preview
 
 The preview is a 3D orbit view of the extracted mesh, 512 pixels square,
-produced by a generic mesh renderer in the shared `crates/model-core` library.
-It renders with `wgpu` targeting Mesa lavapipe, a software Vulkan
-implementation, so it runs CPU-only and headless with no GPU in the container.
+produced by a generic mesh renderer in the shared `model-core` library of the
+`tool-model-core` repository. It renders with `wgpu` targeting Mesa lavapipe, a
+software Vulkan implementation, so it runs CPU-only and headless with no GPU in
+the container.
 The same renderer serves every voxel-family binary, so previews are comparable
 across all algorithms.
 

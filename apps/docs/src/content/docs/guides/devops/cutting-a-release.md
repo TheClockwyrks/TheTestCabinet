@@ -19,17 +19,17 @@ for the answer keys.
 
 ## What ships, and by what path
 
-| What                                               | Reaches users by                                                                 | Triggered by                                                               |
-| -------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `tcab` and `gg`                                    | the tag's release-pipeline artifacts (`tcab`) and the `gg-releases` blobs (`gg`) | pushing the `vX.Y.Z` tag to Azure Repos                                    |
-| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**                                           | merging to `master`, whose deploy restarts the backend and re-ingests      |
-| The running services                               | the Azure pipeline's deploy of a commit                                          | merging to `master`                                                        |
-| The gallery and the docs                           | a Cloudflare Pages build                                                         | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
+| What                                               | Reaches users by                                                                                                                                                    | Triggered by                                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `tcab`, `gg` and the operator client               | each repository's tag run: `tcab` as `microservice-driver`'s pipeline artifacts, `gg` as the `gg-releases` blobs, the client as `client-tauri`'s pipeline artifacts | pushing a `vX.Y.Z` tag to each of those repositories' `master` in Azure Repos       |
+| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**                                                                                                                              | merging to `master`, whose deploy restarts the backend and re-ingests               |
+| The running services                               | the Azure pipeline's deploy of a commit                                                                                                                             | merging to `master`                                                                 |
+| The docs and the gallery's dataset                 | a Cloudflare Pages build (docs) and the index objects in the public bucket (gallery)                                                                                | a push to `master` (docs) and an ingest or publish that changed something (gallery) |
 
-The version tag governs only the binaries. The catalog and the services ship
-because the pipeline deployed a merge commit, and nothing else in the system
-reads the tag. A release is "these four are at the same commit", not "the tag
-was pushed".
+The version tags govern only the binaries, and a tag of the superrepo runs
+nothing. The catalog and the services ship because the pipeline deployed a
+merge commit, and nothing else in the system reads a tag. A release is "these
+four are at the same commit", not "the tags were pushed".
 
 ## What is _not_ a release step
 
@@ -60,12 +60,14 @@ fix found during the rehearsal goes back through the same route — onto `nightl
 then a fresh rc into `staging` — rather than being applied to `staging` directly,
 so the branches never diverge.
 
-Each backend ingests its catalog from a stable **branch**, never a tag —
-`staging` for staging, `master` for prod (`TCAB_INGEST_BRANCH` in
-`scripts/lib/env.sh`). Every merge to either branch deploys its commit's images,
-which restarts the backend, and the backend's ingest sidecar force-ingests the
-branch tip on start, so code and catalog ship together.
-`tcab ingest --env <env> --changed` republishes the catalog between deploys.
+Each backend ingests its catalog from a stable **branch** of the `test-suites`
+repository, never a tag — `staging` for staging, `master` for prod
+(`TCAB_INGEST_BRANCH`). A release's catalog work moves through the same branch
+flow in that repository. Every merge to either superrepo branch deploys its
+commit's deploy set, and a deploy that moves the backend's pin restarts the
+backend, whose ingest sidecar force-ingests the `test-suites` branch tip on
+start, so code and catalog ship together. `tcab ingest --env <env> --changed`
+republishes the catalog after any other deploy and between deploys.
 
 ## Phase 1 — Prepare the release on `nightly`
 
@@ -89,7 +91,7 @@ production does not). A release is where those flags come off — and removing o
 is what makes that case's other release obligations real, so do it first:
 
 ```sh
-grep -rln "experimental" test-cases/ game-jams/ --include=*.toml
+grep -rln "experimental" test-suites/test-cases/ test-suites/game-jams/ --include=*.toml
 ```
 
 Every version you un-flag is publicly runnable the moment prod re-ingests.
@@ -97,7 +99,7 @@ Every version you un-flag is publicly runnable the moment prod re-ingests.
 ### Reference implementations, and the release gate
 
 Every reference-capable case must ship its
-[reference implementation](/components/core/results/#reference-implementations) by
+[reference implementation](/components/backend/results/#reference-implementations) by
 the release that makes it non-experimental — a case graduating without its answer
 key means the case page has no **Reference** tab and reviewers have no baseline to
 compare against. Republish any whose reference implementation or debug scripts
@@ -111,15 +113,18 @@ an older script.
 # Per case; commits nothing itself. The publish exits non-zero if any reference
 # build failed to build, capture its baselines, or deploy, so the commits are
 # chained onto it rather than run over media and a lockfile a failed sweep half
-# wrote. The baselines land in the cold-storage submodule, which is committed and
-# pushed first so the superproject pins a commit its master already holds.
+# wrote. The baselines land in the cold-storage repository and the lockfile in
+# test-suites; each is committed and pushed, then the superrepo's pointers move.
 git submodule update --init --depth 1 cold-storage
 tcab publish-reference --env prod <slug> && \
   git -C cold-storage switch -C master && \
   git -C cold-storage add test-cases && \
   git -C cold-storage commit -m "feat: recapture <slug> baselines" && \
   git -C cold-storage push origin master && \
-  git add cold-storage test-cases/reference-builds.lock.json && \
+  git -C test-suites add test-cases/reference-builds.lock.json && \
+  git -C test-suites commit -m "chore(references): update reference implementations" && \
+  git -C test-suites push && \
+  git add cold-storage test-suites && \
   git commit -m "chore(references): update reference implementations"
 ```
 
@@ -130,8 +135,8 @@ non-experimental variant that declares a `reference_implementation` must have a
 ```sh
 python3 - <<'PY'
 import json, pathlib, tomllib
-lock = json.load(open("test-cases/reference-builds.lock.json"))["prod"]
-for m in sorted(pathlib.Path("test-cases").rglob("test-case.toml")):
+lock = json.load(open("test-suites/test-cases/reference-builds.lock.json"))["prod"]
+for m in sorted(pathlib.Path("test-suites/test-cases").rglob("test-case.toml")):
     case = tomllib.load(open(m, "rb"))
     if case.get("experimental"):
         continue
@@ -164,12 +169,13 @@ everything else — no separate deploy.
 
 ### The version
 
-`crates/gg` and `crates/core` carry the release version, and a test pins them to
-each other. Bump both to `X.Y.Z` on the release branch. The tag's release
-pipeline fails its gg jobs when `gg --version` differs from the tag with its `v`
-stripped,
-naming the two crates, so a missed bump surfaces on the tag rather than in a
-deployment. See [Releasing `gg`](/development/releasing/#releasing-gg).
+gg's crate carries the release version. Bump it to `X.Y.Z` on the release
+branch. gg's tag run fails when `gg --version` differs from the tag with its
+`v` stripped, so a missed bump surfaces on the tag rather than in a deployment.
+The driver declares the gg release it runs as a pin independent of any crate
+version, and that pin moves to `vX.Y.Z` in the release that follows the tag's
+publish. See
+[Releasing `gg`](/development/releasing/#releasing-gg).
 
 ### Green CI
 
@@ -185,18 +191,21 @@ prod — same manifests, differing only in namespace, `TCAB_ENV`, secrets, and t
 resources they point at — so it is a real rehearsal of everything Phase 3 will
 do to production, and its tip is what Phase 3 promotes.
 
-1. **Let the pipeline deploy it.** The merge commit runs the gates and the
-   image jobs, which build every service and run-container image at the rc sha,
-   then the GitHub mirror, then the workspace template's publish and deploy
-   stages, which roll the staging cluster to them and wait for every rollout.
-   The route differs from [rolling prod](/guides/devops/rolling-prod-service-images/)
-   (see [Deploying](/deployment/kubernetes/overview/#deploying)), but the images,
-   the overlay's content and the waits are the same, with the staging cluster
-   and namespace. The run images recompile Rust and wasm, so the image jobs are
-   the slow part.
-2. **Confirm the catalog.** The deploy restarts the backend, whose ingest
-   sidecar force-ingests the `staging` tip. That is what makes the merged catalog
-   visible, including the cases that just stopped being experimental.
+1. **Let the pipeline deploy it.** The merge commit runs the gates, then the
+   GitHub mirror, then the workspace template's `deploy` stage, which pins the
+   `staging` overlay to the commits the superrepo's submodule pointers name,
+   rolls the staging cluster onto that set and waits for every rollout. Each
+   image was built by its repository's pipeline at the pinned commit, so the
+   deploy builds nothing. The route differs from
+   [rolling prod](/guides/devops/rolling-prod-service-images/) (see
+   [Deploying](/deployment/kubernetes/overview/#deploying)), but the set, the
+   overlay's content and the waits are the same, with the staging cluster and
+   namespace.
+2. **Confirm the catalog.** A deploy that moves the backend's pin restarts the
+   backend, whose ingest sidecar force-ingests the `staging` tip; after any
+   other deploy, `tcab ingest --env staging` does. That is what makes the
+   merged catalog visible, including the cases that just stopped being
+   experimental.
 3. **Exercise it.** Enqueue runs of the cases that changed in this release,
    through the harness they will actually be run with, and review one end to end.
    A validator repair that was verified locally against a reference build is not
@@ -216,61 +225,67 @@ file and neither disturbs the other.
 Promote `staging` into `master` as a `vX.Y.Z` PR. Promote the tree that was
 rehearsed rather than a fresh merge from `nightly`.
 
-1. **Confirm the prod roll.** The merge commit's pipeline run builds every image
-   at the release sha and the `prod` stage's `deploy_prod` rolls `tcab-prod` to
-   them, service images and run images together. Full walkthrough:
+1. **Confirm the prod roll.** The merge commit's pipeline run gates and
+   mirrors the commit, and the `prod` stage's `deploy_prod` rolls `tcab-prod`
+   onto the deploy set its submodule pointers name, service images and run
+   images together, each built by its repository's pipeline at the pinned
+   commit. Full walkthrough:
    [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/).
-2. **Confirm the catalog.** The roll restarts the backend, whose ingest sidecar
-   force-ingests the `master` tip. That publishes the release's test-case work:
+2. **Confirm the catalog.** A roll that moves the backend's pin restarts the
+   backend, whose ingest sidecar force-ingests the `master` tip; after any
+   other roll, `tcab ingest --env prod` does. That publishes the release's
+   test-case work:
    new versions, graduated cases, errata, and the reference-build URLs from the
    committed lockfile. A whole-catalog forced ingest also prunes versions the
    checkout no longer declares (except any a published run still references), so
    a case deleted in this release disappears here.
-3. **Let the sites rebuild.** Both are automatic, for different reasons:
+3. **Let the sites update.** Both are automatic, for different reasons:
    - The **docs** deploy from the pipeline's `docs` stage on every `master`
      build that passed the gates.
-   - The **gallery** rebuilds because an ingest that actually changed something
-     queues a snapshot refresh, and the backend fires the Pages deploy hook after
-     uploading the snapshot. A no-op ingest queues nothing, so if the gallery
-     does not move, check that the re-ingest reported work before suspecting the
-     hook.
+   - The **gallery** needs no rebuild. An ingest that actually changed something
+     queues a snapshot refresh, which writes the updated documents and index
+     objects to the public bucket through the artifacts service, and the static
+     gallery reads them at runtime. A no-op ingest queues nothing, so if the
+     gallery does not move, check that the re-ingest reported work.
 
 The same run's `mirror` job pushes the merge commit to the GitHub mirror once
 it passes the gates.
 
 ## Phase 4 — Tag the release
 
-Once the `master` run is green, tag its merge commit in Azure Repos and push the
-tag:
+Once the `master` run is green, tag each releasing repository's `master` at the
+commit the superrepo's submodule pointer names, and push each tag to Azure
+Repos. A tag of the superrepo runs nothing; see
+[Release tags](/development/releasing/#release-tags).
 
 ```sh
-git switch master && git pull
-git tag -a vX.Y.Z -m "vX.Y.Z"
-git push origin vX.Y.Z      # origin is the Azure Repos remote
+for repo in microservice-driver gg client-tauri; do
+  git -C "$repo" switch master && git -C "$repo" pull
+  git -C "$repo" tag -a vX.Y.Z -m "vX.Y.Z"
+  git -C "$repo" push origin vX.Y.Z      # origin is the Azure Repos remote
+done
 ```
 
-The tag runs the release pipeline, `azure-pipelines-release.yml`:
+Each tag runs its repository's own pipeline: the gates, then the release jobs
+of its kind, then the mirror of the tag to GitHub.
 
-1. **Requires the gated commit.** Its `gated` job finds the main pipeline's run
-   at the tagged commit (the green `master` run) and requires its check jobs to
-   have passed. With no run at that commit, it queues a gates-only run on the
-   tag and waits for it.
-2. **Publishes `tcab`.** The `binary_linux` and `binary_windows` jobs
-   release-build and smoke-test `tcab` and keep each binary as the run's
-   `tcab-linux` and `tcab-windows` artifacts.
-3. **Publishes `gg`.** The gg jobs rebuild both static binaries and fail when
-   `gg --version` differs from the tag; `gg_publish` then uploads both and
+1. **`microservice-driver` publishes `tcab`.** Its release jobs release-build
+   and smoke-test `tcab` and keep each binary as the run's `tcab-linux` and
+   `tcab-windows` artifacts.
+2. **`gg` publishes gg.** Its release jobs rebuild both static binaries and fail
+   when `gg --version` differs from the tag; `gg_publish` then uploads both and
    `gg-reference.tar.gz` to `gg-releases/vX.Y.Z/` and reads each back.
-4. **Mirrors the tag.** The `mirror` job pushes it to the GitHub mirror.
+3. **`client-tauri` publishes the operator client.** Its release jobs build a
+   bundle per target and keep each as a `client-*` artifact of the run.
 
-The tag run builds no images and deploys nothing, because `master` already did.
+A tag's run builds no images and deploys nothing, because `master` already did.
 
 ### Verify
 
 - `git ls-remote` shows `vX.Y.Z` at the same commit on Azure Repos and on the
-  GitHub mirror.
-- The tag's release-pipeline run carries the `tcab-linux` and `tcab-windows`
-  artifacts.
+  GitHub mirror, for each tagged repository.
+- `microservice-driver`'s tag run carries the `tcab-linux` and `tcab-windows`
+  artifacts, and `client-tauri`'s the `client-*` bundles.
 - `https://testcabinetartifacts.blob.core.windows.net/gg-releases/vX.Y.Z/` holds
   both gg binaries and `gg-reference.tar.gz`.
 - `docs.testcabinet.ai` serves the new changelog **and** links it in the sidebar.
@@ -283,8 +298,9 @@ The tag run builds no images and deploys nothing, because `master` already did.
 ## After the release
 
 - **Freeze each version as its first run lands.** `scripts/freeze.sh
-test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
-  first run, not later. See [Frozen Versions](/development/frozen-versions/).
+test-suites/test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you
+  trigger that first run, not later. See
+  [Frozen Versions](/development/frozen-versions/).
 - **A problem found in a shipped version is an erratum, not an edit.** Editing a
   version with runs against it invalidates them silently, which is exactly what
   the frozen gate exists to prevent.
@@ -298,9 +314,9 @@ test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
 | Symptom                                                        | Cause                                                                                                                                           |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | The changelog is live but nothing links to it                  | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`.                                                                    |
-| The tag's run fails "gg version matches the tag"               | `crates/gg` and `crates/core` were not bumped to the tag's version. Bump both on `nightly`, promote again, and tag the new `master` commit.     |
+| gg's tag run fails "gg version matches the tag"                | gg's crate was not bumped to the tag's version. Bump it on `nightly`, promote again, and tag gg's new `master` commit.                          |
 | A graduated case is missing its **Reference** tab              | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.                                             |
-| The gallery still shows the old catalog                        | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                                                         |
+| The gallery still shows the old catalog                        | The re-ingest was a no-op (nothing changed), so no snapshot refresh wrote new index objects.                                                    |
 | Reviewers see baselines that disagree with the current scripts | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.                                                     |
 | Prod runs behave like the old code                             | `deploy_prod` failed and undid a rollout, leaving that workload on its previous image; its job log carries the workload's description and logs. |
 

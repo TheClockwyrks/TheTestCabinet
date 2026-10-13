@@ -8,10 +8,10 @@ on-disk format:
 
 - The run showcase is the model's own presentation of the game it built. The
   model writes it into its repository during the run, and record assembly
-  captures it onto the [run record](/components/core/run-records/#showcase).
+  captures it onto the [run record](/components/contracts/run-records/#showcase).
 - The case showcase is the authored presentation of a test-case variant,
   committed with the version and captured from the [reference
-  implementation](/components/core/results/#reference-implementations).
+  implementation](/components/backend/results/#reference-implementations).
 - The suite showcase is the authored presentation of a
   [test suite](/test-suites/showcase/), declared as the `showcase/` directory of
   the suite's version folder and captured from the suite's reference
@@ -33,11 +33,11 @@ subdirectories:
 A media file's kind is inferred from its extension, by the same rule as a
 declared proof:
 
-| Extension  | Kind                                                                                     |
-| ---------- | ---------------------------------------------------------------------------------------- |
-| `.png`     | `image`                                                                                  |
-| `.json.gz` | `replay`: a gzipped engine draw-command [recording](/components/core/engines/#recording) |
-| `.webm`    | `video`                                                                                  |
+| Extension  | Kind                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------- |
+| `.png`     | `image`                                                                                     |
+| `.json.gz` | `replay`: a gzipped engine draw-command [recording](/components/engines/engines/#recording) |
+| `.webm`    | `video`                                                                                     |
 
 Replays are the preferred moving footage. The engine records them itself through
 its recording bracket, and they are far smaller than video. Video is supported
@@ -76,22 +76,23 @@ A showcase problem never fails a run and never degrades its status.
 The showcase's bytes travel the same path as the run's proof, asset, and
 validation media:
 
-- The [driver](/components/driver/overview/#artifacts) uploads every file in
-  `implementation/showcase/` except `showcase.toml` to the backend store when the
-  run finishes. The upload takes the directory rather than the carousel because
-  an image the description references must be served per run even when the
-  carousel does not list it.
-- The backend and the [artifact service](/components/artifacts/overview/#routes)
-  serve each stored file at `GET /runs/{id}/showcase/{file}`.
-- The [public snapshot](/components/backend/snapshot/#run-media) publishes each
-  stored file under `media/runs/<run-id>/showcase/<file>` and names it on the
-  per-run document as `showcaseMedia`. The builder derives the file set from the
-  store listing and from the record itself, meaning the carousel entries plus the
-  image references extracted from the description. A name the ephemeral store no
-  longer holds is fetched through the artifact service, so a description-only
-  image survives a store loss the same way a carousel entry does.
+- The [driver](/components/driver/overview/#artifacts) uploads the run tree,
+  `implementation/showcase/` included, to the
+  [artifacts service](/components/artifacts/overview/) when the run finishes.
+  The whole directory travels rather than the carousel alone, because an image
+  the description references must be served per run even when the carousel
+  does not list it.
+- The artifacts service serves each file of it except `showcase.toml` at
+  `GET /runs/{id}/showcase/{file}`.
+- At publish, the backend has the artifacts service copy the run's publishable
+  media to the public bucket, where each showcase file lands under
+  `media/runs/<run-id>/showcase/<file>`, and the
+  [public snapshot](/components/backend/snapshot/#run-media) names the set on
+  the per-run document as `showcaseMedia`. The set is derived from the record
+  itself: the carousel entries plus the image references extracted from the
+  description.
 
-The web console and the public gallery present a run's showcase when the record
+The console and the public gallery present a run's showcase when the record
 carries one, with the description's image references resolved to the served
 files.
 

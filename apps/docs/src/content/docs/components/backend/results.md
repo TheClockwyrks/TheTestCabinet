@@ -22,9 +22,10 @@ individual verdicts.
 ## Generated code
 
 Each published run whose model writes code, meaning every type except
-asset-generation, is released as its own public git repository. Standalone
-repositories keep results independent and map cleanly onto per-run hosting and
-embedding.
+asset-generation, is released as its own public git repository, pushed by the
+[repos service](/components/repos/overview/) from the bundle the driver uploaded
+at run end. Standalone repositories keep results independent and map cleanly
+onto per-run hosting and embedding.
 
 The generated implementation must include a README and any other documentation a
 user needs to clone the repository and run it locally. Requiring that
@@ -32,8 +33,9 @@ documentation is part of every code-writing test case.
 
 An [asset-generation](/testing/asset-generation/overview/) run is the exception.
 Its authoritative output is the recorded sequence of operations, uploaded to the
-backend as the run's assets, so publishing one creates no repository on GitHub
-and the run carries no source link. The run folder is still a git repo, seeded
+[artifacts service](/components/artifacts/overview/) as the run's assets, so
+publishing one creates no repository on GitHub and the run carries no source
+link. The run folder is still a git repo, seeded
 like any other. What the run uploads depends on its asset kind: a sprite or
 sprite-sheet run uploads its regenerated images, and a model run uploads its
 emitted geometry and rig so a reviewer can inspect the model interactively.
@@ -60,7 +62,7 @@ so it reaches the published gallery and nothing else.
 A person deploys it out of band rather than as part of any run's lifecycle. The
 [`tcab publish-reference`](/components/cli/overview/#commands) command builds
 each of the variant's reference directories with the case `[build]` commands,
-runs the same [secret-redaction](#secret-redaction) scrubber the run publisher
+runs the same [secret-redaction](#secret-redaction) scrubber a run's publish
 uses over the output, and deploys each to Cloudflare Pages. A required `--env`
 selects prod's `test-cabinet-references` project or staging's
 `test-cabinet-references-staging`, on a branch named
@@ -92,11 +94,13 @@ records no Pages URL. It uses the same `reference_implementation` key.
 
 Its reference is a `draw.sh` containing nothing but calls to the case's drawing
 binary, drawing the correct sheet the same one-operation-at-a-time way a model
-must. `publish-reference` seeds a workspace from the case manifest through the
-real seeding path, runs that script, and uploads each frame's rendered image and
-its recorded action log to the public snapshot bucket under
-`media/references/<slug>/<version>/<variant>/frames/`. The log travels with the
-image because the log is what a run is scored on.
+must. [`tcab publish-asset-reference`](/components/cli/overview/#commands) seeds
+a workspace from the case manifest through the real seeding path, runs that
+script, and writes each frame's rendered image and its recorded action log to
+the public bucket under `media/references/<slug>/<version>/<variant>/frames/`,
+through the artifacts service's `PUT /public/{key}` with an Access service
+token. The log travels with the image because the log is what a run is scored
+on.
 
 The script is the only source of truth for both the images and the logs and
 reproduces both exactly, so neither is committed. Object-store keys are
@@ -124,11 +128,11 @@ and is deployed and shown as a live build.
 
 ## Run record
 
-Each finished run's [run record](/components/core/run-records/) is uploaded to
-the [backend](/components/backend/overview/), with its links pointing at the
-run's source repository and playable build. The backend is the system of record
-for runs, and the [public site](/components/site/overview/) is built from a
-dataset the backend exports.
+Each finished run's [run record](/components/contracts/run-records/) is
+uploaded to the [backend](/components/backend/overview/), with its links
+pointing at the run's source repository and playable build. The backend is the
+system of record for runs, and the [public site](/components/site/overview/)
+reads the [public dataset](/components/backend/snapshot/) the backend writes.
 
 ## Lifecycle
 
@@ -141,26 +145,27 @@ before it can be published and that stays optional on a validator-rated run.
 ### Automatic storage
 
 A run needs no operator action to become reviewable. When the
-[driver](/components/driver/overview/) finishes a run it reports the produced
-[run record](/components/core/run-records/) to the backend, which stores it
-privately, and it uploads the produced tree, meaning the playable build together
-with proof and asset media, to the [artifact
-service](/components/artifacts/overview/). The run is stored but absent from the
-public gallery, and its build is playable for review straight off the artifact
-service.
+[driver](/components/driver/overview/) finishes a run it uploads the produced
+tree, meaning the playable build together with proof and asset media, to the
+[artifacts service](/components/artifacts/overview/) and the implementation's
+git bundle to the [repos service](/components/repos/overview/), then reports the
+produced [run record](/components/contracts/run-records/) to the backend, which
+stores it privately. The run is stored
+but absent from the public gallery, and its build is playable for review
+straight off the artifacts service.
 
 ### Review
 
-Anyone with an [account](/components/backend/overview/#authentication) plays the
-run's build and submits a [review](#reviews). The reviewer is typically someone
-other than the operator who produced the run. On a validator-rated run that is a
-writeup, one aesthetic rating for the whole run, and any checklist verdicts the
-reviewer chose to override. On a legacy run it is a writeup, a functional rating
-per scoring domain, and the checklist verdicts. Every review is attributed to
-the authenticated account that wrote it.
+Anyone the [Access policy](/components/backend/overview/#identity) admits plays
+the run's build and submits a [review](#reviews). The reviewer is typically
+someone other than the operator who produced the run. On a validator-rated run
+that is a writeup, one aesthetic rating for the whole run, and any checklist
+verdicts the reviewer chose to override. On a legacy run it is a writeup, a
+functional rating per scoring domain, and the checklist verdicts. Every review
+is attributed to the Access identity that wrote it.
 
-A run may carry multiple reviews, one per account. Submitting a second review
-replaces the reviewer's own.
+A run may carry multiple reviews, one per reviewer identity. Submitting a second
+review replaces the reviewer's own.
 
 ### Publish
 
@@ -168,7 +173,7 @@ Publishing releases a run and flips it public. It is the only point at which a
 run's outputs cross onto the open internet, and it is irreversible: a published
 run cannot be deleted, and its repository and its build stay public. What it
 requires depends on the run's
-[terminal state](/components/core/run-records/#status):
+[terminal state](/components/contracts/run-records/#status):
 
 - A `completed` validator-rated run is publishable as soon as it completes, with
   or without a review, since its functional rating and score stand on the run
@@ -193,25 +198,35 @@ requires depends on the run's
   record at all.
 
 Publishing is asynchronous. The backend gates the run and enqueues a per-publish
-`tcab-publisher` Job, which does the release work and reports back. The release
-Job:
+`tcab-publisher` Job, which the [dispatcher](/components/dispatcher/overview/)
+admits in its publish lane. The Job, the `microservice-publisher` repository's
+binary:
 
-- Releases the run's generated code to its own public repository, skipped for an
-  asset-generation run.
-- Deploys the produced static build to Cloudflare Pages
-  (`wrangler pages deploy <dir> --branch=<run-id>`), which serves it at its own
-  `pages.dev` subdomain root, keeping the build playable exactly as the test
-  case's [build interface](/testing/end-to-end/overview/#design-requirements)
-  and the [load check](/components/core/validation/#load-check) require.
+1. Fetches the build output from the artifacts service (`tree.tar`), with its
+   per-publish-job token.
+2. Deploys the static build to the per-run Cloudflare Pages project
+   (`wrangler pages deploy <dir> --branch=<run-id>`), after scrubbing it, which
+   serves it at its own `pages.dev` subdomain root, keeping the build playable
+   exactly as the test case's [build
+   interface](/testing/end-to-end/overview/#design-requirements) and the [load
+   check](/components/driver/validation/#load-check) require.
+3. Calls `POST /runs/{id}/publish` on the repos service, which creates the
+   run's public repository and pushes the scrubbed bundle to it, skipped for an
+   asset-generation run.
+4. Reports both links to the backend.
 
-The backend records the resulting links on the run and, once the Job reports a
-terminal success, flips the run public and regenerates the snapshot. The Job
-holds the credentials each release needs.
+Once the Job reports a terminal success the backend marks the run published,
+records the links, mints the run's
+[short code](/components/backend/overview/#short-codes) and writes its object,
+has the artifacts service copy the run's media to the public bucket, then writes
+the run's document and the updated index objects through it, swapping the
+`index.json` pointer last. The publisher holds the Cloudflare credential alone;
+the GitHub credential is the repos service's.
 
-The release is idempotent. A re-publish reuses an existing repository rather than
-recreating it, and still re-commits and re-pushes the implementation, which
-recovers a publish whose repository was created before its first push landed. The
-first push settles briefly and is then retried with backoff, so a transient
+The release is idempotent. A re-publish reuses an existing repository rather
+than recreating it, and still re-commits and re-pushes the implementation, which
+recovers a publish whose repository was created before its first push landed.
+The first push settles briefly and is then retried with backoff, so a transient
 post-create `403` from GitHub's permission-propagation lag self-heals.
 
 A release that does not land records its reason on the publish job and raises a
@@ -257,7 +272,7 @@ raises the publish-failed notification and waits in the Unpublished worklist for
 an operator. An automatic publish that cannot be enqueued is logged and never
 fails the report or the pass that prompted it.
 
-Only published runs appear in the public snapshot and therefore in the gallery. A
+Only published runs appear in the public dataset and therefore in the gallery. A
 published catastrophic or timeout failure shows its generated source and has no
 playable build, and its outcome is reported as a per-model statistic separate
 from the score that ranks workable runs. A published `harness_error`,
@@ -269,9 +284,9 @@ failure tiers, namely catastrophic failures, timeouts, harness errors, execution
 ceilings, and hangs. `infrastructure` and `canceled` runs are absent from every
 model statistic, since neither is a model outcome.
 
-The backend performs publish and the snapshot regeneration it triggers as the
+The backend performs publish and the dataset writes it triggers as the
 synchronized half of the lifecycle, so two operators publishing at once cannot
-race on the store or the snapshot. See [the
+race on the store or the index objects. See [the
 backend](/components/backend/overview/#review-and-publish).
 
 #### Secret redaction
@@ -280,35 +295,25 @@ A run executes with a real provider API key in its container, so a model that
 dumps its environment can write that key into a source file it produced. The
 backend a run streams to is private and trusted and keeps the captured data
 as-is. The exposure is where a run's data crosses into the open internet, so
-publishing redacts secrets at each public-egress point as the release Job
-produces it:
+publishing redacts secrets at each public-egress point, with the one scrubber
+the contracts' `redact` crate provides:
 
-- The public source repository. Before the generated code is committed and
-  pushed, every staged file is scanned and any leaked key is rewritten in place.
-- The Cloudflare Pages build. Before the static output is deployed, the built
-  tree is scanned the same way, in case a key was carried through the build into
-  an emitted asset.
+- The public source repository. Before the repos service commits and pushes the
+  bundle's tree, every file is scanned and any leaked key is rewritten in place.
+- The Cloudflare Pages build. Before the publisher deploys the static output,
+  the built tree is scanned the same way, in case a key was carried through the
+  build into an emitted asset.
 
 The scrubber matches any provider-shaped `sk-…` token, anchored to the `sk-`
-prefix and requiring a long enough body, along with the exact key values from the
-release Job's environment where it holds them. Each match is replaced with
-`[REDACTED]`. The third public surface, the run's record and event stream in the
-public snapshot, is scrubbed by the backend as it builds that snapshot; see [the
-per-run record](/components/backend/snapshot/#run-documents).
+prefix and requiring a long enough body, along with the exact values of the
+key-named environment variables the contract lists where the scrubbing process
+holds them. Each match is replaced with `[REDACTED]`. The third public surface,
+the run's record and event stream in the public dataset, is scrubbed by the
+backend as it writes the run's document; see [the per-run
+record](/components/backend/snapshot/#run-documents).
 
-### Combined review and publish
-
-When one operator ran the model, played it, and vouches for it, the CLI's
-`tcab publish` does both in one step: it self-reviews the run with the writeup
-and ratings the operator wrote, then publishes it. A validator-rated run with no
-local writeup is published without a self-review, and the command says so in its
-output. It is batch-capable. A batch is checked for its reviews up front, since
-the review is known locally, so a legacy run missing one stops the whole batch
-before anything is published.
-
-Submitting to the backend requires the caller to be authenticated. Review and
-publish each require a bearer token attributed to an account (see
-[Authentication](/components/backend/overview/#authentication)). Reads stay open.
+Review and publish are each submitted from the console under the caller's
+Access identity (see [Identity](/components/backend/overview/#identity)).
 
 ## Reviews
 
@@ -328,7 +333,8 @@ depends on the run:
 
 A review is authored separately by a person after playing the finished build
 rather than emitted by a run, and is not part of the [run
-record](/components/core/run-records/) contract. The ratings and checklist
+record](/components/contracts/run-records/) contract. Its reviewer identity is
+the Access assertion's email. The ratings and checklist
 verdicts travel with the writeup, in its frontmatter. A review must carry at
 least one rating or verdict. Publishing makes a run's reviews available to the
 site alongside the run record.
@@ -421,7 +427,7 @@ are aggregated across them:
   across domains within each review, then the worst of those across reviews. On a
   validator-rated run each review's rating is derived from its effective
   checklist, the validators' own rating stands while the run has no reviews, and
-  the [toolchain gate](/components/core/validation/#the-toolchain-gate) applies
+  the [toolchain gate](/components/driver/validation/#the-toolchain-gate) applies
   to the aggregate.
 - The run's aesthetic rating is the worst run-wide tier across its reviews. A
   validator-rated run with no review has a functional rating and score and no

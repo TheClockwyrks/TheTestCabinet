@@ -2,8 +2,8 @@
 title: Evaluation
 ---
 
-An asset-generation run is validated by
-[`crates/core`](/components/core/overview/) and then rated by a person. There is
+An asset-generation run is validated by the
+[driver](/components/driver/validation/) and then rated by a person. There is
 no target asset and no automated similarity score. The validator confirms that
 what the run produced is well-formed and satisfies the case's contract, and the
 reviewer judges it against the brief.
@@ -189,7 +189,7 @@ for music, shown alongside.
 
 ## Review
 
-The human [review](/components/core/results/#reviews) is the assessment. A
+The human [review](/components/backend/results/#reviews) is the assessment. A
 published asset-generation run carries a writeup of how convincingly the asset
 realizes the brief and how the model approached the work, alongside the asset
 itself and the recorded actions. The cheat-detection and provenance signals
@@ -198,7 +198,7 @@ inform that assessment; the judgment of the asset is the reviewer's.
 That review is one overall rating and nothing else. An asset-generation case
 declares
 [no reviewer checklist](/testing/asset-generation/manifests/overview/#judged-on-one-overall-rating),
-only the single `overall` scoring [domain](/components/core/results/#reviews),
+only the single `overall` scoring [domain](/components/backend/results/#reviews),
 because how well an asset reads is one judgment about the whole asset. The
 reviewer takes in the asset as a whole, playing back every declared sequence,
 turning the model, or hearing the clip, then reads the brief and gives it one

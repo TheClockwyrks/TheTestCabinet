@@ -48,19 +48,19 @@ An engine is a directory under `engines/<slug>/` containing one manifest,
 The last two are declared by an engine that provides a runtime. An engine
 without them supplies no runtime, which is what `none` is.
 
-The built-in engines live under `engines/` in the repo. The data crate
+The built-in engines live under `engines/` in the
+[engines repository](/components/engines/overview/). Its data crate
 `crates/engines` (`test-cabinet-engines`) embeds every `engines/*/engine.toml` at
-build time as a table keyed by slug, in `BUILT_IN_SLUGS` order, so a
-backend-driven worker with no checkout resolves them the same way the CLI does.
-The engine catalog in the
-[suites crate](/components/core/overview/#the-suites-crate) (`contracts/crates/suites`)
+build time as a table keyed by slug, in `BUILT_IN_SLUGS` order, so a driver
+`Job` with no checkout resolves them the same way every other host does. The
+engine catalog in the
+[suites crate](/components/contracts/overview/#the-suites-crate)
 resolves a selection against a manifest table it is given
-(`EngineCatalog::from_manifests`). The core builds the default catalog over the
-built-in table: `EngineCatalog::new` and `EngineCatalog::with_package_store` are
-`test_cabinet_core::engine::EngineCatalogExt`'s. They are catalogued under
-[Engines](/engines/overview/). The catalogue is closed: a run naming a slug
-outside it is refused, because an engine is a staged package and a seeded
-documentation tree the host has to hold.
+(`EngineCatalog::from_manifests`), and the engines crate publishes
+`built_in_catalog`, that catalog bound to the built-in table. They are
+catalogued under [Engines](/engines/overview/). The catalogue is closed: a run
+naming a slug outside it is refused, because an engine is a staged package and
+a seeded documentation tree the host has to hold.
 
 An engine that carries a simulation core compiled to WebAssembly ships that
 module prebuilt inside its package, so staging and seeding copy an engine's
@@ -112,7 +112,7 @@ seeing its source.
 ## Validators hold the engine
 
 A run under an engine decides its objective points with
-[validators](/components/core/validation/) that hold the build they check. A
+[validators](/components/driver/validation/) that hold the build they check. A
 validator imports the engine and the build's own game module, constructs the
 engine over a canvas and a clock of its own, and steps it an exact number of
 frames.
@@ -179,7 +179,7 @@ the first form, since the recording it hands back is assembled in memory and
 travels alone.
 
 The writer that lands a recording in a run's
-[validation media](/components/core/validation/#the-shared-image-store) rewrites
+[validation media](/components/driver/validation/#the-shared-image-store) rewrites
 those entries into the second, so each unique image is written once per run under
 a name derived from its own bytes. A sprite drawn in forty of a run's recordings
 is then one file, it travels as PNG rather than as base64 inside a gzip that
@@ -287,10 +287,11 @@ to running under an engine.
 
 ## Selecting an engine
 
-An engine is selected per run and defaults to `none`. The CLI selects it with
-`--engine`; every enqueue endpoint carries it on the launch body alongside the
-harness, the model, and the orchestrator. A gg run carries it too, since a gg run
-builds inside a seeded workspace like any other run.
+An engine is selected per run and defaults to `none`. Every enqueue endpoint
+carries it on the launch body alongside the harness, the model, and the
+orchestrator, and `tcab seed` and `tcab validate` take it as `--engine`. A gg
+run carries it too, since a gg run builds inside a seeded workspace like any
+other run.
 
 The engine must resolve in the catalogue, must be one the case supports, and its
 catalogued version must fall inside the range the case declared for it. A run

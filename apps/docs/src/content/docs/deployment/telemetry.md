@@ -31,7 +31,7 @@ address and supply any auth header from a Kubernetes `Secret` through
 protocol, and `TCAB_ENV` into every per-run driver `Job` and every publish `Job`,
 so their spans export alongside the long-lived services with no extra wiring.
 
-The [web console](/components/web/overview/) is a browser app that exports traces
+The [console](/components/web/overview/) is a browser app that exports traces
 only, through the `VITE_OTEL_*` build-time variables. The CLI is an
 operator tool rather than a deployed service, and reads the same `OTEL_*`
 variables on whatever host runs it.
@@ -46,8 +46,8 @@ options below differ mainly in how much you operate yourself.
 The `components/observability` component runs the
 [`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm) all-in-one
 image (collector plus Tempo, Mimir, Loki, and Grafana) in the cluster, which is
-the same stack local development runs. All four cloud overlays include it. It
-adds:
+the same stack local development runs. The `staging` and `prod` overlays
+include it. It adds:
 
 - a `tcab-lgtm` `StatefulSet` and `ClusterIP` `Service`, with a
   `PersistentVolumeClaim` per store so telemetry survives a restart and retention
@@ -61,15 +61,17 @@ Retention is tuned per environment by patching `LOKI_RETENTION_PERIOD`,
 `TEMPO_BLOCK_RETENTION`, and `PROMETHEUS_RETENTION` on the `StatefulSet`. The
 component defaults to 24 hours, and the `prod` overlay raises it to three days.
 
-The `Service` is `ClusterIP` and carries no public `Ingress`. Reach Grafana with
-`kubectl port-forward svc/tcab-lgtm 3000:3000`, or, on the overlays that include
-`components/internal-ingress`, at the `grafana.` hostname over the VPN-only
-ingress. Because the `otel-lgtm` image ships Grafana with anonymous admin,
-exposing that hostname is paired with the overlay's `patch-grafana-auth.yaml`,
-which disables anonymous access and sets admin credentials from the
-`tcab-grafana-admin` Secret. Both `grafana-admin-user` and
+The `Service` is `ClusterIP` and carries no `Ingress`. On the overlays that
+include `components/edge`, Grafana is reached at
+`grafana.console.testcabinet.ai` (staging:
+`grafana.console.staging.testcabinet.ai`) through the environment's tunnel,
+behind an Access application of its own. Because the `otel-lgtm` image ships
+Grafana with anonymous admin, exposing that hostname is paired with the
+overlay's `patch-grafana-auth.yaml`, which disables anonymous access and sets
+admin credentials from the `tcab-grafana-admin` Secret, so a person signs in to
+Access and then to Grafana. Both `grafana-admin-user` and
 `grafana-admin-password` must exist in Key Vault before the overlay applies; see
-[Internal ingress](/deployment/kubernetes/internal-ingress/).
+[Edge](/deployment/kubernetes/edge/).
 
 This option is the cheapest and adds no third-party dependency, and you operate
 and secure the telemetry workload yourself. Dropping the component from an

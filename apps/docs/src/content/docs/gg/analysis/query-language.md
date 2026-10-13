@@ -18,7 +18,7 @@ groupable with no Rust change, no contract regeneration and no TypeScript label.
 ## The run document
 
 One document is built per run, from its [run
-record](/components/core/run-records/) plus the store's lifecycle columns. It is
+record](/components/contracts/run-records/) plus the store's lifecycle columns. It is
 plain JSON, an order of magnitude smaller than the structures it derives from,
 and carries configuration ids and outcome numbers rather than source, prompts or
 model output.
@@ -198,7 +198,7 @@ visible before a query returns nothing.
 
 The console's analysis chrome carries Sessions, Dashboards, Discover, Saved and
 Reference. The public static site carries Discover alone, since the other tabs
-need an account or a backend.
+need a signed-in identity or a backend.
 
 Discover is the query surface: a filter row holding the time range and the open
 and save controls, the editor, a view switcher, the field sidebar, and either
@@ -234,11 +234,11 @@ drops is counted and reported. The table view is always reachable.
 
 ## Persistence and publishing
 
-Saved queries and dashboards are per-account objects, served under
-`/gg/saved-queries` and `/gg/dashboards`. A saved query stores its source text,
-so a relative date re-resolves on every run and a later grammar addition leaves
-stored queries valid. The corpus itself is deployment-wide rather than
-account-scoped, matching the run listings.
+Saved queries and dashboards are scoped to the signed-in identity, the Access
+assertion's email, and served under `/gg/saved-queries` and `/gg/dashboards`. A
+saved query stores its source text, so a relative date re-resolves on every run
+and a later grammar addition leaves stored queries valid. The corpus itself is
+deployment-wide rather than scoped to an identity, matching the run listings.
 
 The backend holds an in-memory document index. Freshness is reconciled per id
 against a mutation timestamp the run row carries and every mutator stamps:
@@ -249,8 +249,10 @@ contain without moving it. A document's `score` field is a fraction of the case
 manifest's checklist weights, which no run row records, so a re-ingest drops the
 whole index instead.
 
-For the public site the documents are exported as a snapshot artifact and the
-same mirrored evaluator runs in the browser. Three rules govern the export:
+For the public gallery the documents are written into the public dataset as
+[`gg-runs.json`](/components/backend/snapshot/#gg-runsjson--the-gg-document-corpus)
+and the same mirrored evaluator runs in the browser. Three rules govern the
+export:
 
 - It is decoupled from run publication. A document carries configuration ids and
   outcome numbers, so gating it on publication would export almost nothing.
@@ -262,8 +264,9 @@ same mirrored evaluator runs in the browser. Three rules govern the export:
   well as in its value, because a field name is minted from operator-authored
   configuration keys exactly as a value is.
 
-The public corpus is a build-time export and lags the console's, so the site
-renders the snapshot's build time beside its figures.
+The public corpus is written with each snapshot generation, so it lags the
+console's live index by the interval between publishes; the gallery renders the
+corpus's `generatedAt` beside its figures.
 
 ## Obligations on emitted fields
 

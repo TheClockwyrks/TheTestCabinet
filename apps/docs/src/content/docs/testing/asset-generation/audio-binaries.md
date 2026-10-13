@@ -23,14 +23,16 @@ layer, time, and process library clips, with synth voices for glue, the way a
 game-audio DAW does. The hard 3D cases' weapon, naval, and footstep SFX use
 `sfx-sample`.
 
-The DSP lives in `crates/audio-core`: the oscillators, noise, envelopes, filters,
-and FM; the mixer and offline render engine; the WAV encoder; the waveform,
-spectrogram, and piano-roll PNG renderers; and the shared CLI record, preview,
-and config plumbing. Each binary has its own crate (`crates/sfx-synth`,
-`crates/sfx-sample`, `crates/music`) and its own asset-generation run-container
-image, so an audio asset-generation run carries only the tool its `asset_kind`
-names. Both [full-stack](/testing/full-stack/overview/) images carry all three
-binaries, because one full-stack run produces every asset its game needs.
+The DSP lives in `audio-core`, the `tool-audio-core` repository's library: the
+oscillators, noise, envelopes, filters, and FM; the mixer and offline render
+engine; the WAV encoder; the waveform, spectrogram, and piano-roll PNG renderers;
+and the shared CLI record, preview, and config plumbing. Each binary is its own
+repository over `tool-audio-core`, `sfx-synth` in `tool-sfx-synth`, `sfx-sample`
+in `tool-sfx-sample` and `music` in `tool-music`, and each has its own
+asset-generation run-container image, so an audio asset-generation run carries
+only the tool its `asset_kind` names. Both
+[full-stack](/testing/full-stack/overview/) images carry all three binaries,
+because one full-stack run produces every asset its game needs.
 
 The emitted asset is a finished PCM `.wav`, and `music` also emits a portable
 `.mid` score. The clip is a finished waveform, so a game plays the `.wav`
@@ -188,8 +190,7 @@ piece in-engine with its own instruments.
 
 ## Live preview
 
-When a run is watched, driven by a [driver](/components/driver/overview/)
-rather than a plain `tcab run`, the
+When a run is watched, the
 model's authoring streams to the viewer in real time. The orchestrator adds a
 `live` block to the seeded config carrying a `host.docker.internal:host-gateway`
 endpoint and an opaque per-run token. When the model runs `render`, the binary
@@ -217,7 +218,7 @@ An audio asset-generation case declares the single pack its binary plays, a
 sample pack for `sfx-sample` and an instrument bank for `music`. A full-stack or
 game-jam run writes its own tool config and may be given several packs, and a
 config that names no pack plays the first declared pack of its kind.
-[Staged audio](/components/core/execution/#staged-audio) covers how a run
+[Staged audio](/components/driver/execution/#staged-audio) covers how a run
 receives them.
 
 Running a binary on a host instead of in a run container, as a reference

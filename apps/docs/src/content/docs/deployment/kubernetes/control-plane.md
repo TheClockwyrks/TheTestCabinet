@@ -3,9 +3,8 @@ title: Control plane
 ---
 
 The control plane is the always-on half of a deployment: the
-[backend](/components/backend/overview/), which owns the run queue and the
-published record, and the [auth service](/components/auth/overview/), which owns
-the accounts.
+[backend](/components/backend/overview/), which owns the run queue, the
+published record and the catalog, and the identity the edge hands it.
 
 ## Backend
 
@@ -22,110 +21,110 @@ browser for rendering references. As a `StatefulSet`
    `TCAB_BACKEND_CHECKOUT` point to, so the database, store, and checkout survive
    a restart or reschedule. A volume is not a backup; see
    [Backups](/deployment/backups/).
-3. An image with a browser. The published `tcab-backend` image
-   (`deployments/images/services.Dockerfile`, `--target backend`) layers the
+3. An image with a browser. The published `tcab-backend` image layers the
    binary over Node, the bundled Playwright driver, and a Playwright-managed
    Chromium with the fonts it needs, and points the render path at them. Set
    `TCAB_REFERENCE_BROWSER` only to override that baked Chromium with an explicit
    binary. The `tcab-driver` image carries the same Node and Playwright
    toolchain plus `git`, because the driver seeds, builds, and load-checks each
-   run's implementation. The auth, dispatcher, and artifact images ship no
-   browser.
+   run's implementation. The dispatcher, artifacts, repos and arena images
+   ship no browser.
 
-The backend image also bakes gg's reference documents at `/opt/gg-reference` and
-sets `TCAB_GG_REFERENCE` to point at them. Those are the files the backend serves
-at `GET /gg/reference`, projected by the same `gg` binary the `tcab-driver` image
+The backend image also bakes gg's reference documents at `/opt/gg-reference`,
+fetched from gg's release container at the version the driver pins, and sets
+`TCAB_GG_REFERENCE` to point at them. Those are the files the backend serves at
+`GET /gg/reference`, projected by the same `gg` binary the `tcab-driver` image
 ships and the run images are self-checked against. A backend deployed from the
-release tarballs instead needs gg's `v<version>/gg-reference.tar.gz` unpacked and
-the variable pointed at it; otherwise the console's gg Reference section answers
-`503` and the rest of the backend works normally.
+release tarballs instead needs gg's `v<version>/gg-reference.tar.gz` unpacked
+and the variable pointed at it; otherwise the console's gg Reference section
+answers `503` and the rest of the backend works normally.
 
 The backend `Service` is `ClusterIP` with no `Ingress`. The dispatcher, the
-artifact service, the arena, and operators reach it in-cluster, and its outbound
-R2 and deploy-hook calls need no inbound exposure.
+driver and publisher `Job`s, the artifacts and repos services and the arena
+reach it in-cluster, and the edge reaches it at the origin's `/api/` path. Its
+outbound calls are to OpenRouter, for list prices and model probes; the public
+dataset is written through the artifacts service, over the cluster network.
 
 ### Wiring variables
 
-Beyond the store and checkout paths, five values wire the backend into the rest
-of the deployment.
+Beyond the store and checkout paths, these values wire the backend into the
+rest of the deployment.
 
-| Variable                     | Purpose                                                                                                                                                               |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TCAB_BACKEND_AUTH_URL`      | The auth service the backend verifies every bearer token against, in-cluster (`http://tcab-auth:8789`)                                                                |
-| `TCAB_BACKEND_SERVICE_TOKEN` | The shared service token the dispatcher's claim is verified against. It must equal the dispatcher's copy, or the queue never drains                                   |
-| `TCAB_ARTIFACTS_PUBLIC_URL`  | The console-facing artifact base URL, reported through `GET /config`                                                                                                  |
-| `TCAB_ARTIFACTS_URL`         | The in-cluster artifact base URL (`http://tcab-artifacts:8790`) the backend prunes and [sweeps](/components/backend/overview/#artifact-reclamation) run trees through |
-| `TCAB_ARENA_PUBLIC_URL`      | The console-facing arena base URL, reported through `GET /config`                                                                                                     |
+| Variable                     | Purpose                                                                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_BACKEND_SERVICE_TOKEN` | The shared service token the dispatcher's claim is verified against, and the one the backend presents to the artifacts and repos services. It must equal the dispatcher's copy, or the queue never drains     |
+| `TCAB_ARTIFACTS_URL`         | The in-cluster artifacts base URL (`http://tcab-artifacts:8790`) the backend prunes and [sweeps](/components/backend/overview/#artifact-reclamation) run trees through and writes the public snapshot through |
+| `TCAB_REPOS_URL`             | The in-cluster repos base URL (`http://tcab-repos:8792`) the backend prunes a deleted run's bundle through                                                                                                    |
+| `TCAB_ACCESS_TEAM_DOMAIN`    | The Access team domain whose certificates sign the edge's assertion; see [Identity](/components/auth/overview/#configuration)                                                                                 |
+| `TCAB_ACCESS_AUDIENCE`       | The audience tag of the Access application that protects the environment's origin                                                                                                                             |
 
-`TCAB_SNAPSHOT_PUBLIC_URL` is the public read base of the snapshot bucket,
-reported through the same `GET /config` so the console can load an
-asset-generation case's published
-[reference frames](/components/core/results/#script-references-asset-generation).
-It carries the CDN hostname those objects are served from, which is the value the
-static site is built with as `TCAB_SNAPSHOT_URL`. `TCAB_R2_ENDPOINT` is a
-different thing: the S3 write endpoint the backend uploads the snapshot through.
-The snapshot bucket is public-read, which is what lets the public gallery work.
-With `TCAB_SNAPSHOT_PUBLIC_URL` unset the console shows no Reference tab for
-asset-generation cases.
+The console is same-origin with the backend, the artifacts service and the
+arena, so the backend advertises no service URL: the console calls `/api/`,
+resolves a run's media under `/artifacts/` and the arena under `/arena/` of its
+own origin. Published reference frames and the rest of the public dataset are
+read from the public bucket's hostname, `snapshot.testcabinet.ai` in prod.
 
 Constraints 1 and 2 above are properties of the SQLite store. Point
 `TCAB_BACKEND_DATABASE_URL` at a managed PostgreSQL instance and the backend
-becomes a plain `Deployment` with no database volume and no single-replica pin;
-see [PostgreSQL](/deployment/kubernetes/postgres/). The browser image and a
-volume for the definition store and checkout still apply, since those stay on
-local disk.
+becomes a plain `Deployment` with no database volume and no single-replica pin,
+the shape of both remote environments; see
+[PostgreSQL](/deployment/kubernetes/postgres/). The browser image and a volume
+for the definition store and checkout still apply, since those stay on local
+disk.
 
 ### Ingesting definitions
 
-The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`,
-populated by `POST /ingest`. There are two shapes for driving that, and an
-overlay uses one of them.
+The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`:
+the `test-suites` repository at the branch the environment ingests
+(`TCAB_INGEST_BRANCH`, `staging` for staging and `master` for prod), with a
+shallow clone of `cold-storage` beside it. `POST /ingest` populates the store
+from it. There are two shapes for driving that, and an overlay uses
+one of them.
 
 Ingest reads the definitions, the test suites and the cold-storage media from
 `TCAB_DEFINITIONS_ROOT`, `TCAB_SUITES_ROOT` and `TCAB_COLD_STORAGE_ROOT`. The
-overlays leave all three unset, so each resolves to its place in the checkout.
+overlays leave all three unset, so each resolves to its default: the checkout's
+root, its `test-suites/` tree and the `cold-storage/` clone beside the checkout.
 An overlay that clones those trees as separate checkouts sets each one to the
 directory its clone is written to, and the [prune
 guard](/components/backend/overview/#test-case-definitions) keeps the store
 intact when a variable names a directory the clone has not filled.
 
 - A `CronJob` (`deployments/k8s/base/ingest-cronjob.yaml`) that clones the
-  repository and calls `POST /ingest` over the cluster network. It fits a
-  deployment whose backend serves its checkout from a shared volume the job can
-  mount.
+  repository and calls `POST /ingest` over the cluster network with the service
+  token. It fits a deployment whose backend serves its checkout from a shared
+  volume the job can mount.
 - An ingest sidecar in the backend pod, which the `staging` and `prod` overlays
-  patch in (`patch-backend-ingest.yaml`).
-  It shares the backend's `state` volume, writes the checkout the backend
-  reads, and calls `POST /ingest` over localhost, so intra-pod traffic bypasses
-  the `NetworkPolicy` and no service token is needed. Each refresh of the
-  checkout then updates its two submodules to the commits the branch names:
-  `cold-storage` shallowly, and `test-suites` authenticated with the read-only
-  credential in the
-  [`tcab-test-suites-credential` Secret](/deployment/overview/#secrets). It runs
-  one forced ingest of the branch tip on backend start, then idles. Those
-  overlays suspend the base `CronJob`.
+  patch in (`patch-backend-ingest.yaml`). It shares the backend's `state`
+  volume, writes the checkout the backend reads, and calls `POST /ingest` over
+  localhost, so intra-pod traffic bypasses the `NetworkPolicy` and no token is
+  needed. Each refresh fetches the `test-suites` branch tip, authenticated with
+  the read-only credential in the
+  [`tcab-test-suites-credential` Secret](/deployment/overview/#secrets), and
+  `cold-storage` shallowly. It runs one forced ingest of the branch tip on
+  backend start, then idles. Those overlays suspend the base `CronJob`.
 
-Every pipeline deploy changes the backend's image tag, so every deploy restarts
-the backend pod, and the sidecar re-ingests the catalog that shipped with the
-commit. It ingests once rather than on a schedule: a periodic forced re-ingest
+A pipeline deploy that moves the backend's pin restarts the backend pod, and
+the sidecar re-ingests the catalog at the branch tip. It ingests once rather
+than on a schedule: a periodic forced re-ingest
 rewrites every version and briefly leaves each one without a manifest, which
 fails any run resolving that version mid-cycle. Publish catalog changes between
-deploys with `tcab ingest --env <env>`, which refreshes the live checkout to the
-branch tip through `az aks command invoke` and ingests it. The backend swaps
-each version into place atomically, so it is safe to run while runs execute.
-Both paths treat the `test-suites` update as the one step allowed to fail: when the
+deploys with `tcab ingest --env <env>`, which calls `POST /ingest` through the
+edge with the Access service token; the backend refreshes its checkout to the
+tip of the branch the environment ingests and scans it. The backend swaps each
+version into place atomically, so it is safe to run while runs execute. Both
+paths treat the suites' own update as the one step allowed to fail: when the
 credential is absent, expired or refused, the refresh prints
-`ingest: test suites update failed; ingesting without them` and ingests the test
-cases and the reference-build lockfile without the suites' changes. Every other
-step of `tcab ingest --env <env>` fails it before anything is ingested.
+`ingest: test suites update failed; ingesting without them` and ingests the
+test cases and the reference-build lockfile the checkout already holds. Every
+other step of `tcab ingest --env <env>` fails it before anything is ingested.
 
-## Auth service
+## Identity
 
-The auth service hosts the user
-[accounts](/components/backend/overview/#authentication) the backend verifies tokens
-against. It keeps its own SQLite database, so it takes the same single-replica
-`StatefulSet` plus `PersistentVolumeClaim` shape as the backend, or runs as a
-plain `Deployment` when `TCAB_AUTH_DATABASE_URL` points at a managed database.
-It renders nothing, holds no third-party secret, and stores only Argon2id
-password hashes. The example is `deployments/k8s/base/auth.yaml`; point the
-backend at it with `TCAB_BACKEND_AUTH_URL=http://tcab-auth:8789`.
+The backend holds no accounts. Every request that reaches it through the edge
+carries the `Cf-Access-Jwt-Assertion` header, which it verifies with the two
+`TCAB_ACCESS_*` variables above, and the identity a review records is the
+assertion's `email`, or a service token's `common_name`. In-cluster callers
+present the shared service token or a per-job token and never cross the edge.
+The contract is [Identity](/components/auth/overview/); the edge that enforces
+it is [Edge](/deployment/kubernetes/edge/).

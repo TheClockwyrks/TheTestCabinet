@@ -10,7 +10,7 @@ other editable entities.
 The suite showcase takes the same on-disk format as the run and case showcases,
 including the extension-to-kind mapping and the shared caps on the description,
 the carousel, and each media file. See
-[Showcases](/components/core/showcase/) for that table and those bounds.
+[Showcases](/components/driver/showcase/) for that table and those bounds.
 
 ## The showcase directory
 

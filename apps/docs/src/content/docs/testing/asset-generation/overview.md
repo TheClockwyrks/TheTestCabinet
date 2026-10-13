@@ -7,7 +7,7 @@ goal described in a brief. The model produces a graphical, animated, or audio
 asset rather than a program, one deliberate operation at a time. Assessment is
 subjective: a case supplies a written brief and no target picture, so it rewards
 creativity rather than reproduction of a supplied image. A published run carries
-a human [review](/components/core/results/#reviews) of how convincingly the
+a human [review](/components/backend/results/#reviews) of how convincingly the
 asset realizes the brief.
 
 ## Run structure
@@ -95,7 +95,7 @@ nine-slice insets that let a game scale one authored panel to any size while
 keeping its corners undistorted.
 
 A `ui` case is either one full-canvas image or a kit of named elements, each its
-own document of its own size. Each element flattens to an RGBA PNG, and core
+own document of its own size. Each element flattens to an RGBA PNG, and the driver
 emits a `ui.json` carrying every element's size, its nine-slice insets, and its
 atlas rectangle when packed, so a game binds the asset and addresses each piece
 by name.

@@ -61,7 +61,7 @@ That adds a middle outcome between pass and fail:
 - Pass. A correct answer produced within `fuel_limit`. Its fuel is the score.
 - Over the ceiling. A correct answer produced only on the runway. It does not
   pass and earns no comparable score, its consumed fuel is recorded as the
-  overshoot, and its factory stays [playable](/components/core/results/), so a
+  overshoot, and its factory stays [playable](/components/backend/results/), so a
   reader can see how far an inefficient-but-correct solution went over. The
   Results tab marks it as over ceiling with the percentage over.
 - Incorrect. A wrong answer at any fuel, or a solution that exhausted even the
@@ -76,7 +76,7 @@ so a small input can afford a wide runway while a large one keeps it tight.
 A performance run is graded entirely by the harness. Correctness plus the fuel
 number is the whole result, so a performance case declares no scoring `[[domain]]`
 and no `[[review_item]]` checklist, and a performance run carries no
-[review](/components/core/results/#reviews), rating, or writeup. In the console a
+[review](/components/backend/results/#reviews), rating, or writeup. In the console a
 performance run's detail page opens on a Results tab carrying the recorded
 correctness and fuel breakdown, and such runs stay out of the unreviewed
 worklist.

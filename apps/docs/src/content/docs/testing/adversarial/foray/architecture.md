@@ -40,7 +40,7 @@ exported, so the schemas and the engine can never disagree.
 `foray-host` is the reusable [`wasmtime`](https://wasmtime.dev/) host. It loads
 the two competing controller modules, runs the per-tick invocation loop, and
 enforces the fuel and memory limits. It is a separate crate because `foray-core`
-must stay wasm-compilable and because core's `AdversarialValidator` reuses this
+must stay wasm-compilable and because the driver's `AdversarialValidator` reuses this
 exact host to score a submission. There is one host implementation, so the CLI
 and the validator can never diverge.
 

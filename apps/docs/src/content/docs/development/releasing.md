@@ -2,63 +2,53 @@
 title: Releasing
 ---
 
-This page covers releasing `tcab` and [`gg`](/gg/overview/) from a version
-tag, and the one-time configuration behind the project's deployed static sites.
-For the whole `vX.Y.Z` sequence the tag sits inside, from preparing the release
-on `nightly` and rehearsing it on staging to landing the catalog and the
-services in production, see
-[Cutting a Release](/guides/devops/cutting-a-release/) and its
-[quickstart](/quickstarts/devops/cut-a-release/). Standing the always-on services
-up as staging or production environments is covered by
-[Deployment](/deployment/overview/); running them on your own machine is covered
-by [Running](/development/running/); building locally is covered by
+This page covers what a version tag releases from each repository, `tcab`,
+[`gg`](/gg/overview/), the operator client and the microservice images, and
+the one-time configuration behind the project's deployed static sites. For
+the whole `vX.Y.Z` sequence the tags sit inside, from preparing the release on
+`nightly` and rehearsing it on staging to landing the catalog and the services
+in production, see [Cutting a Release](/guides/devops/cutting-a-release/) and
+its [quickstart](/quickstarts/devops/cut-a-release/). Standing the always-on
+services up as staging or production environments is covered by
+[Deployment](/deployment/overview/); running them on your own machine is
+covered by [Running](/development/running/); building locally is covered by
 [Building](/development/building/).
 
 ## Release tags
 
-A release is a `vX.Y.Z` tag on `master` in Azure Repos. The main pipeline does
-not trigger on tags; pushing one runs the
-[release pipeline](/development/building/#the-release-pipeline),
-`azure-pipelines-release.yml`:
+A release is a `vX.Y.Z` tag on a repository's `master` in Azure Repos. The
+tag runs that repository's own pipeline (see
+[A repository's gates and pipeline](/development/repositories/#a-repositorys-gates-and-pipeline)):
+the gates, then the publish of every public package of its workspace to the
+feed at the tag's version, then the release jobs of its kind, then the mirror
+of the tag to GitHub. A tag's pins are not kept, so a tag whose run failed is
+followed by a patch tag on a commit carrying current pins.
 
-- `gated`, which runs `scripts/ci/require-gated-commit.sh`. It finds a run of
-  the main pipeline at the tagged commit, on any branch, and waits until that
-  run's check jobs have passed: `rust`, `web`, the four gg test partitions,
-  `rust_build`, `binary_linux`, `binary_windows` and `submodule_pins`. The image,
-  publish, deploy and docs results never gate a release. When no run exists at
-  that commit (the main pipeline batches pushes, so an intermediate commit may
-  have none), it queues one on the tag ref, which runs the gates stage alone,
-  and waits on that. It fails naming the check that failed, or after 200
-  minutes; a failed run is not queued again, so re-run it and re-run the
-  release;
-- then the `binary_linux` and `binary_windows` jobs, publishing `tcab`;
-- the `gg_amd64` and `gg_arm64` jobs with the gg version gate, then
-  `gg_publish`, which uploads gg's release objects;
-- the `mirror` job, which pushes the tag to the GitHub mirror.
+| Repository | What its tag releases |
+| --- | --- |
+| `contracts`, `engines`, `ui-common`, every `tool-*` | Its packages, to the feed; its crates, at the tag its dependents pin |
+| `microservice-driver` | `tcab`, as pipeline artifacts |
+| `gg` | gg's binaries and reference, to the release container |
+| `client-tauri` | The operator client's bundles, as pipeline artifacts |
 
-The services ship as the images the main pipeline deploys from `master`, and the
-docs site from its `docs` stage, so a tag releases no service or site of its
-own.
-
-The tag names the version of `gg`, so `crates/gg` and `crates/core` are bumped
-to it before tagging; see [Releasing `gg`](#releasing-gg).
+The microservice images and the static sites ship from `master` and `staging`
+on every gated push, so a tag releases no service or site of its own.
 
 ## Releasing `tcab`
 
-The `binary_linux` and `binary_windows` jobs release-build `tcab`, run the suite
-in the release profile, and smoke-test the produced binary with
-`scripts/ci/smoke-binary.sh`, on every main-pipeline run. The release pipeline
-runs the same jobs for the tag and publishes that smoke-tested binary as a
-pipeline artifact:
+`tcab` is the second binary of `microservice-driver`. Its pipeline
+release-builds it, runs the suite in the release profile, and smoke-tests the
+produced binary with `scripts/ci/smoke-binary.sh`, on every run. A tag's run
+publishes that smoke-tested binary as a pipeline artifact:
 
 | Artifact       | Contents                  |
 | -------------- | ------------------------- |
 | `tcab-linux`   | `tcab` for Linux `x86_64` |
 | `tcab-windows` | `tcab.exe` for Windows    |
 
-The tag's release-pipeline run is where a release of `tcab` is downloaded from. Every
-other platform builds `tcab` from source with `cargo build --release -p
-test-cabinet-cli`.
+The tag's run is where a release of `tcab` is downloaded from. Every other
+platform builds `tcab` from source in the `microservice-driver` checkout with
+`cargo build --release -p test-cabinet-driver --bin tcab`.
 
 ## Releasing `gg`
 
@@ -76,39 +66,35 @@ is laid out under its own prefix:
 | `v<version>/gg-aarch64-unknown-linux-musl` | The static-musl `gg` for `aarch64`                |
 | `v<version>/gg-reference.tar.gz`           | gg's reference documents, identical on every arch |
 
-The main pipeline's `gg_release` stage uploads all three on every `master`
-build, and the release pipeline on every `v*` tag. The `gg_amd64` and `gg_arm64`
-jobs build the binaries natively with `scripts/ci/gg-dist.sh`, which runs
-`scripts/build-gg-static.sh` and then projects and packs the documents. Each job
-publishes its binary and its tarball as one `gg-<arch>` artifact, which is what
-the run-image self-check, the backend image and the driver image all consume, so
-the release objects and every image's copy come off one build. The `gg_publish`
-job then runs
+gg's pipeline uploads all three on every `v*` tag. Its `gg_amd64` and
+`gg_arm64` jobs build the binaries natively with `scripts/ci/gg-dist.sh`,
+which runs `scripts/build-gg-static.sh` and then projects and packs the
+documents. Each job publishes its binary and its tarball as one `gg-<arch>`
+artifact, which the run-image self-check consumes, so the release objects and
+the self-check's copy come off one build. The `gg_publish` job then runs
 `scripts/ci/publish-gg.sh` under the `tcab-gg-publish` service connection, a
 workload-identity-federated identity holding Storage Blob Data Contributor on
 the account. The version prefix is what the `x86_64` binary reports, and each
 upload is read back without credentials.
 
 A bare executable. The install inside a run container is a single `curl` of
-`<base>/v<version>/gg-<target>` (`core::gg_exec::release_asset_url`), so the
-object is uploaded under exactly that name with no packaging around it. The base
-defaults to the container's URL and `TCAB_GG_RELEASE_URL` overrides it. `core`,
-running in the driver, picks the target from its own architecture, so an arm64
-deployment asks for `gg-aarch64-unknown-linux-musl` and an amd64 one for the
-`x86_64` object; `TCAB_GG_RELEASE_TARGET` overrides it.
+`<base>/v<version>/gg-<target>`, so the object is uploaded under exactly that
+name with no packaging around it. The base defaults to the container's URL and
+`TCAB_GG_RELEASE_URL` overrides it. The driver picks the target from its own
+architecture, so an arm64 deployment asks for `gg-aarch64-unknown-linux-musl`
+and an amd64 one for the `x86_64` object; `TCAB_GG_RELEASE_TARGET` overrides
+it.
 
 The crate version is the release version. `gg --version` is read out of the
-run container and recorded as a run's `subject.harnessVersion`, and `core`
-derives the version it fetches from its own package version. Bump both
-`crates/gg` and `crates/core` to the release version before tagging. A test pins
-them to each other. On a tag, the release pipeline's gg jobs fail when
-`gg --version` differs from the tag with its `v` stripped, naming the two crates
-to bump, and
-`publish-gg.sh` runs the same check before it uploads anything.
+run container and recorded as a run's `subject.harnessVersion`. On a tag, gg's
+release jobs fail when `gg --version` differs from the tag with its `v`
+stripped, naming the crate to bump, and `publish-gg.sh` runs the same check
+before it uploads anything.
 
-A prerelease tag such as `v0.7.0-rc1` equals no crate version, so nothing
-resolves it by default. Point a deployment at one explicitly with
-`TCAB_GG_RELEASE_VERSION=0.7.0-rc1`.
+The version a deployment runs is pinned once, in `microservice-driver`,
+independent of any crate version. The driver image fetches that release at
+build time, and `TCAB_GG_RELEASE_VERSION` overrides the pin on a deployment,
+which is how a prerelease tag such as `v0.7.0-rc1` is tried.
 
 ### `gg-reference.tar.gz`
 
@@ -116,9 +102,11 @@ The same upload publishes the reference documents `tcab-backend` serves at
 `GET /gg/reference` and `GET /gg/reference/{language}`: `index.json` plus one
 document per program language, projected by the freshly built `gg` itself
 (`gg reference --out`). The backend reads them from the directory
-`TCAB_GG_REFERENCE` names because it must not link `test-cabinet-gg`. The backend
-image bakes the identical files at `/opt/gg-reference` and sets the variable
-itself, out of the same artifact this upload takes them from.
+`TCAB_GG_REFERENCE` names, because it links nothing of gg's. The backend image
+fetches the tarball of the version the driver pins from the release container
+at build time, unpacks it at `/opt/gg-reference` and sets the variable itself,
+so a deployed console's reference and the harness its runs execute describe
+one release.
 
 Without them the backend starts, serves everything else, logs one warning at
 boot, and answers `503` on the two reference endpoints, so the console's gg
@@ -126,72 +114,104 @@ Reference section is the only thing that degrades.
 
 It is a single object with no triple in its name, because the content is JSON
 projected from data compiled into gg and is identical on every platform. Both
-architectures project and pack it, so `gg reference --out` is gated on each and each
-one's backend image has a copy to bake; the upload takes the `x86_64` one by name.
+architectures project and pack it, so `gg reference --out` is gated on each;
+the upload takes the `x86_64` one by name.
+
+## Releasing the operator client
+
+[`client-tauri`](/components/client/overview/) is a `shell`: a Tauri v2
+workspace whose shell loads the console's URL in a WebView, with `prod` and
+`staging` as build flavors differing in that URL alone. A tag's run builds a
+bundle per target and publishes each as a pipeline artifact of the run:
+
+| Artifact         | Contents                                    |
+| ---------------- | ------------------------------------------- |
+| `client-windows` | The Windows installer, both flavors         |
+| `client-linux`   | The Linux AppImage and `.deb`, both flavors |
+| `client-macos`   | The macOS app bundle, both flavors          |
+| `client-android` | The Android APK, both flavors               |
+
+The Android bundle and the Linux bundle are built in the `android` CI image
+track the kit renders for the `shell` kind; the Windows and macOS bundles on
+hosted agents of those platforms. Every bundle is unsigned, so an installer
+asks the platform's usual question about an unknown publisher and the Android
+APK is installed by sideloading. The tag's run is where a release of the
+client is downloaded from.
+
+## The microservice images
+
+Each `microservice-*` repository's pipeline builds its image on every gated
+push to `master` and `staging`, natively per architecture and fused by
+`scripts/ci/manifest.sh` into the multi-arch `<name>:<commit>` a deployment
+pins, and pushes it to `testcabinet.azurecr.io`. `microservice-driver`'s run
+also builds the run-container images under its `containers/`, each carrying
+the binaries it copies from the `tool-*` images at the commits the driver
+pins, and the `-gg` variants the toolchain tree of the gg release the driver
+pins; see
+[Checking gg's arms in a run image](/development/building/#checking-ggs-arms-in-a-run-image).
+
+An environment's deploy set is its overlay with every image pinned to a
+commit: each service's image at the commit the superrepo's submodule pointer
+for that repository names, and the run images at `microservice-driver`'s.
+`scripts/ci/pin-images.sh` writes the pins from the pointers, and the
+superrepo's `deploy` and `prod` stages roll the environment's overlay onto the
+set on every gated push to `staging` and `master`. Rolling a new image is
+therefore a bump of that repository's pointer; see
+[Rolling prod service images](/guides/devops/rolling-prod-service-images/).
+The `k8s-deploy-sets` gate renders both sets and holds every image to the
+registry and a full commit.
 
 ## Static-site topology
 
 The project deploys four static sites, all on Cloudflare Pages. Each is its own
-Pages project under its own domain; they differ in how they are built.
+Pages project under its own domain, built elsewhere and pushed with `wrangler`
+as a Direct Upload.
 
-| Site                                                                             | Project                   | Address                         | Built by                                                                     |
-| -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ---------------------------------------------------------------------------- |
-| [Gallery](/components/site/overview/) (`apps/site`)                              | `the-test-cabinet`        | `testcabinet.ai` (apex)         | Cloudflare (git-connected)                                                   |
-| [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | the Azure pipeline's `docs` stage → `wrangler` (`scripts/ci/deploy-docs.sh`) |
-| Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                                                  |
-| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`                                        |
+| Site | Project | Address | Built by |
+| --- | --- | --- | --- |
+| [Gallery](/components/site/overview/) (`testcabinet.ai`) | `the-test-cabinet` | `testcabinet.ai` (apex) | the `testcabinet.ai` pipeline, on `master` |
+| [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | the superrepo pipeline's `docs` stage (`scripts/ci/deploy-docs.sh`) |
+| Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | the [publisher](/components/backend/results/#publish) Job |
+| [Reference implementations](/components/backend/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` |
 
-The docs, per-run builds, and reference implementations are Direct Upload
-projects, built elsewhere and pushed with `wrangler`. The gallery is
-git-connected: Cloudflare clones the GitHub mirror and builds it itself. The
-gallery is git-connected because it is the only site that must rebuild when
-something other than a code push changes, namely the backend's snapshot. A
-git-connected project has a deploy hook, a unique URL that triggers a rebuild on
-a bare POST, which is what the backend fires after it uploads a new snapshot (see
-[`TCAB_SITE_DEPLOY_HOOK_URL`](#gallery-cloudflare-pages-one-time)).
+The gallery reads the published dataset from the public bucket at runtime, so
+a publish is an upload to the bucket and never a site build. Two Workers sit
+beside it, deployed by the same pipeline: the `tcab.ai` share-link Worker and
+the preview-tag Worker in front of the gallery's run routes; see
+[Serving](/components/site/serving/).
 
 Per-run builds are served from the root of their own `pages.dev` subdomain (see
 [Site Hosting](/components/site/overview/#hosting) and
-[Results](/components/core/results/#publish)). Serving each at a root rather than
-a subpath keeps it playable exactly as the test case's
+[Results](/components/backend/results/#publish)). Serving each at a root rather
+than a subpath keeps it playable exactly as the test case's
 [build interface](/testing/end-to-end/overview/#design-requirements) requires.
 
-## Gallery (Cloudflare Pages, one-time)
+## Gallery (Cloudflare Pages and Workers, one-time)
 
-Cloudflare clones the GitHub mirror and builds `apps/site` itself, on every push
-to the production branch and whenever the deploy hook is fired. The pipeline's
-`mirror` job pushes each `master`, `staging` and `nightly` commit that passed the
-gates to the mirror, so a gallery code change reaches Cloudflare through the same
-pipeline that deploys the services. Staging has a gallery project of its own,
-`the-test-cabinet-staging`, set up the same way with `staging` as its production
-branch and `staging.testcabinet.ai` as its domain. The test-case and run data
-the gallery shows come from the
-[backend's public R2 snapshot](/components/backend/snapshot/), fetched at build
-time. Cloudflare's git integration is the whole pipeline.
+The `testcabinet.ai` pipeline builds the gallery on every gated push and
+deploys it with `wrangler pages deploy`: `master` to `the-test-cabinet`, served
+at `testcabinet.ai`, and `staging` to `the-test-cabinet-staging`, served at
+`staging.testcabinet.ai`. The build is pure Node and bakes in nothing of the
+dataset: the page reads `index.json` and the objects it points at from the
+[public bucket](/components/backend/snapshot/) in the browser, so a published
+run appears without a build.
 
-In the Cloudflare dashboard, create a Pages project named `the-test-cabinet`
-connected to the GitHub mirror:
+In the Cloudflare dashboard:
 
-- Set the production branch to `master`.
-- Build command: `npm ci && npm run build:site`. The `build:site` root script
-  builds the site's transitive workspace runtime packages in dependency order
-  (`build:packages`) before the site itself. Keep that list in the root script
-  rather than inline here, so it stays the single source of truth when `ui` gains
-  another workspace runtime dependency.
-- Build output directory: `apps/site/dist`.
-- Set `TCAB_SNAPSHOT_URL` as a build environment variable to the snapshot
-  bucket's public read base URL, the same value the backend advertises as
-  `TCAB_SNAPSHOT_PUBLIC_URL`.
-- The build is pure Node. Cloudflare's build image has no Rust and needs none.
-  The model catalog is owned by the backend and baked into the public R2 snapshot
-  as `models.json`, which the site consumes at build time, so model curation and
-  refreshed rates reach the gallery through the next snapshot publish.
-- Add `testcabinet.ai` as a custom domain on the project, so the gallery is
-  served from the apex.
-- Create the project's deploy hook and give its URL to the backend as
-  `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
-  backend fires it after each snapshot upload, so a published run rebuilds the
-  gallery without a code push.
+- Create two Direct Upload Pages projects, `the-test-cabinet` with `master` as
+  its production branch and `the-test-cabinet-staging` with `staging`. The
+  pipeline passes the branch to `wrangler` as `--branch`, so each upload is its
+  project's production deployment.
+- Add `testcabinet.ai` as a custom domain on `the-test-cabinet` and
+  `staging.testcabinet.ai` on the staging project.
+- Set the public bucket's read URL on the pipeline as `TCAB_SNAPSHOT_URL`,
+  per branch, which the build writes into the page as the dataset's origin.
+- Deploy the two Workers from the same repository with `wrangler deploy`: the
+  `tcab.ai` Worker, bound to the production bucket and routed at `tcab.ai`,
+  with `staging.tcab.ai` over the staging bucket; and the preview-tag Worker,
+  bound to the same bucket and routed on the gallery's run routes.
+- Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` on the pipeline, a
+  token holding "Cloudflare Pages: Edit" and "Workers Scripts: Edit".
 
 Every other project is served from `*.pages.dev` or a subdomain, so no
 `*.testcabinet.ai` wildcard or organization domain verification is required.
@@ -204,11 +224,11 @@ branch-alias subdomains.
 ## Docs (Cloudflare Pages, one-time)
 
 The developer docs (`apps/docs`) deploy to Cloudflare Pages at
-`docs.testcabinet.ai` from the Azure pipeline's `docs` stage, which runs
-`scripts/ci/deploy-docs.sh` on every `master` and `staging` build that passed the
-gates stage. The deploy target follows the branch: `master`
-publishes to `test-cabinet-docs` and `staging` to `test-cabinet-docs-staging`.
-It is a pure static build with no Rust step.
+`docs.testcabinet.ai` from the superrepo pipeline's `docs` stage, which runs
+`scripts/ci/deploy-docs.sh` on every `master` and `staging` build that passed
+the gates stage. The deploy target follows the branch: `master` publishes to
+`test-cabinet-docs` and `staging` to `test-cabinet-docs-staging`. It is a pure
+static build with no Rust step.
 
 - Create Direct Upload Pages projects named `test-cabinet-docs`, with its
   production branch set to `master`, and `test-cabinet-docs-staging`, with its
@@ -217,30 +237,29 @@ It is a pure static build with no Rust step.
 - Add `docs.testcabinet.ai` as a custom domain on `test-cabinet-docs`, with a
   `docs.testcabinet.ai` CNAME pointing at `test-cabinet-docs.pages.dev`.
 - Create a Cloudflare API token with the "Cloudflare Pages: Edit" permission and
-  note the account ID. Set both on the Azure pipeline as the secret variables
-  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+  note the account ID. Set both on the superrepo pipeline as the secret
+  variables `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Per-run builds (Cloudflare Pages)
 
-A [publish](/guides/devops/publishing-a-test-run-result/) deploys each run's
-static build to Cloudflare Pages under a per-run branch alias
-(`--branch=<run-id>`), served at the `*.pages.dev` URL `wrangler` reports and
-embedded by the gallery from there. This is the operator's half of a publish, so
-the operator holds the Cloudflare credentials it uses (see
-[CLI Authentication](/components/cli/overview/#authentication)). Beyond those
-credentials there is nothing to configure, and builds served from `pages.dev`
-need no custom DNS.
+A [publish](/components/backend/results/#publish) deploys each run's static
+build to Cloudflare Pages under a per-run branch alias (`--branch=<run-id>`),
+served at the `*.pages.dev` URL `wrangler` reports and embedded by the gallery
+from there. The per-publish `tcab-publisher` Job holds the Cloudflare
+credentials it uses, from the Secret the dispatcher mounts into it (see
+[Secrets](/deployment/overview/#secrets)). Beyond those credentials there is
+nothing to configure, and builds served from `pages.dev` need no custom DNS.
 
 ## Reference implementations (Cloudflare Pages, one-time)
 
-A [reference implementation](/components/core/results/#reference-implementations)
+A [reference implementation](/components/backend/results/#reference-implementations)
 is a test-case variant's authored, correct static build, deployed out-of-band by
 `tcab publish-reference` to its own Cloudflare Pages project. Its served URL is
-written into a committed lockfile (`test-cases/reference-builds.lock.json`)
-rather than pushed to the backend, because the backends are VPN-only; the backend
-ingests it from its own checkout on the next
-[`tcab ingest --env <env>`](/components/cli/overview/#definitions). The operator workflow,
-prerequisites, and the release gate live in the
+written into a committed lockfile in the `test-suites` repository
+(`test-cases/reference-builds.lock.json`) rather than pushed to the backend,
+and the backend ingests it from its own checkout on the next
+[`tcab ingest --env <env>`](/components/cli/overview/#definitions). The
+operator workflow, prerequisites, and the release gate live in the
 [reference-implementation guide](/guides/devops/publishing-a-reference-implementation/).
 
 - Create two Direct Upload Pages projects: `test-cabinet-references` for
@@ -251,10 +270,11 @@ prerequisites, and the release gate live in the
   branch alias (`<slug>-<version-with-dots-as-dashes>-<variant>`), and that URL is
   read back from `wrangler` rather than constructed.
 - Both reuse the same `CLOUDFLARE_API_TOKEN` ("Cloudflare Pages: Edit") and
-  `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. They are the only secrets involved,
-  since there is no backend push. After committing the updated lockfile, an
-  operator runs `tcab ingest --env <env> --changed` from a machine with an
-  authenticated `az`.
+  `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. They are the only secrets
+  involved, since there is no backend push. After committing the updated
+  lockfile, an operator runs `tcab ingest --env <env> --changed` with the
+  environment's Access service token (see
+  [Pointing `tcab` at a deployment](/development/running/#pointing-tcab-at-a-deployment)).
 
 The lockfile holds a URL per environment, keyed by environment first. Each
 backend reads only its own environment's entries, selected by its `TCAB_ENV`, so

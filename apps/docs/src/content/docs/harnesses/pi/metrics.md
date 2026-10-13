@@ -22,7 +22,7 @@ The normalized classes are derived from these keys within `message.usage`:
 
 Pi's `input` is the uncached prompt and excludes cached reads, which sit beside
 it under `cacheRead` and become the
-[cached input class](/components/core/metrics/#tokens). Any `cacheWrite` count
+[cached input class](/components/contracts/metrics/#tokens). Any `cacheWrite` count
 folds into the uncached input.
 
 Pi reports no separate reasoning class, so reasoning is recorded as not
@@ -38,4 +38,4 @@ catalog entry, applied to the recorded token classes. The run's model ID is
 already an OpenRouter slug and resolves to the entry unchanged.
 
 For how these classes and the comparable cost are defined, see
-[Metrics](/components/core/metrics/).
+[Metrics](/components/contracts/metrics/).

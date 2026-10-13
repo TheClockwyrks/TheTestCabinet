@@ -7,13 +7,14 @@ title: Metrics
 Every run records the resources it consumed: how long each stage of the run
 took, normalized token counts, and cost. They are distinct from the run's
 quality score and rating, which come from its
-[review](/components/core/results/#reviews), and take no part in ranking a
+[review](/components/backend/results/#reviews), and take no part in ranking a
 run.
 
 The metrics block of a run record is defined in the
-[contracts crate](/components/core/overview/#the-contracts-crate)
-(`test_cabinet_contracts::metrics`); the price tables and the cost computation over
-them live in the core.
+[contracts crate](/components/contracts/overview/#the-contracts-crate)
+(`test_cabinet_contracts::metrics`). The [driver](/components/driver/overview/)
+folds each run's figures, and the price tables and the cost computation over
+them live in the [backend](/components/backend/overview/).
 
 ## Durations
 
@@ -26,7 +27,7 @@ records the duration of each lifecycle stage beside it.
   test case's `init` step.
 - Session covers the harness session alone.
 - Teardown covers collecting the produced tree and stopping the container.
-- Validation covers the [validation](/components/core/validation/) pass.
+- Validation covers the [validation](/components/driver/validation/) pass.
 
 Setup, session and teardown sum exactly to the run time. The run time excludes
 the wall clock a run container spent queued for cluster capacity before it
@@ -72,7 +73,7 @@ that side is reported. `null` signals that the breakdown is unavailable, so a
 consumer separates cached from uncached only for a run that reports the cached
 class.
 
-The [agent harness layer](/components/core/harnesses/#usage-reporting) produces
+The [agent harness layer](/components/driver/harnesses/#usage-reporting) produces
 these normalized values from each harness's raw reporting.
 
 ## Cost
@@ -204,5 +205,5 @@ the exact cost of a run themselves. Claude Code reports a `total_cost_usd`
 figure on its terminal result. A harness-reported cost is recorded as the run's
 actual cost; the comparable cost stays computed from the list price.
 
-The [agent harness layer](/components/core/harnesses/#usage-reporting) extracts
+The [agent harness layer](/components/driver/harnesses/#usage-reporting) extracts
 any reported cost from each harness's output.

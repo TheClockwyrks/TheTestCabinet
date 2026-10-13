@@ -2,131 +2,216 @@
 title: Architecture
 ---
 
-The Test Cabinet is a headless core with a set of components layered on top of
-it. The core owns run orchestration: resolving a test case version, seeding a
-run's repository, executing the run in a container, invoking the agent harness,
-collecting metrics, running validation, writing the run record, and publishing.
-Every other component links against that library and exposes it under the
-interface it provides, whether that is a CLI, an HTTP API, or a browser console.
-Keeping orchestration in the core is what makes batch runs, unattended sweeps,
-and remote execution possible.
+The Test Cabinet is a set of repositories whose applications run as services on
+a Kubernetes cluster, reached through a Cloudflare edge, with a public plane of
+Workers and an R2 bucket beside it. A run is a Kubernetes `Job` that executes
+one test case in an untrusted sandbox and streams its progress back, and a
+finished run reaches the public gallery through an automatic publish. See
+[Repositories](/development/repositories/) for the full set, its edges and
+the kit every repository is rendered from.
+
+## Repositories
+
+Every repository is a submodule of the superrepo, `the-test-cabinet`, which
+holds this documentation site, the issue board, the repository kit and the
+gates over the whole set. The dependency rule is hub-and-spokes with
+`contracts` as the hub: a library repository may be depended on, and an
+application, site, shell, tool-binary or content repository is never depended
+on. Every shape two repositories exchange, and everything that keeps them in
+step, lives in `contracts`.
+
+| Role               | Repositories                                                                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The hub            | [`contracts`](/components/contracts/overview/)                                                                                                                                       |
+| Libraries          | [`engines`](/components/engines/overview/), `ui-common` (the [UI library](/components/ui/overview/))                                                                                 |
+| Tools              | `tool-model-core`, `tool-sprite`, `tool-paint`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`, `tool-particle`, `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music` |
+| Services           | `microservice-backend`, `microservice-dispatcher`, `microservice-driver`, `microservice-artifacts`, `microservice-repos`, `microservice-publisher`, `microservice-arena`             |
+| Other applications | [`gg`](/gg/overview/), `the-spec-cabinet`                                                                                                                                            |
+| Sites              | `testcabinet.ai` (the [gallery](/components/site/overview/)), `console.testcabinet.ai` (the [console](/components/web/overview/)), `gg.rocks`                                        |
+| The shell          | [`client-tauri`](/components/client/overview/)                                                                                                                                       |
+| Content            | `test-suites`                                                                                                                                                                        |
+| Baseline media     | `cold-storage`, a submodule the kit renders nothing into                                                                                                                             |
+
+A tool repository is a library workspace whose binaries are also baked into the
+run-container images an [asset-generation](/testing/asset-generation/overview/)
+run executes in. A shell is a Tauri workspace that builds the desktop and
+Android client and depends on nothing of the project at build time.
 
 ## Components
 
 | Component                                                  | What it is                                                                                                                                              |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Core](/components/core/overview/)                         | The Rust library that implements the run lifecycle and owns the data contracts.                                                                         |
-| [CLI](/components/cli/overview/)                           | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch.                                                                         |
-| [Dispatcher](/components/dispatcher/overview/)             | A controller that claims queued runs from the backend and creates one driver `Job` per run.                                                             |
-| [Driver](/components/driver/overview/)                     | The per-run executor. It runs exactly one test case in a `Job`, streams its progress to the backend, and exits.                                         |
-| [Artifacts](/components/artifacts/overview/)               | A data-plane service that serves produced run trees (playable builds, proof and asset media) off a persistent volume.                                   |
-| [Arena](/components/arena/overview/)                       | A data-plane service that runs the adversarial test type's matches and tournaments off the backend.                                                     |
-| [Web console](/components/web/overview/)                   | The browser console: the primary interactive way to launch runs, watch them live, review them, and publish.                                             |
-| [Backend](/components/backend/overview/)                   | A private Rust server that distributes test case definitions, owns the run queue, and stores run results.                                               |
-| [Auth service](/components/auth/overview/)                 | A standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies.                              |
-| [Site](/components/site/overview/)                         | The public gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played.                                             |
+| [Contracts](/components/contracts/overview/)               | The hub: every wire and file shape, the test-suite runtime, telemetry, redaction and the backend's HTTP client.                                         |
+| [Engines](/components/engines/overview/)                   | The authored engines a produced game is built on, the voxel and particle runtimes, and the adversarial and performance runtimes with the match runner.  |
+| [Driver](/components/driver/overview/)                     | The run engine. It runs exactly one test case in a `Job`, streams its progress to the backend, and exits.                                               |
+| [CLI](/components/cli/overview/)                           | The `tcab` binary, the driver's second binary: validation, baselines, seeding, ingest and reference publishing.                                         |
+| [Dispatcher](/components/dispatcher/overview/)             | A controller that claims queued runs and publishes from the backend and creates one `Job` for each.                                                     |
+| [Backend](/components/backend/overview/)                   | The private server that distributes test case definitions, owns the queues, stores run results and reviews, and writes the public snapshot.             |
+| [Artifacts](/components/artifacts/overview/)               | The write-through store of run trees and the one writer of both object stores, the private Blob container and the public R2 bucket.                     |
+| [Repos](/components/repos/overview/)                       | The write-through store of run implementations as git bundles and the public push of a published run's repository.                                      |
+| [Publisher](/components/backend/results/#publish)          | The per-publish `Job`: deploys a run's build to its Pages project, has repos push its repository, and reports both links.                               |
+| [Arena](/components/arena/overview/)                       | The service that runs the adversarial test type's matches and tournaments off the backend.                                                              |
+| [Console](/components/web/overview/)                       | The operator console at `console.testcabinet.ai`: the primary way to launch runs, watch them live, review them, and share them.                         |
+| [Gallery](/components/site/overview/)                      | The public gallery at [testcabinet.ai](https://testcabinet.ai), where published runs are browsed and played.                                            |
+| [Client](/components/client/overview/)                     | The operator client for Windows, Linux, macOS and Android: a shell that loads the console.                                                              |
+| [Identity](/components/auth/overview/)                     | Cloudflare Access with Entra ID: who an operator is, and how the services verify it.                                                                    |
 | [UI library](/components/ui/overview/)                     | Shared frontend code (`@clockwyrks/ui`): the routed gallery application both GUIs mount, the primitives they render, and the backend client interfaces. |
 | [Voxel runtime](/components/voxel-runtime/overview/)       | Poses and renders a produced voxel rig.                                                                                                                 |
 | [Particle runtime](/components/particle-runtime/overview/) | Simulates and renders a produced particle system.                                                                                                       |
 | [Docs](/components/docs/overview/)                         | This documentation site.                                                                                                                                |
 
-## Runners and reporters
+## Responsibilities of a run
 
-Two roles recur across the components.
+The driver owns everything that happens during a run, the contracts repository
+defines the shapes a run is built around, and the backend owns what happens to
+a run once it is recorded.
 
-- A runner executes a test case. The [driver](/components/driver/overview/) is
-  the only one. It resolves the requested test case version from the backend,
-  drives the run through the core, creates an untrusted sandbox pod through the
-  Kubernetes API, and reports the result back to the backend.
-- A reporter displays run results: the [web
-  console](/components/web/overview/) and the [public
-  site](/components/site/overview/). Reporters read stored results and let a
-  person interact with the produced implementations.
+- [Test cases](/testing/end-to-end/overview/): resolving a test case version
+  and its selected [variant](/testing/end-to-end/overview/#variants), and
+  reading the `test-case.toml` manifest that says what gets seeded, rendered,
+  and checked.
+- [Execution](/components/driver/execution/): seeding a fresh git repository,
+  running the harness inside an isolated container, and collecting the produced
+  working tree.
+- [Agent harnesses](/components/driver/harnesses/): a single abstraction for
+  invoking any supported coding harness, absorbing each one's quirks.
+- [Orchestrators](/components/driver/orchestrators/): the harness-agnostic
+  strategy that decides how a run's harness sessions are conducted.
+- [Engines](/components/engines/engines/): the runtime a produced game is built
+  on, selected independently of the test case.
+- [Test case groups](/components/backend/test-case-groups/): the sets of
+  related cases, declared in `test-suites`, the home page renders one
+  leaderboard per.
+- [Harness events](/components/driver/events/): translating each harness's raw
+  output into one normalized, live event stream.
+- [Metrics](/components/contracts/metrics/): recording the run time, token, and
+  cost data every run produces.
+- [Validation](/components/driver/validation/): the automated first pass that
+  builds, loads, and decides the objective review points of an implementation.
+- [Run records](/components/contracts/run-records/): the fixed data contract a
+  run emits.
+- [Results](/components/backend/results/): getting a finished run onto the
+  gallery through review and publish.
 
-The web console is a launcher and reporter in one. It enqueues runs, watches
-them live, reviews them, and shows results in one place. The web console is the
-primary way The Test Cabinet is used.
+## The services
 
-Both GUIs mount the same routed gallery application from the [UI
-library](/components/ui/overview/). The console is that application with the
-launch surface enabled, and the public site is the same application with it off.
+Every service runs in one Kubernetes namespace per environment, and nothing in
+a cluster is reachable from outside it except through the
+[edge](#the-edge).
 
-## Server-side run topology
+- The [backend](/components/backend/overview/) is the control plane. It holds
+  the definitions and results, owns the run and publish queues, and is the one
+  thing a console or a runner addresses for state.
+- The [dispatcher](/components/dispatcher/overview/) turns the queues into
+  work: one [driver](/components/driver/overview/) `Job` per claimed run and
+  one publisher `Job` per claimed publish, each admitted through its own lane.
+- The [artifacts](/components/artifacts/overview/) and
+  [repos](/components/repos/overview/) services are the data plane. Artifacts
+  owns every byte a run produces and every byte the public reads, over a
+  private Azure Blob container per environment and the public R2 bucket, and
+  it is stateless: data flows through it to the stores, so it scales
+  horizontally. Repos owns each run's implementation as a git bundle in a
+  private Blob container of its own and pushes a published run's repository to
+  GitHub.
+- The [arena](/components/arena/overview/) runs the adversarial test type's
+  CPU-bound matches and tournaments, as a peer of the backend that holds no
+  data.
 
-A run launched from the [CLI](/components/cli/overview/) or the [web
-console](/components/web/overview/) executes on the cluster rather than on the
-launcher's machine. The launcher enqueues the run at the
-[backend](/components/backend/overview/), which owns the run queue. A
-[dispatcher](/components/dispatcher/overview/) claims the queued run and creates
-one Kubernetes `Job` running a [driver](/components/driver/overview/).
+The services that talk to each other inside the cluster do so over `ClusterIP`
+services with the service token and the per-job tokens the backend mints, and
+never cross the edge.
 
-The driver executes the run, creating an untrusted sandbox pod through the
-Kubernetes API. It streams live progress back to the backend, which relays it to
-the launcher. It uploads the produced tree to the [artifact
-service](/components/artifacts/overview/) and reports the produced record, which
-the backend stores privately.
+## The edge
 
-Each run is one schedulable `Job`, so concurrency scales with the cluster. A
-launcher needs a reachable backend and an account, and no container runtime of
-its own. Local development runs the same manifests on a [k3d
-cluster](/development/running/), so a run is a `Job` everywhere. See
-[Kubernetes: run plane](/deployment/kubernetes/run-plane/).
+One Cloudflare Tunnel per namespace carries one public hostname per
+environment, `console.testcabinet.ai` for prod and
+`console.staging.testcabinet.ai` for staging, to the in-cluster services by
+path: `/` the console, `/api/` the backend, `/artifacts/` the artifacts
+service, `/arena/` the arena. TLS terminates at Cloudflare, and the cluster
+holds no `Ingress`, no load balancer, no public IP and no certificate. Grafana
+sits behind the same tunnel and policy at `grafana.console.testcabinet.ai`.
 
-## The backend
+Each hostname is one Cloudflare Access application whose policy is an Entra ID
+identity allowed by email. Every request through the edge carries an Access
+assertion, which the backend, the artifacts service and the arena verify
+against Cloudflare's certificates and the application's audience tag before
+answering. A person's identity is the assertion's email, which is what a
+review records; automation uses an Access service token. See
+[Identity](/components/auth/overview/) and
+[Kubernetes: the edge](/deployment/kubernetes/edge/).
 
-The [backend](/components/backend/overview/) records run results and serves as
-the canonical copy of the test case definitions runners need. It has no public
-write surface and sits on a private network, so reaching it is the first line of
-access control.
-
-User [accounts](/components/backend/overview/#authentication), held in the
-standalone [auth service](/components/auth/overview/), identify who acts, so
-that every [review](/components/core/results/#reviews) is attributed to a
-person. The backend verifies the auth service's bearer tokens on the mutating
-run endpoints, review and publish. Reads stay open.
-
-The [public site](/components/site/overview/) runs on its own public plane.
-Publishing writes the run's documents and media to a public bucket and its index
-row to a public projection, both of which the gallery reads, so the gallery
-serves published runs while the backend stays private.
-
-## Test cases and test suites
-
-The backend's catalog has two sources in the checkout it ingests: the authored
-test cases under `test-cases/`, and the [test suites](/test-suites/overview/)
-in the `test-suites/` submodule, a separate repository. A suite is one authored
-project holding specifications, validators, assets and reference
-implementations, and each of its exported versions offers one or more test case
-definitions. The core's suite model reads and validates a suite version, and the
-backend's ingest lowers every definition it offers into an ordinary test case
-version that records the suite coordinate it came from. A runner therefore
-resolves a suite-defined case exactly as it resolves an authored one. The suite's
-own entities are stored beside the lowered versions, and the console's Test
-Suites tab presents them. The Test Cabinet reads the suites tree and never
-writes it.
+Being same-origin is what lets the console call `/api` and resolve media under
+`/artifacts` with no configuration of its own. The
+[client](/components/client/overview/) is the same console loaded in a WebView,
+signed in through Access inside it.
 
 ## A run
 
-At a high level, launching a run must:
+A run launched from the [console](/components/web/overview/) executes on the
+cluster rather than on the launcher's machine. Launching a run must:
 
-- Select a test case version, an agent harness, and a model, resolving the
-  version from the [backend](/components/backend/overview/).
+- Select a test case version, an agent harness, a model, an orchestrator and an
+  engine, and enqueue them at the [backend](/components/backend/overview/),
+  which resolves the version and owns the queue.
+- Be claimed by the [dispatcher](/components/dispatcher/overview/), which
+  creates one driver `Job` for it.
 - Seed a fresh git repository with the selected
-  [variant](/testing/end-to-end/overview/#variants)'s data.
-- Start a container and invoke the agent harness against the seeded repository.
+  [variant](/testing/end-to-end/overview/#variants)'s data, in the driver.
+- Start an untrusted sandbox pod through the Kubernetes API and invoke the
+  agent harness against the seeded repository.
 - Surface the harness's activity as a live stream of [harness
-  events](/components/core/events/) while the run is in progress.
-- Record [metrics](/components/core/metrics/) as the run proceeds and collect
-  the produced repository when it finishes.
-- Run [validation](/components/core/validation/) over the produced
-  implementation.
-- Write a [run record](/components/core/run-records/) and report it to the
-  backend, which stores it privately.
+  events](/components/driver/events/) while the run is in progress, which the
+  backend's relay fans out to every watching console.
+- Record [metrics](/components/contracts/metrics/) as the run proceeds and
+  collect the produced repository when it finishes.
+- Run [validation](/components/driver/validation/) and code analysis over the
+  produced implementation.
+- Commit the model's work on top of the seed commit, upload the run tree to
+  the [artifacts](/components/artifacts/overview/) service and the
+  repository's bundle to the [repos](/components/repos/overview/) service.
+- Write a [run record](/components/contracts/run-records/) and report it to
+  the backend, which stores it privately.
 
-A stored run reaches the gallery through two explicit steps. Review collects
-assessments of the produced run from people other than the operator, and publish
-releases the produced code and flips the reviewed run public. See
-[Results](/components/core/results/).
+A stored run is playable and reviewable in the console at once, served from
+the artifacts service behind Access. Reviews collect assessments of the
+produced run from people identified by Access. A run that completed and is
+validator-rated publishes automatically: the backend enqueues a publish `Job`,
+the dispatcher admits it in the publish lane, and the publisher fetches the
+build output from artifacts, deploys it to the run's Pages project, has repos
+create and push the run's public GitHub repository, and reports both links.
+The backend then marks the run published, mints the run's short code and
+writes its object, has artifacts copy the run's media to R2, then writes the
+run's document and the updated index objects through artifacts, swapping the
+`index.json` pointer last. See [Results](/components/backend/results/).
+
+## The public plane
+
+The R2 bucket is the public dataset: the published runs' documents, their
+media, content-addressed index objects, and one object per short code, with
+the `index.json` pointer swapped atomically after each publish. The
+[gallery](/components/site/overview/), a static site on Cloudflare Pages, reads
+the index objects at runtime, so a publish is an upload and no site rebuild
+follows it. A Worker in front of the gallery's run routes writes a run's
+preview tags into the page it serves and answers an unknown run with a 404,
+and the `tcab.ai` Worker redirects a short code to the run's verdict or play
+page. The backend stays private throughout: the public plane reads the bucket
+and nothing else. See [Serving the gallery](/components/site/serving/) and
+[The public gallery](/deployment/public-gallery/).
+
+## Test cases and test suites
+
+The backend's catalog has two sources in the `test-suites` repository it
+ingests: the authored test cases and game jams, and the [test
+suites](/test-suites/overview/). A suite is one authored project holding
+specifications, validators, assets and reference implementations, and each of
+its exported versions offers one or more test case definitions. The
+[suites crate](/components/contracts/overview/#the-suites-crate) reads and
+validates a suite version, and the backend's ingest lowers every definition it
+offers into an ordinary test case version that records the suite coordinate it
+came from. A runner therefore resolves a suite-defined case exactly as it
+resolves an authored one. The suite's own entities are stored beside the
+lowered versions, and the console's Test Suites tab presents them. The Test
+Cabinet reads the suites tree and never writes it.
 
 ## Live streaming
 
@@ -142,4 +227,4 @@ The word harness is used two ways throughout these docs.
   benchmarks.
 - An agent harness is a coding tool, for example Claude Code or Codex, that
   drives a model through a test case. See [Agent
-  Harnesses](/components/core/harnesses/).
+  Harnesses](/components/driver/harnesses/).

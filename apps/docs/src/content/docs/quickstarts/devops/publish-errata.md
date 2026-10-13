@@ -17,9 +17,12 @@ and the guidance on what to put in one is
 
 ## Prerequisites
 
-- The version already exists under `test-cases/…/<slug>/<version>/`.
-- An authenticated `az` for `tcab ingest --env <prod|staging>`, or a running
-  local stack for `tcab ingest`.
+- The version already exists under `test-cases/…/<slug>/<version>/` in the
+  `test-suites` repository.
+- The environment's Access service token and `TCAB_BACKEND_URL` for
+  `tcab ingest --env <prod|staging>` (see
+  [Sign In](/quickstarts/setup/sign-in/#automation)), or a running local
+  stack for `tcab ingest`.
 
 ## Publish
 
@@ -53,14 +56,14 @@ point is mis-scoring runs, such as a buggy automated check or an ambiguous
 requirement: the point keeps being checked and shown, stops contributing to any
 run's score, and stops gating the run when it is auto-validated.
 
-Then commit, push, and re-ingest. `tcab ingest --changed` re-ingests the version
-because its content changed, in a deployed environment with `--env` and in a
-local stack without it:
+Then commit, push to the branch the environment ingests, and re-ingest.
+`tcab ingest --changed` re-ingests the version because its content changed, in
+a deployed environment with `--env` and in a local stack without it:
 
 ```sh
-git add test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
-git commit -m "docs(errata): note <slug> cue-ball rail clipping"
-git push
+git -C test-suites add test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
+git -C test-suites commit -m "docs(errata): note <slug> cue-ball rail clipping"
+git -C test-suites push
 
 tcab ingest --env prod --changed <slug>   # production or staging
 tcab ingest --changed                     # a local stack instead

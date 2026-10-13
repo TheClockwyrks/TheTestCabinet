@@ -4,7 +4,7 @@ title: Authentication
 
 Goose authenticates with an API key, against the OpenRouter-backed models it is
 configured for. The contracts shared by every harness are defined in [Agent
-Harnesses](/components/core/harnesses/#authentication).
+Harnesses](/components/driver/harnesses/#authentication).
 
 ## API key
 

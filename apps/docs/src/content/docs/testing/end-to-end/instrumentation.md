@@ -28,12 +28,12 @@ automated and human signals see
 
 ## Scope
 
-This contract governs a run with no [engine](/components/core/engines/) selected,
+This contract governs a run with no [engine](/components/engines/engines/) selected,
 which is every case's baseline. The build supplies the whole instrumentation
 surface, so the reliability rules below apply in full.
 
 An engine supplies the same control and inspection as engine code. A run under
-an engine is driven by a [validator](/components/core/validation/) that
+an engine is driven by a [validator](/components/driver/validation/) that
 constructs the engine itself and holds the build's state, events, and drawing
 context as live values. The build still writes the whole debug surface the
 case's instrumentation spec states; the engine is only the route by which a
@@ -41,7 +41,7 @@ check reaches it.
 
 The global handle below belongs to the engineless run alone. Under an engine the
 build's `initialize` returns its
-[debug surface](/components/core/engines/) beside its state, the engine hands
+[debug surface](/components/engines/engines/) beside its state, the engine hands
 that value back off its handle, and a check reads the scenario operations from
 there, so the page the build draws on carries no handle.
 
@@ -425,7 +425,7 @@ A case marks a whole review item, or an individual sub-item, as an
 [automatically validated](/testing/end-to-end/manifests/#automated-validation)
 verdict unit by pointing it at a debug script that drives the declared handle.
 Per run, validation drives that script — or, under an
-[engine](/components/core/engines/), runs the case's validator suite — against
+[engine](/components/engines/engines/), runs the case's validator suite — against
 the model's build to decide it and synthesize its actual media. The baseline
 half of the side-by-side is the same thing run against the case's reference
 implementation for that engine, a fixed property of the case version, so it is

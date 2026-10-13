@@ -2,50 +2,66 @@
 title: Overview
 ---
 
-The public site lives at [testcabinet.ai](https://testcabinet.ai) and is where
+The public gallery lives at [testcabinet.ai](https://testcabinet.ai) and is where
 published runs are browsed and played. It is a gallery first: visitors compare
 implementations above all by playing them. Each run carries a numeric score and
-[rating](/components/core/results/#reviews), and each test case has a
+[rating](/components/backend/results/#reviews), and each test case has a
 [leaderboard](#leaderboard). Only published runs appear.
+
+The gallery is the `testcabinet.ai` repository: the static site (`apps/site`),
+the `tcab.ai` share-link Worker, and the preview-tag Worker in front of the
+site's run routes.
 
 ## How it is served
 
-The gallery is served by an origin that resolves routes and reads the published
-set at request time, so a run appears as soon as it is published. See
+The gallery is a static site on Cloudflare Pages that reads the public dataset
+at runtime, so a run appears as soon as its publish has written the bucket. See
 [Serving](/components/site/serving/).
 
-The gallery is the same routed application the [web
-console](/components/web/overview/) renders, shared through the [UI
-library](/components/ui/overview/), mounted with execution disabled so it shows
-the published gallery alone. Signing in and launching runs stay with the
+The gallery is the same routed application the
+[console](/components/web/overview/) renders, shared through
+[`ui-common`](/components/ui/overview/), mounted with execution disabled so it
+shows the published gallery alone. Signing in and launching runs stay with the
 console.
 
-The dataset is split by shape. Run listings, search, and leaderboards read the
-[public projection](/components/backend/projection/) the backend writes as it
-publishes. A run's full record, its events, and all media are objects in the
-public bucket, fetched when that run's page opens, so what a page carries stays
-the same as the corpus grows.
+The dataset is the public bucket described in
+[Public Snapshot](/components/backend/snapshot/). Run listings, search, and
+leaderboards are answered from the index objects the backend writes as it
+publishes. A run's full record, its events, and all media are objects fetched
+when that run's page opens, so what a page carries stays the same as the corpus
+grows.
 
 ## Gallery
 
 The site presents published runs as a browsable gallery. Each run is attributed
 to the [variant](/testing/end-to-end/overview/#variants) of the case it built,
-taken from its [run record](/components/core/run-records/#subject). Listings are
-paged rather than loaded whole, and their search and sorting are answered by the
-backend. The authoritative ranking of models for a given case and variant lives
-in that case's [leaderboard](#leaderboard).
+taken from its [run record](/components/contracts/run-records/#subject).
+Listings are paged rather than loaded whole, and their search and sorting are
+answered in the browser from the run index. The authoritative ranking of models
+for a given case and variant lives in that case's [leaderboard](#leaderboard).
 
 A validator-rated run carries a read-only browser of its automated
-[validation](/components/core/validation/) items, in which a visitor replays the
-implementation against the reference baseline. Every visitor sees that browser.
+[validation](/components/driver/validation/) items, in which a visitor replays
+the implementation against the reference baseline. Every visitor sees that
+browser.
 
 ## Playing and cloning
 
 A run's page links to the run's public source repository so a visitor can clone
 and run it themselves, embeds its playable build, and shows the run's
-[showcase](/components/core/showcase/) when its record carries one. A published
+[showcase](/components/driver/showcase/) when its record carries one. A published
 implementation is released as it is and may be incomplete or visibly broken, so
 the embed loads on demand rather than with the page.
+
+## Share links
+
+A published run carries a short code, assigned the first time it publishes and
+never reassigned. [tcab.ai](https://tcab.ai) resolves `/r/<code>` to the run's
+verdict page and `/p/<code>` to its play page, so a run is shared by a link
+that stays short and stays valid. The [console](/components/web/overview/)
+offers both links on a published run. How a code is minted is under [Short
+codes](/components/backend/snapshot/#short-codes), and how a link resolves under
+[Serving](/components/site/serving/#share-links).
 
 ## Leaderboard
 
@@ -54,8 +70,8 @@ Each test case has a leaderboard, scoped to the selected
 model pair, folded across every scored run that pair produced of this case and
 variant. Splitting by harness as well as model keeps a model's results under two
 harnesses from merging into one rank. A [test-case
-group](/components/core/test-case-groups/) carries a cross-case leaderboard of
-its own.
+group](/components/backend/test-case-groups/) carries a cross-case leaderboard
+of its own.
 
 The board draws its cohort from the page's [anchored
 coordinate](/components/ui/overview/#the-case-detail-coordinate), and a visitor
@@ -71,11 +87,11 @@ comparable cost, mean token total, and mean session duration, each taken over
 the runs that recorded the figure. A game jam carries a whole-game overall
 grade in place of a domain rating.
 
-A run's score is carried on its projection row. A validator-rated run's score
-is its validators' earned share of the declared checklist weight while the run
-has no reviews, and the average of its reviews' effective scores once it has
-any. A legacy run's reviews each contribute their earned share, averaged across
-the run's reviews.
+A run's score is carried on its summary card in the run index. A
+validator-rated run's score is its validators' earned share of the declared
+checklist weight while the run has no reviews, and the average of its reviews'
+effective scores once it has any. A legacy run's reviews each contribute their
+earned share, averaged across the run's reviews.
 
 A [performance](/testing/performance/overview/) case carries no reviewer score,
 because it is graded by the harness on correctness and then on the fuel a
@@ -95,9 +111,9 @@ writeup is curatorial: it calls out known-broken elements, caveats, and things
 worth noticing, so a visitor knows what to expect before playing.
 
 A writeup and its ratings, together with its checklist on a legacy run, form one
-[review](/components/core/results/#reviews). Reviews are authored separately
-from the machine-generated [run record](/components/core/run-records/) and each
-is attributed to the [account](/components/auth/overview/) that wrote it.
+[review](/components/backend/results/#reviews). Reviews are authored separately
+from the machine-generated [run record](/components/contracts/run-records/) and
+each is attributed to the [identity](/components/auth/overview/) that wrote it.
 Publishing a legacy run requires a review, so a published legacy run carries at
 least one. A published validator-rated run may carry none, standing on its
 functional rating and score alone until someone rates its aesthetics. A run may
@@ -108,13 +124,13 @@ in the run's published document alongside the record.
 ## Hosting
 
 Each run's generated code and playable build are hosted independently of the
-site, as described in [Results](/components/core/results/#generated-code). Every
-run is its own repository with its own build, and the gallery embeds each build
-rather than bundling every implementation, which keeps the site lightweight as
-the number of published runs grows.
+site, as described in [Results](/components/backend/results/#generated-code).
+Every run is its own repository with its own build, and the gallery embeds each
+build rather than bundling every implementation, which keeps the site
+lightweight as the number of published runs grows.
 
 Each build is deployed to its own Cloudflare Pages URL and embedded from there.
 The gallery points an iframe at the deployment URL the deploy reported, recorded
-as a link in the run's [record](/components/core/run-records/#links). That
+as a link in the run's [record](/components/contracts/run-records/#links). That
 reported URL is used verbatim, because a host constructed from the run id and
 project may not match Cloudflare's sanitized branch alias.

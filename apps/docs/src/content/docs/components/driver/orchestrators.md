@@ -7,15 +7,15 @@ title: Orchestrators
 An orchestrator decides how a test case's harness sessions are conducted. It
 owns the loop around the harness: how many sessions to run, what each one is
 told, and when the work is done. The [harness
-layer](/components/core/harnesses/) still owns each individual session, meaning
+layer](/components/driver/harnesses/) still owns each individual session, meaning
 how the harness is invoked, how its usage is parsed, and how its activity is
-translated into [events](/components/core/events/).
+translated into [events](/components/driver/events/).
 
 Orchestration is harness-agnostic: an orchestrator drives sessions the same way
 whichever harness is selected. It is therefore a distinct run dimension,
 selected per run alongside the test case, variant, harness, and model, and
 recorded as `orchestratorSlug` in the [run
-record](/components/core/run-records/).
+record](/components/contracts/run-records/).
 
 ## Orchestrator structure
 
@@ -29,9 +29,9 @@ The built-in orchestrators use exactly the same machinery as a custom one, so a
 new strategy can be supplied entirely from outside this repository. See
 [External orchestrators](#external-orchestrators).
 
-The built-in orchestrators live under `orchestrators/<slug>/` in the repo,
-embedded into the core library at build time so a backend-driven worker with no
-checkout resolves them the same way the CLI does. They are catalogued under
+The built-in orchestrators live under `orchestrators/<slug>/` in the driver's
+repository, embedded into the driver at build time so a driver `Job` with no
+checkout resolves them. They are catalogued under
 [Orchestrators](/orchestrators/overview/). There is one:
 
 - `one-shot`, a single harness session driven to completion. This is the
@@ -49,7 +49,7 @@ The orchestrator's runner script runs inside the run container, so it drives
 sessions and inspects progress from where the work happens. Its commands run
 natively against the seeded workspace at `/work`, and it reads status and marker
 files on the workspace filesystem directly. The whole runner script is bounded
-by the run's [maximum runtime](/components/core/execution/), just as a single
+by the run's [maximum runtime](/components/driver/execution/), just as a single
 session is.
 
 ### The `tcab-session` wrapper
@@ -71,8 +71,8 @@ to a run with no orchestration layer at all.
 
 The wrapper writes each session's stdout, sentinels and all, to a session log
 inside the container at `~/.tcab/sessions.log` as well as streaming it back. The
-streamed copy produces live [events](/components/core/events/). The run's
-[usage and cost](/components/core/metrics/) are read from the log once the
+streamed copy produces live [events](/components/driver/events/). The run's
+[usage and cost](/components/contracts/metrics/) are read from the log once the
 runner has exited, which keeps a session's reported usage independent of the
 exec stream surviving to its last line.
 
@@ -101,7 +101,7 @@ backstop. A multi-session orchestrator is expected to manage the budget itself
 through `TCAB_DEADLINE`, stopping after the current session rather than starting
 one it cannot finish, and to exit successfully with partial work when the budget
 runs out. Because the runner exits normally, the produced workspace is still
-collected and [validated](/components/core/validation/), so running out of
+collected and [validated](/components/driver/validation/), so running out of
 budget yields a likely-incomplete result rather than a discarded one.
 
 An orchestrator's scratch files, such as a status or marker file, live under a
@@ -117,11 +117,11 @@ custom orchestrator is resolved purely at run time.
 
 ## Selecting an orchestrator
 
-An orchestrator is selected per run, defaulting to `one-shot`. Every runner
-selects one and the resolved slug is recorded on the run: the
-[CLI](/components/cli/overview/) through `--orchestrator`, the
-[driver](/components/driver/overview/) through built-in slugs only, since it has
-no access to a submitter's local directory, and the run-execution UI.
+An orchestrator is selected per run, defaulting to `one-shot`, and every
+enqueue endpoint carries it on the launch body alongside the harness, the
+model and the engine. The resolved slug is recorded on the run. The
+[driver](/components/driver/overview/) resolves built-in slugs only, since it
+has no access to a submitter's local directory.
 
 A non-default orchestrator is limited to the test types that build a program
 over a working session: [end-to-end](/testing/end-to-end/overview/),

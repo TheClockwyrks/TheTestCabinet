@@ -2,7 +2,7 @@
 title: Overview
 ---
 
-The voxel runtime (`@clockwyrks/voxel-runtime`, in `packages/voxel-runtime`)
+The voxel runtime (`@clockwyrks/voxel-runtime`, in the `engines` repository)
 is the shared TypeScript library that turns a
 [voxel-family](/testing/asset-generation/overview/#voxel-and-meshed-models)
 run's produced artifacts into a posable, renderable 3D model. The geometry
@@ -11,9 +11,9 @@ binaries](/testing/asset-generation/voxel-binaries/), and the runtime decodes it
 rather than meshing anything itself.
 
 It is a code-sharing library rather than a component: it ships no service and
-runs in no process of its own. Both the in-repo 3D viewer that reviews voxel
-runs and games that embed a produced model consume it, so the posing math and
-the mesh loading live in one place.
+runs in no process of its own. Both the UI library's 3D viewer that reviews
+voxel runs and games that embed a produced model consume it, so the posing math
+and the mesh loading live in one place.
 
 ## The pure-core and three split
 
@@ -32,7 +32,7 @@ which wraps a core `PartMesh` into a `BufferGeometry`, plus the `VoxelRig` and
 so a consuming game shares its single `three` instance with the runtime.
 
 The core's contract types are re-exported from
-[`@clockwyrks/run-record`](/components/core/run-records/), so the runtime and
+[`@clockwyrks/run-record`](/components/contracts/run-records/), so the runtime and
 the backend agree on the shapes by construction.
 
 ## Loaded artifacts
@@ -156,7 +156,8 @@ produced model identically.
 ## Exporting to glTF
 
 To embed a produced voxel model in a game engine as a ready-made animated mesh,
-the repo ships `scripts/voxel-to-gltf.mjs`. It packs a run's artifacts into a
+the `engines` repository ships `scripts/voxel-to-gltf.mjs`. It packs a run's
+artifacts into a
 single whole-rig glTF 2.0 or GLB, so one exporter serves the cube and MC/SN/DC
 families alike:
 

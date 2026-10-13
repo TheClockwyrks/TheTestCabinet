@@ -5,7 +5,8 @@ title: Run plane
 The run plane turns a queued run into a Kubernetes `Job` and keeps the bytes that
 `Job` produces: the [dispatcher](/components/dispatcher/overview/), the per-run
 [driver](/components/driver/overview/) `Job`s and their sandbox pods, the publish
-`Job`s, the [artifact service](/components/artifacts/overview/), and the
+`Job`s, the [artifacts service](/components/artifacts/overview/), the
+[repos service](/components/repos/overview/), and the
 [arena](/components/arena/overview/).
 
 ## RBAC
@@ -95,11 +96,11 @@ interpreting them: `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_SERVICE_ACCOUNT`,
 `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`,
 `TCAB_K8S_RUN_POD_PREFIX`,
 `TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG` with the per-image
-`TCAB_CONTAINER_IMAGE_*` overrides, `TCAB_ARTIFACTS_URL`, the `TCAB_GG_*` install
-controls, the `OTEL_EXPORTER_OTLP_*` variables, and `TCAB_ENV`. Each is forwarded
-only when it is set. Publish `Job`s receive `TCAB_ARTIFACTS_URL`,
-`TCAB_GITHUB_ORG`, `TCAB_PAGES_PROJECT`, the same observability variables, and
-`TCAB_ENV`.
+`TCAB_CONTAINER_IMAGE_*` overrides, `TCAB_ARTIFACTS_URL`, `TCAB_REPOS_URL`, the
+`TCAB_GG_*` install controls, the `OTEL_EXPORTER_OTLP_*` variables, and
+`TCAB_ENV`. Each is forwarded only when it is set. Publish `Job`s receive
+`TCAB_ARTIFACTS_URL`, `TCAB_REPOS_URL`, `TCAB_PAGES_PROJECT`, the same
+observability variables, and `TCAB_ENV`.
 
 Concurrency scales with the cluster: `TCAB_DISPATCHER_MAX_INFLIGHT` plus
 available capacity admit runs, so there is no pool to size by hand.
@@ -115,7 +116,18 @@ is not retried, and `ttlSecondsAfterFinished` reaps the terminated `Job` and its
 pod. The `tcab-driver` image sets `TCAB_DRIVER_RUNTIME=kubernetes`, under which
 the driver creates one untrusted sandbox pod through the Kubernetes API, `exec`s
 the harness into it, copies the produced tree out, deletes the sandbox pod, and
-uploads the tree to the artifact service before reporting terminal status.
+uploads what the run produced before reporting terminal status.
+
+The uploads are two, both authenticated by the per-job token the dispatcher
+passed in:
+
+- the run tree as a tar, `POST /runs/{id}/artifacts` on the artifacts service
+  (`TCAB_ARTIFACTS_URL`), which writes it to the environment's private Blob
+  container as it arrives;
+- the implementation as a git bundle, `POST /runs/{id}/bundle` on the repos
+  service (`TCAB_REPOS_URL`). The driver commits the model's work on top of the
+  seed commit, with the commit message the contract defines, and writes
+  `git bundle --all` after code analysis has run on the local tree.
 
 The harness API keys arrive through `TCAB_DISPATCHER_DRIVER_SECRETS`: those
 Secrets are mounted into the `Job` with `envFrom`, so the carrier of third-party
@@ -137,10 +149,7 @@ deterministically, however much memory the node still has free. A run may hold a
 sandbox for hours and spend real money on harness API calls the whole time, so a
 sandbox OOM-killed mid-run destroys a run that has already paid for every one of
 them. That is the one failure the deployment must never produce, and a limit on a
-run pod is precisely the mechanism that produces it. An earlier revision set the
-limit equal to the request so a node's arithmetic was exact; the first run to
-outgrow that ceiling was OOM-killed (`exit 137`) by its own cgroup, the outcome
-the ceiling existed to prevent.
+run pod is precisely the mechanism that produces it.
 
 The request does the work instead, and it must be sized to the real peak of the
 heaviest case the deployment runs:
@@ -157,14 +166,13 @@ Removing the limit does not make node memory pressure harmless. If the node
 itself runs short, the kubelet evicts the pod furthest above its request first,
 and the kernel's OOM killer weighs a large resident set heavily, so a sandbox that
 has outgrown its request on a full node is still the likely victim: `Evicted`
-rather than `OOMKilled`, and just as dead. The limit was a certain kill at a fixed
-ceiling regardless of node headroom; what remains is a kill only when the node is
-genuinely out of memory. Closing that gap is a sizing job. The request must cover
-the real peak so the scheduler never seats a run on a node that cannot hold it.
-Size it from `container_memory_max_usage_bytes`, which the observability
-component's cAdvisor scrape keeps, over a window wide enough to contain the rare
-heavy case. The always-on services take the opposite treatment, memory request
-equal to limit, because for them a kill is a restart rather than lost spend; see
+rather than `OOMKilled`, and just as dead. Closing that gap is a sizing job. The
+request must cover the real peak so the scheduler never seats a run on a node
+that cannot hold it. Size it from `container_memory_max_usage_bytes`, which the
+observability component's cAdvisor scrape keeps, over a window wide enough to
+contain the rare heavy case. The always-on services take the opposite treatment,
+memory request equal to limit, because for them a kill is a restart rather than
+lost spend; see
 [memory ceilings](/deployment/kubernetes/overview/#memory-ceilings).
 
 CPU is oversubscribed deliberately. A container over its CPU limit is throttled
@@ -184,11 +192,10 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,ALLOCATABLE:.status.allo
 
 The heaviest cases need more than `4Gi`, and a dual-contouring `double` variant
 wants around `8Gi`, which the `local` overlay's `patch-dispatcher.yaml` reserves.
-Those cases do not fit an `8Gi` node whatever the manifest says: they no longer
-die at the `4Gi` ceiling, but they are still evicted when the node runs short.
-Running them needs nodes that can seat an `8Gi` request, and the request raised to
-match. Raise it only to a value one node can still seat, since a request no node
-can satisfy queues forever.
+Those cases do not fit an `8Gi` node whatever the manifest says: they are
+evicted when the node runs short. Running them needs nodes that can seat an
+`8Gi` request, and the request raised to match. Raise it only to a value one
+node can still seat, since a request no node can satisfy queues forever.
 
 `TCAB_K8S_RUN_MEMORY_LIMIT` is honoured when set, for a namespace whose
 `LimitRange` or `ResourceQuota` refuses pods without one. Set it far above any
@@ -208,7 +215,7 @@ Once the sandbox is gone the driver runs the case's own toolchain over the
 collected tree on its own filesystem: the `[build]` install, the
 [toolchain commands](/testing/end-to-end/manifests/), the build the smoke check
 serves, and a headless Chromium for that smoke check and for every scripted
-[validation](/components/core/validation/) item. Those are Node and browser
+[validation](/components/driver/validation/) item. Those are Node and browser
 processes in the driver's own cgroup, and they are what the reservation has to
 cover.
 
@@ -244,7 +251,7 @@ resource requests no node can satisfy. Size `TCAB_K8S_RUN_CPU_*` and
 
 The sandbox pod reaches the driver pod by IP over two flows: an asset-generation
 run with a viewer attached streams preview frames back to the driver (see
-[live previews](/components/core/execution/)), and every run's produced tree is
+[live previews](/components/driver/execution/)), and every run's produced tree is
 collected over a listener the driver opens for the transfer (see the
 [driver](/components/driver/overview/#artifacts)). The driver's own pod IP is
 wired in through the downward API on the `Job`:
@@ -265,42 +272,97 @@ that enforce policies.
 
 ## Publish Jobs
 
-Publishing a run runs in its own `Job`. The backend queues a publish job, the
-dispatcher claims it whenever `TCAB_PUBLISHER_IMAGE` is configured and fewer than
+Publishing a run runs in its own `Job`. A run publishes automatically when it
+completes validator-rated, and an operator publishes the rest; either way the
+backend queues a publish job, the dispatcher claims it whenever
+`TCAB_PUBLISHER_IMAGE` is configured and fewer than
 `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` publish `Job`s are running, and one
-`tcab-publisher` `Job` downloads the run tree from the artifact service and
-releases it with `gh` and `wrangler`. The publisher streams progress lines back
-to the backend and reports its terminal result there, and the backend relays both
-to a watching console.
+`tcab-publisher` `Job` releases the run:
+
+1. It fetches the build output from the artifacts service
+   (`GET /runs/{id}/tree.tar`) over `TCAB_ARTIFACTS_URL` with its
+   per-publish-job token.
+2. It deploys that output to the per-run Cloudflare Pages project
+   (`TCAB_PAGES_PROJECT`) with `wrangler pages deploy`, under the run's branch
+   alias.
+3. It calls `POST /runs/{id}/publish` on the repos service
+   (`TCAB_REPOS_URL`), which creates the run's public GitHub repository, pushes
+   the bundle's `main` and answers the URL. The route is idempotent.
+4. It reports both links to the backend.
+
+The backend then marks the run published, has the artifacts service copy the
+run's media from Blob to R2 (`POST /runs/{id}/publish-media`), writes the run's
+document and the updated index objects through the artifacts service, and mints
+the run's short code. The gallery reads those objects at runtime, so no site
+rebuild follows. The publisher streams progress lines back to the backend and
+reports its terminal result there, and the backend relays both to a watching
+console.
 
 The publisher needs no Kubernetes API access, so its `Job` names no
-`ServiceAccount` and runs under the namespace default. Its credentials come from
-the Secrets named by `TCAB_DISPATCHER_PUBLISHER_SECRETS`, which carry `GH_TOKEN`
-and `CLOUDFLARE_API_TOKEN`. `TCAB_GITHUB_ORG` and `TCAB_PAGES_PROJECT` are
-required on every environment, so each overlay names its own GitHub org and
-Cloudflare Pages project. With no publisher image configured the dispatcher never
-touches the publish queue and the run path is unaffected.
+`ServiceAccount` and runs under the namespace default. Its one credential is the
+`CLOUDFLARE_API_TOKEN` in the Secrets named by
+`TCAB_DISPATCHER_PUBLISHER_SECRETS`; the GitHub token is the repos service's
+own. `TCAB_PAGES_PROJECT` is required on every environment, so each overlay
+names its own Cloudflare Pages project. With no publisher image configured the
+dispatcher never touches the publish queue and the run path is unaffected.
 
-## Artifact service
+## Artifacts service
 
 The sandbox pod is ephemeral, so the produced run tree has to land somewhere
-durable before the run is reported terminal. That is the artifact service: a
-one-replica `StatefulSet` with a `ClusterIP` `Service` and a
-`PersistentVolumeClaim` at `TCAB_ARTIFACTS_ROOT`, bound to `0.0.0.0:8790`
-(`deployments/k8s/base/artifacts.yaml`). Each run's tree lives at
-`<root>/<run-id>/`.
+durable before the run is reported terminal. That is the artifacts service: a
+stateless `Deployment` with a `ClusterIP` `Service`, bound to `0.0.0.0:8790`
+(`deployments/k8s/base/artifacts.yaml`), over two object stores. The run trees
+live in the environment's private Azure Blob container, and the public dataset
+(the documents, media, index objects and short-code objects the gallery reads)
+in the environment's Cloudflare R2 bucket, which only this service writes. No
+`PersistentVolumeClaim` and no `StatefulSet`: the service holds nothing a
+restart loses, and its replica count is a free choice.
 
-It runs under its own `ServiceAccount` with no Kubernetes API access. An upload
-presents the driver's per-job token, which the service forwards to the backend
-(`TCAB_BACKEND_URL`) as the token authority. Reads are ungated, since
-browser-loaded media cannot present a token; the private-network boundary is what
-gates them. A run-tree delete and the `GET /runs` tree listing present the shared
-`TCAB_BACKEND_SERVICE_TOKEN`, and leaving that unset disables both routes.
+It runs under its own `ServiceAccount` with no Kubernetes API access. Blob
+access is a user-assigned managed identity per environment, holding Storage Blob
+Data Contributor on the container and federated to the `ServiceAccount` through
+workload identity, as the backend's database identity is (see
+[PostgreSQL](/deployment/kubernetes/postgres/)); the pod carries the
+`azure.workload.identity/use: "true"` label. The R2 bucket takes the
+`TCAB_R2_*` credentials, from the Secret keyvault-csi materializes.
 
-The backend calls those two routes on the service's `ClusterIP` `Service` through
-`TCAB_ARTIFACTS_URL`, and reports the console-facing base URL separately as
-`TCAB_ARTIFACTS_PUBLIC_URL`. Artifact bytes flow driver to artifacts to console
-without passing through the backend.
+| Variable                                          | Purpose                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `TCAB_ARTIFACTS_BLOB_ACCOUNT`, `_BLOB_CONTAINER`  | The storage account and private container the run trees are written to                          |
+| `TCAB_R2_*`                                       | The public bucket's endpoint, name and credentials                                              |
+| `TCAB_BACKEND_URL`                                | The backend (`http://tcab-backend:8787`) a per-job or per-publish-job token is verified against |
+| `TCAB_BACKEND_SERVICE_TOKEN`                      | The shared service token the backend's own calls present                                        |
+| `TCAB_ACCESS_TEAM_DOMAIN`, `TCAB_ACCESS_AUDIENCE` | The Access application the service verifies an edge request's assertion against                 |
+
+An upload presents the driver's per-job token, which the service forwards to
+the backend as the token authority, and is streamed to Blob as it arrives. A
+read from the console arrives through the edge at `/artifacts/` and carries the
+Access assertion; the service answers by streaming the object or by redirecting
+to a short-lived signed URL, its choice per route. The backend's calls, the
+tree delete, the `GET /runs` listing, `publish-media` and the `PUT /public/{key}`
+snapshot writes, present the shared service token over `TCAB_ARTIFACTS_URL`.
+
+## Repos service
+
+The repos service keeps each run's implementation as a git bundle: a stateless
+`Deployment` with a `ClusterIP` `Service`, bound to `0.0.0.0:8792`
+(`deployments/k8s/base/repos.yaml`), over a private Blob container of its own,
+with `git` on its image. It takes the artifacts service's shape exactly: its own
+`ServiceAccount` with no API access, a managed identity on its container, and a
+free replica count.
+
+| Variable                                          | Purpose                                                                                                     |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `TCAB_REPOS_BLOB_ACCOUNT`, `_BLOB_CONTAINER`      | The storage account and private container the bundles are written to                                        |
+| `TCAB_GITHUB_ORG`, `TCAB_GITHUB_TOKEN`            | The organization the per-run public repositories are created in, and the token that creates and pushes them |
+| `TCAB_BACKEND_URL`, `TCAB_BACKEND_SERVICE_TOKEN`  | As for the artifacts service                                                                                |
+
+The driver uploads a bundle with its per-job token; the publisher's
+`POST /runs/{id}/publish` presents its per-publish-job token; the backend's
+bundle read and delete present the service token. The service sits behind no
+edge path: a console's bundle download is answered by the backend, which
+verifies the Access assertion and fetches the bundle over the cluster network.
+Its outbound traffic is the Blob container and GitHub.
 
 ## Arena service
 
@@ -313,8 +375,9 @@ access, and real CPU requests and limits, bound to `0.0.0.0:8791`
 It runs exactly one replica: the in-flight tournament registry and the live
 progress channel are in-memory and per-pod. It fetches every controller input
 from the backend and persists finished tournaments and replays back to it. The
-backend reports the console-facing base URL as `TCAB_ARENA_PUBLIC_URL`, and
-serves published tournaments and replays itself; only execution lives on the
-arena. A capacity semaphore (`TCAB_ARENA_MAX_CONCURRENT`, default `2`) answers
-`503` past the cap rather than queueing. Scale the cap and the pod's CPU rather
-than the replica count.
+console reaches it through the edge at `/arena/`, and the arena verifies the
+assertion on each request with the same two `TCAB_ACCESS_*` variables as the
+backend; the backend serves published tournaments and replays itself, so only
+execution lives on the arena. A capacity semaphore (`TCAB_ARENA_MAX_CONCURRENT`,
+default `2`) answers `503` past the cap rather than queueing. Scale the cap and
+the pod's CPU rather than the replica count.

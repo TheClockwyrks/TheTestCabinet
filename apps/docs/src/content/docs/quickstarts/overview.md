@@ -13,15 +13,15 @@ same task in full. A machine that has never run The Test Cabinet starts with
 
 - [Set Up Authentication](/quickstarts/setup/set-up-authentication/) supplies the
   provider credentials a run's harness needs.
-- [Register and Log In](/quickstarts/setup/register-and-login/) creates an
-  account, so launching, reviewing, and publishing are attributed to you.
+- [Sign In](/quickstarts/setup/sign-in/) opens the console through Cloudflare
+  Access, so launching, reviewing, and publishing are attributed to you.
 
 ## Development
 
 - [Run a Test Case](/quickstarts/development/run-a-test-case/) launches one case
   variant through a harness and watches it finish.
 - [Run the Local Service Stack](/quickstarts/development/run-the-local-service-stack/)
-  brings up the backend, auth, dispatcher, and artifact services on local k3d.
+  brings up the backend, dispatcher, artifacts and repos services on local k3d.
 - [Review a Run](/quickstarts/development/review-a-run/) submits a review for a
   produced run.
 

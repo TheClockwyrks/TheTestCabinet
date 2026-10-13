@@ -79,6 +79,6 @@ the pack manifest does not carry, declares a pack of the wrong kind, or reaches 
 clip that has not been published fails the commit hook and CI rather than the
 run.
 
-Core emits the rendered `clip.wav`, and for a `music` case a portable `clip.mid`
+The driver emits the rendered `clip.wav`, and for a `music` case a portable `clip.mid`
 score, to paths it provides. Neither is manifest-declared. Because the asset is a
 finished waveform, an audio case produces no rig or system for a runtime to play.

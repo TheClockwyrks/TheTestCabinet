@@ -11,7 +11,7 @@ third-party harness, so the same test case runs against any of them without the
 rest of the system knowing harness-specific details. The layer owns how each
 harness is invoked non-interactively, how each reports its usage, and how each
 one's activity is translated into the normalized stream defined in
-[Events](/components/core/events/).
+[Events](/components/driver/events/).
 
 ## Supported harnesses
 
@@ -32,7 +32,7 @@ and event translation described below.
 catalogue. It is a binary that runs inside the run container carrying its own
 model client and agent loop, and it is invoked on its own path with no manifest
 and no CLI install. A gg run still produces an ordinary [run
-record](/components/core/run-records/) carrying `harness_slug: gg`.
+record](/components/contracts/run-records/) carrying `harness_slug: gg`.
 
 ## Installation
 
@@ -58,7 +58,7 @@ A harness invocation must be given at least:
 
 A harness session is one unit of work: the harness's own agent loop is handed a
 prompt and driven to completion. How many sessions a run drives, and how they
-chain, is decided by the run's [orchestrator](/components/core/orchestrators/),
+chain, is decided by the run's [orchestrator](/components/driver/orchestrators/),
 which owns the loop around the harness while this layer owns each individual
 session. A run defaults to a single session (`one-shot`).
 
@@ -67,8 +67,8 @@ session. A run defaults to a single session (`one-shot`).
 Because the harness CLI is installed at run time rather than present in an image,
 availability is checked in two stages.
 
-Outside a run, for example the `tcab harnesses` status listing, availability is a
-cost-free readiness check from configuration alone. A harness is available when
+Outside a run, availability is a cost-free readiness check from configuration
+alone. A harness is available when
 the credentials its resolved [authentication mode](#authentication) needs are
 present: an API key set in the environment, or subscription credential files on
 disk. This starts no container and reads no credential contents.
@@ -100,9 +100,9 @@ the `pending` state until an in-flight run of the same harness frees a slot. Thi
 per-harness cap composes with the dispatcher's run-lane cap
 (`TCAB_DISPATCHER_MAX_INFLIGHT`), and a run must clear both to start.
 
-The setting is served at `GET /harness-config`, an open read enumerating every
+The setting is served at `GET /harness-config`, a read enumerating every
 harness with its current config, and changed at `POST /harness-config/{slug}`,
-which requires a bearer token.
+which requires an [Access identity](/components/auth/overview/).
 
 ## Authentication
 
@@ -119,8 +119,8 @@ the harness requires. `codex exec` reads `CODEX_API_KEY` rather than
 A per-harness override `TCAB_API_KEY_<SLUG>`, for example `TCAB_API_KEY_KILO`,
 takes precedence over the shared provider variable, so harnesses that share a
 provider key, such as the OpenRouter harnesses all reading `OPENROUTER_API_KEY`,
-can be given independent keys. The override is read in both the host (CLI) and the
-driver-pod paths.
+can be given independent keys. The override is read in the driver pod's
+environment, which the dispatcher populates from the deployment's secrets.
 
 Subscription. The credential files a harness's CLI writes when the user signs in,
 for example `~/.codex/auth.json`, are copied into the run container at the paths
@@ -139,7 +139,7 @@ credential files it uses.
 ### Selecting a mode
 
 The mode is resolved once, from the harness's declared capabilities and the host
-environment, so the run path and the `tcab harnesses` readiness listing select
+environment, so the run path and the console's readiness listing select
 identically. By default The Test Cabinet prefers a subscription when its
 credentials are present and falls back to an API key otherwise. A user can lock
 the mode with `TCAB_AUTH_MODE` for every harness or `TCAB_AUTH_MODE_<SLUG>` for
@@ -162,23 +162,20 @@ that refreshed copy is discarded when the ephemeral container is torn down.
 
 ### Subscription credential sources
 
-Mode selection is the same everywhere. Only where the credential bytes are read
-from differs by run path, behind a single seam:
-
-- CLI, in process. The run executes on the trusted host that signed
-  in, so the credentials are read from the user's home directory.
-- Driver on a cluster. A driver pod is ephemeral and has no host home, so the
-  credentials come from an operator-provided Secret the dispatcher mounts into
-  the pod. The Secret holds the same files the adapter's credential spec names,
-  keyed by basename, giving one shared subscription per deployment. See [Set Up
-  Authentication](/quickstarts/setup/set-up-authentication/).
+A driver pod is ephemeral and has no host home, so the credentials come from an
+operator-provided Secret the dispatcher mounts into the pod. The Secret holds
+the same files the adapter's credential spec names, keyed by basename, giving
+one shared subscription per deployment. Where the bytes are read from sits
+behind a single seam, so a host that runs the engine outside a cluster reads
+the same files from the home of the user that signed in. See [Set Up
+Authentication](/quickstarts/setup/set-up-authentication/).
 
 ## Usage reporting
 
 Every invocation must return normalized usage data so runs are comparable across
 harnesses regardless of how each reports its own numbers. The layer translates
 each harness's raw output into the normalized token classes defined in
-[Metrics](/components/core/metrics/#tokens). Only the classes whose JSON keys a
+[Metrics](/components/contracts/metrics/#tokens). Only the classes whose JSON keys a
 harness's usage shape declares are filled in; the rest are `null`, so a class a
 harness genuinely reports as zero stays distinguishable from one it never
 reports.
@@ -187,7 +184,7 @@ An invocation must also surface any exact run cost the harness reports for
 itself. A harness that drives a single provider directly through an API key may
 report the precise amount charged on its terminal result. The layer returns that
 figure and it becomes the run's actual cost, as described in [Harness-reported
-cost](/components/core/metrics/#harness-reported-cost). Harnesses that report no
+cost](/components/contracts/metrics/#harness-reported-cost). Harnesses that report no
 cost leave it unset.
 
 A run's comparable cost is computed from the list price on the model's catalog
@@ -202,7 +199,7 @@ documented on that harness's Metrics page.
 ## Event reporting
 
 Beyond its terminal outcome, every invocation produces a live stream of
-normalized [harness events](/components/core/events/) as the harness runs. The
+normalized [harness events](/components/driver/events/) as the harness runs. The
 command line interface prints these events as they arrive.
 
 The layer uses one of two strategies to map a harness's output:

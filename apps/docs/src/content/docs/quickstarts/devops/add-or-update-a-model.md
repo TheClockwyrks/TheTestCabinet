@@ -23,8 +23,7 @@ The full walkthrough is
 
 ## Prerequisites
 
-- A signed-in account in the web console. See
-  [Register and Log In](/quickstarts/setup/register-and-login/).
+- Signed in to the console. See [Sign In](/quickstarts/setup/sign-in/).
 - The model's provider logo URL on [svgl.app](https://svgl.app), which the
   backend fetches and sanitizes server-side, and its OpenRouter slug when it has
   one.

@@ -6,13 +6,13 @@ A comparison is a saved, named experiment. It fixes the test every arm runs,
 pits two or more configurations against each other as its arms, runs each arm
 `N` times to smooth out variance, and gathers the arms' outcome distributions
 and [diagnostics](/comparisons/diagnostics/). A comparison belongs to the
-account that created it and is created and run from the web console. It is
+identity that created it and is created and run from the console. It is
 [published](/comparisons/publishing/) read-only to the public site.
 
 ## The experiment model
 
 A comparison is a set of configurations run against one held-constant test. The
-stored shape is `ComparisonConfig` (`crates/core/src/comparison.rs`).
+stored shape is `ComparisonConfig` (`comparison.rs` in `microservice-backend`).
 
 The controls, held constant across all arms, are the test case slug, version,
 and variant, the [engine](/engines/overview/), the
@@ -53,14 +53,14 @@ surfaced as a [confound](#confound-detection).
 
 ### Auth mode
 
-Cost is comparable only when the [auth mode](/components/core/run-records/)
+Cost is comparable only when the [auth mode](/components/contracts/run-records/)
 matches, since an API-key run's dollar cost and a subscription run's dollar cost
 do not mean the same thing. Auth mode is decided by the harness's own
 credentials configuration rather than by whoever launches the run, so a
 comparison reads it back off the runs: an arm whose runs disagree on
 `RunEnvironment.auth_mode` is confounded. Every figure uses
 `metrics.cost.comparable`, so a harness is neither rewarded nor penalized for
-its billing model. See [metrics](/components/core/metrics/) for the token
+its billing model. See [metrics](/components/contracts/metrics/) for the token
 classes and cost fields.
 
 ## Triggering the runs
@@ -72,8 +72,8 @@ it. Before it launches, the action prunes the arm's recorded ids of runs that do
 not count, so the stored configuration names only the runs the arm holds.
 
 - A harness arm launches through the shared batch path, `launchBatch()` →
-  `POST /jobs/batch` (`packages/ui/src/app/pages/runs/launchBatch.ts`), with the
-  controls locked and one launch item per missing run.
+  `POST /jobs/batch` (`launchBatch.ts` in `ui-common`), with the controls
+  locked and one launch item per missing run.
 - A gg arm launches through gg's own path, `launchGgRun` → `POST /gg/runs`, one
   request per run, with the arm's slot models bound onto the capability set it
   names.
@@ -84,7 +84,7 @@ the refusal's reason on the page.
 ### Which runs an arm holds
 
 Runs are matched back to their arm by the ids the arm records at launch, not by
-their [`RunSubject`](/components/core/run-records/) tuple. Two gg arms can share
+their [`RunSubject`](/components/contracts/run-records/) tuple. Two gg arms can share
 a root model and differ only in capability set, which no run tuple
 distinguishes, so an arm's membership is explicit.
 
@@ -137,8 +137,8 @@ as an ordinary run, and one still in flight runs to its end.
 ## Result computation
 
 Only the configuration is stored. Every arm's statistics and diagnostics are
-computed from its counted runs each time a comparison is read (`aggregate_comparison`,
-`crates/core/src/comparison_aggregate.rs`), so a comparison always reflects
+computed from its counted runs each time a comparison is read
+(`aggregate_comparison` in `microservice-backend`), so a comparison always reflects
 whatever runs have since landed.
 
 The aggregation is deterministic for a given set of runs. An arm's runs are read
@@ -146,7 +146,8 @@ in sorted-id order, and the bootstrap is seeded from those ids, so the console
 and the public snapshot show identical numbers and a recomputation never shifts
 them.
 
-The endpoints are per-account, attributed to the bearer token's account:
+The endpoints are per-identity, attributed to the request's [Access
+identity](/components/auth/overview/):
 
 - `GET /comparisons` and `POST /comparisons`
 - `GET`, `PUT`, and `DELETE` on `/comparisons/{id}`
@@ -159,7 +160,7 @@ through the shared [confirmation dialog](/components/ui/overview/#dialogs).
 
 A comparison generates dozens of runs, and the manual-review points are not what
 a harness comparison measures, so a comparison scores each run from automated
-validation alone (`automated_only_score`, `crates/core/src/comparison.rs`).
+validation alone (`automated_only_score` in `microservice-backend`).
 
 The score restricts both the earned points and the available points to the
 auto-covered ones. A run of a case whose checklist is worth 70 points, 68 of
@@ -170,7 +171,7 @@ than failed.
 The coverage set is read off the run's own `record.validation.debugScripts`
 rather than off the case's declared items, because the item-level "is this point
 automated" flag is not serialized onto a record. Each
-[`DebugScriptResult`](/components/core/validation/) carries the `item_id` (and
+[`DebugScriptResult`](/components/driver/validation/) carries the `item_id` (and
 optional `sub_item_id`) forming the verdict id it backs:
 
 - A script with decided verdicts contributes each as a synthetic `ReviewVerdict`

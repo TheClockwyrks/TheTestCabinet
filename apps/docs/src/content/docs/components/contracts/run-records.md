@@ -4,11 +4,11 @@ title: Run Records
 
 ## Overview
 
-A run record is the data contract produced by every run. It is what the testing
-harness emits, what the driver reports to the backend, and what the site
-consumes, so its shape is fixed.
+A run record is the data contract produced by every run. It is what the
+[driver](/components/driver/overview/) emits and reports to the backend, and
+what the console and the gallery consume, so its shape is fixed.
 
-A run's [reviews](/components/core/results/#reviews) are authored separately and
+A run's [reviews](/components/backend/results/#reviews) are authored separately and
 travel alongside the record rather than inside it.
 
 A run record must be serialized in a machine-readable format such as JSON and
@@ -23,13 +23,13 @@ schema rather than redefining the record, so there is one source of truth for it
 shape.
 
 The record's types are defined in the
-[contracts crate](/components/core/overview/#the-contracts-crate),
-`contracts/crates/contracts` (`test_cabinet_contracts::run_record` and the modules
-its parts come from), and the
-schema and the `@clockwyrks/run-record` TypeScript bindings are generated from them.
-The core re-exports them at `test_cabinet_core::run_record`, beside the two
-constructors that need its runtime: the build's own commit and the classification
-of a failed run's error into its state.
+[contracts crate](/components/contracts/overview/#the-contracts-crate)
+(`test_cabinet_contracts::run_record` and the modules its parts come from), and
+the schema and the `@clockwyrks/run-record` TypeScript bindings are generated
+from them. The driver holds the record's local half: the assembly of a record
+from a finished run, and the two constructors that need its runtime, the
+build's own commit and the classification of a failed run's error into its
+state.
 
 ## Contents
 
@@ -47,10 +47,10 @@ A run record must capture at least the following.
 - The slug of the [variant](/testing/end-to-end/overview/#variants) that was run.
   Exactly one variant runs per run.
 - The agent harness slug and, where available, the harness version.
-- The resolved slug of the [orchestrator](/components/core/orchestrators/) that
+- The resolved slug of the [orchestrator](/components/driver/orchestrators/) that
   conducted the run's harness sessions. For an external orchestrator directory
   this is the directory's own manifest slug.
-- The slug of the [engine](/components/core/engines/) the build was produced
+- The slug of the [engine](/components/engines/engines/) the build was produced
   against and the exact engine version resolved for the run. A run with no engine
   records the slug `none` and no version.
 - The model ID that was used. A [gg](/gg/overview/) run binds models to slots, so
@@ -83,22 +83,22 @@ container so it reflects what the harness actually built in:
   image bytes even when the image was launched by a mutable tag. A purely local
   image with no registry digest records the reference it was launched by.
 - The Node.js version reported by `node --version`, where it could be determined.
-- The [authentication mode](/components/core/harnesses/#authentication) the run
+- The [authentication mode](/components/driver/harnesses/#authentication) the run
   used. This is how the run's cost should be read: an API-key run is billed
   against that key, while a subscription run carries no per-run provider charge.
 
 ### Metrics
 
 - Run time and the setup, session, teardown and validation durations, as defined
-  in [Metrics](/components/core/metrics/#durations).
+  in [Metrics](/components/contracts/metrics/#durations).
 - The four token classes, as defined in
-  [Metrics](/components/core/metrics/#tokens).
+  [Metrics](/components/contracts/metrics/#tokens).
 - Comparable cost and actual cost, as defined in
-  [Metrics](/components/core/metrics/#cost).
+  [Metrics](/components/contracts/metrics/#cost).
 
 ### Validation
 
-A summary of the [validation](/components/core/validation/) results: the outcome
+A summary of the [validation](/components/driver/validation/) results: the outcome
 of the required install and build steps, whether the implementation loaded, the
 similarity signal from each declared check, a proof result per declared
 proof-of-implementation artifact, and a debug-script result per validated verdict
@@ -109,11 +109,11 @@ Each validated verdict unit carries one entry per media output its checklist ite
 declares, recording the output's id, its display name, its kind, and whether the
 build produced it. A kind is one of three:
 
-| Kind     | Holds                                                                                              |
-| -------- | -------------------------------------------------------------------------------------------------- |
-| `image`  | A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).                                               |
-| `video`  | A video clip, captured as `webm` and published as `mp4`.                                           |
-| `replay` | A draw-command [recording](/components/core/engines/#recording), captured and published as `json`. |
+| Kind     | Holds                                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| `image`  | A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).                                                  |
+| `video`  | A video clip, captured as `webm` and published as `mp4`.                                              |
+| `replay` | A draw-command [recording](/components/engines/engines/#recording), captured and published as `json`. |
 
 The same kinds label a declared proof, whose kind is inferred from the path the
 build wrote it to. A reference view is an image or a video, because a recording
@@ -133,7 +133,7 @@ per-run media under `/runs/<id>/asset/<file>`.
 
 ### Showcase
 
-The run's [showcase](/components/core/showcase/), when the produced tree carried
+The run's [showcase](/components/driver/showcase/), when the produced tree carried
 a readable one: the player-facing markdown description and the ordered media
 carousel, each entry recording its file name, its caption, and its kind on the
 same three-kind scale as validation media. The field is optional. A run whose
@@ -144,9 +144,13 @@ the run's status.
 
 - A link to the public repository holding the run's generated source.
 - A link to the playable build, when one has been released. The build is deployed
-  publicly at [publish](/components/core/results/#publish); before that, a
-  produced run's build is playable for review off the [artifact
+  publicly at [publish](/components/backend/results/#publish); before that, a
+  produced run's build is playable for review off the [artifacts
   service](/components/artifacts/overview/).
+- The run's short code, assigned the first time the run publishes: the shortest
+  prefix of the run id, at least eight characters long, that no published run
+  already holds. A code is never reassigned, and the run's share links are built
+  from it. See [Serving the gallery](/components/site/serving/).
 
 ### Status
 
@@ -192,7 +196,7 @@ The run's terminal state, with enough detail to understand a failure. One of:
 - `infrastructure`: the Test Cabinet's own infrastructure failed, covering a
   container that would not start or pull, an OOM-killed pod, a failure in
   seeding or the case's init step, and a collected tree whose
-  [dependency install](/components/core/validation/#the-dependency-install) did
+  [dependency install](/components/driver/validation/#the-dependency-install) did
   not succeed after its retries. Retained with a diagnostic detail giving the
   reason, never publishable, and excluded from every model statistic. A run
   that reached the install carries its collected tree and its validation
@@ -206,7 +210,7 @@ A kill is a request to a gg session to wind down rather than a teardown, so a
 canceled gg run is recorded through the same post-session path as any other run.
 It carries its real [metrics](#metrics), the collected working tree as it stood
 at the last completed turn, its session summary, and everything it streamed
-before the kill. Its [validation](/components/core/validation/) summary is empty
+before the kill. Its [validation](/components/driver/validation/) summary is empty
 rather than failed, because validation is fresh work on an implementation the run
 was told to stop writing. Two degraded paths yield a bare record instead: a
 session that will not wind down inside its grace period, and a run that errors on
@@ -286,31 +290,30 @@ artifacts:
 - `run-record.json`: the run record described above.
 - `implementation/`: a copy of the produced working tree. Any
   proof-of-implementation files the build wrote live here at their declared
-  `dest`. When the run finishes, each present proof is uploaded to the [artifact
-  service](/components/artifacts/overview/) and served back as per-run media
+  `dest`. When the run finishes, each present proof is uploaded to the
+  [artifacts service](/components/artifacts/overview/) and served back as
+  per-run media
   (`/runs/<id>/proof/<proof-id>.<ext>`) so a reviewer compares the submitted
   evidence against the expected reference. A
-  [showcase](/components/core/showcase/) the model wrote lives here at
+  [showcase](/components/driver/showcase/) the model wrote lives here at
   `showcase/`, and its files are uploaded and served back the same way
   (`/runs/<id>/showcase/<file>`).
 - `raw.jsonl`: the harness's raw output, one JSON object per captured line in
-  arrival order, each tagging the [stream](/components/core/events/) the line
+  arrival order, each tagging the [stream](/components/driver/events/) the line
   came from and the line's verbatim text.
-- `events.jsonl`: the [normalized events](/components/core/events/) translated
+- `events.jsonl`: the [normalized events](/components/driver/events/) translated
   from that raw output, one event per line, in the order they were produced.
 - `code-analysis.json.gz`: the unbounded tier of the run's [code
   analysis](/gg/analysis/code-analysis/), holding every authored file, symbol,
   import edge, cycle, and clone group. It is written at the run tree's root and
-  mirrored into the backend to be served per run. `implementation/` stays a
-  verbatim copy of what the model produced. A gg run's [session
+  served per run by the [artifacts service](/components/artifacts/overview/).
+  `implementation/` stays a verbatim copy of what the model produced. A gg run's [session
   record](/gg/analysis/session-records/) sits beside it as `replay.json.gz` under
   the same convention.
-- `writeup.md`: a local [review](/components/core/results/#reviews) of the run,
-  when one has been written. This is the operator's own review, used by the solo
-  [`tcab publish`](/components/core/results/#combined-review-and-publish) path,
-  which publishes a validator-rated run without one. A produced run can
-  accumulate further reviews from other accounts, which are held on the backend
-  rather than beside the run on disk.
+- `writeup.md`: a local [review](/components/backend/results/#reviews) of the run,
+  when one has been written, in the writeup format the contracts crate parses.
+  The reviews a produced run accumulates from other people are held on the
+  backend rather than beside the run on disk.
 
 Replaying `raw.jsonl` through the harness layer's translation reproduces
 `events.jsonl`, so a run's event classification is auditable and a real run

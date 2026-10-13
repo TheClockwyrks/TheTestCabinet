@@ -23,9 +23,10 @@ There are two binaries, one per `asset_kind`:
 - `particle-3d` authors a volumetric particle system, the kind the
   [3D games](/testing/asset-generation/mesh-binaries/) consume.
 
-They are built from `crates/particle-2d` and `crates/particle-3d` over the shared
-`crates/particle-core` library, which owns the system model, the simulator, and
-the [F-curve](/testing/asset-generation/voxel-binaries/#f-curves) reuse from
+They are built from `crates/particle-2d` and `crates/particle-3d` in the
+`tool-particle` repository, over its shared `particle-core` library, which owns
+the system model, the simulator, and the
+[F-curve](/testing/asset-generation/voxel-binaries/#f-curves) reuse from
 `model-core`. Each has its own asset-generation run-container image, so a
 particle asset-generation run carries only the tool its `asset_kind` names. The
 [full-stack](/testing/full-stack/overview/) images carry a particle binary
@@ -217,8 +218,7 @@ interactive view is the frontend's live simulation of the emitted `system.json`.
 
 ## Live preview
 
-When a run is watched, driven by a [driver](/components/driver/overview/)
-rather than a plain `tcab run`, the
+When a run is watched, the
 model's authoring streams to the viewer in real time. The orchestrator adds a
 `live` block to the seeded config carrying a `host.docker.internal` endpoint and
 an opaque per-run token. When the model runs `render`, the binary connects back
