@@ -79,6 +79,7 @@ media/runs/<run-id>/showcase/<file>
 media/runs/<run-id>/original/<kind>/<file>
 media/runs/<run-id>/code-analysis/v<generation>.json
 media/runs/<run-id>/controller.wasm
+media/runs/<run-id>/session-record.json
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png
 media/cases/<slug>/<version>/validation-baseline/<engine>/<variant>/<digest>-<file>
 media/cases/<slug>/<version>/showcase/<variant>/<digest>-<file>
@@ -296,23 +297,88 @@ bucket holds every file of a published run:
   `engine.wasm`).
 - An adversarial run's controller module, as `controller.wasm`, when the record
   names one.
+- A gg run's [session record](/gg/analysis/session-records/), as
+  `session-record.json`, when the backend store holds one for the run.
 
 The asset files are named in `assetMedia` like any other asset. The controller
-is named by no document.
+and the session record are named by no document.
 
-These files are published as the run wrote them. The secret scrubber that every
-run document and code-analysis document passes through reads neither a replay's
-or a scenario's JSON nor a wasm module, so a model that wrote a credential into
-its own replay publishes it. The same holds for the proof, validation and
-showcase media.
+The replays, scenarios and modules are published as the run wrote them. The
+secret scrubber that every run document and code-analysis document passes
+through reads neither a replay's or a scenario's JSON nor a wasm module, so a
+model that wrote a credential into its own replay publishes it. The same holds
+for the proof, validation and showcase media.
 
-One file of a run is not published. A gg run's [session
-record](/gg/analysis/session-records/) carries the complete model conversation
-of its run, and an object in this bucket can be fetched by anyone who can
-compose its key. The record therefore stays in the backend store, which holds
-its only copy besides the run's tree, and no refresh reads it. The backend's
-[state sweep](/components/backend/overview/#state-volume) keeps it for as long
-as the run exists.
+### The session record
+
+A session record carries the complete model conversation of its run, and an
+object in this bucket can be fetched by anyone who can compose its key.
+Publishing a gg run therefore publishes its conversation, and the record of a
+run that is not published is exported by no refresh.
+
+The published copy outlives the run in the backend. Nothing deletes an object
+under `media/`, so the record of a run that is deleted after it was published
+stays in the bucket, fetchable under the same key, until an operator deletes
+the object.
+
+The record is published scrubbed and uncompressed, as the
+[code-analysis document](#code-analysis) is. The stored file is decompressed
+and read as JSON one value at a time, and each value is written straight to the
+object as it is read, with every string and every object key passed through the
+secret scrubber. Two keys of one object that the scrubber redacts to the same
+text are told apart by a number appended to the later one. The whole record is
+never held as a parsed document, so publishing one costs the refresh the size of
+the object and no more. The object is uncompressed because the
+[state sweep](/components/backend/overview/#what-a-published-runs-folder-must-satisfy)
+decides whether the bucket holds a stored record by scrubbing it again and
+comparing sizes and MD5s, and a compressed form of the same JSON is not the same
+bytes twice.
+
+The object is therefore the stored record's JSON written again, not its bytes.
+The keys of an object keep their order, the whitespace between values is
+dropped, a number is written in its shortest form, and an integer beyond 64 bits
+is written as the nearest floating-point number.
+
+The scrubber redacts what is shaped like a provider API key, an `sk-` token.
+A credential of any other shape that a tool printed during the run is in the
+record as the run wrote it, and is published with it. Since an object is never
+overwritten, a scrubber that learns a new shape later does not change a record
+already in the bucket.
+
+A record whose published form is larger than 512 MiB is not published. A refresh
+holds one whole object in memory to upload it, and this bound is what keeps one
+record from exhausting the backend.
+
+No field of a run record says whether its run captured a session, so the
+backend store decides: a run has a session record when its folder holds
+`replay.json`. The store is the record's only source, since the artifact
+service serves no session record from a run's tree. The outcomes are:
+
+| The store's `replay.json`                                | The refresh                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------- |
+| Readable, and the bucket lacks the object                | Uploads it and enters it in the manifest                   |
+| Any, and the bucket holds the object                     | Enters the object in the manifest without reading the file |
+| Absent or empty, and the bucket lacks the object         | Enters nothing; the run has no session record              |
+| Absent or empty, and the object a manifest named is gone | Enters the record as [unrecoverable](#unrecoverable-files) |
+| Not a JSON document, unreadable, or over the size bound  | Leaves the run unconfirmed, as `session-record.json`       |
+
+The fourth row is a run that was confirmed with a session record, whose stored
+copy the sweep then removed, and whose object was deleted from the bucket
+since. The refresh logs it at `error`. On a store that holds no run folder at
+all, which is what a volume that is not mounted looks like, the run is left
+unconfirmed instead.
+
+A run left unconfirmed for its session record stays so at every refresh, and
+none of its files is removed from the store meanwhile. Each refresh logs one
+`warn` line naming the run and the reason. The remedies are to upload a
+readable record to `POST /runs/{id}/replay`, to remove `replay.json` from the
+run's folder on the state volume, which publishes the run without a record, or
+to delete the run.
+
+The key is the run's own, so the object is written once and a record uploaded
+again for a run whose object exists is not published again. The state sweep
+then finds the stored record differing from its object and
+[keeps it](/components/backend/overview/#what-a-published-runs-folder-must-satisfy).
 
 ### The file manifest
 
@@ -320,21 +386,28 @@ When a refresh [confirms](/components/backend/overview/#confirmation) a run, it
 records on the run every file of the run that is in the bucket. Each entry
 carries:
 
-| Field           | Meaning                                                                     |
-| --------------- | --------------------------------------------------------------------------- |
-| `kind`          | `proof`, `validation`, `asset`, `showcase`, `code-analysis` or `controller` |
-| `name`          | The file's path under the run's folder in the backend store                 |
-| `key`           | The object holding the bytes of that file                                   |
-| `transcodedKey` | The mp4 a video was transcoded to, when it was                              |
-| `unrecoverable` | Set on a file whose bytes exist nowhere; see below                          |
+| Field           | Meaning                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `kind`          | `proof`, `validation`, `asset`, `showcase`, `code-analysis`, `controller` or `session-record` |
+| `name`          | The file's path under the run's folder in the backend store                                   |
+| `key`           | The object holding the bytes of that file                                                     |
+| `transcodedKey` | The mp4 a video was transcoded to, when it was                                                |
+| `unrecoverable` | Set on a file whose bytes exist nowhere; see below                                            |
 
-`name` is what the backend's own routes serve the file as: `proof/<file>`,
-`validation/<file>`, `asset/<file>`, `showcase/<file>`, `code-analysis.json` and
-`controller.wasm`. For a transcoded video `name` is the recorded `.webm`, `key`
-is the verbatim copy under `original/` and `transcodedKey` is the mp4. The
-code-analysis object is the scrubbed, uncompressed form of the stored file, and
-every other object holds the stored bytes unchanged. The session record has no
-entry, because it has no object.
+`name` is the file's path in the backend store: `proof/<file>`,
+`validation/<file>`, `asset/<file>`, `showcase/<file>`, `code-analysis.json`,
+`controller.wasm` and `replay.json`, the session record's. For a transcoded
+video `name` is the recorded `.webm`, `key` is the verbatim copy under
+`original/` and `transcodedKey` is the mp4. The code-analysis and session-record
+objects are the scrubbed, uncompressed form of the stored file, and every other
+object holds the stored bytes unchanged.
+
+A manifest with no `session-record` entry says nothing about a session record.
+A run confirmed while its folder held none has such a manifest, and a
+`replay.json` found beside it later is a file the manifest does not name. The
+state sweep keeps it and
+[withdraws the run's confirmation](/components/backend/overview/#what-a-published-runs-folder-must-satisfy),
+so that the next refresh publishes the record and enters it.
 
 The manifest does two jobs, and they end at different moments.
 
@@ -610,8 +683,9 @@ documents, so querying on the public gallery makes no backend request.
 Three rules govern the corpus's contents:
 
 - It is decoupled from run publication. A document carries configuration ids and
-  outcome numbers, with no source, prompts or model output, and hardly any gg run
-  is ever published, so redaction is the control rather than a publication gate.
+  outcome numbers, with no source, prompts or model output, and the corpus
+  covers gg runs that are not published, so redaction is the control rather than
+  a publication gate.
 - It respects the experimental catalog gate. A document for an
   [experimental](/development/frozen-versions/) case version is dropped, and a
   case whose manifest this process cannot read is treated as unreleasable.
@@ -620,9 +694,10 @@ Three rules govern the corpus's contents:
   characters is dropped whatever it is called. The whole object then passes the
   same secret scrubber as every other published document.
 
-A [session record](/gg/analysis/session-records/) is never exported. A document
+The corpus holds no [session record](/gg/analysis/session-records/). A document
 carries configuration and outcomes, while a record carries the complete model
-conversation verbatim, so records stay console-only.
+conversation verbatim. A record reaches the bucket only as the
+[`session-record.json`](#the-session-record) of a published run.
 
 The corpus is a build-time export, so it lags the console's live index, and the
 file carries its own `generatedAt`.

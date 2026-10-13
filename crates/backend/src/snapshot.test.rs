@@ -2906,27 +2906,42 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 // ── run-tree artifacts and the public snapshot ──────────────────────────────
 
 #[tokio::test]
-async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
-    // R7, and owner decision Q1. The **session record** is never published: it is a
-    // private, whole-run capture of everything the model was sent, so it never goes to
-    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
-    // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
-    // now, but only when the run **record** says the run was analysed — the store
-    // holding one is not the authority, exactly as it is not for proofs. This run's
-    // record carries none, so neither artifact becomes an object.
+async fn a_stored_run_tree_artifact_reaches_the_public_snapshot_only_as_its_own_object() {
+    // The two run-tree artifacts the store holds for a published run. The
+    // **session record** is published as one object of the run, scrubbed, and
+    // is in no other: not the run's document, not the index. A code-analysis
+    // document is published only when the run **record** says the run was
+    // analysed, and the store holding one is not the authority, exactly as it
+    // is not for proofs. This run's record carries none.
     //
     // This is the regression that would be silent: adding a new sibling object to the
     // snapshot is a two-line change, and nothing else in the builder would notice.
     let (_tmp, store) = empty_store();
     store
-        .write_run_artifact("r1", "replay", b"prompt sk-ant-leaked-key-from-the-env")
+        .write_run_artifact(
+            "r1",
+            "replay",
+            br#"{"entries":[{"text":"the-whole-conversation sk-ant-leaked-key-from-the-env"}]}"#,
+        )
         .unwrap();
     store
         .write_run_artifact("r1", "code-analysis", b"{\"files\":1}")
         .unwrap();
+    // A record that is no document is published as nothing: there is no form
+    // of it the scrubber has read.
+    store
+        .write_run_artifact(
+            "r2",
+            "replay",
+            b"undocumented-prompt sk-ant-leaked-key-from-the-env",
+        )
+        .unwrap();
 
     let snapshot = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![
+            stored_run("r1", "2026-06-17T21:40:00Z"),
+            stored_run("r2", "2026-06-17T21:41:00Z"),
+        ],
         vec![],
         store,
     )
@@ -2934,6 +2949,7 @@ async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
     .await
     .unwrap();
 
+    let mut records = Vec::new();
     for object in snapshot
         .objects
         .iter()
@@ -2950,7 +2966,16 @@ async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
             "run-tree artifact bytes leaked into `{}`",
             object.key
         );
+        assert!(
+            !body.contains("undocumented-prompt"),
+            "a record that is no document leaked into `{}`",
+            object.key
+        );
+        if body.contains("the-whole-conversation") {
+            records.push(object.key.as_str());
+        }
     }
+    assert_eq!(records, ["media/runs/r1/session-record.json"]);
 }
 
 #[tokio::test]
@@ -3381,15 +3406,22 @@ async fn the_builder_redacts_the_corpus_itself_rather_than_trusting_its_caller()
 }
 
 #[tokio::test]
-async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
-    // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
-    // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a
-    // short step away. A session record is the complete model conversation verbatim; the
-    // exported documents are configuration ids and outcome numbers. Only the second
-    // travels.
+async fn a_session_record_reaches_the_snapshot_only_as_a_published_run_s_own_object() {
+    // A session record is the complete model conversation verbatim; the exported
+    // documents are configuration ids and outcome numbers. The corpus covers gg
+    // runs that are not published, so a record must never travel with it: the
+    // only record in a snapshot is the one object of a published run.
     let (_tmp, store) = empty_store();
     store
-        .write_run_artifact("r1", "replay", b"{\"text\":\"the-verbatim-conversation\"}")
+        .write_run_artifact("r1", "replay", b"{\"text\":\"the-published-conversation\"}")
+        .unwrap();
+    // A gg run that is in the corpus and is not published.
+    store
+        .write_run_artifact(
+            "r2",
+            "replay",
+            b"{\"text\":\"the-unpublished-conversation\"}",
+        )
         .unwrap();
 
     let snapshot = SnapshotBuilder::new(
@@ -3397,27 +3429,58 @@ async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_co
         vec![],
         store,
     )
-    .with_gg_documents(vec![gg_doc("r1")])
+    .with_gg_documents(vec![gg_doc("r1"), gg_doc("r2")])
     .build(now())
     .await
     .unwrap();
 
+    const RECORD: &str = "media/runs/r1/session-record.json";
+    assert_eq!(
+        snapshot
+            .objects
+            .iter()
+            .filter(|object| object.key.contains("session-record"))
+            .map(|object| object.key.as_str())
+            .collect::<Vec<_>>(),
+        [RECORD]
+    );
     for object in snapshot
         .objects
         .iter()
         .chain(std::iter::once(&snapshot.index))
     {
+        let body = String::from_utf8_lossy(&object.bytes);
         assert!(
             !object.key.contains("replay"),
             "a replay artifact was published as `{}`",
             object.key
         );
         assert!(
-            !String::from_utf8_lossy(&object.bytes).contains("the-verbatim-conversation"),
+            !object.key.contains("/r2/"),
+            "a file of an unpublished run was published as `{}`",
+            object.key
+        );
+        assert!(
+            !body.contains("the-unpublished-conversation"),
+            "an unpublished run's conversation leaked into `{}`",
+            object.key
+        );
+        assert!(
+            object.key == RECORD || !body.contains("the-published-conversation"),
             "recorded conversation text leaked into `{}`",
             object.key
         );
     }
+    let corpus = snapshot
+        .objects
+        .iter()
+        .find(|object| object.key.ends_with("/gg-runs.json"))
+        .expect("the corpus");
+    let corpus = String::from_utf8_lossy(&corpus.bytes);
+    assert!(
+        corpus.contains("r2"),
+        "the corpus covers the unpublished run"
+    );
 }
 
 // --- Validator-rated runs in the snapshot ---------------------------------------

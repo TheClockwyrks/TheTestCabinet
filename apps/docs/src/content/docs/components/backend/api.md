@@ -955,27 +955,28 @@ recording as unrecoverable and names the mp4 made from it, the route answers
 with the mp4 as `video/mp4` under the same `.webm` name, so a reader takes the
 type from the response and not from the name.
 
-The code-analysis object in the bucket is plain JSON with any leaked credential
-redacted, so a document answered from the bucket differs from the stored one
-only where a credential was redacted.
+The code-analysis and session-record objects in the bucket are plain JSON with
+any leaked credential redacted. A document answered from the bucket is the
+stored one's JSON written again, so it holds the same values except where a
+credential was redacted, and is not the same bytes: the whitespace differs, and
+[a session record's numbers](/components/backend/snapshot/#the-session-record)
+are written in their shortest form.
 
 A bucket that answers that it holds no object under the key answers `404`, and
 the backend logs the run, the file and the key at `error`, since the manifest
 says the object is there. A bucket that does not answer, or answers with any
 other error, answers `502`, and a manifest that cannot be read answers `500`, so
-a fault is never read as a file the run does not have. A session record is in
-no manifest, so its route answers from the store alone.
+a fault is never read as a file the run does not have.
 
 No route serves a byte range, from the store or from the bucket.
 
-Each `GET` route but the session record's has a `POST` on the same path, which
-a driver uploads the file to. The file is written whole or not at all: a
+Each `GET` route has a `POST` on the same path, which a driver uploads the file
+to. The file is written whole or not at all: a
 request that fails leaves no part of it under the run's name. An upload for a
 run that is published [withdraws the run's confirmation and has a snapshot
 refresh requested](/components/backend/overview/#uploads-after-a-confirmation),
 so the file is published before the store's copy can be removed, and the run's
-other files stay served meanwhile. The session record is uploaded to
-`POST /runs/{id}/replay` and changes neither.
+other files stay served meanwhile.
 
 ### `POST /snapshot/refresh`
 

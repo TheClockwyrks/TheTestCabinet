@@ -33,9 +33,13 @@
 //! Every other folder is kept, above all that of a completed run that is not
 //! published.
 //!
-//! A gg run's [session record](crate::store::SESSION_RECORD_FILE) is never removed, by any
-//! reason: it has no copy anywhere else. A folder that held one keeps it, and a
-//! folder that holds nothing else is not looked at further.
+//! A gg run's [session record](crate::store::SESSION_RECORD_FILE) is removed for
+//! the published reason alone, under the rule of every other published file: a
+//! refresh publishes the record of a published run and of no other. For the
+//! other three reasons it has no copy anywhere else, so a folder that held one
+//! keeps it, and a folder that holds nothing else is not looked at further.
+//! A published run's record that its manifest does not name is kept too, and
+//! the run's confirmation is withdrawn so that a refresh publishes it.
 //!
 //! Every removal is decided twice. The pass selects from the run facts it read at
 //! its start, and [`reclaim_run_state`] reads the run, its jobs, its manifest, the
@@ -62,7 +66,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::artifacts::{RetentionPolicy, SweepRules, SweepTiming, retention_reason};
-use crate::db::{Db, MediaFileKind, MediaManifest, ReclaimReason, RetentionRun};
+use crate::db::{Db, MediaManifest, ReclaimReason, RetentionRun};
 use crate::store::{DefinitionStore, PublishedCopy, Removal, RunFolder, RunFolderFile};
 
 /// How long after startup the first pass runs: a little after the artifact
@@ -188,7 +192,7 @@ pub struct StateSweepOutcome {
     pub removed_files: u64,
     /// Bytes the removed files held, each measured before its removal.
     pub freed_bytes: u64,
-    /// Session records the folders hold, which no pass removes.
+    /// Session records the folders held when the pass listed them.
     pub session_records: u64,
     /// Bytes those session records hold.
     pub session_record_bytes: u64,
@@ -236,9 +240,10 @@ pub fn state_retention_reason(
 pub struct Removable {
     /// The file as the folder listing found it.
     pub file: RunFolderFile,
-    /// The object the file's bytes must equal. `None` for a file removed without
-    /// a comparison: an empty one, and one whose object holds a transformed form
-    /// of it, which is compared before this is built.
+    /// The object the file must be what is held in: its bytes, or for a
+    /// [scrubbed document](crate::store::is_scrubbed_document) its published
+    /// form. `None` for a file removed without a comparison, which for a
+    /// published run is an empty one.
     pub published: Option<PublishedCopy>,
 }
 
@@ -249,10 +254,11 @@ pub struct Accounting {
     /// The files the manifest records an object for, which may be removed once
     /// each is found to be what its object holds.
     pub remove: Vec<Removable>,
-    /// The code-analysis document, when the manifest records an object for it.
-    /// Its object is the scrubbed, uncompressed form of the file, so the two are
-    /// compared by publishing the file again in memory, not byte for byte.
-    pub transformed: Option<(RunFolderFile, BucketObject)>,
+    /// The code-analysis document and the session record, each when the manifest
+    /// records an object for it. Such an object is the scrubbed, uncompressed
+    /// form of the file, so the two are compared by publishing the file again
+    /// in memory, not byte for byte.
+    pub transformed: Vec<(RunFolderFile, BucketObject)>,
     /// The files the manifest does not name. Nothing has published them.
     pub unaccounted: Vec<String>,
     /// The files the manifest records as existing nowhere, although the folder
@@ -276,8 +282,10 @@ impl Accounting {
 
 /// Divide the files of `folder` by what `manifest` records for each and what
 /// `objects`, the bucket's listing of the run, holds. The [session
-/// record](crate::store::SESSION_RECORD_FILE) is in no part: it is kept, and does
-/// not keep the rest.
+/// record](crate::store::SESSION_RECORD_FILE) is divided like every other file,
+/// so one the manifest does not name is unaccounted and stays. An empty one the
+/// manifest does not name is in no part: it is what a refresh reads as no
+/// record, so nothing will ever name it, and it is a copy of nothing.
 ///
 /// A file may be removed when the manifest names it, every entry of that name
 /// carries the key of the object holding its bytes, and that object is the
@@ -292,14 +300,16 @@ pub fn account_folder(
     objects: &HashMap<String, BucketObject>,
 ) -> Accounting {
     let mut accounting = Accounting::default();
-    for file in folder.reclaimable() {
+    for file in &folder.files {
         let entries: Vec<_> = manifest
             .files
             .iter()
             .filter(|entry| entry.name == file.name)
             .collect();
         if entries.is_empty() {
-            accounting.unaccounted.push(file.name.clone());
+            if file.bytes > 0 || file.name != crate::store::SESSION_RECORD_FILE {
+                accounting.unaccounted.push(file.name.clone());
+            }
             continue;
         }
         if file.bytes == 0 {
@@ -322,11 +332,11 @@ pub fn account_folder(
             .collect();
         if entries
             .iter()
-            .all(|entry| entry.kind == MediaFileKind::CodeAnalysis)
+            .all(|entry| entry.kind.is_scrubbed_document())
         {
             match held.first().copied().flatten() {
                 Some(object) if held.iter().all(|other| *other == Some(object)) => {
-                    accounting.transformed = Some((file.clone(), *object));
+                    accounting.transformed.push((file.clone(), *object));
                 }
                 _ => accounting.differing.push(file.name.clone()),
             }
@@ -457,13 +467,30 @@ struct Removed {
 /// Remove `removals` from run `run_id`'s folder one by one, each only while it is
 /// the file that was listed and holds what its object does, then the directories
 /// that emptied.
-async fn remove_files(store: &DefinitionStore, run_id: &str, removals: Vec<Removable>) -> Removed {
+///
+/// `published` is whether the run is a published one whose every removal was
+/// held against the bucket. A [scrubbed
+/// document](crate::store::is_scrubbed_document) of such a run is compared by
+/// its published form, by the removal itself and on the file it removes. Only
+/// then is a [session record](crate::store::SESSION_RECORD_FILE) among
+/// `removals` removed; the store refuses it otherwise.
+async fn remove_files(
+    store: &DefinitionStore,
+    run_id: &str,
+    removals: Vec<Removable>,
+    published: bool,
+) -> Removed {
     let id = run_id.to_string();
     let removed = on_disk(store, move |store| {
         let mut removed = Removed::default();
         for removal in &removals {
             let name = &removal.file.name;
-            match store.remove_run_file_as_listed(&id, &removal.file, removal.published.as_ref()) {
+            let outcome = if published && crate::store::is_scrubbed_document(name) {
+                store.remove_published_document(&id, &removal.file, removal.published.as_ref())
+            } else {
+                store.remove_run_file_as_listed(&id, &removal.file, removal.published.as_ref())
+            };
+            match outcome {
                 Ok(Removal::Removed) => {
                     removed.files += 1;
                     removed.bytes += removal.file.bytes;
@@ -522,29 +549,35 @@ fn warn_once(run_id: &str, file: &str, why: &'static str) {
     }
 }
 
-/// Whether the code-analysis document `file` of run `run_id` is what `object`
-/// holds: published again in memory, it has the object's size and, where the
-/// bucket reported one, its MD5. `Ok(false)` as well for a document that does not
-/// publish.
-async fn code_analysis_matches(
+/// Whether the file of run `run_id` named `name`, its code-analysis document or
+/// its session record, is what `object` holds: published again in memory, it has
+/// the object's size and, where the bucket reported one, its MD5. `Ok(false)` as
+/// well for a file that does not publish, and for one that is gone.
+///
+/// This spares a folder whose document differs the record of a reclaim that
+/// removes nothing. It does not decide the removal: the store compares the file
+/// once more as it removes it
+/// ([`remove_published_document`](DefinitionStore::remove_published_document)).
+///
+/// One file is read at a time, on a blocking thread, and a session record is
+/// hashed as it is scrubbed, so a pass holds no record however large.
+async fn scrubbed_document_matches(
     store: &DefinitionStore,
     run_id: &str,
+    name: &str,
     object: BucketObject,
 ) -> crate::error::Result<bool> {
     let id = run_id.to_string();
+    let name = name.to_string();
     on_disk(store, move |store| {
-        use md5::Digest;
-
-        let Some(published) =
-            crate::snapshot::published_code_analysis(&store.read_run_code_analysis(&id)?)
+        let Some(mut stored) = store.open_run_file(&id, &name)? else {
+            return Ok(false);
+        };
+        let Some((size, md5)) = crate::snapshot::published_document_digest(&name, &mut stored)
         else {
             return Ok(false);
         };
-        let same_size = object.size == Some(published.len() as u64);
-        let same_bytes = object
-            .md5
-            .is_none_or(|md5| <[u8; 16]>::from(md5::Md5::digest(&published)) == md5);
-        Ok(same_size && same_bytes)
+        Ok(object.size == Some(size) && object.md5.is_none_or(|held| held == md5))
     })
     .await
 }
@@ -676,15 +709,33 @@ pub async fn reclaim_run_state<B: RunBucket>(
             if !accounting.unpublished.is_empty() {
                 return withdraw_for_unpublished(db, &fresh, &accounting.unpublished).await;
             }
-            if let Some((file, object)) = accounting.transformed.take() {
-                match code_analysis_matches(store, run_id, object).await {
+            // A session record the manifest does not name is one no refresh
+            // has read: the run was confirmed while its folder held none. A
+            // confirmed run is built from its manifest, so nothing would ever
+            // publish the record while the confirmation stands.
+            if accounting
+                .unaccounted
+                .iter()
+                .any(|file| file == crate::store::SESSION_RECORD_FILE)
+            {
+                return withdraw_for_unrecorded_session_record(db, &fresh).await;
+            }
+            for (file, object) in std::mem::take(&mut accounting.transformed) {
+                let Some(size) = object.size else {
+                    accounting.differing.push(file.name);
+                    continue;
+                };
+                match scrubbed_document_matches(store, run_id, &file.name, object).await {
                     Ok(true) => accounting.remove.push(Removable {
                         file,
-                        published: None,
+                        published: Some(PublishedCopy {
+                            size,
+                            md5: object.md5,
+                        }),
                     }),
                     Ok(false) => accounting.differing.push(file.name),
                     Err(error) => {
-                        tracing::warn!(run.id = %run_id, %error, "could not compare a run's code-analysis document with its object; retrying next pass");
+                        tracing::warn!(run.id = %run_id, file = %file.name, %error, "could not compare a run's scrubbed document with its object; retrying next pass");
                         return StateReclaim::Failed;
                     }
                 }
@@ -750,7 +801,7 @@ pub async fn reclaim_run_state<B: RunBucket>(
             return StateReclaim::Failed;
         }
     }
-    let removed = remove_files(store, run_id, remove).await;
+    let removed = remove_files(store, run_id, remove, reason == ReclaimReason::Published).await;
     differing += removed.differing;
     let kept = kept + removed.differing + removed.changed;
     if removed.files == 0 {
@@ -796,6 +847,33 @@ async fn withdraw_for_unpublished(db: &Db, run: &RetentionRun, files: &[String])
                 files = %files.join(", "),
                 "a published run's folder holds files its manifest records as existing \
                  nowhere; withdrew its media confirmation so a refresh publishes them"
+            );
+            StateReclaim::Withdrawn
+        }
+        // The confirmation moved since it was read.
+        Ok(false) => StateReclaim::Skipped,
+        Err(error) => {
+            tracing::warn!(run.id = %run.id, %error, "could not withdraw a run's media confirmation; retrying next pass");
+            StateReclaim::Failed
+        }
+    }
+}
+
+/// Withdraw the confirmation of `run`, a published run whose folder holds a
+/// session record its manifest does not name, so that the next refresh reads the
+/// folder, publishes the record and enters it. Nothing is removed.
+///
+/// The refresh that follows either names the record, or leaves the run
+/// unconfirmed for a record it cannot publish. Neither brings the run back here
+/// as it is, so a run is withdrawn for its record once.
+async fn withdraw_for_unrecorded_session_record(db: &Db, run: &RetentionRun) -> StateReclaim {
+    match db.withdraw_media_confirmation(run).await {
+        Ok(true) => {
+            tracing::warn!(
+                run.id = %run.id,
+                file = crate::store::SESSION_RECORD_FILE,
+                "a published run's folder holds a session record its manifest does not \
+                 name; withdrew its media confirmation so a refresh publishes it"
             );
             StateReclaim::Withdrawn
         }
@@ -863,7 +941,7 @@ pub async fn reclaim_orphan_folder(
     if remove.is_empty() {
         return StateReclaim::Skipped;
     }
-    let removed = remove_files(store, run_id, remove).await;
+    let removed = remove_files(store, run_id, remove, false).await;
     if removed.files == 0 {
         return if removed.failed > 0 {
             StateReclaim::Failed
@@ -939,10 +1017,12 @@ pub async fn sweep_pass<B: RunBucket>(
             outcome.session_records += 1;
             outcome.session_record_bytes += bytes;
         }
-        // A folder holding nothing but a session record has nothing to remove.
-        if folder.reclaimable().next().is_none() && folder.irregular.is_empty() {
+        if folder.files.is_empty() && folder.irregular.is_empty() {
             continue;
         }
+        // Only a published run's session record is removed, so the folder of
+        // any other run that holds nothing else has nothing to remove.
+        let only_record = folder.reclaimable().next().is_none() && folder.irregular.is_empty();
         let Some(modified) = modified_at(&folder) else {
             // Entries the store did not write, and no file to date them by.
             outcome.kept_unaccounted += 1;
@@ -950,7 +1030,8 @@ pub async fn sweep_pass<B: RunBucket>(
             continue;
         };
         let Some(run) = by_id.get(run_id.as_str()) else {
-            if !busy.contains(run_id) && orphan_expired(modified, now, rules.grace) {
+            if !only_record && !busy.contains(run_id) && orphan_expired(modified, now, rules.grace)
+            {
                 orphans.push(run_id);
             }
             continue;

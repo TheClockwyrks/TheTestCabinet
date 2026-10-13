@@ -416,7 +416,7 @@ pub async fn run_proof(
 /// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
 /// by the publisher alongside the run record. The raw request body is the bytes.
 ///
-/// Like every upload of a run's file but the session record's, this ends with
+/// Like every upload of a run's file, this ends with
 /// [`file_uploaded`](super::run_files::file_uploaded): a run that was confirmed,
 /// or whose files the state sweep had removed, is evaluated again by the next
 /// refresh.
@@ -570,15 +570,29 @@ pub async fn put_run_controller(
 /// gets them moved verbatim, and a gzip-unaware client (the CLI, the replay driver — anything on
 /// the workspace `reqwest`) gets them decoded here.
 ///
-/// The one run file route that answers from the store alone: a session record is
-/// never published, so no manifest names it and the bucket holds no copy.
+/// A confirmed run whose record the store no longer holds is answered from the bucket,
+/// as [`run_code_analysis`] is. That object is the scrubbed record as plain JSON, which
+/// is what every reader of this route parses either way.
 pub async fn run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let bytes = state.store.read_run_replay(&id).map_err(ApiError::from)?;
-    run_artifact_response(&headers, crate::store::REPLAY_ARTIFACT, bytes)
+    match state.store.read_run_replay(&id) {
+        Ok(bytes) => run_artifact_response(&headers, crate::store::REPLAY_ARTIFACT, bytes),
+        Err(miss) => {
+            let name = crate::store::SESSION_RECORD_FILE;
+            let mut response =
+                super::run_files::read_through(&state, &id, name, labels_for, miss).await?;
+            // The store's copy varies by request header, so every answer of this
+            // route says so, the bucket's included.
+            response.headers_mut().insert(
+                header::VARY,
+                header::HeaderValue::from_static("accept-encoding"),
+            );
+            Ok(response)
+        }
+    }
 }
 
 /// `POST /runs/{id}/replay` — store a gg run's session record, mirrored in by the driver from the
@@ -588,8 +602,9 @@ pub async fn run_replay(
 /// status post that creates the run row, so there is nothing here to patch, and the store keeps the
 /// body opaque: it is never parsed.
 ///
-/// The one upload that leaves a run's media confirmation alone: no manifest names a session
-/// record and no sweep removes one, so its arrival changes nothing a confirmation says.
+/// Ends with [`file_uploaded`](super::run_files::file_uploaded) like every other upload
+/// of a run's file: a refresh publishes a published run's record, so one that arrives for
+/// a confirmed run has the run evaluated again.
 pub async fn put_run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -599,6 +614,7 @@ pub async fn put_run_replay(
         .store
         .write_run_replay(&id, &body)
         .map_err(ApiError::from)?;
+    super::run_files::file_uploaded(&state, &id).await;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 

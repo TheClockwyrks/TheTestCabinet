@@ -921,14 +921,42 @@ async fn a_settled_run_is_asked_about_nothing_and_keeps_what_the_bucket_holds() 
 
 // --- The session record --------------------------------------------------------
 
-#[tokio::test]
-async fn a_session_record_is_published_under_no_key_and_entered_in_no_manifest() {
-    // The record carries its run's whole model conversation. It stays in the
-    // backend store, whatever else of the run is published.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_replay("r1", b"{\"text\":\"the-verbatim-conversation\"}")
+/// The key a run's session record is published under.
+const SESSION_RECORD_KEY: &str = "media/runs/r1/session-record.json";
+
+/// A session record as a driver mirrors it: gzipped JSON holding the run's
+/// conversation and a credential the model printed into it.
+fn gzipped_session_record() -> Vec<u8> {
+    use std::io::Write;
+
+    let record = serde_json::json!({
+        "formatVersion": 1,
+        "entries": [{
+            "text": "the-verbatim-conversation",
+            "leak": "sk-ant-api03-notreal-value",
+        }],
+    });
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(&serde_json::to_vec(&record).unwrap())
         .unwrap();
+    encoder.finish().unwrap()
+}
+
+fn session_record_entry() -> MediaManifestFile {
+    MediaManifestFile::stored(
+        MediaFileKind::SessionRecord,
+        "replay.json",
+        SESSION_RECORD_KEY,
+    )
+}
+
+#[tokio::test]
+async fn a_published_run_s_session_record_is_published_scrubbed_and_uncompressed() {
+    let (_tmp, store) = empty_store();
+    let stored = gzipped_session_record();
+    store.write_run_replay("r1", &stored).unwrap();
+    // An adversarial replay shares the store's file name and not its place.
     store.write_run_asset("r1", "replay.json", b"{}").unwrap();
     let (base, seen) = stub_artifacts(files(&[("/runs/r1/media", listing(&[]))])).await;
 
@@ -941,25 +969,228 @@ async fn a_session_record_is_published_under_no_key_and_entered_in_no_manifest()
     )
     .await;
 
-    assert_eq!(uploaded(&snapshot), ["media/runs/r1/asset/replay.json"]);
+    assert_eq!(
+        uploaded(&snapshot),
+        ["media/runs/r1/asset/replay.json", SESSION_RECORD_KEY]
+    );
+    let published = object(&snapshot, SESSION_RECORD_KEY).unwrap();
+    assert_eq!(published.content_type, "application/json");
+    assert_eq!(published.content_encoding, None);
+    // Plain JSON a reader parses as it is, with the credential redacted and
+    // the conversation intact.
+    let document: serde_json::Value = serde_json::from_slice(&published.bytes).unwrap();
+    assert_eq!(document["formatVersion"], 1);
+    assert_eq!(document["entries"][0]["text"], "the-verbatim-conversation");
+    assert_eq!(
+        document["entries"][0]["leak"],
+        test_cabinet_core::redact::PLACEHOLDER
+    );
+    // The bytes the state sweep compares a stored record against.
+    assert_eq!(
+        published_session_record(&stored).as_deref(),
+        Some(published.bytes.as_slice())
+    );
+    assert_eq!(
+        session_record::record_digest(&stored[..]),
+        Some((
+            published.bytes.len() as u64,
+            md5::Digest::finalize(md5::Digest::chain_update(
+                md5::Md5::default(),
+                &published.bytes
+            ))
+            .into()
+        ))
+    );
+    assert!(
+        manifest_of(&snapshot)
+            .files
+            .contains(&session_record_entry())
+    );
+    assert!(unconfirmed(&snapshot).is_empty());
+    // The record is in that one object, and the credential in none.
     for object in &snapshot.objects {
+        let body = String::from_utf8_lossy(&object.bytes);
         assert!(
-            !String::from_utf8_lossy(&object.bytes).contains("the-verbatim-conversation"),
+            !body.contains("sk-ant-api03-notreal-value"),
+            "the credential leaked into `{}`",
+            object.key
+        );
+        assert!(
+            object.key == SESSION_RECORD_KEY || !body.contains("the-verbatim-conversation"),
             "the conversation leaked into `{}`",
             object.key
         );
     }
     assert!(
-        manifest_of(&snapshot)
-            .files
+        snapshot
+            .objects
             .iter()
-            .all(|file| file.name != "replay.json")
+            .any(|object| object.key.ends_with("/gg-runs.json")),
+        "the corpus was among the objects checked"
     );
     assert!(
         seen.lock()
             .unwrap()
             .iter()
             .all(|path| !path.contains("/root/")),
-        "nothing asks the tree for it either"
+        "the tree is asked for no session record"
     );
+}
+
+#[tokio::test]
+async fn a_session_record_already_in_the_bucket_is_entered_without_being_read() {
+    let (_tmp, store) = empty_store();
+    // Not a document: a build that read it would leave the run unconfirmed.
+    store.write_run_replay("r1", b"not json").unwrap();
+
+    let snapshot = build(
+        stored_run("r1", "2026-06-17T21:40:00Z"),
+        store.clone(),
+        &[SESSION_RECORD_KEY],
+    )
+    .await;
+
+    assert!(uploaded(&snapshot).is_empty());
+    assert_eq!(manifest_of(&snapshot).files, [session_record_entry()]);
+    assert!(unconfirmed(&snapshot).is_empty());
+
+    // The object stands for a run whose folder holds no record any more, which
+    // is every run the state sweep has been over.
+    std::fs::remove_file(store.run_replay_path("r1")).unwrap();
+    let snapshot = build(
+        stored_run("r1", "2026-06-17T21:40:00Z"),
+        store,
+        &[SESSION_RECORD_KEY],
+    )
+    .await;
+    assert!(uploaded(&snapshot).is_empty());
+    assert_eq!(manifest_of(&snapshot).files, [session_record_entry()]);
+}
+
+#[tokio::test]
+async fn a_run_whose_folder_holds_no_session_record_has_none() {
+    let (_tmp, store) = empty_store();
+    // Another run's record is no record of this run's.
+    store
+        .write_run_replay("r2", &gzipped_session_record())
+        .unwrap();
+    let run = stored_run("r1", "2026-06-17T21:40:00Z");
+
+    let snapshot = build(run.clone(), store.clone(), &[]).await;
+    assert!(uploaded(&snapshot).is_empty());
+    assert!(manifest_of(&snapshot).files.is_empty());
+    assert!(unconfirmed(&snapshot).is_empty());
+    assert!(
+        snapshot
+            .objects
+            .iter()
+            .all(|object| !object.key.starts_with("media/runs/r2/")),
+        "a run the build was not given is published in no part"
+    );
+
+    // An empty file is a copy of nothing.
+    store.write_run_replay("r1", b"").unwrap();
+    let snapshot = build(run, store, &[]).await;
+    assert!(uploaded(&snapshot).is_empty());
+    assert!(manifest_of(&snapshot).files.is_empty());
+    assert!(unconfirmed(&snapshot).is_empty());
+}
+
+#[tokio::test]
+async fn a_session_record_that_is_no_document_leaves_its_run_unconfirmed() {
+    let (_tmp, store) = empty_store();
+    let run = stored_run("r1", "2026-06-17T21:40:00Z");
+    for stored in [
+        b"not json".as_slice(),
+        // Claims to be gzip and does not inflate.
+        &[0x1f, 0x8b, 0x00, 0x01],
+    ] {
+        store.write_run_replay("r1", stored).unwrap();
+        let snapshot = build(run.clone(), store.clone(), &[]).await;
+        assert!(uploaded(&snapshot).is_empty());
+        assert!(manifest_of(&snapshot).files.is_empty());
+        assert_eq!(unconfirmed(&snapshot), ["session-record.json"]);
+    }
+}
+
+#[tokio::test]
+async fn a_run_built_from_its_manifest_keeps_its_session_record_entry_unread() {
+    let (_tmp, store) = empty_store();
+    // Whatever the folder holds now, the manifest answers for the run.
+    store.write_run_replay("r1", b"not json").unwrap();
+    let run = stored_run("r1", "2026-06-17T21:40:00Z");
+    let recorded = MediaManifest {
+        files: vec![session_record_entry()],
+    };
+
+    let snapshot = SnapshotBuilder::new(vec![run.clone()], vec![manifest()], store.clone())
+        .with_media_confirmation(HashSet::new())
+        .with_recorded_manifests(HashMap::from([("r1".to_string(), recorded.clone())]))
+        .with_existing_media(keys(&[SESSION_RECORD_KEY]))
+        .build(now())
+        .await
+        .unwrap();
+    assert!(uploaded(&snapshot).is_empty());
+    assert_eq!(manifest_of(&snapshot), &recorded);
+    assert!(unconfirmed(&snapshot).is_empty());
+
+    // A manifest recorded while the folder held no record gains none from a
+    // build that does not read the folder.
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_media_confirmation(HashSet::new())
+        .with_recorded_manifests(HashMap::from([(
+            "r1".to_string(),
+            MediaManifest::default(),
+        )]))
+        .build(now())
+        .await
+        .unwrap();
+    assert!(uploaded(&snapshot).is_empty());
+    assert!(manifest_of(&snapshot).files.is_empty());
+}
+
+#[tokio::test]
+async fn a_recorded_session_record_that_exists_nowhere_is_unrecoverable_once_the_store_answers() {
+    let (_tmp, store) = empty_store();
+    let run = stored_run("r1", "2026-06-17T21:40:00Z");
+    let build = async |store: DefinitionStore, recorded: &[&str]| {
+        SnapshotBuilder::new(vec![run.clone()], vec![manifest()], store)
+            .with_recorded_session_records(recorded.iter().map(|id| id.to_string()).collect())
+            .build(now())
+            .await
+            .unwrap()
+    };
+
+    // A store with no run folder cannot say that it holds no record.
+    let snapshot = build(store.clone(), &["r1"]).await;
+    assert!(manifest_of(&snapshot).files.is_empty());
+    assert_eq!(unconfirmed(&snapshot), ["session-record.json"]);
+
+    // One that answers holds none, and the bucket lists no object: the record
+    // a manifest named exists nowhere.
+    store.write_run_proof("r2", "title.png", b"png!").unwrap();
+    let snapshot = build(store.clone(), &["r1"]).await;
+    assert!(uploaded(&snapshot).is_empty());
+    assert_eq!(
+        manifest_of(&snapshot).files,
+        [MediaManifestFile::unrecoverable(
+            MediaFileKind::SessionRecord,
+            "replay.json",
+            None
+        )]
+    );
+    assert!(unconfirmed(&snapshot).is_empty());
+
+    // No manifest ever named a record for the run: it has none.
+    let snapshot = build(store.clone(), &[]).await;
+    assert!(manifest_of(&snapshot).files.is_empty());
+    assert!(unconfirmed(&snapshot).is_empty());
+
+    // A stored record is published whatever was recorded.
+    store
+        .write_run_replay("r1", &gzipped_session_record())
+        .unwrap();
+    let snapshot = build(store, &["r1"]).await;
+    assert_eq!(uploaded(&snapshot), [SESSION_RECORD_KEY]);
+    assert_eq!(manifest_of(&snapshot).files, [session_record_entry()]);
 }

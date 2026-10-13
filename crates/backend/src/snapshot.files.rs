@@ -1,6 +1,6 @@
 //! How a snapshot build accounts for each file of a published run: the object it
-//! is in, or the finding that its bytes exist nowhere, and the one file of a run
-//! that no document names, its controller module.
+//! is in, or the finding that its bytes exist nowhere, and the two files of a
+//! run that no document names: its controller module and its session record.
 //!
 //! Every collector of [`SnapshotBuilder`] publishes through the two functions
 //! here, so one place decides what a file's [manifest
@@ -15,6 +15,7 @@ use super::{
     transcode_webm_to_mp4,
 };
 use crate::db::{MediaFileKind, MediaManifestFile};
+use crate::error::{BackendError, Result};
 
 /// The directory under a run's prefix that holds the recorded bytes of each
 /// transcoded video: `media/runs/<id>/original/<kind>/<file>`.
@@ -23,6 +24,14 @@ use crate::db::{MediaFileKind, MediaManifestFile};
 /// `<kind>/<file>.mp4` nor the recorded webm a failed transcode publishes under
 /// `<kind>/<file>`, which the next build replaces with the mp4.
 pub(super) const ORIGINAL_DIR: &str = "original";
+
+/// The name of a gg run's session record under its run's prefix:
+/// `media/runs/<id>/session-record.json`.
+///
+/// At the prefix's root, where the only other object is the controller module,
+/// so the key can meet no file of a media directory. An adversarial run's
+/// replays are `asset/replay.json` and its siblings.
+pub(super) const SESSION_RECORD_OBJECT: &str = "session-record.json";
 
 /// What one build finds about the files of one run.
 #[derive(Debug, Default)]
@@ -55,7 +64,10 @@ fn media_dir(kind: MediaFileKind) -> &'static str {
         MediaFileKind::Proof => "proof",
         MediaFileKind::Validation => "validation",
         MediaFileKind::Showcase => "showcase",
-        MediaFileKind::Asset | MediaFileKind::CodeAnalysis | MediaFileKind::Controller => "asset",
+        MediaFileKind::Asset
+        | MediaFileKind::CodeAnalysis
+        | MediaFileKind::Controller
+        | MediaFileKind::SessionRecord => "asset",
     }
 }
 
@@ -384,6 +396,147 @@ impl SnapshotBuilder {
             Err(Missing::Unavailable) => {
                 account.unconfirmed.push(name.to_string());
                 None
+            }
+        }
+    }
+
+    /// Publish a run's session record as
+    /// `media/runs/<id>/`[`SESSION_RECORD_OBJECT`], the object to upload when the
+    /// bucket does not hold it yet.
+    ///
+    /// The store decides: no field of a run record says whether its run captured
+    /// a session, so a run has a record exactly when its folder holds one. Only
+    /// the driver of a gg run writes one. The store is also the only source: the
+    /// artifact service serves no session record, so nothing is read from the
+    /// run's tree. A run whose folder holds none, or an empty one, and whose
+    /// object the bucket lacks is entered in the manifest with no record.
+    ///
+    /// The one run of those that is not left at that is a run a manifest
+    /// [recorded a session record for](SnapshotBuilder::with_recorded_session_records).
+    /// Its record was published, the state sweep removed the stored copy, and
+    /// the object was deleted from the bucket. The record is entered as
+    /// unrecoverable, like any other file that exists nowhere, once the store
+    /// [answers](Self::store_answers); the run is left unconfirmed while it
+    /// does not.
+    ///
+    /// The record carries its run's whole model conversation, so like the
+    /// code-analysis document it is scrubbed before it becomes an object, and is
+    /// published uncompressed: the state sweep compares a stored record with its
+    /// object by scrubbing it again, which a compressed form would not survive
+    /// byte for byte. Unlike that document it is never parsed whole: see
+    /// [`session_record`](super::session_record). The read runs on a blocking
+    /// thread, and what it returns is bounded by
+    /// [`MAX_PUBLISHED_RECORD_BYTES`](super::session_record::MAX_PUBLISHED_RECORD_BYTES).
+    ///
+    /// A record that is there and cannot be read, one that is not a JSON
+    /// document and one over that bound leave the run unconfirmed as
+    /// [`SESSION_RECORD_OBJECT`], so the stored file is kept.
+    ///
+    /// Only a published run is built, so the record of any other run reaches
+    /// this function never. No document names the object.
+    pub(super) async fn run_session_record(
+        &self,
+        run_id: &str,
+        scrubber: &SecretScrubber,
+        tree: &TreeMedia,
+        account: &mut RunAccount,
+    ) -> Option<SnapshotObject> {
+        use super::session_record::{MAX_PUBLISHED_RECORD_BYTES, export_record};
+
+        let kind = MediaFileKind::SessionRecord;
+        let name = crate::store::SESSION_RECORD_FILE;
+        // A run built from its manifest keeps the entry recorded for the
+        // record. The object is in the bucket, so there is nothing to upload.
+        if let Some(manifest) = tree.recorded() {
+            account.files.extend(manifest.file(name).cloned());
+            return None;
+        }
+        let key = format!("{MEDIA_PREFIX}/{run_id}/{SESSION_RECORD_OBJECT}");
+        if self.existing_media.contains(&key) {
+            account
+                .files
+                .push(MediaManifestFile::stored(kind, name, key));
+            return None;
+        }
+        let store = self.store.clone();
+        let scrubber = scrubber.clone();
+        let id = run_id.to_string();
+        let exported = tokio::task::spawn_blocking(move || {
+            Ok(store
+                .open_run_file(&id, name)?
+                .map(|stored| export_record(stored, &scrubber, MAX_PUBLISHED_RECORD_BYTES)))
+        })
+        .await
+        .map_err(|err| BackendError::Internal(format!("store task failed: {err}")))
+        .and_then(|read: Result<_>| read);
+        let unconfirmed = |account: &mut RunAccount| {
+            account.unconfirmed.push(SESSION_RECORD_OBJECT.to_string());
+            None
+        };
+        match exported {
+            Ok(Some(Ok((bytes, redacted)))) => {
+                if redacted {
+                    tracing::warn!(
+                        run.id = %run_id,
+                        "redacted leaked API key(s) from a published session record"
+                    );
+                }
+                account
+                    .files
+                    .push(MediaManifestFile::stored(kind, name, key.clone()));
+                Some(SnapshotObject {
+                    key,
+                    bytes,
+                    content_type: "application/json".to_string(),
+                    content_encoding: None,
+                })
+            }
+            Ok(Some(Err(failure))) => {
+                tracing::warn!(
+                    run.id = %run_id,
+                    reason = failure.reason(),
+                    "a published run's stored session record could not be published; \
+                     the run is left unconfirmed"
+                );
+                unconfirmed(account)
+            }
+            Ok(None) => {
+                // A manifest of the run has an entry for a record, so the run
+                // had one: it was published, and the bucket no longer lists
+                // its object.
+                if !self.recorded_session_records.contains(run_id) {
+                    return None;
+                }
+                if !self.store_answers() {
+                    tracing::warn!(
+                        run.id = %run_id,
+                        r2.key = %key,
+                        "the bucket no longer lists a published run's session record and \
+                         the backend store holds no run folder to say whether it holds \
+                         one; the run is left unconfirmed"
+                    );
+                    return unconfirmed(account);
+                }
+                tracing::error!(
+                    run.id = %run_id,
+                    r2.key = %key,
+                    "a published run's session record exists nowhere: the bucket no \
+                     longer lists the object its manifest named and the backend store \
+                     holds no copy; recorded as unrecoverable"
+                );
+                account
+                    .files
+                    .push(MediaManifestFile::unrecoverable(kind, name, None));
+                None
+            }
+            Err(error) => {
+                tracing::warn!(
+                    run.id = %run_id,
+                    %error,
+                    "a published run's session record is in the backend store and could \
+                     not be read; the run is left unconfirmed"
+                );
+                unconfirmed(account)
             }
         }
     }

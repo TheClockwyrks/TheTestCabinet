@@ -270,11 +270,9 @@ manifest](/components/backend/snapshot/#the-file-manifest).
 
 Every file means the media the run's document references, the recorded webm of
 each transcoded video, an adversarial run's replays and controller module, a
-performance run's scenarios and engine module, and the code-analysis document.
-The [snapshot page](/components/backend/snapshot/#run-media) gives the key of
-each. A gg run's session record is the one file left out: it is [never
-published](/components/backend/snapshot/#files-with-no-other-copy), so a
-confirmation says nothing about it and the backend store keeps it.
+performance run's scenarios and engine module, the code-analysis document, and
+a gg run's session record. The
+[snapshot page](/components/backend/snapshot/#run-media) gives the key of each.
 
 The files of a run are the ones its record lists and the ones only its tree can
 name. Two file sets are on no record: the image store a run's recordings share,
@@ -552,12 +550,13 @@ are kept whatever their age. A folder is also kept while a job of its run is
 queued, running or storing, and while a publish job for its run is queued or
 dispatched.
 
-The session record of a gg run, `runs/<id>/replay.json`, is kept under every
-reason, the `orphan` reason included. No refresh publishes it, so once the
-run's tree is reclaimed the store's copy is the only one. Deleting the run is
-what removes it. The code-analysis document and the controller module of a
-`failed` or `canceled` run are kept the same way: the console reads the one and
-the arena the other from the backend alone, and no bucket holds a copy of an
+The session record of a gg run, `runs/<id>/replay.json`, is removed under the
+`published` reason alone. A refresh publishes the record of a published run and
+of no other, so under the `failed`, `canceled` and `orphan` reasons the store's
+copy is the only one once the run's tree is reclaimed, and it is kept. Deleting
+the run is what removes it. The code-analysis document and the controller module
+of a `failed` or `canceled` run are kept the same way: the console reads the one
+and the arena the other from the backend alone, and no bucket holds a copy of an
 unpublished run's.
 
 Orphans are removed only while there are few of them. A pass that finds more
@@ -584,12 +583,17 @@ Each file is then decided on its own. A file is removed when the manifest
 records an object for it and that object holds the file's bytes: the object is
 the file's size, and its MD5 is the file's wherever the bucket reports one. An
 object written by one `PUT`, which is every object the backend writes, reports
-one. The code-analysis document is published scrubbed and uncompressed, so it is
-compared as it would be published now. The session record aside, every other
-file stays, and the files beside it are removed regardless:
+one. The code-analysis document and the session record are published scrubbed
+and uncompressed, so each is compared as it would be published now: the stored
+file is scrubbed again in memory, and the result must have the object's size and
+MD5. The comparison that decides the removal reads the same open file the
+removal then removes, so a document written again in between is never removed
+on the strength of the one before it. Every other file stays, and the files
+beside it are removed regardless:
 
 - A file the manifest does not name. No refresh published it, and it stays
-  until the run is deleted or an operator removes it from the volume.
+  until the run is deleted or an operator removes it from the volume. The
+  session record is the exception, described below.
 - A file whose object is another size or holds other bytes, or whose size the
   bucket did not report. The folder's copy is the only one of what it holds.
   The backend never overwrites an object to settle this. To publish the
@@ -602,6 +606,15 @@ file stays, and the files beside it are removed regardless:
 An empty file the manifest names is removed whatever the bucket holds. It is
 what an upload cut off by a full volume left before uploads were [written
 whole](#state-volume), and a copy of nothing.
+
+A session record the manifest does not name is kept, and is not left at that.
+The run was confirmed while its folder held no record: the record arrived
+without its upload being recorded, the volume was not mounted when the refresh
+looked, or the confirmation is older than the publishing of session records.
+The pass removes nothing from the folder and withdraws the run's confirmation,
+so that the next refresh publishes the record, enters it in the manifest and
+confirms the run again. An empty `replay.json` the manifest does not name is a
+copy of nothing: it is left where it is and changes nothing.
 
 A folder that holds a file the manifest records as
 [unrecoverable](/components/backend/snapshot/#unrecoverable-files) has a file to
@@ -652,8 +665,7 @@ evaluated: the sweep removes nothing of it, and the next refresh publishes
 whatever the bucket lacks and confirms the run again with a manifest that names
 the new file. An upload for a published run with no confirmation stamps the run
 as changed, so a refresh already evaluating it records no confirmation without
-the file. An upload of a session record changes none of this, since no manifest
-names one.
+the file. A session record is uploaded under the same rule as every other file.
 
 The run keeps its manifest through all of it. The manifest is the only record
 of where the files the sweep removed are, and the [run file
@@ -673,7 +685,10 @@ copy](#what-a-published-runs-folder-must-satisfy) and says so.
 Pushing a run again clears its confirmation and both reclaim records with the
 rest of its retention facts, and keeps its manifest for the same reason an
 upload does. Deleting a run removes its whole folder, the session record
-included.
+included. It removes nothing from the bucket: the objects of a deleted run,
+its published [session
+record](/components/backend/snapshot/#the-session-record) among them, stay
+there until an operator deletes them.
 
 ### Runs stored before the sweep
 
@@ -738,7 +753,8 @@ reason (`reclaimed_published`, `reclaimed_failed`, `reclaimed_canceled`,
 (`kept_unlisted`), the runs whose confirmation the pass withdrew (`withdrawn`),
 the orphans it held back (`orphans_held`), the published runs still
 `unconfirmed`, `removed_files`, `freed_bytes`, and the number and size of the
-session records the store holds (`session_records`, `session_record_bytes`). A
+session records the store held when the pass listed it (`session_records`,
+`session_record_bytes`). A
 file kept as unaccounted or differing logs one `warn` line naming the run, the
 file and why, the first time a backend process finds it so, and `debug` lines
 after. An abandoned pass logs one `warn` line, `state sweep pass abandoned`,

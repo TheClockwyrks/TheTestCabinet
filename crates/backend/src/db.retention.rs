@@ -123,7 +123,11 @@ impl ArtifactsReclaimed {
 /// generated assets, showcase files and the code-analysis document. `2` adds the
 /// recorded webm of every transcoded video, every replay of an adversarial run,
 /// a performance run's scenarios and engine module, and the controller module.
-/// A gg run's session record is in neither: it is never published.
+///
+/// A gg run's session record is vouched for by its manifest entry and by no
+/// version: a confirmation says nothing about the record of a run whose
+/// manifest has no [`MediaFileKind::SessionRecord`] entry, and the state sweep
+/// keeps such a record as a file the manifest does not name.
 ///
 /// A confirmation recorded under any other version, a row with no version
 /// included, confirms nothing: [`confirmation_holds`] refuses it, so the sweep
@@ -167,6 +171,17 @@ pub enum MediaFileKind {
     CodeAnalysis,
     /// An adversarial run's controller module, `controller.wasm`.
     Controller,
+    /// A gg run's session record, `replay.json`.
+    SessionRecord,
+}
+
+impl MediaFileKind {
+    /// Whether a file of this kind is published as the scrubbed, uncompressed
+    /// form of the stored file, so that its object does not hold the stored
+    /// bytes.
+    pub fn is_scrubbed_document(self) -> bool {
+        matches!(self, Self::CodeAnalysis | Self::SessionRecord)
+    }
 }
 
 /// One file of a confirmed run.
@@ -177,12 +192,12 @@ pub struct MediaManifestFile {
     pub kind: MediaFileKind,
     /// The file's path under the run's folder in the backend store, which is also
     /// how the backend's routes name it: `proof/<file>`, `validation/<file>`,
-    /// `asset/<file>`, `showcase/<file>`, `code-analysis.json` or
-    /// `controller.wasm`.
+    /// `asset/<file>`, `showcase/<file>`, `code-analysis.json`,
+    /// `controller.wasm` or `replay.json`.
     pub name: String,
     /// The object holding this file's bytes. For a transcoded video this is the
-    /// verbatim recorded webm. For the code-analysis document the object is the
-    /// scrubbed, uncompressed form of the stored file.
+    /// verbatim recorded webm. For the code-analysis document and the session
+    /// record the object is the scrubbed, uncompressed form of the stored file.
     /// `None` exactly when the file is [`unrecoverable`](Self::unrecoverable).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
@@ -864,6 +879,52 @@ impl Db {
             }
         }
         Ok(manifests)
+    }
+
+    /// The runs whose manifest in `bucket` has an entry for a [session
+    /// record](MediaFileKind::SessionRecord), whether or not the confirmation
+    /// the manifest was recorded with still holds.
+    ///
+    /// A refresh that finds neither a stored record nor its object for one of
+    /// these runs knows the record existed, where for any other run that is a
+    /// run with no session record. Empty with no bucket. A manifest that does
+    /// not parse names no run here: it decides no deletion, and the reads that
+    /// do refuse it themselves.
+    pub async fn runs_with_recorded_session_record(
+        &self,
+        bucket: Option<&str>,
+    ) -> Result<std::collections::HashSet<String>> {
+        let Some(bucket) = bucket else {
+            return Ok(std::collections::HashSet::new());
+        };
+        // The kind as a manifest spells it, so only the rows that can hold
+        // such an entry are read and parsed.
+        let rows = manifest_select()
+            .filter(run::Column::MediaBucket.eq(bucket))
+            .filter(run::Column::MediaManifest.contains("\"session-record\""))
+            .into_model::<ManifestRow>()
+            .all(&self.conn())
+            .await?;
+        let mut runs = std::collections::HashSet::new();
+        for row in rows {
+            let id = row.id.clone();
+            match row.located_in(Some(bucket)) {
+                Ok(Some((id, manifest))) => {
+                    if manifest
+                        .files
+                        .iter()
+                        .any(|file| file.kind == MediaFileKind::SessionRecord)
+                    {
+                        runs.insert(id);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(run.id = %id, %error, "a run's file manifest could not be read for its session record");
+                }
+            }
+        }
+        Ok(runs)
     }
 
     /// Where run `run_id`'s files are in `bucket`: the manifest the run's last

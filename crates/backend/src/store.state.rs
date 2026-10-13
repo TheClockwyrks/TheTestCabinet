@@ -13,9 +13,18 @@ use crate::error::{BackendError, Result};
 
 /// The name of a gg run's session record in its run's folder (`replay.json`).
 ///
-/// The one file of a run with no copy anywhere else: it is never published, so no
-/// [manifest](crate::db::MediaManifest) names it and no sweep removes it.
+/// A refresh publishes the record of a published run and of no other, so the
+/// record of every other run has no copy outside the store and its tree, and
+/// only [`DefinitionStore::remove_published_document`] removes one.
 pub const SESSION_RECORD_FILE: &str = "replay.json";
+
+/// Whether the file a run's folder holds as `name` is published as the
+/// scrubbed, uncompressed form of itself: the [session
+/// record](SESSION_RECORD_FILE) and the code-analysis document. The object of
+/// such a file does not hold the file's bytes.
+pub fn is_scrubbed_document(name: &str) -> bool {
+    name == SESSION_RECORD_FILE || name == test_cabinet_core::TREE_ROOT_CODE_ANALYSIS
+}
 
 /// The directory at the store's root that holds a run file while it is being
 /// written, before it is renamed into its run's folder. Not under `runs/`, so no
@@ -74,7 +83,8 @@ pub struct RunFolder {
 }
 
 impl RunFolder {
-    /// The files other than the [session record](SESSION_RECORD_FILE).
+    /// The files other than the [session record](SESSION_RECORD_FILE): what
+    /// may be removed from the folder of a run that is not published.
     pub fn reclaimable(&self) -> impl Iterator<Item = &RunFolderFile> {
         self.files
             .iter()
@@ -87,6 +97,41 @@ impl RunFolder {
             .iter()
             .find(|file| file.name == SESSION_RECORD_FILE)
             .map(|file| file.bytes)
+    }
+}
+
+/// A step a test has a removal take at a chosen moment.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct RemovalHook(std::sync::Arc<std::sync::Mutex<Option<RemovalStep>>>);
+
+/// The step a [`RemovalHook`] holds.
+#[cfg(test)]
+type RemovalStep = Box<dyn FnOnce() + Send>;
+
+#[cfg(test)]
+impl RemovalHook {
+    /// Have the next removal run `step`.
+    pub(crate) fn set(&self, step: impl FnOnce() + Send + 'static) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Box::new(step));
+    }
+
+    /// The step to run, once.
+    fn take(&self) -> Option<RemovalStep> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+}
+
+#[cfg(test)]
+impl std::fmt::Debug for RemovalHook {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("RemovalHook")
     }
 }
 
@@ -247,19 +292,155 @@ impl DefinitionStore {
     ///    since step 1. Then it is removed.
     ///
     /// The [session record](SESSION_RECORD_FILE) is refused, whatever the caller
-    /// decided: it has no other copy.
+    /// decided: only a published run's has another copy, and that one is removed
+    /// by [`remove_published_document`](Self::remove_published_document).
     pub fn remove_run_file_as_listed(
         &self,
         run_id: &str,
         listed: &RunFolderFile,
         published: Option<&PublishedCopy>,
     ) -> Result<Removal> {
-        let name = listed.name.as_str();
-        if name == SESSION_RECORD_FILE {
+        if listed.name == SESSION_RECORD_FILE {
             return Err(BackendError::BadRequest(format!(
-                "run `{run_id}`'s session record is never removed from the store"
+                "run `{run_id}`'s session record is removed only as a published run's"
             )));
         }
+        self.remove_listed(run_id, listed, published)
+    }
+
+    /// Open the file of run `run_id` named `name` (see
+    /// [`run_file_path`](Self::run_file_path)) for reading. `Ok(None)` when the
+    /// file system reports that nothing is there, and for an empty file, which
+    /// is a copy of nothing (see [`run_file_absent`](Self::run_file_absent)).
+    ///
+    /// The handle is what a reader of a large file reads in parts, where the
+    /// `read_run_*` methods return the whole of it.
+    pub fn open_run_file(&self, run_id: &str, name: &str) -> Result<Option<std::fs::File>> {
+        let path = self.run_file_path(run_id, name).ok_or_else(|| {
+            BackendError::BadRequest(format!("invalid run file `{run_id}/{name}`"))
+        })?;
+        let file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+        let metadata = file.metadata()?;
+        if !metadata.is_file() {
+            return Err(BackendError::Internal(format!(
+                "`{run_id}/{name}` is not a regular file"
+            )));
+        }
+        Ok((metadata.len() > 0).then_some(file))
+    }
+
+    /// Remove a [scrubbed document](is_scrubbed_document) of run `run_id`, a
+    /// published run: its [session record](SESSION_RECORD_FILE) or its
+    /// code-analysis document, provided it is still the file `listed` describes
+    /// and its published form is what the bucket holds.
+    ///
+    /// The object of such a file holds its scrubbed, uncompressed form, so the
+    /// file's own bytes are compared with nothing. Instead:
+    ///
+    /// 1. The file is opened, and the open file must be a regular file of the
+    ///    listed size and modification time, or it is [`Removal::Changed`].
+    /// 2. With `published`, that open file is published again in memory
+    ///    (`crate::snapshot::published_document_digest`),
+    ///    and the result must have the object's size, and its MD5 when the
+    ///    bucket reported one. Anything else, a file that does not publish
+    ///    included, is [`Removal::Differs`]. Without `published` only an empty
+    ///    file is removed, which is a copy of nothing.
+    /// 3. Under the store's write lock, held exclusively, the entry at the path
+    ///    must still be the file that was opened, by its size, modification
+    ///    time and inode. Then it is removed.
+    ///
+    /// The file stays open from the first step to the last, so its inode names
+    /// no other file meanwhile: the file removed is the one whose published
+    /// form was compared, and a document renamed into place in between is
+    /// [`Removal::Changed`] whatever its size and time.
+    ///
+    /// Any other file is refused.
+    pub fn remove_published_document(
+        &self,
+        run_id: &str,
+        listed: &RunFolderFile,
+        published: Option<&PublishedCopy>,
+    ) -> Result<Removal> {
+        let name = listed.name.as_str();
+        if !is_scrubbed_document(name) {
+            return Err(BackendError::BadRequest(format!(
+                "`{run_id}/{name}` is not published as a scrubbed document"
+            )));
+        }
+        let path = self.run_file_path(run_id, name).ok_or_else(|| {
+            BackendError::BadRequest(format!("invalid run file `{run_id}/{name}`"))
+        })?;
+        // `symlink_metadata` first, so a link is never opened through.
+        match file_identity(&path)? {
+            None => return Ok(Removal::Gone),
+            Some(entry) if entry.inode.is_none() && entry.len == u64::MAX => {
+                return Ok(Removal::Changed);
+            }
+            Some(_) => {}
+        }
+        let mut file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Removal::Gone),
+            Err(err) => return Err(err.into()),
+        };
+        let opened = identity_of(&file.metadata()?);
+        if opened.len != listed.bytes || opened.modified != Some(listed.modified) {
+            return Ok(Removal::Changed);
+        }
+        match published {
+            None if opened.len == 0 => {}
+            None => return Ok(Removal::Differs),
+            Some(published) => {
+                let Some((size, md5)) = crate::snapshot::published_document_digest(name, &mut file)
+                else {
+                    return Ok(Removal::Differs);
+                };
+                if size != published.size || published.md5.is_some_and(|held| held != md5) {
+                    return Ok(Removal::Differs);
+                }
+            }
+        }
+        #[cfg(test)]
+        if self.fail_removals.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(BackendError::Internal(format!(
+                "removing `{run_id}/{name}` was made to fail"
+            )));
+        }
+        #[cfg(test)]
+        if let Some(hook) = self.before_document_removal.take() {
+            hook();
+        }
+        let _removing = self
+            .run_writes
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let removal = match file_identity(&path)? {
+            None => Ok(Removal::Gone),
+            Some(now) if now != opened => Ok(Removal::Changed),
+            Some(_) => match std::fs::remove_file(&path) {
+                Ok(()) => Ok(Removal::Removed),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Removal::Gone),
+                Err(err) => Err(err.into()),
+            },
+        };
+        // Open until here, so the inode compared above was this file's alone.
+        drop(file);
+        removal
+    }
+
+    /// The removal [`remove_run_file_as_listed`](Self::remove_run_file_as_listed)
+    /// describes, of any file of a run's folder.
+    fn remove_listed(
+        &self,
+        run_id: &str,
+        listed: &RunFolderFile,
+        published: Option<&PublishedCopy>,
+    ) -> Result<Removal> {
+        let name = listed.name.as_str();
         let path = self.run_file_path(run_id, name).ok_or_else(|| {
             BackendError::BadRequest(format!("invalid run file `{run_id}/{name}`"))
         })?;
@@ -390,22 +571,28 @@ fn file_identity(path: &Path) -> Result<Option<FileIdentity>> {
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err.into()),
     };
+    Ok(Some(identity_of(&metadata)))
+}
+
+/// The identity `metadata` describes. What is not a regular file has an
+/// identity no listed file equals.
+fn identity_of(metadata: &std::fs::Metadata) -> FileIdentity {
     if !metadata.is_file() {
-        return Ok(Some(FileIdentity {
+        return FileIdentity {
             len: u64::MAX,
             modified: None,
             inode: None,
-        }));
+        };
     }
     #[cfg(unix)]
-    let inode = Some(std::os::unix::fs::MetadataExt::ino(&metadata));
+    let inode = Some(std::os::unix::fs::MetadataExt::ino(metadata));
     #[cfg(not(unix))]
     let inode = None;
-    Ok(Some(FileIdentity {
+    FileIdentity {
         len: metadata.len(),
         modified: metadata.modified().ok(),
         inode,
-    }))
+    }
 }
 
 /// The MD5 of the file at `path`, read in parts.

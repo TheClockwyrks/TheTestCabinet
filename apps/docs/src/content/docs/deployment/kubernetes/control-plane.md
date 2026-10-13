@@ -255,20 +255,21 @@ bucket lacks, one run at a time, so its length follows what the volume holds.
 
 The volume does not drain to nothing. What stays is what has no other copy:
 
-- Every gg run's session record, for as long as the run exists.
 - The files of a completed run that is not published, whatever its age.
-- A failed or canceled run's code-analysis document and controller module, and
-  all of its files while nothing has reported on its tree.
+- A failed or canceled run's session record, code-analysis document and
+  controller module, and all of its files while nothing has reported on its
+  tree.
+- The session record in a folder with no run row.
 - A published run's file that no refresh published, or whose bytes differ from
   the object the bucket holds under its name.
 - Every published run's files, on a backend that records no confirmations: one
   with no artifact service, or with `TCAB_ARTIFACT_RECLAIM_PUBLISHED` off.
 - Tournament match replays.
 
-The state sweep's completion line reports the session records as
-`session_records` and `session_record_bytes`, and each refresh reports the
-tournament replays as `tournament_replay_bytes`, which is how to watch the two
-that only grow.
+The state sweep's completion line reports the session records the store held
+as `session_records` and `session_record_bytes`, and each refresh reports the
+tournament replays as `tournament_replay_bytes`. The tournament replays only
+grow, and the session records grow with the runs that are not published.
 
 Once the sweep has removed files, the backend can only be rolled forward. An
 image from before the run file routes read the bucket serves a reclaimed run's

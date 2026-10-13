@@ -181,6 +181,189 @@ fn the_session_record_and_a_name_outside_the_folder_are_refused() {
     assert!(dir.path().join("store").join("outside.txt").is_file());
 }
 
+/// What the bucket would hold for the session record `stored`.
+fn record_copy(stored: &[u8]) -> PublishedCopy {
+    let published = crate::snapshot::published_session_record(stored).expect("it publishes");
+    PublishedCopy {
+        size: published.len() as u64,
+        md5: Some(md5_of(&published)),
+    }
+}
+
+#[test]
+fn a_published_run_s_session_record_is_removed_only_as_the_listed_file() {
+    let (_dir, store) = store();
+    let record = br#"{"turns": ["one"]}"#;
+    let another = br#"{"turns": ["another", "session"]}"#;
+    store.write_run_replay("r1", record).unwrap();
+    store.write_run_proof("r1", "title.png", b"png!").unwrap();
+
+    // The removal is of a scrubbed document and of nothing else.
+    let proof = listed(&store, "r1", "proof/title.png");
+    assert!(
+        store
+            .remove_published_document("r1", &proof, Some(&record_copy(record)))
+            .is_err()
+    );
+    assert_eq!(names(&store.run_folder("r1").unwrap()).len(), 2);
+
+    // A record written again since it was listed is another record.
+    let before = listed(&store, "r1", "replay.json");
+    store.write_run_replay("r1", another).unwrap();
+    assert_eq!(
+        store
+            .remove_published_document("r1", &before, Some(&record_copy(record)))
+            .unwrap(),
+        Removal::Changed
+    );
+    assert_eq!(store.read_run_replay("r1").unwrap(), another);
+
+    let now = listed(&store, "r1", "replay.json");
+    assert_eq!(
+        store
+            .remove_published_document("r1", &now, Some(&record_copy(another)))
+            .unwrap(),
+        Removal::Removed
+    );
+    assert_eq!(
+        store
+            .remove_published_document("r1", &now, Some(&record_copy(another)))
+            .unwrap(),
+        Removal::Gone
+    );
+    assert_eq!(names(&store.run_folder("r1").unwrap()), ["proof/title.png"]);
+}
+
+#[test]
+fn a_session_record_is_removed_only_when_its_published_form_is_the_object() {
+    let (_dir, store) = store();
+    let record = br#"{"turns": ["one"]}"#;
+    store.write_run_replay("r1", record).unwrap();
+    let file = listed(&store, "r1", "replay.json");
+    let held = record_copy(record);
+
+    // The object holds the published form of another record: another size, or
+    // the same size and other bytes.
+    let other_size = record_copy(br#"{"turns": ["one", "two"]}"#);
+    let other_bytes = record_copy(br#"{"turns": ["two"]}"#);
+    assert_eq!(other_bytes.size, held.size);
+    // The stored bytes themselves are not what the object holds.
+    let raw = PublishedCopy {
+        size: record.len() as u64,
+        md5: Some(md5_of(record)),
+    };
+    for object in [other_size, other_bytes, raw] {
+        assert_eq!(
+            store
+                .remove_published_document("r1", &file, Some(&object))
+                .unwrap(),
+            Removal::Differs,
+            "{object:?}"
+        );
+    }
+    // Nothing to hold it against keeps a record that holds anything.
+    assert_eq!(
+        store.remove_published_document("r1", &file, None).unwrap(),
+        Removal::Differs
+    );
+    assert_eq!(store.read_run_replay("r1").unwrap(), record);
+
+    assert_eq!(
+        store
+            .remove_published_document("r1", &file, Some(&held))
+            .unwrap(),
+        Removal::Removed
+    );
+
+    // A record that is not a document publishes as nothing, so no object is it.
+    store.write_run_replay("r2", b"not json").unwrap();
+    let file = listed(&store, "r2", "replay.json");
+    assert_eq!(
+        store
+            .remove_published_document("r2", &file, Some(&held))
+            .unwrap(),
+        Removal::Differs
+    );
+    assert_eq!(store.read_run_replay("r2").unwrap(), b"not json");
+}
+
+/// The comparison and the removal are of one file. A record of the same size
+/// and the same modification time, renamed into place after the comparison, is
+/// not the record that was compared, and stays.
+#[test]
+fn a_record_replaced_between_its_comparison_and_its_removal_is_kept() {
+    let (_dir, store) = store();
+    let record = br#"{"turns": ["one"]}"#;
+    let replacement = br#"{"turns": ["two"]}"#;
+    assert_eq!(record.len(), replacement.len());
+    store.write_run_replay("r1", record).unwrap();
+    let file = listed(&store, "r1", "replay.json");
+
+    let racing = store.clone();
+    let modified = file.modified;
+    store.before_document_removal.set(move || {
+        racing.write_run_replay("r1", replacement).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(racing.run_replay_path("r1"))
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+    });
+    assert_eq!(
+        store
+            .remove_published_document("r1", &file, Some(&record_copy(record)))
+            .unwrap(),
+        Removal::Changed
+    );
+    // The replacement is what the listing took the record for, and is there.
+    assert_eq!(listed(&store, "r1", "replay.json"), file);
+    assert_eq!(store.read_run_replay("r1").unwrap(), replacement);
+}
+
+#[test]
+fn a_code_analysis_document_is_removed_by_its_published_form() {
+    let (_dir, store) = store();
+    let document = br#"{ "files": [ "a.ts" ] }"#;
+    store.write_run_code_analysis("r1", document).unwrap();
+    let file = listed(&store, "r1", "code-analysis.json");
+    let published = crate::snapshot::published_scrubbed_document(document).unwrap();
+    let held = PublishedCopy {
+        size: published.len() as u64,
+        md5: Some(md5_of(&published)),
+    };
+    let other = PublishedCopy {
+        md5: Some(md5_of(b"another document")),
+        ..held
+    };
+    assert_eq!(
+        store
+            .remove_published_document("r1", &file, Some(&other))
+            .unwrap(),
+        Removal::Differs
+    );
+    assert_eq!(
+        store
+            .remove_published_document("r1", &file, Some(&held))
+            .unwrap(),
+        Removal::Removed
+    );
+}
+
+#[test]
+fn an_empty_scrubbed_document_is_removed_without_an_object() {
+    let (_dir, store) = store();
+    store.write_run_replay("r1", b"").unwrap();
+    let file = listed(&store, "r1", "replay.json");
+    assert!(store.open_run_file("r1", "replay.json").unwrap().is_none());
+    assert_eq!(
+        store.remove_published_document("r1", &file, None).unwrap(),
+        Removal::Removed
+    );
+    assert!(store.open_run_file("r1", "replay.json").unwrap().is_none());
+    assert!(store.open_run_file("r1", "../outside").is_err());
+}
+
 #[test]
 fn pruning_removes_only_directories_that_hold_nothing() {
     let (_dir, store) = store();

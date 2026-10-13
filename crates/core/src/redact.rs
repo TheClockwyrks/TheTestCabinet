@@ -113,10 +113,16 @@ impl SecretScrubber {
         }
     }
 
-    /// Redact secrets in every string anywhere inside a JSON value, in place.
-    /// Returns whether anything changed, so a caller can log that a published
-    /// document carried a redacted secret. This is how the backend scrubs a
-    /// per-run snapshot document (record + events) before upload.
+    /// Redact secrets in every string and every object key anywhere inside a
+    /// JSON value, in place. Returns whether anything changed, so a caller can
+    /// log that a published document carried a redacted secret. This is how the
+    /// backend scrubs a per-run snapshot document (record + events) before
+    /// upload.
+    ///
+    /// A key is model-authored wherever a document carries a free-form object
+    /// (a tool call's arguments), so it is scrubbed like a value. A redacted key
+    /// that would meet another key of its object has ` (2)`, ` (3)` and so on
+    /// appended, so no member is lost to the redaction.
     pub fn scrub_json(&self, value: &mut serde_json::Value) -> bool {
         match value {
             serde_json::Value::String(s) => match self.scrub(s) {
@@ -137,6 +143,25 @@ impl SecretScrubber {
                 let mut changed = false;
                 for (_, v) in map.iter_mut() {
                     changed |= self.scrub_json(v);
+                }
+                let leaking: Vec<String> = map
+                    .keys()
+                    .filter(|key| matches!(self.scrub(key), Cow::Owned(_)))
+                    .cloned()
+                    .collect();
+                for key in leaking {
+                    let Some(member) = map.remove(&key) else {
+                        continue;
+                    };
+                    let scrubbed = self.scrub(&key).into_owned();
+                    let mut name = scrubbed.clone();
+                    let mut ordinal = 2usize;
+                    while map.contains_key(&name) {
+                        name = format!("{scrubbed} ({ordinal})");
+                        ordinal += 1;
+                    }
+                    map.insert(name, member);
+                    changed = true;
                 }
                 changed
             }

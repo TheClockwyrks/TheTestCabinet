@@ -552,6 +552,18 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
                 .collect(),
             None => std::collections::HashMap::new(),
         };
+    let recorded_session_records = match &confirming {
+        Some((bucket, _)) => inner
+            .db
+            .runs_with_recorded_session_record(Some(bucket))
+            .await
+            .map_err(|err| {
+                BackendError::Snapshot(format!(
+                    "reading which runs a session record was published for failed ({err})"
+                ))
+            })?,
+        None => std::collections::HashSet::new(),
+    };
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
@@ -708,7 +720,8 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // numbers, so gating it on publication would export almost nothing), filtered
     // against the experimental catalog gate, and field-redacted — all three composed in
     // `gg_docs::public_documents`, which is the only door the site's gg data comes
-    // through. **Replay records are never exported**; nothing here loads one.
+    // through. **No session record is in the corpus**; nothing here loads one, and
+    // the builder publishes a record only as the object of a published run.
     let gg_documents = crate::gg_docs::public_documents(inner.db.as_ref(), &inner.store).await?;
 
     // The ingested test-case-group set, read from the store slot the whole-catalog
@@ -746,6 +759,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let snapshot = builder
         .with_object_sink(inner.r2.clone())
         .with_recorded_manifests(recorded_manifests)
+        .with_recorded_session_records(recorded_session_records)
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)
@@ -1074,3 +1088,7 @@ mod manifest_tests;
 #[cfg(test)]
 #[path = "publisher.recheck.test.rs"]
 mod recheck_tests;
+
+#[cfg(test)]
+#[path = "publisher.session_record.test.rs"]
+mod session_record_tests;

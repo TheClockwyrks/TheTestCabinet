@@ -306,33 +306,241 @@ async fn a_confirmed_published_run_s_files_are_removed_and_recorded() {
     assert_eq!(again.reclaimed, 0);
 }
 
+/// A session record as a driver mirrors it: gzipped JSON, here with a credential
+/// the model printed into its own conversation.
+fn gzipped_record(text: &str) -> Vec<u8> {
+    use std::io::Write;
+
+    let record = serde_json::json!({
+        "formatVersion": 1,
+        "entries": [{ "text": text, "leak": "sk-ant-api03-notreal-value" }],
+    });
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(&serde_json::to_vec(&record).unwrap())
+        .unwrap();
+    encoder.finish().unwrap()
+}
+
+impl Harness {
+    /// Confirm published run `id` with a manifest that names the session-record
+    /// object, which the bucket holds as what `published_from` publishes as.
+    async fn confirm_with_session_record(&self, id: &str, published_from: &[u8]) {
+        seed_run(&self.db, id, RunState::Completed, ENDED).await;
+        force_published(&self.db, id).await;
+        let published =
+            crate::snapshot::published_session_record(published_from).expect("it publishes");
+        let key = format!("media/runs/{id}/session-record.json");
+        self.bucket
+            .objects
+            .lock()
+            .unwrap()
+            .insert(key.clone(), object_of(&published));
+        self.bucket.keys.lock().unwrap().insert(key.clone());
+        self.confirm_with(
+            id,
+            MediaManifest {
+                files: vec![MediaManifestFile::stored(
+                    MediaFileKind::SessionRecord,
+                    "replay.json",
+                    key,
+                )],
+            },
+        )
+        .await;
+    }
+}
+
 #[tokio::test]
-async fn the_session_record_is_kept_and_its_size_reported() {
+async fn a_published_run_s_session_record_is_removed_when_its_object_is_what_it_publishes_as() {
     let h = harness().await;
-    h.confirm("gg", &["proof/title.png"]).await;
-    h.write("gg", "proof/title.png", b"png!");
-    h.write("gg", "replay.json", b"the whole conversation");
+    let record = gzipped_record("the whole conversation");
+    h.write("gg", "replay.json", &record);
+    // The object is neither the stored bytes nor their size: it is the record
+    // inflated and scrubbed of the credential.
+    let published = crate::snapshot::published_session_record(&record).unwrap();
+    assert_ne!(published.len(), record.len());
+    assert!(!String::from_utf8_lossy(&published).contains("sk-ant-api03-notreal-value"));
+    h.confirm_with_session_record("gg", &record).await;
 
     let outcome = h.pass().await;
 
+    assert_eq!(outcome.session_records, 1);
+    assert_eq!(outcome.session_record_bytes, record.len() as u64);
     assert_eq!(outcome.reclaimed_published, 1);
     assert_eq!(outcome.removed_files, 1);
-    assert_eq!(outcome.session_records, 1);
-    assert_eq!(outcome.session_record_bytes, 22);
+    assert_eq!(outcome.freed_bytes, record.len() as u64);
+    assert_eq!((outcome.kept_unaccounted, outcome.differing_files), (0, 0));
+    assert!(!h.store.run_dir("gg").exists());
+
+    // The store holds no record any more, and the pass reports none.
+    let again = h.pass().await;
+    assert_eq!(again.session_records, 0);
+    assert_eq!(again.session_record_bytes, 0);
+}
+
+#[tokio::test]
+async fn a_session_record_that_publishes_as_something_else_than_its_object_is_kept() {
+    let h = harness().await;
+    // The bucket holds what an earlier record published as.
+    h.confirm_with_session_record("gg", &gzipped_record("the first conversation"))
+        .await;
+    let rewritten = gzipped_record("a second, different conversation");
+    h.write("gg", "replay.json", &rewritten);
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.removed_files, 0);
+    assert_eq!(outcome.differing_files, 1);
+    assert_eq!(outcome.kept_unaccounted, 1);
+    assert_eq!(h.store.read_run_replay("gg").unwrap(), rewritten);
+
+    // Bytes that are no document at all publish as nothing, and are kept too.
+    h.write("gg", "replay.json", b"not a session record");
+    let outcome = h.pass().await;
+    assert_eq!(outcome.removed_files, 0);
+    assert_eq!(outcome.differing_files, 1);
     assert_eq!(h.files("gg"), ["replay.json"]);
-    assert_eq!(
-        h.store.read_run_replay("gg").unwrap(),
-        b"the whole conversation"
+
+    // An object the bucket's listing lacks keeps the whole folder.
+    h.bucket.keys.lock().unwrap().clear();
+    let outcome = h.pass().await;
+    assert_eq!(outcome.kept_unlisted, 1);
+    assert_eq!(h.files("gg"), ["replay.json"]);
+}
+
+#[tokio::test]
+async fn a_session_record_the_manifest_does_not_name_is_kept_and_the_confirmation_withdrawn() {
+    // A run confirmed while its folder held no record: the manifest says
+    // nothing about one, so the confirmation is no leave to remove it, and
+    // while it stands no refresh would read the folder to publish it.
+    let h = harness().await;
+    h.confirm("gg", &["proof/title.png"]).await;
+    h.write("gg", "proof/title.png", b"png!");
+    h.write("gg", "replay.json", b"{\"text\":\"the conversation\"}");
+    // An object under the record's key that no manifest names changes nothing.
+    h.bucket
+        .keys
+        .lock()
+        .unwrap()
+        .insert("media/runs/gg/session-record.json".to_string());
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.withdrawn, 1);
+    assert_eq!(outcome.reclaimed, 0);
+    assert_eq!(outcome.removed_files, 0);
+    assert_eq!(outcome.session_records, 1);
+    assert_eq!(outcome.session_record_bytes, 27);
+    assert_eq!(h.files("gg"), ["proof/title.png", "replay.json"]);
+    let row = run_row(&h.db, "gg").await;
+    assert_eq!(row.media_confirmed_at, None);
+    assert!(row.media_manifest.is_some(), "the record of the rest stays");
+    // No refresh has evaluated the run now, which is what requests one.
+    assert_eq!(h.db.published_runs_unchecked(BUCKET).await.unwrap(), 1);
+
+    // Until that refresh the folder is one of an unconfirmed run, so the run
+    // is withdrawn once and nothing of it is removed.
+    let again = h.pass().await;
+    assert_eq!(again.withdrawn, 0);
+    assert_eq!(again.unconfirmed, 1);
+    assert_eq!(again.session_records, 1);
+    assert_eq!(h.files("gg"), ["proof/title.png", "replay.json"]);
+}
+
+#[tokio::test]
+async fn an_empty_session_record_the_manifest_does_not_name_changes_nothing() {
+    // A refresh reads an empty record as no record, so no manifest will ever
+    // name it. It is a copy of nothing: it withdraws no confirmation, raises
+    // no warning, and does not keep the files beside it.
+    let h = harness().await;
+    h.confirm("gg", &["proof/title.png"]).await;
+    h.write("gg", "proof/title.png", b"png!");
+    h.write("gg", "replay.json", b"");
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.withdrawn, 0);
+    assert_eq!(outcome.reclaimed_published, 1);
+    assert_eq!(outcome.removed_files, 1);
+    assert_eq!((outcome.kept_unaccounted, outcome.differing_files), (0, 0));
+    assert_eq!(h.files("gg"), ["replay.json"]);
+    assert!(run_row(&h.db, "gg").await.media_confirmed_at.is_some());
+
+    let again = h.pass().await;
+    assert_eq!(again.withdrawn, 0);
+    assert_eq!(again.kept_unaccounted, 0);
+    assert!(run_row(&h.db, "gg").await.media_confirmed_at.is_some());
+}
+
+#[tokio::test]
+async fn a_session_record_whose_object_reports_no_size_is_kept() {
+    let h = harness().await;
+    let record = gzipped_record("the whole conversation");
+    h.confirm_with_session_record("gg", &record).await;
+    h.write("gg", "replay.json", &record);
+    let key = "media/runs/gg/session-record.json".to_string();
+    let listed = h.bucket.objects.lock().unwrap()[&key];
+    h.bucket.objects.lock().unwrap().insert(
+        key,
+        BucketObject {
+            size: None,
+            ..listed
+        },
     );
-    // The emptied directory is gone and the folder stays for the record.
-    assert!(!h.store.run_proof_dir("gg").exists());
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.removed_files, 0);
+    assert_eq!(outcome.differing_files, 1);
+    assert_eq!(h.store.read_run_replay("gg").unwrap(), record);
+}
+
+#[tokio::test]
+async fn the_session_record_of_a_run_that_is_not_published_is_never_removed() {
+    let h = harness().await;
+    let record = gzipped_record("an unpublished conversation");
+    // Completed and never published, failed, canceled, and a folder with no run:
+    // each past every retention and grace window, each with its tree gone.
+    h.ended_and_tree_reclaimed("completed", RunState::Completed, ReclaimReason::Failed)
+        .await;
+    h.ended_and_tree_reclaimed("failed", RunState::TimedOut, ReclaimReason::Failed)
+        .await;
+    h.ended_and_tree_reclaimed("canceled", RunState::Canceled, ReclaimReason::Canceled)
+        .await;
+    let ids = ["completed", "failed", "canceled", "orphan"];
+    for id in ids {
+        h.write(id, "replay.json", &record);
+        // Even a bucket that somehow held the record's object is no leave.
+        let key = format!("media/runs/{id}/session-record.json");
+        h.bucket.objects.lock().unwrap().insert(
+            key.clone(),
+            object_of(&crate::snapshot::published_session_record(&record).unwrap()),
+        );
+        h.bucket.keys.lock().unwrap().insert(key);
+    }
+    // Beside other files, which the failed and canceled runs and the orphan lose.
+    for id in ["failed", "canceled", "orphan"] {
+        h.write(id, "proof/title.png", b"png!");
+    }
+
+    let outcome = h.pass().await;
+
+    assert_eq!(outcome.session_records, 4);
+    assert_eq!(outcome.removed_files, 3);
+    for id in ids {
+        assert_eq!(h.files(id), ["replay.json"], "{id}");
+        assert_eq!(h.store.read_run_replay(id).unwrap(), record, "{id}");
+    }
+    assert!(h.bucket.asked.lock().unwrap().is_empty());
 
     // A folder holding only a session record is not looked at again.
     let again = h.pass().await;
-    assert_eq!(again.folders, 1);
-    assert_eq!(again.reclaimed + again.skipped + again.unconfirmed, 0);
-    assert_eq!(again.session_records, 1);
-    assert!(h.bucket.asked.lock().unwrap().len() == 1);
+    assert_eq!(again.reclaimed + again.skipped + again.failed, 0);
+    assert_eq!(again.session_records, 4);
+    for id in ids {
+        assert_eq!(h.files(id), ["replay.json"], "{id}");
+    }
 }
 
 #[tokio::test]
@@ -454,7 +662,7 @@ async fn the_code_analysis_document_is_removed_when_its_object_is_what_it_publis
     force_published(&h.db, "r1").await;
     let document = br#"{"files":[{"path":"src/main.ts","lines":10}]}"#;
     h.write("r1", "code-analysis.json", document);
-    let published = crate::snapshot::published_code_analysis(document).expect("it publishes");
+    let published = crate::snapshot::published_scrubbed_document(document).expect("it publishes");
     let key = "media/runs/r1/code-analysis/v1.json".to_string();
     h.bucket
         .objects

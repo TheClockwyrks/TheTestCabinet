@@ -579,3 +579,93 @@ async fn a_manifest_is_recorded_only_with_a_confirmation_that_is_written() {
     assert_eq!(outcome.changed, 1);
     assert_eq!(run_row(&db, "a").await.media_manifest, None);
 }
+
+#[tokio::test]
+async fn the_runs_a_session_record_was_recorded_for_outlive_their_confirmation() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for id in ["gg", "lost", "plain", "elsewhere"] {
+        published_run(&db, id).await;
+    }
+    let with = |id: &str, entry: Option<MediaManifestFile>| {
+        let mut manifest = manifest_of(id);
+        manifest.files.extend(entry);
+        manifest
+    };
+    let record = |id: &str| {
+        MediaManifestFile::stored(
+            MediaFileKind::SessionRecord,
+            "replay.json",
+            format!("media/runs/{id}/session-record.json"),
+        )
+    };
+    let mut confirmed = Vec::new();
+    for (id, entry) in [
+        ("gg", Some(record("gg"))),
+        (
+            "lost",
+            Some(MediaManifestFile::unrecoverable(
+                MediaFileKind::SessionRecord,
+                "replay.json",
+                None,
+            )),
+        ),
+        // An adversarial replay is an asset that shares the record's file name.
+        (
+            "plain",
+            Some(MediaManifestFile::stored(
+                MediaFileKind::Asset,
+                "asset/replay.json",
+                "media/runs/plain/asset/replay.json",
+            )),
+        ),
+    ] {
+        confirmed.push(ConfirmedMedia {
+            manifest: with(id, entry),
+            state: state_of(&db, id).await,
+        });
+    }
+    db.record_media_confirmation(&confirmed, &[], FIRST, BUCKET)
+        .await
+        .unwrap();
+    let elsewhere = vec![ConfirmedMedia {
+        manifest: with("elsewhere", Some(record("elsewhere"))),
+        state: state_of(&db, "elsewhere").await,
+    }];
+    db.record_media_confirmation(&elsewhere, &[], FIRST, OTHER_BUCKET)
+        .await
+        .unwrap();
+
+    let named = |runs: std::collections::HashSet<String>| {
+        let mut runs: Vec<String> = runs.into_iter().collect();
+        runs.sort();
+        runs
+    };
+    let recorded = db
+        .runs_with_recorded_session_record(Some(BUCKET))
+        .await
+        .unwrap();
+    assert_eq!(named(recorded), ["gg", "lost"]);
+    assert!(
+        db.runs_with_recorded_session_record(None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // A withdrawn confirmation keeps its manifest, and so what it recorded.
+    let outcome = refresh(&db, &[], &["gg"], SECOND).await;
+    assert_eq!(outcome.withdrawn, 1);
+    let recorded = db
+        .runs_with_recorded_session_record(Some(BUCKET))
+        .await
+        .unwrap();
+    assert_eq!(named(recorded), ["gg", "lost"]);
+
+    // A manifest that does not parse names no run, and fails nothing.
+    damage_manifest(&db, "lost").await;
+    let recorded = db
+        .runs_with_recorded_session_record(Some(BUCKET))
+        .await
+        .unwrap();
+    assert_eq!(named(recorded), ["gg"]);
+}

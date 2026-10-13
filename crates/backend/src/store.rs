@@ -91,6 +91,12 @@ pub struct DefinitionStore {
     /// see what a removal that removes nothing leaves behind.
     #[cfg(test)]
     pub(crate) fail_removals: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Run once by the next
+    /// [`remove_published_document`](Self::remove_published_document), after it
+    /// compared the document and before it takes the write lock, so a test can
+    /// replace the document at exactly the moment a race would.
+    #[cfg(test)]
+    pub(crate) before_document_removal: state::RemovalHook,
     /// When set, every write of a run's file fails part-way, as a write to a full
     /// volume does.
     #[cfg(test)]
@@ -946,6 +952,8 @@ impl DefinitionStore {
             run_writes: std::sync::Arc::default(),
             #[cfg(test)]
             fail_removals: std::sync::Arc::default(),
+            #[cfg(test)]
+            before_document_removal: state::RemovalHook::default(),
             #[cfg(test)]
             fail_writes: std::sync::Arc::default(),
         })
@@ -2256,6 +2264,7 @@ fn is_safe_segment(segment: &str) -> bool {
 mod state;
 pub use state::{
     PublishedCopy, Removal, RunFolder, RunFolderFile, SESSION_RECORD_FILE, StateVolume,
+    is_scrubbed_document,
 };
 
 #[cfg(test)]

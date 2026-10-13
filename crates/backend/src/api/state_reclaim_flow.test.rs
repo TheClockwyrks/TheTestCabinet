@@ -30,7 +30,7 @@ const STILL: &[u8] = b"\x89PNG\r\n\x1a\n\x00\xff\xfe\x80 still";
 const REPLAY: &[u8] = b"{\"ticks\":1,\"frames\":[]}";
 const SECOND_REPLAY: &[u8] = b"{\"ticks\":2,\"frames\":[]}";
 const MODULE: &[u8] = b"\0asm\x01\0\0\0\xff\xfe";
-const SESSION: &[u8] = b"{\"session\":\"the only copy\"}";
+const SESSION: &[u8] = b"{\"session\":\"the conversation\"}";
 
 /// The routes a reader fetches the run's files from, and the bytes each serves.
 const FILES: [(&str, &[u8]); 4] = [
@@ -259,23 +259,33 @@ async fn a_published_run_s_files_leave_the_store_and_are_served_from_the_bucket(
     let documents = flow.objects("documents/runs/duel/");
     assert_eq!(documents.len(), 1, "one run document");
 
-    // The sweep removes every file the manifest accounts for, and keeps the
-    // session record, which was never published.
+    // The session record is published too, under a key of its own.
+    assert_eq!(
+        manifest
+            .file("replay.json")
+            .and_then(|file| file.key.as_deref()),
+        Some("media/runs/duel/session-record.json")
+    );
+    assert_eq!(media["media/runs/duel/session-record.json"], SESSION);
+
+    // The sweep removes every file the manifest accounts for, the session
+    // record among them.
     let outcome = flow.sweep().await;
     assert_eq!(outcome.reclaimed_published, 1);
-    assert_eq!(outcome.removed_files, 4);
+    assert_eq!(outcome.removed_files, 5);
     assert_eq!(
         outcome.freed_bytes,
         FILES
             .iter()
             .map(|(_, bytes)| bytes.len() as u64)
             .sum::<u64>()
+            + SESSION.len() as u64
     );
     assert_eq!(
         outcome.failed + outcome.kept_unaccounted + outcome.kept_unlisted,
         0
     );
-    assert_eq!(flow.stored(), ["replay.json"]);
+    assert!(flow.stored().is_empty());
     let row = run_columns(&flow.state.db, RUN).await;
     assert_eq!(row.state_reclaimed_reason.as_deref(), Some("published"));
     assert!(row.media_confirmed_at.is_some());
@@ -305,7 +315,7 @@ async fn a_published_run_s_files_leave_the_store_and_are_served_from_the_bucket(
     // And the pass after it has nothing left to do.
     let last = flow.sweep().await;
     assert_eq!(last.reclaimed, 0);
-    assert_eq!(flow.stored(), ["replay.json"]);
+    assert!(flow.stored().is_empty());
 }
 
 #[tokio::test]
@@ -345,7 +355,7 @@ async fn an_upload_after_the_reclaim_is_kept_until_a_refresh_has_published_it() 
     assert_eq!(kept.reclaimed, 0);
     assert_eq!(kept.unconfirmed, 1);
     assert_eq!(flow.stored(), ["validation/img.late.png"]);
-    // A session record uploaded now changes nothing about the run's media.
+    // A session record uploaded now is one more file for the refresh to publish.
     flow.upload("/runs/duel/replay", SESSION).await;
     assert_eq!(
         run_columns(&flow.state.db, RUN).await.media_confirmed_at,
@@ -370,12 +380,13 @@ async fn an_upload_after_the_reclaim_is_kept_until_a_refresh_has_published_it() 
         b"late image"
     );
     assert!(manifest.unrecoverable().next().is_none());
+    assert!(manifest.file("replay.json").is_some());
 
-    // Now the sweep removes it, and every file is still served.
+    // Now the sweep removes both uploads, and every file is still served.
     let outcome = flow.sweep().await;
     assert_eq!(outcome.reclaimed_published, 1);
-    assert_eq!(outcome.removed_files, 1);
-    assert_eq!(flow.stored(), ["replay.json"]);
+    assert_eq!(outcome.removed_files, 2);
+    assert!(flow.stored().is_empty());
     for (path, bytes) in FILES {
         let (status, body) = flow.get(path).await;
         assert_eq!(status, StatusCode::OK, "{path}");

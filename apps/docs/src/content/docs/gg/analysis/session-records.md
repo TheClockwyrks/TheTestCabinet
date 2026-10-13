@@ -334,6 +334,13 @@ client is built without gzip support while browsers always advertise it. Code
 analysis is served through the same helper, under the same store slot shape and
 route pair.
 
+Publishing a run publishes its record. A snapshot refresh exports the record of
+a published run to the public bucket as
+[`session-record.json`](/components/backend/snapshot/#the-session-record),
+scrubbed of credentials and uncompressed, and the backend then removes its own
+copy and answers the route from the bucket. The record of a run that is not
+published stays in the backend store alone.
+
 The record has no console view. Every gg surface the console renders, live and
 post-run alike, is folded from the [telemetry](/gg/telemetry/overview/) stream,
 which keeps a finished run's page identical to the one its live monitor showed.

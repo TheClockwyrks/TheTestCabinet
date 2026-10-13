@@ -410,8 +410,8 @@ pub const TREE_ROOT_CODE_ANALYSIS: &str = "code-analysis.json";
 /// Every name [`tree_root_file`] resolves.
 ///
 /// A gg run's session record sits at a tree's root too and is deliberately not
-/// one of them: it carries the complete model conversation of its run and is
-/// never published, so nothing has to read it from here.
+/// one of them: the backend publishes a published run's record from its own
+/// store and from nowhere else, so nothing has to read it from here.
 pub const TREE_ROOT_FILES: [&str; 2] = [TREE_ROOT_CONTROLLER, TREE_ROOT_CODE_ANALYSIS];
 
 /// Where a produced run's tree holds the file a backend stores as `name`, or

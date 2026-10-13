@@ -498,7 +498,8 @@ fn a_name_recorded_twice_counts_only_when_every_entry_has_an_object() {
 }
 
 #[test]
-fn the_session_record_is_neither_removed_nor_a_reason_to_keep_the_rest() {
+fn a_session_record_the_manifest_does_not_name_is_kept_and_keeps_nothing_else() {
+    // The manifest of a run confirmed while its folder held no record.
     let manifest = MediaManifest {
         files: vec![stored("proof/title.png")],
     };
@@ -508,7 +509,8 @@ fn the_session_record_is_neither_removed_nor_a_reason_to_keep_the_rest() {
         &listing(&manifest),
     );
     assert_eq!(removed(&accounting), ["proof/title.png"]);
-    assert_eq!(accounting.kept().count(), 0);
+    assert_eq!(accounting.unaccounted, ["replay.json"]);
+    assert!(accounting.transformed.is_empty());
     // An adversarial run's replay shares the file name and not the place.
     let accounting = account_folder(
         &folder(&["asset/replay.json"]),
@@ -621,8 +623,49 @@ fn the_code_analysis_document_is_set_aside_to_be_compared_as_published() {
     assert!(accounting.remove.is_empty());
     assert_eq!(
         accounting.transformed,
-        Some((file("code-analysis.json"), object))
+        [(file("code-analysis.json"), object)]
     );
+}
+
+#[test]
+fn the_session_record_is_set_aside_to_be_compared_as_published() {
+    let key = "media/runs/r1/session-record.json";
+    let manifest = MediaManifest {
+        files: vec![
+            MediaManifestFile::stored(MediaFileKind::SessionRecord, "replay.json", key),
+            MediaManifestFile::stored(
+                MediaFileKind::CodeAnalysis,
+                "code-analysis.json",
+                "media/runs/r1/code-analysis/v3.json",
+            ),
+        ],
+    };
+    let object = BucketObject {
+        size: Some(4096),
+        md5: None,
+    };
+    let objects = HashMap::from([
+        (key.to_string(), object),
+        ("media/runs/r1/code-analysis/v3.json".to_string(), object),
+    ]);
+    let accounting = account_folder(
+        &folder(&["code-analysis.json", "replay.json"]),
+        &manifest,
+        &objects,
+    );
+    assert!(accounting.remove.is_empty());
+    assert_eq!(
+        accounting.transformed,
+        [
+            (file("code-analysis.json"), object),
+            (file("replay.json"), object)
+        ]
+    );
+
+    // A record whose object the bucket's listing lacks is the only copy.
+    let accounting = account_folder(&folder(&["replay.json"]), &manifest, &HashMap::new());
+    assert!(accounting.transformed.is_empty());
+    assert_eq!(accounting.differing, ["replay.json"]);
 }
 
 #[test]

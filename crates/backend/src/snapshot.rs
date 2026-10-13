@@ -392,6 +392,10 @@ pub struct SnapshotBuilder {
     /// The file manifest of each confirmed run. See
     /// [`Self::with_recorded_manifests`].
     recorded_manifests: std::collections::HashMap<String, crate::db::MediaManifest>,
+    /// The runs a manifest has recorded a session record for, whether or not
+    /// the confirmation it was recorded with still holds. See
+    /// [`Self::with_recorded_session_records`].
+    recorded_session_records: std::collections::HashSet<String>,
     /// Where each run's content-stable objects are uploaded as the build makes
     /// them. See [`Self::with_object_sink`].
     object_sink: Option<R2Client>,
@@ -479,6 +483,7 @@ impl SnapshotBuilder {
             settled_media: None,
             trees_recorded_absent: std::collections::HashSet::new(),
             recorded_manifests: std::collections::HashMap::new(),
+            recorded_session_records: std::collections::HashSet::new(),
             object_sink: None,
             store_holds_runs: std::sync::OnceLock::new(),
             models: Vec::new(),
@@ -726,6 +731,23 @@ impl SnapshotBuilder {
         self
     }
 
+    /// The runs a manifest has recorded a session record for
+    /// ([`Db::runs_with_recorded_session_record`](crate::db::Db::runs_with_recorded_session_record)),
+    /// whether or not the confirmation it was recorded with still holds.
+    ///
+    /// The backend store alone says whether a run has a session record, so a
+    /// run whose stored record the state sweep removed and whose object was
+    /// then deleted from the bucket looks like a run that never had one. For a
+    /// run named here the build records the record as unrecoverable instead of
+    /// confirming the run as one without a record.
+    pub fn with_recorded_session_records(
+        mut self,
+        runs: std::collections::HashSet<String>,
+    ) -> Self {
+        self.recorded_session_records = runs;
+        self
+    }
+
     /// Upload each run's content-stable objects to `sink` as the build makes
     /// them, instead of returning them in [`Snapshot::objects`] for the caller to
     /// upload at the end.
@@ -884,11 +906,14 @@ impl SnapshotBuilder {
             let (code_analysis_key, code_analysis_object) = self
                 .run_code_analysis(&run.record, &scrubber, &tree, &mut account)
                 .await;
-            // The one file of a run that no document names: the controller module
-            // the arena loads, published so that the bucket holds it too. A gg
-            // run's session record is deliberately not: see the note on
-            // `gg-runs.json` below.
+            // The two files of a run that no document names: the controller module
+            // the arena loads and a gg run's session record, published so that
+            // the bucket holds them too. The record is scrubbed on its own, as
+            // the code-analysis document is (see [`Self::run_session_record`]).
             let controller_object = self.run_controller(&run.record, &tree, &mut account).await;
+            let session_record_object = self
+                .run_session_record(&run.record.id, &scrubber, &tree, &mut account)
+                .await;
             // One object per key. Two files of a run that would be published
             // under one key (a showcase holding both `x.webm` and the `x.mp4` its
             // transcode is named) cannot both be in the bucket, so the run is
@@ -901,6 +926,7 @@ impl SnapshotBuilder {
                 .chain(showcase_objects)
                 .chain(code_analysis_object)
                 .chain(controller_object)
+                .chain(session_record_object)
             {
                 if !run_objects.iter().any(|seen| seen.key == object.key) {
                     run_objects.push(object);
@@ -1155,12 +1181,14 @@ impl SnapshotBuilder {
         //
         // Two boundaries meet here and both are load-bearing.
         //
-        // **A session record is never exported.** A document carries configuration ids
+        // **The corpus holds no session record.** A document carries configuration ids
         // and outcome numbers; a session record carries the complete model conversation
-        // verbatim, which is why the corpus is publishable at all and the record is not.
-        // The distinction is enforced upstream (nothing assembles a record into a
-        // snapshot object) and asserted in this module's tests, because it is exactly
-        // the kind of rule that erodes when someone reaches for "the run's other gg
+        // verbatim. The corpus covers gg runs that are not published, which is why it
+        // is publishable only without records. A record reaches the bucket as the
+        // object of a published run alone ([`Self::run_session_record`]). The
+        // distinction is enforced upstream (nothing assembles a record into a
+        // document) and asserted in this module's tests, because it is exactly the
+        // kind of rule that erodes when someone reaches for "the run's other gg
         // artifact".
         //
         // **The scrubber runs here too.** `build` scrubs the per-run document by walking
@@ -3087,8 +3115,41 @@ fn decode_maybe_gzip(stored: &[u8]) -> Option<Vec<u8>> {
 ///
 /// The state sweep publishes a stored document again with this, in memory, to
 /// learn whether the object under the document's name holds this document.
-pub(crate) fn published_code_analysis(stored: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn published_scrubbed_document(stored: &[u8]) -> Option<Vec<u8>> {
     run_files::scrubbed_json(stored, &SecretScrubber::new())
+        .ok()
+        .map(|(bytes, _)| bytes)
+}
+
+/// The size and the MD5 of what the file a run's folder holds as `name`, a
+/// [scrubbed document](crate::store::is_scrubbed_document) read from `stored`,
+/// is published as now. `None` for a file with no published form, and for one
+/// that could not be read.
+///
+/// The state sweep holds this against the object the run's manifest names for
+/// the file. A session record is hashed as it is scrubbed and never held (see
+/// [`session_record::record_digest`]); a code-analysis document is small, and is
+/// published as [`published_scrubbed_document`] publishes it.
+pub(crate) fn published_document_digest(
+    name: &str,
+    stored: &mut std::fs::File,
+) -> Option<(u64, [u8; 16])> {
+    use md5::Digest as _;
+
+    if name == crate::store::SESSION_RECORD_FILE {
+        return session_record::record_digest(stored);
+    }
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(stored, &mut bytes).ok()?;
+    let published = published_scrubbed_document(&bytes)?;
+    Some((published.len() as u64, md5::Md5::digest(&published).into()))
+}
+
+/// The bytes the session record `stored` is published as. `None` for bytes
+/// that are not a record.
+#[cfg(test)]
+pub(crate) fn published_session_record(stored: &[u8]) -> Option<Vec<u8>> {
+    session_record::export_record(stored, &SecretScrubber::new(), usize::MAX)
         .ok()
         .map(|(bytes, _)| bytes)
 }
@@ -4869,6 +4930,9 @@ fn core_review_validation(
 
 #[path = "snapshot.files.rs"]
 mod run_files;
+
+#[path = "snapshot.record.rs"]
+mod session_record;
 
 #[cfg(test)]
 #[path = "snapshot.test.rs"]

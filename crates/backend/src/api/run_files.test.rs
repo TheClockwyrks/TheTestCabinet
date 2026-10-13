@@ -646,32 +646,135 @@ async fn code_analysis_is_served_from_either_copy_as_json_a_reader_parses() {
 }
 
 #[tokio::test]
-async fn a_session_record_is_served_from_the_store_alone() {
+async fn a_session_record_is_served_from_the_store_and_then_from_its_object() {
+    use std::io::Write;
+
+    let record = br#"{"formatVersion":1,"entries":[]}"#;
     let h = harness().await;
-    // A manifest never names a session record. Even one that did would not be
-    // followed: the route does not read through.
     confirm(
         &h.state.db,
         RUN,
         vec![MediaManifestFile::stored(
-            MediaFileKind::Asset,
+            MediaFileKind::SessionRecord,
             "replay.json",
-            "media/runs/r1/replay.json",
+            "media/runs/r1/session-record.json",
         )],
     )
     .await;
-    h.bucket.put("media/runs/r1/replay.json", b"{}");
+    // The bucket's copy is the plain, scrubbed record.
+    h.bucket.put("media/runs/r1/session-record.json", record);
+    // An adversarial replay under the store's file name is another file.
+    h.bucket
+        .put("media/runs/r1/asset/replay.json", b"{\"ticks\":1}");
+
+    let answer = get(&h.router, "/runs/r1/replay").await;
+    assert_eq!(answer.status, StatusCode::OK);
+    assert_eq!(answer.body, record);
+    assert_eq!(
+        answer.header(header::CONTENT_TYPE),
+        Some("application/json")
+    );
+    assert_eq!(answer.header(header::CONTENT_ENCODING), None);
+    assert!(
+        answer
+            .header(header::VARY)
+            .is_some_and(|vary| vary.contains("accept-encoding")),
+        "{:?}",
+        answer.header(header::VARY)
+    );
+    assert_eq!(h.bucket.asked(), ["media/runs/r1/session-record.json"]);
+
+    // A bucket that fails is a fault, never a run with no record.
+    h.bucket.failing.store(true, Ordering::SeqCst);
+    let answer = get(&h.router, "/runs/r1/replay").await;
+    assert_eq!(answer.status, StatusCode::BAD_GATEWAY);
+    let body: serde_json::Value = serde_json::from_slice(&answer.body).unwrap();
+    assert_eq!(body["error"]["code"], "bucket_unavailable");
+    h.bucket.failing.store(false, Ordering::SeqCst);
+
+    // From the store while it holds the record, gzipped as a driver mirrors
+    // it: decoded for a reader that does not accept gzip, with no bucket read.
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(b"{\"formatVersion\":1}").unwrap();
+    h.state
+        .store
+        .write_run_replay(RUN, &encoder.finish().unwrap())
+        .unwrap();
+    let asked_before = h.bucket.asked().len();
+    let answer = get(&h.router, "/runs/r1/replay").await;
+    assert_eq!(answer.status, StatusCode::OK);
+    assert_eq!(answer.body, b"{\"formatVersion\":1}");
+    assert_eq!(h.bucket.asked().len(), asked_before);
+}
+
+#[tokio::test]
+async fn a_session_record_no_manifest_names_answers_404_without_asking_the_bucket() {
+    let h = harness().await;
+    // Confirmed while its folder held no record.
+    confirm(
+        &h.state.db,
+        RUN,
+        vec![stored(MediaFileKind::Asset, "asset/replay.json")],
+    )
+    .await;
+    h.bucket.put("media/runs/r1/session-record.json", b"{}");
+    h.bucket.put("media/runs/r1/asset/replay.json", b"{}");
 
     assert_eq!(
         get(&h.router, "/runs/r1/replay").await.status,
         StatusCode::NOT_FOUND
     );
     assert_eq!(h.bucket.asked(), Vec::<String>::new());
+}
 
-    h.state.store.write_run_replay(RUN, b"{\"v\":1}").unwrap();
-    let answer = get(&h.router, "/runs/r1/replay").await;
-    assert_eq!(answer.status, StatusCode::OK);
-    assert_eq!(answer.body, b"{\"v\":1}");
+#[tokio::test]
+async fn a_session_record_uploaded_for_a_confirmed_run_withdraws_the_confirmation() {
+    let h = harness().await;
+    confirm(
+        &h.state.db,
+        RUN,
+        vec![stored(MediaFileKind::Proof, "proof/title.png")],
+    )
+    .await;
+    let confirmed = crate::db::retention_tests::run_row(&h.state.db, RUN).await;
+    assert!(confirmed.media_confirmed_at.is_some());
+
+    let response = h
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/runs/r1/replay")
+                .body(Body::from("{\"formatVersion\":1}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        h.state.store.read_run_replay(RUN).unwrap(),
+        b"{\"formatVersion\":1}"
+    );
+    // The run reads as one no refresh has evaluated, as after any other upload.
+    let row = crate::db::retention_tests::run_row(&h.state.db, RUN).await;
+    assert_eq!(row.media_confirmed_at, None);
+    assert_eq!(row.media_checked_at, None);
+    // The manifest stays as the record of where the run's other files are.
+    assert!(
+        h.state
+            .db
+            .run_file_locations(RUN, Some(BUCKET))
+            .await
+            .unwrap()
+            .is_some_and(|manifest| manifest.file("proof/title.png").is_some())
+    );
+    // The uploads that follow find the run already waiting.
+    assert_eq!(
+        h.state.db.note_run_file_uploaded(RUN).await.unwrap(),
+        crate::db::UploadedOver::Pending
+    );
 }
 
 /// Store a published adversarial run for the case `pong` and confirm it with
