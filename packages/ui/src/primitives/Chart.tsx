@@ -44,7 +44,14 @@ export function Chart({ spec, title, className }: ChartProps) {
       if (width === lastWidth) return;
       lastWidth = width;
       const options = spec(readChartPalette());
-      const figure = Plot.plot(width > 0 ? { ...options, width } : options);
+      // A spec's own `width` is the least the chart can be drawn at and stay
+      // legible (a slot per category under tilted labels). A container narrower
+      // than that gets the chart at that width and scrolls it sideways.
+      const least = typeof options.width === "number" ? options.width : 0;
+      const figure = Plot.plot(
+        width > 0 ? { ...options, width: Math.max(width, least) } : options,
+      );
+      if (width > 0 && least > width) keepLegendInView(figure, width);
       // Swap the old figure for the new one in a single mutation, never leaving
       // the container empty: emptying it first would collapse its height, and on
       // a live page whose charts all re-plot together (the gg monitor re-derives
@@ -101,6 +108,29 @@ export function Chart({ spec, title, className }: ChartProps) {
   return (
     <div ref={containerRef} className={cls} role="img" aria-label={title} />
   );
+}
+
+/**
+ * Keeps a chart's legend where the reader can see it while the chart scrolls
+ * sideways under it.
+ *
+ * Plot returns a chart with a legend as a `<figure>` holding the legend and then
+ * the `<svg>`. The figure is widened to the chart so the legend has the whole
+ * scrolled width to stick within, and the legend is held at the container's left
+ * edge, no wider than the container.
+ */
+function keepLegendInView(
+  figure: HTMLElement | SVGSVGElement,
+  width: number,
+): void {
+  if (!(figure instanceof HTMLElement)) return;
+  figure.style.width = "max-content";
+  for (const child of figure.children) {
+    if (!(child instanceof HTMLElement)) continue;
+    child.style.position = "sticky";
+    child.style.left = "0";
+    child.style.maxWidth = `${width}px`;
+  }
 }
 
 /** The room kept between the page-level tip and the viewport's edges, in px. */

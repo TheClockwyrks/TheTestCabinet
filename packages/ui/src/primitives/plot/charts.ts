@@ -65,9 +65,12 @@ interface AxisLabels {
    */
   yTickFormat?: string | ((value: number) => string);
   /**
-   * Degrees to rotate the x-axis tick labels (e.g. `-40`). Use it to fit many
-   * long category labels (model ids) along the axis without overlap; the chart
-   * widens its bottom margin to make room for the tilted text.
+   * Degrees to rotate the x-axis tick labels (e.g. `40`, down to the right). Use
+   * it to fit many long category labels (model ids) along the axis without
+   * overlap; the chart widens its bottom and right margins to make room for the
+   * tilted text, and asks for a least width so each category keeps a legible
+   * slot. A negative rotation tilts the labels down to the left, where a long
+   * first label has nowhere to go but past the chart's edge.
    */
   xTickRotate?: number;
   /**
@@ -79,15 +82,23 @@ interface AxisLabels {
   xDomain?: readonly string[];
 }
 
-// Geometry for sizing the bottom margin under rotated x labels. A monospace
-// glyph advances ~7.2px at the chart's 12px font, and a label tilted θ° occupies
-// `width · sin θ` of vertical space; AXIS_PAD covers the tick gap and a little
-// slack. We clamp so the common case gets comfortable room while a stray very
-// long label can't blow the chart's height out.
+// Geometry for making room for rotated x labels. A monospace glyph advances
+// ~7.2px at the chart's 12px font, and a label tilted θ° occupies
+// `width · sin θ` of vertical space and `width · cos θ` of horizontal space;
+// AXIS_PAD covers the tick gap and a little slack. We clamp so the common case
+// gets comfortable room while a stray very long label can't blow the chart's
+// height out.
 const GLYPH_PX = 7.2;
 const AXIS_PAD = 34;
 const MIN_ROTATED_MARGIN = 96;
 const MAX_ROTATED_MARGIN = 220;
+// The narrowest a category's slot along x is drawn when its labels are tilted.
+// Below this the tilted labels run into each other and the bars become slivers,
+// so a chart with more categories than fit is drawn wider than its container
+// and scrolled sideways (see `Chart`) rather than squeezed.
+export const MIN_ROTATED_SLOT = 32;
+// Plot's own default right margin, kept as the least a chart gets.
+const DEFAULT_RIGHT_MARGIN = 20;
 
 // The bottom margin needed to fit the longest tilted category label without
 // clipping it, given the rotation in degrees. Sized to the longest label so a
@@ -103,6 +114,53 @@ function rotatedBottomMargin(
     MAX_ROTATED_MARGIN,
     Math.max(MIN_ROTATED_MARGIN, Math.ceil(height + AXIS_PAD)),
   );
+}
+
+// The right margin a chart needs so that no label tilted down to the right
+// runs past its edge. A label starts under the middle of its own slot and
+// extends `width · cos θ` to the right, over the slots after it, so only what
+// reaches past the last slot needs margin. Measured at the narrowest slot the
+// chart is drawn with, which is the case with the least room.
+function rotatedRightMargin(
+  order: readonly string[],
+  rotateDeg: number,
+): number {
+  const cos = Math.cos((rotateDeg * Math.PI) / 180);
+  const overhang = order.reduce((widest, label, index) => {
+    const room = (order.length - 1 - index + 0.5) * MIN_ROTATED_SLOT;
+    return Math.max(widest, label.length * GLYPH_PX * cos - room);
+  }, 0);
+  return Math.max(DEFAULT_RIGHT_MARGIN, Math.ceil(overhang));
+}
+
+// The layout a chart with tilted x labels takes, for the categories `order`
+// names left to right: the bottom margin the labels need, the right margin the
+// last of them need when they tilt down to the right (a positive rotation, which
+// Plot anchors at the tick), and the least `width` the chart may be drawn at, a
+// slot of `MIN_ROTATED_SLOT` per category. `Chart` reads that width as a floor:
+// it draws the chart at its container's width when that is wider, and lets the
+// container scroll sideways when it is not.
+function rotatedAxisLayout(
+  order: readonly string[],
+  rotateDeg: number,
+  marginLeft: number,
+): Pick<PlotOptions, "marginBottom" | "marginRight" | "width"> {
+  const marginRight =
+    rotateDeg > 0 ? rotatedRightMargin(order, rotateDeg) : DEFAULT_RIGHT_MARGIN;
+  return {
+    marginBottom: rotatedBottomMargin(order, rotateDeg),
+    marginRight,
+    width: marginLeft + order.length * MIN_ROTATED_SLOT + marginRight,
+  };
+}
+
+// The categories of an ordinal axis left to right: the stated domain, or the
+// sorted distinct labels Plot would infer.
+function axisOrder(
+  labels: readonly string[],
+  domain: readonly string[] | undefined,
+): readonly string[] {
+  return domain ?? [...new Set(labels)].sort();
 }
 
 // Both the tooltip and the hover highlight select the bar under the pointer by
@@ -182,15 +240,18 @@ export function barChart(
           ...d.distribution!,
         }))
       : null;
+  const base = basePlotOptions(palette);
   return {
-    ...basePlotOptions(palette),
+    ...base,
     ...(labels.xTickRotate
-      ? {
-          marginBottom: rotatedBottomMargin(
+      ? rotatedAxisLayout(
+          axisOrder(
             data.map((d) => d.label),
-            labels.xTickRotate,
+            labels.xDomain,
           ),
-        }
+          labels.xTickRotate,
+          Number(base.marginLeft),
+        )
       : {}),
     x: {
       label: labels.x ?? null,
@@ -379,15 +440,18 @@ export function stackedBarChart(
   // Fixes the stacking order (first series at the baseline) and the legend.
   const order = series.map((s) => s.name);
   const hasTips = data.some((d) => d.title != null);
+  const base = basePlotOptions(palette);
   return {
-    ...basePlotOptions(palette),
+    ...base,
     ...(labels.xTickRotate
-      ? {
-          marginBottom: rotatedBottomMargin(
+      ? rotatedAxisLayout(
+          axisOrder(
             data.map((d) => d.group),
-            labels.xTickRotate,
+            labels.xDomain,
           ),
-        }
+          labels.xTickRotate,
+          Number(base.marginLeft),
+        )
       : {}),
     x: {
       label: null,
@@ -1135,10 +1199,11 @@ export function scatterChart(
   });
   const hasLinks = dots.some((d) => d.href != null);
 
+  const base = basePlotOptions(palette);
   return {
-    ...basePlotOptions(palette),
+    ...base,
     ...(labels.xTickRotate
-      ? { marginBottom: rotatedBottomMargin(order, labels.xTickRotate) }
+      ? rotatedAxisLayout(order, labels.xTickRotate, Number(base.marginLeft))
       : {}),
     x: {
       label: labels.x ?? null,

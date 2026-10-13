@@ -14,8 +14,10 @@ import type { BarPoint, DistributionPoint, ScatterGroup } from "./plot/charts";
 import { summarizeValues, type DistributionStats } from "./plot/distribution";
 import type { ChartPalette } from "./plot/theme";
 
-// Tilt the model labels so a large roster fits along the axis without overlap.
-const LABEL_ROTATE = -40;
+// Tilt the model labels down to the right so a large roster fits along the axis
+// without overlap. Tilted that way a label starts under its own bar, so the
+// first bar's label stays inside the chart.
+const LABEL_ROTATE = 40;
 
 /**
  * How the bar chart reduces runs to bars:

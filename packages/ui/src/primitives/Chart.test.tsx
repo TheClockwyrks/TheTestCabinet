@@ -7,7 +7,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Chart } from "./Chart";
-import { barChart, horizontalBarChart } from "./plot/charts";
+import { barChart, horizontalBarChart, stackedBarChart } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
 
 const bars = [
@@ -235,5 +235,75 @@ describe("Chart", () => {
       unmount();
       expect(pageTip()).toBeNull();
     });
+  });
+});
+
+// A chart with more bars than its column can show legibly is drawn wider than
+// the column, which then scrolls it sideways. jsdom lays nothing out, so the
+// column's width is stated here.
+describe("a chart wider than its container", () => {
+  const widths = (labels: number) =>
+    barChart(
+      Array.from({ length: labels }, (_, index) => ({
+        label: `model-${index}`,
+        value: index + 1,
+      })),
+      {
+        text: "#fff",
+        muted: "#aaa",
+        border: "#333",
+        surface: "#000",
+        accent: "#f90",
+        accent2: "#f30",
+      },
+      { xTickRotate: 40 },
+    );
+
+  function renderAt(containerWidth: number, labels: number): SVGSVGElement {
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(containerWidth);
+    render(<Chart title="wide" spec={() => widths(labels)} />);
+    clientWidth.mockRestore();
+    return screen.getByRole("img", { name: "wide" }).querySelector("svg")!;
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("is drawn at the width its bars need, not squeezed into the container", () => {
+    const needed = Number(widths(60).width);
+    expect(needed).toBeGreaterThan(400);
+    expect(Number(renderAt(400, 60).getAttribute("width"))).toBe(needed);
+  });
+
+  it("holds the legend at the container's edge while the chart scrolls", () => {
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(400);
+    const stacked = (palette: ChartPalette) =>
+      stackedBarChart(
+        Array.from({ length: 60 }, (_, index) => ({
+          group: `model-${index}`,
+          series: "Great",
+          value: 1,
+        })),
+        palette,
+        [{ name: "Great", color: "#4ade80" }],
+        { xTickRotate: 40 },
+      );
+    render(<Chart title="legend" spec={stacked} />);
+    clientWidth.mockRestore();
+    const figure = screen
+      .getByRole("img", { name: "legend" })
+      .querySelector("figure")!;
+    const legend = figure.firstElementChild as HTMLElement;
+    expect(legend.tagName).not.toBe("svg");
+    expect(legend.style.position).toBe("sticky");
+    expect(legend.style.maxWidth).toBe("400px");
+    expect(figure.style.width).toBe("max-content");
+  });
+
+  it("fills a container that is wider than the bars need", () => {
+    expect(Number(renderAt(1200, 3).getAttribute("width"))).toBe(1200);
   });
 });

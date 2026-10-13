@@ -4,8 +4,10 @@ import {
   barChart,
   distributionChart,
   horizontalBarChart,
+  MIN_ROTATED_SLOT,
   PAGE_TIP_ANCHOR,
   metricLineChart,
+  scatterChart,
   stackedAreaChart,
   stackedBarChart,
   timeSeriesChart,
@@ -52,7 +54,7 @@ describe("barChart", () => {
           { label: "B", value: 5, title: "B\nMax: 6\nMin: 4" },
         ],
         palette,
-        { xTickRotate: -40, y: "tokens" },
+        { xTickRotate: 40, y: "tokens" },
       ),
     );
     // The tip mark is registered (Plot labels its tip layer), so hover content is
@@ -88,7 +90,7 @@ describe("stackedBarChart", () => {
         ],
         palette,
         series,
-        { y: "runs", xTickRotate: -40 },
+        { y: "runs", xTickRotate: 40 },
       ),
     );
     // Three segments drawn.
@@ -761,5 +763,92 @@ describe("horizontalBarChart", () => {
     // no tip of Plot's own.
     expect(node.querySelector(`.${PAGE_TIP_ANCHOR}`)).not.toBeNull();
     expect(node.querySelector('[aria-label="tip"]')).toBeNull();
+  });
+});
+
+// Labels tilted down to the right start under their own bar and run over the
+// bars after it. What the layout has to guarantee is that none of them leaves
+// the chart, and that a chart with many bars asks for the width to draw them.
+describe("tilted x labels", () => {
+  const bars = (labels: readonly string[]) =>
+    labels.map((label) => ({ label, value: 1 }));
+
+  it("asks for a slot per bar as its least width", () => {
+    const few = barChart(bars(["a", "b"]), palette, { xTickRotate: 40 });
+    const many = barChart(
+      bars(Array.from({ length: 40 }, (_, index) => `m${index}`)),
+      palette,
+      { xTickRotate: 40 },
+    );
+    const plotArea = (options: Plot.PlotOptions) =>
+      Number(options.width) -
+      Number(options.marginLeft) -
+      Number(options.marginRight);
+    expect(plotArea(few)).toBe(2 * MIN_ROTATED_SLOT);
+    expect(plotArea(many)).toBe(40 * MIN_ROTATED_SLOT);
+  });
+
+  it("asks for no least width without a rotation", () => {
+    expect(barChart(bars(["a", "b"]), palette).width).toBeUndefined();
+  });
+
+  it("widens the right margin for a long last label, and not for a long first one", () => {
+    const long = "a-very-long-model-name · some-harness";
+    const lastLong = barChart(bars(["a", "b", "c", long]), palette, {
+      xTickRotate: 40,
+      xDomain: ["a", "b", "c", long],
+    });
+    const firstLong = barChart(bars([long, "a", "b", "c"]), palette, {
+      xTickRotate: 40,
+      xDomain: [long, "a", "b", "c"],
+    });
+    expect(Number(lastLong.marginRight)).toBeGreaterThan(
+      Number(firstLong.marginRight),
+    );
+  });
+
+  it("draws every label inside the chart at its least width", () => {
+    const long = "a-very-long-model-name · some-harness";
+    const order = ["short", long, "mid-length-name", long + "-2"];
+    const options = stackedBarChart(
+      order.map((group) => ({ group, series: "Great", value: 1 })),
+      palette,
+      [{ name: "Great", color: "#4ade80" }],
+      { xTickRotate: 40, xDomain: order },
+    );
+    const width = Number(options.width);
+    // A label is anchored at the middle of its slot and runs `chars * 7.2px`
+    // along a 40 degree slope, so its right end is that far times cos 40.
+    const slot =
+      (width - Number(options.marginLeft) - Number(options.marginRight)) /
+      order.length;
+    order.forEach((label, index) => {
+      const start = Number(options.marginLeft) + (index + 0.5) * slot;
+      const end = start + label.length * 7.2 * Math.cos((40 * Math.PI) / 180);
+      expect(end).toBeLessThanOrEqual(width);
+    });
+  });
+
+  it("anchors a label tilted to the right at its tick", () => {
+    const node = render(
+      barChart(bars(["alpha", "beta"]), palette, { xTickRotate: 40 }),
+    );
+    const axis = node.querySelector('[aria-label="x-axis tick label"]');
+    expect(axis?.getAttribute("text-anchor")).toBe("start");
+  });
+
+  it("gives the scatter form the same layout as the bars", () => {
+    const labels = ["one", "two", "three"];
+    const bar = barChart(bars(labels), palette, {
+      xTickRotate: 40,
+      xDomain: labels,
+    });
+    const scatter = scatterChart(
+      labels.map((label) => ({ label, mean: 1, points: [{ value: 1 }] })),
+      palette,
+      { xTickRotate: 40 },
+    );
+    expect(scatter.width).toBe(bar.width);
+    expect(scatter.marginRight).toBe(bar.marginRight);
   });
 });
