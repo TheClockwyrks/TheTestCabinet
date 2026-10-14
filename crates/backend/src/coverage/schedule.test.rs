@@ -13,6 +13,7 @@ fn on_harness(harness: usize, target: u32, counted: u32, in_flight: u32) -> Cell
         counted,
         in_flight,
         harness,
+        serialized: false,
     }
 }
 
@@ -170,12 +171,15 @@ fn completed_runs_never_occupy_the_limit() {
 }
 
 #[test]
-fn an_unbounded_limit_still_defers_capped_harnesses_behind_free_ones() {
-    // No bound does not mean no ordering: the runnable-first pass still puts the
-    // harness with room ahead of the one at its cap, and the second pass then
-    // picks the capped one up rather than dropping it.
-    let cells = [on_harness(0, 5, 0, 0), on_harness(1, 5, 0, 0)];
-    let harnesses = [capped(2, 2), capped(0, 4)];
+fn an_unbounded_limit_still_queues_a_capped_harness_no_deeper_than_its_free_slots() {
+    // No bound does not lift the cap: the full harness gets nothing and the one with
+    // room gets only its free slots, while an uncapped harness takes its whole cell.
+    let cells = [
+        on_harness(0, 5, 0, 0),
+        on_harness(1, 5, 0, 0),
+        on_harness(2, 5, 0, 0),
+    ];
+    let harnesses = [capped(2, 2), capped(0, 4), HarnessCapacity::UNLIMITED];
     assert_eq!(
         pairs(&launch_pass(
             &cells,
@@ -183,7 +187,7 @@ fn an_unbounded_limit_still_defers_capped_harnesses_behind_free_ones() {
             InFlightLimit::Unbounded,
             0
         )),
-        vec![(1, 5), (0, 5)]
+        vec![(1, 4), (2, 5)]
     );
 }
 
@@ -264,9 +268,9 @@ fn an_unlimited_harness_never_defers_a_cell() {
 
 #[test]
 fn a_throttled_harness_does_not_spend_the_whole_limit_before_an_idle_one() {
-    // The reported bug: every early cell belongs to a harness capped at two, so a
-    // plain in-order walk would queue the whole limit behind it and leave the
-    // second harness — which could start immediately — with nothing.
+    // Every early cell belongs to a harness capped at two, so a plain in-order walk
+    // would queue the whole limit behind it and leave the second harness, which could
+    // start immediately, with nothing.
     let cells = [
         on_harness(0, 2, 0, 0),
         on_harness(0, 2, 0, 0),
@@ -275,58 +279,98 @@ fn a_throttled_harness_does_not_spend_the_whole_limit_before_an_idle_one() {
         on_harness(1, 2, 0, 0),
     ];
     let harnesses = [capped(0, 2), HarnessCapacity::UNLIMITED];
-    // Cell 0 fills the throttled harness's two slots, so its siblings are deferred
-    // and the idle harness is fed first; the deferred cells then take the room
-    // that is left, in their original order.
+    // Cell 0 fills the throttled harness's two slots, so its siblings wait for a later
+    // pass and the idle harness takes the room they would have occupied.
     assert_eq!(
         pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
-        vec![(0, 2), (3, 2), (4, 2), (1, 2), (2, 2)]
+        vec![(0, 2), (3, 2), (4, 2)]
     );
 }
 
 #[test]
-fn a_harness_already_at_its_cap_is_deferred_from_the_first_pass() {
-    // The steady state of the same bug: the throttled harness's earlier runs are
-    // still working through the queue, so nothing more of it can start. The other
-    // harness's cells go first even though they come later in the plan's order.
+fn a_ladder_of_capped_models_queues_only_what_each_harness_can_start() {
+    // Two models on one harness capped at two, five runs per rung, under the default
+    // limit of ten: queueing both cells whole would put eight runs in `pending` and
+    // fill the limit with them. Only the two that can start are queued.
+    let cells = [on_harness(0, 5, 0, 0), on_harness(0, 5, 0, 0)];
+    let harnesses = [capped(0, 2)];
+    assert_eq!(
+        pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
+        vec![(0, 2)]
+    );
+
+    // Ten models, each on its own harness capped at two: every model gets its two
+    // slots, and the limit is spent on runs that start rather than on one model's
+    // whole rung.
+    let cells: Vec<CellDemand> = (0..10).map(|lane| on_harness(lane, 5, 0, 0)).collect();
+    let harnesses = [capped(0, 2); 10];
+    assert_eq!(
+        pairs(&launch_pass(&cells, &harnesses, bounded(20), 0)),
+        (0..10).map(|cell| (cell, 2)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_capped_cell_is_launched_in_part_and_the_rest_follows_as_slots_free() {
+    // The repeats of a cell on a capped harness go out as slots free: two now, and
+    // after one of them finishes, one more.
+    let harnesses = [capped(0, 2)];
+    let first = launch_pass(&[cell(5, 0, 0)], &harnesses, bounded(10), 0);
+    assert_eq!(pairs(&first), vec![(0, 2)]);
+
+    // Both still in flight: the harness is full, so nothing more.
+    assert!(launch_pass(&[cell(5, 0, 2)], &[capped(2, 2)], bounded(10), 2).is_empty());
+
+    // One finished: one slot is free, and the cell takes it.
+    assert_eq!(
+        pairs(&launch_pass(
+            &[cell(5, 1, 1)],
+            &[capped(1, 2)],
+            bounded(10),
+            1
+        )),
+        vec![(0, 1)]
+    );
+}
+
+#[test]
+fn a_harness_already_at_its_cap_launches_nothing() {
+    // The throttled harness's earlier runs are still working through the queue, so
+    // nothing more of it can start. The other harness's cells go out, and the capped
+    // cell waits for a slot rather than sitting `pending`.
     let cells = [on_harness(0, 3, 0, 0), on_harness(1, 3, 0, 0)];
     let harnesses = [capped(4, 2), HarnessCapacity::UNLIMITED];
     assert_eq!(
         pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
-        vec![(1, 3), (0, 3)]
+        vec![(1, 3)]
     );
 }
 
 #[test]
-fn a_deferred_cell_is_dropped_when_the_runnable_work_fills_the_limit() {
-    // Deferral is not a promise: if the cells that can start now take the limit to
-    // its target, the throttled harness simply waits for the next pass rather than
-    // overshooting on work that would only sit `pending`.
-    let cells = [on_harness(0, 5, 0, 0), on_harness(1, 5, 0, 0)];
-    let harnesses = [capped(2, 2), HarnessCapacity::UNLIMITED];
+fn runs_queued_elsewhere_for_a_capped_harness_take_its_slots() {
+    // Capacity is global: one run another plan queued for the harness leaves this pass
+    // one slot, so the cell is launched one run deep.
+    let cells = [cell(5, 0, 0)];
+    let harnesses = [capped(1, 2)];
     assert_eq!(
-        pairs(&launch_pass(&cells, &harnesses, bounded(5), 0)),
-        vec![(1, 5)]
+        pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
+        vec![(0, 1)]
     );
 }
 
 #[test]
-fn a_plan_on_one_throttled_harness_still_queues_to_the_limit() {
-    // Nothing to interleave with, so the fix must not shrink the queue: the second
-    // pass restores exactly the depth the limit allows. Without it a plan would hold
-    // only as many runs as can execute at once.
-    let cells = [cell(2, 0, 0), cell(2, 0, 0), cell(2, 0, 0), cell(2, 0, 0)];
-    let harnesses = [capped(0, 2)];
-    assert_eq!(
-        pairs(&launch_pass(&cells, &harnesses, bounded(6), 0)),
-        vec![(0, 2), (1, 2), (2, 2)]
-    );
+fn the_limit_still_bounds_a_capped_harness_with_free_slots() {
+    // Free slots are an upper bound, not an allowance: the owner's limit is checked
+    // first, so a pass whose limit is full queues nothing even on an idle harness.
+    let cells = [cell(5, 0, 0)];
+    let harnesses = [capped(0, 4)];
+    assert!(launch_pass(&cells, &harnesses, bounded(3), 3).is_empty());
 }
 
 #[test]
-fn each_harness_is_fed_in_turn_while_it_has_room() {
-    // Two throttled harnesses interleaved: both are fed up to their caps in the
-    // first pass, in the caller's order, and only then does either go deeper.
+fn each_harness_is_fed_in_turn_up_to_its_cap() {
+    // Two throttled harnesses interleaved: each is fed up to its cap in the caller's
+    // order, and the cells past a cap wait for a later pass.
     let cells = [
         on_harness(0, 1, 0, 0),
         on_harness(1, 1, 0, 0),
@@ -336,33 +380,61 @@ fn each_harness_is_fed_in_turn_while_it_has_room() {
     ];
     let harnesses = [capped(0, 2), capped(0, 1)];
     // Lane 0 takes cells 0 and 2 (its cap of two); lane 1 takes cell 1 and is then
-    // full, deferring cell 3. Cell 4 is past lane 0's cap, so it too is deferred —
-    // and both come back in order once the runnable pass is done.
+    // full, so cell 3 waits. Cell 4 is past lane 0's cap and waits too.
     assert_eq!(
         pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
-        vec![(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)]
+        vec![(0, 1), (1, 1), (2, 1)]
     );
 }
 
 #[test]
-fn a_zero_cap_holds_every_cell_back_to_the_second_pass() {
-    // A harness throttled to nothing (or a nonsense stored cap) can never start a
-    // run, so it is deferred rather than preferred — but the plan is still allowed
-    // to queue against it, because the cap may be lifted before the runs are claimed.
+fn a_zero_cap_launches_nothing_on_its_harness() {
+    // A nonsense stored cap reads as zero, which holds the harness's runs back rather
+    // than quietly lifting the throttle; the other harness is unaffected.
     let cells = [on_harness(0, 2, 0, 0), on_harness(1, 2, 0, 0)];
     let harnesses = [capped(0, 0), HarnessCapacity::UNLIMITED];
     assert_eq!(
         pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
-        vec![(1, 2), (0, 2)]
+        vec![(1, 2)]
     );
 }
 
 #[test]
 fn a_harness_lane_the_caller_did_not_describe_counts_as_unlimited() {
     // A cell pointing past the end of the capacity slice must not borrow another
-    // harness's throttle, and must not be deferred for want of information.
+    // harness's throttle, and must not be held back for want of information. The cell
+    // on the full lane it would have borrowed from is the one that waits.
     let cells = [on_harness(7, 2, 0, 0), on_harness(0, 2, 0, 0)];
     let harnesses = [capped(9, 1)];
+    assert_eq!(
+        pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
+        vec![(0, 2)]
+    );
+}
+
+#[test]
+fn a_serialized_cell_takes_one_slot_however_many_runs_it_queues() {
+    // A game jam's entries by one model run one at a time, so two queued entries hold one
+    // slot between them and the cell behind them gets the other.
+    let jam = CellDemand {
+        serialized: true,
+        ..on_harness(0, 2, 0, 0)
+    };
+    let cells = [jam, on_harness(0, 2, 0, 0)];
+    let harnesses = [capped(0, 2)];
+    assert_eq!(
+        pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
+        vec![(0, 2), (1, 1)]
+    );
+
+    // With an entry already in flight, the cell's next one waits behind it and takes no
+    // slot of its own.
+    let jam = CellDemand {
+        serialized: true,
+        ..on_harness(0, 3, 0, 1)
+    };
+    let cells = [jam, on_harness(0, 2, 0, 0)];
+    let harnesses = [capped(1, 3)];
     assert_eq!(
         pairs(&launch_pass(&cells, &harnesses, bounded(10), 0)),
         vec![(0, 2), (1, 2)]

@@ -1427,12 +1427,14 @@ pub(super) async fn ladder_pass_locked(
     let active = board.active_slots();
     let mut demands: Vec<CellDemand> = Vec::with_capacity(active.len());
     let mut unlaunchable: Vec<BlockedCell> = Vec::new();
+    let jams = super::coverage::game_jam_cases(state, active.iter().map(|slot| &slot.case));
     for slot in &active {
         let demand = CellDemand {
             target: slot.target,
             counted: slot.counted,
             in_flight: slot.in_flight,
             harness: harness_lane(slot.member.combo.harness),
+            serialized: jams.contains(&(slot.case.slug.clone(), slot.case.version.clone())),
         };
         // Only worth reporting on a slot that actually wanted runs.
         if let Some(reason) = &slot.member.unlaunchable

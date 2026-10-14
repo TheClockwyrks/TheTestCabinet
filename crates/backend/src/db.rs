@@ -5430,6 +5430,42 @@ impl Db {
         Ok(count.min(u64::from(u32::MAX)) as u32)
     }
 
+    /// The queue position of the latest job each plan or ladder enqueued on any of
+    /// `harnesses`, keyed by its [owner prefix](JobOrigin::owner_prefix): the order a freed
+    /// slot of a capped harness is offered in, least recently served first. A plan or
+    /// ladder that never enqueued on them is absent. Jobs of every state count, since what
+    /// is asked is when the owner last got a run onto the harness.
+    pub async fn last_enqueued_by_owner(
+        &self,
+        harnesses: &[String],
+    ) -> Result<HashMap<String, i64>> {
+        if harnesses.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows: Vec<(Option<String>, Option<i64>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::Origin)
+            .column_as(job::Column::QueueSeq.max(), "last")
+            .filter(job::Column::HarnessSlug.is_in(harnesses.iter().cloned()))
+            .filter(job::Column::Origin.is_not_null())
+            .group_by(job::Column::Origin)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut last: HashMap<String, i64> = HashMap::new();
+        for (origin, seq) in rows {
+            let (Some(origin), Some(seq)) = (origin, seq) else {
+                continue;
+            };
+            let Some(owner) = JobOrigin::parse(&origin) else {
+                continue;
+            };
+            let entry = last.entry(owner.owner_prefix()).or_insert(seq);
+            *entry = (*entry).max(seq);
+        }
+        Ok(last)
+    }
+
     /// How many of each of an account's plans' jobs are in flight, keyed by plan id, in
     /// one query: what the plans summary reports without a query per plan.
     pub async fn count_in_flight_jobs_by_plan(

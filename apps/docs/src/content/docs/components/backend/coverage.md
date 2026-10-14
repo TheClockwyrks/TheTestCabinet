@@ -218,8 +218,10 @@ A cell is blocked while it is missing a run, counting its jobs in flight toward
 its target, and holds an exhausted failure that is not replaced. With five runs
 launched together, one that uses up its retries blocks the cell while the other
 four are still running and after they complete, and nothing is launched in its
-place. A blocked cell whose missing run arrives from elsewhere is filled, and a
-filled cell is not blocked.
+place. On a harness with a parallelism cap, whose repeats launch as its slots
+free, the repeats not yet launched wait for the retry as well. A blocked cell
+whose missing run arrives from elsewhere is filled, and a filled cell is not
+blocked.
 
 Retrying a blocked cell records the retry. Only jobs that ended after it are
 read as exhausted failures, so the cell is launched again, and the next launch
@@ -298,7 +300,9 @@ know a plan exists.
 - **`combination`** finishes one combination across every case before starting
   the next. One model's whole run of the plan arrives first.
 
-Within a cell the repeats are always emitted together.
+Within a cell the repeats are emitted together, except on a harness with a
+[parallelism cap](#harness-parallelism-comes-first) that has fewer free slots
+than the cell is missing.
 
 ## The runs-in-flight limit
 
@@ -321,7 +325,7 @@ ladder may override it. The limit is a tagged shape rather than a bare number:
 A **bounded** limit stops a launch pass once that many of the plan's or ladder's
 jobs are in flight, and its bound is clamped to a ceiling of 500 runs. An
 **unbounded** limit launches every missing cell in one pass, and the per-cell
-target and the harness parallelism preference still apply. A bound of `0`
+target and the harness parallelism caps still apply. A bound of `0`
 launches nothing.
 
 The override is nullable, and null is not zero. Null inherits the account's
@@ -375,16 +379,18 @@ The algorithm is the same for plans and ladders:
 3. Skip any cell whose combination
    [cannot be launched](#a-member-that-cannot-be-launched), and any
    [blocked](#a-blocked-cell) cell, reporting each.
-4. Defer any cell whose harness is already at its
+4. Skip any cell whose harness has no free slot under its
    [parallelism cap](#harness-parallelism-comes-first).
-5. Emit whole cells, all of a cell's missing repeats together, until the plan's
-   or ladder's jobs in flight reach its limit. An unbounded limit is never
-   reached, so every missing cell is emitted in one pass.
-6. Walk the deferred cells, in the same order, until the limit is reached.
+5. Emit each remaining cell's missing repeats until the plan's or ladder's jobs
+   in flight reach its limit. A cell on an uncapped harness is emitted whole. A
+   cell on a capped harness is emitted up to its harness's free slots, and the
+   rest of it waits for a later pass. An unbounded limit is never reached.
 
 Step 5 overshoots the limit by up to one cell, on purpose. A cell's repeats are
 compared against each other, so the check happens at the boundary between cells
-rather than inside one.
+rather than inside one. A capped harness runs no more of a cell's repeats at
+once than its cap allows, so queueing the rest early would only hold them
+`pending`.
 
 Every run a launch pass enqueues carries its cell's whole pin: the slug, the
 version, the variant, and the engine, and the plan's or the dispatch's
@@ -397,23 +403,38 @@ not launch with why.
 
 ### Harness parallelism comes first
 
-The queue will not start a run whose harness is already at its
-[maximum parallelism](/components/core/harnesses/#per-harness-configuration), so
-a walk that ignored the cap would hand the whole limit to the first harness it
-met and leave every other harness in the plan idle.
+The queue starts a run only while its harness is under its
+[maximum parallelism](/components/core/harnesses/#per-harness-configuration). A
+run enqueued beyond that waits `pending` and still holds a place under its plan's
+or ladder's limit, so a walk that queued a capped harness deeper than its cap
+would spend the limit on runs that cannot start and leave the other harnesses in
+the plan idle.
 
-The walk therefore prefers cells that can actually start. A cell whose harness
-has no free slot is set aside, the cells behind it on idle harnesses are emitted
-first, and the set-aside cells are picked up in a second pass over whatever room
-is left. Within one harness the plan's order is preserved, and only the
-interleaving between harnesses changes.
+A launch pass therefore enqueues for a capped harness only as many runs as it
+has free slots. A harness's free slots are its cap less its jobs in flight, and
+each run the pass emits takes one. The cells on that harness that find no free
+slot are left for a later pass, and the cells behind them on other harnesses are
+emitted in their place. Within one harness the plan's order is preserved.
 
 gg is one lane like any other harness: every configuration's runs share the gg
 cap, because what a cap bounds is how many runs of a harness execute at once.
 
 Capacity is read globally and across every job state, including states that
 occupy no slot. A run merely queued for a harness consumes that harness's cap
-before anything enqueued after it, whoever queued it.
+before anything enqueued after it, whoever queued it. A
+[game jam](/testing/game-jam/overview/#repeat-runs) run held back behind an
+entry of the same jam by the same model is the exception: the queue drives one
+run of a jam and model at a time, so only that run, or with none driven the
+first waiting one, consumes the cap. A launch pass charges a jam cell one slot
+of its harness for the runs it queues, and none while one of its runs is
+already in flight.
+
+A slot a capped harness frees is filled by the launch passes a job of that
+harness reaching a terminal state runs, as described under
+[when launch passes run](#when-launch-passes-run). Plans and ladders waiting on
+the same harness take turns at its freed slots: the passes run one after
+another, and the plan or ladder that least recently enqueued a run on that
+harness runs first. One that never did runs ahead of all of them.
 
 ### When launch passes run
 
@@ -433,6 +454,12 @@ when a job reaches a terminal state:
   reaching another plan's cells, and a gate's early stop. A plan that was just
   halted, or a dispatch that was just stopped, launches nothing, because its fill
   or dispatch has ended.
+- A succeeded, failed or canceled job of a harness with a parallelism cap also
+  feeds every other filling plan and running ladder dispatch, in
+  [turn order](#harness-parallelism-comes-first), while that harness has a free
+  slot. It freed a slot of that harness, and a plan or dispatch whose cells are
+  waiting on that slot would otherwise not notice. A failed job that enqueued an
+  automatic retry frees no slot and feeds nothing.
 - The [global bulk-cancel endpoints](/components/backend/api/#stopping-runs-in-bulk)
   feed nothing. They stop the cabinet, and refilling the queue they just emptied
   would undo that. A plan they leave filling with nothing in flight resumes when
@@ -441,6 +468,15 @@ when a job reaches a terminal state:
 The launch pass runs as the plan's owner after the job's status is stored, so a
 failed pass never fails the driver's report. Once the definition store is
 servable after a start, the backend runs one launch pass for every filling plan.
+A change to a harness's parallelism cap runs one launch pass for every filling
+plan and running ladder dispatch, in turn order, so a raised cap is filled at
+once.
+
+A pass a job's end, a cap change or a start runs is retried when it fails, 30
+seconds, two minutes and ten minutes later, until one of the retries succeeds.
+A plan or ladder has one chain of retries waiting at a time. That pass is often
+the only one coming: a plan waiting on a capped harness has nothing of that
+harness in flight to feed it again.
 
 ### One launch pass at a time
 

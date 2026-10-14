@@ -603,14 +603,14 @@ fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
         InFlightLimit::Bounded { runs: 8 },
         0,
     );
-    // Claude's first cell fills its two slots, so its second is deferred behind both
-    // of Codex's — and only then takes the room that is left.
+    // Claude's first cell fills its two slots, so its second waits for a slot rather
+    // than sitting `pending` under the limit, and both of Codex's go out.
     assert_eq!(
         launches
             .iter()
             .map(|launch| order(&[ordered[launch.cell]]).remove(0))
             .collect::<Vec<_>>(),
-        vec!["pong/opus", "pong/gpt", "carom/gpt", "carom/opus"]
+        vec!["pong/opus", "pong/gpt", "carom/gpt"]
     );
 }
 

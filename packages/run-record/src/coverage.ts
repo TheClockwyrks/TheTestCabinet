@@ -685,8 +685,8 @@ export type LaunchedCell = {
    */
   ggSlotModels?: { [key in string]: string };
   /**
-   * How many runs were enqueued for this cell — always the cell's whole shortfall,
-   * never a partial cell.
+   * How many runs were enqueued for this cell: its whole shortfall, or on a harness
+   * with a parallelism cap, at most that harness's free slots.
    */
   runs: number;
   /**

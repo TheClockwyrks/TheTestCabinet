@@ -100,6 +100,10 @@ is held in the `pending` state until an in-flight run of the same harness frees 
 per-harness cap composes with the dispatcher's run-lane cap
 (`TCAB_DISPATCHER_MAX_INFLIGHT`), and a run must clear both to start.
 
+Coverage plans and ladders enqueue for a capped harness only as many runs as it
+has free slots, so their runs-in-flight limits are spent on runs that can start.
+See [harness parallelism comes first](/components/backend/coverage/#harness-parallelism-comes-first).
+
 The setting is served at `GET /harness-config`, an open read enumerating every
 harness with its current config, and changed at `POST /harness-config/{slug}`,
 which requires a bearer token.

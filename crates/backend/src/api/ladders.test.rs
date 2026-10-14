@@ -1032,6 +1032,7 @@ fn a_climber_whose_configuration_vanished_keeps_its_place_and_stops_being_fed() 
         counted: 2,
         in_flight: 1,
         harness: 0,
+        serialized: false,
     };
     let held_back = launchable_demand(demand, &member);
     assert_eq!(held_back.missing(), 0);
