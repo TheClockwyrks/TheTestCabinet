@@ -21,12 +21,13 @@ CSHARP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 #
 # ONE PIN FOR BOTH HALVES, deliberately. The compiler that reads a model's C# on the host and the
 # BCL that runs it inside the guest are two sides of one release: a program compiled against
-# `10.0.10` reference assemblies and interpreted by a `10.0.9` `System.Private.CoreLib` is a program
+# `10.0.12` reference assemblies and interpreted by a `10.0.11` `System.Private.CoreLib` is a program
 # whose `MissingMethodException` nobody would think to look for. The SDK band and the runtime it
-# carries are spelled separately because Microsoft versions them separately — an SDK `10.0.3xx`
-# carries runtime `10.0.x` — and both are checked at install.
-GG_DOTNET_SDK_VERSION="10.0.302"
-GG_DOTNET_RUNTIME_VERSION="10.0.10"
+# carries are spelled separately because Microsoft versions them separately — an SDK `10.0.4xx`
+# carries runtime `10.0.x` — and both are checked at install. The SDK is the one the template's
+# dotnet image holds, which the devcontainer links rather than downloads, so the two move together.
+GG_DOTNET_SDK_VERSION="10.0.401"
+GG_DOTNET_RUNTIME_VERSION="10.0.12"
 
 # The band `dotnet-install.sh` is asked for. It resolves to the SDK version above; the installer
 # asserts that it did, so a channel that has moved on is an install-time failure rather than a
@@ -41,7 +42,7 @@ GG_DOTNET_TFM="net10.0"
 #
 # `latest` is deliberately NOT taken: it means "whatever this Roslyn is", so a toolchain bump would
 # silently change what a model may write and what the study is measuring. `14.0` is what SDK
-# 10.0.3xx ships as its stable default — collection expressions, primary constructors, `field`
+# 10.0.4xx ships as its stable default for net10.0 — collection expressions, primary constructors, `field`
 # keyword and extension members are all in it.
 GG_DOTNET_LANG_VERSION="14.0"
 

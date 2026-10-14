@@ -862,9 +862,9 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
     let diagnostics = errors(&report.stderr);
     if diagnostics.is_empty() {
         // A compiler that could not finish: it crashed, was killed by its timeout, or fell over on
-        // an expression it could not fold. `swiftc` 6.3.3 is known to abort on some programs, so
-        // this is a real path rather than a defensive one — and it must never reach the model as
-        // "your program did not compile", because nothing was ever decided about the program.
+        // an expression it could not fold. `swiftc` is known to abort on some programs, so this is
+        // a real path rather than a defensive one — and it must never reach the model as "your
+        // program did not compile", because nothing was ever decided about the program.
         return Err(PrepareFailure::Toolchain(format!(
             "swiftc {} {}{}",
             compiler_version(),

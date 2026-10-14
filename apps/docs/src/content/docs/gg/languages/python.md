@@ -23,7 +23,7 @@ compile a reply, see [compilation](/gg/languages/compilation/).
 
 The build produces one artifact for this arm, `python.component.wasm`, around
 25 MB. `packages/gg-sandbox-python/build.sh` bakes it with a pinned
-`componentize-py` (0.25.0, which embeds CPython 3.14) linked against
+`componentize-py` (0.25.1, which embeds CPython 3.14) linked against
 `crates/gg/wit/gg-sandbox.wit`, and `crates/gg-sandbox-artifacts/python` runs
 that script as a step of building gg. The arm embeds what lands there through
 `GG_ARTIFACTS_PYTHON`; nothing is committed. The release is pinned, so the

@@ -75,13 +75,13 @@ fn the_archive_is_placed_read_only() {
 
 #[test]
 fn a_compiler_that_said_nothing_is_never_reported_as_the_models_failure() {
-    // The band the study needs kept apart: `swiftc` 6.3.3 aborts on some programs, and a crash
+    // The band the study needs kept apart: `swiftc` is known to abort on some programs, and a crash
     // reported as "your program did not compile" sends a model rewriting a program that was never
     // wrong.
     match classify(&report(false, "")) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(
-                message.contains("swiftc 6.3.3"),
+                message.contains(&format!("swiftc {}", compiler_version())),
                 "a toolchain failure did not name the compiler: {message}"
             );
         }

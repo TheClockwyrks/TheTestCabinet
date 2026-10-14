@@ -23,7 +23,7 @@ set -euo pipefail
 SWIFT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # The Swift release a model's program is compiled by, on the host, once per turn.
-GG_SWIFT_VERSION="6.3.3"
+GG_SWIFT_VERSION="6.4.0"
 
 # The Swift SDK for WebAssembly, published beside the toolchain under the same release tag.
 # Its version is the release's; it is named separately because it is a separate download with

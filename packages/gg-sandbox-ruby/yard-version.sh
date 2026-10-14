@@ -25,4 +25,4 @@
 # Azure agent, a GitHub runner and an image build is the reflector, not the thing it runs on — YARD
 # is pure Ruby, it parses source rather than loading it, and every machine that builds gg already
 # ships a Ruby that runs it.
-YARD_VERSION="0.9.37"
+YARD_VERSION="0.9.45"

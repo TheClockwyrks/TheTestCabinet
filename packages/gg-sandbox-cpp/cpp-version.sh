@@ -20,14 +20,14 @@ set -euo pipefail
 CPP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # The wasi-sdk release a model's program is compiled by, on the host, once per turn. It is a
-# whole LLVM: `clang` 22.1.0, `wasm-ld`, `libc++` with its headers, and a wasi-libc sysroot,
+# whole LLVM: `clang` 23.1.0, `wasm-ld`, `libc++` with its headers, and a wasi-libc sysroot,
 # all cross-configured for wasm and relocatable — which is what lets one tarball satisfy both
 # of `containers/gg-toolchains`'s constraints without a single line of vendoring.
-GG_WASI_SDK_VERSION="33.0"
+GG_WASI_SDK_VERSION="34.0"
 
 # The release tag the version above is published under. wasi-sdk tags a major and names its
 # assets with a `major.minor`, so the two are spelled separately rather than derived.
-GG_WASI_SDK_TAG="wasi-sdk-33"
+GG_WASI_SDK_TAG="wasi-sdk-34"
 
 # The target a model's program is compiled to.
 #
