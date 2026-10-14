@@ -333,7 +333,9 @@ image's toolchain with the installer's version stamp beside it:
 | C# | `~/.local/share/tcab/gg-dotnet` | the dotnet image's SDK, its Roslyn and its reference assemblies |
 | C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK, unpruned |
 | Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
+| Java and Kotlin, TeaVM | `~/.local/share/gg-java/libs` | each pinned TeaVM jar the jvm image's Gradle cache holds |
 | Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
+| PureScript, spago | `~/.local/share/tcab/gg-npm/spago-<version>-<lock digest>` | the purescript image's spago, whose tree has to be the one `scripts/gg-npm-locks/` names |
 | The C++, Swift and Rust arms' bindings | `~/.local/share/tcab/gg-wit-bindgen-<version>` | the wasm-components image's `wit-bindgen` |
 
 `purs`, YARD (in `GEM_HOME`) and componentize-py are where the installers and
@@ -342,19 +344,24 @@ installers run, and each arm the images hold is already installed as far as
 they can tell:
 
 - `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
-  it fetches what no language image holds: TeaVM's jars, `esbuild`, the
+  it fetches what no language image holds: the TeaVM dependencies the jvm
+  image's Gradle cache lacks (it resolved ASM to another release, and holds
+  neither hppc nor Rhino), `esbuild`, the
   `wasm32` standard library where the toolchain image lacks it, the wasmtime
   reactor adapter (the image holds the command adapter of another wasmtime
   release), and the
   package-manager-delivered build tools the arms' artifact builds resolve
-  offline (spago's store, the npm tools, the opal gem, the Python arm's wheels
-  and the two Rust crate sets).
+  offline (spago's store, componentize-js and opal-compiler, the opal gem, the
+  Python arm's wheels and the two Rust crate sets).
 - `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
   guest needs and no run does. In this image it fetches the Mono WASI runtime
   pack, installs the `wasi-experimental` workload into the dotnet image's SDK
   tree, and fetches the wasi-sdk release the guest links with. That release is
   pinned apart from the C++ arm's, to the one Mono's prebuilt runtime pack was
-  built against, and while the two differ no image holds it.
+  built against, and while the two differ no image holds it. The workload is
+  the one write into an image's tree: the SDK the guest builds with is the one
+  `DOTNET_ROOT` and `~/.local/bin/dotnet` name, so the workspace's own `dotnet`
+  has the workload too, in this layer only.
 
 They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
 and the driver image's gg stage run, so the one pinned list serves every surface

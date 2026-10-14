@@ -20,14 +20,23 @@
 #                                     to the system's ICU
 #   ~/.local/share/tcab/gg-build      the C# guest's unpruned .NET SDK linked whole, and its
 #                                     wasi-sdk too where its pin is the C++ arm's
-#   ~/.local/share/gg-java/jdk        linked to the jvm image's JDK (TeaVM's libs/ stays the
-#                                     installer's)
+#   ~/.local/share/gg-java/jdk        linked to the jvm image's JDK
+#   ~/.local/share/gg-java/libs       a link per pinned TeaVM jar the jvm image's Gradle cache holds,
+#                                     with no stamp: install-java.sh fetches the few third-party
+#                                     jars the cache lacks and then stamps it
 #   ~/.local/share/gg-kotlin/libs     a link per pinned compiler jar into the jvm image's Gradle cache
+#   ~/.local/share/tcab/gg-npm/spago-<version>-<lock digest>
+#                                     node_modules/spago linked to the purescript image's spago,
+#                                     whose tree has to be the one the committed lock names
 #   ~/.local/share/tcab/gg-wit-bindgen-<version>
 #                                     a link to the wasm-components image's wit-bindgen
 #
-# Nothing is written into an image's own tree. `purs`, YARD and componentize-py need no link, since
-# the images put them where the installers and gg already look, so they are only checked.
+# This script writes nothing into an image's own tree. The one write that does reach one comes
+# after it: install-gg-build-toolchains.sh installs the C# guest's wasi-experimental workload into
+# the dotnet image's SDK through the gg-build link, so the workspace's own `dotnet` has that
+# workload too (see "gg's toolchains" in .devcontainer/README.md). `purs`, YARD and componentize-py
+# need no link, since the images put them where the installers and gg already look, so they are
+# only checked.
 #
 # A PIN AND AN IMAGE THAT DISAGREE FAIL HERE. Each arm's pin lives in its version file under
 # packages/, and the image's version in its tag in .devcontainer/docker-compose.yml. Were this to
@@ -50,7 +59,8 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 # shellcheck source=packages/gg-sandbox-swift/swift-version.sh
 source "$REPO_ROOT/packages/gg-sandbox-swift/swift-version.sh"
-# csharp-version.sh sources cpp-version.sh, which is the wasi-sdk pin both arms build with.
+# csharp-version.sh sources cpp-version.sh, the C++ arm's wasi-sdk pin, and pins the C# guest's own
+# beside it.
 # shellcheck source=packages/gg-sandbox-csharp/csharp-version.sh
 source "$REPO_ROOT/packages/gg-sandbox-csharp/csharp-version.sh"
 # shellcheck source=packages/gg-sandbox-kotlin/kotlin-version.sh
@@ -61,6 +71,8 @@ source "$REPO_ROOT/packages/gg-sandbox-java/java-version.sh"
 source "$REPO_ROOT/packages/gg-sandbox-purescript/purescript-version.sh"
 # shellcheck source=packages/gg-sandbox-ruby/yard-version.sh
 source "$REPO_ROOT/packages/gg-sandbox-ruby/yard-version.sh"
+# shellcheck source=scripts/gg-npm-tools.sh
+source "$REPO_ROOT/scripts/gg-npm-tools.sh"
 
 # The Python arm's pin is a line of its build script rather than a version file.
 COMPONENTIZE_VERSION="$(sed -n 's/^COMPONENTIZE_VERSION="\(.*\)"$/\1/p' "$REPO_ROOT/packages/gg-sandbox-python/build.sh")"
@@ -216,11 +228,48 @@ rm -rf "$java_home/jdk"
 ln -s "$jdk_tree" "$java_home/jdk"
 echo "linked $java_home/jdk -> $jdk_tree"
 
-log "the Kotlin compiler $KOTLIN_VERSION from the jvm image's Gradle cache"
 # Gradle's cache keeps each jar under its coordinate and the jar's SHA-1, so each pinned coordinate
 # has to match exactly one file. That layout is Gradle's own rather than a published contract, so a
 # template version that reseeds or prunes the cache fails here, naming the jar.
 gradle_cache="${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2/files-2.1"
+# The one jar a coordinate names in the cache, or nothing.
+cached_jar() { # coordinate
+	local group rest artifact version jars
+	group="${1%%:*}"
+	rest="${1#*:}"
+	artifact="${rest%%:*}"
+	version="${rest#*:}"
+	jars=("$gradle_cache/$group/$artifact/$version"/*/"$artifact-$version.jar")
+	if [ "${#jars[@]}" -eq 1 ] && [ -f "${jars[0]}" ]; then
+		echo "${jars[0]}"
+	fi
+}
+
+log "TeaVM $TEAVM_VERSION from the jvm image's Gradle cache"
+# The image seeds its cache with TeaVM for a Gradle build, which takes the release's own jars and
+# some of their third-party dependencies at the versions Gradle resolved, not every one TEAVM_JARS
+# pins. So the release's own jars have to be there, and a dependency is linked where the cache holds
+# the pinned version. install-java.sh then keeps each link, fetches only the rest from Maven Central
+# and writes the stamp; the run images and the pipeline fetch them all as before.
+java_libs="$java_home/libs"
+mkdir -p "$java_libs"
+linked=0
+while read -r coordinate; do
+	[ -n "$coordinate" ] || continue
+	rest="${coordinate#*:}"
+	jar="$(cached_jar "$coordinate")"
+	if [ -z "$jar" ]; then
+		[ "${coordinate%%:*}" != org.teavm ] ||
+			mismatch packages/gg-sandbox-java/java-version.sh "$coordinate" \
+				"TeaVM $(holding "$gradle_cache/org.teavm/teavm-core") in its Gradle cache"
+		continue
+	fi
+	ln -sfn "$jar" "$java_libs/${rest%%:*}-${rest#*:}.jar"
+	linked=$((linked + 1))
+done <<<"$TEAVM_JARS"
+echo "linked $linked of $(grep -c . <<<"$TEAVM_JARS") TeaVM jars into $java_libs; install-java.sh fetches the rest"
+
+log "the Kotlin compiler $KOTLIN_VERSION from the jvm image's Gradle cache"
 kotlin_home="${KOTLIN_INSTALL_DIR:-$HOME/.local/share/gg-kotlin}"
 fresh "$kotlin_home/libs"
 while read -r coordinate; do
@@ -229,12 +278,11 @@ while read -r coordinate; do
 	rest="${coordinate#*:}"
 	artifact="${rest%%:*}"
 	version="${rest#*:}"
-	jars=("$gradle_cache/$group/$artifact/$version"/*/"$artifact-$version.jar")
-	if [ "${#jars[@]}" -ne 1 ] || [ ! -f "${jars[0]}" ]; then
+	jar="$(cached_jar "$coordinate")"
+	[ -n "$jar" ] ||
 		mismatch packages/gg-sandbox-kotlin/kotlin-version.sh "$coordinate" \
 			"$artifact $(holding "$gradle_cache/$group/$artifact") in its Gradle cache"
-	fi
-	ln -s "${jars[0]}" "$kotlin_home/libs/$artifact-$version.jar"
+	ln -s "$jar" "$kotlin_home/libs/$artifact-$version.jar"
 done <<<"$KOTLIN_JARS"
 echo "$KOTLIN_VERSION" >"$kotlin_home/libs/.kotlin-version"
 echo "linked $(find "$kotlin_home/libs" -name '*.jar' | wc -l) jars into $kotlin_home/libs"
@@ -256,6 +304,69 @@ case "$held" in
 *) mismatch packages/gg-sandbox-python/build.sh "componentize-py $COMPONENTIZE_VERSION" "$held" ;;
 esac
 echo "componentize-py $COMPONENTIZE_VERSION through uvx --offline"
+
+log "spago $SPAGO_VERSION from the purescript image"
+# gg resolves spago through scripts/gg-npm-tools.sh, from a prefix named by the version and the
+# digest of the lock committed under scripts/gg-npm-locks/, because the tree below the one package
+# decides whether a tool works (that file's header says how). The image installs spago with
+# `npm install -g`, which resolves that tree on the day it was built, so its tree serves the stamp
+# only where it is the lock's: the same package at the same version for every entry. A tree that is
+# not fails here, and the fix is to write the lock again from the image's tree or to move the pin.
+spago_image="$IMAGES/.local/share/spago"
+spago_package="$spago_image/lib/node_modules/spago"
+held="$("$spago_image/bin/spago" --version 2>/dev/null || echo "no spago")"
+[ "$held" = "$SPAGO_VERSION" ] ||
+	mismatch packages/gg-sandbox-purescript/purescript-version.sh "spago $SPAGO_VERSION" "spago $held"
+spago_lock="$(gg_npm_tool_lock_dir spago "$SPAGO_VERSION")/package-lock.json"
+# Each tree as the `name@version` of every package in it, wherever npm placed it.
+# shellcheck disable=SC2016 # JavaScript, not shell
+differs="$(node -e '
+const fs = require("fs"), path = require("path");
+const [lockFile, root] = process.argv.slice(1);
+const entries = Object.entries(JSON.parse(fs.readFileSync(lockFile)).packages)
+	.filter(([key]) => key.startsWith("node_modules/"))
+	.map(([key, entry]) => [`${key.split("node_modules/").pop()}@${entry.version}`, entry.optional]);
+// An optional package, such as a native addon whose build failed, may be absent from either tree.
+const optional = new Set(entries.filter(([, isOptional]) => isOptional).map(([name]) => name));
+const lock = entries.filter(([, isOptional]) => !isOptional).map(([name]) => name);
+const tree = [];
+const walk = (dir) => {
+	const modules = path.join(dir, "node_modules");
+	if (!fs.existsSync(modules)) return;
+	for (const entry of fs.readdirSync(modules)) {
+		if (entry.startsWith(".")) continue;
+		const names = entry.startsWith("@")
+			? fs.readdirSync(path.join(modules, entry)).map((name) => `${entry}/${name}`)
+			: [entry];
+		for (const name of names) {
+			const at = path.join(modules, name);
+			const manifest = JSON.parse(fs.readFileSync(path.join(at, "package.json")));
+			tree.push(`${name}@${manifest.version}`);
+			walk(at);
+		}
+	}
+};
+tree.push(`spago@${JSON.parse(fs.readFileSync(path.join(root, "package.json"))).version}`);
+walk(root);
+const have = new Set(tree.filter((p) => !optional.has(p))), want = new Set(lock);
+const out = [...want].filter((p) => !have.has(p)).map((p) => `lock only: ${p}`)
+	.concat([...have].filter((p) => !want.has(p)).map((p) => `image only: ${p}`));
+console.log(out.sort().join("\n"));
+' "$spago_lock" "$spago_package")"
+if [ -n "$differs" ]; then
+	echo "error: the purescript image's spago $SPAGO_VERSION is not the tree" >&2
+	echo "       scripts/gg-npm-locks/spago-$SPAGO_VERSION/package-lock.json names:" >&2
+	while read -r line; do echo "         $line" >&2; done <<<"$differs"
+	echo "       Write the lock again from the image's tree, or move the pin; see" >&2
+	echo "       \"gg's toolchains\" in .devcontainer/README.md." >&2
+	exit 1
+fi
+spago_home="$(gg_npm_tool_dir spago "$SPAGO_VERSION")"
+fresh "$spago_home"
+mkdir -p "$spago_home/node_modules/.bin"
+ln -s "$spago_package" "$spago_home/node_modules/spago"
+ln -s "$spago_image/bin/spago" "$spago_home/node_modules/.bin/spago"
+echo "linked $spago_home/node_modules/spago -> $spago_package"
 
 log "wit-bindgen $GG_WIT_BINDGEN_VERSION from the wasm-components image"
 # The C++, Swift and Rust arms generate their bindings with one release, which scripts/gg-downloads.sh

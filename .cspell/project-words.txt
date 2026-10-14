@@ -428,6 +428,7 @@ hotbar
 hotspot
 hoverable
 hpbar
+hppc
 HRTF
 hypot
 impls

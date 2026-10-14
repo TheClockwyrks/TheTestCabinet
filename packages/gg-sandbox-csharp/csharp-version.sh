@@ -66,8 +66,9 @@ GG_DOTNET_MONO_WASI_PACK="Microsoft.NETCore.App.Runtime.Mono.wasi-wasm"
 # 34 fails with an undefined symbol. The C++ arm and the ECMAScript guest compile from source and
 # move with the template's wasi-sdk image; this pin moves with the Mono runtime pack instead, once a
 # pack that links against the newer libc is published. It is a separate download into the build
-# prefix below, and the only toolchain the devcontainer still fetches that the template's images
-# publish.
+# prefix below, and the one arm toolchain the devcontainer fetches at a version the template's
+# images do not hold. (TeaVM's ASM, hppc and Rhino jars are fetched there too, being the
+# dependencies the jvm image's Gradle cache lacks; see .devcontainer/README.md.)
 GG_CSHARP_WASI_SDK_VERSION="33.0"
 GG_CSHARP_WASI_SDK_TAG="wasi-sdk-33"
 
