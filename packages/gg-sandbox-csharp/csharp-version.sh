@@ -70,7 +70,7 @@ GG_DOTNET_MONO_WASI_PACK="Microsoft.NETCore.App.Runtime.Mono.wasi-wasm"
 # publish.
 GG_CSHARP_WASI_SDK_VERSION="33.0"
 GG_CSHARP_WASI_SDK_TAG="wasi-sdk-33"
-#
+
 # THE TARGET IS `wasm32-wasip2` AND THE C++ ARM'S IS NOT, and the reason the two differ is the
 # reason that arm gives for its own choice. The C++ arm compiles a component **per turn** and will
 # not instantiate one produced by a `wasm-component-ld` whose encoder gg does not version. This

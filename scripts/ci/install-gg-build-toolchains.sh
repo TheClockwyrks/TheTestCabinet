@@ -89,10 +89,11 @@ test -f "$MONO_TASKS"
 
 # --- the unpruned wasi-sdk --------------------------------------------------------------------
 #
-# The same release and the same URL `install-wasi-sdk.sh` fetches — read from the C++ arm's version
-# file, which this sourced through `csharp-version.sh`, so the two cannot name different releases —
-# and then NOT pruned. `wasm32-wasip2` and its `noeh` libc++ are what the link line needs and what
-# the run installer deletes.
+# The release the guest is linked by, `GG_CSHARP_WASI_SDK_VERSION` in `csharp-version.sh`, which is
+# pinned apart from the C++ arm's because Mono's prebuilt archives are tied to one wasi-libc (that
+# file says why), and NOT pruned. `wasm32-wasip2` and its `noeh` libc++ are what the link line needs
+# and what the run installer deletes. Where the pin is the C++ arm's, the devcontainer links the
+# template's wasi-sdk image here (scripts/ci/gg-image-toolchains.sh) and nothing is fetched.
 log "wasi-sdk $GG_CSHARP_WASI_SDK_VERSION, unpruned (gg's csharp guest links against its wasm32-wasip2 sysroot)"
 if [ -x "$WASI_SDK_DIR/bin/clang" ]; then
 	echo "wasi-sdk $GG_CSHARP_WASI_SDK_VERSION already installed at $WASI_SDK_DIR"
