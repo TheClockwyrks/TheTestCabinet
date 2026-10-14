@@ -472,6 +472,26 @@ function RungRow({
   );
 }
 
+/** How many of a climber's rungs an expanded card draws per page. */
+export const RUNGS_PER_PAGE = 5;
+
+/**
+ * The page of rungs an expanded card opens on: the one holding the rung the climber
+ * stands at (its current rung, or the one it failed, was blocked or was stopped at),
+ * so the rung the status pill names is on screen without paging. A completed climber,
+ * which stands at no rung, opens on the first page.
+ */
+export function openingRungPage(
+  climber: LadderClimber,
+  rungs: LadderProgressRung[],
+): number {
+  if (climber.status === "completed" || climber.currentRung == null) return 0;
+  const index = rungs.findIndex(
+    (rung) => rung.position === climber.currentRung,
+  );
+  return index < 0 ? 0 : Math.floor(index / RUNGS_PER_PAGE);
+}
+
 // One climber's card on the board. Its header is a grid of fixed slots: the identity,
 // and under it a line of the status, the rung track, and the rung count. The status
 // slot has one width whatever it says, from "Running rung 1" to "Blocked at rung 12:
@@ -481,6 +501,11 @@ function RungRow({
 // status change adds to a card; see `.climberBlocked`). Starts collapsed: the header
 // answers the dashboard's question, and the per-rung evidence is what you open to
 // look closer.
+//
+// Expanded, the rungs are drawn a page at a time: a climb of many rungs, each of which
+// opens into its runs, would otherwise push the next climber a screen away. Opening the
+// card turns to the page of the rung the climber stands at, and the page then stays
+// where the reader puts it while the climb moves on.
 export function ClimberRow({
   climber,
   rungs,
@@ -497,6 +522,17 @@ export function ClimberRow({
   onRetry?: (climber: LadderClimber) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [rungPage, setRungPage] = useState(0);
+  const toggle = () => {
+    if (!open) setRungPage(openingRungPage(climber, rungs));
+    setOpen(!open);
+  };
+  const rungPageCount = Math.max(1, Math.ceil(rungs.length / RUNGS_PER_PAGE));
+  const currentRungPage = Math.min(rungPage, rungPageCount - 1);
+  const shownRungs = rungs.slice(
+    currentRungPage * RUNGS_PER_PAGE,
+    (currentRungPage + 1) * RUNGS_PER_PAGE,
+  );
   const passed = climber.slots.filter((s) => s.status === "passed").length;
   const status = climberStatusLabel(climber, rungs.length, dispatch);
   const slotOf = (rung: LadderProgressRung) =>
@@ -527,7 +563,7 @@ export function ClimberRow({
           type="button"
           className={ladderStyles.climberToggle}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
+          onClick={toggle}
         >
           <span className={styles.twisty} aria-hidden>
             {open ? "▾" : "▸"}
@@ -555,10 +591,7 @@ export function ClimberRow({
         {/* Where the climber stands. A pointer shortcut for the toggle above, which is
             what a keyboard reaches; the track is drawn, not read, so it is hidden from
             assistive technology and its count is said in words beside it. */}
-        <div
-          className={ladderStyles.climberLine}
-          onClick={() => setOpen((v) => !v)}
-        >
+        <div className={ladderStyles.climberLine} onClick={toggle}>
           <span className={ladderStyles.climberStatusSlot}>
             <span
               className={`${ladderStyles.statusPill} ${statusClass(climber, dispatch) ?? ""}`}
@@ -610,20 +643,27 @@ export function ClimberRow({
       ))}
 
       {open && (
-        <ol className={ladderStyles.rungList}>
-          {rungs.map((rung) => {
-            const slot = slotOf(rung);
-            return (
-              <RungRow
-                key={rung.id}
-                rung={rung}
-                slot={slot}
-                climber={climber}
-                current={live && slot?.status === "running"}
-              />
-            );
-          })}
-        </ol>
+        <>
+          <ol className={ladderStyles.rungList}>
+            {shownRungs.map((rung) => {
+              const slot = slotOf(rung);
+              return (
+                <RungRow
+                  key={rung.id}
+                  rung={rung}
+                  slot={slot}
+                  climber={climber}
+                  current={live && slot?.status === "running"}
+                />
+              );
+            })}
+          </ol>
+          <Pagination
+            page={currentRungPage}
+            pageCount={rungPageCount}
+            onPageChange={setRungPage}
+          />
+        </>
       )}
     </section>
   );

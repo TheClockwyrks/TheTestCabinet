@@ -18,33 +18,34 @@
 //!    ladder's configured outer axis, and because `job.queue_seq` is monotonic and the
 //!    dispatcher claims in ascending order, emission order is execution order.
 //! 2. Skip cells already at their target, counting what exists and what is coming.
-//! 3. **Defer** cells whose harness is already at its parallelism cap — see
+//! 3. Skip cells whose harness has no free slot under its parallelism cap — see
 //!    [below](#harness-parallelism-comes-first).
-//! 4. Emit **whole** cells — all of a cell's missing repeats together — until the owner's
-//!    jobs in flight reach the limit (an unbounded limit is never reached, so every
-//!    missing cell is emitted).
-//! 5. Then make a second pass over the deferred cells, in their original order, emitting
-//!    until the limit is reached.
+//! 4. Emit each remaining cell's missing repeats until the owner's jobs in flight reach
+//!    the limit (an unbounded limit is never reached). A cell on an uncapped harness is
+//!    emitted **whole**; a cell on a capped harness is emitted up to that harness's free
+//!    slots, and the rest of it waits for a later pass.
 //!
 //! Step 4 deliberately overshoots by up to one cell. A cell's repeats are compared
 //! against each other, so splitting them across two passes (and therefore across
 //! whatever else the queue picked up in between) is worse than briefly running over the
-//! limit.
+//! limit. A capped harness splits them regardless: it runs no more of them at once than
+//! its cap allows, so queueing the rest early would only hold them `pending`.
 //!
 //! ## Harness parallelism comes first
 //!
 //! The queue will not start a run whose harness is already at its maximum parallelism
-//! (`harness_config.max_parallelism`). Ignoring that cap while filling the limit is how a
-//! plan starves itself: walking the cells in plain order spends the whole limit on the
-//! first harness it meets, and if that harness is capped at two, ten queued runs still
-//! produce two at a time while every other harness in the plan sits idle.
+//! (`harness_config.max_parallelism`). A run enqueued beyond that cap waits in `pending`,
+//! but it still holds a place under its owner's limit. Queueing a capped harness deeper
+//! than its cap is therefore how a plan starves itself: if that harness is capped at two,
+//! ten queued runs still produce two at a time while the limit they occupy keeps every
+//! other harness in the plan idle.
 //!
-//! So the first pass gives every harness with a free slot some work before any harness is
-//! queued deeper than it can run. Within a harness the caller's order is untouched; only
-//! the interleaving across harnesses changes, and the dispatcher already reorders exactly
-//! that way when it skips a capped job to claim a later claimable one. The second pass
-//! then fills whatever room is left with the deferred cells, so a plan whose harnesses
-//! are *all* capped still queues real depth.
+//! So a capped harness is only ever given as many runs as it has free slots, and each
+//! emitted run takes one. Its cells that find no slot are left for the launch pass a
+//! freed slot triggers, and the cells behind them on other harnesses take their place in
+//! the limit. Within a harness the caller's order is untouched; only the interleaving
+//! across harnesses changes, and the dispatcher already reorders exactly that way when it
+//! skips a capped job to claim a later claimable one.
 //!
 //! Nothing here reads the database. The caller gathers the counts, and the caller owns
 //! serializing passes per plan or ladder — this function is pure, so two concurrent
@@ -118,6 +119,11 @@ pub struct CellDemand {
     /// that shared entry is how the scheduler knows a second cell would queue behind the
     /// first. An index with no entry in the slice is treated as an uncapped harness.
     pub harness: usize,
+    /// Whether the queue runs this cell's runs one at a time: a game jam, whose entries by
+    /// one model are driven in turn. Such a cell takes at most one of its harness's slots
+    /// however many of its runs are queued, and none while one of them is already in
+    /// flight, since that run already holds the slot its successors will take.
+    pub serialized: bool,
 }
 
 impl CellDemand {
@@ -161,10 +167,12 @@ impl HarnessCapacity {
         max_parallel: None,
     };
 
-    /// Whether a run enqueued for this harness now would be claimable rather than
-    /// held back behind the cap. An unlimited harness always has room.
-    fn has_room(&self) -> bool {
-        self.max_parallel.is_none_or(|max| self.in_flight < max)
+    /// How many more runs enqueued for this harness now would be claimable rather than
+    /// held back behind the cap, or `None` for an unlimited harness, which always has
+    /// room.
+    fn free_slots(&self) -> Option<u32> {
+        self.max_parallel
+            .map(|max| max.saturating_sub(self.in_flight))
     }
 }
 
@@ -177,8 +185,8 @@ impl HarnessCapacity {
 pub struct CellLaunch {
     /// The position of the cell in the `cells` slice passed to [`launch_pass`].
     pub cell: usize,
-    /// How many runs to enqueue for it. Always the cell's whole shortfall — never
-    /// a partial cell — and never zero.
+    /// How many runs to enqueue for it. Never zero. The cell's whole shortfall on an
+    /// uncapped harness; on a capped one, at most the harness's free slots.
     pub runs: u32,
 }
 
@@ -187,9 +195,10 @@ pub struct CellLaunch {
 /// jobs are already in flight.
 ///
 /// `cells` must already be in the caller's intended execution order (the plan's or
-/// ladder's outer axis). The returned launches keep that order *within* a harness, but a
-/// cell whose harness is at its parallelism cap is deferred behind the cells that can
-/// start now — see the [module docs](self#harness-parallelism-comes-first).
+/// ladder's outer axis). The returned launches keep that order, but a capped harness is
+/// given no more runs than it has free slots, so a cell whose harness is full is left
+/// out and a cell whose harness is nearly full is launched in part — see the
+/// [module docs](self#harness-parallelism-comes-first).
 ///
 /// `harnesses` is indexed by [`CellDemand::harness`]; an index it does not cover is
 /// treated as uncapped, so a caller with no cap information at all may pass `&[]` and
@@ -211,44 +220,38 @@ pub fn launch_pass(
     in_flight: u32,
 ) -> Vec<CellLaunch> {
     let mut launches = Vec::new();
-    let mut launched = vec![false; cells.len()];
-    // A local copy, because emitting a cell fills its harness's slots for the rest
-    // of this decision just as surely as an already-queued job does.
+    // A local copy, because emitting a run fills its harness's slot for the rest of
+    // this decision just as surely as an already-queued job does.
     let mut capacity = harnesses.to_vec();
     let mut in_flight = in_flight;
 
-    // Pass one takes only cells that can start now; pass two picks up whatever it
-    // deferred, so the queue still ends up as deep as the limit allows.
-    for runnable_only in [true, false] {
-        for (cell, demand) in cells.iter().enumerate() {
-            // The limit check comes *before* emitting, never after: a cell is emitted
-            // whole once we decide to emit it at all, so the only place the total can be
-            // held down is at the boundary between cells.
-            if limit.is_full(in_flight) {
-                break;
-            }
-            if launched[cell] {
-                continue;
-            }
-            let runs = demand.missing();
-            // A satisfied cell costs nothing and takes no room — skip it and keep looking
-            // rather than stopping, so one finished case does not stall the cases behind
-            // it.
-            if runs == 0 {
-                continue;
-            }
-            let has_room = capacity
-                .get(demand.harness)
-                .is_none_or(HarnessCapacity::has_room);
-            if runnable_only && !has_room {
-                continue;
-            }
-            launched[cell] = true;
-            launches.push(CellLaunch { cell, runs });
-            in_flight = in_flight.saturating_add(runs);
-            if let Some(harness) = capacity.get_mut(demand.harness) {
-                harness.in_flight = harness.in_flight.saturating_add(runs);
-            }
+    for (cell, demand) in cells.iter().enumerate() {
+        // The limit check comes *before* emitting, never after: a cell is emitted as far
+        // as it goes once we decide to emit it at all, so the only place the total can be
+        // held down is at the boundary between cells.
+        if limit.is_full(in_flight) {
+            break;
+        }
+        // A satisfied cell costs nothing and takes no room — skip it and keep looking
+        // rather than stopping, so one finished case does not stall the cases behind it.
+        // A cell whose harness is full is skipped the same way, so the cells behind it on
+        // other harnesses get the room it would have wasted.
+        let free = capacity
+            .get(demand.harness)
+            .and_then(HarnessCapacity::free_slots);
+        let runs = free.map_or(demand.missing(), |free| demand.missing().min(free));
+        if runs == 0 {
+            continue;
+        }
+        launches.push(CellLaunch { cell, runs });
+        in_flight = in_flight.saturating_add(runs);
+        let takes = match (demand.serialized, demand.in_flight) {
+            (false, _) => runs,
+            (true, 0) => 1,
+            (true, _) => 0,
+        };
+        if let Some(harness) = capacity.get_mut(demand.harness) {
+            harness.in_flight = harness.in_flight.saturating_add(takes);
         }
     }
     launches
