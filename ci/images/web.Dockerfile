@@ -55,8 +55,11 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright
 # The PATH has to be complete here. A pipeline step reads no rc file, and
 # nothing reconstructs a PATH on its way into the job container, so anything a
 # gate calls is on this line or it does not exist. ~/.local/bin is where the
-# toolchain image links node, npm, npx, uv, pre-commit and kubectl.
-ENV PATH=/home/dev/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+# toolchain image links node, npm, npx, uv, pre-commit and kubectl, and
+# ~/.cargo/bin holds mold and the cc-mold driver the toolchain image names as
+# the linker of every glibc target, which a job here that compiles Rust with a
+# toolchain of its own links with as the rust image does.
+ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 # A step reaches the toolchain's directories without a copy of them in a layer
 # of this image: the account's home is opened to every user to enter and read,
