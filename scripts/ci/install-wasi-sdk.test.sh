@@ -85,11 +85,11 @@ mkdir -p "$repo/scripts/ci" "$repo/packages/gg-sandbox-cpp" "$tmp/bin" "$tmp/ser
 cp "$CI_DIR/install-wasi-sdk.sh" "$repo/scripts/ci/"
 fake_fetch "$repo"
 cat >"$repo/packages/gg-sandbox-cpp/cpp-version.sh" <<'EOF2'
-GG_WASI_SDK_VERSION="33.0"
+GG_WASI_SDK_VERSION="34.0"
 GG_CPP_TARGET="wasm32-wasip1"
 GG_CPP_STD="c++23"
 gg_wasi_sdk_platform() { echo "x86_64-linux"; }
-gg_wasi_sdk_url() { echo "https://example.com/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz"; }
+gg_wasi_sdk_url() { echo "https://example.com/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz"; }
 GG_WASI_SDK_DEFAULT_HOME="$HOME/.local/share/tcab/gg-wasi-sdk"
 EOF2
 
@@ -109,30 +109,32 @@ STUB
 chmod +x "$tmp/bin/ldd"
 
 # The release tarball: what is kept, and what the prune leaves behind.
-sdk="$tmp/build/wasi-sdk-33.0-x86_64-linux"
-mkdir -p "$sdk/bin" "$sdk/lib/clang/22/include" "$sdk/share/wasi-sysroot/include/c++/v1" \
+sdk="$tmp/build/wasi-sdk-34.0-x86_64-linux"
+mkdir -p "$sdk/bin" "$sdk/lib/clang/23/include" "$sdk/share/wasi-sysroot/include/c++/v1" \
 	"$sdk/share/wasi-sysroot/include/wasm32-wasip1" "$sdk/share/wasi-sysroot/include/wasm32-wasip2" \
-	"$sdk/share/wasi-sysroot/lib/wasm32-wasip1/llvm-lto" "$sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh" \
-	"$sdk/share/wasi-sysroot/lib/wasm32-wasip2"
-cat >"$sdk/bin/clang-22" <<'STUB'
+	"$sdk/share/wasi-sysroot/lib/wasm32-wasip1/llvm-lto" "$sdk/share/wasi-sysroot/lib/wasm32-wasip1/eh/llvm-lto" \
+	"$sdk/share/wasi-sysroot/lib/wasm32-wasip1/noeh/llvm-lto" "$sdk/share/wasi-sysroot/lib/wasm32-wasip2"
+cat >"$sdk/bin/clang-23" <<'STUB'
 #!/usr/bin/env bash
-case "$1" in --version) echo "clang version 22.1.0 (wasi-sdk)"; exit 0 ;; esac
+case "$1" in --version) echo "clang version 23.1.0 (wasi-sdk)"; exit 0 ;; esac
 echo "$(basename "$0") $*" >>"$STUB_LOG"
 while [[ $# -gt 0 ]]; do
 	[[ "$1" == -o ]] && printf 'wasm' >"$2"
 	shift
 done
 STUB
-chmod +x "$sdk/bin/clang-22"
-for file in bin/lld bin/clang.cfg bin/clang++.cfg bin/llvm-objdump lib/clang/22/include/stddef.h \
+chmod +x "$sdk/bin/clang-23"
+ln -s clang-23 "$sdk/bin/clang"
+for file in bin/lld bin/clang.cfg bin/clang++.cfg bin/llvm-objdump lib/clang/23/include/stddef.h \
 	share/wasi-sysroot/include/c++/v1/vector share/wasi-sysroot/include/wasm32-wasip1/stdio.h \
 	share/wasi-sysroot/include/wasm32-wasip2/stdio.h share/wasi-sysroot/lib/wasm32-wasip1/libc.a \
-	share/wasi-sysroot/lib/wasm32-wasip1/llvm-lto/libc.a share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a \
-	share/wasi-sysroot/lib/wasm32-wasip2/libc.a lib/libLLVM.so.22.1-wasi-sdk lib/libclang-cpp.so.22.1-wasi-sdk \
-	lib/libedit.so.0.0.72 lib/liblldb.so.22; do
+	share/wasi-sysroot/lib/wasm32-wasip1/llvm-lto/libc.a share/wasi-sysroot/lib/wasm32-wasip1/eh/libc++.a \
+	share/wasi-sysroot/lib/wasm32-wasip1/eh/llvm-lto/libc++.a share/wasi-sysroot/lib/wasm32-wasip1/noeh/libc++.a \
+	share/wasi-sysroot/lib/wasm32-wasip2/libc.a lib/libLLVM.so.23.1-wasi-sdk lib/libclang-cpp.so.23.1-wasi-sdk \
+	lib/libedit.so.0.0.76 lib/liblldb.so.23; do
 	printf 'x' >"$sdk/$file"
 done
-tar -C "$tmp/build" -czf "$tmp/server/wasi-sdk-33.0-x86_64-linux.tar.gz" wasi-sdk-33.0-x86_64-linux
+tar -C "$tmp/build" -czf "$tmp/server/wasi-sdk-34.0-x86_64-linux.tar.gz" wasi-sdk-34.0-x86_64-linux
 
 run() { # home [env...]
 	local home="$1"
@@ -148,19 +150,20 @@ home="$tmp/home"
 prefix="$home/.local/share/tcab/gg-wasi-sdk"
 out="$(run "$home")"
 check_equal "a fresh install succeeds" "0" "$?"
-check_contains "fetches the pinned release" "https://example.com/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz" \
+check_contains "fetches the pinned release" "https://example.com/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz" \
 	"$(head -1 "$tmp/calls.log")"
-for path in bin/clang-22 bin/lld bin/clang.cfg bin/clang++.cfg lib/clang/22/include/stddef.h \
+for path in bin/clang-23 bin/lld bin/clang.cfg bin/clang++.cfg lib/clang/23/include/stddef.h \
 	share/wasi-sysroot/include/c++/v1/vector share/wasi-sysroot/include/wasm32-wasip1/stdio.h \
-	share/wasi-sysroot/lib/wasm32-wasip1/libc.a lib/libLLVM.so.22.1-wasi-sdk lib/libclang-cpp.so.22.1-wasi-sdk \
-	lib/libedit.so.0.0.72; do
+	share/wasi-sysroot/lib/wasm32-wasip1/libc.a share/wasi-sysroot/lib/wasm32-wasip1/eh/libc++.a \
+	lib/libLLVM.so.23.1-wasi-sdk lib/libclang-cpp.so.23.1-wasi-sdk lib/libedit.so.0.0.76; do
 	check_exists "keeps $path" "$prefix/$path"
 done
 for path in bin/llvm-objdump share/wasi-sysroot/include/wasm32-wasip2 share/wasi-sysroot/lib/wasm32-wasip2 \
-	share/wasi-sysroot/lib/wasm32-wasip1/llvm-lto share/wasi-sysroot/lib/wasm32-wasip1/noeh lib/liblldb.so.22; do
+	share/wasi-sysroot/lib/wasm32-wasip1/llvm-lto share/wasi-sysroot/lib/wasm32-wasip1/eh/llvm-lto \
+	share/wasi-sysroot/lib/wasm32-wasip1/noeh lib/liblldb.so.23; do
 	check_absent "prunes $path" "$prefix/$path"
 done
-check_equal "clang is clang-22" "clang-22" "$(readlink "$prefix/bin/clang")"
+check_equal "clang is the release's clang-<major>" "clang-23" "$(readlink "$prefix/bin/clang")"
 check_equal "clang++ and clang-cpp are clang" "clang clang" \
 	"$(readlink "$prefix/bin/clang++") $(readlink "$prefix/bin/clang-cpp")"
 check_equal "wasm-ld is lld" "lld" "$(readlink "$prefix/bin/wasm-ld")"
@@ -171,24 +174,24 @@ compiles="$(grep '^clang' "$tmp/calls.log")"
 check_contains "smoke-compiles C for the target" "clang --target=wasm32-wasip1 -Os -c" "$compiles"
 check_contains "and C++ at the pinned standard, as a reactor" \
 	"clang++ --target=wasm32-wasip1 -std=c++23 -Os -fwasm-exceptions" "$compiles"
-check_equal "stamps the version" "33.0" "$(cat "$prefix/wasi-sdk-version")"
-check_absent "and deletes the staged archive" "$home/downloads/wasi-sdk-33.0-x86_64-linux.tar.gz"
-check_contains "reports the compiler" "clang version 22.1.0 (wasi-sdk)" "$out"
+check_equal "stamps the version" "34.0" "$(cat "$prefix/wasi-sdk-version")"
+check_absent "and deletes the staged archive" "$home/downloads/wasi-sdk-34.0-x86_64-linux.tar.gz"
+check_contains "reports the compiler" "clang version 23.1.0 (wasi-sdk)" "$out"
 
 out="$(run "$home")"
 check_equal "a second run succeeds" "0" "$?"
-check_contains "and leaves the install alone" "wasi-sdk 33.0 already installed at $prefix" "$out"
+check_contains "and leaves the install alone" "wasi-sdk 34.0 already installed at $prefix" "$out"
 check_equal "without fetching" "" "$(cat "$tmp/calls.log")"
 
 rm "$prefix/lib/libtinfo.so.6"
 out="$(run "$home")"
 check_equal "an install missing a vendored library is redone" "0" "$?"
-check_contains "from the release" "wasi-sdk-33.0-x86_64-linux.tar.gz" "$(cat "$tmp/calls.log")"
+check_contains "from the release" "wasi-sdk-34.0-x86_64-linux.tar.gz" "$(cat "$tmp/calls.log")"
 check_exists "and the library is back" "$prefix/lib/libtinfo.so.6"
 
 out="$(run "$tmp/dir-home" WASI_SDK_INSTALL_DIR="$tmp/opt/wasi-sdk")"
 check_equal "WASI_SDK_INSTALL_DIR is honoured" "0" "$?"
-check_exists "as the prefix" "$tmp/opt/wasi-sdk/bin/clang-22"
+check_exists "as the prefix" "$tmp/opt/wasi-sdk/bin/clang-23"
 
 out="$(run "$tmp/unresolved-home" STUB_LDD_UNRESOLVED=libgcc_s.so.1)"
 check_equal "a host library ldd cannot find fails" "1" "$?"
@@ -201,5 +204,17 @@ check_contains "naming it" "libz.so.1 => not found" "$out"
 check_absent "and stamps nothing" "$tmp/notfound-home/.local/share/tcab/gg-wasi-sdk/wasi-sdk-version"
 
 echo
+# A release whose `bin/clang` names no `clang-<major>` leaves no compiler to copy.
+odd="$tmp/build/odd/wasi-sdk-34.0-x86_64-linux"
+mkdir -p "$(dirname "$odd")"
+cp -a "$sdk" "$odd"
+ln -sfn llvm-objdump "$odd/bin/clang"
+mkdir -p "$tmp/odd-server"
+tar -C "$(dirname "$odd")" -czf "$tmp/odd-server/wasi-sdk-34.0-x86_64-linux.tar.gz" wasi-sdk-34.0-x86_64-linux
+out="$(run "$tmp/odd-home" STUB_SERVER="$tmp/odd-server")"
+check_equal "a release whose clang is not clang-<major> fails" "1" "$?"
+check_contains "naming what it links to" "bin/clang links to 'llvm-objdump', not a clang-<major>." "$out"
+check_absent "and stamps nothing" "$tmp/odd-home/.local/share/tcab/gg-wasi-sdk/wasi-sdk-version"
+
 echo "install-wasi-sdk.test.sh: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

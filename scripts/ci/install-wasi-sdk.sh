@@ -98,9 +98,22 @@ tar -xzf "$SDK_ARCHIVE" -C "$WORK/sdk" --strip-components=1
 
 SRC="$WORK/sdk"
 
+# The compiler's real binary, `clang-<major>`, which `bin/clang` links to. Its name moves with
+# every LLVM major a wasi-sdk release is cut from (34 is clang 23), so it is read out of the release
+# rather than written here, and a release whose `clang` names anything else stops the install
+# rather than leaving a tree with no compiler in it.
+CLANG_BIN="$(readlink "$SRC/bin/clang" || true)"
+case "$CLANG_BIN" in
+clang-[0-9]*) ;;
+*)
+	echo "error: wasi-sdk $GG_WASI_SDK_VERSION's bin/clang links to '$CLANG_BIN', not a clang-<major>." >&2
+	exit 1
+	;;
+esac
+
 # --- what is pruned, and why each is safe ------------------------------------
 # The turn path runs exactly two programs out of this tree: `clang++` (which is `clang`, which is
-# `clang-22`) and the `wasm-ld` it hands the link to. Everything below is a tool nothing on that
+# `$CLANG_BIN`) and the `wasm-ld` it hands the link to. Everything below is a tool nothing on that
 # path invokes.
 #
 # `lldb` (117 MB) — there is no debugger in a run container. `clang-tidy`,
@@ -125,18 +138,19 @@ SRC="$WORK/sdk"
 # check below compiles with it — a target changed without changing this line fails here, at
 # install time, rather than inside a run container.
 #
-# Two things inside the kept target are dropped with it. `llvm-lto` (5.7 MB) is the LTO plugin, and
+# Two things inside the kept target are dropped with it. `llvm-lto` (5.7 MB) is the LTO plugin,
+# which wasi-sdk 34 publishes beside the target's libraries and again under its `eh/`, and
 # nothing here links with `-flto`: a whole-program optimisation on the turn path would be seconds
 # of compile buying a program that runs for milliseconds nothing at all. `lib/<target>/noeh`
-# (27 MB) is the libc++ built WITHOUT exception support, and this arm compiles every translation
-# unit with `-fwasm-exceptions` — so the `eh` build beside it is the one every link resolves
+# (28 MB) is the libc++ built WITHOUT exception support, and this arm compiles every translation
+# unit with `-fwasm-exceptions` — so the `eh/` build beside it is the one every link resolves
 # against, and keeping both would be keeping a library no invocation can reach. Its HEADERS stay,
 # deliberately: clang picks between the two include trees by that same flag, and deleting the
 # unused half would turn a stray `-fno-exceptions` into "no such file" from inside libc++ rather
 # than into a link error naming the library.
 #
-# The two real binaries are `clang-22` and `lld`; every other name in `bin/` is a symlink to one
-# of them, and the name matters — `clang++` is how `clang-22` is told it is compiling C++, and
+# The two real binaries are `$CLANG_BIN` and `lld`; every other name in `bin/` is a symlink to
+# one of them, and the name matters — `clang++` is how clang is told it is compiling C++, and
 # `wasm-ld` is how `lld` is told which linker driver to be. So the symlinks are recreated rather
 # than copied, which is also what keeps a dangling link out of the tree.
 #
@@ -146,15 +160,15 @@ SRC="$WORK/sdk"
 #
 # An install that merged into whatever was there would keep a file a later prune stopped wanting,
 # and — because this is the tree whose binaries carry `RPATH=$ORIGIN/../lib` — it breaks outright:
-# the vendoring below resolves each soname by running `ldd` on the installed `clang-22`, so a `lib/`
+# the vendoring below resolves each soname by running `ldd` on the installed compiler, so a `lib/`
 # that already holds `libstdc++.so.6` makes `ldd` name the tree's OWN copy and the `cp` that follows
 # fails with "are the same file". That is not hypothetical. It is what a version bump has always
 # done to a warm tree, and adding `libtinfo.so.6` to the guard above put every machine installed
 # before it on the same path at its next reconcile.
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/lib" "$INSTALL_DIR/share"
-cp -a "$SRC/bin/clang-22" "$SRC/bin/lld" "$INSTALL_DIR/bin/"
-ln -sf clang-22 "$INSTALL_DIR/bin/clang"
+cp -a "$SRC/bin/$CLANG_BIN" "$SRC/bin/lld" "$INSTALL_DIR/bin/"
+ln -sf "$CLANG_BIN" "$INSTALL_DIR/bin/clang"
 ln -sf clang "$INSTALL_DIR/bin/clang++"
 ln -sf clang "$INSTALL_DIR/bin/clang-cpp"
 ln -sf lld "$INSTALL_DIR/bin/wasm-ld"
@@ -166,7 +180,8 @@ mkdir -p "$SYSROOT/include" "$SYSROOT/lib"
 cp -a "$SRC/share/wasi-sysroot/include/c++" "$SYSROOT/include/c++"
 cp -a "$SRC/share/wasi-sysroot/include/$GG_CPP_TARGET" "$SYSROOT/include/$GG_CPP_TARGET"
 cp -a "$SRC/share/wasi-sysroot/lib/$GG_CPP_TARGET" "$SYSROOT/lib/$GG_CPP_TARGET"
-rm -rf "$SYSROOT/lib/$GG_CPP_TARGET/llvm-lto" "$SYSROOT/lib/$GG_CPP_TARGET/noeh"
+rm -rf "$SYSROOT/lib/$GG_CPP_TARGET/llvm-lto" "$SYSROOT/lib/$GG_CPP_TARGET/eh/llvm-lto" \
+	"$SYSROOT/lib/$GG_CPP_TARGET/noeh"
 
 # The shared objects the two kept binaries load. `libLLVM` and `libclang-cpp` are the compiler and
 # the linker themselves — the `bin/` entries are thin drivers — and `libedit` is what `libLLVM`
@@ -188,7 +203,7 @@ done
 # `libtinfo.so.6` is the third, and it is here because THE CLOSURE IS WALKED RATHER THAN READ OFF
 # THE TWO BINARIES. It is a `DT_NEEDED` of no binary in `bin/`: it is what `libedit.so.0` needs,
 # one level further down, and `libedit` is copied out of the tarball above rather than resolved
-# from the machine — so a list written by reading `clang-22`'s own header would name the two GCC
+# from the machine — so a list written by reading the compiler's own header would name the two GCC
 # sonames and stop. Every run image happens to ship `libtinfo6` — both parents' `bash` depends on
 # it, Debian's and Ubuntu's alike — which is exactly the objection: a dependency satisfied by whatever a base
 # image happens to contain is not satisfied, it is a dependency that leaves the day an unrelated
@@ -210,7 +225,7 @@ done
 # file onto itself. The loop reads each name exactly once, so nothing it writes shadows a name it
 # has yet to read.
 for soname in libstdc++.so.6 libgcc_s.so.1 libtinfo.so.6; do
-	resolved="$(ldd "$INSTALL_DIR/bin/clang-22" | sed -n "s|^[[:space:]]*$soname => \\([^ ]*\\).*|\\1|p")"
+	resolved="$(ldd "$INSTALL_DIR/bin/$CLANG_BIN" | sed -n "s|^[[:space:]]*$soname => \\([^ ]*\\).*|\\1|p")"
 	if [ -z "$resolved" ] || [ ! -f "$resolved" ]; then
 		echo "error: could not find $soname to vendor beside the wasi-sdk compiler." >&2
 		echo "       install libstdc++6 and libtinfo6 on this machine and re-run." >&2
@@ -222,7 +237,7 @@ done
 # Nothing unresolved, checked rather than hoped for: an unresolved soname here is the failure that
 # would otherwise surface months later inside a run container, on the one image that did not
 # happen to ship it.
-for binary in "$INSTALL_DIR/bin/clang-22" "$INSTALL_DIR/bin/wasm-ld"; do
+for binary in "$INSTALL_DIR/bin/$CLANG_BIN" "$INSTALL_DIR/bin/wasm-ld"; do
 	if ldd "$binary" | grep -q 'not found'; then
 		echo "error: $binary has unresolved libraries:" >&2
 		ldd "$binary" | grep 'not found' >&2
