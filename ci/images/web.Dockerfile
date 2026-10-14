@@ -38,6 +38,15 @@ ENV HOME=/root \
 	USER=root \
 	LANG=C.UTF-8
 
+# Where the toolchain image installed Rust, named rather than left to HOME,
+# which is not the account's here. The cargo on the PATH below is rustup's
+# proxy, and a proxy run under a HOME holding no rustup settings answers that
+# no default toolchain is configured, so a gate or a shell test that runs cargo
+# in this image, such as one resolving a lock file, needs these as the rust
+# image sets them.
+ENV RUSTUP_HOME=/home/dev/.rustup \
+	CARGO_HOME=/home/dev/.cargo
+
 # Where uv keeps the tools it installed and the CPython it fetched for them,
 # which the toolchain image put under the account's home: pre-commit, and the
 # interpreter `uv run --project ci` resolves, so the gate runner's environment
@@ -57,14 +66,18 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright
 # gate calls is on this line or it does not exist. ~/.local/bin is where the
 # toolchain image links node, npm, npx, uv, pre-commit and kubectl, and
 # ~/.cargo/bin holds mold and the cc-mold driver the toolchain image names as
-# the linker of every glibc target, which a job here that compiles Rust with a
-# toolchain of its own links with as the rust image does.
+# the linker of every glibc target, which a job here that compiles Rust links
+# with as the rust image does, and rustup's cargo, which runs the toolchain
+# under RUSTUP_HOME above.
 ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 # A step reaches the toolchain's directories without a copy of them in a layer
 # of this image: the account's home is opened to every user to enter and read,
-# which a layer records without the files beneath it.
-RUN chmod o+rx /home/dev
+# and only the directories of the cargo and rustup homes are made writable, so
+# a step that runs cargo as another user can still materialize a component,
+# which a layer records without the files beneath them.
+RUN chmod o+rx /home/dev && \
+	find "$CARGO_HOME" "$RUSTUP_HOME" -type d -exec chmod a+w {} +
 
 # git refuses a repository owned by another uid, and running as root is not an
 # exemption. Every gate reaches git — the runner shells out to
