@@ -87,7 +87,13 @@ x-devcontainer-build-args: &devcontainer-build-args
   # bakes into the image with languages/gg/install.sh, are pinned elsewhere on
   # purpose: each arm's packages/gg-sandbox-*/<lang>-version.sh is the one pin
   # the pipeline, the run images and this image all install from, and the Rust
-  # arm's defers to rust-toolchain.toml. The project's other steps read no
+  # arm's defers to rust-toolchain.toml. Where an arm's toolchain is one of the
+  # language images named above, that step links the image's tree rather than
+  # downloading the arm, so the arm's pin is the version the image's tag names:
+  # the step fails when the image lacks it, and
+  # scripts/ci/gg-image-toolchains.test.sh fails the shell-tests gate when a tag
+  # here and a pin disagree. A template update that moves one of those images
+  # therefore moves the arm's pin with it. The project's other steps read no
   # argument: helm is pinned in tools/helm.sh, and the system packages
   # system/packages.sh installs are Ubuntu's own.
 

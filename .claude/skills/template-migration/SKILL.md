@@ -159,3 +159,19 @@ everywhere else.
   packages and musl target in a step of the project's own, and its
   `.dockerignore` and the image pipeline's path filter admit
   `.devcontainer/languages/rust/targets.sh`; keep all three.
+- The language toolchains gg's arms take from the template's images: the
+  project answers yes to `toolchain_wasm_components`, `toolchain_wasi_sdk`,
+  `toolchain_python`, `toolchain_jvm`, `toolchain_dotnet`, `toolchain_ruby`,
+  `toolchain_swift` and `toolchain_purescript`, and no to
+  `toolchain_rust_nightly` and `toolchain_ecmascript` (gg builds on the stable
+  toolchain, and its TypeScript and jco are the npm workspace's locks). The gg
+  step runs `scripts/ci/gg-image-toolchains.sh` before its installers, which
+  links each arm's default home to the image's tree, and that script is in the
+  slice's `scripts/ci` COPY. Each arm's pin under
+  `packages/gg-sandbox-*/<lang>-version.sh` (and componentize-py's in
+  `packages/gg-sandbox-python/build.sh`) is the version its image's tag names,
+  so an update that moves one of those images moves the pin, and what the pin
+  moves (a checker manifest, a test's text, a probe fixture), in the same
+  change. `scripts/ci/gg-image-toolchains.test.sh` fails the shell-tests gate
+  until they agree, and the image build fails on the link script if they do
+  not.

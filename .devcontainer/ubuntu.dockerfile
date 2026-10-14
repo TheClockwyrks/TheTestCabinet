@@ -172,8 +172,12 @@ RUN bash /tmp/scripts/languages/rust/targets.sh && rm -rf /tmp/scripts
 COPY --chown=dev:dev ./.devcontainer/tools/helm.sh /tmp/scripts/tools/
 RUN bash /tmp/scripts/tools/helm.sh && rm -rf /tmp/scripts
 
-# gg's eleven program-language toolchains and its C# guest's build toolchains:
-# about 3.4 GB, by far the largest thing in this image, and not optional.
+# gg's eleven program-language toolchains and its C# guest's build toolchains, which
+# are not optional. Most of them are the language images copied above, which
+# scripts/ci/gg-image-toolchains.sh links at the homes gg's installers check before
+# those installers run, so this layer fetches only what no image holds: TeaVM, the
+# build tools the arms' locks pin, the wasm adapter and wit-bindgen gg pins, the C#
+# guest's Mono pack and workload, and the crates and wheels the arms build offline.
 # crates/gg/build.rs reflects each arm's signature catalogue out of that arm's
 # own SDK with that arm's own documentation tool as a step of building the
 # crate, so a container without them cannot `cargo build --workspace` at all,
@@ -211,6 +215,7 @@ COPY --chown=dev:dev \
 	/tmp/scripts/languages/gg/
 COPY --chown=dev:dev \
 	./scripts/ci/install-*.sh \
+	./scripts/ci/gg-image-toolchains.sh \
 	./scripts/ci/tcab-lib.sh \
 	./scripts/ci/fetch.sh \
 	/tmp/scripts/gg-repo/scripts/ci/

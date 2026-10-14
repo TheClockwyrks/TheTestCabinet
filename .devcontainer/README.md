@@ -122,10 +122,11 @@ least often to what changes most often:
     installing a cluster's prerequisites from their charts. No CI image
     carries it, because no gate installs a chart.
   - `languages/gg/install.sh`: gg's eleven program-language toolchains and the
-    build toolchains of its C# guest, about 3.4 GB under `~/.local/share`,
-    installed by the repository's own installers from the pins beside each
-    arm. Building `crates/gg` reflects a signature catalogue out of every
-    arm's SDK, so without them `cargo build --workspace` fails. See
+    build toolchains of its C# guest, under `~/.local/share`, linked to the
+    language images above where those hold an arm and otherwise installed by
+    the repository's own installers from the pins beside each arm. Building
+    `crates/gg` reflects a signature catalogue out of every arm's SDK, so
+    without them `cargo build --workspace` fails. See
     [gg's toolchains](#ggs-toolchains).
 - The Claude Code and Codex CLIs, because a harness session runs inside the
   devcontainer of the workspace it belongs to, and both publish often, so their
@@ -314,31 +315,68 @@ of that arm's own SDK, with that arm's own documentation tool, on every build of
 the crate. The toolchains are therefore a prerequisite of building the
 workspace, and a prerequisite of working in the repository is a prerequisite of
 the image rather than an hour of downloads after the container is created.
-`languages/gg/install.sh` installs them in the image's last layer, and its
-header says why it delegates rather than installs:
+`languages/gg/install.sh` puts them in the image's last layer, and its header
+says why it delegates rather than installs.
 
-- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms, about 1.9 GB:
-  the pinned YARD on the image's `ruby`, the `wasm32` standard library, `purs`
-  and `esbuild`, a JDK with TeaVM and the Kotlin compiler, wasi-sdk, .NET with
-  Roslyn, the Swift toolchain, and the package-manager-delivered build tools
-  the arms' artifact builds resolve offline.
+Most of them come from the language images, which every workspace on a machine
+copies from the same layers rather than downloading for itself. The project
+answers yes to the template's `wasm_components`, `wasi_sdk`, `python`, `jvm`,
+`dotnet`, `ruby`, `swift` and `purescript` toolchains, and
+`scripts/ci/gg-image-toolchains.sh` runs first in the layer. It builds, at the
+default home each arm's installer checks, a small tree of links into the
+image's toolchain with the installer's version stamp beside it:
+
+| Arm | Default home | Linked to |
+| --- | --- | --- |
+| Swift | `~/.local/share/tcab/gg-swift` | the swift image's toolchain and its SDK for WebAssembly |
+| C++, and the ECMAScript guest | `~/.local/share/tcab/gg-wasi-sdk` | the wasi-sdk image's tree |
+| C# | `~/.local/share/tcab/gg-dotnet` | the dotnet image's SDK, its Roslyn and its reference assemblies |
+| C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK and the wasi-sdk image's tree, unpruned |
+| Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
+| Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
+
+`purs`, YARD (in `GEM_HOME`) and componentize-py are where the installers and
+gg already look, so the script only checks their versions. Then the two
+installers run, and each arm the images hold is already installed as far as
+they can tell:
+
+- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
+  it fetches what no language image holds: TeaVM's jars, `esbuild`, the
+  `wasm32` standard library where the toolchain image lacks it, the wasmtime
+  reactor adapter and the wit-bindgen release gg pins, and the
+  package-manager-delivered build tools the arms' artifact builds resolve
+  offline (spago's store, the npm tools, the opal gem, the Python arm's wheels
+  and the two Rust crate sets).
 - `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
-  guest needs and no run does, about 1.4 GB under `~/.local/share/tcab/gg-build`:
-  a whole .NET SDK and an unpruned wasi-sdk.
+  guest needs and no run does. In this image it fetches the Mono WASI runtime
+  pack and installs the `wasi-experimental` workload into the dotnet image's
+  SDK tree.
 
 They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
 and the driver image's gg stage run, so the one pinned list serves every surface
-that builds gg. Everything lands under the container user's home, which is
-where the reflectors look first and all that three of the arms can use, so the
-layer runs as that user and `"updateRemoteUserUID": false` in
-`devcontainer.json` is load-bearing: a uid rewrite at start would orphan it.
+that builds gg. Those surfaces copy no language image and run no link script, so
+there the installers download every arm as before. Everything lands under the
+container user's home, which is where the reflectors look first, so the layer
+runs as that user and `"updateRemoteUserUID": false` in `devcontainer.json` is
+load-bearing: a uid rewrite at start would orphan it.
+
+Each arm's pin stays in its `packages/gg-sandbox-*/<lang>-version.sh`, and has
+to be the version the image's tag in `docker-compose.yml` names. A pin the
+image does not hold fails the link script, and the image build with it, with
+the pin file and both versions named, rather than letting an installer
+download the arm into the image unnoticed. `scripts/ci/gg-image-toolchains.test.sh`
+reads the anchor's tags against the pins, so the same disagreement fails the
+`shell-tests` gate before an image is built. A template update that moves one
+of these images therefore moves the arm's pin in the same change.
 
 The layer is last, and its own, so a pin moving under `packages/`, an installer
 changing or a new arm arriving rebuilds it and nothing above it, and a failed
-download from one of its half-dozen upstreams is retried with everything else
-cached. Each installer checks what is there against its pin and touches no
-network when they match, so in a container built before a pin moved, running
-both by hand reconciles it without waiting for a rebuild:
+download from one of its upstreams is retried with everything else cached. Each
+installer checks what is there against its pin and touches no network when they
+match, so in a container built before a pin moved, running both by hand
+reconciles it without waiting for a rebuild. An arm whose pin moved past the
+image it came from is then downloaded into its default home, over the links,
+until the container is rebuilt on a template that holds it:
 
 ```sh
 scripts/ci/install-gg-toolchains.sh
