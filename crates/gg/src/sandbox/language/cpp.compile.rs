@@ -64,7 +64,7 @@
 //! program. An arm whose model cannot write `try` would be measuring gg's flag rather than the
 //! language, so this arm does not take that road. What it costs is measured rather than assumed:
 //!
-//! * clang 22 defaults `-fwasm-exceptions` to the **legacy** encoding, and wasmtime 45 refuses it
+//! * clang 23 defaults `-fwasm-exceptions` to the **legacy** encoding, and wasmtime 45 refuses it
 //!   outright — *legacy_exceptions feature required for try instruction*. `-mllvm
 //!   -wasm-use-legacy-eh=false` selects the standardised `try_table` form, which it accepts.
 //! * Accepting it needs `Config::wasm_exceptions(true)`, which wasmtime gates behind its `gc` build
@@ -343,7 +343,7 @@ const DEBUG_INFO: &str = "-g1";
 /// `packages/gg-sandbox-cpp/build.sh` — the prebuilt objects and the per-turn compile must agree.
 ///
 /// `-fwasm-exceptions` selects the wasm exception-handling proposal; `-wasm-use-legacy-eh=false`
-/// selects the **standardised** encoding, because clang 22 still defaults to the legacy `try`
+/// selects the **standardised** encoding, because clang 23 still defaults to the legacy `try`
 /// instruction and wasmtime 45 refuses that one while accepting `try_table`. Both were measured
 /// against the runtime gg actually links, not read from a compatibility table.
 const EXCEPTION_FLAGS: &[&str] = &["-fwasm-exceptions", "-mllvm", "-wasm-use-legacy-eh=false"];
@@ -384,6 +384,19 @@ fn shared_flags(home: &Path) -> Vec<String> {
         // change no verdict.
         format!("-ffile-prefix-map={}={TOOLCHAIN_PREFIX}", home.display()),
     ];
+    // And the tree the compiler actually runs from, where that is another one. A home whose `bin/`
+    // is a link into a toolchain kept elsewhere, as the devcontainer's is into the template's
+    // wasi-sdk image, is a real directory that `wasi_sdk_home` cannot resolve any further, while
+    // clang names its sysroot from its own binary's real path, so the rewrite above matches
+    // nothing it records.
+    if let Some(tree) = compiler_tree(home)
+        && tree != home
+    {
+        flags.push(format!(
+            "-ffile-prefix-map={}={TOOLCHAIN_PREFIX}",
+            tree.display()
+        ));
+    }
     flags.extend(EXCEPTION_FLAGS.iter().map(|flag| (*flag).to_string()));
     flags.push(HARDENING_FLAG.to_string());
     // Measured, not assumed: `-Oz` is ~270 ms a turn dearer end to end than `-O0` once the engine's
@@ -794,6 +807,14 @@ fn authored_files(modules: &[CodeModule]) -> Vec<String> {
             .map(|module| super::source::module_file(&module.name)),
     );
     files
+}
+
+/// The tree the compiler binary of `home` really sits in, every symlink resolved: the directory
+/// above the real binary's `bin/`, which is where clang finds its `.cfg` and so its sysroot. `None`
+/// when there is no compiler to resolve.
+pub(super) fn compiler_tree(home: &Path) -> Option<PathBuf> {
+    let binary = std::fs::canonicalize(clang(home)).ok()?;
+    Some(binary.parent()?.parent()?.to_path_buf())
 }
 
 /// The compiler binary inside a wasi-sdk tree. `clang++` rather than `clang`, because the name is
