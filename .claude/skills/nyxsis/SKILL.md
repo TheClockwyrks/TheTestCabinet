@@ -85,7 +85,7 @@ reclaim, a malformed one with the reason.
 
 A positive whole number of seconds bounding the devcontainer's build and start
 together, on a workspace's creation and on every rebuild. Where none is
-declared, or the value is malformed, the bound is 7200 seconds, and a malformed
+declared, or the value is malformed, the bound is 21600 seconds, and a malformed
 value is reported in the bring-up's output. A bring-up reaching its deadline
 fails at the stage it was in. Raise it when the image grows slower to build.
 

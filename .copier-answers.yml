@@ -4,7 +4,7 @@
 #
 # `_commit` is the template version the workspace was last generated or updated
 # against, and `_src_path` is the template repository it came from.
-_commit: v0.34.0
+_commit: v0.34.1-1-g666d21521bfb04c0902ba2fa922de9e96487c7dc
 _src_path: git@ssh.dev.azure.com:v3/genyume/nyxsis-template-k8s-standard/nyxsis-template-k8s-standard
 deployment: azure-k8s
 issues_format: files
@@ -14,3 +14,13 @@ project_name: The Test Cabinet
 server_name: backend
 server_serves_web: true
 tauri_desktop: false
+toolchain_dotnet: true
+toolchain_ecmascript: false
+toolchain_jvm: true
+toolchain_purescript: true
+toolchain_python: true
+toolchain_ruby: true
+toolchain_rust_nightly: false
+toolchain_swift: true
+toolchain_wasi_sdk: true
+toolchain_wasm_components: true

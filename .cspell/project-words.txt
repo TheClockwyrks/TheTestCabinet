@@ -223,6 +223,7 @@ colouring
 colours
 comborecipe
 comboupgrade
+componentizer
 conftest
 Consolas
 cooldown
@@ -632,6 +633,7 @@ Opencode
 opencode
 openrouter
 optimiser
+optout
 organisation
 organisation's
 Osize

@@ -245,12 +245,21 @@ stages:
           # crates moved under contracts/, which gave them and every crate above
           # them new artifact names; the v1 output plus the rebuild outgrew the
           # disk the cache save needs.
+          #
+          # The build output falls back one step further, to the newest entry
+          # for the OS whatever its toolchain file. That file's hash changes
+          # with any edit of it, a comment included, and a run that restored
+          # nothing compiles the whole workspace cold, which is more than the
+          # hosted agent's memory holds. Cargo revalidates what it restored by
+          # fingerprint and rebuilds only what the change invalidated: nothing
+          # for a comment, everything for a new compiler.
           - task: Cache@2
             displayName: Restore the build output
             inputs:
               key: 'cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
               restoreKeys: |
                 cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml
+                cargo-target | v2 | "$(Agent.OS)"
               path: target
 
           # The build output cache restores `target/` whole, the reports the
@@ -295,11 +304,19 @@ stages:
           # nextest's `ci` profile and leave its JUnit report there. The path
           # is relative to the checkout, which the gate finds for itself:
           # every gate enters the workspace root before it does anything else.
+          #
+          # The test binaries compile one crate at a time. The hosted agent's
+          # memory holds one test binary's compile but not two, and a cold run
+          # that compiled two crates' test binaries at once had rustc killed. The
+          # tests still run in parallel, because nextest's test threads are not
+          # cargo's build jobs, and a warm run recompiles few crates, so it
+          # loses little to the limit.
           - script: uv run --quiet --project ci gate run rust-test
             displayName: cargo nextest (workspace)
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/rust-test
+              CARGO_BUILD_JOBS: 1
 
           - task: PublishTestResults@2
             displayName: Publish the Rust test results

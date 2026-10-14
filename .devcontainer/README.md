@@ -73,6 +73,37 @@ take here:
   tests are driven against, and whose Chromium the case-harness suite, the
   validator's browser driver and the Rust suite's served validator-project
   tests launch. See [Browsers](#browsers).
+- The wasm-components image: wasmtime, wit-bindgen, wasm-tools and wac in
+  `~/.local/bin`, and the WASI preview 1 command adapter of that wasmtime
+  release, whose path the Dockerfile publishes as
+  `WASI_PREVIEW1_COMMAND_ADAPTER`. See
+  [The language toolchains](#the-language-toolchains).
+- The wasi-sdk image: the WASI SDK, whose prefix the Dockerfile publishes as
+  `WASI_SDK_PATH`, with its compilers linked into `~/.local/bin` as
+  `wasi-clang`, `wasi-clang++` and `wasi-wasm-ld`. See
+  [The language toolchains](#the-language-toolchains).
+- The python image: a pinned CPython, whose directory the Dockerfile
+  publishes as `PYTHON_BIN_DIR` at the front of the `PATH`, and
+  componentize-py. See [The language toolchains](#the-language-toolchains).
+- The jvm image: the Temurin JDK, which the Dockerfile publishes as
+  `JAVA_HOME`, Kotlin, Gradle, and Gradle's cache seeded for an offline build,
+  published as `GRADLE_USER_HOME`. See
+  [The language toolchains](#the-language-toolchains).
+- The dotnet image: the .NET SDK, which the Dockerfile publishes as
+  `DOTNET_ROOT`, and the local package feed its restores read, published as
+  `DOTNET_LOCAL_FEED`, with `DOTNET_CLI_TELEMETRY_OPTOUT` set. See
+  [The language toolchains](#the-language-toolchains).
+- The ruby image: the ruby.wasm builder and YARD, as gems in the tree the
+  Dockerfile publishes as `GEM_HOME`, whose bin directory is on the `PATH`,
+  and binaryen's `wasm-opt`. See
+  [The language toolchains](#the-language-toolchains).
+- The swift image: the Swift toolchain, whose bin directory the Dockerfile
+  puts on the `PATH`, with `swift` and `swiftc` linked into `~/.local/bin`,
+  and the Swift SDK for WebAssembly in SwiftPM's store. See
+  [The language toolchains](#the-language-toolchains).
+- The purescript image: the PureScript compiler, `purs`, and spago, each
+  linked into `~/.local/bin`. See
+  [The language toolchains](#the-language-toolchains).
 
 Then it runs only the steps the published images cannot hold, from what changes
 least often to what changes most often:
@@ -230,6 +261,50 @@ the browser provider.
 The `playwright` in `packages/case-harness` and `packages/browser-driver`
 follows the same tag, for the same reason: those launch the Chromium the image
 holds, and a different client version asks for a build that is not there.
+
+## The language toolchains
+
+Each language toolchain this project carries is an image the template
+publishes, which the Dockerfile copies over the toolchain image and follows
+with the `ENV` lines naming where it sits. The image holds the toolchain's
+files under the account's home alone, at the version the template pins, so
+updating the project to a new template version is what moves it. A machine
+pulls it once, and every workspace of every project there copies it from the
+same layers.
+
+The system half the toolchains link against, clang, cmake, Ruby and the
+libraries the Swift and .NET toolchains load, is the base image's whatever this
+project answers, and the toolchain image's stable Rust carries the
+`wasm32-unknown-unknown`, `wasm32-wasip1` and `wasm32-wasip2` targets.
+
+A toolchain is turned on or off by answering its question,
+`toolchain_<name>`, on a template update, such as
+`copier update --trust --data toolchain_swift=true`, and rebuilding the
+container, with **Rebuild Container** in the editor or
+`devcontainer up --remove-existing-container`.
+
+`WASI_PREVIEW1_COMMAND_ADAPTER` is the path of the WASI preview 1 command
+adapter of the wasmtime release the image holds, which a componentize step
+reads it from. The path names that release, so it moves with the template.
+
+`PYTHON_BIN_DIR` holds the pinned interpreter's three names and nothing else,
+and leads the `PATH`, so `python3` and `python` by name are the pin and the
+directory shadows no other command. The distribution's interpreter stays at
+`/usr/bin/python3` for anything that names it by path.
+
+`JAVA_HOME` names the jvm image's JDK, which exists on both architectures.
+`GRADLE_USER_HOME` is Gradle's own default, `~/.gradle`, published so that
+every build, a shell's and a pipeline step's alike, reads the seeded cache.
+
+`DOTNET_ROOT` is where the `dotnet` host finds its SDK, and
+`DOTNET_LOCAL_FEED` is the package folder a restore names as its only source,
+holding FSharp.Core, DocFX and FSharp.Formatting. On amd64 it holds the
+componentizer as well, whose compiler is published for x64 alone.
+`DOTNET_CLI_TELEMETRY_OPTOUT` keeps the CLI from sending telemetry.
+
+`GEM_HOME` is the tree RubyGems reads and installs into, under the account's
+home, so a `gem install` needs no `sudo`, and its bin directory, where a gem's
+executables land, is on the `PATH`.
 
 ## gg's toolchains
 
