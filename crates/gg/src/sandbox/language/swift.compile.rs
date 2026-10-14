@@ -763,6 +763,13 @@ fn invoke_swiftc(
                 // than when `run` is called.
                 .arg("-Xclang-linker")
                 .arg("-mexec-model=reactor")
+                // And no binaryen. clang runs `wasm-opt` over an optimised link's output whenever
+                // one is on `PATH`, and that pass drops the name section and the inlined frame
+                // that carries `Swift runtime failure: ...`, so a trap a model is shown would read
+                // `<wasm function 15>`. Whether a machine has one, as the dev container does from
+                // the template's ruby image, must not decide what a model reads.
+                .arg("-Xclang-linker")
+                .arg("--no-wasm-opt")
                 .arg("-Xlinker")
                 .arg("--gc-sections")
                 .arg("-o")

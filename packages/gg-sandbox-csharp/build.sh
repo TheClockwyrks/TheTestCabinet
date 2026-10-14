@@ -220,6 +220,10 @@ done
 # command with a `main`: gg calls `run`, nothing calls the guest's entry point, and there is no
 # `_start`.
 #
+# `--no-wasm-opt` because clang runs binaryen's `wasm-opt` over an optimised link whenever one is on
+# `PATH`, and the dev container has one from the template's ruby image. The component must be the
+# same whether or not the machine that built it does.
+#
 # ONE LINKER WARNING IS EXPECTED AND IS NOT SUPPRESSED. `wasm-ld` reports a signature mismatch
 # for `descriptor_table_get_ref` between `libSystem.Native.a(pal_networking.c.obj)` and this
 # wasi-sdk's `libc.a`: .NET's socket layer was built against an older wasi-libc where that
@@ -227,7 +231,7 @@ done
 # runtime references it — and it is left visible rather than silenced, because a warning that
 # stops being printed is a warning nobody re-reads when the pin moves.
 echo "==> linking"
-"$CLANG" --target="$GG_CSHARP_TARGET" -O2 -mexec-model=reactor \
+"$CLANG" --target="$GG_CSHARP_TARGET" -O2 -mexec-model=reactor --no-wasm-opt \
 	-o "$STAGE/csharp.component.wasm" \
 	"$STAGE/driver.o" "$STAGE/runtime.o" "$STAGE/pinvoke.o" "$STAGE/stubs.o" \
 	"$STAGE/synthetic-pthread.o" "$STAGE/sandbox.o" "$STAGE/shell.o" "$STAGE/bridge.o" "$STAGE/m2n.o" \
