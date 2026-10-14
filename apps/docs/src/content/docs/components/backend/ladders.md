@@ -419,6 +419,13 @@ reaches a terminal state, and once at startup. A job feeds every running
 dispatch that holds its cell, whoever launched the job, as it feeds every
 filling plan. A failed job that enqueued an automatic retry feeds nothing.
 
+A job of a harness with a parallelism cap that reaches a terminal state also
+feeds every running dispatch while that harness has a free slot, and so does a
+change to a harness's cap, because a launch pass enqueues for a capped harness
+only into its free slots. Dispatches and plans waiting on the same harness take
+turns at its freed slots, as described under
+[harness parallelism comes first](/components/backend/coverage/#harness-parallelism-comes-first).
+
 No launch pass runs between an attempt failing and its retry being enqueued. The
 retry is enqueued, and the attempt stamped with it, before the attempt becomes
 terminal, including an attempt that failed with no run at all. A pass therefore
