@@ -18,4 +18,4 @@
 # where the workspace lacks it, and forty zeros, which name no image, are what
 # a render writes.
 variables:
-  ciImageTag: b011d83c634eea6621502fef7dd7b8403e392d39
+  ciImageTag: af509db605fd49250ddd49aece1177ab9f5d69d1
