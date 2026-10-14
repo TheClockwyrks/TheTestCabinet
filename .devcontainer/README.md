@@ -331,7 +331,7 @@ image's toolchain with the installer's version stamp beside it:
 | Swift | `~/.local/share/tcab/gg-swift` | the swift image's toolchain and its SDK for WebAssembly |
 | C++, and the ECMAScript guest | `~/.local/share/tcab/gg-wasi-sdk` | the wasi-sdk image's tree |
 | C# | `~/.local/share/tcab/gg-dotnet` | the dotnet image's SDK, its Roslyn and its reference assemblies |
-| C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK and the wasi-sdk image's tree, unpruned |
+| C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK, unpruned |
 | Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
 | Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
 
@@ -349,8 +349,10 @@ they can tell:
   and the two Rust crate sets).
 - `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
   guest needs and no run does. In this image it fetches the Mono WASI runtime
-  pack and installs the `wasi-experimental` workload into the dotnet image's
-  SDK tree.
+  pack, installs the `wasi-experimental` workload into the dotnet image's SDK
+  tree, and fetches the wasi-sdk release the guest links with. That release is
+  pinned apart from the C++ arm's, to the one Mono's prebuilt runtime pack was
+  built against, and while the two differ no image holds it.
 
 They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
 and the driver image's gg stage run, so the one pinned list serves every surface

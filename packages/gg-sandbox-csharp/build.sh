@@ -79,10 +79,10 @@ if [ ! -x "$DOTNET_SDK_DIR/dotnet" ]; then
 fi
 
 if [ ! -x "$WASI_SDK_DIR/bin/wasm-component-ld" ]; then
-	echo "==> fetching the full wasi-sdk $GG_WASI_SDK_VERSION ($(gg_wasi_sdk_platform))"
+	echo "==> fetching the full wasi-sdk $GG_CSHARP_WASI_SDK_VERSION ($(gg_wasi_sdk_platform))"
 	rm -rf "$WASI_SDK_DIR"
 	mkdir -p "$WASI_SDK_DIR"
-	curl -sSfL "$(gg_wasi_sdk_url)" | tar -xz -C "$WASI_SDK_DIR" --strip-components=1
+	curl -sSfL "$(gg_csharp_wasi_sdk_url)" | tar -xz -C "$WASI_SDK_DIR" --strip-components=1
 fi
 
 # The Mono WASI runtime pack, straight off nuget rather than out of the SDK's `packs/`, so this

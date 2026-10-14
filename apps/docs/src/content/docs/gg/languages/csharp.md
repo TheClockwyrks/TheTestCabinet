@@ -99,7 +99,10 @@ preopens. Each assembly the manifest carries is registered as another such
 resource before any of them is loaded, which is how a reference the host's
 compiler resolved is resolved again in the guest. Building it needs a second,
 larger toolchain than a run does: a full .NET SDK and an unpruned wasi-sdk,
-installed by `scripts/ci/install-gg-build-toolchains.sh`.
+installed by `scripts/ci/install-gg-build-toolchains.sh`. That wasi-sdk is
+pinned on its own in `packages/gg-sandbox-csharp/csharp-version.sh`, to the
+release whose `wasm32-wasip2` libc the Mono runtime pack's prebuilt archives
+link against, and can trail the release the C++ arm compiles with.
 
 ## SDK and signature catalogue
 

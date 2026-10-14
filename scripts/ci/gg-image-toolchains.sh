@@ -18,7 +18,8 @@
 #   ~/.local/share/tcab/gg-dotnet     dotnet/ and roslyn/ linked to the dotnet image's SDK, ref/
 #                                     a directory of links to its reference assemblies, lib/ links
 #                                     to the system's ICU
-#   ~/.local/share/tcab/gg-build      the C# guest's unpruned .NET SDK and wasi-sdk, each linked whole
+#   ~/.local/share/tcab/gg-build      the C# guest's unpruned .NET SDK linked whole, and its
+#                                     wasi-sdk too where its pin is the C++ arm's
 #   ~/.local/share/gg-java/jdk        linked to the jvm image's JDK (TeaVM's libs/ stays the
 #                                     installer's)
 #   ~/.local/share/gg-kotlin/libs     a link per pinned compiler jar into the jvm image's Gradle cache
@@ -176,19 +177,28 @@ echo "$GG_DOTNET_SDK_VERSION" >"$GG_DOTNET_DEFAULT_HOME/dotnet-version"
 echo "linked $GG_DOTNET_DEFAULT_HOME -> $dotnet_tree"
 
 log "the C# guest's build toolchains from the dotnet and wasi-sdk images"
-# Both unpruned, as the guest's relink needs them. The wasi-experimental workload and the Mono
-# runtime pack are not in any image, so install-gg-build-toolchains.sh still installs them, the
-# workload into the SDK tree this links to.
-[ -d "$wasi_sdk_tree/share/wasi-sysroot/lib/$GG_CSHARP_TARGET/noeh" ] ||
-	mismatch packages/gg-sandbox-cpp/cpp-version.sh \
-		"wasi-sdk $GG_WASI_SDK_VERSION with a $GG_CSHARP_TARGET sysroot" \
-		"$(holding "$wasi_sdk_tree/share/wasi-sysroot/lib")"
+# Unpruned, as the guest's relink needs them. The wasi-experimental workload and the Mono runtime
+# pack are not in any image, so install-gg-build-toolchains.sh still installs them, the workload
+# into the SDK tree this links to.
 mkdir -p "$GG_BUILD_PREFIX"
-rm -rf "$GG_BUILD_PREFIX/dotnet-sdk-$GG_DOTNET_SDK_VERSION" "$GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full"
+rm -rf "$GG_BUILD_PREFIX/dotnet-sdk-$GG_DOTNET_SDK_VERSION"
 ln -s "$dotnet_tree" "$GG_BUILD_PREFIX/dotnet-sdk-$GG_DOTNET_SDK_VERSION"
-ln -s "$wasi_sdk_tree" "$GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full"
 echo "linked $GG_BUILD_PREFIX/dotnet-sdk-$GG_DOTNET_SDK_VERSION -> $dotnet_tree"
-echo "linked $GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full -> $wasi_sdk_tree"
+# The guest's wasi-sdk is pinned apart from the C++ arm's, to the release the Mono runtime pack
+# links against (see csharp-version.sh). Where the two agree the image's tree serves both; where
+# they do not, install-gg-build-toolchains.sh downloads the guest's into the build prefix.
+if [ "$GG_CSHARP_WASI_SDK_VERSION" = "$GG_WASI_SDK_VERSION" ]; then
+	[ -d "$wasi_sdk_tree/share/wasi-sysroot/lib/$GG_CSHARP_TARGET/noeh" ] ||
+		mismatch packages/gg-sandbox-csharp/csharp-version.sh \
+			"wasi-sdk $GG_CSHARP_WASI_SDK_VERSION with a $GG_CSHARP_TARGET sysroot" \
+			"$(holding "$wasi_sdk_tree/share/wasi-sysroot/lib")"
+	rm -rf "$GG_BUILD_PREFIX/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full"
+	ln -s "$wasi_sdk_tree" "$GG_BUILD_PREFIX/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full"
+	echo "linked $GG_BUILD_PREFIX/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full -> $wasi_sdk_tree"
+else
+	echo "the guest links with wasi-sdk $GG_CSHARP_WASI_SDK_VERSION, which no image holds;" \
+		"install-gg-build-toolchains.sh installs it"
+fi
 
 log "the JDK $JDK_VERSION from the jvm image"
 jdk_tree="$IMAGES/jdk/$JDK_VERSION"

@@ -117,7 +117,8 @@ pins() { # home
 			"$GG_DOTNET_RUNTIME_VERSION" "$GG_DOTNET_TFM" "$GG_DOTNET_MONO_WASI_PACK" "$GG_BUILD_PREFIX"
 		printf 'JDK=%q\nTEAVM=%q\nKOTLIN=%q\nPURS=%q\nESBUILD=%q\nYARD=%q\nCOMPONENTIZE=%q\n' "$JDK_VERSION" \
 			"$TEAVM_VERSION" "$KOTLIN_VERSION" "$PURS_VERSION" "$ESBUILD_VERSION" "$YARD_VERSION" "$componentize"
-		printf 'KOTLIN_JARS=%q\nWIT_BINDGEN=%q\n' "$KOTLIN_JARS" "$GG_WIT_BINDGEN_VERSION"
+		printf 'KOTLIN_JARS=%q\nWIT_BINDGEN=%q\nCSHARP_WASI_SDK=%q\n' "$KOTLIN_JARS" "$GG_WIT_BINDGEN_VERSION" \
+			"$GG_CSHARP_WASI_SDK_VERSION"
 	)
 }
 eval "$(pins "$tmp/home")"
@@ -260,7 +261,17 @@ done
 check_equal "and a stamp" "$DOTNET" "$(cat "$share/gg-dotnet/dotnet-version")"
 
 check_link "the guest's build SDK is the image's" "$share/gg-build/dotnet-sdk-$DOTNET" "$home/dotnet/$DOTNET"
-check_link "and its full wasi-sdk too" "$share/gg-build/wasi-sdk-$WASI_SDK-full" "$home/wasi-sdk/$WASI_SDK"
+if [ "$CSHARP_WASI_SDK" = "$WASI_SDK" ]; then
+	check_link "and its full wasi-sdk too" "$share/gg-build/wasi-sdk-$CSHARP_WASI_SDK-full" "$home/wasi-sdk/$WASI_SDK"
+else
+	check_contains "and leaves the guest's own wasi-sdk to the installer" \
+		"the guest links with wasi-sdk $CSHARP_WASI_SDK, which no image holds" "$out"
+	if [ -e "$share/gg-build/wasi-sdk-$CSHARP_WASI_SDK-full" ]; then
+		bad "linking nothing in its place" "expected no $share/gg-build/wasi-sdk-$CSHARP_WASI_SDK-full"
+	else
+		ok "linking nothing in its place"
+	fi
+fi
 
 check_link "the JDK is the image's" "$home/.local/share/gg-java/jdk" "$home/jdk/$JDK"
 kotlin_jars="$(find "$home/.local/share/gg-kotlin/libs" -name '*.jar' | wc -l | tr -d ' ')"
@@ -302,12 +313,18 @@ check_equal "install-purescript.sh succeeds" "0" "$?"
 check_contains "finding purs installed" "purs $PURS already installed" "$out"
 check_equal "without a download" "" "$(cat "$tmp/calls.log")"
 
-# The Mono runtime pack is the installer's own, and stands unpacked here.
+# The Mono runtime pack is the installer's own, and stands unpacked here, with the guest's wasi-sdk
+# where no image serves it.
 mkdir -p "$share/gg-build/$MONO_PACK.$RUNTIME/runtimes/wasi-wasm/native"
+if [ "$CSHARP_WASI_SDK" != "$WASI_SDK" ]; then
+	stub_bin "$share/gg-build/wasi-sdk-$CSHARP_WASI_SDK-full/bin/clang" "clang"
+	mkdir -p "$share/gg-build/wasi-sdk-$CSHARP_WASI_SDK-full/share/wasi-sysroot/lib/$CSHARP_TARGET/noeh"
+fi
 out="$(run "$home" install-gg-build-toolchains.sh)"
 check_equal "install-gg-build-toolchains.sh succeeds" "0" "$?"
 check_contains "finding the build SDK installed" ".NET SDK $DOTNET already installed at $share/gg-build/dotnet-sdk-$DOTNET" "$out"
-check_contains "and the full wasi-sdk" "wasi-sdk $WASI_SDK already installed at $share/gg-build/wasi-sdk-$WASI_SDK-full" "$out"
+check_contains "and the full wasi-sdk" \
+	"wasi-sdk $CSHARP_WASI_SDK already installed at $share/gg-build/wasi-sdk-$CSHARP_WASI_SDK-full" "$out"
 check_equal "without a download" "" "$(cat "$tmp/calls.log")"
 
 out="$(run "$home" gg-image-toolchains.sh)"

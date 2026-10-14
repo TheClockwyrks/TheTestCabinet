@@ -752,7 +752,9 @@ Kotlin compiler, `purs`, YARD and componentize-py. In the image's last layer,
 `scripts/ci/gg-image-toolchains.sh`, which links each of those arms' default
 homes to the image's tree with the installer's stamp, and then the two
 installers above, which find those arms installed and fetch only what no image
-holds. Each arm's pin is therefore the version its image's tag names, and a pin
+holds. One of those is the wasi-sdk the C# guest links with, which is pinned to
+the release Mono's prebuilt runtime pack was built against rather than to the
+C++ arm's, so while the two differ the second installer downloads it. Each arm's pin is therefore the version its image's tag names, and a pin
 the image does not hold fails the image build and the `shell-tests` gate rather
 than downloading the arm. The installers run against a slice of the repository
 the Dockerfile stages for them, so a pin moving under `packages/` or an
