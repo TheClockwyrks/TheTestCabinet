@@ -334,6 +334,7 @@ image's toolchain with the installer's version stamp beside it:
 | C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK, unpruned |
 | Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
 | Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
+| The C++, Swift and Rust arms' bindings | `~/.local/share/tcab/gg-wit-bindgen-<version>` | the wasm-components image's `wit-bindgen` |
 
 `purs`, YARD (in `GEM_HOME`) and componentize-py are where the installers and
 gg already look, so the script only checks their versions. Then the two
@@ -343,7 +344,8 @@ they can tell:
 - `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
   it fetches what no language image holds: TeaVM's jars, `esbuild`, the
   `wasm32` standard library where the toolchain image lacks it, the wasmtime
-  reactor adapter and the wit-bindgen release gg pins, and the
+  reactor adapter (the image holds the command adapter of another wasmtime
+  release), and the
   package-manager-delivered build tools the arms' artifact builds resolve
   offline (spago's store, the npm tools, the opal gem, the Python arm's wheels
   and the two Rust crate sets).

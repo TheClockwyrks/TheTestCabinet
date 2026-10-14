@@ -747,16 +747,17 @@ gg's installers and the asset tools need (`ruby`, `libicu-dev`, `ffmpeg`,
 `cmake`, `iproute2`, `lsof`, `procps`) and `wrangler`. Most of the toolchains
 are the template's language images, which every workspace on a machine copies
 from the same layers: the Swift toolchain, wasi-sdk, the .NET SDK, the JDK, the
-Kotlin compiler, `purs`, YARD and componentize-py. In the image's last layer,
-`.devcontainer/languages/gg/install.sh` first runs
+Kotlin compiler, `purs`, YARD, componentize-py and `wit-bindgen`. In the
+image's last layer, `.devcontainer/languages/gg/install.sh` first runs
 `scripts/ci/gg-image-toolchains.sh`, which links each of those arms' default
 homes to the image's tree with the installer's stamp, and then the two
 installers above, which find those arms installed and fetch only what no image
-holds. One of those is the wasi-sdk the C# guest links with, which is pinned to
-the release Mono's prebuilt runtime pack was built against rather than to the
-C++ arm's, so while the two differ the second installer downloads it. Each arm's pin is therefore the version its image's tag names, and a pin
+holds. Each arm's pin is therefore the version its image's tag names, and a pin
 the image does not hold fails the image build and the `shell-tests` gate rather
-than downloading the arm. The installers run against a slice of the repository
+than downloading the arm. The one exception is the wasi-sdk the C# guest links
+with, which is pinned to the release Mono's prebuilt runtime pack was built
+against rather than to the C++ arm's, so while the two differ the second
+installer downloads it. The installers run against a slice of the repository
 the Dockerfile stages for them, so a pin moving under `packages/` or an
 installer changing rebuilds that layer and nothing above it. A container built
 before a pin moved reconciles by running the two installers by hand; each

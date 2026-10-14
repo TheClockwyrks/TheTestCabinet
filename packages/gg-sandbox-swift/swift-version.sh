@@ -72,7 +72,7 @@ GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 # The version is the one the Rust arm pins, and deliberately the same one: both read the same
 # `crates/gg/wit`, and two generators of different vintages reading it would be two chances for
 # the wire to be described differently.
-GG_WIT_BINDGEN_VERSION="0.60.0"
+GG_WIT_BINDGEN_VERSION="0.62.0"
 
 # The **curated library set** a program may `import`, beyond what the Swift SDK for WebAssembly
 # already ships.

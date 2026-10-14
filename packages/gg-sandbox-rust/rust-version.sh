@@ -104,7 +104,7 @@ GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 # READ OUT OF `Cargo.lock` RATHER THAN PINNED HERE, and this arm is the one where that is not a
 # tidiness argument. Unlike the Swift, C++ and C# arms — which take the C generator and reach it
 # through a header, so nothing of `wit-bindgen`'s is linked into them — this arm's rlibs LINK the
-# `wit-bindgen` runtime crate, resolved by cargo from `Cargo.toml`'s `wit-bindgen = "0.60"` and
+# `wit-bindgen` runtime crate, resolved by cargo from `Cargo.toml`'s `wit-bindgen = "0.62"` and
 # recorded exactly in `Cargo.lock`. The generated `src/bindings.rs` and that runtime are two halves
 # of one release: the generator emits calls into `wit_bindgen::rt`, whose shape is not stable
 # across releases. So the CLI version was written down twice — a caret requirement cargo resolves,

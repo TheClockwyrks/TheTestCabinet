@@ -3,8 +3,8 @@
 # devcontainer, so the installers that run after it find every arm the images can serve already
 # installed and download only what no image holds.
 #
-# The devcontainer copies the template's swift, wasi-sdk, dotnet, jvm, ruby, python and purescript
-# images under the account's home (see "The language toolchains" in .devcontainer/README.md). Each
+# The devcontainer copies the template's swift, wasi-sdk, dotnet, jvm, ruby, python, purescript and
+# wasm-components images under the account's home (see "The language toolchains" in .devcontainer/README.md). Each
 # holds a toolchain at a version the template pins, in the template's layout, while gg's readers and
 # installers look for each arm at a default home of their own (`GG_*_DEFAULT_HOME` in each arm's
 # version file) in the layout scripts/ci/install-*.sh writes. So this builds, at each default home,
@@ -23,6 +23,8 @@
 #   ~/.local/share/gg-java/jdk        linked to the jvm image's JDK (TeaVM's libs/ stays the
 #                                     installer's)
 #   ~/.local/share/gg-kotlin/libs     a link per pinned compiler jar into the jvm image's Gradle cache
+#   ~/.local/share/tcab/gg-wit-bindgen-<version>
+#                                     a link to the wasm-components image's wit-bindgen
 #
 # Nothing is written into an image's own tree. `purs`, YARD and componentize-py need no link, since
 # the images put them where the installers and gg already look, so they are only checked.
@@ -254,5 +256,18 @@ case "$held" in
 *) mismatch packages/gg-sandbox-python/build.sh "componentize-py $COMPONENTIZE_VERSION" "$held" ;;
 esac
 echo "componentize-py $COMPONENTIZE_VERSION through uvx --offline"
+
+log "wit-bindgen $GG_WIT_BINDGEN_VERSION from the wasm-components image"
+# The C++, Swift and Rust arms generate their bindings with one release, which scripts/gg-downloads.sh
+# looks for in a directory of its own under the version and downloads when it is missing. The image
+# puts the CLI in ~/.local/bin, so that directory is a link to it.
+wit_bindgen="$IMAGES/.local/bin/wit-bindgen"
+held="$("$wit_bindgen" --version 2>/dev/null || echo "no wit-bindgen")"
+[[ " $held " == *" $GG_WIT_BINDGEN_VERSION "* ]] ||
+	mismatch packages/gg-sandbox-cpp/cpp-version.sh "wit-bindgen $GG_WIT_BINDGEN_VERSION" "$held"
+wit_bindgen_home="${GG_WIT_BINDGEN_INSTALL_DIR:-$HOME/.local/share/tcab}/gg-wit-bindgen-$GG_WIT_BINDGEN_VERSION"
+fresh "$wit_bindgen_home"
+ln -s "$wit_bindgen" "$wit_bindgen_home/wit-bindgen"
+echo "linked $wit_bindgen_home/wit-bindgen -> $wit_bindgen"
 
 log "gg's toolchains are linked to the template's images"

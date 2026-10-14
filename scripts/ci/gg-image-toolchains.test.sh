@@ -5,9 +5,10 @@
 # A copy of the script runs in a throwaway repository holding this repository's own version files,
 # with HOME in a temporary directory that stands in for the devcontainer's: small fake trees at
 # the paths the template's language images put theirs, named by the pins those version files hold.
-# `ldconfig`, `ruby` and `uvx` are stubbed, and so are the images' `purs` and `java`. The subject is
-# the tree of links and stamps it builds at each default home, that the installers run after it
-# against that tree say each arm is already installed and fetch nothing, that an image holding
+# `ldconfig`, `ruby` and `uvx` are stubbed, and so are the images' `purs`, `java` and
+# `wit-bindgen`. The subject is the tree of links and stamps it builds at each default home, that
+# the installers run after it against that tree say each arm is already installed and fetch
+# nothing, that an image holding
 # another version than the pin stops it with the pin file named, and that the image tags the
 # devcontainer's compose file names are the versions this repository's pins hold.
 #
@@ -165,7 +166,7 @@ stub_bin() { # path output
 }
 
 # The trees the template's language images put under the account's home, in their layouts.
-images() { # home [swift] [wasi-sdk] [dotnet] [jdk] [kotlin-version-in-cache]
+images() { # home [swift] [wasi-sdk] [dotnet] [jdk] [kotlin-version-in-cache] [wit-bindgen]
 	local home="$1" swift="${2:-$SWIFT}" wasi="${3:-$WASI_SDK}" dotnet="${4:-$DOTNET}" jdk="${5:-$JDK}"
 	local cache_kotlin="${6:-$KOTLIN}"
 	stub_bin "$home/swift/$swift/usr/bin/swiftc" "swiftc $swift"
@@ -210,6 +211,7 @@ images() { # home [swift] [wasi-sdk] [dotnet] [jdk] [kotlin-version-in-cache]
 	done <<<"$KOTLIN_JARS"
 
 	stub_bin "$home/.local/bin/purs" "$PURS"
+	stub_bin "$home/.local/bin/wit-bindgen" "wit-bindgen-cli ${7:-$WIT_BINDGEN} (0123abcd 2026-09-10)"
 	mkdir -p "$home/ruby/gems/gems/yard-$YARD" "$home/.local/share/uv/tools/componentize-py"
 	echo "$COMPONENTIZE" >"$home/.local/share/uv/tools/componentize-py/version"
 }
@@ -340,6 +342,9 @@ expect_mismatch() { # label home needle-file needle-version
 	check_contains "naming the pin file" "error: $3 pins" "$out"
 	check_contains "and what the image holds" "$4" "$out"
 }
+check_link "wit-bindgen's directory is a link to the image's" "$share/gg-wit-bindgen-$WIT_BINDGEN/wit-bindgen" \
+	"$home/.local/bin/wit-bindgen"
+
 images "$tmp/swift-home" 9.9.9
 expect_mismatch "a Swift image of another release" "$tmp/swift-home" packages/gg-sandbox-swift/swift-version.sh \
 	"but the template's image holds Swift 9.9.9."
@@ -362,6 +367,9 @@ images "$tmp/py-home"
 echo 0.0.1 >"$tmp/py-home/.local/share/uv/tools/componentize-py/version"
 expect_mismatch "a python image of another componentize-py" "$tmp/py-home" packages/gg-sandbox-python/build.sh \
 	"componentize-py $COMPONENTIZE"
+images "$tmp/wit-home" "$SWIFT" "$WASI_SDK" "$DOTNET" "$JDK" "$KOTLIN" 0.0.1
+expect_mismatch "a wasm-components image of another wit-bindgen" "$tmp/wit-home" \
+	packages/gg-sandbox-cpp/cpp-version.sh "wit-bindgen-cli 0.0.1"
 
 # The anchor's image tags name the versions this repository pins, ignoring the content digest every
 # language image tag ends in, so a template update that moves an image without the pin fails here
@@ -388,6 +396,7 @@ check_tag "and TeaVM $TEAVM" JVM_IMAGE "teavm-$TEAVM"
 check_tag "the ruby image is YARD $YARD" RUBY_IMAGE "yard-$YARD"
 check_tag "the python image is componentize-py $COMPONENTIZE" PYTHON_IMAGE "componentize-py-$COMPONENTIZE"
 check_tag "the purescript image is purs $PURS" PURESCRIPT_IMAGE "$PURS"
+check_tag "the wasm-components image is wit-bindgen $WIT_BINDGEN" WASM_COMPONENTS_IMAGE "wit-bindgen-$WIT_BINDGEN"
 
 echo "gg-image-toolchains.test.sh: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

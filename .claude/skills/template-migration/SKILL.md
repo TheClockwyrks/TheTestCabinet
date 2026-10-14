@@ -174,4 +174,12 @@ everywhere else.
   moves (a checker manifest, a test's text, a probe fixture), in the same
   change. `scripts/ci/gg-image-toolchains.test.sh` fails the shell-tests gate
   until they agree, and the image build fails on the link script if they do
-  not.
+  not. Two pins move differently. The wasm-components image's `wit-bindgen` is
+  pinned in the C++ and Swift version files and is read by the Rust arm from
+  `packages/gg-sandbox-rust/Cargo.lock`, so moving it also moves the
+  `wit-bindgen` requirement in that crate's and `packages/gg-sandbox/guest/`'s
+  `Cargo.toml` and relocks both with
+  `cargo update -p wit-bindgen --precise <version>`. The C# guest's wasi-sdk,
+  `GG_CSHARP_WASI_SDK_VERSION` in `packages/gg-sandbox-csharp/csharp-version.sh`,
+  follows the Mono runtime pack rather than the wasi-sdk image, and is
+  downloaded while the two differ.

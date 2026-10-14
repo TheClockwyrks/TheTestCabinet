@@ -18,7 +18,7 @@ crate-type = ["cdylib"]
 # an rlib whose metadata names a proc macro cannot be loaded on another architecture, which is the
 # whole reason it generates ahead of time. This crate ships a `.wasm`: the macro runs on the build
 # machine and leaves nothing behind in the artifact.
-wit-bindgen = "0.60"
+wit-bindgen = "0.62"
 
 # quickjs-ng. Chosen over the incumbent engine for one property the incumbent does not have at any
 # setting: it can evaluate a module. See `src/lib.rs`.

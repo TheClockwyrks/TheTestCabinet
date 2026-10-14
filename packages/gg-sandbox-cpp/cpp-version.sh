@@ -74,7 +74,7 @@ GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 # same generator and the same release the Swift arm uses, deliberately: all three read the same
 # `crates/gg/wit`, and two generators of different vintages reading it would be two chances for
 # the wire to be described differently.
-GG_WIT_BINDGEN_VERSION="0.60.0"
+GG_WIT_BINDGEN_VERSION="0.62.0"
 
 export GG_WASI_SDK_VERSION GG_WASI_SDK_TAG GG_CPP_TARGET GG_CPP_STD
 export GG_WASMTIME_ADAPTER_VERSION GG_WIT_BINDGEN_VERSION CPP_ROOT
