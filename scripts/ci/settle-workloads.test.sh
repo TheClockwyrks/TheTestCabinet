@@ -92,6 +92,7 @@ case "$1 $2" in
 		echo "$3 successfully rolled out"
 		;;
 	"rollout undo") echo "$3 rolled back" ;;
+	"get deployment") printf '%s' "${STUB_BACKEND_IMAGE:-}" ;;
 	"get deployment/"* | "get statefulset/"*) printf 'app.kubernetes.io/name=%s,' "${2#*/}" ;;
 	*) echo "kubectl stub: $*" ;;
 esac
@@ -196,6 +197,34 @@ check_contains "undoes the sibling the apply left unready" "rollout undo statefu
 check_contains "prints the recovery onto the previous commit" \
 	"scripts/ci/deploy-environment.sh staging ${PREVIOUS}" "$out"
 check_lacks "does not say fix forward" "Fix forward" "$out"
+check_contains "reads the image the backend names" \
+	"get deployment the-test-cabinet-backend --ignore-not-found -o jsonpath=" "$(cat "$repo/kubectl.log")"
+check_contains "says the commit is not deployed" "${COMMIT} is not deployed. The backend was rolled back by deploy.sh." "$out"
+
+echo "--- --after-failure with the backend rolled out ---"
+
+# A deployment whose backend became ready and whose post-deploy check failed: the
+# backend runs the commit, so nothing is to be put back.
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_PREVIOUS_COMMIT="$PREVIOUS" TCAB_PREVIOUS_BACKEND=the-test-cabinet-backend \
+	STUB_BACKEND_IMAGE="testcabinet.azurecr.io/the-test-cabinet-backend:${COMMIT}" -- --after-failure "$COMMIT")"
+status=$?
+check_equal "passes when every sibling is ready" 0 "$status"
+check_contains "says the commit is deployed" "${COMMIT} is deployed: the the-test-cabinet-backend of tcab-staging runs it" "$out"
+check_lacks "and not that it was rolled back" "is not deployed" "$out"
+check_lacks "names no earlier commit to go back to" "$PREVIOUS" "$out"
+check_contains "names the command that reads the ingest again" "scripts/ci/catalog-ingest.sh verify staging" "$out"
+check_contains "the command that ingests without a deployment" "scripts/reingest-cluster.sh --env staging" "$out"
+check_contains "and the command that rolls the environment again" "scripts/ci/deploy-environment.sh staging ${COMMIT}" "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" TCAB_PREVIOUS_COMMIT="$PREVIOUS" \
+	STUB_BACKEND_IMAGE="testcabinet.azurecr.io/the-test-cabinet-backend:${PREVIOUS}" -- --after-failure "$COMMIT")"
+check_contains "a backend on the earlier commit was rolled back" "${COMMIT} is not deployed." "$out"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" -- "$COMMIT")"
+check_lacks "the backend's image is read after a failure only" "get deployment the-test-cabinet-backend" "$(cat "$repo/kubectl.log")"
 
 echo "--- --after-failure with no earlier revision of the renamed backend ---"
 

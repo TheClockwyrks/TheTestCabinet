@@ -211,4 +211,40 @@ describe("runListAction", () => {
     };
     expect(runListAction(unknown, [tracked("a")])).toEqual({ kind: "ignore" });
   });
+
+  it("moves a finished run into storing with the driver's reason", () => {
+    expect(
+      runListAction(
+        {
+          ...event("state-changed", "storing"),
+          detail: "artifact service returned HTTP 503",
+        },
+        [tracked("a")],
+      ),
+    ).toEqual({
+      kind: "update",
+      runId: "a",
+      state: "storing",
+      detail: "artifact service returned HTTP 503",
+    });
+  });
+
+  it("drops the reason when a storing run leaves that phase", () => {
+    const storing: InProgressRun = {
+      ...tracked("a", "storing"),
+      detail: "artifact service returned HTTP 503",
+    };
+    expect(runListAction(event("state-changed", "running"), [storing])).toEqual(
+      { kind: "update", runId: "a", state: "running", detail: null },
+    );
+  });
+
+  it("seeds a storing run it has never seen with its reason", () => {
+    const action = runListAction(
+      { ...event("state-changed", "storing"), detail: "disk full" },
+      [],
+    ) as { kind: "track"; run: InProgressRun };
+    expect(action.run.state).toBe("storing");
+    expect(action.run.detail).toBe("disk full");
+  });
 });

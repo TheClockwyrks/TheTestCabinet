@@ -61,6 +61,19 @@ impl ApiError {
         Self::new(StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large", message)
     }
 
+    /// `422 Unprocessable Entity` with code `unprocessable` — an upload whose
+    /// bytes are not an archive the store can read. The request was understood
+    /// and the store is sound, so the same upload would be refused again.
+    pub fn unprocessable(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, "unprocessable", message)
+    }
+
+    /// `503 Service Unavailable` with code `unavailable` — the service cannot
+    /// answer right now for a reason of its own.
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, "unavailable", message)
+    }
+
     /// `500 Internal Server Error` with code `internal`.
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", message)

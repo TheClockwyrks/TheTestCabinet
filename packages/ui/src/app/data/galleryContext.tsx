@@ -33,6 +33,7 @@ import {
 } from "@clockwyrks/voxel-runtime";
 import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type {
+  ArtifactsReclaimed,
   ProgressCallback,
   ProofMedia,
   RunEventStreams,
@@ -127,6 +128,19 @@ export interface RunDetail {
    * serves published runs only, so it is always true there.
    */
   published: boolean;
+  /**
+   * Whether the artifact service holds the run's tree, which is what a publish
+   * releases. False means the service holds no tree, so an unpublished run cannot
+   * be published and the detail page says so. Null or absent while unknown,
+   * which is every run on a host that does not track it (the static site).
+   */
+  artifactsStored?: boolean | null;
+  /**
+   * When and why the backend removed the run's tree on purpose, or null or absent
+   * for a run it did not. An unpublished run this is set for cannot be published,
+   * and its page says its artifacts were removed after the retention period.
+   */
+  artifactsReclaimed?: ArtifactsReclaimed | null;
   /**
    * The run's showcase — the model's own presentation of the game it built (a
    * store-page description plus an ordered media carousel), lifted off the stored

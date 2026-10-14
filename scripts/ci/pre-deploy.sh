@@ -9,6 +9,10 @@
 # backend alone and waits on it alone; this does the rest a Test Cabinet deployment
 # needs first, in order:
 #
+#   0. Checks that the catalog the new backend's ingest sidecar will fetch can be
+#      fetched (scripts/ci/catalog-ingest.sh preflight): the overlay's catalog branch
+#      tip on the GitHub mirror and the cold-storage commit it pins. It fails here,
+#      before anything in the cluster is read or changed, when it cannot.
 #   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other seven images
 #      and the dispatcher's run-image environment, all at <commit>. deploy.sh lays
 #      its own layer over the overlay, so the render it applies carries them.
@@ -101,6 +105,8 @@ if [[ -n "$dry_run" ]]; then
 	echo "Would read the commit the backend runs, under its name or else its old one:"
 	echo "    $(read_command the-test-cabinet-backend)"
 	echo "    $(read_command tcab-backend)"
+	echo "Would check that the ${OVERLAY} catalog branch and its cold storage can be fetched:"
+	echo "    scripts/ci/catalog-ingest.sh preflight ${OVERLAY} ${COMMIT}"
 	echo "Would set THE_TEST_CABINET_ROLLOUT_TIMEOUT=${ROLLOUT_TIMEOUT}, TCAB_PREVIOUS_COMMIT and TCAB_PREVIOUS_BACKEND."
 	"${CI_DIR}/retire-legacy-backend.sh" --dry-run
 	exit 0
@@ -112,6 +118,11 @@ for tool in az jq kubectl; do
 		exit 1
 	fi
 done
+
+if ! "${CI_DIR}/catalog-ingest.sh" preflight "$OVERLAY" "$COMMIT"; then
+	echo "pre-deploy.sh: the ${OVERLAY} deploy preflight failed, above; nothing was applied." >&2
+	exit 1
+fi
 
 "${CI_DIR}/pin-images.sh" "$OVERLAY" "$COMMIT"
 

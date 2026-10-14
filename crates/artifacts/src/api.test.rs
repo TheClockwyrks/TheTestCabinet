@@ -124,6 +124,7 @@ async fn app_with_service_token(
         backend_url: Arc::new(stub_url.trim_end_matches('/').to_string()),
         http: reqwest::Client::new(),
         service_token: service_token.map(|t| Arc::new(t.to_string())),
+        capacity_reads: Arc::default(),
     };
     (router(state), store, dir)
 }
@@ -1086,4 +1087,641 @@ async fn listing_when_no_service_token_is_configured_is_disabled() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+fn presence_request(run_id: &str, token: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/artifacts"));
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+/// The JSON body of a response.
+async fn json_body(response: axum::response::Response) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+#[tokio::test]
+async fn presence_answers_stored_for_a_run_with_a_tree() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-here").await;
+
+    let response = app
+        .clone()
+        .oneshot(presence_request("run-here", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({ "id": "run-here", "stored": true })
+    );
+}
+
+#[tokio::test]
+async fn presence_answers_not_stored_as_a_body_rather_than_a_404() {
+    // The caller decides differently for "no tree" and "could not ask", so absence
+    // must not share a status with a route that is not there.
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    let response = app
+        .clone()
+        .oneshot(presence_request("run-gone", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({ "id": "run-gone", "stored": false })
+    );
+}
+
+#[tokio::test]
+async fn presence_requires_the_service_token() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    seed_upload(&app, "run-here").await;
+
+    for token in [None, Some("not-the-secret")] {
+        let response = app
+            .clone()
+            .oneshot(presence_request("run-here", token))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // With no token configured the route is closed to every caller.
+    let (app, _store, _dir) = app_with_service_token(&stub, None).await;
+    let response = app
+        .oneshot(presence_request("run-here", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn presence_refuses_an_unsafe_id() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    // A percent-encoded `../x` reaches the handler as one path parameter, and the
+    // store's own staging directory is not a run.
+    for id in ["..%2Fx", ".staging", ".."] {
+        let response = app
+            .clone()
+            .oneshot(presence_request(id, Some(SERVICE_TOKEN)))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "`{id}` is not a run id"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_failed_upload_leaves_the_run_reported_as_not_stored() {
+    // End to end through the route: an upload whose archive is cut short is
+    // refused as the upload's own, and the run is then neither present nor listed.
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    let mut truncated = build_tarball();
+    truncated.truncate(700);
+
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-cut/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(truncated))
+        .unwrap();
+    let status = app.clone().oneshot(upload).await.unwrap().status();
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let response = app
+        .clone()
+        .oneshot(presence_request("run-cut", Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(json_body(response).await["stored"], false);
+    assert!(store.list_runs().unwrap().is_empty());
+}
+
+fn capacity_request(token: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder().method("GET").uri("/capacity");
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn capacity_reports_the_free_and_total_bytes_of_the_store_volume() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    let response = app
+        .oneshot(capacity_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let object = body.as_object().unwrap();
+    assert_eq!(
+        object.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["freeBytes", "totalBytes", "writable"],
+        "the body is the two figures and the write check, with no error to report"
+    );
+    assert_eq!(body["writable"], true);
+    let free = body["freeBytes"].as_u64().unwrap();
+    let total = body["totalBytes"].as_u64().unwrap();
+    assert!(total > 0, "the store's filesystem has a size");
+    assert!(free <= total, "free space is a share of the total");
+}
+
+#[tokio::test]
+async fn capacity_reports_a_store_whose_staging_directory_cannot_be_made() {
+    let stub = spawn_stub().await;
+    let (app, _store, dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+    // The spool still takes a file, but nothing can be staged: where the staging
+    // directory goes there is a file. No permission bit is involved, so this
+    // holds for root as it does for any other user.
+    std::fs::write(dir.path().join(".staging"), b"").unwrap();
+
+    let response = app
+        .oneshot(capacity_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+
+    // A failed check is an answer, with the space still reported beside it.
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["totalBytes"].as_u64().unwrap() > 0);
+    assert_eq!(body["writable"], false);
+    let error = body["writeError"].as_str().unwrap();
+    assert!(!error.is_empty(), "the failure carries its cause");
+}
+
+#[tokio::test]
+async fn uploading_bytes_that_are_not_an_archive_is_refused_as_the_uploads_own() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+
+    // A header block that is not one. The store is sound, and the same bytes would
+    // be refused again, so the status is one the driver does not wait on.
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-1/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(vec![0x41u8; 2048]))
+        .unwrap();
+    let response = app.oneshot(upload).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(!store.has_run_tree("run-1").unwrap());
+}
+
+#[tokio::test]
+async fn capacity_requires_the_service_token() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
+
+    for token in [None, Some("not-the-secret")] {
+        let response = app.clone().oneshot(capacity_request(token)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // With no token configured the route is closed to every caller.
+    let (app, _store, _dir) = app_with_service_token(&stub, None).await;
+    let response = app
+        .oneshot(capacity_request(Some(SERVICE_TOKEN)))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+// --- The media listing ---------------------------------------------------------
+
+fn media_request(run_id: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/media"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_media_listing_names_the_validation_and_showcase_files_of_a_tree() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
+    let implementation = store.run_dir("run-here").join("implementation");
+    let validation = implementation.join(".vendor").join("validation");
+    let legacy = implementation.join(".tcab").join("validation");
+    let showcase = implementation.join("showcase");
+    for dir in [&validation, &legacy, &showcase] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::write(validation.join("img.abc.png"), b"png").unwrap();
+    std::fs::write(validation.join("serve__clip.webm"), b"webm").unwrap();
+    std::fs::write(legacy.join("img.old.png"), b"png").unwrap();
+    std::fs::write(legacy.join("img.abc.png"), b"png").unwrap();
+    std::fs::create_dir_all(validation.join("nested")).unwrap();
+    std::fs::write(showcase.join("cover.png"), b"png").unwrap();
+    std::fs::write(showcase.join("showcase.toml"), b"[showcase]").unwrap();
+
+    // No token: the route is as open as the media it lists.
+    let response = app
+        .clone()
+        .oneshot(media_request("run-here"))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({
+            "id": "run-here",
+            "stored": true,
+            "validation": ["img.abc.png", "img.old.png", "serve__clip.webm"],
+            "showcase": ["cover.png"],
+            "root": [],
+        }),
+        "each name once, from the current and the legacy directory, files only, \
+         and never the showcase manifest"
+    );
+    // Every listed name is one the media routes serve.
+    for uri in [
+        "/runs/run-here/validation/img.old.png",
+        "/runs/run-here/showcase/cover.png",
+    ] {
+        let served = app
+            .clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(served.status(), StatusCode::OK, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn the_media_listing_of_a_tree_with_no_media_is_empty_and_stored() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
+
+    let response = app
+        .clone()
+        .oneshot(media_request("run-here"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({
+            "id": "run-here",
+            "stored": true,
+            "validation": [],
+            "showcase": [],
+            "root": [],
+        })
+    );
+}
+
+#[tokio::test]
+async fn the_media_listing_answers_not_stored_as_a_body_rather_than_a_404() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let response = app
+        .clone()
+        .oneshot(media_request("run-gone"))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await,
+        serde_json::json!({
+            "id": "run-gone",
+            "stored": false,
+            "validation": [],
+            "showcase": [],
+            "root": [],
+        })
+    );
+}
+
+// --- The root files ------------------------------------------------------------
+
+fn root_request(run_id: &str, name: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(format!("/runs/{run_id}/root/{name}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+/// Give run `run_id`'s stored tree a record that names no controller, as every
+/// tree a driver uploads carries one.
+fn give_record(store: &crate::store::LocalFsStore, run_id: &str) {
+    std::fs::write(
+        store.run_dir(run_id).join("run-record.json"),
+        serde_json::to_vec(&serde_json::json!({ "id": run_id })).unwrap(),
+    )
+    .unwrap();
+}
+
+/// Give run `run_id`'s stored tree a record naming `module` as its controller.
+fn name_controller(store: &crate::store::LocalFsStore, run_id: &str, module: &str) {
+    let record = serde_json::json!({
+        "id": run_id,
+        "validation": { "adversarial": { "controllerModule": module } },
+    });
+    std::fs::write(
+        store.run_dir(run_id).join("run-record.json"),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn the_root_route_serves_its_files_as_stored_and_the_listing_names_them() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let run_dir = store.run_dir("run-here");
+    name_controller(&store, "run-here", "build/controller.wasm");
+    let build = run_dir.join("implementation").join("build");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(build.join("controller.wasm"), b"wasm:controller").unwrap();
+    std::fs::write(run_dir.join("code-analysis.json.gz"), b"gz:analysis").unwrap();
+    // A gg session record sits beside them and is not one of the route's files.
+    std::fs::write(run_dir.join("replay.json.gz"), b"gz:session").unwrap();
+
+    for (name, bytes) in [
+        ("controller.wasm", &b"wasm:controller"[..]),
+        ("code-analysis.json", b"gz:analysis"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(root_request("run-here", name))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{name}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], bytes, "{name}");
+    }
+
+    let listing = json_body(
+        app.clone()
+            .oneshot(media_request("run-here"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        listing["root"],
+        serde_json::json!(["controller.wasm", "code-analysis.json"])
+    );
+    let session = app
+        .clone()
+        .oneshot(root_request("run-here", "replay.json"))
+        .await
+        .unwrap();
+    assert_eq!(session.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_root_route_answers_404_for_a_missing_file_and_an_unknown_name() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
+    // A file the tree does hold, which no name of the route reaches.
+    std::fs::write(store.run_dir("run-here").join("secret.txt"), b"x").unwrap();
+
+    for (run, name) in [
+        ("run-here", "controller.wasm"),
+        ("run-here", "code-analysis.json"),
+        ("run-here", "secret.txt"),
+        ("run-here", "run-record.json"),
+        ("run-gone", "code-analysis.json"),
+    ] {
+        let response = app.clone().oneshot(root_request(run, name)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{run}/{name}");
+    }
+}
+
+#[tokio::test]
+async fn the_root_route_serves_no_controller_outside_the_implementation_directory() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    name_controller(&store, "run-here", "../run-record.json");
+
+    let response = app
+        .clone()
+        .oneshot(root_request("run-here", "controller.wasm"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let listing = json_body(
+        app.clone()
+            .oneshot(media_request("run-here"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(listing["root"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn the_root_route_answers_500_for_a_file_that_cannot_be_read() {
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    give_record(&store, "run-here");
+    // A directory where the file belongs: there, and not readable as a file.
+    std::fs::create_dir_all(store.run_dir("run-here").join("code-analysis.json.gz")).unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(root_request("run-here", "code-analysis.json"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn the_media_listing_refuses_an_unsafe_id() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let response = app.clone().oneshot(media_request("..")).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+fn media_get(run_id: &str, path: &str) -> Request<Body> {
+    Request::builder()
+        .uri(format!("/runs/{run_id}/{path}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_media_route_answers_404_only_when_the_tree_positively_lacks_the_file() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+
+    // A showcase and a validation file that are not there, and a run with no
+    // tree at all.
+    for (run, path) in [
+        ("run-here", "showcase/demo.png"),
+        ("run-here", "validation/img.abc.png"),
+        ("run-gone", "proof/title.png"),
+        ("run-gone", "asset/replay.json"),
+        ("run-gone", "showcase/demo.png"),
+    ] {
+        let response = app.clone().oneshot(media_get(run, path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{run}/{path}");
+    }
+}
+
+#[tokio::test]
+async fn a_media_route_answers_500_when_the_tree_cannot_say() {
+    // The backend's refresh records a file as existing nowhere on a 404 from
+    // these routes and the tree is then deleted, so no read that failed may
+    // answer one.
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+
+    // A record that does not parse: nothing says which files the run has.
+    seed_upload(&app, "run-damaged").await;
+    std::fs::write(
+        store.run_dir("run-damaged").join("run-record.json"),
+        b"{ nope",
+    )
+    .unwrap();
+    // A tree that lost its record.
+    seed_upload(&app, "run-recordless").await;
+    for run in ["run-damaged", "run-recordless"] {
+        for path in ["proof/title.png", "asset/replay.json", "asset/engine.wasm"] {
+            let response = app.clone().oneshot(media_get(run, path)).await.unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "{run}/{path}"
+            );
+        }
+    }
+
+    // A file that is there and cannot be read as one.
+    seed_upload(&app, "run-here").await;
+    let implementation = store.run_dir("run-here").join("implementation");
+    std::fs::create_dir_all(implementation.join("showcase/demo.png")).unwrap();
+    std::fs::create_dir_all(implementation.join(".vendor/validation/img.abc.png")).unwrap();
+    for path in ["showcase/demo.png", "validation/img.abc.png"] {
+        let response = app
+            .clone()
+            .oneshot(media_get("run-here", path))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{path}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_head_request_for_a_media_file_reports_its_length() {
+    // The backend asks for the length of a tree's copy to hold its own against.
+    let stub = spawn_stub().await;
+    let (app, store, _dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let showcase = store.run_dir("run-here").join("implementation/showcase");
+    std::fs::create_dir_all(&showcase).unwrap();
+    std::fs::write(showcase.join("demo.png"), b"twelve bytes").unwrap();
+
+    let head = Request::builder()
+        .method("HEAD")
+        .uri("/runs/run-here/showcase/demo.png")
+        .header("accept-encoding", "identity")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(head).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["content-length"], "12");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_link_out_of_the_tree_is_served_by_no_media_or_root_route() {
+    // A tree is unpacked with the links a model wrote. One that leads out of the
+    // tree names no file of the run, and its target must reach no reader: the
+    // backend publishes what these routes serve.
+    let stub = spawn_stub().await;
+    let (app, store, dir) = app(&stub).await;
+    seed_upload(&app, "run-here").await;
+    let secret = dir.path().join("secret.bin");
+    std::fs::write(&secret, b"not the run's").unwrap();
+    let run_dir = store.run_dir("run-here");
+    let implementation = run_dir.join("implementation");
+    name_controller(&store, "run-here", "build/controller.wasm");
+    std::fs::create_dir_all(implementation.join("build")).unwrap();
+    std::fs::create_dir_all(implementation.join("showcase")).unwrap();
+    std::fs::create_dir_all(implementation.join(".vendor/validation")).unwrap();
+    for link in [
+        implementation.join("build/controller.wasm"),
+        implementation.join("showcase/demo.png"),
+        implementation.join(".vendor/validation/img.abc.png"),
+        run_dir.join("code-analysis.json.gz"),
+    ] {
+        std::os::unix::fs::symlink(&secret, link).unwrap();
+    }
+
+    for path in [
+        "root/controller.wasm",
+        "root/code-analysis.json",
+        "showcase/demo.png",
+        "validation/img.abc.png",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(media_get("run-here", path))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    let listing = json_body(
+        app.clone()
+            .oneshot(media_request("run-here"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(listing["root"], serde_json::json!([]));
 }

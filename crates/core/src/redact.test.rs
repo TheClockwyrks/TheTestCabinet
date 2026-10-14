@@ -129,3 +129,26 @@ fn redacts_key_surrounded_by_multibyte_text() {
     let out = scrubber.scrub(&text);
     assert_eq!(out, format!("日本語{PLACEHOLDER}語"));
 }
+
+#[test]
+fn scrub_json_redacts_object_keys_and_loses_no_member() {
+    let scrubber = SecretScrubber::new();
+    let other = format!("{ANTHROPIC_KEY}x");
+    let mut arguments = serde_json::Map::new();
+    arguments.insert(ANTHROPIC_KEY.to_string(), serde_json::json!(1));
+    arguments.insert(other, serde_json::json!(2));
+    arguments.insert("clean".to_string(), serde_json::json!(3));
+    let mut value = serde_json::json!({ "arguments": arguments });
+    assert!(scrubber.scrub_json(&mut value));
+    let text = value.to_string();
+    assert!(!text.contains("sk-ant"), "{text}");
+    let members = value["arguments"].as_object().expect("an object");
+    // Both redacted keys survive, the later one numbered.
+    assert_eq!(members.len(), 3, "{text}");
+    assert!(members.contains_key(PLACEHOLDER), "{text}");
+    assert!(
+        members.contains_key(&format!("{PLACEHOLDER} (2)")),
+        "{text}"
+    );
+    assert_eq!(members["clean"], serde_json::json!(3));
+}

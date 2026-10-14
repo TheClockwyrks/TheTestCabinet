@@ -188,6 +188,29 @@ pub enum Error {
         seconds: u64,
     },
 
+    /// The connection carrying a harness session was lost while the harness was
+    /// still running, and the platform reported the runner as finished.
+    ///
+    /// The `tcab-session` wrapper writes a session's closing marker to the log
+    /// inside the container after the harness exits, whatever its exit status. A
+    /// session the log holds without that marker is one whose harness had not
+    /// exited when the runner's exec returned, so the log is believed over the
+    /// exit status the platform reported. The run is our infrastructure's failure:
+    /// its tree holds whatever the harness had written by then, which is not the
+    /// model's result and must not be validated or scored as one.
+    #[error(
+        "the connection to the {slug} harness session was lost before the harness exited \
+         ({unfinished} of {total} sessions in the container session log have no closing marker)"
+    )]
+    HarnessSessionLost {
+        /// The harness slug whose session was cut off.
+        slug: String,
+        /// How many sessions the log holds without their closing marker.
+        unfinished: usize,
+        /// How many sessions the log holds in all.
+        total: usize,
+    },
+
     /// The harness session ran past the run's maximum runtime and was stopped.
     ///
     /// Every run is bounded by a maximum wall-clock duration so a session can

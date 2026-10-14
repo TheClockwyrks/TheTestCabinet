@@ -1,0 +1,50 @@
+# Catalog ingest sidecar: the backend pod ingests its own catalog.
+#
+# It adds an `ingest` container to the backend Deployment that components/postgres
+# swaps in, so an overlay lists this component after that one. The base `tcab-ingest`
+# CronJob cannot do the job in a deployment like this:
+#   1. the base `tcab-default-deny-ingress` NetworkPolicy keeps a standalone pod from
+#      reaching tcab-backend:8787 (only the labeled runners are admitted); and
+#   2. it clones into its own emptyDir, while POST /ingest makes the backend read its
+#      own /state/checkout, another pod's volume.
+# The sidecar shares the backend's `state` volume, writes the checkout the backend
+# ingests, and calls POST /ingest over localhost, which is intra-pod traffic the
+# NetworkPolicy never sees and which needs no service token. An overlay that uses it
+# suspends the base CronJob.
+#
+# ingest.sh is the whole of what the container runs, and its header states the
+# contract: one forced ingest of the catalog branch tip per pod start, no ingest at
+# all when the checkout or its cold storage could not be brought to that tip, the
+# outcome recorded in a file the deploy reads, and a container that never exits.
+#
+# An overlay sets the two values that differ between environments on the `ingest`
+# container: TCAB_INGEST_BRANCH and TCAB_INGEST_ENV (its patch-backend-ingest.yaml).
+#
+# The container is also told the size the backend's state volume is declared at,
+# TCAB_INGEST_STATE_SIZE, which the replacement below copies from the
+# `tcab-backend-state` claim of components/postgres. ingest.sh uses it to tell a
+# volume whose resize has yet to land from one that is simply full.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+configMapGenerator:
+  # Name-suffixed with a content hash, so an edit of the script changes the pod
+  # template, and a rollout that is undone finds the script its revision ran.
+  - name: tcab-catalog-ingest
+    files:
+      - ingest.sh
+
+patches:
+  - path: sidecar.yaml
+
+replacements:
+  - source:
+      kind: PersistentVolumeClaim
+      name: tcab-backend-state
+      fieldPath: spec.resources.requests.storage
+    targets:
+      - select:
+          kind: Deployment
+          name: the-test-cabinet-backend
+        fieldPaths:
+          - spec.template.spec.containers.[name=ingest].env.[name=TCAB_INGEST_STATE_SIZE].value

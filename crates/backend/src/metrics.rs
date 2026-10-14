@@ -12,7 +12,7 @@ use std::time::Instant;
 use axum::extract::{MatchedPath, Request};
 use axum::middleware::Next;
 use axum::response::Response;
-use opentelemetry::metrics::{Counter, Histogram, Meter};
+use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter};
 use opentelemetry::{KeyValue, global};
 
 /// The meter every backend instrument is registered against.
@@ -42,6 +42,153 @@ static RUNS_PUBLISHED: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .with_description("Count of runs successfully published.")
         .build()
 });
+
+/// Free bytes on the artifact store's volume, as of the latest capacity reading.
+static ARTIFACTS_FREE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.artifacts.free_bytes")
+        .with_description("Free bytes on the artifact store's volume.")
+        .with_unit("By")
+        .build()
+});
+
+/// The size of the artifact store's volume, as of the latest capacity reading.
+static ARTIFACTS_TOTAL_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.artifacts.total_bytes")
+        .with_description("Size of the artifact store's volume.")
+        .with_unit("By")
+        .build()
+});
+
+/// Count of run trees the reclamation sweep deleted, by reason.
+static ARTIFACTS_RECLAIMED_TREES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("tcab.artifacts.reclaimed_trees")
+        .with_description("Count of run trees the reclamation sweep deleted.")
+        .build()
+});
+
+/// Published runs the latest snapshot refresh could not confirm the media of.
+static ARTIFACTS_UNCONFIRMED_RUNS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.artifacts.unconfirmed_runs")
+        .with_description(
+            "Published runs whose media the latest snapshot refresh could not confirm in the bucket.",
+        )
+        .build()
+});
+
+/// Bytes the tournaments' match replays hold in the backend store, as of the
+/// latest snapshot refresh.
+static TOURNAMENT_REPLAY_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.store.tournament_replay_bytes")
+        .with_description("Bytes held by tournament match replays in the backend store.")
+        .with_unit("By")
+        .build()
+});
+
+/// How many tournament match replay files the backend store holds, as of the
+/// latest snapshot refresh.
+static TOURNAMENT_REPLAY_FILES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.store.tournament_replay_files")
+        .with_description("Tournament match replay files in the backend store.")
+        .build()
+});
+
+/// Count of run folders the state reclamation sweep removed files from, by reason.
+static STATE_RECLAIMED_RUNS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("tcab.state.reclaimed_runs")
+        .with_description(
+            "Count of run folders in the backend store the state sweep removed files from.",
+        )
+        .build()
+});
+
+/// Bytes the state reclamation sweep removed from the backend store, by reason.
+static STATE_RECLAIMED_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("tcab.state.reclaimed_bytes")
+        .with_description("Bytes the state sweep removed from the backend store.")
+        .with_unit("By")
+        .build()
+});
+
+/// Run folders the latest state sweep pass kept because they hold something
+/// nothing accounts for.
+static STATE_KEPT_UNACCOUNTED: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.state.kept_unaccounted_runs")
+        .with_description(
+            "Run folders the latest state sweep pass kept for files no manifest accounts for.",
+        )
+        .build()
+});
+
+/// Free bytes on the backend's state volume, as of the latest reading.
+static STATE_FREE_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.state.free_bytes")
+        .with_description("Free bytes on the backend's state volume.")
+        .with_unit("By")
+        .build()
+});
+
+/// The size of the backend's state volume, as of the latest reading.
+static STATE_TOTAL_BYTES: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("tcab.state.total_bytes")
+        .with_description("Size of the backend's state volume.")
+        .with_unit("By")
+        .build()
+});
+
+/// Record one run folder the [state sweep](crate::state_reclaim) removed files
+/// from, and the bytes they held. `reason` is `orphan`, `published`, `failed` or
+/// `canceled`.
+pub fn record_state_reclaimed(reason: &'static str, bytes: u64) {
+    let reason = [KeyValue::new("reason", reason)];
+    STATE_RECLAIMED_RUNS.add(1, &reason);
+    STATE_RECLAIMED_BYTES.add(bytes, &reason);
+}
+
+/// Record how many run folders a state sweep pass kept for something nothing
+/// accounts for.
+pub fn record_state_kept_unaccounted(folders: u64) {
+    STATE_KEPT_UNACCOUNTED.record(folders, &[]);
+}
+
+/// Record one reading of the state volume's [free space](crate::capacity).
+pub fn record_state_volume(free_bytes: u64, total_bytes: u64) {
+    STATE_FREE_BYTES.record(free_bytes, &[]);
+    STATE_TOTAL_BYTES.record(total_bytes, &[]);
+}
+
+/// Record what the tournaments' match replays hold in the backend store.
+pub fn record_tournament_replays(usage: crate::store::StoreUsage) {
+    TOURNAMENT_REPLAY_BYTES.record(usage.bytes, &[]);
+    TOURNAMENT_REPLAY_FILES.record(usage.files, &[]);
+}
+
+/// Record one run tree the [reclamation sweep](crate::artifacts) deleted. `reason`
+/// is `orphan`, `published`, `failed` or `canceled`.
+pub fn record_tree_reclaimed(reason: &'static str) {
+    ARTIFACTS_RECLAIMED_TREES.add(1, &[KeyValue::new("reason", reason)]);
+}
+
+/// Record how many published runs a snapshot refresh left unconfirmed.
+pub fn record_unconfirmed_runs(runs: u64) {
+    ARTIFACTS_UNCONFIRMED_RUNS.record(runs, &[]);
+}
+
+/// Record one reading of the artifact store's [capacity](crate::capacity).
+pub fn record_artifact_capacity(free_bytes: u64, total_bytes: u64) {
+    ARTIFACTS_FREE_BYTES.record(free_bytes, &[]);
+    ARTIFACTS_TOTAL_BYTES.record(total_bytes, &[]);
+}
 
 /// Record one accepted publish. `newly_published` distinguishes a first publish
 /// from an idempotent re-publish so the two can be told apart downstream.

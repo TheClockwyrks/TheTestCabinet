@@ -65,11 +65,21 @@ interface AxisLabels {
    */
   yTickFormat?: string | ((value: number) => string);
   /**
-   * Degrees to rotate the x-axis tick labels (e.g. `-40`). Use it to fit many
-   * long category labels (model ids) along the axis without overlap; the chart
-   * widens its bottom margin to make room for the tilted text.
+   * Degrees to rotate the x-axis tick labels (e.g. `40`, down to the right). Use
+   * it to fit many long category labels (model ids) along the axis without
+   * overlap; the chart widens its bottom margin to make room for the tilted
+   * text, and asks for the width that gives each category a legible slot and
+   * the last labels their full length, which `Chart` scrolls to. A negative rotation tilts the labels down to the left, where a long
+   * first label has nowhere to go but past the chart's edge.
    */
   xTickRotate?: number;
+  /**
+   * The width of the container the chart is drawn into, as `Chart` hands it to
+   * a spec. With it a chart with tilted labels fills the container with its
+   * bars, and is made wider than the container, and scrolled, by whatever its
+   * last labels reach past the last bar.
+   */
+  availableWidth?: number;
   /**
    * The bar order along x, as the full list of category labels. Pass it whenever
    * the bars carry a meaningful order — Plot otherwise sorts the ordinal domain
@@ -79,15 +89,23 @@ interface AxisLabels {
   xDomain?: readonly string[];
 }
 
-// Geometry for sizing the bottom margin under rotated x labels. A monospace
-// glyph advances ~7.2px at the chart's 12px font, and a label tilted θ° occupies
-// `width · sin θ` of vertical space; AXIS_PAD covers the tick gap and a little
-// slack. We clamp so the common case gets comfortable room while a stray very
-// long label can't blow the chart's height out.
+// Geometry for making room for rotated x labels. A monospace glyph advances
+// ~7.2px at the chart's 12px font, and a label tilted θ° occupies
+// `width · sin θ` of vertical space and `width · cos θ` of horizontal space;
+// AXIS_PAD covers the tick gap and a little slack. We clamp so the common case
+// gets comfortable room while a stray very long label can't blow the chart's
+// height out.
 const GLYPH_PX = 7.2;
 const AXIS_PAD = 34;
 const MIN_ROTATED_MARGIN = 96;
 const MAX_ROTATED_MARGIN = 220;
+// The narrowest a category's slot along x is drawn when its labels are tilted.
+// Below this the tilted labels run into each other and the bars become slivers,
+// so a chart with more categories than fit is drawn wider than its container
+// and scrolled sideways (see `Chart`) rather than squeezed.
+export const MIN_ROTATED_SLOT = 32;
+// Plot's own default right margin, kept as the least a chart gets.
+const DEFAULT_RIGHT_MARGIN = 20;
 
 // The bottom margin needed to fit the longest tilted category label without
 // clipping it, given the rotation in degrees. Sized to the longest label so a
@@ -103,6 +121,62 @@ function rotatedBottomMargin(
     MAX_ROTATED_MARGIN,
     Math.max(MIN_ROTATED_MARGIN, Math.ceil(height + AXIS_PAD)),
   );
+}
+
+// The layout a chart with tilted x labels takes, for the categories `order`
+// names left to right: the bottom margin the labels need, the right margin the
+// last of them need when they tilt down to the right (a positive rotation, which
+// Plot anchors at the tick), and the `width` the chart is to be drawn at.
+//
+// The bars always fill the container: the plot area is what the container
+// leaves after the left margin and Plot's own right margin, `available` being
+// the container's width, and never less than a slot of `MIN_ROTATED_SLOT` per
+// category. A label starts under the middle of its own slot and extends
+// `chars · glyph · cos θ` to the right, over the slots after it. Whatever
+// reaches past the last slot is given to the right margin, which makes the
+// chart that much wider than its container instead of narrowing the bars to
+// keep the label in view. `Chart` draws the chart at this width and lets the
+// container scroll sideways to it, so both a chart with too many bars and one
+// whose last labels run off the edge are scrolled, and neither is squeezed.
+//
+// Without `available` the layout is that of the narrowest chart, a least slot
+// per category.
+function rotatedAxisLayout(
+  order: readonly string[],
+  rotateDeg: number,
+  marginLeft: number,
+  available: number | undefined,
+): Pick<PlotOptions, "marginBottom" | "marginRight" | "width"> {
+  const marginBottom = rotatedBottomMargin(order, rotateDeg);
+  const n = order.length;
+  const plotArea = Math.max(
+    n * MIN_ROTATED_SLOT,
+    (available ?? 0) - marginLeft - DEFAULT_RIGHT_MARGIN,
+  );
+  const slot = n > 0 ? plotArea / n : 0;
+  const cos = Math.cos((rotateDeg * Math.PI) / 180);
+  const overhang =
+    rotateDeg > 0
+      ? order.reduce((widest, label, index) => {
+          const room = (n - 1 - index + 0.5) * slot;
+          return Math.max(widest, label.length * GLYPH_PX * cos - room);
+        }, 0)
+      : 0;
+  const marginRight = Math.max(DEFAULT_RIGHT_MARGIN, Math.ceil(overhang));
+  return {
+    marginBottom,
+    marginRight,
+    width: marginLeft + plotArea + marginRight,
+  };
+}
+
+// The categories of an ordinal axis left to right: the stated domain, or the
+// sorted distinct labels Plot would infer.
+function axisOrder(
+  labels: readonly string[],
+  domain: readonly string[] | undefined,
+): readonly string[] {
+  return domain ?? [...new Set(labels)].sort();
 }
 
 // Both the tooltip and the hover highlight select the bar under the pointer by
@@ -182,15 +256,19 @@ export function barChart(
           ...d.distribution!,
         }))
       : null;
+  const base = basePlotOptions(palette);
   return {
-    ...basePlotOptions(palette),
+    ...base,
     ...(labels.xTickRotate
-      ? {
-          marginBottom: rotatedBottomMargin(
+      ? rotatedAxisLayout(
+          axisOrder(
             data.map((d) => d.label),
-            labels.xTickRotate,
+            labels.xDomain,
           ),
-        }
+          labels.xTickRotate,
+          Number(base.marginLeft),
+          labels.availableWidth,
+        )
       : {}),
     x: {
       label: labels.x ?? null,
@@ -350,6 +428,13 @@ interface StackedAxisLabels {
   yTickFormat?: string | ((value: number) => string);
   xTickRotate?: number;
   /**
+   * The width of the container the chart is drawn into, as `Chart` hands it to
+   * a spec. With it a chart with tilted labels fills the container with its
+   * bars, and is made wider than the container, and scrolled, by whatever its
+   * last labels reach past the last bar.
+   */
+  availableWidth?: number;
+  /**
    * The bar order along x, as the full list of group names. Pass it whenever the
    * groups have a meaningful order that is not their sorted order — Plot sorts an
    * ordinal domain it infers, which puts `"100"` before `"70"` and silently
@@ -379,15 +464,19 @@ export function stackedBarChart(
   // Fixes the stacking order (first series at the baseline) and the legend.
   const order = series.map((s) => s.name);
   const hasTips = data.some((d) => d.title != null);
+  const base = basePlotOptions(palette);
   return {
-    ...basePlotOptions(palette),
+    ...base,
     ...(labels.xTickRotate
-      ? {
-          marginBottom: rotatedBottomMargin(
+      ? rotatedAxisLayout(
+          axisOrder(
             data.map((d) => d.group),
-            labels.xTickRotate,
+            labels.xDomain,
           ),
-        }
+          labels.xTickRotate,
+          Number(base.marginLeft),
+          labels.availableWidth,
+        )
       : {}),
     x: {
       label: null,
@@ -1135,10 +1224,16 @@ export function scatterChart(
   });
   const hasLinks = dots.some((d) => d.href != null);
 
+  const base = basePlotOptions(palette);
   return {
-    ...basePlotOptions(palette),
+    ...base,
     ...(labels.xTickRotate
-      ? { marginBottom: rotatedBottomMargin(order, labels.xTickRotate) }
+      ? rotatedAxisLayout(
+          order,
+          labels.xTickRotate,
+          Number(base.marginLeft),
+          labels.availableWidth,
+        )
       : {}),
     x: {
       label: labels.x ?? null,

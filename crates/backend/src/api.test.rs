@@ -166,10 +166,7 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         None,
         config.artifacts_internal_url.clone(),
         Arc::clone(&auth),
-        crate::publisher::PublisherTiming {
-            coalesce: config.coalesce,
-            snapshot_retention: config.snapshot_retention,
-        },
+        config.publisher_timing(),
     );
     let state = AppState {
         db: Arc::clone(&db),
@@ -178,10 +175,12 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         publisher,
         auth,
         relay: Relay::new(),
+        capacity: crate::capacity::CapacityMonitor::unmonitored(config.artifact_capacity),
         publish_relay: PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
         prices,
+        run_files: None,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     Harness {

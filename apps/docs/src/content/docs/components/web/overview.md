@@ -135,6 +135,64 @@ engine](/components/core/validation/). A review records one run-wide aesthetic
 tier, a writeup, and a verdict for each point of that checklist. Publish is
 offered whether or not a review exists.
 
+A run whose [artifact tree is not
+stored](/components/backend/overview/#artifact-presence) cannot be released. The
+run listings mark such a row while it is unpublished, and the run's page states
+it in place of the publish control, so an operator sees a lost tree where the
+publish would have been offered.
+
+A run's page offers one download, and what it downloads follows the run's
+state:
+
+| Run                                                                                    | Download                                                      |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Unpublished, with its tree stored or unknown                                           | The whole stored tree, from the artifact service              |
+| Published, with a source repository on GitHub                                          | The repository's released branch as a zip archive from GitHub |
+| Published, with a source repository elsewhere                                          | The repository's page                                         |
+| Published, with no source repository, its tree stored or unknown                       | The whole stored tree, from the artifact service              |
+| Its tree [reclaimed](/components/backend/overview/#artifact-reclamation) or not stored | None                                                          |
+
+A release pushes a run's source to the `main` branch of its repository, so the
+zip archive is `<repository>/archive/refs/heads/main.zip`. A published run
+carries no marker for a reclaimed tree: its release holds the run's source and
+its media, which is what a published run is read for. The tree's logs and its
+build directory are not part of a release and go with the tree, and a published
+run with no source repository, such as an asset-generation run, has no download
+once its tree is reclaimed. An unpublished run whose tree was reclaimed keeps
+the plain
+unpublished marker, whose tooltip says that its artifacts were removed after the
+retention period.
+
+Every page of the console carries a notice while the
+[artifact store](/components/backend/overview/#artifact-capacity) needs
+attention, kept current by the console stream. It reads "Artifact storage is
+running low" while the state is `low`. While the queue is on hold it reads "New
+runs are on hold" with the condition holding it: the storage is full, the
+artifact service cannot be reached, the artifact store cannot be written to,
+finished runs are waiting to store their artifacts, the store is being
+checked after failed uploads, the backend's own
+[state volume](/components/backend/overview/#low-space) is nearly full, or
+[publishing is failing](/components/backend/overview/#publish-failures). The
+state volume's notice names it as the backend's storage, apart from the
+artifact store, and reads "Backend storage is running low" while that volume is
+`low` and no other notice applies. The
+publishing notice says how many runs in a row could not be published, that
+publishing is retried automatically, and that queued runs start once a publish
+succeeds. While the backend is
+[proving the store](/components/backend/overview/#evidence-from-uploads) the
+notice reads "New runs start one at a time" instead, since runs are still
+being started. The notice states how many runs are waiting to store and the
+error behind the hold when the backend reports them. A run the
+hold keeps waiting reads `pending` in the run listings, with the reason as its
+tooltip.
+
+A run whose driver is waiting on the artifact store reads "storing" in the run
+listings, with the driver's reason as its tooltip, and counts as an active run
+for the stop controls. Its live monitor says that the run has finished and is
+waiting to store its artifacts, with the driver's reason, and a gg run's status
+pill reads "Storing". The monitor's stop control stays, and stopping a waiting
+run discards what it built.
+
 The publish backlog is its own worklist because a publish is asynchronous and
 can fail. Its slice is the publish gate rather than everything unpublished, so
 it offers only rows the backend will accept. A batch publish enqueues each
@@ -246,6 +304,10 @@ whole ladder, never one climber: running, passed, failed, and skipped. A
 unfinished work, so it is counted in the running total. A ladder never run shows
 an empty bar and zero totals in the same slots, so a first Run moves nothing.
 
+The list shows 20 ladders a page. A list longer than one page carries a search
+field that narrows it by name. The page and the search live in the URL as `page`
+and `q`, so a narrowed list is a link.
+
 ### A ladder
 
 A ladder's dashboard heads with its status, Run ladder, Stop, and Stop and cancel
@@ -266,6 +328,25 @@ and a climber blocked as failing or unlaunchable offers Retry. Every status name
 its rung: "Running rung 2", "Failed at rung 3", "Blocked at rung 4" with the
 reason, and "Completed". Once a dispatch is stopped, a climber that was running
 or blocked reads "Stopped at rung 2".
+
+The board shows 20 climbers a page in the dispatch's climb order, so a climber
+holds its place for as long as the dispatch runs, and an expanded climber stays
+expanded when the board is read again. A board longer than one page carries a
+search field and a status filter. The search narrows the climbers by harness,
+model, provider, or gg configuration. The status filter narrows them to Running,
+Blocked, Failed, or Completed, and on a stopped dispatch to Stopped, Failed, or
+Completed, and offers each status with the number of climbers the search leaves
+in it.
+
+The page, the search, and the status live in the URL as `page`, `q`, and
+`status`. A change to the search or the status returns to the first page, and a
+page the narrowed board no longer reaches falls back to its last one.
+
+The page and the filters choose which cards are drawn and nothing else. The
+summary, the status note, and Run and Stop describe and act on the whole
+dispatch. The console reads the whole board in one
+[`GET /ladders/{id}/progress`](/components/backend/api/#ladders) and pages it
+itself, which keeps the filters and the counts beside them exact between reads.
 
 Expanded, a climber lists every rung with its slot status: Running, Blocked,
 Passed, Failed, Pending, or Skipped. Only a running climber's current rung is

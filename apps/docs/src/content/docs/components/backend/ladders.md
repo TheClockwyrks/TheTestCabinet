@@ -409,7 +409,7 @@ emission-order-is-execution-order mechanism a plan uses:
   answering "how far does this model get?" soonest.
 
 The dispatch's runs in flight are the jobs it launched that are `queued`,
-`pending`, `dispatched`, `starting`, or `running`, across every rung. The limit
+`pending`, `dispatched`, `starting`, `running` or `storing`, across every rung. The limit
 caps those alone. A bound of `0` launches nothing, so a dispatch under it climbs
 only as far as existing runs take it.
 

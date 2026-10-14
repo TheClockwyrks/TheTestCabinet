@@ -102,19 +102,115 @@ pub struct ServedProofFile {
 /// from `file`'s extension. Returns `None` when the run record, the named proof,
 /// or the media file is missing or unreadable — the caller maps that to a 404.
 pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
+    read_proof_file(run_dir, file).ok().flatten()
+}
+
+/// [`serve_proof_file`], telling a file the tree does not hold from a tree that
+/// could not say.
+///
+/// `Ok(None)` only when the tree positively holds no such file: there is no tree,
+/// the record that was read names no such proof, or nothing is at the place the
+/// record gives. Every other failure is an error: a record that is missing from a
+/// tree, unreadable or unparseable, and a file that is there and could not be
+/// read. A caller that takes "the tree holds no such file" for a fact about the
+/// run must use this function, because [`serve_proof_file`] answers `None` for
+/// both.
+pub fn read_proof_file(run_dir: &Path, file: &str) -> std::io::Result<Option<ServedProofFile>> {
     // The request names the file `<proof-id>.<ext>`; recover the proof id.
     let proof_id = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
 
-    let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
-    let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
-    let proof = record.validation.proofs.iter().find(|p| p.id == proof_id)?;
-
-    let body = std::fs::read(run_dir.join("implementation").join(&proof.dest)).ok()?;
+    let Some(record) = read_tree_record(run_dir)? else {
+        return Ok(None);
+    };
+    let Some(proof) = record.validation.proofs.iter().find(|p| p.id == proof_id) else {
+        return Ok(None);
+    };
+    let implementation = run_dir.join("implementation");
+    let Some(body) = read_tree_file(&implementation, &implementation.join(&proof.dest))? else {
+        return Ok(None);
+    };
     let labels = proof_labels(proof_labelled_name(&proof.dest, file));
-    Some(ServedProofFile {
+    Ok(Some(ServedProofFile {
         content_type: labels.content_type,
         content_encoding: labels.content_encoding,
         body,
+    }))
+}
+
+/// Whether a failed read says that nothing is at the path: no entry, or a path
+/// that leads through something that is not a directory.
+fn says_no_file(err: &std::io::Error) -> bool {
+    matches!(
+        err.kind(),
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+    )
+}
+
+/// Read `path`, a file of a produced run's tree that must lie inside `base`.
+///
+/// `Ok(None)` when nothing is there, and when what is there resolves, links
+/// followed, to a place outside `base`: a tree is unpacked with the links a model
+/// wrote, and a link out of the tree names no file of the run. An error for
+/// anything that is there and could not be read.
+fn read_tree_file(base: &Path, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    let Some(resolved) = resolved_inside(base, path)? else {
+        return Ok(None);
+    };
+    match std::fs::read(&resolved) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if says_no_file(&err) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+/// `path` with every link resolved, when it exists and lies inside `base`.
+/// `Ok(None)` when either does not exist, and when `path` leads out of `base`.
+fn resolved_inside(base: &Path, path: &Path) -> std::io::Result<Option<PathBuf>> {
+    let resolve = |path: &Path| match std::fs::canonicalize(path) {
+        Ok(resolved) => Ok(Some(resolved)),
+        Err(err) if says_no_file(&err) => Ok(None),
+        Err(err) => Err(err),
+    };
+    let (Some(base), Some(resolved)) = (resolve(base)?, resolve(path)?) else {
+        return Ok(None);
+    };
+    Ok(resolved.starts_with(&base).then_some(resolved))
+}
+
+/// The bytes of a produced run's `run-record.json`.
+///
+/// `Ok(None)` when there is no tree at `run_dir` at all. A tree that is there
+/// without its record is an error, as is a record that could not be read: neither
+/// says anything about which files the run has.
+fn read_tree_record_bytes(run_dir: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    match std::fs::read(run_dir.join("run-record.json")) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if says_no_file(&err) => match std::fs::metadata(run_dir) {
+            Ok(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("the run tree at {} holds no run record", run_dir.display()),
+            )),
+            Err(err) if says_no_file(&err) => Ok(None),
+            Err(err) => Err(err),
+        },
+        Err(err) => Err(err),
+    }
+}
+
+/// A produced run's record, by the rule of [`read_tree_record_bytes`]. A record
+/// this build cannot parse is an error.
+fn read_tree_record(run_dir: &Path) -> std::io::Result<Option<crate::RunRecord>> {
+    let Some(bytes) = read_tree_record_bytes(run_dir)? else {
+        return Ok(None);
+    };
+    serde_json::from_slice(&bytes).map(Some).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "the run record at {} does not parse: {err}",
+                run_dir.display()
+            ),
+        )
     })
 }
 
@@ -216,21 +312,199 @@ const LEGACY_VENDOR_DIR: &str = ".tcab";
 /// `.tcab/validation/`. Those runs are immutable and are still served, so a miss in
 /// the current directory falls back to the legacy one rather than 404ing history.
 pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidationFile> {
+    read_validation_file(run_dir, file).ok().flatten()
+}
+
+/// [`serve_validation_file`], telling a file the tree does not hold (`Ok(None)`)
+/// from one that is there and could not be read (an error). See
+/// [`read_proof_file`].
+pub fn read_validation_file(
+    run_dir: &Path,
+    file: &str,
+) -> std::io::Result<Option<ServedValidationFile>> {
     // The name is a single flat segment; reject any path separator or traversal so a
     // request can only ever name a file directly inside the validation media dir.
     if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
-        return None;
+        return Ok(None);
     }
     let implementation = run_dir.join("implementation");
-    let body = [".vendor", LEGACY_VENDOR_DIR].into_iter().find_map(|dir| {
-        std::fs::read(implementation.join(dir).join("validation").join(file)).ok()
-    })?;
+    let mut body = None;
+    for dir in [".vendor", LEGACY_VENDOR_DIR] {
+        body = read_tree_file(
+            &implementation,
+            &implementation.join(dir).join("validation").join(file),
+        )?;
+        if body.is_some() {
+            break;
+        }
+    }
+    let Some(body) = body else {
+        return Ok(None);
+    };
     let labels = proof_labels(file);
-    Some(ServedValidationFile {
+    Ok(Some(ServedValidationFile {
         content_type: labels.content_type,
         content_encoding: labels.content_encoding,
         body,
-    })
+    }))
+}
+
+/// The names of the files directly inside `dir`, sorted. A directory that does
+/// not exist holds none; any other failure to read it is the caller's to report.
+fn flat_file_names(dir: &Path) -> std::io::Result<Vec<String>> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err),
+    };
+    let mut names = Vec::new();
+    for entry in read {
+        let entry = entry?;
+        if entry.file_type()?.is_file()
+            && let Some(name) = entry.file_name().to_str()
+        {
+            names.push(name.to_string());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// The names of the validation media files a produced run's tree holds: every
+/// name [`serve_validation_file`] would resolve, from the current directory and
+/// the legacy one alike, each once and sorted.
+///
+/// A run's declared outputs are named by its record, but the image store its
+/// recordings share is named by nothing but this directory, so a reader that has
+/// to account for all of a run's media asks for the listing.
+pub fn list_validation_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
+    let implementation = run_dir.join("implementation");
+    let mut names = Vec::new();
+    for dir in [".vendor", LEGACY_VENDOR_DIR] {
+        names.extend(flat_file_names(
+            &implementation.join(dir).join("validation"),
+        )?);
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+/// The names of the showcase files a produced run's tree holds: every name
+/// [`serve_showcase_file`] would resolve, sorted. `showcase.toml` is left out, as
+/// that function refuses it.
+pub fn list_showcase_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
+    let mut names = flat_file_names(&run_dir.join("implementation").join("showcase"))?;
+    names.retain(|name| name != "showcase.toml");
+    Ok(names)
+}
+
+/// The name a run's controller module is served under by [`tree_root_file`], and
+/// the name the backend stores it as.
+pub const TREE_ROOT_CONTROLLER: &str = "controller.wasm";
+
+/// The name a run's code-analysis document is served under by
+/// [`tree_root_file`], and the name the backend stores it as.
+pub const TREE_ROOT_CODE_ANALYSIS: &str = "code-analysis.json";
+
+/// Every name [`tree_root_file`] resolves.
+///
+/// A gg run's session record sits at a tree's root too and is deliberately not
+/// one of them: the backend publishes a published run's record from its own
+/// store and from nowhere else, so nothing has to read it from here.
+pub const TREE_ROOT_FILES: [&str; 2] = [TREE_ROOT_CONTROLLER, TREE_ROOT_CODE_ANALYSIS];
+
+/// Where a produced run's tree holds the file a backend stores as `name`, or
+/// `None` for a name that is not one of [`TREE_ROOT_FILES`] and for a controller
+/// the run's record does not name.
+///
+/// These are the files of a run that sit outside its media directories. The
+/// document is at the tree's root under its gzipped name. The controller is
+/// wherever the record's `controllerModule` says, inside `implementation/`, and a
+/// path that would leave that directory names nothing.
+fn tree_root_file_path(run_dir: &Path, name: &str) -> std::io::Result<Option<TreeRootPath>> {
+    match name {
+        TREE_ROOT_CODE_ANALYSIS => Ok(Some(TreeRootPath {
+            base: run_dir.to_path_buf(),
+            path: run_dir.join(crate::CODE_ANALYSIS_TREE_ARTIFACT),
+        })),
+        TREE_ROOT_CONTROLLER => {
+            let Some(record_bytes) = read_tree_record_bytes(run_dir)? else {
+                return Ok(None);
+            };
+            // Read by path and not as a whole record, so a record this build can no
+            // longer parse in full still names its controller.
+            let record: serde_json::Value =
+                serde_json::from_slice(&record_bytes).map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("the run record at {} is not JSON: {err}", run_dir.display()),
+                    )
+                })?;
+            let Some(module) = record
+                .pointer("/validation/adversarial/controllerModule")
+                .and_then(serde_json::Value::as_str)
+            else {
+                return Ok(None);
+            };
+            let relative = Path::new(module);
+            let inside = !module.is_empty()
+                && relative
+                    .components()
+                    .all(|part| matches!(part, std::path::Component::Normal(_)));
+            let base = run_dir.join("implementation");
+            Ok(inside.then(|| TreeRootPath {
+                path: base.join(relative),
+                base,
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Where a tree holds one of [`TREE_ROOT_FILES`].
+struct TreeRootPath {
+    /// The directory the file must lie inside once every link is resolved.
+    base: PathBuf,
+    /// The file's place.
+    path: PathBuf,
+}
+
+/// Read the file a backend stores as `name` from a produced run's tree, verbatim.
+///
+/// `Ok(None)` when the tree holds no such file, which includes a name that is not
+/// one of [`TREE_ROOT_FILES`], a tree that is not there, and a path that resolves
+/// through a link to a place outside the tree. An error for a file that is there
+/// and could not be read, and for a controller whose run record is missing from
+/// its tree, unreadable or not JSON: none of those says the tree lacks the file,
+/// and a caller must not take them for a missing one.
+pub fn tree_root_file(run_dir: &Path, name: &str) -> std::io::Result<Option<Vec<u8>>> {
+    let Some(place) = tree_root_file_path(run_dir, name)? else {
+        return Ok(None);
+    };
+    read_tree_file(&place.base, &place.path)
+}
+
+/// The names of [`TREE_ROOT_FILES`] a produced run's tree holds: every name
+/// [`tree_root_file`] would resolve to a file. An error when the tree cannot say
+/// whether it holds one, by the rule of [`tree_root_file`].
+pub fn list_tree_root_files(run_dir: &Path) -> std::io::Result<Vec<String>> {
+    let mut names = Vec::new();
+    for name in TREE_ROOT_FILES {
+        let Some(place) = tree_root_file_path(run_dir, name)? else {
+            continue;
+        };
+        let Some(resolved) = resolved_inside(&place.base, &place.path)? else {
+            continue;
+        };
+        match std::fs::metadata(&resolved) {
+            Ok(found) if found.is_file() => names.push(name.to_string()),
+            Ok(_) => {}
+            Err(err) if says_no_file(&err) => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(names)
 }
 
 /// A showcase file resolved from a run, ready to write to an HTTP or IPC
@@ -264,21 +538,35 @@ pub struct ServedShowcaseFile {
 /// body's framing (exactly as validation replays are), so a browser inflates it
 /// transparently before the player sees it.
 pub fn serve_showcase_file(run_dir: &Path, file: &str) -> Option<ServedShowcaseFile> {
+    read_showcase_file(run_dir, file).ok().flatten()
+}
+
+/// [`serve_showcase_file`], telling a file the tree does not hold (`Ok(None)`)
+/// from one that is there and could not be read (an error). See
+/// [`read_proof_file`].
+pub fn read_showcase_file(
+    run_dir: &Path,
+    file: &str,
+) -> std::io::Result<Option<ServedShowcaseFile>> {
     // The name is a single flat segment; reject any path separator or traversal so a
     // request can only ever name a file directly inside the showcase dir.
     if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
-        return None;
+        return Ok(None);
     }
     if file == "showcase.toml" {
-        return None;
+        return Ok(None);
     }
-    let body = std::fs::read(run_dir.join("implementation").join("showcase").join(file)).ok()?;
+    let implementation = run_dir.join("implementation");
+    let Some(body) = read_tree_file(&implementation, &implementation.join("showcase").join(file))?
+    else {
+        return Ok(None);
+    };
     let labels = showcase_labels(file);
-    Some(ServedShowcaseFile {
+    Ok(Some(ServedShowcaseFile {
         content_type: labels.content_type,
         content_encoding: labels.content_encoding,
         body,
-    })
+    }))
 }
 
 /// An asset-generation media file resolved from a run, ready to write to an HTTP
@@ -319,11 +607,40 @@ pub struct ServedAssetFile {
 /// Returns `None` when the run record, its asset result, the named frame, the
 /// artifact, or the file is missing — the caller maps that to a 404.
 pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
-    let (kind, frame) = parse_asset_request(file)?;
+    read_asset_file(run_dir, file).ok().flatten()
+}
 
-    let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
-    let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
+/// [`serve_asset_file`], telling a file the tree does not hold (`Ok(None)`) from
+/// a tree that could not say (an error). See [`read_proof_file`].
+pub fn read_asset_file(run_dir: &Path, file: &str) -> std::io::Result<Option<ServedAssetFile>> {
+    let Some((kind, frame)) = parse_asset_request(file) else {
+        return Ok(None);
+    };
+    let Some(record) = read_tree_record(run_dir)? else {
+        return Ok(None);
+    };
+    let Some(rel) = asset_tree_path(&record, kind, frame) else {
+        return Ok(None);
+    };
+    let implementation = run_dir.join("implementation");
+    let Some(body) = read_tree_file(&implementation, &implementation.join(rel))? else {
+        return Ok(None);
+    };
+    let labels = asset_labels(file);
+    Ok(Some(ServedAssetFile {
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
+        body,
+    }))
+}
 
+/// Where `record`'s tree holds the asset a request for `kind` and `frame` names,
+/// relative to `implementation/`, or `None` when the record names no such asset.
+fn asset_tree_path<'a>(
+    record: &'a crate::RunRecord,
+    kind: &str,
+    frame: Option<u32>,
+) -> Option<&'a str> {
     // The replay of an adversarial run is served as an ordinary run asset too: the
     // browser replay player fetches `replay.json` over the same `/asset/{file}`
     // path the asset-gen media use, so the asset-media plumbing stays
@@ -433,14 +750,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             _ => return None,
         }
     };
-
-    let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;
-    let labels = asset_labels(file);
-    Some(ServedAssetFile {
-        content_type: labels.content_type,
-        content_encoding: labels.content_encoding,
-        body,
-    })
+    Some(rel)
 }
 
 /// Parse an asset request into its kind and optional frame index: `regenerated.png`

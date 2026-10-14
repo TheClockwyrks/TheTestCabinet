@@ -18,3 +18,15 @@
     0 0 0.25rem color-mix(in srgb, t.$color-accent 60%, transparent)
   );
 }
+
+// A run whose artifact tree is not stored: still the unpublished marker, in the
+// colour of a fault, since no publish can clear it.
+.missing {
+  color: t.$color-negative;
+
+  .icon {
+    filter: drop-shadow(
+      0 0 0.25rem color-mix(in srgb, t.$color-negative 60%, transparent)
+    );
+  }
+}

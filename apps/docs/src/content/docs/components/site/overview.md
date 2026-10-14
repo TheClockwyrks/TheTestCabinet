@@ -25,18 +25,84 @@ Signing in and launching runs stay with the console.
 The dataset is the public snapshot the
 [backend](/components/backend/overview/#public-snapshot) exports to a Cloudflare
 R2 bucket. A build-time Vite plugin fetches that snapshot once from
-`TCAB_SNAPSHOT_URL` and inlines it, so the shipped output never queries the
-backend or R2 at runtime. A backend deploy hook triggers a rebuild whenever the
-snapshot changes. An unset URL, or a bucket whose `index.json` is absent because
-nothing has been published yet, resolves to an empty dataset and still builds; a
-reachable but broken snapshot fails the build.
+`TCAB_SNAPSHOT_URL` and writes it into the build, so the shipped output never
+queries the backend at runtime. A backend deploy hook triggers a rebuild whenever
+the snapshot changes. An unset URL, or a bucket whose `index.json` is absent
+because nothing has been published yet, resolves to an empty dataset and still
+builds; a reachable but broken snapshot fails the build.
 
-The build inlines the snapshot's [summary
-index](/components/backend/snapshot/#runsjson--the-run-index), one `RunSummary`
-card per published run, as the in-memory dataset every list, card, leaderboard,
-and metric reads. Each run's full record is emitted as a per-run `runs/<id>.json`
-static asset, fetched when that run's detail page opens, so the bundle does not
-grow with each record.
+### Where the data lives
+
+The build places each piece of the snapshot by the kind of data it is, the same
+way for every run and every case:
+
+| Data | Location in the build | Read |
+| --- | --- | --- |
+| The index | Inlined into the application bundle | With the page |
+| One run's detail | `runs/<id>.json` | When a page of that run opens |
+| One run's event log | `run-events/<id>.json` | When its Events tab opens |
+| One case's detail | `cases/<slug>.json` | When a page of that case opens |
+| One case version | `cases/<slug>/<version>.json` | When that version is shown |
+
+The index is what a listing shows for every run and every case. It holds the
+snapshot's [summary index](/components/backend/snapshot/#runsjson--the-run-index),
+one `RunSummary` card per published run, which every list, card, leaderboard and
+metric reads. It also holds one listing card per case, the address of the
+showcase media each card previews, the model catalog, the test-case groups, the
+comparisons and the gg document corpus.
+
+A run's file holds its full record, its reviews and the address of every media
+file the run published. A case's file holds what spans its versions: each
+version's description, the changelog, the errata, and the variants and engines
+each version offers. A case version's file holds that version's variants, with
+their prompts, seeded specs and checklists rendered for each engine, and the
+address of the version's baseline, showcase and reference media.
+
+The files are copies made at build time and deployed with the site, so the
+browser reads them from the site's own domain. Images, videos, starter-workspace
+files and code-analysis documents stay in the bucket, and a page loads them from
+there by the address its run or case file recorded.
+
+A listing therefore costs one index entry per run, and a detail costs nothing
+until a visitor opens it. The bundle grows with the number of runs and cases and
+is independent of how much any one of them carries.
+
+Cloudflare Pages refuses a deployment that holds a file over 25 MiB. The build
+reports the size of the bundle and of its largest data file, and fails naming
+the file when one exceeds that limit.
+
+A request for a file the deployment does not hold is answered with the
+application shell. The site reads that answer as the file's absence.
+
+### Fetching the snapshot
+
+The snapshot holds one document per published run, and the bucket serves them
+without an edge cache, so a build makes about a thousand requests and a dropped
+connection among them is expected. Every snapshot request is therefore retried
+and bounded:
+
+- An attempt has 60 seconds to return its whole body.
+- A network error, a timeout, and an HTTP 408, 429 or 5xx are transient. A
+  transient failure is retried up to 5 attempts in total, after a jittered
+  backoff that starts at 500 ms, doubles per attempt and is capped at 8 seconds.
+- Any other status is final on the first attempt. A 404 keeps its meaning: an
+  absent `index.json` is the empty dataset, and an absent file that `index.json`
+  references is a broken snapshot.
+
+The per-run documents are fetched 8 at a time, which `TCAB_SNAPSHOT_CONCURRENCY`
+overrides with any positive integer. Eight is roughly what a browser opens to
+one host: a document's cost is its round trip, so it cuts a four-minute
+sequential download to about half a minute while staying far below any rate the
+bucket limits. The build's output is independent of the concurrency, because
+each document is assembled and its assets emitted in the order of the summary
+index whatever order the responses arrive in.
+
+A run document or the summary index that still fails after its last attempt
+fails the build, with a message naming the URL and the number of attempts made.
+A per-case file or one of the optional payloads (models, comparisons, test-case
+groups, the gg corpus) that fails the same way is left out and the build
+continues. A successful fetch logs one line with the number of documents
+fetched, how many of them needed a retry, and the elapsed time.
 
 ## Gallery
 
@@ -44,7 +110,7 @@ The site presents published runs as a browsable gallery. Each run is attributed
 to the [variant](/testing/end-to-end/overview/#variants) of the case it built,
 taken from its [run record](/components/core/run-records/#subject). Listings are
 paged rather than loaded whole, and their search and sorting run client-side
-over the inlined run index. The authoritative ranking of models for a given case
+over the run index. The authoritative ranking of models for a given case
 and variant lives in that case's [leaderboard](#leaderboard).
 
 A validator-rated run carries a read-only browser of its automated
@@ -115,7 +181,8 @@ least one. A published validator-rated run may carry none, standing on its
 functional rating and score alone until someone rates its aesthetics. A run may
 carry several reviews from different reviewers, and its overall rating on the
 reviewer-given channel is the worst across them. Reviews travel to the site in
-the exported snapshot alongside the run record.
+the exported snapshot alongside the run record, and the run's page reads them
+from the run's file.
 
 ## Hosting
 

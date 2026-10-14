@@ -155,6 +155,51 @@ function mount(ui: ReactNode) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }
 
+describe("RunReviewEditor on a run whose artifacts are not stored", () => {
+  it("shows Publish disabled with the reason, where it would otherwise be offered", async () => {
+    fixture.readReviewItems.mockResolvedValue(items);
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        artifactsMissing
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+
+    const publish = screen.getByRole("button", {
+      name: "Publish run",
+    }) as HTMLButtonElement;
+    expect(publish.disabled).toBe(true);
+    expect(publish.title).toContain("No stored artifacts");
+    expect(publish.title).toContain("cannot be published");
+    fireEvent.click(publish);
+    expect(fixture.publish).not.toHaveBeenCalled();
+  });
+
+  it("offers Publish as usual when the artifacts are not known to be missing", async () => {
+    fixture.readReviewItems.mockResolvedValue(items);
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+
+    const publish = screen.getByRole("button", {
+      name: "Publish run",
+    }) as HTMLButtonElement;
+    expect(publish.disabled).toBe(false);
+  });
+});
+
 describe("RunReviewEditor on a validator-rated run", () => {
   it("renders the editable walker pre-filled with the validators' verdicts and ONE aesthetic select", async () => {
     fixture.readReviewItems.mockResolvedValue(items);

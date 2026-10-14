@@ -10,7 +10,7 @@
         },
         {
           "const": "pending",
-          "description": "Enqueued, but intentionally held back: the run's harness is already at its\nconfigured maximum parallelism, so the backend will not hand it to a\ndispatcher until an in-flight run of the same harness finishes. Distinct from\n`queued` (which is free to be claimed the moment a dispatcher has capacity) so\nan operator can see a run is deliberately waiting rather than merely next in\nline.",
+          "description": "Enqueued, but intentionally held back: the run's harness is already at its\nconfigured maximum parallelism, so the backend will not hand it to a\ndispatcher until an in-flight run of the same harness finishes; or the whole\nqueue is on hold because the artifact store cannot take another run's tree.\nDistinct from `queued` (which is free to be claimed the moment a dispatcher\nhas capacity) so an operator can see a run is deliberately waiting rather\nthan merely next in line.",
           "type": "string"
         },
         {
@@ -26,6 +26,11 @@
         {
           "const": "running",
           "description": "The driver is executing the run.",
+          "type": "string"
+        },
+        {
+          "const": "storing",
+          "description": "The run has finished and its driver is waiting to store its artifact tree,\nbecause the artifact store could not take it. The driver holds the only copy\nand keeps retrying. While any job is in this state the backend hands out no\nnew run.",
           "type": "string"
         },
         {
@@ -55,7 +60,7 @@
         },
         {
           "const": "state-changed",
-          "description": "The run moved between two non-terminal states (`queued` ↔ `pending`, or\nforward through `dispatched` → `starting` → `running`).",
+          "description": "The run moved between two non-terminal states (`queued` ↔ `pending`, forward\nthrough `dispatched` → `starting` → `running`, or `running` ↔ `storing`).",
           "type": "string"
         },
         {
@@ -71,7 +76,7 @@
   "description": "A run-lifecycle event on the multiplexed console stream (`GET /notifications`,\n`runs` topic).\n\nThis is deliberately **not** a [`Notification`]. A notification is an *alert* —\nsomething a person should be told about, filed to the bell and raised as a toast,\nand so only ever fired for the two things worth interrupting someone over (a run\nfinishing, a publish failing). A run event is *list maintenance*: every transition\nthe in-flight list must reflect, including the many that nobody wants a toast for\n(a queued run held back to `pending`, a driver reaching `starting`, an operator's\nbulk cancel ending forty runs at once). Keeping them separate is what lets the\nconsole subscribe to the alerts always and to the churn only while a page is\nshowing it.\n\nIt carries enough to patch the list in place — the run's identity and its state\nafter the transition — so a console applies it without a round-trip. The one thing\nit does not carry is the produced *record*, so a `finished` run that produced one\nstill makes the produced-run listing stale; the console re-reads that separately.",
   "properties": {
     "detail": {
-      "description": "The terminal reason, present on a `finished` event that failed or was\ncanceled.",
+      "description": "The reason behind the state: the terminal reason on a `finished` event that\nfailed or was canceled, and the driver's account of the failed upload on a\n`state-changed` event into `storing`.",
       "type": ["string", "null"]
     },
     "engine": {

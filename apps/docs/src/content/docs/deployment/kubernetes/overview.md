@@ -198,24 +198,35 @@ images are in the registry. A push to `staging` rolls `tcab-staging` on
 overlay onto one published commit, and the project's `before` and `after` steps
 around it (`.azure/project/deploy-steps.yml`):
 
-1. before: `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay with
-   `pin-images.sh`, records the commit the backend runs now as
+1. before: `scripts/ci/pre-deploy.sh staging <sha>` runs the catalog preflight
+   (see below), pins the overlay with `pin-images.sh`,
+   records the commit the backend runs now as
    `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout timeout, and retires the
    legacy `tcab-backend` Deployment (see below);
-2. the template's `scripts/ci/deploy.sh <sha>` renders the overlay with the
-   backend's image set to `the-test-cabinet-backend:<sha>`, applies it inside the
-   cluster, and waits on `deployment/the-test-cabinet-backend`, undoing it if it
-   does not become ready;
+2. the template's `scripts/ci/deploy.sh <sha>` runs the project's
+   `scripts/ci/deploy-preflight.sh <sha>`, the same catalog preflight for a roll
+   made with `deploy.sh` alone, renders the overlay with the backend's image set
+   to `the-test-cabinet-backend:<sha>`, applies it inside the cluster, and waits
+   on `deployment/the-test-cabinet-backend`, undoing it if it does not become
+   ready;
 3. it then runs the project's `scripts/ci/post-deploy.sh <sha>`, which runs
    `scripts/ci/settle-workloads.sh`: one wait, concurrently, on every other
    `Deployment` and `StatefulSet` in the namespace, each bounded by the rollout
    timeout, undoing each that does not become ready, describing its pods and
-   printing recent events, and failing if any did;
+   printing recent events, and failing if any did. It then runs the catalog
+   verify, whatever became of the wait, and fails if either did;
 4. after, on failure only: `scripts/ci/settle-workloads.sh --after-failure <sha>`
    settles and diagnoses whatever the failed apply rolled, and prints the
-   backend's recovery command,
+   recovery for the failure it finds. A backend whose image is at `<sha>` is
+   rolled out, so a check after the rollout failed: it prints the commands that
+   read and repeat the catalog ingest and that roll the environment again. Any
+   other backend was rolled back: it prints
    `scripts/ci/deploy-environment.sh staging <previous sha>`, or "fix forward"
    when there is no previous commit.
+
+The deployment job runs for at most 45 minutes, which holds the backend's
+rollout (10), the settling of the other workloads (14) and the wait on the
+ingest sidecar (10) each at their bound.
 
 **Prod** is the project's `prod` stage on `master`. It publishes the same
 backend retag through the template's `.azure/publish-image.yml`, then runs
@@ -225,13 +236,15 @@ backend retag through the template's `.azure/publish-image.yml`, then runs
    there with `pin-images.sh`;
 2. renders it with `kubectl kustomize` on the agent into one manifest file, and
    refuses the file if it holds anything outside the environment's namespace;
-3. retires the legacy `tcab-backend` Deployment;
-4. runs `kubectl apply -f` on the file inside the cluster through
+3. runs the catalog preflight;
+4. retires the legacy `tcab-backend` Deployment;
+5. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
-5. waits up to 600 seconds, concurrently, on every `Deployment` and
+6. waits up to 600 seconds, concurrently, on every `Deployment` and
    `StatefulSet` rollout, the backend's included. A rollout that does not become
    ready is described, its logs are printed, and it is undone, and the deploy
-   fails.
+   fails;
+7. runs the catalog verify.
 
 The clusters' API servers are private, which is why every `kubectl` command runs
 inside the cluster. `az aks command invoke` runs it under the caller's Microsoft
@@ -252,7 +265,17 @@ while the claim re-attaches, and no earlier backend revision to undo to.
 
 Every deploy changes the backend's image tag, so every deploy restarts
 the backend pod, and its ingest sidecar force-ingests the branch tip it shipped
-with (see [Ingesting definitions](/deployment/kubernetes/control-plane/#ingesting-definitions)).
+with. Both routes hold the deploy to that with `scripts/ci/catalog-ingest.sh`.
+The catalog preflight fails the deploy before anything in the cluster changes
+when the branch tip or the cold-storage commit it pins cannot be fetched, or
+when the backend's `state` volume is too full for the sidecar to fetch onto, the
+growth a deploy applies to the volume counted, or when the deploy asks for a
+resize of the volume the cluster would refuse. The
+catalog verify fails it after the rollout when the sidecar did not ingest,
+printing the sidecar's failing step and message, and leaves the rollout in
+place, since the backend then serves the catalog it had. See
+[Deploys and the catalog](/deployment/kubernetes/control-plane/#deploys-and-the-catalog)
+and [Growing the state volume](/deployment/kubernetes/control-plane/#growing-the-state-volume).
 
 Run by hand, signed in to Azure with the same roles,
 `scripts/ci/deploy-environment.sh <staging|prod> <sha>` rolls an environment to

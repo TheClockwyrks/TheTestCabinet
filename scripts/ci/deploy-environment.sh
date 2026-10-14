@@ -33,11 +33,26 @@
 #     (deployments/azure/aks-command-invoke.role.json): run a command and read its
 #     result, and nothing else on the cluster resource.
 #
+# Before it changes anything in the cluster it checks that the catalog the new
+# backend's ingest sidecar will fetch can be fetched (scripts/ci/catalog-ingest.sh
+# preflight): the environment's catalog branch tip on the GitHub mirror and the
+# cold-storage commit it pins. It fails there, with nothing applied, when it cannot.
+# The same preflight reads the backend's state volume and the render's size for it:
+# it fails when the volume is too full for the sidecar's fetch, the growth this
+# deployment applies counted, and when the render asks for a resize of the volume
+# the cluster would refuse.
+#
 # Before the apply it retires the backend Deployment of its old name
 # (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk. After it,
 # scripts/ci/settle-workloads.sh --include-backend waits concurrently on every
 # Deployment and StatefulSet in the namespace; each that does not become ready is
 # described, its logs are printed, and it is undone before the script fails.
+#
+# Once every workload is ready it reads the result the backend's ingest sidecar
+# recorded (scripts/ci/catalog-ingest.sh verify) and fails, printing the sidecar's
+# failing step and message, unless the sidecar ingested the catalog. Nothing is
+# undone for that: a sidecar that failed ingested nothing, so the backend serves the
+# catalog and the baselines it had.
 set -euo pipefail
 
 caller_dir="$PWD"
@@ -106,6 +121,13 @@ if ! ci_assert_namespaced "$NAMESPACE" <"$manifest"; then
 	exit 1
 fi
 
+# The preflight is given the file about to be applied, whose size for the backend's
+# state volume it compares with the claim in the cluster.
+if ! TCAB_INGEST_MANIFEST="$manifest" "${CI_DIR}/catalog-ingest.sh" preflight "$ENVIRONMENT" "$COMMIT"; then
+	echo "deploy-environment.sh: the ${ENVIRONMENT} deploy preflight failed, above; nothing was applied." >&2
+	exit 1
+fi
+
 export THE_TEST_CABINET_RESOURCE_GROUP="$RESOURCE_GROUP"
 export THE_TEST_CABINET_CLUSTER="$CLUSTER"
 export THE_TEST_CABINET_NAMESPACE="$NAMESPACE"
@@ -126,3 +148,9 @@ if ! "${CI_DIR}/settle-workloads.sh" --include-backend "$COMMIT"; then
 	exit 1
 fi
 log "${ENVIRONMENT} is at ${COMMIT}"
+
+if ! "${CI_DIR}/catalog-ingest.sh" verify "$ENVIRONMENT"; then
+	echo "deploy-environment.sh: ${ENVIRONMENT} runs ${COMMIT}, but its backend did not ingest the catalog, above." >&2
+	exit 1
+fi
+log "${ENVIRONMENT} serves the catalog of its branch tip"

@@ -14,15 +14,36 @@
 //! is posted, so by the time the console sees the run finish its artifacts are
 //! already servable.
 //!
+//! The driver's copy is the only one until the service acknowledges it, and the pod
+//! is discarded afterwards. So a failed upload is sorted into one of two
+//! [kinds](UploadFailureKind): a failure that is this run's own ends the upload at
+//! once, and every other failure is a condition of the store, which the driver
+//! [waits on](retry_until_stored) under an [`UploadRetry`] policy, holding the tree
+//! and telling the backend through a [`StoreWait`] that it is doing so. The run's
+//! record is handed to the backend as the wait begins ([`RunWait`]), since it too
+//! is otherwise lost with the pod. Whether the tree landed, and whether the store
+//! was the reason it did not, is part of the run's report ([`store_run_tree`]); it
+//! never changes the run's own outcome.
+//!
 //! When `TCAB_ARTIFACTS_URL` is unset (a local setup), nothing here runs — there
 //! is no separate artifact service in that topology.
 
 use std::fs::File;
+use std::future::Future;
 use std::io::Seek;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
+use test_cabinet_core::job_api::JobState;
 use test_cabinet_core::{BackendClient, HttpBackendClient, RunRecord, find_build_output};
-use tokio_util::io::ReaderStream;
+use tokio::time::Instant;
+
+use crate::client::JobClient;
+
+/// How much of the tarball one chunk of the upload body carries.
+const TARBALL_CHUNK: usize = 256 * 1024;
 
 /// A failure tarring or uploading the produced run tree.
 #[derive(Debug, thiserror::Error)]
@@ -47,6 +68,10 @@ pub enum UploadError {
         /// The response body, for diagnostics.
         body: String,
     },
+    /// The upload stopped making progress: no part of the tree was taken, and no
+    /// answer arrived, for the whole of the stall timeout.
+    #[error("the upload to the artifact service stalled for {} s", .0.as_secs())]
+    Stalled(Duration),
 }
 
 /// Append the body to a status error when there is one to show.
@@ -56,6 +81,554 @@ fn body_suffix(body: &str) -> String {
     } else {
         format!(": {}", body.trim())
     }
+}
+
+/// Whose failure a failed upload is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadFailureKind {
+    /// This run's own: something about its tree that no state of the store would
+    /// change. The upload ends at once, and no other run is held for it.
+    RunsOwn,
+    /// A condition of the store, or of the path to it: the tree is sound and would
+    /// land on a store that could take it. The driver waits on it.
+    StoreCondition,
+}
+
+impl UploadError {
+    /// Whose failure this is.
+    ///
+    /// Four failures are provably about this one tree: it could not be tarred, the
+    /// service refused it as over its size cap (`413`), the service refused a path
+    /// in it (`400`, the only thing the upload route answers that status for), or
+    /// the service could not read it as an archive (`422`). Sending the same bytes
+    /// again gets the same answer whatever the store does.
+    ///
+    /// Everything else is a store condition: no answer, a stall, a `5xx` (a full or
+    /// faulted volume among them), a `401` or `403` (the service could not verify
+    /// the job token, which the backend minted and never revokes), a `404`, and
+    /// any status nothing here expects. None of them says the tree is at fault, so
+    /// none of them is a reason to discard the only copy of it.
+    pub fn kind(&self) -> UploadFailureKind {
+        match self {
+            Self::Tar { .. } => UploadFailureKind::RunsOwn,
+            Self::Status { status, .. }
+                if *status == reqwest::StatusCode::PAYLOAD_TOO_LARGE
+                    || *status == reqwest::StatusCode::BAD_REQUEST
+                    || *status == reqwest::StatusCode::UNPROCESSABLE_ENTITY =>
+            {
+                UploadFailureKind::RunsOwn
+            }
+            Self::Transport(_) | Self::Stalled(_) | Self::Status { .. } => {
+                UploadFailureKind::StoreCondition
+            }
+        }
+    }
+}
+
+/// How long the driver waits on a store that cannot take its run's tree, and how
+/// it paces the attempts.
+///
+/// The wait between two attempts doubles from
+/// [`initial_delay`](Self::initial_delay) and is capped at
+/// [`max_delay`](Self::max_delay): by default 5, 10, 20 and 40 seconds, then once a
+/// minute. The driver gives up once [`give_up_after`](Self::give_up_after) has
+/// passed since the first failure, six hours by default
+/// (`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`).
+///
+/// An attempt has no overall deadline, because the body is as large as the run
+/// tree and a slow link is not a failure. It is bounded by
+/// [`stall_timeout`](Self::stall_timeout) instead, so a service that accepts the
+/// connection and then stops reading or never answers ends the attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadRetry {
+    /// How long after the first failed attempt the driver stops waiting on the
+    /// store. The attempt in flight when it passes is allowed to finish.
+    /// [`Duration::ZERO`] is a single attempt.
+    pub give_up_after: Duration,
+    /// The wait before the second attempt.
+    pub initial_delay: Duration,
+    /// The longest wait between two attempts.
+    pub max_delay: Duration,
+    /// How long an attempt may go without the service taking any of the tree or
+    /// answering before it is abandoned as [stalled](UploadError::Stalled). An
+    /// attempt is abandoned between one and two of these after its last progress.
+    /// [`Duration::ZERO`] removes the bound.
+    pub stall_timeout: Duration,
+    /// How long the first attempt may run before the driver reports that it is
+    /// waiting on the store, without the attempt having failed. A store that
+    /// accepts the upload and then hangs fails nothing for a whole
+    /// [`stall_timeout`](Self::stall_timeout), and for that long the run would
+    /// read as running. [`Duration::ZERO`] never reports an attempt as slow.
+    pub slow_after: Duration,
+    /// The longest a run that was **already canceled** when its upload began is
+    /// waited on. Its job is terminal, so the backend does not show it as waiting
+    /// and an operator has no second cancellation to end the wait with. The bound
+    /// covers a store that is restarting; the wait is
+    /// [`give_up_after`](Self::give_up_after) when that is shorter.
+    pub canceled_run_wait: Duration,
+}
+
+/// The default of [`UploadRetry::give_up_after`]: long enough for an operator to
+/// be told of a store that takes no uploads and to repair it, with the tree kept
+/// the whole time.
+pub const DEFAULT_UPLOAD_WAIT: Duration = Duration::from_secs(6 * 60 * 60);
+
+impl Default for UploadRetry {
+    fn default() -> Self {
+        Self {
+            give_up_after: DEFAULT_UPLOAD_WAIT,
+            initial_delay: Duration::from_secs(5),
+            max_delay: Duration::from_secs(60),
+            // Long next to the pause between two chunks of a healthy upload, and
+            // next to the service unpacking the largest tree before it answers.
+            stall_timeout: Duration::from_secs(5 * 60),
+            // Many times what the largest tree takes to upload and unpack inside
+            // a cluster, so a healthy upload is never reported as waiting.
+            slow_after: Duration::from_secs(60),
+            canceled_run_wait: Duration::from_secs(10 * 60),
+        }
+    }
+}
+
+impl UploadRetry {
+    /// The default policy with its wait bound replaced.
+    pub fn waiting_for(give_up_after: Duration) -> Self {
+        Self {
+            give_up_after,
+            ..Self::default()
+        }
+    }
+
+    /// A single attempt: no wait on the store at all.
+    pub fn single_attempt() -> Self {
+        Self::waiting_for(Duration::ZERO)
+    }
+
+    /// The wait after failed attempt number `attempt` (counted from one).
+    pub fn delay_after(&self, attempt: u32) -> Duration {
+        let doublings = attempt.saturating_sub(1).min(31);
+        self.initial_delay
+            .saturating_mul(1u32 << doublings)
+            .min(self.max_delay)
+    }
+}
+
+/// What a driver waiting on the store tells, and asks of, its surroundings.
+///
+/// The wait is the one stretch of a run's life in which the driver holds the only
+/// copy of something nothing can reproduce while a different service is at fault.
+/// So the backend is told about it, which is what puts the run queue on hold and
+/// shows the run as waiting rather than running, and an operator's cancellation
+/// has to be able to end it.
+pub trait StoreWait {
+    /// Whether the run was canceled before its upload began. Asked once, ahead of
+    /// the first attempt. Such an upload is the one a canceled run was wound down
+    /// to make, so the cancellation behind it must not end it.
+    fn already_canceled(&self) -> impl Future<Output = bool> + Send;
+
+    /// The driver is waiting on the store for `reason`: the latest attempt failed
+    /// on a store condition and another follows, or the first attempt has run for
+    /// [`UploadRetry::slow_after`] without finishing. Called once per failed
+    /// attempt, and at most once for a slow first one.
+    fn waiting(&self, reason: &str) -> impl Future<Output = ()> + Send;
+
+    /// The wait is over other than by a cancellation, and `stored` says whether
+    /// the tree landed: otherwise the driver gave up, or a later attempt failed as
+    /// the run's own. Called only after [`waiting`](Self::waiting) has been.
+    fn over(&self, stored: bool) -> impl Future<Output = ()> + Send;
+
+    /// Resolves when the run has been canceled. Raced against the whole upload,
+    /// the first attempt included, unless the run was
+    /// [already canceled](Self::already_canceled).
+    fn canceled(&self) -> impl Future<Output = ()> + Send;
+}
+
+/// A wait nobody is told about and nothing cancels: for a caller with no job to
+/// report against.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Unattended;
+
+impl StoreWait for Unattended {
+    async fn already_canceled(&self) -> bool {
+        false
+    }
+    async fn waiting(&self, _reason: &str) {}
+    async fn over(&self, _stored: bool) {}
+    async fn canceled(&self) {
+        std::future::pending().await
+    }
+}
+
+/// How often a waiting driver polls its job's state for a cancellation.
+const WAIT_CANCEL_POLL_INTERVAL: Duration = Duration::from_secs(3);
+
+/// How long one report of the wait may take. A report is a courtesy to the
+/// backend; the wait it describes must go on whether or not it lands.
+const WAIT_REPORT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The terminal report a driver is holding while it waits: what the backend is
+/// handed for safekeeping with the first `storing` report it accepts.
+#[derive(Debug, Clone)]
+struct HeldReport {
+    /// The record the run produced.
+    record: RunRecord,
+    /// Why the run failed, when the report being held is a `failed` one.
+    run_failure: Option<String>,
+}
+
+/// A run's wait on the artifact store, reported to the backend through the run's
+/// own [`JobClient`].
+///
+/// The first `storing` report the backend accepts carries the run's record. For
+/// the length of the wait that record exists nowhere but this pod, and the backend
+/// finishes the run from its copy if the pod is lost.
+#[derive(Debug)]
+pub struct RunWait<'a> {
+    client: &'a JobClient,
+    /// The report still to be handed over; `None` once the backend has it, and for
+    /// a wait with nothing to hand over.
+    held: std::sync::Mutex<Option<HeldReport>>,
+}
+
+impl<'a> RunWait<'a> {
+    /// The wait of a run that produced `record`. `run_failure` is the reason the
+    /// run failed when the driver will report it `failed`, and `None` when it will
+    /// report it `succeeded`.
+    pub fn holding(client: &'a JobClient, record: &RunRecord, run_failure: Option<&str>) -> Self {
+        Self {
+            client,
+            held: std::sync::Mutex::new(Some(HeldReport {
+                record: record.clone(),
+                run_failure: run_failure.map(str::to_string),
+            })),
+        }
+    }
+
+    /// A wait with no report to hand over: for a run whose job is already
+    /// terminal, which the backend would not finish from one.
+    pub fn bare(client: &'a JobClient) -> Self {
+        Self {
+            client,
+            held: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+impl StoreWait for RunWait<'_> {
+    async fn already_canceled(&self) -> bool {
+        // Anything but a `canceled` answer, an unreachable backend included, is a
+        // run that may yet be canceled, which the wait then watches for.
+        matches!(self.client.poll_state().await, Ok(Some(JobState::Canceled)))
+    }
+
+    async fn waiting(&self, reason: &str) {
+        let held = self
+            .held
+            .lock()
+            .expect("held report mutex poisoned")
+            .clone();
+        let handing_over = held.is_some();
+        let report = self.client.post_status_storing(
+            reason,
+            held.as_ref().map(|held| &held.record),
+            held.as_ref().and_then(|held| held.run_failure.as_deref()),
+        );
+        match tokio::time::timeout(WAIT_REPORT_TIMEOUT, report).await {
+            Ok(Ok(())) => {
+                if handing_over {
+                    // The backend has the record now; later reports are the reason
+                    // alone.
+                    *self.held.lock().expect("held report mutex poisoned") = None;
+                }
+            }
+            Ok(Err(err)) => {
+                tracing::warn!(error = %err, "could not report the wait on the artifact store to the backend");
+            }
+            Err(_) => {
+                tracing::warn!("reporting the wait on the artifact store to the backend timed out");
+            }
+        }
+    }
+
+    async fn over(&self, stored: bool) {
+        // `running` is the state the job was in before the wait, and the one it
+        // holds while the driver finishes its report.
+        let report = self.client.post_status_wait_over(stored);
+        match tokio::time::timeout(WAIT_REPORT_TIMEOUT, report).await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                tracing::warn!(error = %err, "could not report the end of the wait on the artifact store to the backend");
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "reporting the end of the wait on the artifact store to the backend timed out"
+                );
+            }
+        }
+    }
+
+    async fn canceled(&self) {
+        loop {
+            tokio::time::sleep(WAIT_CANCEL_POLL_INTERVAL).await;
+            // Anything but a `canceled` answer, an unreachable backend included, is
+            // no reason to stop holding the tree.
+            if matches!(self.client.poll_state().await, Ok(Some(JobState::Canceled))) {
+                return;
+            }
+        }
+    }
+}
+
+/// How an upload that did not store the tree ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadEnd {
+    /// An attempt failed as the [run's own](UploadFailureKind::RunsOwn).
+    RunsOwn,
+    /// The store did not take the tree within the policy's
+    /// [wait](UploadRetry::give_up_after).
+    GaveUp,
+    /// The run was canceled while its tree was being uploaded.
+    Canceled,
+}
+
+/// An upload that ended without the tree stored.
+#[derive(Debug)]
+pub struct UploadFailure {
+    /// How the upload ended.
+    pub end: UploadEnd,
+    /// The last attempt's failure. `None` only for an upload canceled before any
+    /// attempt had failed.
+    pub error: Option<UploadError>,
+}
+
+impl std::fmt::Display for UploadFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.error {
+            Some(error) => error.fmt(f),
+            None => f.write_str("the run was canceled before its tree was uploaded"),
+        }
+    }
+}
+
+impl std::error::Error for UploadFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.error
+            .as_ref()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
+
+impl UploadFailure {
+    /// Why the tree was not stored, when the cause was a condition of the store:
+    /// the last failure of an upload the driver gave up on, or was canceled out
+    /// of after an attempt had failed on one. `None` when the failure was the
+    /// run's own, and for a cancellation that no failed attempt preceded.
+    pub fn store_fault(&self) -> Option<String> {
+        match (self.end, &self.error) {
+            (UploadEnd::GaveUp | UploadEnd::Canceled, Some(error))
+                if error.kind() == UploadFailureKind::StoreCondition =>
+            {
+                Some(error.to_string())
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Make `attempt` until it succeeds, waiting on a store that cannot take the tree.
+///
+/// A failure that is the [run's own](UploadFailureKind::RunsOwn) ends the upload
+/// at once, on any attempt.
+///
+/// From the first [store-condition](UploadFailureKind::StoreCondition) failure the
+/// driver is waiting. It tells `wait` so after each failed attempt, sleeps the
+/// policy's delay and tries again, until the policy's wait has passed since that
+/// first failure. A first attempt that neither lands nor fails within
+/// [`UploadRetry::slow_after`] is reported as a wait too, while it goes on.
+///
+/// A cancellation ends the upload wherever it lands: mid-attempt, mid-report or
+/// mid-sleep. The exception is a run that was
+/// [already canceled](StoreWait::already_canceled) when its upload began. A
+/// canceled gg run uploads its tree after the cancellation, and that upload must
+/// not be cut short by the very cancellation it follows. It is retried like any
+/// other, for at most [`UploadRetry::canceled_run_wait`].
+///
+/// Split from [`upload_run_tree_with`] so the wait runs against scripted attempts
+/// on a paused clock.
+pub async fn retry_until_stored<W, A, F>(
+    retry: UploadRetry,
+    wait: &W,
+    run_id: &str,
+    mut attempt: A,
+) -> Result<(), UploadFailure>
+where
+    W: StoreWait,
+    A: FnMut() -> F,
+    F: Future<Output = Result<(), UploadError>>,
+{
+    let already_canceled = wait.already_canceled().await;
+    let give_up_after = if already_canceled {
+        retry.give_up_after.min(retry.canceled_run_wait)
+    } else {
+        retry.give_up_after
+    };
+    let canceled = async {
+        if already_canceled {
+            std::future::pending().await
+        } else {
+            wait.canceled().await
+        }
+    };
+    tokio::pin!(canceled);
+    // Set as a report is begun rather than as it returns: a report abandoned part
+    // way may have reached the backend, and the end of the wait must then be
+    // reported too.
+    let reported = std::sync::atomic::AtomicBool::new(false);
+
+    let first = {
+        let first = attempt();
+        tokio::pin!(first);
+        let slow = async {
+            if retry.slow_after.is_zero() {
+                return std::future::pending().await;
+            }
+            tokio::time::sleep(retry.slow_after).await;
+            reported.store(true, Ordering::Relaxed);
+            tracing::warn!(
+                run_id = %run_id,
+                after_secs = retry.slow_after.as_secs(),
+                "the upload of the run's tree has not finished; reporting the run as waiting on the artifact store"
+            );
+            let reason = format!(
+                "the upload has not finished after {} s",
+                retry.slow_after.as_secs()
+            );
+            wait.waiting(&reason).await;
+        };
+        tokio::pin!(slow);
+        let mut slow_done = false;
+        loop {
+            tokio::select! {
+                result = &mut first => break Some(result),
+                () = &mut slow, if !slow_done => slow_done = true,
+                () = &mut canceled => break None,
+            }
+        }
+    };
+    let was_reported = || reported.load(Ordering::Relaxed);
+    let mut error = match first {
+        // A canceled job takes no further report.
+        None => {
+            return Err(UploadFailure {
+                end: UploadEnd::Canceled,
+                error: None,
+            });
+        }
+        Some(Ok(())) => {
+            if was_reported() {
+                wait.over(true).await;
+            }
+            return Ok(());
+        }
+        Some(Err(error)) => error,
+    };
+    if error.kind() == UploadFailureKind::RunsOwn {
+        if was_reported() {
+            wait.over(false).await;
+        }
+        return Err(UploadFailure {
+            end: UploadEnd::RunsOwn,
+            error: Some(error),
+        });
+    }
+
+    let waiting_since = Instant::now();
+    let mut failed_attempts: u32 = 1;
+    let end = loop {
+        let waited = waiting_since.elapsed();
+        if waited >= give_up_after {
+            break UploadEnd::GaveUp;
+        }
+        let reason = error.to_string();
+        reported.store(true, Ordering::Relaxed);
+        tokio::select! {
+            () = wait.waiting(&reason) => {}
+            () = &mut canceled => break UploadEnd::Canceled,
+        }
+        // The last sleep is cut to what is left of the wait, so the final attempt
+        // is made as the bound passes rather than up to a delay after it.
+        let delay = retry
+            .delay_after(failed_attempts)
+            .min(give_up_after - waited);
+        tracing::warn!(
+            run_id = %run_id,
+            failed_attempts,
+            waited_secs = waited.as_secs(),
+            give_up_after_secs = give_up_after.as_secs(),
+            retry_in_secs = delay.as_secs_f64(),
+            already_canceled,
+            error = %error,
+            "the artifact store did not take the run's tree; holding it and retrying"
+        );
+        tokio::select! {
+            () = tokio::time::sleep(delay) => {}
+            () = &mut canceled => break UploadEnd::Canceled,
+        }
+        let result = tokio::select! {
+            result = attempt() => result,
+            () = &mut canceled => break UploadEnd::Canceled,
+        };
+        match result {
+            Ok(()) => {
+                tracing::info!(
+                    run_id = %run_id,
+                    failed_attempts,
+                    waited_secs = waiting_since.elapsed().as_secs(),
+                    "the artifact store took the run's tree after a wait"
+                );
+                wait.over(true).await;
+                return Ok(());
+            }
+            Err(next) => {
+                error = next;
+                failed_attempts += 1;
+                if error.kind() == UploadFailureKind::RunsOwn {
+                    break UploadEnd::RunsOwn;
+                }
+            }
+        }
+    };
+    // A canceled job takes no further report, so only the other endings say the
+    // wait is over.
+    if was_reported() && end != UploadEnd::Canceled {
+        wait.over(false).await;
+    }
+    Err(UploadFailure {
+        end,
+        error: Some(error),
+    })
+}
+
+/// Tar the run tree at `{out_dir}/{run_id}/` and upload it to the artifact service
+/// at `artifacts_url`, presenting `job_token`, in a single attempt nobody is told
+/// about. See [`upload_run_tree_with`].
+pub async fn upload_run_tree(
+    artifacts_url: &str,
+    run_id: &str,
+    job_id: &str,
+    out_dir: &Path,
+    job_token: &str,
+) -> Result<(), UploadFailure> {
+    upload_run_tree_with(
+        UploadRetry::single_attempt(),
+        &Unattended,
+        artifacts_url,
+        run_id,
+        job_id,
+        out_dir,
+        job_token,
+    )
+    .await
 }
 
 /// Tar the run tree at `{out_dir}/{run_id}/` and upload it to the artifact service
@@ -68,19 +641,26 @@ fn body_suffix(body: &str) -> String {
 /// was minted for; the service verifies the token against it (a different UUID from
 /// the run id), so it is sent in the `x-tcab-job-id` header rather than the path.
 ///
-/// Returns once the service has acknowledged the upload (`2xx`). Any failure is
-/// surfaced to the caller, which logs it but does not abort the run — the record
-/// the run produced is still reported to the backend either way; only its servable
-/// artifacts are missing.
-pub async fn upload_run_tree(
+/// The tree is tarred once and the tarball kept on disk for every attempt, which
+/// [`retry_until_stored`] makes under `retry`, reporting to `wait`. Returns `Ok`
+/// once the service has acknowledged the upload (`2xx`).
+pub async fn upload_run_tree_with<W: StoreWait>(
+    retry: UploadRetry,
+    wait: &W,
     artifacts_url: &str,
     run_id: &str,
     job_id: &str,
     out_dir: &Path,
     job_token: &str,
-) -> Result<(), UploadError> {
+) -> Result<(), UploadFailure> {
     let run_dir = out_dir.join(run_id);
     let path_label = run_dir.display().to_string();
+    // A tree that cannot be tarred, and a client that cannot be built, are local to
+    // this driver: nothing the store does changes either.
+    let own = |error| UploadFailure {
+        end: UploadEnd::RunsOwn,
+        error: Some(error),
+    };
 
     // Build the tarball on DISK and stream it, rather than assembling it in memory.
     //
@@ -107,37 +687,274 @@ pub async fn upload_run_tree(
     let scratch_dir = out_dir.to_path_buf();
     let tarball = tokio::task::spawn_blocking(move || tar_run_dir(&run_dir, &scratch_dir))
         .await
-        .map_err(|join| UploadError::Tar {
-            path: path_label.clone(),
-            source: std::io::Error::other(join),
+        .map_err(|join| {
+            own(UploadError::Tar {
+                path: path_label.clone(),
+                source: std::io::Error::other(join),
+            })
         })?
-        .map_err(|source| UploadError::Tar {
-            path: path_label,
-            source,
+        .map_err(|source| {
+            own(UploadError::Tar {
+                path: path_label.clone(),
+                source,
+            })
         })?;
 
+    // One client for every attempt. The connect timeout bounds an attempt against a
+    // service that is not there; there is deliberately no overall timeout, because
+    // the body is as large as the run tree and a slow link is not a failure. An
+    // attempt that stops moving is ended by the policy's stall timeout.
+    let http = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|err| own(UploadError::Transport(err)))?;
+    let url = format!("{}/runs/{}/artifacts", artifacts_url, run_id);
+    let tarball = Arc::new(tarball);
+
+    // Each attempt reads the same archive from its start, at offsets of its own. An
+    // earlier attempt's body can outlive its `send` when the service answers before
+    // it has read the whole of it (a full volume does exactly that), and a cursor
+    // shared with it would be moved under this one.
+    retry_until_stored(retry, wait, run_id, || {
+        send_tarball(
+            &http,
+            &url,
+            job_id,
+            job_token,
+            Arc::clone(&tarball),
+            retry.stall_timeout,
+        )
+    })
+    .await
+}
+
+/// Send one attempt of the run-tree upload: the whole of `tarball` as the body of
+/// `POST {url}`, abandoned as [stalled](UploadError::Stalled) when it makes no
+/// progress for `stall_timeout`.
+async fn send_tarball(
+    http: &reqwest::Client,
+    url: &str,
+    job_id: &str,
+    job_token: &str,
+    tarball: Arc<File>,
+    stall_timeout: Duration,
+) -> Result<(), UploadError> {
     // No `Content-Length`: a wrapped stream has no size hint, so reqwest frames the
     // body `chunked`. The artifact service's `DefaultBodyLimit` enforces its cap as
     // the bytes arrive either way, and declaring a length alongside a chunked body
     // would be the one framing error that could truncate an upload silently.
-    let body = reqwest::Body::wrap_stream(ReaderStream::new(tokio::fs::File::from_std(tarball)));
-
-    let url = format!("{}/runs/{}/artifacts", artifacts_url, run_id);
-    let response = reqwest::Client::new()
-        .post(&url)
-        .bearer_auth(job_token)
-        .header("x-tcab-job-id", job_id)
-        .header(reqwest::header::CONTENT_TYPE, "application/x-tar")
-        .body(body)
-        .send()
-        .await
-        .map_err(UploadError::Transport)?;
-    let status = response.status();
-    if status.is_success() {
-        return Ok(());
+    let progress = Arc::new(AtomicU64::new(0));
+    let body = reqwest::Body::wrap_stream(tarball_chunks(tarball, Arc::clone(&progress)));
+    let attempt = async {
+        let response = http
+            .post(url)
+            .bearer_auth(job_token)
+            .header("x-tcab-job-id", job_id)
+            .header(reqwest::header::CONTENT_TYPE, "application/x-tar")
+            .body(body)
+            .send()
+            .await
+            .map_err(UploadError::Transport)?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        Err(UploadError::Status { status, body })
+    };
+    tokio::select! {
+        result = attempt => result,
+        () = stalled(&progress, stall_timeout) => Err(UploadError::Stalled(stall_timeout)),
     }
-    let body = response.text().await.unwrap_or_default();
-    Err(UploadError::Status { status, body })
+}
+
+/// The tarball as a stream of chunks, read from its first byte at explicit
+/// offsets. Each chunk the connection takes is counted in `progress`.
+///
+/// The connection asks for a chunk only when it has room to send one, so the count
+/// moves exactly as fast as the service reads. Reading at an offset leaves the
+/// file's own cursor alone, so any number of these streams over one file are
+/// independent.
+fn tarball_chunks(
+    tarball: Arc<File>,
+    progress: Arc<AtomicU64>,
+) -> impl futures_util::Stream<Item = std::io::Result<bytes::Bytes>> + Send + 'static {
+    futures_util::stream::try_unfold(0u64, move |offset| {
+        let tarball = Arc::clone(&tarball);
+        let progress = Arc::clone(&progress);
+        async move {
+            // A blocking read, so it runs on the blocking pool like the tar walk.
+            let chunk = tokio::task::spawn_blocking(move || read_chunk_at(&tarball, offset))
+                .await
+                .map_err(std::io::Error::other)??;
+            if chunk.is_empty() {
+                return Ok(None);
+            }
+            progress.fetch_add(1, Ordering::Relaxed);
+            let next = offset + chunk.len() as u64;
+            Ok(Some((bytes::Bytes::from(chunk), next)))
+        }
+    })
+}
+
+/// Read up to [`TARBALL_CHUNK`] bytes of `file` at `offset`. Empty at its end.
+fn read_chunk_at(file: &File, offset: u64) -> std::io::Result<Vec<u8>> {
+    let mut chunk = vec![0u8; TARBALL_CHUNK];
+    #[cfg(unix)]
+    let read = std::os::unix::fs::FileExt::read_at(file, &mut chunk, offset)?;
+    #[cfg(windows)]
+    let read = std::os::windows::fs::FileExt::seek_read(file, &mut chunk, offset)?;
+    chunk.truncate(read);
+    Ok(chunk)
+}
+
+/// Resolve once `progress` has stood still for a whole `limit`. Never resolves
+/// with a zero `limit`.
+async fn stalled(progress: &AtomicU64, limit: Duration) {
+    if limit.is_zero() {
+        return std::future::pending().await;
+    }
+    let mut seen = progress.load(Ordering::Relaxed);
+    loop {
+        tokio::time::sleep(limit).await;
+        let now = progress.load(Ordering::Relaxed);
+        if now == seen {
+            return;
+        }
+        seen = now;
+    }
+}
+
+/// What became of a run's tree: what [`store_run_tree`] returns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeStore {
+    /// No artifact service is configured, so nothing was uploaded.
+    NoService,
+    /// The service acknowledged the tree.
+    Stored,
+    /// The upload ended without the tree stored.
+    NotStored {
+        /// How the upload ended.
+        end: UploadEnd,
+        /// The upload's last failure, when it was a condition of the store rather
+        /// than the run's own ([`UploadFailure::store_fault`]).
+        store_fault: Option<String>,
+    },
+}
+
+impl TreeStore {
+    /// What the terminal status report carries as
+    /// [`artifacts_stored`](test_cabinet_core::StatusUpdate::artifacts_stored):
+    /// absent with no artifact service, else whether the tree landed.
+    pub fn artifacts_stored(&self) -> Option<bool> {
+        match self {
+            Self::NoService => None,
+            Self::Stored => Some(true),
+            Self::NotStored { .. } => Some(false),
+        }
+    }
+
+    /// What the terminal status report carries as
+    /// [`store_fault`](test_cabinet_core::StatusUpdate::store_fault): why the tree
+    /// was not stored, when the store was the cause.
+    pub fn store_fault(&self) -> Option<&str> {
+        match self {
+            Self::NotStored { store_fault, .. } => store_fault.as_deref(),
+            Self::NoService | Self::Stored => None,
+        }
+    }
+
+    /// Whether the run was canceled while its tree was being uploaded. The job is
+    /// then terminally `canceled`, and `canceled` is the only status the backend
+    /// still takes for it.
+    pub fn canceled_during_upload(&self) -> bool {
+        matches!(
+            self,
+            Self::NotStored {
+                end: UploadEnd::Canceled,
+                ..
+            }
+        )
+    }
+
+    /// Whether the run's terminal report is `canceled` rather than the outcome the
+    /// run reached: the run itself was canceled (`run_canceled`), or its upload
+    /// was. Either way the job is terminally `canceled`, and a `succeeded` or
+    /// `failed` report would be discarded with the record it carries.
+    pub fn reports_canceled(&self, run_canceled: bool) -> bool {
+        run_canceled || self.canceled_during_upload()
+    }
+}
+
+/// Upload the produced run tree to the artifact service and, once the service has
+/// acknowledged it, stamp the run's playable-build link onto `record`.
+///
+/// - [`TreeStore::NoService`] when `artifacts_url` is `None` (a local setup with no
+///   artifact service): nothing is uploaded and the record carries no playable link.
+/// - [`TreeStore::Stored`] when the tree landed. The link is set root-relative
+///   (`/runs/{id}/build/`), and only when the run produced a static build to serve.
+/// - [`TreeStore::NotStored`] when the upload ended without it: the failure was the
+///   run's own, the store did not take the tree for the whole of `retry`'s wait, or
+///   the run was canceled during the upload. The failure is logged at `error` with
+///   the service's last status and body, and the link is left off the record: a
+///   link nothing serves would offer a build that is not there.
+///
+/// A tree that is not stored never changes the run's outcome. The record still
+/// reaches the backend with the state the run reached; what is lost is the tree,
+/// and the backend is told so rather than left to discover it at publish.
+pub async fn store_run_tree<W: StoreWait>(
+    retry: UploadRetry,
+    wait: &W,
+    artifacts_url: Option<&str>,
+    record: &mut RunRecord,
+    job_id: &str,
+    out_dir: &Path,
+    job_token: &str,
+) -> TreeStore {
+    let Some(artifacts_url) = artifacts_url else {
+        return TreeStore::NoService;
+    };
+    match upload_run_tree_with(
+        retry,
+        wait,
+        artifacts_url,
+        &record.id,
+        job_id,
+        out_dir,
+        job_token,
+    )
+    .await
+    {
+        Ok(()) => {
+            if let Some(link) = playable_build_link(out_dir, &record.id) {
+                record.links.playable_build = Some(link);
+            }
+            tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
+            TreeStore::Stored
+        }
+        Err(failure) => {
+            let (status, body) = match &failure.error {
+                Some(UploadError::Status { status, body }) => (Some(status.as_u16()), body.trim()),
+                Some(
+                    UploadError::Tar { .. } | UploadError::Transport(_) | UploadError::Stalled(_),
+                )
+                | None => (None, ""),
+            };
+            tracing::error!(
+                run_id = %record.id,
+                status,
+                body,
+                end = ?failure.end,
+                error = %failure,
+                "could not store the run's artifact tree; the run is reported with its \
+                 own outcome, but it has no tree to play or publish"
+            );
+            TreeStore::NotStored {
+                end: failure.end,
+                store_fault: failure.store_fault(),
+            }
+        }
+    }
 }
 
 /// Upload an adversarial run's controller wasm and proof replays to the **backend
@@ -734,3 +1551,15 @@ mod tests;
 #[cfg(test)]
 #[path = "artifacts.tarball.test.rs"]
 mod tarball_tests;
+
+#[cfg(test)]
+#[path = "artifacts.retry.test.rs"]
+mod retry_tests;
+
+#[cfg(test)]
+#[path = "artifacts.runwait.test.rs"]
+mod runwait_tests;
+
+#[cfg(test)]
+#[path = "artifacts.wait.test.rs"]
+mod wait_tests;

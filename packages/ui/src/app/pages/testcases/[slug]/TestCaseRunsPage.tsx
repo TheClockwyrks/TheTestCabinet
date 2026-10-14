@@ -18,7 +18,6 @@ import {
 } from "../../../components/anchoredScope";
 import type { RunScope } from "../../../components/runColumns";
 import { useGalleryData } from "../../../data/galleryContext";
-import { engineName } from "../../../data/engines";
 import type { RunQueryResult } from "../../../data/runQuery";
 import {
   TestCaseDetailLayout,
@@ -69,12 +68,13 @@ export function RunsContent({
   // stale `?engines=all` on a single-engine version must not silently change
   // the query behind a control that isn't on screen); the flags also gate the
   // controls below.
-  const multiEngine = (testCase.enginesByVersion[version] ?? []).length > 1;
+  const supportedEngines = testCase.enginesByVersion[version];
+  const multiEngine = (supportedEngines ?? []).length > 1;
   const multiVariant = (testCase.variantsByVersion[version] ?? []).length > 1;
   const scope = useAnchoredScope({
     version,
     versions: testCase.versions,
-    engineWidenable: multiEngine,
+    engines: supportedEngines,
     variantWidenable: multiVariant,
   });
   // The case is pinned by the route and the `?version=` param is the anchored
@@ -125,7 +125,7 @@ export function RunsContent({
       <div className={styles.controls}>
         <AnchoredScopeControls
           state={scope}
-          engine={multiEngine ? { name: engineName(engine) } : undefined}
+          engine={engine}
           variant={multiVariant ? { name: variant.name } : undefined}
         />
         <RunFilters

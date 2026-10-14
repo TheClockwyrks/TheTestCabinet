@@ -15,6 +15,7 @@ use test_cabinet_core::job_api::JobState;
 use test_cabinet_core::{RunCancellation, mint_run_id, write_failed_record};
 use time::OffsetDateTime;
 
+use test_cabinet_driver::artifacts::{RunWait, TreeStore};
 use test_cabinet_driver::cancel::{
     CancelDisposition, CancelRace, cancel_disposition, race_cancellation,
 };
@@ -278,8 +279,10 @@ async fn main() -> ExitCode {
             // Upload the produced tree to the artifact service (when configured) and
             // stamp the playable-build link on the record, *before* reporting the
             // terminal status — so by the time the console sees the run finish, its
-            // build and media are already servable.
-            finalize_artifacts(&config, &mut record).await;
+            // build and media are already servable. Whether the tree landed rides
+            // on that terminal report.
+            let wait = RunWait::holding(&client, &record, None);
+            let tree = finalize_artifacts(&config, &wait, &mut record).await;
             // For an adversarial run, also mirror the controller wasm + proof
             // replays into the *backend* store (the CLI does this at push). Without
             // it a backend-driven run is invisible to the arena and its replays
@@ -333,13 +336,19 @@ async fn main() -> ExitCode {
             // state is recorded as what it truly was, but it is still handed over as a
             // cancellation — the only status the backend accepts on a canceled job, and
             // the difference between retaining that run and silently discarding it.
-            if cancel.is_canceled() {
+            //
+            // A run of any harness that was canceled while its finished tree was being
+            // uploaded is handed over the same way, for the same reason: the job is
+            // terminally `canceled`, the run had already finished, and its record is
+            // worth keeping even though its tree was not stored.
+            if tree.reports_canceled(cancel.is_canceled()) {
                 tracing::info!(
                     run_id = %record.id,
                     state = ?record.status.state,
-                    "canceled run wound down and produced a record; reporting canceled"
+                    canceled_during_upload = tree.canceled_during_upload(),
+                    "canceled run produced a record; reporting canceled"
                 );
-                if let Err(err) = client.post_status_canceled(record).await {
+                if let Err(err) = client.post_status_canceled(record, &tree).await {
                     // The job is already terminal and the operator has their answer;
                     // failing the driver over the record post would only make the pod
                     // look broken. Log it and exit cleanly.
@@ -350,7 +359,7 @@ async fn main() -> ExitCode {
             }
 
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
-            if let Err(err) = client.post_status_succeeded(record).await {
+            if let Err(err) = client.post_status_succeeded(record, &tree).await {
                 eprintln!("could not report `succeeded` to the backend: {err}");
                 return ExitCode::FAILURE;
             }
@@ -465,7 +474,7 @@ async fn report_canceled(
     // The backend holds the streamed events, so the locally-written `events.jsonl`
     // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
     // `report_failure` passes.
-    let record = match write_failed_record(
+    let (record, tree) = match write_failed_record(
         &config.work_dir.join("out"),
         run_id,
         request,
@@ -479,8 +488,9 @@ async fn report_canceled(
             // Upload whatever happens to be in the out directory. On this path the
             // engine never reached artifact collection, so it is usually empty — but a
             // run that errored *after* collecting has a tree worth keeping, and the
-            // upload is a no-op when there is nothing there.
-            finalize_artifacts(config, &mut record).await;
+            // upload is a no-op when there is nothing there. The job is already
+            // terminal, so there is no report for the backend to keep.
+            let tree = finalize_artifacts(config, &RunWait::bare(client), &mut record).await;
             // Same for a gg run's session record: a cancellation that could not wind down
             // cleanly still leaves a salvaged, truncated record in the run tree, and this
             // is the only path that would mirror it.
@@ -490,14 +500,14 @@ async fn report_canceled(
             // reason the replay upload is: whatever *did* land in the run tree is the only
             // account of the run, and this is the only path that would mirror it.
             finalize_code_analysis_backend_upload(config, &record).await;
-            record
+            (record, tree)
         }
         Err(err) => {
             tracing::warn!(error = %err, "could not build the canceled run record");
             return;
         }
     };
-    if let Err(err) = client.post_status_canceled(record).await {
+    if let Err(err) = client.post_status_canceled(record, &tree).await {
         tracing::warn!(error = %err, "could not report `canceled` to the backend");
     }
 }
@@ -559,43 +569,35 @@ async fn teardown_sandbox(config: &Config) -> bool {
     }
 }
 
-/// Upload the produced run tree to the artifact service and stamp the run's
-/// playable-build link onto `record`, when an artifact service is configured
-/// (`TCAB_ARTIFACTS_URL`).
+/// Upload the produced run tree to the artifact service, when one is configured
+/// (`TCAB_ARTIFACTS_URL`), and return what became of it.
 ///
-/// The link is set root-relative (`/runs/{id}/build/`) — the console prefixes the
-/// artifact base URL it learned from the backend's `/config` — and only when the
-/// run produced a static build to serve, mirroring what the worker set at list
-/// time. An upload failure is logged but never fatal: the record itself still
-/// reaches the backend (only its servable artifacts are missing), and the run
-/// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (a local setup with no
-/// artifact service) this is a no-op and the record carries no playable link.
-async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::RunRecord) {
-    let Some(artifacts_url) = config.artifacts_url.as_deref() else {
-        return;
-    };
-    let out_dir = config.work_dir.join("out");
-
-    if let Some(link) = test_cabinet_driver::artifacts::playable_build_link(&out_dir, &record.id) {
-        record.links.playable_build = Some(link);
-    }
-
-    if let Err(err) = test_cabinet_driver::artifacts::upload_run_tree(
-        artifacts_url,
-        &record.id,
+/// A thin wrapper over [`store_run_tree`](test_cabinet_driver::artifacts::store_run_tree),
+/// which holds the behaviour: the wait on a store that cannot take the tree, bounded
+/// by `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` and reported to the backend through
+/// `client`, the playable-build link stamped only on a stored tree, and the `error`
+/// line for a tree that could not be stored. Never fatal: the run is reported with
+/// the outcome it reached either way.
+///
+/// This is the one place the driver can sit for hours after its run has finished.
+/// The cancellation race in `main` covers the run alone, so the wait watches for a
+/// cancellation itself, through `wait`, which also hands the run's record to the
+/// backend as the wait begins.
+async fn finalize_artifacts(
+    config: &Config,
+    wait: &RunWait<'_>,
+    record: &mut test_cabinet_core::RunRecord,
+) -> test_cabinet_driver::artifacts::TreeStore {
+    test_cabinet_driver::artifacts::store_run_tree(
+        config.upload_retry(),
+        wait,
+        config.artifacts_url.as_deref(),
+        record,
         &config.job_id,
-        &out_dir,
+        &config.work_dir.join("out"),
         &config.job_token,
     )
     .await
-    {
-        // A missing upload leaves the run inspectable (its record is still posted),
-        // it just cannot be played from the reviewer UI — worth a warning, not a
-        // failed run.
-        tracing::warn!(run_id = %record.id, error = %err, "could not upload run artifacts");
-    } else {
-        tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
-    }
 }
 
 /// Mirror an adversarial run's controller wasm + proof replays into the **backend
@@ -819,7 +821,7 @@ async fn report_failure(
     failure: RunFailure,
 ) -> ExitCode {
     tracing::warn!(detail = %failure.detail, "run failed; reporting to the backend");
-    let record = match write_failed_record(
+    let (record, tree) = match write_failed_record(
         &config.work_dir.join("out"),
         run_id,
         request,
@@ -834,24 +836,43 @@ async fn report_failure(
             // partial artifacts (proof media, an asset frame) worth retaining for
             // inspection — upload them and stamp any build link, the same as a
             // succeeded run, before the terminal status is posted.
-            finalize_artifacts(config, &mut record).await;
+            let wait = RunWait::holding(client, &record, Some(&failure.detail));
+            let tree = finalize_artifacts(config, &wait, &mut record).await;
             // A `hung` or `timed_out` gg run never reaches artifact collection, but the
             // engine salvages its capture journal out of the container before teardown and
             // assembles it into the run tree all the same — so this is the one upload that
             // routinely has something to do on the failure path. Without it the replay of
             // exactly the run most worth replaying would stop at the driver pod.
             finalize_replay_backend_upload(config, &record).await;
-            Some(record)
+            (Some(record), tree)
         }
         Err(err) => {
             // The record is a courtesy for inspection; if it cannot even be built,
             // still report the failure with its reason so the console is not left
             // waiting on a job that silently died.
             tracing::warn!(error = %err, "could not build the failed run record");
-            None
+            (None, TreeStore::NoService)
         }
     };
-    if let Err(err) = client.post_status_failed(failure.detail, record).await {
+    // A run canceled while its tree was being uploaded is terminally `canceled`,
+    // and `canceled` is the only status the backend still takes for it: a `failed`
+    // report would be discarded, and the failure record with it.
+    if tree.reports_canceled(false)
+        && let Some(record) = record.clone()
+    {
+        tracing::info!(
+            run_id = %record.id,
+            "the failed run was canceled while its tree was being uploaded; reporting canceled"
+        );
+        if let Err(err) = client.post_status_canceled(record, &tree).await {
+            tracing::warn!(error = %err, "could not report `canceled` to the backend");
+        }
+        return ExitCode::SUCCESS;
+    }
+    if let Err(err) = client
+        .post_status_failed(failure.detail, record, &tree)
+        .await
+    {
         eprintln!("could not report `failed` to the backend: {err}");
         return ExitCode::FAILURE;
     }

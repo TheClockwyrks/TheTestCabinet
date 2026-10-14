@@ -78,9 +78,10 @@ fn body_suffix(body: &str) -> String {
 pub enum JobState {
     /// Enqueued, awaiting a dispatcher to claim it.
     Queued,
-    /// Enqueued but held back because the run's harness is at its configured
-    /// maximum parallelism (the backend decides this; the dispatcher never claims
-    /// such a job).
+    /// Enqueued but held back, because the run's harness is at its configured
+    /// maximum parallelism or because the backend is holding the whole queue until
+    /// the artifact store can take another run's tree (the backend decides this;
+    /// the dispatcher never claims such a job).
     Pending,
     /// Claimed by the dispatcher; the driver Job is being created.
     Dispatched,
@@ -88,6 +89,9 @@ pub enum JobState {
     Starting,
     /// The driver is executing the run.
     Running,
+    /// The run has finished and its driver is waiting on the artifact store to take
+    /// its tree. The driver pod is alive for the whole wait.
+    Storing,
     /// The run produced a record.
     Succeeded,
     /// The run could not be driven to a record.
@@ -104,7 +108,10 @@ impl JobState {
     /// Whether the backend believes a driver is executing the job: it was claimed and
     /// has not reached a terminal state. Only such a job can lose its driver.
     pub fn is_driven(self) -> bool {
-        matches!(self, Self::Dispatched | Self::Starting | Self::Running)
+        matches!(
+            self,
+            Self::Dispatched | Self::Starting | Self::Running | Self::Storing
+        )
     }
 
     /// Whether the run is over from the backend's perspective. A driver-pod death
@@ -300,9 +307,8 @@ impl BackendClient {
         detail: impl Into<String>,
     ) -> Result<(), ClientError> {
         let update = StatusUpdate {
-            state: DriverState::Failed,
-            record: None,
             detail: Some(detail.into()),
+            ..StatusUpdate::of(DriverState::Failed)
         };
         let response = self
             .http
@@ -339,9 +345,8 @@ impl BackendClient {
         detail: impl Into<String>,
     ) -> Result<(), ClientError> {
         let update = StatusUpdate {
-            state: DriverState::Failed,
-            record: None,
             detail: Some(detail.into()),
+            ..StatusUpdate::of(DriverState::Failed)
         };
         let response = self
             .http

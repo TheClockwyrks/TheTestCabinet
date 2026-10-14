@@ -220,12 +220,43 @@
 
 // The board: one card per climber, stacked in the order the ladder feeds them, set
 // apart from the review queue above it.
+.board {
+  margin-top: t.$space-xl;
+  margin-bottom: t.$space-xl;
+}
+
 .climbers {
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
-  margin-top: t.$space-xl;
-  margin-bottom: t.$space-xl;
+}
+
+// The board's search and status filter, in the run listings' filter bar (see
+// `RunFilters.module.scss`): the search across the top and the rest wrapping beneath
+// it, so a phone stacks them.
+.climberFilters {
+  margin-bottom: t.$space-md;
+}
+
+// The one facet the board has. It keeps a control's width rather than growing across
+// the row as a listing's four facets share theirs, so the count beside it stays beside
+// it; on a narrow board it takes the row and the count wraps under it.
+.climberStatusFilter {
+  flex: 0 1 14rem;
+}
+
+// Which climbers the page shows, of how many. Tabular, so paging through a board
+// changes the digits and moves nothing.
+.climberShowing {
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The ladders list's search, set apart from the cards as the board's bar is from its.
+.listFilters {
+  margin-bottom: t.$space-md;
 }
 
 // A card lays out where its climber stands by its own width rather than the

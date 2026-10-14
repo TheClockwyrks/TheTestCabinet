@@ -2,9 +2,8 @@
 # Publish catalog changes (test cases and game jams) to a REMOTE (prod/staging) backend
 # on AKS, on demand.
 #
-# The in-pod ingest sidecar ingests only once, on backend start, to self-heal the
-# ephemeral (emptyDir) definition store after a pod reschedule. It does NOT re-ingest
-# on a schedule: a periodic force re-ingest rewrites every version and briefly leaves
+# The in-pod ingest sidecar ingests only once, on backend start, so each deployment
+# serves the catalog of its branch tip. It does NOT re-ingest on a schedule: a periodic force re-ingest rewrites every version and briefly leaves
 # each one manifest-less, which 404s ("… is not ingested") any run that resolves its
 # version mid-cycle. So after you push edits to a test-case version, run this to
 # refresh the backend's checkout and force a re-ingest. The backend swaps each version
@@ -18,13 +17,28 @@
 # Reference tab — the pull half of the reference-publish flow.
 #
 # It drives the cluster with `az aks command invoke`, so it needs only an
-# authenticated `az` (no local kubeconfig or port-forward). The invoked command execs
+# authenticated `az` and `jq` (no local kubeconfig or port-forward). It exits non-zero
+# unless the ingest succeeded: when the cluster-side command failed, when it was still
+# running once the wait on it ran out, and when it could not be handed to the cluster.
+# The invoked command execs
 # into the backend pod's `ingest` sidecar — which already carries git + curl and
 # mounts the /state/checkout the backend ingests from — to `git fetch` the latest
 # pushed HEAD, update its cold-storage submodule (the baseline validation media ingest
 # copies into the store) to the pinned commit shallowly, and POST a forced ingest over
 # localhost (the NetworkPolicy admits only
 # intra-pod traffic to the backend).
+#
+# Like the sidecar, it ingests only from a checkout it brought to the branch tip with
+# its cold storage at the pinned commit: a fetch that fails, or cold storage that is
+# not at its pin afterwards, stops it before the POST, so the store and its baselines
+# stay as they were, and it prints the free space on /state, which a fetch that cannot
+# write is usually short of. A whole-catalog run is therefore also how an environment
+# that lost its baselines gets them back.
+#
+# A whole-catalog run that succeeds also records itself as the pod's ingest result,
+# the file scripts/ci/catalog-ingest.sh verify reads. A deployment that failed because
+# its sidecar could not ingest therefore passes its verify once this has repaired it,
+# on a re-run of the deployment's stage with no new pod.
 #
 # A case's identity is the `slug` its test-case.toml declares (NOT its folder name; the
 # two usually match but can differ — carom/ pins slug = "pong"). Game jams are authored
@@ -93,32 +107,110 @@ fi
 
 echo "Re-ingesting ${scope} on ${cluster}/${namespace} (force)…"
 
-# The remote script runs cluster-side in an `az aks command invoke` helper pod. It
-# execs the backend's `ingest` sidecar to refresh the checkout to the catalog branch
-# tip, then triggers ingest. The branch and the JSON body are passed as positional args
-# to the innermost `sh` (`$1`/`$2`) rather than interpolated into the script text, so
-# their contents never collide with the surrounding shells. `--fail-with-body` keeps a
-# render error's message (and a non-2xx exit) from vanishing. The heredoc is unquoted so
-# ${namespace}/${body}/${TCAB_INGEST_BRANCH} expand here, while \$… stays literal for the
-# cluster-side shells. `origin` is the remote the sidecar's clone set up.
-remote=$(cat <<REMOTE
-set -e
-kubectl -n ${namespace} exec deploy/the-test-cabinet-backend -c ingest -- sh -c 'set -e
-echo "ingest: refreshing /state/checkout to origin/\$1"
-git -C /state/checkout fetch --depth 1 origin "\$1"
-git -C /state/checkout reset --hard FETCH_HEAD
+for tool in az jq; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "reingest-cluster.sh: no ${tool} on PATH. az hands the command to the cluster and jq reads its verdict." >&2
+    exit 1
+  fi
+done
+
+# lib.sh's aks_invoke runs the script below in the cluster and answers with the
+# script's own exit code, which `az aks command invoke` alone does not carry, and it
+# reads a command az stopped waiting on back until it ends. Sourcing lib.sh puts
+# this shell in the repository root.
+# shellcheck source=scripts/ci/lib.sh
+source "${script_dir}/ci/lib.sh"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+remote="${work}/reingest-cluster-remote.sh"
+
+# The script that runs cluster-side, in an `az aks command invoke` helper pod. Its
+# settings are written at its head; the rest is quoted, so it reaches the cluster as
+# written here. It execs the backend's `ingest` sidecar to refresh the checkout to the
+# catalog branch tip, then triggers the ingest. The branch, the JSON body and the
+# scope are positional arguments of the innermost `sh`, so their contents never
+# collide with the surrounding shells. `--fail-with-body` keeps a render error's
+# message (and a non-2xx exit) from vanishing. `origin` is the remote the sidecar's
+# clone set up.
+#
+# After a whole-catalog ingest the sidecar's result file is rewritten as `ok`. That
+# file is what scripts/ci/catalog-ingest.sh verify reads, and the sidecar writes it
+# once per pod start, so a deployment whose sidecar failed would otherwise read as
+# failed for as long as its pod lives, however well this repair went. A scoped
+# ingest leaves the file alone: it has not ingested the catalog.
+{
+  printf 'NAMESPACE=%q\nBRANCH=%q\nBODY=%q\nWHOLE=%q\n' \
+    "$namespace" "$TCAB_INGEST_BRANCH" "$body" "$([[ $# -eq 0 ]] && echo yes || echo no)"
+  cat <<'REMOTE'
+set -u
+k() { kubectl -n "$NAMESPACE" "$@"; }
+
+# shellcheck disable=SC2016 # the sidecar's shell expands these, not this one
+if k exec deploy/the-test-cabinet-backend -c ingest -- sh -c 'set -e
+state="${TCAB_INGEST_STATE:-/state}"
+checkout="$state/checkout"
+echo "ingest: refreshing $checkout to origin/$1"
+git -C "$checkout" fetch --depth 1 origin "$1"
+git -C "$checkout" reset --hard FETCH_HEAD
 echo "ingest: updating the cold-storage submodule"
-git -C /state/checkout submodule sync
-git -C /state/checkout submodule update --init --depth 1
+git -C "$checkout" submodule sync
+git -C "$checkout" submodule update --init --depth 1
+pinned=$(git -C "$checkout" rev-parse --verify HEAD:cold-storage)
+actual=$(git -C "$checkout/cold-storage" rev-parse --verify HEAD)
+if [ "$actual" != "$pinned" ]; then
+  echo "ingest: cold storage is at $actual and the checkout pins $pinned; not ingesting"
+  exit 1
+fi
 echo "ingest: triggering forced re-ingest"
-curl -sS --fail-with-body -X POST http://127.0.0.1:8787/ingest -H "content-type: application/json" --data "\$2"
-echo' sh "${TCAB_INGEST_BRANCH}" '${body}'
+curl -sS --fail-with-body -X POST "${TCAB_INGEST_BACKEND_URL:-http://127.0.0.1:8787}/ingest" -H "content-type: application/json" --data "$2"
+echo
+if [ "$3" = yes ]; then
+  result="${TCAB_INGEST_RESULT:-/tmp/ingest-result}"
+  commit=$(git -C "$checkout" rev-parse --verify HEAD)
+  printf "status=ok\nstep=ingest\nbranch=%s\ncommit=%s\n\nThe backend ingested %s at %s, by scripts/reingest-cluster.sh.\n" "$1" "$commit" "$1" "$commit" >"$result.tmp"
+  mv "$result.tmp" "$result"
+  echo "ingest: recorded the ingest of $commit as this pod'"'"'s result"
+fi' sh "$BRANCH" "$BODY" "$WHOLE"; then
+  echo "REINGEST ok"
+  exit 0
+fi
+echo "REINGEST failed, above. Nothing further was ingested. Free space on /state:"
+k exec deploy/the-test-cabinet-backend -c ingest -- df -hP /state || true
+exit 1
 REMOTE
-)
+} >"$remote"
 
-az aks command invoke \
-  --resource-group "${resource_group}" \
-  --name "${cluster}" \
-  --command "${remote}"
-
-echo "Done. If a reference failed to render, the message is in the output above."
+verdict=0
+aks_invoke "$resource_group" "$cluster" "$remote" "bash $(basename "$remote")" || verdict=$?
+case "$verdict" in
+  0)
+    echo "Done. If a reference failed to render, the message is in the output above."
+    ;;
+  1)
+    echo >&2 "reingest-cluster.sh: the re-ingest of ${scope} on ${cluster}/${namespace} FAILED, above."
+    remediation \
+      "The store, its baselines and the public snapshot are as the last ingest that" \
+      "succeeded left them. Fix what the output names, then run this again."
+    exit 1
+    ;;
+  3)
+    echo >&2 "reingest-cluster.sh: the re-ingest was still running when the wait ran out, above."
+    remediation \
+      "It runs on in the cluster and nothing was undone. Read its end with the command" \
+      "above; it ends in 'REINGEST ok' or 'REINGEST failed'."
+    exit 1
+    ;;
+  4)
+    echo >&2 "reingest-cluster.sh: AKS ended the re-ingest command at its time limit, above."
+    remediation \
+      "Whether the backend finished the ingest is not known, and nothing was undone." \
+      "The backend's log says how it ended; run this again to ingest once more."
+    exit 1
+    ;;
+  *)
+    echo >&2 "reingest-cluster.sh: the command could not be handed to ${cluster}, above."
+    remediation "Nothing was ingested. Sign in with az and run this again."
+    exit 1
+    ;;
+esac

@@ -285,7 +285,25 @@ commands write through the resolver and backend ingest reads through it.
 
 Ingest copies each version's baselines into the stored version under
 `validation-baseline/`, and the backend serves and snapshots them from the store.
-A checkout without the submodule ingests every version with no baseline media.
+
+Cold storage that is checked out is authoritative: a re-ingest stores exactly the
+baselines it holds for a version, and drops those it no longer holds. Cold
+storage that is not checked out says nothing about any version. The submodule is
+optional, and a fetch of it can fail, so a re-ingest from such a checkout keeps
+the baselines each stored version already has and logs a warning that it did. A
+version ingested for the first time from such a checkout has no baseline media
+until a later ingest finds the submodule.
+
+A deployed environment ingests only from a checkout whose cold storage is at the
+commit it pins, so its store never meets the case above in normal operation. An
+environment that has lost its baselines gets them back as [Restoring
+baselines](/deployment/kubernetes/control-plane/#restoring-baselines) describes.
+
+A version captured before engines existed keeps its baselines one level
+shallower, at `validation-baseline/<variant>/`. Those are the baselines of its
+engineless build, so the backend serves and snapshots them as the `none` engine's
+wherever the version has no `none/<variant>/` directory of its own.
+
 A baseline is evidence beside a verdict and backs no point, so recapturing one
 changes no score, including on a [frozen](/development/frozen-versions/) version.
 

@@ -3,18 +3,22 @@
 // and they scope *relative to* the page's anchored coordinate instead of
 // selecting one of their own: the anchored version can be widened to its
 // `major.minor` line, its major line, or every version, and the anchored engine
-// and variant can each be widened to all. The vocabulary, the membership test,
-// and the control row live here so the three tabs describe the same cohort.
+// and variant can each be widened to all. The engine control also lists every
+// engine the anchored version supports, and picking one re-anchors the page to
+// it. The vocabulary, the membership test, and the control row live here so the
+// three tabs describe the same cohort.
 //
 // The scope lives in the query string (`?scope=`, `?engines=`, `?variants=`,
 // each omitted at its default) and the detail layout carries the query string
 // across tabs, so widening the board widens the run list too and a scoped view
 // is linkable.
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
+import { engineName, orderEngines } from "../data/engines";
 import { parseVersion } from "../data/versions";
+import { withEngine } from "../pages/testcases/[slug]/useSelectedCoordinate";
 import styles from "./anchoredScope.module.scss";
 
 // Which versions of the case a tab draws from, all relative to the anchored
@@ -34,6 +38,9 @@ const SCOPE_PARAM = "scope";
 const ENGINES_PARAM = "engines";
 const VARIANTS_PARAM = "variants";
 const DEFAULT_VERSION_SCOPE: AnchoredVersionScope = "minor";
+// The engine control's all-engines segment. Not a slug an engine can carry
+// (slugs are lowercase words and hyphens), so it never collides with one.
+const ALL_ENGINES = "*";
 
 /**
  * Whether a run recorded at `runVersion` falls inside an anchored version
@@ -64,6 +71,13 @@ export interface AnchoredScopeState {
   setVersionScope: (scope: AnchoredVersionScope) => void;
   engineScope: AnchoredWidening;
   setEngineScope: (widening: AnchoredWidening) => void;
+  /** The engines the engine control offers, in catalog order: every engine the
+   * anchored version supports, or empty when the tab offers no engine choice
+   * (it does not scope by engine, or the version supports only one). */
+  engines: readonly string[];
+  /** Re-anchor the page to `engine` and narrow the engine scope back to the
+   * anchor, in one write — what picking a named engine on the control does. */
+  anchorEngine: (engine: string) => void;
   variantScope: AnchoredWidening;
   setVariantScope: (widening: AnchoredWidening) => void;
   /** Whether a run of `runVersion` is in the selected version scope.
@@ -97,9 +111,10 @@ export interface AnchoredScopeState {
 export function useAnchoredScope(anchor: {
   version: string;
   versions: readonly string[];
-  /** Whether this tab offers the all-engines widening for the anchored
-   * version (i.e. the version supports more than one engine). */
-  engineWidenable?: boolean;
+  /** The engines the anchored version supports; pass them only from a tab
+   * that scopes by engine. The engine control (each engine, and the
+   * all-engines widening) is offered when there is more than one. */
+  engines?: readonly string[];
   /** Whether this tab offers the all-variants widening (i.e. the anchored
    * version declares more than one variant). */
   variantWidenable?: boolean;
@@ -111,8 +126,13 @@ export function useAnchoredScope(anchor: {
   const versionScope = offered.includes(requested as AnchoredVersionScope)
     ? (requested as AnchoredVersionScope)
     : defaultScope(offered);
+  const declaredEngines = anchor.engines;
+  const engines = useMemo(() => {
+    const ordered = orderEngines(declaredEngines ?? []);
+    return ordered.length > 1 ? ordered : [];
+  }, [declaredEngines]);
   const engineScope: AnchoredWidening =
-    anchor.engineWidenable && params.get(ENGINES_PARAM) === "all"
+    engines.length > 0 && params.get(ENGINES_PARAM) === "all"
       ? "all"
       : "anchor";
   const variantScope: AnchoredWidening =
@@ -150,6 +170,19 @@ export function useAnchoredScope(anchor: {
       setChoice(ENGINES_PARAM, widening, widening === "anchor"),
     [setChoice],
   );
+  const anchorEngine = useCallback(
+    (engine: string) => {
+      setParams(
+        (prev) => {
+          const next = withEngine(prev, engines, engine);
+          next.delete(ENGINES_PARAM);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams, engines],
+  );
   const setVariantScope = useCallback(
     (widening: AnchoredWidening) =>
       setChoice(VARIANTS_PARAM, widening, widening === "anchor"),
@@ -170,6 +203,8 @@ export function useAnchoredScope(anchor: {
     setVersionScope,
     engineScope,
     setEngineScope,
+    engines,
+    anchorEngine,
     variantScope,
     setVariantScope,
     // Membership in the CATALOG versions the scope selects, not the bare
@@ -224,7 +259,8 @@ function versionOptions(
 
 /**
  * The scope control row a tab renders above its content: the version segments,
- * and the engine and variant wideners a tab offers. Each control is shown only
+ * the engine segments (every engine the anchored version supports, then the
+ * all-engines widening), and the variant widener a tab offers. Each control is shown only
  * when it offers a real choice; with nothing to offer the row is omitted
  * entirely, which is the common case for a single-version, engineless,
  * single-variant case.
@@ -235,14 +271,15 @@ export function AnchoredScopeControls({
   variant,
 }: {
   state: AnchoredScopeState;
-  /** The anchored engine's display name; pass only when the tab scopes by
-   * engine and the selected version supports more than one. */
-  engine?: { name: string };
+  /** The anchored engine's slug; pass it from a tab that scopes by engine.
+   * The control shows only when the hook was given more than one engine. */
+  engine?: string;
   /** The anchored variant's display name; pass only when the tab offers the
    * all-variants widening and the version declares more than one variant. */
   variant?: { name: string };
 }) {
-  if (!state.showVersions && !engine && !variant) return null;
+  const showEngines = engine !== undefined && state.engines.length > 0;
+  if (!state.showVersions && !showEngines && !variant) return null;
   return (
     <div className={styles.controls}>
       {state.showVersions && (
@@ -256,16 +293,23 @@ export function AnchoredScopeControls({
           />
         </div>
       )}
-      {engine && (
+      {showEngines && (
         <div className={styles.control}>
           <span className={styles.label}>Engine</span>
-          <SegmentedControl<AnchoredWidening>
+          <SegmentedControl
             options={[
-              { value: "anchor", label: engine.name },
-              { value: "all", label: "All engines" },
+              ...state.engines.map((slug) => ({
+                value: slug,
+                label: engineName(slug),
+              })),
+              { value: ALL_ENGINES, label: "All engines" },
             ]}
-            value={state.engineScope}
-            onChange={state.setEngineScope}
+            value={state.engineScope === "all" ? ALL_ENGINES : engine}
+            onChange={(choice) =>
+              choice === ALL_ENGINES
+                ? state.setEngineScope("all")
+                : state.anchorEngine(choice)
+            }
             ariaLabel="Engine scope"
           />
         </div>

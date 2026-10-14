@@ -62,11 +62,12 @@ interface ChartWidgetProps {
   /** Controls rendered on the header's trailing edge (e.g. a metric picker). */
   actions?: ReactNode;
   /**
-   * Builds the Plot spec, receiving the live palette. Omit it when there is
+   * Builds the Plot spec, receiving the live palette and the width of the
+   * container the chart is drawn into. Omit it when there is
    * nothing to plot — {@link empty} is shown in the chart's place, so a widget
    * with no data still reads as the same card rather than vanishing.
    */
-  spec?: (palette: ChartPalette) => PlotOptions;
+  spec?: (palette: ChartPalette, width?: number) => PlotOptions;
   /** Shown in place of the chart when no {@link spec} is given. */
   empty?: string;
 }

@@ -308,6 +308,16 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
     })
 }
 
+/// How long a publisher `Job` may run before Kubernetes ends it.
+///
+/// A release takes minutes, so this only ever ends a publisher that has hung. It
+/// is deliberately shorter than the hour after which the backend records a
+/// `dispatched` publish job as failed and enqueues another for the run: by then
+/// the first publisher has been stopped, so the retry never releases a run beside
+/// a publisher that is still working on it. A release is not idempotent on the
+/// Pages side, where every deploy mints a new public deployment.
+pub const PUBLISH_ACTIVE_DEADLINE_SECONDS: i64 = 45 * 60;
+
 /// Build the `tcab-publisher` `Job` for a claimed publish job. Pure given the
 /// claim and config, so the manifest is unit-tested without a cluster.
 ///
@@ -386,6 +396,7 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
         // Do not retry a failed publish Job: the publisher owns reporting its own
         // failure, and a retry could double-deploy.
         backoff_limit: Some(0),
+        active_deadline_seconds: Some(PUBLISH_ACTIVE_DEADLINE_SECONDS),
         ttl_seconds_after_finished: Some(config.job_ttl_seconds),
         template: PodTemplateSpec {
             metadata: Some(ObjectMeta {

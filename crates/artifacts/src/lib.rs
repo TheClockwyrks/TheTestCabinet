@@ -61,6 +61,7 @@ pub fn build(config: Config) -> Result<ArtifactService, store::StoreError> {
         backend_url: Arc::new(config.backend_url),
         http: reqwest::Client::new(),
         service_token: config.service_token.map(Arc::new),
+        capacity_reads: Arc::default(),
     };
     Ok(ArtifactService {
         router: api::router(state),

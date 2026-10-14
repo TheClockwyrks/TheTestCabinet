@@ -111,7 +111,13 @@ run-container registry and tag. Every deployment goes through it.
 A push to `staging` deploys staging in the workspace template's deployment job
 (`tcab-staging` on `testcabinet-staging-westus2-aks`):
 
-1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) pins the
+1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) checks that
+   the catalog the new backend's ingest sidecar fetches can be fetched
+   ([`catalog-ingest.sh preflight`](../scripts/ci/catalog-ingest.sh)), failing with
+   nothing applied when it cannot. The same check reads the backend's state
+   volume: it fails when the volume is too full to fetch onto, counting the
+   growth the deploy applies to it, and when the deploy asks for a resize the
+   cluster would refuse. It then pins the
    overlay, records the commit the namespace runs now, gives every rollout 600
    seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
    holds the backend's disk
@@ -122,7 +128,9 @@ A push to `staging` deploys staging in the workspace template's deployment job
    [`scripts/ci/post-deploy.sh`](../scripts/ci/post-deploy.sh) settles every other
    workload through
    [`scripts/ci/settle-workloads.sh`](../scripts/ci/settle-workloads.sh), which waits
-   on each and undoes each that does not become ready.
+   on each and undoes each that does not become ready. It then reads the result
+   the backend's ingest sidecar recorded (`catalog-ingest.sh verify`) and fails,
+   printing the sidecar's failing step and message, unless the catalog was ingested.
 4. **After a failure**: `settle-workloads.sh --after-failure` settles the rest,
    prints the pods and events, and prints the recovery: the command that puts the
    namespace back on the commit it ran before, or "fix forward" when there is no
@@ -131,8 +139,9 @@ A push to `staging` deploys staging in the workspace template's deployment job
 A push to `master` deploys prod in the pipeline's own prod stage, which publishes
 the same retag and runs `scripts/ci/deploy-environment.sh prod <sha>`
 ([source](../scripts/ci/deploy-environment.sh)): it pins a temporary copy, refuses
-a render with anything outside `tcab-prod`, retires `tcab-backend`, applies, and
-waits on every workload, undoing each that fails. The same script rolls either
+a render with anything outside `tcab-prod`, makes the same catalog preflight,
+retires `tcab-backend`, applies, waits on every workload, undoing each that fails,
+and reads the ingest sidecar's result the same way. The same script rolls either
 environment by hand onto any commit the registry holds, and `--render` prints what it
 would apply.
 [`scripts/ci/k8s-deploy-sets.sh`](../scripts/ci/k8s-deploy-sets.sh), the

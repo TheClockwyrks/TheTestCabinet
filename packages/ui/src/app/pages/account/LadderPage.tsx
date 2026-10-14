@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
+import { Button, Input, Pagination, Select } from "@clockwyrks/ui";
 import type {
   CoverageQueue,
   HaltResult,
@@ -7,6 +8,7 @@ import type {
 } from "@clockwyrks/run-record/coverage";
 import type {
   ClimberBlock,
+  ClimberStatus,
   DispatchStatus,
   Ladder,
   LadderClimber,
@@ -25,6 +27,11 @@ import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useRecordSectionIndex } from "../../components/backReturn";
+import { showingLabel, useClientPage } from "../../components/useClientPage";
+import {
+  PAGE_PARAM,
+  usePagedSearchParams,
+} from "../../components/usePagedSearchParams";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
@@ -36,6 +43,7 @@ import { caseLabel } from "./caseLabels";
 import { RungRuns } from "./LadderRungRuns";
 import { ladderAxisLabel } from "./ladderPickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
+import filterStyles from "../../components/RunFilters.module.scss";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 import ladderStyles from "./Ladder.module.scss";
@@ -175,18 +183,33 @@ export function retryable(climber: LadderClimber): boolean {
   );
 }
 
+/**
+ * How a climber's status pill reads under its dispatch: its own status, or stopped
+ * for a climber a Stop caught while it was still running or blocked. The pill's
+ * colour and the board's status filter both go by this, so the filter narrows to
+ * exactly the pills that say what it says.
+ */
+export type ClimberStanding = ClimberStatus | "stopped";
+
+/** Where a climber stands as its pill reads it. */
+export function climberStanding(
+  climber: LadderClimber,
+  dispatch: DispatchStatus,
+): ClimberStanding {
+  return dispatch === "stopped" &&
+    (climber.status === "running" || climber.status === "blocked")
+    ? "stopped"
+    : climber.status;
+}
+
 /** The status pill's colour class, one per state (see `Ladder.module.scss`). */
 function statusClass(
   climber: LadderClimber,
   dispatch: DispatchStatus,
 ): string | undefined {
-  if (
-    dispatch === "stopped" &&
-    (climber.status === "running" || climber.status === "blocked")
-  ) {
-    return ladderStyles.statusStopped;
-  }
-  switch (climber.status) {
+  switch (climberStanding(climber, dispatch)) {
+    case "stopped":
+      return ladderStyles.statusStopped;
     case "running":
       return ladderStyles.statusRunning;
     case "blocked":
@@ -602,6 +625,214 @@ export function ClimberRow({
           })}
         </ol>
       )}
+    </section>
+  );
+}
+
+/** How many climbers the board draws per page. Matches the run listings. */
+export const CLIMBERS_PER_PAGE = 20;
+
+/** The URL key the board's status filter rides in, beside `page` and `q`. */
+const STATUS_PARAM = "status";
+
+/** The status filter's wording, which is the first word of the pill it narrows to. */
+const STANDING_LABEL: Record<ClimberStanding, string> = {
+  running: "Running",
+  blocked: "Blocked",
+  failed: "Failed",
+  completed: "Completed",
+  stopped: "Stopped",
+};
+
+/**
+ * The standings a dispatch's climbers can be in, in the order the filter offers them.
+ * A stopped dispatch has no running or blocked climber left: those read as stopped.
+ */
+function standingsOf(dispatch: DispatchStatus): ClimberStanding[] {
+  return dispatch === "stopped"
+    ? ["stopped", "failed", "completed"]
+    : ["running", "blocked", "failed", "completed"];
+}
+
+/**
+ * What the board's search matches a climber on, lowercased: its heading as the card
+ * spells it, and the raw fields under it (the harness, the model, the provider, the gg
+ * configuration and every model it binds), so a climber is found by whichever of them
+ * the reader remembers.
+ */
+export function climberSearchText(climber: LadderClimber): string {
+  return [
+    comboLabel(climber),
+    climber.harness,
+    climber.model,
+    climber.provider ?? "",
+    climber.ggConfigName ?? "",
+    ...Object.values(climber.ggSlotModels ?? {}),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+// The climbers of a dispatch, a page at a time.
+//
+// The board is read whole (the summary, the status note and the controls above this
+// list all describe the whole dispatch, and are computed from it there), and this
+// list alone is windowed: a dispatch of several hundred climbers would otherwise draw
+// several hundred cards, each with a rung track, and redraw them on every read.
+//
+// The page, the search and the status filter live in the URL, so a narrowed board is
+// a link. The order is the backend's (the dispatch's climb order) and the window is
+// re-cut from it on every read, so a climber holds its page while the dispatch runs,
+// and a card that stays on the page keeps its state (it is keyed by the climber), so
+// an expanded climber stays expanded when a run finishing re-reads the board.
+function ClimberBoard({
+  climbers,
+  rungs,
+  dispatch,
+  busy,
+  onRetry,
+}: {
+  climbers: LadderClimber[];
+  rungs: LadderProgressRung[];
+  dispatch: DispatchStatus;
+  busy: boolean;
+  onRetry?: (climber: LadderClimber) => void;
+}) {
+  const { page, setPage, query, setQuery, committedQuery } =
+    usePagedSearchParams();
+  const [params, setParams] = useSearchParams();
+  const needle = committedQuery.trim().toLowerCase();
+  // Whatever the URL carries is honoured if it names a standing at all: a link to the
+  // running climbers opened after a Stop narrows to none, and says so, rather than
+  // silently showing every climber under a filter that reads as set.
+  const rawStatus = params.get(STATUS_PARAM) ?? "";
+  const status: ClimberStanding | "" = Object.hasOwn(STANDING_LABEL, rawStatus)
+    ? (rawStatus as ClimberStanding)
+    : "";
+
+  // A status change reshapes the list, so it drops the page as a new search does.
+  const setStatus = useCallback(
+    (value: string) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set(STATUS_PARAM, value);
+        else next.delete(STATUS_PARAM);
+        next.delete(PAGE_PARAM);
+        return next;
+      });
+    },
+    [setParams],
+  );
+
+  const clear = useCallback(() => {
+    // The input's immediate value too, or the debounced writer would push the text
+    // straight back into the URL.
+    setQuery("");
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("q");
+      next.delete(STATUS_PARAM);
+      next.delete(PAGE_PARAM);
+      return next;
+    });
+  }, [setQuery, setParams]);
+
+  // The climbers the search leaves, then how many of those stand in each status (the
+  // figure beside each option, so the filter says what it would show before it is
+  // chosen), then the ones the status leaves.
+  const { matched, counts } = useMemo(() => {
+    const searched = needle
+      ? climbers.filter((c) => climberSearchText(c).includes(needle))
+      : climbers;
+    const counts = new Map<ClimberStanding, number>();
+    for (const c of searched) {
+      const standing = climberStanding(c, dispatch);
+      counts.set(standing, (counts.get(standing) ?? 0) + 1);
+    }
+    const matched = status
+      ? searched.filter((c) => climberStanding(c, dispatch) === status)
+      : searched;
+    return { matched, counts };
+  }, [climbers, dispatch, needle, status]);
+
+  const shown = useClientPage(matched, CLIMBERS_PER_PAGE, page, setPage);
+  const filtered = Boolean(needle || status);
+  // A board that fits one page needs no way to narrow it, and a dispatch's climbers
+  // are fixed at Run, so the bar never appears or leaves while a dispatch is watched.
+  // A filter arriving by link on such a board still shows, so it can be cleared.
+  const showFilters = climbers.length > CLIMBERS_PER_PAGE || filtered;
+  const options = standingsOf(dispatch);
+
+  return (
+    <section className={ladderStyles.board} aria-label="Climbers">
+      {showFilters && (
+        <div
+          className={`${filterStyles.filters} ${ladderStyles.climberFilters}`}
+        >
+          <Input
+            type="search"
+            placeholder="Search climbers by harness, model, or gg configuration…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search climbers"
+          />
+          <div className={filterStyles.facets}>
+            <Select
+              className={`${filterStyles.facet} ${ladderStyles.climberStatusFilter}`}
+              value={status}
+              aria-label="Status"
+              data-set={status ? "true" : undefined}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="">All statuses</option>
+              {options.map((standing) => (
+                <option key={standing} value={standing}>
+                  {STANDING_LABEL[standing]} ({counts.get(standing) ?? 0})
+                </option>
+              ))}
+              {status && !options.includes(status) && (
+                <option value={status}>{STANDING_LABEL[status]} (0)</option>
+              )}
+            </Select>
+            <span className={ladderStyles.climberShowing} role="status">
+              {showingLabel(shown, matched.length, climbers.length, "climber")}
+            </span>
+            {filtered && (
+              <Button
+                variant="link"
+                size="small"
+                className={filterStyles.clear}
+                onClick={clear}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {matched.length === 0 && filtered ? (
+        <p className={styles.empty}>No climbers match those filters.</p>
+      ) : (
+        <div className={ladderStyles.climbers}>
+          {shown.items.map((climber) => (
+            <ClimberRow
+              key={climber.key}
+              climber={climber}
+              rungs={rungs}
+              busy={busy}
+              dispatch={dispatch}
+              {...(onRetry ? { onRetry } : {})}
+            />
+          ))}
+        </div>
+      )}
+
+      <Pagination
+        page={shown.current}
+        pageCount={shown.pageCount}
+        onPageChange={setPage}
+      />
     </section>
   );
 }
@@ -1030,20 +1261,15 @@ export function LadderPage() {
                 />
               )}
 
-              <div className={ladderStyles.climbers}>
-                {progress.climbers.map((climber) => (
-                  <ClimberRow
-                    key={climber.key}
-                    climber={climber}
-                    rungs={progress.rungs}
-                    busy={busy}
-                    dispatch={dispatch.status}
-                    {...(backend?.retryLadderClimber
-                      ? { onRetry: (c: LadderClimber) => void retry(c) }
-                      : {})}
-                  />
-                ))}
-              </div>
+              <ClimberBoard
+                climbers={progress.climbers}
+                rungs={progress.rungs}
+                busy={busy}
+                dispatch={dispatch.status}
+                {...(backend?.retryLadderClimber
+                  ? { onRetry: (c: LadderClimber) => void retry(c) }
+                  : {})}
+              />
             </>
           )}
         </>

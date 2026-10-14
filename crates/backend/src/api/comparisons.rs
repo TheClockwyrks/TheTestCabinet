@@ -36,6 +36,9 @@ use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
+use super::publish_gate::{
+    GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message, reclaimed_message,
+};
 
 /// The longest a comparison's display name may be.
 const MAX_NAME_LEN: usize = 80;
@@ -282,13 +285,31 @@ pub async fn publish_comparison(
                     // The shared enqueue: a run whose release is already under way
                     // (its own automatic publish, say) keeps that job and is not
                     // counted as enqueued here.
-                    let outcome = state
-                        .db
-                        .enqueue_publish_job_once(run_id, &now()?)
+                    //
+                    // The enqueue checks the run's stored artifact tree first. A
+                    // run without one, or one the artifact service could not be
+                    // asked about, is skipped with that reason like any other run
+                    // that cannot be published, so the rest of the batch goes on.
+                    match super::publish_gate::enqueue_publish(&state, run_id, &now()?)
                         .await
-                        .map_err(ApiError::from)?;
-                    if matches!(outcome, PublishEnqueue::Enqueued(_)) {
-                        enqueued.push(run_id.clone());
+                        .map_err(ApiError::from)?
+                    {
+                        GatedEnqueue::Enqueued(PublishEnqueue::Enqueued(_)) => {
+                            enqueued.push(run_id.clone());
+                        }
+                        GatedEnqueue::Enqueued(PublishEnqueue::Attached(_)) => {}
+                        GatedEnqueue::NoStoredTree => skipped.push(SkippedRun {
+                            run_id: run_id.clone(),
+                            reason: no_stored_tree_message(run_id),
+                        }),
+                        GatedEnqueue::Reclaimed(reason) => skipped.push(SkippedRun {
+                            run_id: run_id.clone(),
+                            reason: reclaimed_message(run_id, reason),
+                        }),
+                        GatedEnqueue::ArtifactsUnavailable(error) => skipped.push(SkippedRun {
+                            run_id: run_id.clone(),
+                            reason: artifacts_unavailable_message(run_id, &error),
+                        }),
                     }
                 }
                 Err(err) => skipped.push(SkippedRun {
@@ -299,8 +320,8 @@ pub async fn publish_comparison(
         }
     }
 
-    // Publish the comparison record itself and wake the snapshot debounce so the
-    // public snapshot rebuilds with it (each completed run publish wakes it again).
+    // Publish the comparison record itself and request a snapshot refresh so the
+    // public snapshot rebuilds with it (each completed run publish requests one again).
     state
         .db
         .set_comparison_published(&user.0.id, &id, true, Some(&now()?))

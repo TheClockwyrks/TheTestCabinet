@@ -179,6 +179,15 @@ fn a_run_less_tree_past_the_grace_window_is_selected() {
 }
 
 #[test]
+fn no_grace_window_selects_no_run_less_tree() {
+    // Zero is how the orphan rule is turned off. It is not a window every tree
+    // is past: the tree of a run that is still finishing has no row either.
+    let trees = vec![tree("orphan", 48), tree("just-uploaded", 0)];
+    let selected = orphaned_trees(&trees, &live(&["another-run"]), now(), Duration::ZERO);
+    assert!(selected.is_empty(), "{selected:?}");
+}
+
+#[test]
 fn an_empty_listing_selects_nothing() {
     let selected = orphaned_trees(&[], &live(&["a", "b"]), now(), Duration::from_secs(0));
     assert!(selected.is_empty(), "{selected:?}");
@@ -218,8 +227,10 @@ async fn a_sweep_with_no_live_runs_deletes_nothing() {
         outcome,
         SweepOutcome {
             listed: 2,
+            orphans: 0,
             reclaimed: 0,
             failed: 0,
+            ..SweepOutcome::default()
         }
     );
     assert!(stub.recorder.lock().unwrap().deleted.is_empty());
@@ -313,8 +324,10 @@ async fn a_sweep_deletes_only_the_stale_orphan() {
         outcome,
         SweepOutcome {
             listed: 3,
+            orphans: 1,
             reclaimed: 1,
             failed: 0,
+            ..SweepOutcome::default()
         }
     );
     let recorder = stub.recorder.lock().unwrap();
@@ -343,8 +356,10 @@ async fn a_refused_sweep_delete_is_counted_and_the_pass_finishes() {
         outcome,
         SweepOutcome {
             listed: 2,
+            orphans: 2,
             reclaimed: 0,
             failed: 2,
+            ..SweepOutcome::default()
         }
     );
     // Both were attempted: one refusal does not abandon the rest of the pass.

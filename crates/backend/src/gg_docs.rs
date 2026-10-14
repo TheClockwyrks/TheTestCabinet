@@ -386,8 +386,9 @@ async fn reconcile_into(
 ///    no cases at all. Under this rule that window exports nothing instead of exporting
 ///    every experimental case in the corpus.
 /// 3. **A session record is never involved.** Nothing here touches one. The corpus is
-///    documents; the record — the complete model conversation — is console-only, and
-///    this function is the only door the public site's gg data comes through.
+///    documents, and covers runs that are not published; the record — the complete model
+///    conversation — is exported for a published run alone, as that run's own object
+///    (see [`crate::snapshot`]), and never through this function.
 ///
 /// Ordered by run id, the order [`Db::gg_run_versions`] returns, so two refreshes of an
 /// unchanged corpus produce byte-identical output and R2 stores one object rather than

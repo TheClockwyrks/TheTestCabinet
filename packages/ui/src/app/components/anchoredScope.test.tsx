@@ -4,9 +4,10 @@ import {
   render,
   renderHook,
   screen,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, useLocation } from "react-router";
+import { MemoryRouter, useLocation, useSearchParams } from "react-router";
 import { describe, expect, it } from "vitest";
 import {
   AnchoredScopeControls,
@@ -19,6 +20,8 @@ import {
 // carries them.
 const VERSIONS = ["v2.1.1", "v2.1.0", "v2.0.0", "v1.0.0"];
 const ANCHOR = "v2.1.0";
+// The engines the anchored version supports, deliberately out of catalog order.
+const ENGINES = ["structured-2d", "none", "simple-2d"];
 
 function renderScope(
   anchor: Parameters<typeof useAnchoredScope>[0],
@@ -118,7 +121,7 @@ describe("useAnchoredScope", () => {
       {
         version: ANCHOR,
         versions: VERSIONS,
-        engineWidenable: true,
+        engines: ENGINES,
         variantWidenable: true,
       },
       "/?scope=all&engines=all&variants=all",
@@ -153,7 +156,11 @@ describe("useAnchoredScope", () => {
   // Every non-default choice is carried in the query string and dropped again
   // at its default, so an ordinary link stays clean.
   it("writes each choice to the URL and elides defaults", () => {
-    const { result } = renderScope({ version: ANCHOR, versions: VERSIONS });
+    const { result } = renderScope({
+      version: ANCHOR,
+      versions: VERSIONS,
+      engines: ENGINES,
+    });
 
     act(() => result.current.scope.setVersionScope("version"));
     expect(result.current.search).toBe("?scope=version");
@@ -170,6 +177,51 @@ describe("useAnchoredScope", () => {
     act(() => result.current.scope.setEngineScope("anchor"));
     act(() => result.current.scope.setVariantScope("anchor"));
     expect(result.current.search).toBe("");
+  });
+
+  // The engine control lists what the version supports in catalog order, and is
+  // offered only when that is a real choice.
+  it("offers the version's engines in catalog order, when there is a choice", () => {
+    const { result } = renderScope({
+      version: ANCHOR,
+      versions: VERSIONS,
+      engines: ENGINES,
+    });
+    expect(result.current.scope.engines).toEqual([
+      "none",
+      "simple-2d",
+      "structured-2d",
+    ]);
+
+    const single = renderScope({
+      version: ANCHOR,
+      versions: VERSIONS,
+      engines: ["none"],
+    });
+    expect(single.result.current.scope.engines).toEqual([]);
+  });
+
+  // Picking a named engine re-anchors the page and narrows a widened scope in
+  // one write: the page's `?engine=` (elided at the version's default) replaces
+  // `?engines=all`, and every other param is left alone.
+  it("re-anchors to a named engine and drops the widening in one write", () => {
+    const { result } = renderScope(
+      { version: ANCHOR, versions: VERSIONS, engines: ENGINES },
+      "/?scope=all&engines=all",
+    );
+
+    act(() => result.current.scope.anchorEngine("simple-2d"));
+    expect(result.current.search).toBe("?scope=all&engine=simple-2d");
+    expect(result.current.scope.engineScope).toBe("anchor");
+
+    act(() => result.current.scope.setEngineScope("all"));
+    expect(result.current.search).toBe(
+      "?scope=all&engine=simple-2d&engines=all",
+    );
+
+    // The engineless rendering is this version's default, so it is elided.
+    act(() => result.current.scope.anchorEngine("none"));
+    expect(result.current.search).toBe("?scope=all");
   });
 
   // An unparseable anchor has no major.minor line to widen into: it offers only
@@ -196,17 +248,24 @@ describe("useAnchoredScope", () => {
 // passed only when the tab has a real choice to offer.
 function ScopeHarness({
   anchor,
-  engine,
+  byEngine,
   variant,
 }: {
-  anchor: { version: string; versions: readonly string[] };
-  engine?: { name: string };
+  anchor: Parameters<typeof useAnchoredScope>[0];
+  /** Whether the tab scopes by engine. The anchored engine is then read from
+   * `?engine=` the way the detail layout resolves it. */
+  byEngine?: boolean;
   variant?: { name: string };
 }) {
   const state = useAnchoredScope(anchor);
+  const [params] = useSearchParams();
   return (
     <>
-      <AnchoredScopeControls state={state} engine={engine} variant={variant} />
+      <AnchoredScopeControls
+        state={state}
+        engine={byEngine ? (params.get("engine") ?? "none") : undefined}
+        variant={variant}
+      />
       <output data-testid="search">{useLocation().search}</output>
     </>
   );
@@ -253,12 +312,72 @@ describe("AnchoredScopeControls", () => {
     ).toEqual(["draft", "All versions"]);
   });
 
-  // The wideners render only when passed, labeled by the anchored engine and
-  // variant, and each writes its widening to the URL.
+  // The engine control names every engine the version supports, not only the
+  // anchored one, ahead of the all-engines widening.
+  it("lists every supported engine and the all-engines widening", () => {
+    renderControls(
+      {
+        anchor: { version: ANCHOR, versions: VERSIONS, engines: ENGINES },
+        byEngine: true,
+      },
+      "/?engine=simple-2d",
+    );
+    const group = screen.getByRole("radiogroup", { name: "Engine scope" });
+    expect(
+      within(group)
+        .getAllByRole("radio")
+        .map((radio) => radio.textContent),
+    ).toEqual(["None", "Simple 2D", "Structured 2D", "All engines"]);
+    expect(screen.getByRole("radio", { name: "Simple 2D" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  // Picking another engine re-anchors the page to it; from the widened scope it
+  // also narrows back, so the segment picked is the one that reads selected.
+  it("re-anchors the page when a named engine is picked", () => {
+    renderControls({
+      anchor: { version: ANCHOR, versions: VERSIONS, engines: ENGINES },
+      byEngine: true,
+    });
+    expect(screen.getByRole("radio", { name: "None" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "All engines" }));
+    expect(screen.getByTestId("search")).toHaveTextContent("?engines=all");
+    expect(screen.getByRole("radio", { name: "All engines" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Structured 2D" }));
+    expect(screen.getByTestId("search")).toHaveTextContent(
+      "?engine=structured-2d",
+    );
+    expect(
+      screen.getByRole("radio", { name: "Structured 2D" }),
+    ).toHaveAttribute("aria-checked", "true");
+  });
+
+  // A version with a single engine has nothing to pick or widen into.
+  it("omits the engine control for a single-engine version", () => {
+    renderControls({
+      anchor: { version: ANCHOR, versions: VERSIONS, engines: ["simple-2d"] },
+      byEngine: true,
+    });
+    expect(
+      screen.queryByRole("radiogroup", { name: "Engine scope" }),
+    ).toBeNull();
+  });
+
+  // The wideners write their widening to the URL.
   it("widens the engine and variant scopes through the URL", () => {
     renderControls({
-      anchor: { version: ANCHOR, versions: VERSIONS },
-      engine: { name: "Simple 2D" },
+      anchor: { version: ANCHOR, versions: VERSIONS, engines: ENGINES },
+      byEngine: true,
       variant: { name: "Base" },
     });
     expect(
@@ -267,10 +386,6 @@ describe("AnchoredScopeControls", () => {
     expect(
       screen.getByRole("radiogroup", { name: "Variant scope" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Simple 2D" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
 
     fireEvent.click(screen.getByRole("radio", { name: "All engines" }));
     expect(screen.getByTestId("search")).toHaveTextContent("?engines=all");

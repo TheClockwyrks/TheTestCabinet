@@ -38,6 +38,13 @@ pub enum StoreError {
     /// directory (a `..` segment or absolute path) — a traversal attempt, refused.
     #[error("artifact entry `{0}` escapes the run directory")]
     Traversal(String),
+    /// The uploaded bytes are not an archive the store can read: a header that
+    /// does not parse, or a body that ends part way through an entry. Distinct
+    /// from an I/O fault because it is the upload's own, and sending the same
+    /// bytes to a healthy store gets the same answer. The HTTP layer maps it to a
+    /// `422`.
+    #[error("the uploaded archive cannot be read: {0}")]
+    Malformed(String),
     /// A read was requested for a run with no stored tree. Distinct from an I/O
     /// fault so the HTTP layer can map it to a `404` rather than a `500`.
     #[error("no stored tree for run `{0}`")]
@@ -56,6 +63,15 @@ pub struct StoredTree {
     pub modified: std::time::SystemTime,
 }
 
+/// How full the store is, as [`ArtifactStore::capacity`] reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreCapacity {
+    /// Bytes an upload can still be written into.
+    pub free_bytes: u64,
+    /// The size of the whole store, used and free.
+    pub total_bytes: u64,
+}
+
 /// The backing store for run artifacts, keyed per run id. Small by design (see the
 /// module docs) so an R2 impl can be slotted in later behind the same interface.
 pub trait ArtifactStore: Send + Sync {
@@ -65,6 +81,13 @@ pub trait ArtifactStore: Send + Sync {
     /// to the run root; an entry whose path escapes it is a [`StoreError::Traversal`]
     /// and aborts the upload. An existing tree for the same id is replaced (a run
     /// id is unique, so this only matters for an idempotent re-upload).
+    ///
+    /// The replacement is **all or nothing**. A run's tree becomes visible to
+    /// [`run_dir`](ArtifactStore::run_dir), [`list_runs`](ArtifactStore::list_runs)
+    /// and [`ensure_run_tree`](ArtifactStore::ensure_run_tree) only once every entry
+    /// has been written, and an `Err` leaves the run exactly as it was before the
+    /// call: with its prior tree, or with none. A store that fills part way through
+    /// an unpack must not leave a directory that later reads as a stored tree.
     fn store_run(&self, id: &str, tar: &mut dyn Read) -> Result<(), StoreError>;
 
     /// The on-disk root directory for run `id` (`<root>/<id>/`), the path the core
@@ -102,9 +125,37 @@ pub trait ArtifactStore: Send + Sync {
     /// remove — an id the store cannot key by is skipped rather than reported.
     ///
     /// An upload in flight carries no entry here: it is spooled into
-    /// [`scratch_dir`](ArtifactStore::scratch_dir) as an unnamed file and becomes a
-    /// run directory only once it has been unpacked.
+    /// [`scratch_dir`](ArtifactStore::scratch_dir) as an unnamed file, and
+    /// [`store_run`](ArtifactStore::store_run) makes it a run directory only once
+    /// it has been unpacked whole.
     fn list_runs(&self) -> Result<Vec<StoredTree>, StoreError>;
+
+    /// How much room the store has left, read at the moment of the call.
+    ///
+    /// The backend holds new runs back on this figure, so it must be the space an
+    /// upload can actually use: what this process may still write, rather than what
+    /// the volume reserves for a privileged user.
+    fn capacity(&self) -> Result<StoreCapacity, StoreError>;
+
+    /// Check that the store can take an upload right now, by taking a small one
+    /// through every step [`store_run`](ArtifactStore::store_run) takes: spool a
+    /// file in [`scratch_dir`](ArtifactStore::scratch_dir) and sync it to the
+    /// volume, unpack a one-file archive into a staging directory, move the
+    /// unpacked tree to where run trees live, and remove it.
+    ///
+    /// [`capacity`](ArtifactStore::capacity) says how much room there is, which a
+    /// read-only volume, a disk fault or lost permissions leave untouched. This is
+    /// what establishes that an upload could land before a run's tree depends on
+    /// it. An `Err` carries the fault as the operating system reported it.
+    ///
+    /// What it cannot establish is anything about a real tree's size, or about
+    /// the service's path to the backend that verifies an upload's token. An
+    /// upload that fails for one of those is evidence the backend takes from the
+    /// driver that made it.
+    ///
+    /// The tree it stores is never visible as a run: its name is dot-led, which
+    /// [`list_runs`](ArtifactStore::list_runs) and every read refuse.
+    fn probe_write(&self) -> Result<(), StoreError>;
 
     /// Answer `Ok(())` when run `id` has a stored tree, [`StoreError::NotFound`] when
     /// it does not, and [`StoreError::Traversal`] for an id that is not a single safe
@@ -117,6 +168,20 @@ pub trait ArtifactStore: Send + Sync {
     /// streams therefore calls this first, and the writers call it again themselves
     /// so a direct caller cannot skip it.
     fn ensure_run_tree(&self, id: &str) -> Result<(), StoreError>;
+
+    /// Whether run `id` has a stored tree: [`ensure_run_tree`](Self::ensure_run_tree)
+    /// with absence as an answer rather than an error. An id that is not a single
+    /// safe path segment is still a [`StoreError::Traversal`].
+    ///
+    /// The backend asks this before it enqueues a publish, where "no tree" and "could
+    /// not find out" lead to different decisions and so must not share a shape.
+    fn has_run_tree(&self, id: &str) -> Result<bool, StoreError> {
+        match self.ensure_run_tree(id) {
+            Ok(()) => Ok(true),
+            Err(StoreError::NotFound(_)) => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
 
     /// Write run `id`'s tree — the whole `implementation/` directory plus
     /// `run-record.json` and (when present) `events.jsonl` — into `out` as a `tar`
@@ -196,56 +261,385 @@ pub struct LocalFsStore {
     root: PathBuf,
 }
 
+/// The directory under the store root that in-flight uploads are unpacked into
+/// before they are renamed into place, and that a replaced tree is moved to before
+/// it is removed.
+///
+/// It sits inside the root so a staged tree is on the run trees' filesystem, which
+/// is what makes the final `rename` atomic. Its leading dot is what keeps it out of
+/// the store's key space: [`is_safe_id`] refuses every dot-led name, so it is never
+/// listed, never answered for as a run, and never the target of a delete.
+const STAGING_DIR: &str = ".staging";
+
+/// The name a staged tree is unpacked under, inside its own staging directory.
+const STAGED_TREE: &str = "tree";
+
+/// What the name of a staging directory ends in when it holds a run's prior tree,
+/// moved aside while its replacement takes the run directory. It is how startup
+/// tells a complete tree it must put back from a partial one it must remove.
+const REPLACED_SUFFIX: &str = ".replaced";
+
 impl LocalFsStore {
     /// Build a store rooted at `root`, creating the directory if it does not yet
     /// exist (the first upload otherwise races on the parent). A failure to create
     /// it is surfaced so the service refuses to start against an unwritable root
     /// rather than failing every upload later.
+    ///
+    /// Whatever a previous process left staged is removed: an upload the service
+    /// died in the middle of never reached its run directory, and its partial tree
+    /// would otherwise hold space on the volume for good. The store has one owner,
+    /// so nothing else can be staging into it at startup.
+    ///
+    /// The one thing put back first is a prior tree a replacement had moved aside
+    /// when the process died, where the run directory it came from is missing: that
+    /// tree is complete, and it is the only copy.
     pub fn new(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         let root = root.into();
         std::fs::create_dir_all(&root)?;
+        restore_replaced_trees(&root)?;
+        remove_stale_write_checks(&root)?;
+        match std::fs::remove_dir_all(root.join(STAGING_DIR)) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
+        }
         Ok(Self { root })
+    }
+
+    /// A fresh, uniquely named directory under [`STAGING_DIR`] for one upload of run
+    /// `id`. It removes itself, and whatever is still inside it, when dropped.
+    fn staging_dir(&self, id: &str) -> Result<tempfile::TempDir, StoreError> {
+        let staging = self.root.join(STAGING_DIR);
+        std::fs::create_dir_all(&staging)?;
+        Ok(tempfile::Builder::new()
+            .prefix(&format!("{id}."))
+            .tempdir_in(staging)?)
+    }
+
+    /// A staging directory for run `id`'s prior tree, named so that startup
+    /// [puts it back](restore_replaced_trees) if the process dies before the
+    /// replacement has taken the run directory.
+    fn replaced_dir(&self, id: &str) -> Result<tempfile::TempDir, StoreError> {
+        let staging = self.root.join(STAGING_DIR);
+        std::fs::create_dir_all(&staging)?;
+        Ok(tempfile::Builder::new()
+            .prefix(&format!("{id}."))
+            .suffix(REPLACED_SUFFIX)
+            .tempdir_in(staging)?)
+    }
+
+    /// Make the complete tree at `staged_tree` run `id`'s tree, replacing a prior
+    /// one. On an `Err` the run directory holds what it held before.
+    ///
+    /// With no prior tree this is one `rename`. With one, the two directories are
+    /// exchanged in a single step where the filesystem can do that, so the run
+    /// directory holds a complete tree at every instant and the prior tree leaves
+    /// with the staging directory. Elsewhere the prior tree is moved aside and the
+    /// new one renamed in, which leaves an instant with no run directory; a process
+    /// that dies in it has its prior tree put back at the next start.
+    fn swap_into_place(
+        &self,
+        id: &str,
+        staged_tree: &Path,
+        run_dir: &Path,
+    ) -> Result<(), StoreError> {
+        if !run_dir.exists() {
+            return Ok(std::fs::rename(staged_tree, run_dir)?);
+        }
+        match exchange(staged_tree, run_dir) {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::Unsupported => {}
+            Err(err) => return Err(err.into()),
+        }
+        let replaced = self.replaced_dir(id)?;
+        let aside = replaced.path().join(STAGED_TREE);
+        std::fs::rename(run_dir, &aside)?;
+        if let Err(err) = std::fs::rename(staged_tree, run_dir) {
+            // Best effort: the error being returned is the one that matters.
+            let _ = std::fs::rename(&aside, run_dir);
+            return Err(err.into());
+        }
+        Ok(())
     }
 }
 
+/// Exchange the directories at `a` and `b` in one atomic step.
+/// [`Unsupported`](std::io::ErrorKind::Unsupported) when the platform or the
+/// filesystem has no such step.
+#[cfg(target_os = "linux")]
+fn exchange(a: &Path, b: &Path) -> std::io::Result<()> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    use rustix::io::Errno;
+    match renameat_with(CWD, a, CWD, b, RenameFlags::EXCHANGE) {
+        Ok(()) => Ok(()),
+        // A kernel without `renameat2`, or a filesystem that takes no flags.
+        Err(Errno::NOSYS | Errno::INVAL | Errno::OPNOTSUPP) => {
+            Err(std::io::ErrorKind::Unsupported.into())
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Exchange the directories at `a` and `b` in one atomic step.
+/// [`Unsupported`](std::io::ErrorKind::Unsupported) when the platform or the
+/// filesystem has no such step.
+#[cfg(not(target_os = "linux"))]
+fn exchange(_a: &Path, _b: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}
+
+/// Put back each prior tree a replacement had moved aside under `root`'s staging
+/// directory, where the run directory it came from is missing.
+///
+/// Only a directory named by [`LocalFsStore::replaced_dir`] is considered: it
+/// holds a tree that was complete when it was moved. Anything else staged is an
+/// unpack that never finished.
+fn restore_replaced_trees(root: &Path) -> Result<(), StoreError> {
+    let entries = match std::fs::read_dir(root.join(STAGING_DIR)) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name();
+        // `<id>.<random>.replaced`: the random part carries no dot.
+        let Some(id) = name
+            .to_str()
+            .and_then(|name| name.strip_suffix(REPLACED_SUFFIX))
+            .and_then(|name| name.rsplit_once('.'))
+            .map(|(id, _)| id)
+        else {
+            continue;
+        };
+        let aside = entry.path().join(STAGED_TREE);
+        let run_dir = root.join(id);
+        if is_safe_id(id) && aside.is_dir() && !run_dir.exists() {
+            std::fs::rename(&aside, &run_dir)?;
+            tracing::warn!(
+                run_id = %id,
+                "restored a run tree that was moved aside for a replacement which never landed"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Remove each tree a [write check](ArtifactStore::probe_write) left under `root`
+/// when the process died between storing it and removing it.
+fn remove_stale_write_checks(root: &Path) -> Result<(), StoreError> {
+    for entry in std::fs::read_dir(root)? {
+        let entry = entry?;
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(WRITE_CHECK_PREFIX))
+        {
+            match std::fs::remove_dir_all(entry.path()) {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => return Err(err.into()),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether `err`, or anything it wraps, is an error the operating system
+/// reported.
+fn carries_os_error(err: &std::io::Error) -> bool {
+    if err.raw_os_error().is_some() {
+        return true;
+    }
+    let mut source: Option<&(dyn std::error::Error + 'static)> = match err.get_ref() {
+        Some(inner) => Some(inner),
+        None => None,
+    };
+    while let Some(inner) = source {
+        if let Some(io) = inner.downcast_ref::<std::io::Error>()
+            && carries_os_error(io)
+        {
+            return true;
+        }
+        source = inner.source();
+    }
+    false
+}
+
+/// Sort a failure to read or unpack the archive: [`StoreError::Malformed`] when
+/// the archive is at fault, [`StoreError::Io`] when the volume is.
+///
+/// The `tar` reader wraps an operating-system error, from the spool file it reads
+/// or the tree it writes, in an error of its own that keeps it as the source. It
+/// makes an error with nothing beneath it for a header that does not parse and
+/// for an archive that ends part way through an entry. So an error that carries
+/// no OS error anywhere is the archive's, and anything the volume refused is not:
+/// a full or faulted volume is never mistaken for a bad upload.
+fn archive_error(err: std::io::Error) -> StoreError {
+    if carries_os_error(&err) {
+        StoreError::Io(err)
+    } else {
+        StoreError::Malformed(err.to_string())
+    }
+}
+
+/// Unpack `tar` under `dest`, entry by entry, refusing any entry whose path would
+/// land outside it.
+///
+/// A directory is created with the service's own default mode rather than the one
+/// the archive records for it. A tree can hold a directory its owner may not write
+/// to, which a package cache makes as a matter of course, and unpacking that mode
+/// before the directory's contents would fail the upload of a sound tree on a
+/// sound store.
+fn unpack_tree(tar: &mut dyn Read, dest: &Path) -> Result<(), StoreError> {
+    std::fs::create_dir_all(dest)?;
+    // `tar`'s own `unpack` would honor `..`/absolute entries up to its internal
+    // checks, but we guard explicitly and unpack entry-by-entry so a single bad
+    // path aborts the whole upload with a precise error. `dest` is the extraction
+    // base; every entry must resolve strictly inside it.
+    let mut archive = tar::Archive::new(tar);
+    for entry in archive.entries().map_err(archive_error)? {
+        let mut entry = entry.map_err(archive_error)?;
+        let path = entry.path().map_err(archive_error)?.into_owned();
+        let target = safe_join(dest, &path)
+            .ok_or_else(|| StoreError::Traversal(path.display().to_string()))?;
+        if entry.header().entry_type().is_dir() {
+            std::fs::create_dir_all(&target)?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        // `unpack` writes the entry (file, dir, or symlink) at `target`; symlink
+        // targets are not followed during write, and the resolver's own
+        // canonicalize-and-`starts_with` check (in `serve_build_file`) catches a
+        // symlink that points outside the tree at *read* time.
+        entry.unpack(&target).map_err(archive_error)?;
+    }
+    Ok(())
+}
+
+/// What [`ArtifactStore::probe_write`] writes. One filesystem block is enough to
+/// need an allocation, which a full volume refuses.
+const WRITE_PROBE: &[u8] = &[0x5a; 4096];
+
+/// What the name of the tree a [write check](ArtifactStore::probe_write) stores
+/// begins with. Dot-led, so [`is_safe_id`] keeps it out of the store's key space
+/// for the instant it exists.
+const WRITE_CHECK_PREFIX: &str = ".write-check.";
+
+/// Numbers the write checks of this process, for the name each one's tree takes.
+static WRITE_CHECK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The one file in the tree a write check stores.
+const WRITE_CHECK_FILE: &str = "write-check";
+
+/// A one-file `tar` archive of [`WRITE_PROBE`]: the upload a write check makes.
+fn write_check_archive() -> std::io::Result<Vec<u8>> {
+    let mut builder = tar::Builder::new(Vec::new());
+    let mut header = tar::Header::new_gnu();
+    header.set_size(WRITE_PROBE.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append_data(&mut header, WRITE_CHECK_FILE, WRITE_PROBE)?;
+    builder.into_inner()
+}
+
+/// The free and total bytes of the filesystem `path` is on.
+#[cfg(unix)]
+fn filesystem_capacity(path: &Path) -> std::io::Result<StoreCapacity> {
+    let stat = rustix::fs::statvfs(path)?;
+    // Both counts are in fragments. `f_bavail` is what an unprivileged process may
+    // still allocate, which on a filesystem with reserved blocks is less than
+    // `f_bfree`, and the service does not run as root.
+    Ok(StoreCapacity {
+        free_bytes: stat.f_bavail.saturating_mul(stat.f_frsize),
+        total_bytes: stat.f_blocks.saturating_mul(stat.f_frsize),
+    })
+}
+
+/// The free and total bytes of the filesystem `path` is on.
+#[cfg(not(unix))]
+fn filesystem_capacity(_path: &Path) -> std::io::Result<StoreCapacity> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "the artifact store's free space can only be read on a unix host",
+    ))
+}
+
 impl ArtifactStore for LocalFsStore {
+    fn capacity(&self) -> Result<StoreCapacity, StoreError> {
+        Ok(filesystem_capacity(&self.root)?)
+    }
+
+    fn probe_write(&self) -> Result<(), StoreError> {
+        use std::io::{Seek, Write};
+        // An unnamed file where an upload is spooled, exactly as the spool makes
+        // one, so the check exercises the same create an upload starts with. It has
+        // no directory entry, so dropping it is the removal.
+        let mut spooled = tempfile::tempfile_in(self.scratch_dir())?;
+        spooled.write_all(&write_check_archive()?)?;
+        // Without the sync a write to a faulted or full volume can sit in the page
+        // cache and read as a success.
+        spooled.sync_all()?;
+        spooled.rewind()?;
+
+        // Then what `store_run` does with a spooled upload: unpack it into a
+        // staging directory and move the tree to where run trees live. Each step
+        // needs something of its own from the volume, and a store that has lost any
+        // of them fails every upload after a spool that succeeded.
+        let staged = self.staging_dir("write-check")?;
+        let staged_tree = staged.path().join(STAGED_TREE);
+        unpack_tree(&mut spooled, &staged_tree)?;
+        // Named for this process and this check, so two never collide. A check the
+        // process dies in the middle of leaves the tree for the next start to
+        // remove.
+        let landed = self.root.join(format!(
+            "{WRITE_CHECK_PREFIX}{}.{}",
+            std::process::id(),
+            WRITE_CHECK_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::rename(&staged_tree, &landed)?;
+        let read_back = std::fs::read(landed.join(WRITE_CHECK_FILE));
+        std::fs::remove_dir_all(&landed)?;
+        if read_back? != WRITE_PROBE {
+            return Err(std::io::Error::other(
+                "the write check's tree did not read back as it was written",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     fn scratch_dir(&self) -> PathBuf {
         // The store root itself: every run tree is a subdirectory of it, so it is by
         // construction the same filesystem. A spooled upload is an unnamed temp file,
-        // so it adds no entry here for `run_dir` lookups to trip over.
+        // so it adds no entry here for `run_dir` lookups to trip over. (The tree it
+        // is then unpacked into is staged under `STAGING_DIR`, not here.)
         self.root.clone()
     }
 
     fn store_run(&self, id: &str, tar: &mut dyn Read) -> Result<(), StoreError> {
+        // The id becomes a directory name that is renamed over and removed, so it is
+        // held to the same rule as a delete's.
+        if !is_safe_id(id) {
+            return Err(StoreError::Traversal(id.to_string()));
+        }
         let run_dir = self.run_dir(id);
-        // Replace any prior tree for this id so a re-upload is clean rather than a
-        // merge of two runs' files. A missing dir is fine to "remove".
-        if run_dir.exists() {
-            std::fs::remove_dir_all(&run_dir)?;
-        }
-        std::fs::create_dir_all(&run_dir)?;
 
-        // `tar`'s own `unpack` would honor `..`/absolute entries up to its internal
-        // checks, but we guard explicitly and unpack entry-by-entry so a single bad
-        // path aborts the whole upload with a precise error rather than partially
-        // extracting. The run root is the extraction base; every entry must resolve
-        // strictly inside it.
-        let mut archive = tar::Archive::new(tar);
-        for entry in archive.entries()? {
-            let mut entry = entry?;
-            let path = entry.path()?.into_owned();
-            let target = safe_join(&run_dir, &path)
-                .ok_or_else(|| StoreError::Traversal(path.display().to_string()))?;
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            // `unpack` writes the entry (file, dir, or symlink) at `target`; symlink
-            // targets are not followed during write, and the resolver's own
-            // canonicalize-and-`starts_with` check (in `serve_build_file`) catches a
-            // symlink that points outside the tree at *read* time.
-            entry.unpack(&target)?;
-        }
-        Ok(())
+        // Unpack into a staging directory first. Unpacking straight into the run
+        // directory would make a failure part way through — the volume filling is the
+        // one that happens — leave a directory that every reader then takes for a
+        // stored tree, with the prior tree already removed to make room for it. A
+        // failure here instead drops `staged`, which removes the partial tree, and
+        // the run directory has not been touched.
+        let staged = self.staging_dir(id)?;
+        let staged_tree = staged.path().join(STAGED_TREE);
+        unpack_tree(tar, &staged_tree)?;
+
+        // Swap it in. Whatever the swap leaves staged, the prior tree included, is
+        // removed as the staging directories drop.
+        self.swap_into_place(id, &staged_tree, &run_dir)
     }
 
     fn run_dir(&self, id: &str) -> PathBuf {
@@ -372,10 +766,14 @@ impl ArtifactStore for LocalFsStore {
 }
 
 /// Whether `id` is a single safe path segment usable as a store key: non-empty,
-/// neither `.` nor `..`, and free of any path separator or NUL. A run id is a
-/// UUID, so this only ever rejects a malformed or hostile path.
+/// not dot-led, and free of any path separator or NUL. A run id is a UUID, so this
+/// only ever rejects a malformed or hostile path.
+///
+/// Refusing every dot-led name covers `.` and `..` and reserves the rest for the
+/// store's own use: [`STAGING_DIR`] lives beside the run trees, and this is the one
+/// rule that keeps it from being listed, served, or deleted as a run.
 fn is_safe_id(id: &str) -> bool {
-    !id.is_empty() && id != "." && id != ".." && !id.contains(['/', '\\', '\0'])
+    !id.is_empty() && !id.starts_with('.') && !id.contains(['/', '\\', '\0'])
 }
 
 /// Join a tar entry's relative `path` onto `base`, refusing anything that would

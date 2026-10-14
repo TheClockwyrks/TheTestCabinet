@@ -339,6 +339,25 @@ fn restart_policy_never_and_no_retries() {
 }
 
 #[test]
+fn the_driver_job_has_no_deadline() {
+    // A driver waits on the artifact store for as long as its upload wait says,
+    // hours by default. A deadline on the Job or its pod would end that wait from
+    // outside, and take the tree with it.
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let job_spec = job.spec.as_ref().unwrap();
+    assert_eq!(job_spec.active_deadline_seconds, None);
+    assert_eq!(
+        job_spec
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .active_deadline_seconds,
+        None
+    );
+}
+
+#[test]
 fn sets_ttl_after_finished() {
     let job = build_driver_job(&claim(), &config()).unwrap();
     assert_eq!(
@@ -834,4 +853,20 @@ fn sandbox_managed_by_matches_the_value_the_driver_stamps() {
     // It must differ from the dispatcher's own value, or the reaper's selector
     // would match driver Job pods as well as sandboxes.
     assert_ne!(SANDBOX_MANAGED_BY, MANAGED_BY);
+}
+
+#[test]
+fn a_publisher_job_is_ended_before_the_backend_gives_up_on_it() {
+    // The backend records a publish job left `dispatched` for an hour as failed
+    // and enqueues another for the run. The publisher must be gone by then, or two
+    // publishers would release one run.
+    let job = build_publish_job(&publish_claim(), &config());
+    let deadline = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .active_deadline_seconds
+        .expect("a publisher Job carries a deadline");
+    assert_eq!(deadline, 45 * 60);
+    assert!(deadline < 60 * 60);
 }

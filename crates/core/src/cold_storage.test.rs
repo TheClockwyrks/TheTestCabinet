@@ -103,3 +103,20 @@ fn normalize_folds_current_and_parent_components() {
     assert_eq!(normalize(Path::new("../a")), None);
     assert_eq!(normalize(Path::new("/../a")), None);
 }
+
+#[test]
+fn cold_storage_is_checked_out_only_when_it_holds_more_than_git_s_own_entry() {
+    let checkout = tempfile::TempDir::new().unwrap();
+    let root = checkout.path().join(COLD_STORAGE_DIR);
+    let cold = ColdStorage::at(checkout.path(), &root);
+    // No directory at all: a checkout that never had the submodule.
+    assert!(!cold.is_checked_out());
+    // The empty directory git leaves for a submodule it has not fetched.
+    std::fs::create_dir_all(&root).unwrap();
+    assert!(!cold.is_checked_out());
+    // A fetch that failed part-way can leave git's own entry and nothing else.
+    std::fs::write(root.join(".git"), "gitdir: ../.git/modules/cold-storage").unwrap();
+    assert!(!cold.is_checked_out());
+    std::fs::create_dir_all(root.join("test-cases")).unwrap();
+    assert!(cold.is_checked_out());
+}

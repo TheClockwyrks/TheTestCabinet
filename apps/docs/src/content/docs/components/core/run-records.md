@@ -182,7 +182,9 @@ The run's terminal state, with enough detail to understand a failure. One of:
   reachable however long it is.
 - `infrastructure`: the Test Cabinet's own infrastructure failed, covering a
   container that would not start or pull, an OOM-killed pod, a failure in
-  seeding or the case's init step, and a collected tree whose
+  seeding or the case's init step, a harness session whose
+  [connection was lost](/components/core/orchestrators/#a-session-whose-connection-was-lost)
+  before the harness exited, and a collected tree whose
   [dependency install](/components/core/validation/#the-dependency-install) did
   not succeed after its retries. Retained with a diagnostic detail giving the
   reason, never publishable, and excluded from every model statistic. A run

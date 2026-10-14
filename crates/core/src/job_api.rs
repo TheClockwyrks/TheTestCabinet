@@ -189,8 +189,16 @@ pub enum DriverState {
     /// the container runtime, materializing the served definition) — the run is not
     /// yet executing the harness, but it will as soon as setup finishes.
     Starting,
-    /// Execution has begun.
+    /// Execution has begun. Also what a driver that was [`Storing`](Self::Storing)
+    /// reports once its upload has landed, returning the job to `running` while it
+    /// finishes its report.
     Running,
+    /// The run has finished and the driver is waiting on the artifact store: an
+    /// upload of the run's tree failed for a reason that is the store's rather than
+    /// the run's, and the driver is holding the only copy while it retries. The
+    /// failure is in `detail`. Reported after the first failed attempt and again
+    /// after every later one.
+    Storing,
     /// The run produced a record (carried in the same update).
     Succeeded,
     /// The run could not be driven to a record (reason in `detail`).
@@ -220,14 +228,57 @@ pub struct StatusUpdate {
     pub state: DriverState,
     /// The produced run record, required when `state` is `succeeded` and carried on
     /// a `canceled` report too (the record a killed gg run wound down to produce). Its
-    /// `links` are authoritative and stored with it.
+    /// `links` are authoritative and stored with it. The first `storing` report
+    /// carries it as well, for the backend to keep while the driver waits.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub record: Option<RunRecord>,
-    /// A human-readable failure reason, used when `state` is `failed`.
+    /// A human-readable reason: why the run failed when `state` is `failed`, and why
+    /// the tree could not be stored when it is `storing`.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
+    /// Whether the artifact service acknowledged the run's tree, on a terminal
+    /// report: `true` when the upload landed and `false` when every attempt failed,
+    /// so the run has nothing to release. Absent when the driver has no artifact
+    /// service to upload to, and on every non-terminal report but one: the
+    /// `running` report that ends a wait on the store carries `true` when the wait
+    /// ended with the tree stored. The backend leaves what it has recorded for the
+    /// run as it is when the field is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub artifacts_stored: Option<bool>,
+    /// Why the tree was not stored, when `artifactsStored` is `false` and the cause
+    /// was a condition of the artifact store rather than something about this run's
+    /// tree: the last failure of the upload. The backend reads it as evidence that
+    /// the store cannot take a tree, whatever state the job is in. Absent when the
+    /// tree was stored, when the failure was the run's own, and on a report that
+    /// carries no `artifactsStored`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub store_fault: Option<String>,
+    /// On a `storing` report that carries the `record`: the reason the run failed,
+    /// when the terminal report the driver is holding is a `failed` one. Absent
+    /// when it is holding a `succeeded` report. The backend keeps the record and
+    /// this reason, and finishes the run from them if the driver is lost while it
+    /// waits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub run_failure: Option<String>,
+}
+
+impl StatusUpdate {
+    /// A report of `state` that carries nothing else.
+    pub fn of(state: DriverState) -> Self {
+        Self {
+            state,
+            record: None,
+            detail: None,
+            artifacts_stored: None,
+            store_fault: None,
+            run_failure: None,
+        }
+    }
 }
 
 /// The response to a successful `POST /jobs`: the enqueued job's id and where to
@@ -296,10 +347,11 @@ pub enum JobState {
     Queued,
     /// Enqueued, but intentionally held back: the run's harness is already at its
     /// configured maximum parallelism, so the backend will not hand it to a
-    /// dispatcher until an in-flight run of the same harness finishes. Distinct from
-    /// `queued` (which is free to be claimed the moment a dispatcher has capacity) so
-    /// an operator can see a run is deliberately waiting rather than merely next in
-    /// line.
+    /// dispatcher until an in-flight run of the same harness finishes; or the whole
+    /// queue is on hold because the artifact store cannot take another run's tree.
+    /// Distinct from `queued` (which is free to be claimed the moment a dispatcher
+    /// has capacity) so an operator can see a run is deliberately waiting rather
+    /// than merely next in line.
     Pending,
     /// Claimed by the dispatcher; the driver Job is being created.
     Dispatched,
@@ -309,6 +361,11 @@ pub enum JobState {
     Starting,
     /// The driver is executing the run.
     Running,
+    /// The run has finished and its driver is waiting to store its artifact tree,
+    /// because the artifact store could not take it. The driver holds the only copy
+    /// and keeps retrying. While any job is in this state the backend hands out no
+    /// new run.
+    Storing,
     /// The run produced a record.
     Succeeded,
     /// The run could not be driven to a record.
@@ -326,6 +383,7 @@ impl JobState {
             "dispatched" => Self::Dispatched,
             "starting" => Self::Starting,
             "running" => Self::Running,
+            "storing" => Self::Storing,
             "succeeded" => Self::Succeeded,
             "failed" => Self::Failed,
             "canceled" => Self::Canceled,
@@ -416,6 +474,11 @@ pub struct ActiveJobOut {
     pub summary: JobSummary,
     /// The job's current lifecycle state.
     pub state: JobState,
+    /// Why the job is in its state, when the state has a reason: the driver's
+    /// account of the failed upload while `state` is `storing`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub detail: Option<String>,
 }
 
 /// A job's status, as `GET /jobs/{id}` reports it.
@@ -432,7 +495,8 @@ pub struct JobStatusOut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub record_id: Option<String>,
-    /// A human-readable failure reason, present when `state` is `failed`.
+    /// A human-readable reason: why the job failed or was canceled, or why its
+    /// driver is waiting while `state` is `storing`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
@@ -569,8 +633,8 @@ pub enum RunEventKind {
     /// it back to `pending` on the very next claim pass, which arrives as its own
     /// `state-changed`.
     Enqueued,
-    /// The run moved between two non-terminal states (`queued` ↔ `pending`, or
-    /// forward through `dispatched` → `starting` → `running`).
+    /// The run moved between two non-terminal states (`queued` ↔ `pending`, forward
+    /// through `dispatched` → `starting` → `running`, or `running` ↔ `storing`).
     StateChanged,
     /// The run reached a terminal state (`succeeded`, `failed`, or `canceled`) and
     /// is no longer in flight.
@@ -616,8 +680,9 @@ pub struct RunEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub record_id: Option<String>,
-    /// The terminal reason, present on a `finished` event that failed or was
-    /// canceled.
+    /// The reason behind the state: the terminal reason on a `finished` event that
+    /// failed or was canceled, and the driver's account of the failed upload on a
+    /// `state-changed` event into `storing`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
@@ -645,6 +710,18 @@ impl RunEvent {
             state,
             record_id: None,
             detail: None,
+        }
+    }
+
+    /// A run whose driver is waiting to store its tree, with the driver's reason.
+    pub fn storing(run_id: &str, summary: JobSummary, detail: Option<&str>) -> Self {
+        Self {
+            kind: RunEventKind::StateChanged,
+            run_id: run_id.to_string(),
+            summary,
+            state: JobState::Storing,
+            record_id: None,
+            detail: detail.map(str::to_string),
         }
     }
 

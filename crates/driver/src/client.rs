@@ -18,6 +18,8 @@ use test_cabinet_core::job_api::{DriverState, JobState, JobStatusOut, StatusUpda
 use test_cabinet_core::preview::AssetPreview;
 use test_cabinet_core::run_record::RunRecord;
 
+use crate::artifacts::TreeStore;
+
 /// A failure talking to the backend's job API.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -86,23 +88,55 @@ impl JobClient {
     pub async fn post_status_starting(&self) -> Result<(), ClientError> {
         self.post_status(
             "status (starting)",
-            &StatusUpdate {
-                state: DriverState::Starting,
-                record: None,
-                detail: None,
-            },
+            &StatusUpdate::of(DriverState::Starting),
         )
         .await
     }
 
     /// Report that execution has begun (`POST /jobs/{id}/status`, `running`).
     pub async fn post_status_running(&self) -> Result<(), ClientError> {
+        self.post_status("status (running)", &StatusUpdate::of(DriverState::Running))
+            .await
+    }
+
+    /// Report that the driver's wait on the artifact store is over
+    /// (`POST /jobs/{id}/status`, `running`), returning the job from `storing` to
+    /// the state it holds while the driver finishes its report. `stored` says
+    /// whether the wait ended with the tree stored, which the backend reads as
+    /// the store taking uploads again.
+    pub async fn post_status_wait_over(&self, stored: bool) -> Result<(), ClientError> {
         self.post_status(
             "status (running)",
             &StatusUpdate {
-                state: DriverState::Running,
-                record: None,
-                detail: None,
+                artifacts_stored: stored.then_some(true),
+                ..StatusUpdate::of(DriverState::Running)
+            },
+        )
+        .await
+    }
+
+    /// Report that the run has finished and the driver is waiting on the artifact
+    /// store to take its tree (`POST /jobs/{id}/status`, `storing`), with `reason`
+    /// the failure of the latest upload attempt. The backend shows the run as
+    /// waiting to store its artifacts and holds the run queue while it does.
+    ///
+    /// `record` is the run's record, handed over for the backend to keep while the
+    /// driver waits, with `run_failure` the reason the run failed when the report
+    /// the driver is holding is a `failed` one. The backend finishes the run from
+    /// them if this driver is lost.
+    pub async fn post_status_storing(
+        &self,
+        reason: &str,
+        record: Option<&RunRecord>,
+        run_failure: Option<&str>,
+    ) -> Result<(), ClientError> {
+        self.post_status(
+            "status (storing)",
+            &StatusUpdate {
+                record: record.cloned(),
+                detail: Some(reason.to_string()),
+                run_failure: run_failure.map(str::to_string),
+                ..StatusUpdate::of(DriverState::Storing)
             },
         )
         .await
@@ -184,13 +218,22 @@ impl JobClient {
     /// Report success with the produced record (`POST /jobs/{id}/status`,
     /// `succeeded`). The backend persists the record using the events the relay
     /// accumulated, regardless of the record's own outcome.
-    pub async fn post_status_succeeded(&self, record: RunRecord) -> Result<(), ClientError> {
+    ///
+    /// `tree` is the outcome of the run-tree upload, which every terminal report
+    /// carries as [`StatusUpdate::artifacts_stored`] and
+    /// [`StatusUpdate::store_fault`].
+    pub async fn post_status_succeeded(
+        &self,
+        record: RunRecord,
+        tree: &TreeStore,
+    ) -> Result<(), ClientError> {
         self.post_status(
             "status (succeeded)",
             &StatusUpdate {
-                state: DriverState::Succeeded,
                 record: Some(record),
-                detail: None,
+                artifacts_stored: tree.artifacts_stored(),
+                store_fault: tree.store_fault().map(str::to_string),
+                ..StatusUpdate::of(DriverState::Succeeded)
             },
         )
         .await
@@ -203,13 +246,16 @@ impl JobClient {
         &self,
         detail: impl Into<String>,
         record: Option<RunRecord>,
+        tree: &TreeStore,
     ) -> Result<(), ClientError> {
         self.post_status(
             "status (failed)",
             &StatusUpdate {
-                state: DriverState::Failed,
                 record,
                 detail: Some(detail.into()),
+                artifacts_stored: tree.artifacts_stored(),
+                store_fault: tree.store_fault().map(str::to_string),
+                ..StatusUpdate::of(DriverState::Failed)
             },
         )
         .await
@@ -221,16 +267,23 @@ impl JobClient {
     /// events the relay accumulated and attaches it to the job, so the killed run stays
     /// visible and inspectable in the run list.
     ///
-    /// Reached for a canceled [gg](test_cabinet_core::gg) run alone, the one harness with
-    /// a wind-down to ask for. A canceled run of any other is destroyed by the driver,
-    /// which posts nothing after the kill (see the [`cancel`](crate::cancel) module).
-    pub async fn post_status_canceled(&self, record: RunRecord) -> Result<(), ClientError> {
+    /// Reached for a canceled [gg](test_cabinet_core::gg) run, the one harness with a
+    /// wind-down to ask for, and for a run of any harness that was canceled while its
+    /// finished tree was being uploaded. A run of any other harness canceled while it
+    /// executes is destroyed by the driver, which posts nothing after the kill (see the
+    /// [`cancel`](crate::cancel) module).
+    pub async fn post_status_canceled(
+        &self,
+        record: RunRecord,
+        tree: &TreeStore,
+    ) -> Result<(), ClientError> {
         self.post_status(
             "status (canceled)",
             &StatusUpdate {
-                state: DriverState::Canceled,
                 record: Some(record),
-                detail: None,
+                artifacts_stored: tree.artifacts_stored(),
+                store_fault: tree.store_fault().map(str::to_string),
+                ..StatusUpdate::of(DriverState::Canceled)
             },
         )
         .await
@@ -269,3 +322,7 @@ impl JobClient {
         format!("{}/jobs/{}/{suffix}", self.base_url, self.job_id)
     }
 }
+
+#[cfg(test)]
+#[path = "client.test.rs"]
+mod tests;

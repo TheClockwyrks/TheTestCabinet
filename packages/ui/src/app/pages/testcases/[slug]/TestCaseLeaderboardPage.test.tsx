@@ -1,5 +1,12 @@
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { GalleryApp } from "../../../GalleryApp";
@@ -181,5 +188,27 @@ describe("the Leaderboard tab's resource columns", () => {
       expect(screen.getByText("40s")).toBeInTheDocument();
       cleanup();
     }
+  });
+
+  // The aesthetic tier is a column of its own, as on the run log, and starts
+  // hidden: stacked under the functional badge it made every row two badges
+  // tall. The picker offers both ends of it.
+  it("keeps the aesthetic rating out of the rating column until it is enabled", async () => {
+    localStorage.clear();
+    await visit(stockedGallery("run-board-3"));
+    const board = screen.getByRole("table", { name: "Model leaderboard" });
+    expect(within(board).getByText(/^best rating$/i)).toBeInTheDocument();
+    expect(within(board).queryByText(/^best aesthetic$/i)).toBeNull();
+    expect(within(board).queryByText(/^worst aesthetic$/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Best Aesthetic" }),
+    );
+    expect(within(board).getByText(/^best aesthetic$/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Worst Aesthetic" }),
+    ).toHaveAttribute("aria-checked", "false");
+    localStorage.clear();
   });
 });

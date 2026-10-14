@@ -60,6 +60,13 @@ tar = "0.4"
 # artifact convention puts the same codec on the run host and in the backend too.
 flate2 = { workspace = true }
 
+# `statvfs`, for the store volume's free space (`GET /capacity`), and `renameat2`, for
+# exchanging a run's tree with its replacement in one step. A safe wrapper over
+# the one syscall, and already in the build through `tempfile`, so naming it adds no
+# crate. Unix only, which is every platform the service is deployed on.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

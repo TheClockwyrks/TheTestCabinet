@@ -690,6 +690,8 @@ fn main() -> Result<()> {
                 relay::NotificationOutcome, relay::NotificationKind, relay::Notification,
                 relay::RunEventKind, relay::RunEvent,
                 bapi::StreamOpened, bapi::StreamResync, bapi::StreamTopicsBody,
+                bapi::ArtifactStorageState, bapi::HoldReason, bapi::StateVolumeLevel,
+                bapi::StateVolumeStatus, bapi::ArtifactStorageStatus,
                 bapi::ClientConfig,
             ],
         },

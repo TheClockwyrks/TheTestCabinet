@@ -56,6 +56,11 @@ components:
   # and the deployment runbook. Paired with patch-db-workload-identity below (which
   # repoints the baked-in prod DB-auth clientIDs to the staging identities).
   - ../../components/postgres-azure-ad
+  # The catalog ingest sidecar in the backend pod: it shares /state, brings the
+  # checkout and its cold storage to the catalog branch tip, and POSTs /ingest over
+  # localhost. Listed after postgres, whose backend Deployment it patches;
+  # patch-backend-ingest.yaml below sets its branch.
+  - ../../components/catalog-ingest
 
 # Every Test Cabinet image, at the Test Cabinet ACR and the tag `unpinned`, which
 # nothing pushes: applied as it stands, the overlay fails to pull rather than running
@@ -105,8 +110,9 @@ patches:
   - path: patch-web-config.yaml
   # Lock down Grafana (identical to prod) before the ingress exposes it.
   - path: patch-grafana-auth.yaml
-  # Catalog ingest sidecar in the backend pod (tracks the `staging` branch tip so pushed
-  # catalog/reference changes refresh on demand) + suspend the superseded base CronJob.
+  # The catalog ingest sidecar's branch (`staging`) and environment name; the sidecar
+  # itself is ../../components/catalog-ingest. Then suspend the base CronJob it
+  # supersedes.
   - path: patch-backend-ingest.yaml
   - path: patch-suspend-ingest-cronjob.yaml
   # Repoint the keyvault-csi SecretProviderClass + sync SA at the staging vault +

@@ -16,6 +16,7 @@ import type {
   NotificationSubscription,
 } from "../client";
 import { runPhase } from "../client/runPhase";
+import { markArtifactsNotStored } from "../client/artifactPresence";
 import { readOutcome } from "../client/absence";
 import type {
   AssetKind,
@@ -62,6 +63,7 @@ import type {
   SpecRole,
   StoredReview,
   StoredRun,
+  ArtifactsReclaimed,
   TestCase,
   TestType,
   UnreadableRunPage,
@@ -79,6 +81,7 @@ import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
+  ArtifactStorageStatus,
   LaunchBody,
   StreamOpened,
 } from "@clockwyrks/run-record/jobs-api";
@@ -343,6 +346,12 @@ interface StoredRunResponse {
   record: RunRecord;
   reviews?: ReviewResponse[] | null;
   published?: boolean;
+  // Whether the artifact service holds the run's tree (see `StoredRun`); absent
+  // on an older backend, which reads as unknown.
+  artifactsStored?: boolean | null;
+  // When and why the run's tree was reclaimed (see `StoredRun`); absent on an
+  // older backend, which reads as not reclaimed.
+  artifactsReclaimed?: ArtifactsReclaimed | null;
   links?: { sourceRepo: string | null; playableBuild: string | null };
   // The two rating channels the store decides (see `StoredRun`): the functional
   // `rating` (validator-decided on a validator-rated run, the review aggregate on
@@ -372,6 +381,12 @@ interface RunPageResponse {
 // matching rows ignoring the page window; the cursor path omits it.
 interface RunSummaryPageResponse {
   runs: RunSummary[];
+  // The ids, among `runs`, of the runs whose artifact tree is recorded as not
+  // stored. Beside the cards rather than on them; absent on an older backend.
+  artifactsNotStored?: string[] | null;
+  // The ids, among `runs`, of the runs whose tree the backend reclaimed on
+  // purpose. Never also in `artifactsNotStored`; absent on an older backend.
+  artifactsReclaimed?: string[] | null;
   nextBefore?: string | null;
   total?: number | null;
 }
@@ -408,6 +423,8 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     record,
     reviews,
     published: r.published ?? true,
+    artifactsStored: r.artifactsStored ?? null,
+    artifactsReclaimed: r.artifactsReclaimed ?? null,
     rating: r.rating,
     aesthetic: r.aesthetic,
     validatorRated: r.validatorRated,
@@ -466,6 +483,11 @@ interface MyReviewResponse {
 }
 interface MyReviewsResponseBody {
   reviews: MyReviewResponse[];
+  // The reviewed runs with no stored artifact tree. Absent from a backend that
+  // predates the field.
+  artifactsNotStored?: string[] | null;
+  // The reviewed runs whose tree was reclaimed on purpose. Absent likewise.
+  artifactsReclaimed?: string[] | null;
   total: number;
 }
 
@@ -975,7 +997,19 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       id: string,
       token: string,
     ): Promise<CoveragePlanRuns> {
-      return getJson<CoveragePlanRuns>(baseUrl, planPath(id, "/runs"), token);
+      const body = await getJson<CoveragePlanRuns>(
+        baseUrl,
+        planPath(id, "/runs"),
+        token,
+      );
+      return {
+        ...body,
+        runs: markArtifactsNotStored(
+          body.runs,
+          body.artifactsNotStored,
+          body.artifactsReclaimed,
+        ),
+      };
     },
 
     async haltCoveragePlan(id: string, token: string): Promise<HaltResult> {
@@ -1330,9 +1364,14 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/account/reviews${query ? `?${query}` : ""}`,
         token,
       );
+      const runs = markArtifactsNotStored(
+        body.reviews.map((entry) => entry.run),
+        body.artifactsNotStored,
+        body.artifactsReclaimed,
+      );
       return {
-        reviews: body.reviews.map((entry) => ({
-          run: entry.run,
+        reviews: body.reviews.map((entry, index) => ({
+          run: runs[index] ?? entry.run,
           review: toStoredReview(entry.review),
         })),
         total: body.total,
@@ -1397,7 +1436,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/runs?${params.toString()}`,
       );
       return {
-        summaries: body.runs,
+        summaries: markArtifactsNotStored(
+          body.runs,
+          body.artifactsNotStored,
+          body.artifactsReclaimed,
+        ),
         nextCursor: body.nextBefore ?? null,
         total: body.total ?? null,
       };
@@ -1617,6 +1660,7 @@ const STREAM_EVENT_HELLO = "stream";
 const STREAM_EVENT_NOTIFICATION = "notification";
 const STREAM_EVENT_RUN = "run";
 const STREAM_EVENT_RESYNC = "resync";
+const STREAM_EVENT_STORAGE = "storage";
 const STREAM_EVENT_HEARTBEAT = "heartbeat";
 
 // How long the console stream may go without a frame before it is treated as dead
@@ -2062,6 +2106,21 @@ export function createBackendExec(
               );
             } catch {
               // As above — one bad frame is not worth the connection.
+            }
+          }),
+        );
+
+        // The artifact store's status. The backend sends one after every hello
+        // frame, so a reconnect needs no re-read to be current, and one per change.
+        current.addEventListener(
+          STREAM_EVENT_STORAGE,
+          onFrame((event) => {
+            try {
+              handlers.onStorage?.(
+                JSON.parse(event.data) as ArtifactStorageStatus,
+              );
+            } catch {
+              // As above.
             }
           }),
         );

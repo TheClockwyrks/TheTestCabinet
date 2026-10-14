@@ -539,3 +539,468 @@ fn list_runs_is_empty_for_an_empty_store() {
     let store = LocalFsStore::new(root.path()).unwrap();
     assert!(store.list_runs().unwrap().is_empty());
 }
+
+/// A tar whose first entry (`first.txt`) is well formed and whose second is a
+/// `../escape.txt` traversal: an upload that fails **part way through** its unpack,
+/// after it has already written a file. `tar::Builder` refuses to write a `..`
+/// path, so the second header is framed by hand.
+fn archive_failing_midway() -> Vec<u8> {
+    let mut archive = tar_of(&[("first.txt", b"first")]);
+    // Drop the two zero blocks that end the archive, so another entry can follow.
+    archive.truncate(archive.len() - 1024);
+
+    let payload = b"pwned";
+    let mut header = tar::Header::new_gnu();
+    header
+        .as_gnu_mut()
+        .unwrap()
+        .name
+        .get_mut(..14)
+        .unwrap()
+        .copy_from_slice(b"../escape.txt\0");
+    header.set_size(payload.len() as u64);
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_cksum();
+    archive.extend_from_slice(header.as_bytes());
+    archive.extend_from_slice(payload);
+    archive.resize(archive.len().div_ceil(512) * 512, 0);
+    archive.extend_from_slice(&[0u8; 1024]);
+    archive
+}
+
+/// The names directly under the store's staging directory, or none when it has
+/// not been created.
+fn staged_entries(root: &Path) -> Vec<String> {
+    match std::fs::read_dir(root.join(STAGING_DIR)) {
+        Ok(entries) => entries
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[test]
+fn an_upload_that_fails_mid_unpack_leaves_no_tree() {
+    // The defect this guards: the unpack used to write straight into the run
+    // directory, so a failure after the first entry left a directory holding part
+    // of a tree, and every reader took it for a stored run.
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    let err = store
+        .store_run("r1", &mut Cursor::new(archive_failing_midway()))
+        .expect_err("the second entry is refused");
+    assert!(matches!(err, StoreError::Traversal(_)), "got {err:?}");
+
+    assert!(
+        !store.run_dir("r1").exists(),
+        "no run directory was created"
+    );
+    assert!(!store.has_run_tree("r1").unwrap());
+    assert!(matches!(
+        store.ensure_run_tree("r1"),
+        Err(StoreError::NotFound(_))
+    ));
+    assert!(store.list_runs().unwrap().is_empty());
+    assert!(
+        staged_entries(root.path()).is_empty(),
+        "the partial tree was cleaned up"
+    );
+}
+
+#[test]
+fn an_upload_that_fails_mid_unpack_keeps_the_prior_tree() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run("r1", &mut Cursor::new(tar_of(&[("old.txt", b"old")])))
+        .unwrap();
+
+    store
+        .store_run("r1", &mut Cursor::new(archive_failing_midway()))
+        .expect_err("the second entry is refused");
+
+    let run_dir = store.run_dir("r1");
+    assert_eq!(
+        std::fs::read_to_string(run_dir.join("old.txt")).unwrap(),
+        "old"
+    );
+    assert!(
+        !run_dir.join("first.txt").exists(),
+        "nothing of the failed upload reached the run directory"
+    );
+    assert!(staged_entries(root.path()).is_empty());
+}
+
+#[test]
+fn a_truncated_archive_leaves_no_tree() {
+    // An entry whose header promises more bytes than the stream holds, which is
+    // what an unpack sees when its source is cut short.
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    let mut archive = tar_of(&[("first.txt", b"first"), ("big.bin", &[7u8; 4096])]);
+    archive.truncate(archive.len() - 1024 - 2048);
+
+    let err = store
+        .store_run("r1", &mut Cursor::new(archive))
+        .expect_err("the archive ends inside an entry");
+    assert!(matches!(err, StoreError::Malformed(_)), "got {err:?}");
+    assert!(!store.has_run_tree("r1").unwrap());
+    assert!(staged_entries(root.path()).is_empty());
+}
+
+#[test]
+fn a_replaced_tree_leaves_nothing_staged() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    for contents in [&b"one"[..], &b"two"[..]] {
+        store
+            .store_run("r1", &mut Cursor::new(tar_of(&[("a.txt", contents)])))
+            .unwrap();
+    }
+
+    assert_eq!(
+        std::fs::read_to_string(store.run_dir("r1").join("a.txt")).unwrap(),
+        "two"
+    );
+    assert!(
+        staged_entries(root.path()).is_empty(),
+        "neither the staged tree nor the replaced one is left behind"
+    );
+}
+
+#[test]
+fn the_staging_directory_is_never_a_run() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run("r1", &mut Cursor::new(tar_of(&[("a.txt", b"a")])))
+        .unwrap();
+    // A tree left staged, as an upload in flight (or one a crash interrupted) is.
+    let staged = root.path().join(STAGING_DIR).join("r2.abc").join("tree");
+    std::fs::create_dir_all(&staged).unwrap();
+    std::fs::write(staged.join("a.txt"), b"a").unwrap();
+
+    let listed: Vec<String> = store
+        .list_runs()
+        .unwrap()
+        .into_iter()
+        .map(|tree| tree.id)
+        .collect();
+    assert_eq!(listed, ["r1"], "only the complete tree is listed");
+
+    // Nor can it be addressed as one: reported, read, replaced, or deleted.
+    assert!(matches!(
+        store.has_run_tree(STAGING_DIR),
+        Err(StoreError::Traversal(_))
+    ));
+    assert!(matches!(
+        store.ensure_run_tree(STAGING_DIR),
+        Err(StoreError::Traversal(_))
+    ));
+    assert!(matches!(
+        store.store_run(STAGING_DIR, &mut Cursor::new(tar_of(&[("a.txt", b"a")]))),
+        Err(StoreError::Traversal(_))
+    ));
+    assert!(matches!(
+        store.delete_run(STAGING_DIR),
+        Err(StoreError::Traversal(_))
+    ));
+    assert!(staged.exists(), "the staged tree was not touched");
+}
+
+#[test]
+fn opening_the_store_clears_what_a_previous_process_left_staged() {
+    let root = TempDir::new().unwrap();
+    let leftover = root.path().join(STAGING_DIR).join("r1.abc").join("tree");
+    std::fs::create_dir_all(&leftover).unwrap();
+    std::fs::write(leftover.join("partial.bin"), [0u8; 64]).unwrap();
+    std::fs::create_dir_all(root.path().join("kept")).unwrap();
+
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    assert!(staged_entries(root.path()).is_empty());
+    assert!(store.has_run_tree("kept").unwrap(), "run trees are kept");
+}
+
+#[test]
+fn opening_the_store_restores_a_prior_tree_whose_replacement_never_landed() {
+    // The process died between moving the prior tree aside and renaming the new
+    // one in: the run directory is gone, and the moved-aside tree is the only copy.
+    let root = TempDir::new().unwrap();
+    let aside = root
+        .path()
+        .join(STAGING_DIR)
+        .join("r1.abc123.replaced")
+        .join("tree");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("a.txt"), b"prior").unwrap();
+    // Its replacement, unpacked whole or not: never a tree.
+    let incoming = root.path().join(STAGING_DIR).join("r1.def456").join("tree");
+    std::fs::create_dir_all(&incoming).unwrap();
+    std::fs::write(incoming.join("a.txt"), b"new").unwrap();
+
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    assert!(store.has_run_tree("r1").unwrap());
+    assert_eq!(
+        std::fs::read(store.run_dir("r1").join("a.txt")).unwrap(),
+        b"prior"
+    );
+    assert!(staged_entries(root.path()).is_empty());
+}
+
+#[test]
+fn opening_the_store_drops_a_moved_aside_tree_whose_replacement_landed() {
+    // The process died after the new tree took the run directory and before the
+    // prior one was removed.
+    let root = TempDir::new().unwrap();
+    let aside = root
+        .path()
+        .join(STAGING_DIR)
+        .join("r1.abc123.replaced")
+        .join("tree");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("a.txt"), b"prior").unwrap();
+    std::fs::create_dir_all(root.path().join("r1")).unwrap();
+    std::fs::write(root.path().join("r1").join("a.txt"), b"new").unwrap();
+
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    assert_eq!(
+        std::fs::read(store.run_dir("r1").join("a.txt")).unwrap(),
+        b"new"
+    );
+    assert!(staged_entries(root.path()).is_empty());
+}
+
+#[test]
+fn a_replacement_leaves_the_run_with_the_new_tree_and_nothing_staged() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run(
+            "r1",
+            &mut Cursor::new(tar_of(&[("a.txt", b"prior"), ("only-prior.txt", b"x")])),
+        )
+        .unwrap();
+
+    store
+        .store_run("r1", &mut Cursor::new(tar_of(&[("a.txt", b"new")])))
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read(store.run_dir("r1").join("a.txt")).unwrap(),
+        b"new"
+    );
+    assert!(
+        !store.run_dir("r1").join("only-prior.txt").exists(),
+        "the prior tree is replaced whole, not merged into"
+    );
+    assert!(staged_entries(root.path()).is_empty());
+}
+
+#[test]
+fn has_run_tree_tells_present_from_absent() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    store
+        .store_run("r1", &mut Cursor::new(tar_of(&[("a.txt", b"a")])))
+        .unwrap();
+
+    assert!(store.has_run_tree("r1").unwrap());
+    assert!(!store.has_run_tree("r2").unwrap());
+    assert!(matches!(
+        store.has_run_tree("../r1"),
+        Err(StoreError::Traversal(_))
+    ));
+}
+
+#[test]
+fn capacity_reads_the_filesystem_the_root_is_on() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    let capacity = store.capacity().unwrap();
+
+    assert!(capacity.total_bytes > 0);
+    assert!(capacity.free_bytes <= capacity.total_bytes);
+}
+
+/// The names directly under `root`, sorted.
+fn names_under(root: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(root)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn the_write_probe_passes_on_a_healthy_store_and_leaves_no_tree_behind() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    store.probe_write().unwrap();
+    store.probe_write().unwrap();
+
+    // The staging directory it unpacked in stays, empty; the tree it moved into
+    // place beside the run trees is gone, and was never a run.
+    assert_eq!(names_under(root.path()), [".staging"]);
+    assert!(names_under(&root.path().join(".staging")).is_empty());
+    assert!(store.list_runs().unwrap().is_empty());
+}
+
+#[test]
+fn the_write_probe_leaves_the_stored_trees_alone() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    let archive = tar_of(&[("run-record.json", b"{}")]);
+    store.store_run("abc", &mut Cursor::new(archive)).unwrap();
+
+    store.probe_write().unwrap();
+
+    let ids: Vec<String> = store
+        .list_runs()
+        .unwrap()
+        .into_iter()
+        .map(|tree| tree.id)
+        .collect();
+    assert_eq!(ids, ["abc"]);
+    assert_eq!(
+        std::fs::read_to_string(store.run_dir("abc").join("run-record.json")).unwrap(),
+        "{}"
+    );
+}
+
+#[test]
+fn the_write_probe_fails_when_the_spool_directory_is_gone() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path().join("store")).unwrap();
+    std::fs::remove_dir_all(root.path().join("store")).unwrap();
+
+    assert!(matches!(store.probe_write(), Err(StoreError::Io(_))));
+}
+
+#[test]
+fn the_write_probe_fails_when_a_tree_cannot_be_staged_though_the_spool_takes_a_file() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    // The spool is the root, which is fine. The staging directory is not: a file
+    // sits where it goes. A check that stopped at the spool would pass here, and
+    // every upload would then fail at its unpack.
+    std::fs::write(root.path().join(".staging"), b"").unwrap();
+    assert!(tempfile::tempfile_in(store.scratch_dir()).is_ok());
+
+    assert!(matches!(store.probe_write(), Err(StoreError::Io(_))));
+    assert!(store.list_runs().unwrap().is_empty());
+}
+
+#[test]
+fn a_write_check_tree_left_by_a_dead_process_is_removed_at_startup() {
+    let root = TempDir::new().unwrap();
+    let left = root.path().join(".write-check.4242.7");
+    std::fs::create_dir_all(&left).unwrap();
+    std::fs::write(left.join("write-check"), b"x").unwrap();
+
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    assert!(!left.exists());
+    assert!(store.list_runs().unwrap().is_empty());
+}
+
+#[test]
+fn a_tree_with_a_directory_its_owner_cannot_write_is_stored() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    // The directory entry comes first with mode 0555, then a file inside it, which
+    // is the order a walk of a package cache archives them in. Unpacking the
+    // directory with its recorded mode would refuse the file that follows.
+    let mut builder = tar::Builder::new(Vec::new());
+    let mut dir = tar::Header::new_gnu();
+    dir.set_entry_type(tar::EntryType::Directory);
+    dir.set_size(0);
+    dir.set_mode(0o555);
+    dir.set_cksum();
+    builder
+        .append_data(&mut dir, "implementation/cache/", std::io::empty())
+        .unwrap();
+    let contents = b"module";
+    let mut file = tar::Header::new_gnu();
+    file.set_size(contents.len() as u64);
+    file.set_mode(0o444);
+    file.set_cksum();
+    builder
+        .append_data(&mut file, "implementation/cache/mod.go", &contents[..])
+        .unwrap();
+    let archive = builder.into_inner().unwrap();
+
+    store.store_run("abc", &mut Cursor::new(archive)).unwrap();
+
+    let cache = store.run_dir("abc").join("implementation/cache");
+    assert_eq!(std::fs::read(cache.join("mod.go")).unwrap(), contents);
+    // And the tree can be removed again, which a read-only directory would stop.
+    store.delete_run("abc").unwrap();
+    assert!(!store.run_dir("abc").exists());
+}
+
+#[test]
+fn bytes_that_are_not_an_archive_are_malformed_rather_than_an_io_fault() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    let result = store.store_run("abc", &mut Cursor::new(vec![0x41u8; 2048]));
+
+    assert!(
+        matches!(result, Err(StoreError::Malformed(_))),
+        "{result:?}"
+    );
+    assert!(!store.has_run_tree("abc").unwrap());
+}
+
+#[test]
+fn an_archive_cut_short_is_malformed() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    let mut archive = tar_of(&[("run-record.json", &[b'x'; 4096])]);
+    // The header promises 4096 bytes and the archive ends after 100 of them.
+    archive.truncate(512 + 100);
+
+    let result = store.store_run("abc", &mut Cursor::new(archive));
+
+    assert!(
+        matches!(result, Err(StoreError::Malformed(_))),
+        "{result:?}"
+    );
+    assert!(!store.has_run_tree("abc").unwrap());
+}
+
+#[test]
+fn a_fault_reading_the_spooled_archive_is_an_io_fault() {
+    /// A spool whose volume fails the read, as the operating system reports it.
+    struct Faulted;
+    impl std::io::Read for Faulted {
+        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+            // EIO.
+            Err(std::io::Error::from_raw_os_error(5))
+        }
+    }
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    let result = store.store_run("abc", &mut Faulted);
+
+    // The store's fault, not the upload's: a driver holds its tree for this.
+    assert!(matches!(result, Err(StoreError::Io(_))), "{result:?}");
+}
+
+#[test]
+fn capacity_of_a_root_that_is_gone_is_an_io_error() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path().join("store")).unwrap();
+    std::fs::remove_dir_all(root.path().join("store")).unwrap();
+
+    assert!(matches!(store.capacity(), Err(StoreError::Io(_))));
+}

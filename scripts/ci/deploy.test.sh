@@ -10,9 +10,16 @@
 # The subject is everything the script does around the cluster: what it refuses
 # to roll, the layer it renders, the command it hands the cluster, the verdict it
 # reads out of the result, and what it does when the rollout fails.
+#
+# The last cases run it with the project's own hooks around it, deploy-preflight.sh
+# before the apply and post-deploy.sh after the rollout, against the local catalog
+# mirror catalog-fixture.sh builds: a catalog that cannot be fetched applies
+# nothing, and a sidecar that did not ingest fails a deployment that stays.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/catalog-fixture.sh
+source "${CI_DIR}/catalog-fixture.sh"
 pass=0
 fail=0
 
@@ -96,7 +103,9 @@ STUB
 
 	# Records every invocation's arguments, one per line, and answers the
 	# result STUB_AZ_EXIT_CODE declares. STUB_AZ_BROKEN makes the invocation
-	# itself fail without a result. STUB_AZ_RUNNING makes the first invocation
+	# itself fail without a result. STUB_AZ_CUT_OFF makes it answer as AKS does
+	# for a command it ended at its time limit. STUB_AZ_FAIL_CALL names one invocation, by
+	# its place in the run, whose command fails. STUB_AZ_RUNNING makes the first invocation
 	# answer with its command still running, and that many reads of the result
 	# answer the same before the result carries the exit code. The two forms
 	# are the CLI's own: the invocation answers JSON carrying the id, and a
@@ -111,6 +120,10 @@ if [ -n "${STUB_AZ_BROKEN:-}" ]; then
 	echo "ERROR: (AuthorizationFailed) the stub refuses" >&2
 	exit 1
 fi
+if [ -n "${STUB_AZ_CUT_OFF:-}" ]; then
+	printf '{\n  "exitCode": null,\n  "finishedAt": null,\n  "id": "stub-command",\n  "logs": null,\n  "provisioningState": "Failed",\n  "reason": "timeout",\n  "startedAt": null\n}\n'
+	exit 0
+fi
 if [ "$n" -le "${STUB_AZ_RUNNING:-0}" ]; then
 	if [ "$1 $2 $3" = "aks command result" ]; then
 		printf 'command id: stub-command, started at: 2026-09-19T22:53:40Z, status: Running\n'
@@ -122,6 +135,7 @@ if [ "$n" -le "${STUB_AZ_RUNNING:-0}" ]; then
 fi
 code="${STUB_AZ_EXIT_CODE:-0}"
 [ "$n" -gt $((${STUB_AZ_RUNNING:-0} + 1)) ] && code=0
+[ "$n" = "${STUB_AZ_FAIL_CALL:-}" ] && code=1
 printf '{\n  "exitCode": %s,\n  "id": "stub-command",\n  "logs": "line one of run %s\\nline two",\n  "provisioningState": "Succeeded"\n}\n' "$code" "$n"
 STUB
 	chmod +x "$repo/bin/az"
@@ -326,6 +340,55 @@ status=$?
 check_failed "a rollout that fails fails the run" "$status"
 check_lacks "and runs no hook" "the hook ran" "$out"
 
+echo "--- the project's preflight hook ---"
+
+# Records its arguments and the namespace it was given, and exits with
+# STUB_PREFLIGHT_EXIT.
+write_preflight() { # repo
+	cat >"$1/scripts/ci/deploy-preflight.sh" <<'HOOK'
+#!/usr/bin/env bash
+{
+	printf 'args %s\n' "$*"
+	printf 'pwd %s\n' "$(pwd -P)"
+	printf 'namespace %s\n' "${THE_TEST_CABINET_NAMESPACE:-}"
+} >"$STUB_PREFLIGHT_LOG"
+echo "the preflight ran"
+exit "${STUB_PREFLIGHT_EXIT:-0}"
+HOOK
+	chmod +x "$1/scripts/ci/deploy-preflight.sh"
+}
+
+repo="$(fresh_repo)"
+write_preflight "$repo"
+out="$(run "$repo" STUB_PREFLIGHT_LOG="$repo/preflight.log" "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+status=$?
+check_equal "a preflight that passes deploys" 0 "$status"
+check_contains "it prints what it wrote" "the preflight ran" "$out"
+check_contains "and the commit is deployed after it" "Deployed $COMMIT" "${out#*the preflight ran}"
+hook="$(cat "$repo/preflight.log" 2>/dev/null)"
+check_contains "it is given the commit" "args $COMMIT" "$hook"
+check_contains "it runs from the repository root" "pwd $(cd "$repo" && pwd -P)" "$hook"
+check_contains "it is given the namespace" "namespace tcab-staging" "$hook"
+
+repo="$(fresh_repo)"
+write_preflight "$repo"
+out="$(run "$repo" STUB_PREFLIGHT_LOG="$repo/preflight.log" STUB_PREFLIGHT_EXIT=1 "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+status=$?
+check_failed "a preflight that fails fails the run" "$status"
+check_contains "says nothing was applied" "scripts/ci/deploy-preflight.sh failed, above, so nothing was applied" "$out"
+check_contains "names the command that runs the hook again" "scripts/ci/deploy-preflight.sh $COMMIT" "$out"
+check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
+check_lacks "reports no deployment" "Deployed $COMMIT" "$out"
+
+repo="$(fresh_repo)"
+write_preflight "$repo"
+chmod -x "$repo/scripts/ci/deploy-preflight.sh"
+out="$(run "$repo" STUB_PREFLIGHT_LOG="$repo/preflight.log" "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+status=$?
+check_failed "a preflight that is not executable fails the run" "$status"
+check_contains "says so" "scripts/ci/deploy-preflight.sh is not executable, so nothing was applied" "$out"
+check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
+
 echo "--- a rollout that fails ---"
 
 repo="$(fresh_repo)"
@@ -337,6 +400,7 @@ check_equal "the cluster is reached a second time" 2 "$(wc -l <"$repo/az.log")"
 command="$(command_of "$repo" 2)"
 check_contains "the second command describes the project's pods" "describe pods -l app.kubernetes.io/part-of=the-test-cabinet" "$command"
 check_contains "it reads the server's log" "logs deployment/the-test-cabinet-backend --tail=100" "$command"
+check_contains "of every container of its pod" "--tail=100 --all-containers --prefix" "$command"
 check_contains "it puts the previous server back" "rollout undo deployment/the-test-cabinet-backend" "$command"
 check_equal "it puts the server alone back" 1 "$(grep -o 'rollout undo deployment/' <<<"$command" | wc -l)"
 check_contains "it waits for the rollback" "rollout status deployment/the-test-cabinet-backend --timeout=300s" "$command"
@@ -366,6 +430,18 @@ check_contains "prints what az said" "(AuthorizationFailed) the stub refuses" "$
 check_contains "says the command never ran" "reported no exit code, so the command never ran" "$out"
 check_equal "rolls nothing back" 1 "$(wc -l <"$repo/az.log")"
 
+echo "--- a command AKS ended at its time limit ---"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_AZ_CUT_OFF=1 "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+status=$?
+check_failed "fails" "$status"
+check_contains "says AKS ended the command" "AKS ended the command at its time limit, ten minutes, and kept none of what it wrote." "$out"
+check_lacks "does not say the command never ran" "never ran" "$out"
+check_contains "says nothing was rolled back" "Nothing was rolled back: the apply ran" "$out"
+check_lacks "rolls nothing back" "Rolling back" "$out"
+check_equal "and reaches the cluster once" 1 "$(wc -l <"$repo/az.log")"
+
 echo "--- a render missing one image ---"
 
 repo="$(fresh_repo)"
@@ -374,6 +450,74 @@ status=$?
 check_failed "fails" "$status"
 check_contains "counts the images it found" "carries 0 of the one image at $COMMIT" "$out"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
+
+echo "--- the project's own hooks: the catalog ingest ---"
+
+# The repository with the project's hooks and what they run, each as committed.
+with_project_hooks() { # repo
+	mkdir -p "$1/scripts/lib"
+	cp "$CI_DIR/deploy-preflight.sh" "$CI_DIR/post-deploy.sh" "$CI_DIR/catalog-ingest.sh" \
+		"$CI_DIR/settle-workloads.sh" "$1/scripts/ci/"
+	cp "$CI_DIR/../lib/env.sh" "$1/scripts/lib/"
+}
+
+if ! command -v git >/dev/null 2>&1; then
+	ok "(git is not installed here, so the catalog cases are not reached)"
+else
+	fixture="$tmp/fixture"
+	mkdir -p "$fixture"
+	catalog_fixture "$fixture"
+
+	repo="$(fresh_repo)"
+	with_project_hooks "$repo"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+	status=$?
+	check_equal "a catalog that is fetched and ingested passes" 0 "$status"
+	check_contains "the preflight names the tip and its cold storage" \
+		"The tip of staging is $CATALOG_TIP; it pins cold-storage at $CATALOG_PIN" "$out"
+	check_equal "the cluster is reached four times" 4 "$(wc -l <"$repo/az.log")"
+	check_contains "to read the state volume's free space" "bash catalog-ingest-volume.sh" "$(command_of "$repo" 1)"
+	check_contains "to apply and wait" "kubectl apply -f" "$(command_of "$repo" 2)"
+	check_contains "to settle the other workloads" "bash settle-workloads.sh" "$(command_of "$repo" 3)"
+	check_contains "and to read the sidecar's result" "bash catalog-ingest-verify.sh" "$(command_of "$repo" 4)"
+	check_contains "a volume reading it cannot parse is noted and does not stop the deployment" \
+		"Note: the state volume of tcab-staging could not be read, so its free space was not checked." "$out"
+	check_contains "reports the ingest" "The staging backend ingested the tip of staging." "$out"
+
+	repo="$(fresh_repo)"
+	with_project_hooks "$repo"
+	out="$(run "$repo" TCAB_CATALOG_REPO="file://$tmp/no-such-mirror.git" "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+	status=$?
+	check_failed "a mirror that cannot be reached fails the run" "$status"
+	check_contains "naming the branch" "has no branch staging, or could not be reached" "$out"
+	check_contains "says nothing was applied" "scripts/ci/deploy-preflight.sh failed, above, so nothing was applied" "$out"
+	check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
+	check_lacks "reports no deployment" "Deployed $COMMIT" "$out"
+
+	catalog_fixture_unpin "$fixture"
+	repo="$(fresh_repo)"
+	with_project_hooks "$repo"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+	status=$?
+	check_failed "a pinned cold-storage commit that cannot be fetched fails the run" "$status"
+	check_contains "naming the pin" "pins cold-storage at $CATALOG_PIN, which could not be fetched" "$out"
+	check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
+
+	mkdir -p "$tmp/fixture-two"
+	catalog_fixture "$tmp/fixture-two"
+	repo="$(fresh_repo)"
+	with_project_hooks "$repo"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_AZ_FAIL_CALL=4 "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+	status=$?
+	check_failed "a sidecar that did not ingest fails the run" "$status"
+	check_contains "after the commit was deployed" "Deployed $COMMIT" "$out"
+	check_contains "prints what the cluster read of the sidecar" "line one of run 4" "$out"
+	check_contains "says the backend did not ingest" "the staging backend did not ingest the tip of staging" "$out"
+	check_contains "names the command that ingests once it is fixed" "scripts/reingest-cluster.sh --env staging" "$out"
+	check_contains "says the deployment stays" "$COMMIT is deployed and stays, but scripts/ci/post-deploy.sh failed" "$out"
+	check_lacks "rolls nothing back" "Rolling back" "$out"
+	check_equal "the cluster is reached four times and no more" 4 "$(wc -l <"$repo/az.log")"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

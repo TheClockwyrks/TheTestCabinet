@@ -48,6 +48,7 @@
 //! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (`core::harness::resolve_run_image`); unset uses the compiled defaults (`testcabinet.azurecr.io` / `latest`). The Azure pipeline's deploy sets both to the ACR and the commit being deployed, pinning the run images to the same `<git-sha>` as the service images. |
 //! | `TCAB_CONTAINER_IMAGE_*` (one per run image — `_BASE_WASM`, `_FULL_STACK_2D`, `_FULL_STACK_3D`, `_SPRITE`, `_VOXEL`, …, `_BLENDER`, `_ADVERSARIAL`, `_PERFORMANCE`; the full set is `core::harness::RUN_IMAGE_OVERRIDE_ENVS`) | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
+//! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | How long a driver keeps retrying a tree upload the artifact store could not take before it reports the run without one; unset uses the driver's default of six hours. |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
 //! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
 //!
@@ -213,6 +214,9 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // produced run tree to this artifact service before reporting terminal status.
     // Unset (a single-box dev cluster with no artifact service) skips the upload.
     "TCAB_ARTIFACTS_URL",
+    // How long a driver holds a finished run's tree for a store that cannot take it
+    // (see the driver's `Config::upload_wait`). Unset leaves the driver's default.
+    "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
     // Observability: forwarded so each per-run driver Job exports its run/driver
     // spans (service name `tcab-driver`) to the same OTLP collector — the in-cluster
     // Grafana LGTM stack — as the long-lived services, tagged with the same

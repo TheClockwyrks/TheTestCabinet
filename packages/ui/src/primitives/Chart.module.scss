@@ -1,17 +1,25 @@
 @use "../styles/tokens" as t;
 
 // The chart figure fills its column; Plot injects its own <svg>/<figure>, we
-// only frame it.
+// only frame it. A chart is drawn at the column's width, or wider when it has
+// more categories than fit legibly (see `Chart`), and then the frame scrolls it
+// sideways. So the <svg> keeps the width it was drawn at: Plot's own
+// `max-width: 100%` would squeeze a wide chart back into the column.
 .chart {
   width: 100%;
   overflow-x: auto;
+  // The frame's width comes from its column and never from the chart inside it.
+  // Without this a grid or flex ancestor sizes itself to the wide chart, the
+  // frame grows with it, and there is nothing left to scroll.
+  contain: inline-size;
 
   :global(figure) {
     margin: 0;
   }
 
   :global(svg) {
-    max-width: 100%;
+    display: block;
+    max-width: none;
     height: auto;
   }
 }
