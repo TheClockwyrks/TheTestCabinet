@@ -35,7 +35,7 @@ crate-type = ["rlib"]
 # between them surfaces as an unresolved symbol in a wasm module rather than as anything either
 # file could be read to predict. Bump it here — or with `cargo update -p wit-bindgen` — and the
 # downloaded CLI follows.
-wit-bindgen = { version = "0.60", default-features = false }
+wit-bindgen = { version = "0.62", default-features = false }
 
 # ------------------------------------------------------------------------------------------------
 # THE CURATED LIBRARY SET a model's program may reach for.

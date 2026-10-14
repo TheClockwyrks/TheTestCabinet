@@ -28,9 +28,41 @@
 # after it.
 ARG TOOLCHAIN_IMAGE
 ARG PLAYWRIGHT_IMAGE
+ARG WASM_COMPONENTS_IMAGE
+ARG WASI_SDK_IMAGE
+ARG PYTHON_IMAGE
+ARG JVM_IMAGE
+ARG DOTNET_IMAGE
+ARG RUBY_IMAGE
+ARG SWIFT_IMAGE
+ARG PURESCRIPT_IMAGE
 
 # The browser engines.
 FROM ${PLAYWRIGHT_IMAGE} AS playwright
+
+# The wasm-components language image.
+FROM ${WASM_COMPONENTS_IMAGE} AS wasm-components
+
+# The wasi-sdk language image.
+FROM ${WASI_SDK_IMAGE} AS wasi-sdk
+
+# The python language image.
+FROM ${PYTHON_IMAGE} AS python
+
+# The jvm language image.
+FROM ${JVM_IMAGE} AS jvm
+
+# The dotnet language image.
+FROM ${DOTNET_IMAGE} AS dotnet
+
+# The ruby language image.
+FROM ${RUBY_IMAGE} AS ruby
+
+# The swift language image.
+FROM ${SWIFT_IMAGE} AS swift
+
+# The purescript language image.
+FROM ${PURESCRIPT_IMAGE} AS purescript
 
 # The toolchain image, whose account, `dev` at uid and gid 1000, is the one
 # every step below runs as. It sets the PATH every process in the image is
@@ -46,6 +78,63 @@ FROM ${TOOLCHAIN_IMAGE}
 # The browser engines, in the account's Playwright cache, where Playwright looks
 # for them.
 COPY --from=playwright / /
+
+# The WebAssembly component tools: wasmtime, wit-bindgen, wasm-tools and wac
+# in ~/.local/bin, which the toolchain's PATH reaches, and the WASI preview 1
+# command adapter of that wasmtime release, at the path published here, which
+# a componentize operation reads it from.
+COPY --from=wasm-components / /
+ENV WASI_PREVIEW1_COMMAND_ADAPTER="/home/dev/wasi-adapter/49.0.1/wasi_snapshot_preview1.command.wasm"
+
+# The WASI SDK, with its compilers linked into ~/.local/bin as wasi-clang,
+# wasi-clang++ and wasi-wasm-ld. WASI_SDK_PATH is its prefix, which a wasm
+# build of a C or C++ component names its sysroot by.
+COPY --from=wasi-sdk / /
+ENV WASI_SDK_PATH="/home/dev/wasi-sdk/34.0"
+
+# The pinned CPython and componentize-py. The interpreter's directory is the
+# one of this image whose contents come *before* /usr/bin on the PATH, so
+# `python3` by name is the pin, while the distribution's interpreter stays at
+# /usr/bin/python3 for anything that asks for it by path. The directory holds
+# the interpreter's three names and nothing else, so it shadows nothing else.
+COPY --from=python / /
+ENV PYTHON_BIN_DIR="/home/dev/python/bin"
+ENV PATH="$PYTHON_BIN_DIR:$PATH"
+
+# The Temurin JDK, the Kotlin compiler, Gradle, and the Gradle cache a JVM
+# component builds offline from. JAVA_HOME is that JDK, which exists on both
+# architectures, and GRADLE_USER_HOME is Gradle's own default, published so the
+# cache is the one every build reads, a shell's and a pipeline step's alike.
+COPY --from=jvm / /
+ENV JAVA_HOME="/home/dev/jdk/21.0.12.1+1"
+ENV GRADLE_USER_HOME="/home/dev/.gradle"
+
+# The .NET SDK and the local package feed its restores read. DOTNET_ROOT is
+# where the `dotnet` host finds its SDK, the opt-out keeps the CLI from phoning
+# home, and DOTNET_LOCAL_FEED is the package folder, which a restore names as
+# its only source.
+COPY --from=dotnet / /
+ENV DOTNET_ROOT="/home/dev/dotnet/10.0.401"
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_LOCAL_FEED="/home/dev/dotnet/packages"
+
+# The ruby.wasm builder and YARD, as gems on the base image's Ruby, and
+# binaryen. GEM_HOME is the tree RubyGems reads and installs into, so a
+# `gem install` needs no sudo, and its bin directory is where a gem's
+# executables land.
+COPY --from=ruby / /
+ENV GEM_HOME="/home/dev/ruby/gems"
+ENV PATH="$PATH:/home/dev/ruby/gems/bin"
+
+# The Swift toolchain, with `swift` and `swiftc` linked into ~/.local/bin and
+# the rest of its commands on the PATH from its own bin directory, and the
+# Swift SDK for WebAssembly in SwiftPM's store, where `swift build --swift-sdk`
+# looks for it.
+COPY --from=swift / /
+ENV PATH="$PATH:/home/dev/swift/6.4.0/usr/bin"
+
+# The PureScript compiler and spago, each linked into ~/.local/bin.
+COPY --from=purescript / /
 
 # The CUDA toolkit, which is several GB and off unless something in this
 # checkout compiles CUDA sources and the host has an NVIDIA GPU behind its
@@ -83,8 +172,13 @@ RUN bash /tmp/scripts/languages/rust/targets.sh && rm -rf /tmp/scripts
 COPY --chown=dev:dev ./.devcontainer/tools/helm.sh /tmp/scripts/tools/
 RUN bash /tmp/scripts/tools/helm.sh && rm -rf /tmp/scripts
 
-# gg's eleven program-language toolchains and its C# guest's build toolchains:
-# about 3.4 GB, by far the largest thing in this image, and not optional.
+# gg's eleven program-language toolchains and its C# guest's build toolchains, which
+# are not optional. Most of them are the language images copied above, which
+# scripts/ci/gg-image-toolchains.sh links at the homes gg's installers check before
+# those installers run, so this layer fetches only what no image holds: the TeaVM
+# jars the jvm image's cache lacks, the build tools the arms' locks pin, the
+# wasmtime reactor adapter gg pins, the C# guest's Mono pack, workload and
+# wasi-sdk, and the crates and wheels the arms build offline.
 # crates/gg/build.rs reflects each arm's signature catalogue out of that arm's
 # own SDK with that arm's own documentation tool as a step of building the
 # crate, so a container without them cannot `cargo build --workspace` at all,
@@ -122,6 +216,7 @@ COPY --chown=dev:dev \
 	/tmp/scripts/languages/gg/
 COPY --chown=dev:dev \
 	./scripts/ci/install-*.sh \
+	./scripts/ci/gg-image-toolchains.sh \
 	./scripts/ci/tcab-lib.sh \
 	./scripts/ci/fetch.sh \
 	/tmp/scripts/gg-repo/scripts/ci/

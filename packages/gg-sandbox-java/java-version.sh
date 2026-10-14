@@ -22,7 +22,7 @@
 # same either way. What the pin buys is javac's own DIAGNOSTICS agreeing between machines, which
 # is what the arm's tests assert and what a model is shown on a compile failure. Moving it is a
 # change to that text and belongs to its own change, with its own re-measurement.
-JDK_VERSION="21.0.12+8"
+JDK_VERSION="21.0.12.1+1"
 
 # TeaVM, which compiles the bytecode to JavaScript. Every jar below is a runtime
 # dependency of `teavm-tooling` and of `teavm-classlib`, resolved once and pinned here rather

@@ -12,12 +12,20 @@
 # of the image, not an hour of downloads a developer waits through after the
 # container is created.
 #
+# Most of the arms' toolchains are already in the image by the time this runs: the template's
+# language images, which ubuntu.dockerfile copies over the toolchain image, hold the Swift
+# toolchain, wasi-sdk, the .NET SDK, the JDK, TeaVM, the Kotlin compiler, purs, spago, YARD,
+# componentize-py and wit-bindgen at the versions the arms pin. scripts/ci/gg-image-toolchains.sh runs first and links each arm's
+# default home to the image's tree with the installer's version stamp beside it, so the installers
+# after it find those arms installed and fetch only what no image holds. A pin the image does not
+# hold fails it, and the build with it, rather than letting an installer download the arm here.
+#
 # It delegates rather than installs. scripts/ci/install-gg-toolchains.sh is
 # the one pinned list, shared with the pipeline's scripts/ci/gg-ci-toolchains.sh
 # and the driver image's gg stage, and a per-arm script here would be the second
 # list that arrangement exists to abolish: the twelfth arm would install
-# everywhere but here. So this file names the two entry points and nothing
-# else. The pins are in each arm's packages/gg-sandbox-*/<lang>-version.sh,
+# everywhere but here. So this file names the link script and the two
+# installer entry points and nothing else. The pins are in each arm's packages/gg-sandbox-*/<lang>-version.sh,
 # where the reflectors and the run images read them too.
 #
 # The installers are pinned by the repository, so they are read from the
@@ -43,6 +51,9 @@
 set -euo pipefail
 
 readonly SLICE="${GG_REPO_SLICE:-/tmp/scripts/gg-repo}"
+
+# The arms the template's language images hold, linked at the default homes the installers check.
+bash "$SLICE/scripts/ci/gg-image-toolchains.sh"
 
 # The eleven arms: what a gg run and gg's own reflectors execute.
 bash "$SLICE/scripts/ci/install-gg-toolchains.sh"

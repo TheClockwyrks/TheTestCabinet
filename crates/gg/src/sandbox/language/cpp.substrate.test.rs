@@ -526,6 +526,23 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
         "the header that checked it was not shortened to gg's own toolchain prefix, so a model \
          reads ~90 characters of somebody's home directory on every frame: {failure}"
     );
+    // The tree clang really runs from, which is the one it records: where the home links into a
+    // toolchain kept elsewhere, as the devcontainer's does, the home's own spelling never appears
+    // in a frame, so its absence above proves nothing about that tree's.
+    let home = compile::wasi_sdk_home().expect("the C++ toolchain resolves");
+    let tree = compile::compiler_tree(&home).expect("the C++ toolchain has a compiler");
+    assert!(
+        !failure.contains(&tree.display().to_string()),
+        "the header that checked it named the compiler's real tree, {}, rather than gg's own \
+         toolchain prefix: {failure}",
+        tree.display()
+    );
+    // clang reaches its sysroot through `bin/..`, from the `.cfg` beside its binary, so the frame
+    // reads `/wasi-sdk/bin/../share/wasi-sysroot/...`; what matters is the prefix it starts from.
+    assert!(
+        failure.contains("at /wasi-sdk/") && failure.contains("/share/wasi-sysroot/include/"),
+        "the header that checked it was not named under gg's own toolchain prefix: {failure}"
+    );
     assert_eq!(hardened.logs, ["before"]);
 
     // 3. UNDEFINED BEHAVIOUR, which says nothing at all. A division by zero is a trap with no

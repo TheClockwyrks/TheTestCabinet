@@ -22,7 +22,7 @@
 # that has already done one — and `kotlinc` has no daemon of its own to ask for that. The
 # embeddable jar is also the one built to be put on somebody else's classpath: its
 # dependencies are relocated, so it does not fight the ASM that TeaVM reads bytecode with.
-KOTLIN_VERSION="2.4.10"
+KOTLIN_VERSION="2.4.20"
 
 # Every jar the embeddable compiler needs at run time, resolved once from its own POM and
 # pinned here rather than resolved by Maven at install time: an install step that runs a
@@ -45,11 +45,11 @@ KOTLIN_VERSION="2.4.10"
 # on the classpath a model's program is compiled against, so what a program may reach is the
 # standard library rather than gg's compiler.
 read -r -d '' KOTLIN_JARS <<'JARS' || true
-org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10
-org.jetbrains.kotlin:kotlin-stdlib:2.4.10
-org.jetbrains.kotlin:kotlin-script-runtime:2.4.10
-org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.10
-org.jetbrains.kotlin:kotlin-build-tools-api:2.4.10
+org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20
+org.jetbrains.kotlin:kotlin-stdlib:2.4.20
+org.jetbrains.kotlin:kotlin-script-runtime:2.4.20
+org.jetbrains.kotlin:kotlin-daemon-embeddable:2.4.20
+org.jetbrains.kotlin:kotlin-build-tools-api:2.4.20
 org.jetbrains.kotlin:kotlin-reflect:1.6.10
 org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0
 org.jetbrains:annotations:13.0

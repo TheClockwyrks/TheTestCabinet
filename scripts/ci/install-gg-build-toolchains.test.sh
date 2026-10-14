@@ -90,11 +90,11 @@ GG_DOTNET_RUNTIME_VERSION="10.0.10"
 GG_DOTNET_CHANNEL="10.0"
 GG_DOTNET_TFM="net10.0"
 GG_DOTNET_MONO_WASI_PACK="Microsoft.NETCore.App.Runtime.Mono.wasi-wasm"
-GG_WASI_SDK_VERSION="33.0"
+GG_CSHARP_WASI_SDK_VERSION="33.0"
 GG_CSHARP_TARGET="wasm32-wasip2"
 gg_dotnet_architecture() { echo "x64"; }
 gg_wasi_sdk_platform() { echo "x86_64-linux"; }
-gg_wasi_sdk_url() { echo "https://example.com/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz"; }
+gg_csharp_wasi_sdk_url() { echo "https://example.com/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz"; }
 GG_BUILD_PREFIX="${TCAB_GG_BUILD_PREFIX:-$HOME/.local/share/tcab/gg-build}"
 EOF2
 

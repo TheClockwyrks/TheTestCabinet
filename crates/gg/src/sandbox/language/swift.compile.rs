@@ -763,6 +763,13 @@ fn invoke_swiftc(
                 // than when `run` is called.
                 .arg("-Xclang-linker")
                 .arg("-mexec-model=reactor")
+                // And no binaryen. clang runs `wasm-opt` over an optimised link's output whenever
+                // one is on `PATH`, and that pass drops the name section and the inlined frame
+                // that carries `Swift runtime failure: ...`, so a trap a model is shown would read
+                // `<wasm function 15>`. Whether a machine has one, as the dev container does from
+                // the template's ruby image, must not decide what a model reads.
+                .arg("-Xclang-linker")
+                .arg("--no-wasm-opt")
                 .arg("-Xlinker")
                 .arg("--gc-sections")
                 .arg("-o")
@@ -862,9 +869,9 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
     let diagnostics = errors(&report.stderr);
     if diagnostics.is_empty() {
         // A compiler that could not finish: it crashed, was killed by its timeout, or fell over on
-        // an expression it could not fold. `swiftc` 6.3.3 is known to abort on some programs, so
-        // this is a real path rather than a defensive one — and it must never reach the model as
-        // "your program did not compile", because nothing was ever decided about the program.
+        // an expression it could not fold. `swiftc` is known to abort on some programs, so this is
+        // a real path rather than a defensive one — and it must never reach the model as "your
+        // program did not compile", because nothing was ever decided about the program.
         return Err(PrepareFailure::Toolchain(format!(
             "swiftc {} {}{}",
             compiler_version(),

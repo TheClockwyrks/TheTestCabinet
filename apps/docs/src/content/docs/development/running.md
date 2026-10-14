@@ -71,10 +71,11 @@ the cluster tooling, the apt packages the project's tools need (`ruby`,
 gg's eleven program-language toolchains with the build toolchains of its C#
 guest (see
 [gg and its eleven toolchains](/development/building/#gg-and-its-eleven-toolchains)).
-The gg toolchains are the image's last layer, installed by
-`.devcontainer/languages/gg/install.sh` from the same two installers the
-pipeline and the run images use, so a first image build is long and a pin
-moving under `packages/` rebuilds that layer alone.
+The gg toolchains are the image's last layer. Most are the template's language
+images, which `.devcontainer/languages/gg/install.sh` links at the homes gg
+looks in, and the rest are installed there by the same two installers the
+pipeline and the run images use, so a pin moving under `packages/` rebuilds
+that layer alone.
 
 When the container is created, `.devcontainer/post-create.sh` installs the git
 hook and runs `npm ci`, and nothing runs in the background afterwards: the

@@ -159,3 +159,27 @@ everywhere else.
   packages and musl target in a step of the project's own, and its
   `.dockerignore` and the image pipeline's path filter admit
   `.devcontainer/languages/rust/targets.sh`; keep all three.
+- The language toolchains gg's arms take from the template's images: the
+  project answers yes to `toolchain_wasm_components`, `toolchain_wasi_sdk`,
+  `toolchain_python`, `toolchain_jvm`, `toolchain_dotnet`, `toolchain_ruby`,
+  `toolchain_swift` and `toolchain_purescript`, and no to
+  `toolchain_rust_nightly` and `toolchain_ecmascript` (gg builds on the stable
+  toolchain, and its TypeScript and jco are the npm workspace's locks). The gg
+  step runs `scripts/ci/gg-image-toolchains.sh` before its installers, which
+  links each arm's default home to the image's tree, and that script is in the
+  slice's `scripts/ci` COPY. Each arm's pin under
+  `packages/gg-sandbox-*/<lang>-version.sh` (and componentize-py's in
+  `packages/gg-sandbox-python/build.sh`) is the version its image's tag names,
+  so an update that moves one of those images moves the pin, and what the pin
+  moves (a checker manifest, a test's text, a probe fixture), in the same
+  change. `scripts/ci/gg-image-toolchains.test.sh` fails the shell-tests gate
+  until they agree, and the image build fails on the link script if they do
+  not. Two pins move differently. The wasm-components image's `wit-bindgen` is
+  pinned in the C++ and Swift version files and is read by the Rust arm from
+  `packages/gg-sandbox-rust/Cargo.lock`, so moving it also moves the
+  `wit-bindgen` requirement in that crate's and `packages/gg-sandbox/guest/`'s
+  `Cargo.toml` and relocks both with
+  `cargo update -p wit-bindgen --precise <version>`. The C# guest's wasi-sdk,
+  `GG_CSHARP_WASI_SDK_VERSION` in `packages/gg-sandbox-csharp/csharp-version.sh`,
+  follows the Mono runtime pack rather than the wasi-sdk image, and is
+  downloaded while the two differ.

@@ -223,6 +223,7 @@ colouring
 colours
 comborecipe
 comboupgrade
+componentizer
 conftest
 Consolas
 cooldown
@@ -427,6 +428,7 @@ hotbar
 hotspot
 hoverable
 hpbar
+hppc
 HRTF
 hypot
 impls
@@ -632,6 +634,7 @@ Opencode
 opencode
 openrouter
 optimiser
+optout
 organisation
 organisation's
 Osize

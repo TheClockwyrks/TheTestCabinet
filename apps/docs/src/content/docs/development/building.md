@@ -43,7 +43,7 @@ version moves it onto the versions that template's images hold.
 | `musl-tools`, `ruby`, `libicu-dev`, `ffmpeg`, `cmake` and the local cluster tools' `iproute2`, `lsof` and `procps` | Ubuntu's, installed by `.devcontainer/system/packages.sh` |
 | This architecture's musl target | `rust-toolchain.toml`, added by `.devcontainer/languages/rust/targets.sh` |
 | `helm` | `.devcontainer/tools/helm.sh` |
-| gg's program-language toolchains | Each arm's `packages/gg-sandbox-*/<lang>-version.sh`, installed by `.devcontainer/languages/gg/install.sh` |
+| gg's program-language toolchains | Each arm's `packages/gg-sandbox-*/<lang>-version.sh`, which for Swift, C++, C#, Java, Kotlin, PureScript, Ruby and Python is the version of the template's language image the devcontainer copies; `.devcontainer/languages/gg/install.sh` links those and installs the rest |
 
 Setting up a machine that executes test cases (container runtime,
 run-container image, credentials) is covered by
@@ -742,15 +742,27 @@ run images keep their size. With the second prefix populated,
 `packages/gg-sandbox-csharp/build.sh` resolves both from it instead of fetching
 its own copies.
 
-The dev container's image carries both lists, about 3.4 GB under
-`~/.local/share`, together with the apt packages gg's installers and the asset
-tools need (`ruby`, `libicu-dev`, `ffmpeg`, `cmake`, `iproute2`, `lsof`,
-`procps`) and `wrangler`. `.devcontainer/languages/gg/install.sh` runs the two
-installers above in the image's last layer, against a slice of the repository
+The dev container's image carries both lists, together with the apt packages
+gg's installers and the asset tools need (`ruby`, `libicu-dev`, `ffmpeg`,
+`cmake`, `iproute2`, `lsof`, `procps`) and `wrangler`. Most of the toolchains
+are the template's language images, which every workspace on a machine copies
+from the same layers: the Swift toolchain, wasi-sdk, the .NET SDK, the JDK, the
+Kotlin compiler, `purs`, YARD, componentize-py and `wit-bindgen`. In the
+image's last layer, `.devcontainer/languages/gg/install.sh` first runs
+`scripts/ci/gg-image-toolchains.sh`, which links each of those arms' default
+homes to the image's tree with the installer's stamp, and then the two
+installers above, which find those arms installed and fetch only what no image
+holds. Each arm's pin is therefore the version its image's tag names, and a pin
+the image does not hold fails the image build and the `shell-tests` gate rather
+than downloading the arm. The one exception is the wasi-sdk the C# guest links
+with, which is pinned to the release Mono's prebuilt runtime pack was built
+against rather than to the C++ arm's, so while the two differ the second
+installer downloads it. The installers run against a slice of the repository
 the Dockerfile stages for them, so a pin moving under `packages/` or an
 installer changing rebuilds that layer and nothing above it. A container built
 before a pin moved reconciles by running the two installers by hand; each
 checks what is there against its pin and touches no network when they match.
+See "gg's toolchains" in `.devcontainer/README.md`.
 The one prerequisite the image leaves to the checkout is the npm workspace,
 which `post-create.sh` installs, because two catalogues are reflected with the
 pinned `typescript` in it.

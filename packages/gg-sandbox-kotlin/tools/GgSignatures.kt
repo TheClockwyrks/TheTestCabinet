@@ -1,17 +1,22 @@
 @file:OptIn(
     org.jetbrains.kotlin.config.CompilerConfiguration.Internals::class,
     org.jetbrains.kotlin.K1Deprecation::class,
+    org.jetbrains.kotlin.CoreEnvironmentDeprecation::class,
+    org.jetbrains.kotlin.config.MessageCollectorAccess::class,
+    org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class,
 )
 
 package tools
 
 import java.io.File
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
+import org.jetbrains.kotlin.cli.extensionsStorage
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
 import org.jetbrains.kotlin.com.intellij.psi.PsiFileFactory
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
+import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.idea.KotlinFileType
@@ -196,6 +201,10 @@ private class Index(
             val configuration = CompilerConfiguration()
             configuration.put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, MessageCollector.NONE)
             configuration.put(CommonConfigurationKeys.MODULE_NAME, "gg-signatures")
+            // From Kotlin 2.4 the environment reads the compiler plugins' extensions out of the
+            // configuration and refuses one that holds no storage for them. This reads source and
+            // loads no plugin, so the storage it is given is an empty one.
+            configuration.extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
             val environment =
                 KotlinCoreEnvironment.createForProduction(
                     disposable,

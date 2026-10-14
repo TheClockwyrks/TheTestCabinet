@@ -73,6 +73,37 @@ take here:
   tests are driven against, and whose Chromium the case-harness suite, the
   validator's browser driver and the Rust suite's served validator-project
   tests launch. See [Browsers](#browsers).
+- The wasm-components image: wasmtime, wit-bindgen, wasm-tools and wac in
+  `~/.local/bin`, and the WASI preview 1 command adapter of that wasmtime
+  release, whose path the Dockerfile publishes as
+  `WASI_PREVIEW1_COMMAND_ADAPTER`. See
+  [The language toolchains](#the-language-toolchains).
+- The wasi-sdk image: the WASI SDK, whose prefix the Dockerfile publishes as
+  `WASI_SDK_PATH`, with its compilers linked into `~/.local/bin` as
+  `wasi-clang`, `wasi-clang++` and `wasi-wasm-ld`. See
+  [The language toolchains](#the-language-toolchains).
+- The python image: a pinned CPython, whose directory the Dockerfile
+  publishes as `PYTHON_BIN_DIR` at the front of the `PATH`, and
+  componentize-py. See [The language toolchains](#the-language-toolchains).
+- The jvm image: the Temurin JDK, which the Dockerfile publishes as
+  `JAVA_HOME`, Kotlin, Gradle, and Gradle's cache seeded for an offline build,
+  published as `GRADLE_USER_HOME`. See
+  [The language toolchains](#the-language-toolchains).
+- The dotnet image: the .NET SDK, which the Dockerfile publishes as
+  `DOTNET_ROOT`, and the local package feed its restores read, published as
+  `DOTNET_LOCAL_FEED`, with `DOTNET_CLI_TELEMETRY_OPTOUT` set. See
+  [The language toolchains](#the-language-toolchains).
+- The ruby image: the ruby.wasm builder and YARD, as gems in the tree the
+  Dockerfile publishes as `GEM_HOME`, whose bin directory is on the `PATH`,
+  and binaryen's `wasm-opt`. See
+  [The language toolchains](#the-language-toolchains).
+- The swift image: the Swift toolchain, whose bin directory the Dockerfile
+  puts on the `PATH`, with `swift` and `swiftc` linked into `~/.local/bin`,
+  and the Swift SDK for WebAssembly in SwiftPM's store. See
+  [The language toolchains](#the-language-toolchains).
+- The purescript image: the PureScript compiler, `purs`, and spago, each
+  linked into `~/.local/bin`. See
+  [The language toolchains](#the-language-toolchains).
 
 Then it runs only the steps the published images cannot hold, from what changes
 least often to what changes most often:
@@ -91,10 +122,11 @@ least often to what changes most often:
     installing a cluster's prerequisites from their charts. No CI image
     carries it, because no gate installs a chart.
   - `languages/gg/install.sh`: gg's eleven program-language toolchains and the
-    build toolchains of its C# guest, about 3.4 GB under `~/.local/share`,
-    installed by the repository's own installers from the pins beside each
-    arm. Building `crates/gg` reflects a signature catalogue out of every
-    arm's SDK, so without them `cargo build --workspace` fails. See
+    build toolchains of its C# guest, under `~/.local/share`, linked to the
+    language images above where those hold an arm and otherwise installed by
+    the repository's own installers from the pins beside each arm. Building
+    `crates/gg` reflects a signature catalogue out of every arm's SDK, so
+    without them `cargo build --workspace` fails. See
     [gg's toolchains](#ggs-toolchains).
 - The Claude Code and Codex CLIs, because a harness session runs inside the
   devcontainer of the workspace it belongs to, and both publish often, so their
@@ -231,6 +263,50 @@ The `playwright` in `packages/case-harness` and `packages/browser-driver`
 follows the same tag, for the same reason: those launch the Chromium the image
 holds, and a different client version asks for a build that is not there.
 
+## The language toolchains
+
+Each language toolchain this project carries is an image the template
+publishes, which the Dockerfile copies over the toolchain image and follows
+with the `ENV` lines naming where it sits. The image holds the toolchain's
+files under the account's home alone, at the version the template pins, so
+updating the project to a new template version is what moves it. A machine
+pulls it once, and every workspace of every project there copies it from the
+same layers.
+
+The system half the toolchains link against, clang, cmake, Ruby and the
+libraries the Swift and .NET toolchains load, is the base image's whatever this
+project answers, and the toolchain image's stable Rust carries the
+`wasm32-unknown-unknown`, `wasm32-wasip1` and `wasm32-wasip2` targets.
+
+A toolchain is turned on or off by answering its question,
+`toolchain_<name>`, on a template update, such as
+`copier update --trust --data toolchain_swift=true`, and rebuilding the
+container, with **Rebuild Container** in the editor or
+`devcontainer up --remove-existing-container`.
+
+`WASI_PREVIEW1_COMMAND_ADAPTER` is the path of the WASI preview 1 command
+adapter of the wasmtime release the image holds, which a componentize step
+reads it from. The path names that release, so it moves with the template.
+
+`PYTHON_BIN_DIR` holds the pinned interpreter's three names and nothing else,
+and leads the `PATH`, so `python3` and `python` by name are the pin and the
+directory shadows no other command. The distribution's interpreter stays at
+`/usr/bin/python3` for anything that names it by path.
+
+`JAVA_HOME` names the jvm image's JDK, which exists on both architectures.
+`GRADLE_USER_HOME` is Gradle's own default, `~/.gradle`, published so that
+every build, a shell's and a pipeline step's alike, reads the seeded cache.
+
+`DOTNET_ROOT` is where the `dotnet` host finds its SDK, and
+`DOTNET_LOCAL_FEED` is the package folder a restore names as its only source,
+holding FSharp.Core, DocFX and FSharp.Formatting. On amd64 it holds the
+componentizer as well, whose compiler is published for x64 alone.
+`DOTNET_CLI_TELEMETRY_OPTOUT` keeps the CLI from sending telemetry.
+
+`GEM_HOME` is the tree RubyGems reads and installs into, under the account's
+home, so a `gem install` needs no `sudo`, and its bin directory, where a gem's
+executables land, is on the `PATH`.
+
 ## gg's toolchains
 
 gg drives a model in one of eleven program languages, and what a model is told
@@ -239,31 +315,79 @@ of that arm's own SDK, with that arm's own documentation tool, on every build of
 the crate. The toolchains are therefore a prerequisite of building the
 workspace, and a prerequisite of working in the repository is a prerequisite of
 the image rather than an hour of downloads after the container is created.
-`languages/gg/install.sh` installs them in the image's last layer, and its
-header says why it delegates rather than installs:
+`languages/gg/install.sh` puts them in the image's last layer, and its header
+says why it delegates rather than installs.
 
-- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms, about 1.9 GB:
-  the pinned YARD on the image's `ruby`, the `wasm32` standard library, `purs`
-  and `esbuild`, a JDK with TeaVM and the Kotlin compiler, wasi-sdk, .NET with
-  Roslyn, the Swift toolchain, and the package-manager-delivered build tools
-  the arms' artifact builds resolve offline.
+Most of them come from the language images, which every workspace on a machine
+copies from the same layers rather than downloading for itself. The project
+answers yes to the template's `wasm_components`, `wasi_sdk`, `python`, `jvm`,
+`dotnet`, `ruby`, `swift` and `purescript` toolchains, and
+`scripts/ci/gg-image-toolchains.sh` runs first in the layer. It builds, at the
+default home each arm's installer checks, a small tree of links into the
+image's toolchain with the installer's version stamp beside it:
+
+| Arm | Default home | Linked to |
+| --- | --- | --- |
+| Swift | `~/.local/share/tcab/gg-swift` | the swift image's toolchain and its SDK for WebAssembly |
+| C++, and the ECMAScript guest | `~/.local/share/tcab/gg-wasi-sdk` | the wasi-sdk image's tree |
+| C# | `~/.local/share/tcab/gg-dotnet` | the dotnet image's SDK, its Roslyn and its reference assemblies |
+| C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK, unpruned |
+| Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
+| Java and Kotlin, TeaVM | `~/.local/share/gg-java/libs` | each pinned TeaVM jar the jvm image's Gradle cache holds |
+| Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
+| PureScript, spago | `~/.local/share/tcab/gg-npm/spago-<version>-<lock digest>` | the purescript image's spago, whose tree has to be the one `scripts/gg-npm-locks/` names |
+| The C++, Swift and Rust arms' bindings | `~/.local/share/tcab/gg-wit-bindgen-<version>` | the wasm-components image's `wit-bindgen` |
+
+`purs`, YARD (in `GEM_HOME`) and componentize-py are where the installers and
+gg already look, so the script only checks their versions. Then the two
+installers run, and each arm the images hold is already installed as far as
+they can tell:
+
+- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
+  it fetches what no language image holds: the TeaVM dependencies the jvm
+  image's Gradle cache lacks (it resolved ASM to another release, and holds
+  neither hppc nor Rhino), `esbuild`, the
+  `wasm32` standard library where the toolchain image lacks it, the wasmtime
+  reactor adapter (the image holds the command adapter of another wasmtime
+  release), and the
+  package-manager-delivered build tools the arms' artifact builds resolve
+  offline (spago's store, componentize-js and opal-compiler, the opal gem, the
+  Python arm's wheels and the two Rust crate sets).
 - `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
-  guest needs and no run does, about 1.4 GB under `~/.local/share/tcab/gg-build`:
-  a whole .NET SDK and an unpruned wasi-sdk.
+  guest needs and no run does. In this image it fetches the Mono WASI runtime
+  pack, installs the `wasi-experimental` workload into the dotnet image's SDK
+  tree, and fetches the wasi-sdk release the guest links with. That release is
+  pinned apart from the C++ arm's, to the one Mono's prebuilt runtime pack was
+  built against, and while the two differ no image holds it. The workload is
+  the one write into an image's tree: the SDK the guest builds with is the one
+  `DOTNET_ROOT` and `~/.local/bin/dotnet` name, so the workspace's own `dotnet`
+  has the workload too, in this layer only.
 
 They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
 and the driver image's gg stage run, so the one pinned list serves every surface
-that builds gg. Everything lands under the container user's home, which is
-where the reflectors look first and all that three of the arms can use, so the
-layer runs as that user and `"updateRemoteUserUID": false` in
-`devcontainer.json` is load-bearing: a uid rewrite at start would orphan it.
+that builds gg. Those surfaces copy no language image and run no link script, so
+there the installers download every arm as before. Everything lands under the
+container user's home, which is where the reflectors look first, so the layer
+runs as that user and `"updateRemoteUserUID": false` in `devcontainer.json` is
+load-bearing: a uid rewrite at start would orphan it.
+
+Each arm's pin stays in its `packages/gg-sandbox-*/<lang>-version.sh`, and has
+to be the version the image's tag in `docker-compose.yml` names. A pin the
+image does not hold fails the link script, and the image build with it, with
+the pin file and both versions named, rather than letting an installer
+download the arm into the image unnoticed. `scripts/ci/gg-image-toolchains.test.sh`
+reads the anchor's tags against the pins, so the same disagreement fails the
+`shell-tests` gate before an image is built. A template update that moves one
+of these images therefore moves the arm's pin in the same change.
 
 The layer is last, and its own, so a pin moving under `packages/`, an installer
 changing or a new arm arriving rebuilds it and nothing above it, and a failed
-download from one of its half-dozen upstreams is retried with everything else
-cached. Each installer checks what is there against its pin and touches no
-network when they match, so in a container built before a pin moved, running
-both by hand reconciles it without waiting for a rebuild:
+download from one of its upstreams is retried with everything else cached. Each
+installer checks what is there against its pin and touches no network when they
+match, so in a container built before a pin moved, running both by hand
+reconciles it without waiting for a rebuild. An arm whose pin moved past the
+image it came from is then downloaded into its default home, over the links,
+until the container is rebuilt on a template that holds it:
 
 ```sh
 scripts/ci/install-gg-toolchains.sh

@@ -43,7 +43,7 @@ source "$REPO_ROOT/packages/gg-sandbox-csharp/csharp-version.sh"
 source "$REPO_ROOT/scripts/ci/fetch.sh"
 
 DOTNET_SDK_DIR="$GG_BUILD_PREFIX/dotnet-sdk-$GG_DOTNET_SDK_VERSION"
-WASI_SDK_DIR="$GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full"
+WASI_SDK_DIR="$GG_BUILD_PREFIX/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full"
 PACK_DIR="$GG_BUILD_PREFIX/$GG_DOTNET_MONO_WASI_PACK.$GG_DOTNET_RUNTIME_VERSION"
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
@@ -89,20 +89,21 @@ test -f "$MONO_TASKS"
 
 # --- the unpruned wasi-sdk --------------------------------------------------------------------
 #
-# The same release and the same URL `install-wasi-sdk.sh` fetches — read from the C++ arm's version
-# file, which this sourced through `csharp-version.sh`, so the two cannot name different releases —
-# and then NOT pruned. `wasm32-wasip2` and its `noeh` libc++ are what the link line needs and what
-# the run installer deletes.
-log "wasi-sdk $GG_WASI_SDK_VERSION, unpruned (gg's csharp guest links against its wasm32-wasip2 sysroot)"
+# The release the guest is linked by, `GG_CSHARP_WASI_SDK_VERSION` in `csharp-version.sh`, which is
+# pinned apart from the C++ arm's because Mono's prebuilt archives are tied to one wasi-libc (that
+# file says why), and NOT pruned. `wasm32-wasip2` and its `noeh` libc++ are what the link line needs
+# and what the run installer deletes. Where the pin is the C++ arm's, the devcontainer links the
+# template's wasi-sdk image here (scripts/ci/gg-image-toolchains.sh) and nothing is fetched.
+log "wasi-sdk $GG_CSHARP_WASI_SDK_VERSION, unpruned (gg's csharp guest links against its wasm32-wasip2 sysroot)"
 if [ -x "$WASI_SDK_DIR/bin/clang" ]; then
-	echo "wasi-sdk $GG_WASI_SDK_VERSION already installed at $WASI_SDK_DIR"
+	echo "wasi-sdk $GG_CSHARP_WASI_SDK_VERSION already installed at $WASI_SDK_DIR"
 else
-	echo "Installing wasi-sdk $GG_WASI_SDK_VERSION ($(gg_wasi_sdk_platform)) -> $WASI_SDK_DIR"
+	echo "Installing wasi-sdk $GG_CSHARP_WASI_SDK_VERSION ($(gg_wasi_sdk_platform)) -> $WASI_SDK_DIR"
 	# Staged to a file rather than piped into `tar`, which is what it used to be. A pipe cannot be
 	# resumed: this is ~650 MB, and the whole of it was re-fetched every time the connection dropped
 	# once. `gg_fetch` resumes and retries, and the archive is deleted once it has been unpacked.
-	SDK_ARCHIVE="$(gg_fetch_dir)/wasi-sdk-$GG_WASI_SDK_VERSION-$(gg_wasi_sdk_platform).tar.gz"
-	gg_fetch "$(gg_wasi_sdk_url)" "$SDK_ARCHIVE"
+	SDK_ARCHIVE="$(gg_fetch_dir)/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-$(gg_wasi_sdk_platform).tar.gz"
+	gg_fetch "$(gg_csharp_wasi_sdk_url)" "$SDK_ARCHIVE"
 	rm -rf "$WASI_SDK_DIR"
 	mkdir -p "$WASI_SDK_DIR"
 	tar -xzf "$SDK_ARCHIVE" -C "$WASI_SDK_DIR" --strip-components=1

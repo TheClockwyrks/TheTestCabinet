@@ -87,7 +87,7 @@ COMPONENT="$GG_ARTIFACTS_OUT_DIR/python.component.wasm"
 # program runs on (0.25.0 embeds CPython 3.14). Pinned rather than floating for the reason the
 # TypeScript guest pins `componentize-js`: a floating one would silently change the language version
 # a study's Python arm was run in, half way through a sweep.
-COMPONENTIZE_VERSION="0.25.0"
+COMPONENTIZE_VERSION="0.25.1"
 
 # Everything this script generates besides the artifact: the vendored wheels and the generated WIT
 # bindings. Inside the package so a developer can read them, and `.gitignore`d so they cannot be

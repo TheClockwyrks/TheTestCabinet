@@ -92,7 +92,7 @@ esac
 # program that throws to say so.
 #
 # `-fwasm-exceptions` selects the wasm exception-handling proposal rather than dropping exceptions
-# on the floor, and `-wasm-use-legacy-eh=false` selects the STANDARDISED encoding: clang 22 still
+# on the floor, and `-wasm-use-legacy-eh=false` selects the STANDARDISED encoding: clang 23 still
 # defaults to the legacy `try`/`catch` instructions, and wasmtime 45 refuses those outright
 # ("legacy_exceptions feature required for try instruction") while accepting the standard
 # `try_table` form. Measured both ways against the runtime gg actually links.

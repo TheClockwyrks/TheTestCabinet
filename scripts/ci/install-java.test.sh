@@ -144,6 +144,24 @@ check_equal "fetching the jars alone" "2" "$(grep -c 'repo1.maven.org' "$tmp/fet
 check_lacks "and not the JDK" "temurin" "$(cat "$tmp/fetch.log")"
 check_absent "the old jars go" "$prefix/libs/teavm-core-0.12.0.jar"
 
+# The devcontainer links the jars the jvm image's Gradle cache holds before this runs, and leaves
+# no stamp: a linked jar is kept and only the rest are fetched, without writing through the link.
+links_home="$tmp/links-home"
+mkdir -p "$links_home/.local/share/gg-java/libs" "$tmp/cache"
+printf 'cached' >"$tmp/cache/teavm-core-0.13.1.jar"
+ln -s "$tmp/cache/teavm-core-0.13.1.jar" "$links_home/.local/share/gg-java/libs/teavm-core-0.13.1.jar"
+ln -s "$tmp/cache/gone.jar" "$links_home/.local/share/gg-java/libs/asm-tree-9.8.jar"
+out="$(run "$links_home")"
+check_equal "an install over linked jars succeeds" "0" "$?"
+check_equal "fetching the jars it has no link for, and the dangling one" \
+	"https://repo1.maven.org/maven2/org/ow2/asm/asm-tree/9.8/asm-tree-9.8.jar" \
+	"$(grep 'repo1.maven.org' "$tmp/fetch.log")"
+check_contains "saying it has the linked one" "have teavm-core-0.13.1.jar (linked)" "$out"
+check_equal "leaving the link as it was" "$tmp/cache/teavm-core-0.13.1.jar" \
+	"$(readlink "$links_home/.local/share/gg-java/libs/teavm-core-0.13.1.jar")"
+check_equal "and what it names untouched" "cached" "$(cat "$tmp/cache/teavm-core-0.13.1.jar")"
+check_equal "then stamping the version" "0.13.1" "$(cat "$links_home/.local/share/gg-java/libs/.teavm-version")"
+
 out="$(run "$tmp/arm-home" STUB_UNAME_M=aarch64)"
 check_equal "an aarch64 install succeeds" "0" "$?"
 check_contains "with the aarch64 build" "OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.12_8.tar.gz" "$(cat "$tmp/fetch.log")"

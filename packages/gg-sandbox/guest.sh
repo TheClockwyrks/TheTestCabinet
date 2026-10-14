@@ -60,8 +60,11 @@ if [ ! -x "$WASI_SDK_HOME/bin/clang" ]; then
 	exit 1
 fi
 # The archiver `cc-rs` builds `libquickjs.a` with. The wasi-sdk tree is pruned to the two binaries
-# the C++ arm's turn path runs and an archiver is not one of them, so this is the system's.
-ARCHIVER="$(command -v llvm-ar || command -v ar || true)"
+# the C++ arm's turn path runs and an archiver is not one of them, so this is the system's, binutils'
+# `ar`, ahead of any `llvm-ar` on the PATH. The devcontainer's PATH names the Swift image's
+# toolchain, which carries an `llvm-ar` of another LLVM, and which archiver built the guest must
+# not depend on whether a machine has that image. An `llvm-ar` is the fallback where there is no `ar`.
+ARCHIVER="$(command -v ar || command -v llvm-ar || true)"
 if [ -z "$ARCHIVER" ]; then
 	echo "error: no \`ar\` (or \`llvm-ar\`) on PATH." >&2
 	echo "       cc-rs archives quickjs's object files into a static library with one, and the" >&2

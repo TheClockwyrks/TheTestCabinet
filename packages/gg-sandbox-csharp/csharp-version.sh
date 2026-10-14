@@ -21,12 +21,13 @@ CSHARP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 #
 # ONE PIN FOR BOTH HALVES, deliberately. The compiler that reads a model's C# on the host and the
 # BCL that runs it inside the guest are two sides of one release: a program compiled against
-# `10.0.10` reference assemblies and interpreted by a `10.0.9` `System.Private.CoreLib` is a program
+# `10.0.12` reference assemblies and interpreted by a `10.0.11` `System.Private.CoreLib` is a program
 # whose `MissingMethodException` nobody would think to look for. The SDK band and the runtime it
-# carries are spelled separately because Microsoft versions them separately — an SDK `10.0.3xx`
-# carries runtime `10.0.x` — and both are checked at install.
-GG_DOTNET_SDK_VERSION="10.0.302"
-GG_DOTNET_RUNTIME_VERSION="10.0.10"
+# carries are spelled separately because Microsoft versions them separately — an SDK `10.0.4xx`
+# carries runtime `10.0.x` — and both are checked at install. The SDK is the one the template's
+# dotnet image holds, which the devcontainer links rather than downloads, so the two move together.
+GG_DOTNET_SDK_VERSION="10.0.401"
+GG_DOTNET_RUNTIME_VERSION="10.0.12"
 
 # The band `dotnet-install.sh` is asked for. It resolves to the SDK version above; the installer
 # asserts that it did, so a channel that has moved on is an install-time failure rather than a
@@ -41,7 +42,7 @@ GG_DOTNET_TFM="net10.0"
 #
 # `latest` is deliberately NOT taken: it means "whatever this Roslyn is", so a toolchain bump would
 # silently change what a model may write and what the study is measuring. `14.0` is what SDK
-# 10.0.3xx ships as its stable default — collection expressions, primary constructors, `field`
+# 10.0.4xx ships as its stable default for net10.0 — collection expressions, primary constructors, `field`
 # keyword and extension members are all in it.
 GG_DOTNET_LANG_VERSION="14.0"
 
@@ -57,9 +58,20 @@ GG_DOTNET_LANG_VERSION="14.0"
 # It is the runtime version above, not the SDK version: the pack is versioned with the runtime.
 GG_DOTNET_MONO_WASI_PACK="Microsoft.NETCore.App.Runtime.Mono.wasi-wasm"
 
-# The wasi-sdk release the guest is linked by — the same release the C++ arm compiles with, read
-# from that arm's own file rather than restated, so the two cannot drift.
+# The wasi-sdk release the guest is linked by, which is NOT the release the C++ arm compiles with.
 #
+# The guest is Mono's IL interpreter relinked, and Mono's `libSystem.Native.a` is a prebuilt archive
+# compiled against one wasi-libc: the 10.0.12 pack calls `descriptor_table_get_ref`, which
+# wasi-sdk 33's `wasm32-wasip2` libc defines and wasi-sdk 34's no longer does, so linking it against
+# 34 fails with an undefined symbol. The C++ arm and the ECMAScript guest compile from source and
+# move with the template's wasi-sdk image; this pin moves with the Mono runtime pack instead, once a
+# pack that links against the newer libc is published. It is a separate download into the build
+# prefix below, and the one arm toolchain the devcontainer fetches at a version the template's
+# images do not hold. (TeaVM's ASM, hppc and Rhino jars are fetched there too, being the
+# dependencies the jvm image's Gradle cache lacks; see .devcontainer/README.md.)
+GG_CSHARP_WASI_SDK_VERSION="33.0"
+GG_CSHARP_WASI_SDK_TAG="wasi-sdk-33"
+
 # THE TARGET IS `wasm32-wasip2` AND THE C++ ARM'S IS NOT, and the reason the two differ is the
 # reason that arm gives for its own choice. The C++ arm compiles a component **per turn** and will
 # not instantiate one produced by a `wasm-component-ld` whose encoder gg does not version. This
@@ -78,6 +90,14 @@ GG_CSHARP_TARGET="wasm32-wasip2"
 
 export GG_DOTNET_SDK_VERSION GG_DOTNET_RUNTIME_VERSION GG_DOTNET_CHANNEL GG_DOTNET_TFM
 export GG_DOTNET_LANG_VERSION GG_DOTNET_MONO_WASI_PACK GG_CSHARP_TARGET CSHARP_ROOT
+export GG_CSHARP_WASI_SDK_VERSION GG_CSHARP_WASI_SDK_TAG
+
+# Where the guest's wasi-sdk release is published, for this machine.
+gg_csharp_wasi_sdk_url() {
+	local platform
+	platform="$(gg_wasi_sdk_platform)" || return 1
+	echo "https://github.com/WebAssembly/wasi-sdk/releases/download/${GG_CSHARP_WASI_SDK_TAG}/wasi-sdk-${GG_CSHARP_WASI_SDK_VERSION}-${platform}.tar.gz"
+}
 
 # The platform build of the .NET SDK for this machine, in `dotnet-install.sh`'s own vocabulary.
 gg_dotnet_architecture() {
@@ -160,11 +180,11 @@ gg_dotnet_runtime_pack_home() {
 
 # The unpruned wasi-sdk, with every sysroot target the release publishes.
 gg_wasi_sdk_build_home() {
-	if [ -x "$GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full/bin/clang" ]; then
-		echo "$GG_BUILD_PREFIX/wasi-sdk-$GG_WASI_SDK_VERSION-full"
+	if [ -x "$GG_BUILD_PREFIX/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full/bin/clang" ]; then
+		echo "$GG_BUILD_PREFIX/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full"
 		return 0
 	fi
-	echo "$CSHARP_ROOT/packages/gg-sandbox-csharp/.build/wasi-sdk-$GG_WASI_SDK_VERSION-full"
+	echo "$CSHARP_ROOT/packages/gg-sandbox-csharp/.build/wasi-sdk-$GG_CSHARP_WASI_SDK_VERSION-full"
 }
 
 export GG_BUILD_PREFIX

@@ -17,7 +17,9 @@
 # in nothing else.
 #
 # Idempotent: a matching version already installed (a developer's machine, a cache
-# restore) is left alone.
+# restore) is left alone. In the devcontainer, scripts/ci/gg-image-toolchains.sh has
+# linked libs/ to the TeaVM jars the jvm image's Gradle cache holds before this runs, and
+# a jar libs/ links to is kept, so only the ones the cache lacks are fetched.
 #
 # Usage:
 #   scripts/ci/install-java.sh                          # -> $HOME/.local/share/gg-java
@@ -73,14 +75,33 @@ if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$TEAVM_VERSION" ]; then
 	echo "TeaVM $TEAVM_VERSION already installed"
 else
 	echo "Installing TeaVM $TEAVM_VERSION -> $LIB_DIR"
-	rm -rf "$LIB_DIR"
 	mkdir -p "$LIB_DIR"
+	rm -f "$STAMP"
+	# What another pin left goes, and what this one names stays. A jar libs/ links to is one the
+	# devcontainer took from the jvm image's Gradle cache (scripts/ci/gg-image-toolchains.sh), so it
+	# is kept and not fetched; fetching onto it would write through the link into the image's tree.
+	WANTED="$(while read -r COORDINATE; do
+		[ -n "$COORDINATE" ] || continue
+		REST="${COORDINATE#*:}"
+		echo "${REST%%:*}-${REST#*:}.jar"
+	done <<<"$TEAVM_JARS")"
+	for JAR in "$LIB_DIR"/*.jar; do
+		{ [ -e "$JAR" ] || [ -L "$JAR" ]; } || continue
+		grep -qxF "$(basename "$JAR")" <<<"$WANTED" || rm -f "$JAR"
+	done
 	while read -r COORDINATE; do
 		[ -n "$COORDINATE" ] || continue
 		GROUP="${COORDINATE%%:*}"
 		REST="${COORDINATE#*:}"
 		ARTIFACT="${REST%%:*}"
 		VERSION="${REST#*:}"
+		if [ -L "$LIB_DIR/${ARTIFACT}-${VERSION}.jar" ]; then
+			if [ -f "$LIB_DIR/${ARTIFACT}-${VERSION}.jar" ]; then
+				echo "  have ${ARTIFACT}-${VERSION}.jar (linked)"
+				continue
+			fi
+			rm -f "$LIB_DIR/${ARTIFACT}-${VERSION}.jar"
+		fi
 		gg_fetch \
 			"https://repo1.maven.org/maven2/${GROUP//./\/}/${ARTIFACT}/${VERSION}/${ARTIFACT}-${VERSION}.jar" \
 			"$LIB_DIR/${ARTIFACT}-${VERSION}.jar"

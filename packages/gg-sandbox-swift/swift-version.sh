@@ -23,7 +23,7 @@ set -euo pipefail
 SWIFT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # The Swift release a model's program is compiled by, on the host, once per turn.
-GG_SWIFT_VERSION="6.3.3"
+GG_SWIFT_VERSION="6.4.0"
 
 # The Swift SDK for WebAssembly, published beside the toolchain under the same release tag.
 # Its version is the release's; it is named separately because it is a separate download with
@@ -72,7 +72,7 @@ GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 # The version is the one the Rust arm pins, and deliberately the same one: both read the same
 # `crates/gg/wit`, and two generators of different vintages reading it would be two chances for
 # the wire to be described differently.
-GG_WIT_BINDGEN_VERSION="0.60.0"
+GG_WIT_BINDGEN_VERSION="0.62.0"
 
 # The **curated library set** a program may `import`, beyond what the Swift SDK for WebAssembly
 # already ships.

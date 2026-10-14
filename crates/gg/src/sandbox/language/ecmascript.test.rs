@@ -672,7 +672,7 @@ fn a_stack_is_captured_ten_frames_deep() {
 /// **A stack overflow is a `RangeError` with frames, not a store-killing trap.**
 ///
 /// Without the two things `packages/gg-sandbox/ecmascript-version.sh` and
-/// `crates/gg/src/sandbox/engine.rs` arrange between them — `-U__wasi__`, which restores quickjs's
+/// `crates/gg/src/sandbox/engine.rs` arrange between them — undefining `__wasi__`, which restores quickjs's
 /// own stack check on this target, and a `max_wasm_stack` above the JavaScript ceiling — this is
 /// `wasm trap: call stack exhausted` and the model reads nothing at all.
 #[test]
