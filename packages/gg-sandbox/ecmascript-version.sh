@@ -90,7 +90,10 @@ gg_ecmascript_adapter_url() {
 # model can act on, where a `RangeError` with the JavaScript frames was available.
 #
 # The obvious answer is to vendor a patched `rquickjs-sys`: two hunks, 5.9 MB of C in the repository,
-# and a merge burden on every quickjs bump. `-U__wasi__` is those same two hunks with none of that.
+# and a merge burden on every quickjs bump. Undefining `__wasi__` is those same two hunks with none of
+# that. It is done by `guest/wasi-prelude.h`, included ahead of every file, rather than by `-U__wasi__`
+# on the command line, because from wasi-sdk 34 the sysroot's WASI headers refuse to compile without
+# the macro; the prelude reads them while it stands and undefines it after.
 # It is safe, and it is checked rather than assumed: `__wasi__` appears SIX times across the four
 # translation units this build compiles (`quickjs.c` 75, 2015, 2761; `cutils.h` 64, 618, 663), and
 # `rquickjs-sys`'s own `build.rs` already defines `EMSCRIPTEN=1` for this target — which decides four
@@ -102,5 +105,5 @@ gg_ecmascript_adapter_url() {
 # names the system's — which is `binutils`, a package both the devcontainer and the CI image already
 # install for other reasons, and which `build.sh` checks for by name.
 gg_ecmascript_cflags() {
-	echo "--sysroot=$(gg_wasi_sdk_home)/share/wasi-sysroot -U__wasi__"
+	echo "--sysroot=$(gg_wasi_sdk_home)/share/wasi-sysroot -include $GG_ECMASCRIPT_ROOT/packages/gg-sandbox/guest/wasi-prelude.h"
 }

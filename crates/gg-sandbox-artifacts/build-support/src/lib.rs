@@ -391,6 +391,7 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
             "packages/gg-sandbox/guest/Cargo.toml",
             "packages/gg-sandbox/guest/Cargo.lock",
             "packages/gg-sandbox/guest/.cargo/config.toml",
+            "packages/gg-sandbox/guest/wasi-prelude.h",
             "packages/gg-sandbox-cpp/cpp-version.sh",
             "packages/gg-sandbox/package.json",
             "packages/gg-sandbox/tsconfig.json",
