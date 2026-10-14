@@ -27,7 +27,7 @@ lives in, checked out as a submodule at this repository's root.
 | Component | Authoritative doc | Code |
 | --- | --- | --- |
 | Contracts (the hub: every wire and file shape, the suites runtime, telemetry, redaction, the backend client, both generators) | [`components/contracts/`](apps/docs/src/content/docs/components/contracts/) | `contracts/` |
-| Engines (the authored engines, the voxel and particle runtimes, foray and lattice with the match runner) | [`components/engines/`](apps/docs/src/content/docs/components/engines/) | `engines/` |
+| Engines (the authored engines, the voxel, particle and lattice playback runtimes, foray and lattice with the match runner) | [`components/engines/`](apps/docs/src/content/docs/components/engines/) | `engines/` |
 | Driver (the run engine: execution, harnesses, orchestrators, events, validation, showcases; one Job per run, uploading to artifacts and repos) | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md) | `microservice-driver/` |
 | CLI (`tcab`: validate, analyze, capture-baselines, seed, prompt, ingest, publish-reference, publish-asset-reference; the driver's second binary) | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md) | `microservice-driver/` |
 | Dispatcher (claims queued runs → one driver Job each; admits publish Jobs) | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md) | `microservice-dispatcher/` |
@@ -326,7 +326,10 @@ production carries a `.frozen` marker file, and a change to it is refused by
 `frozen-paths`, that repository's gate, at commit and in CI. See
 [`development/frozen-versions.md`](apps/docs/src/content/docs/development/frozen-versions.md).
 Game jams are an alternate form of test case: intentionally open-ended, they
-provide models with a theme to build against rather than a spec.
+provide models with a theme to build against rather than a spec. The lattice
+factory designer, the dev-only tool a performance scenario is laid out with, is
+`tools/lattice-designer` in that repository; see
+[the factory designer](apps/docs/src/content/docs/testing/performance/lattice/architecture.md#the-factory-designer).
 
 ### [Cold Storage](cold-storage/)
 

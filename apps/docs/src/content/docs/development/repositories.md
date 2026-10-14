@@ -35,7 +35,7 @@ The kind decides a repository's shape.
 | `tool` | A library workspace whose binaries are also baked into the run-container images; depended on as a library is |
 | `shell` | A Tauri workspace, a Rust shell crate that commits its lock plus an npm workspace, building desktop and Android bundles; depends on nothing of the project at build time |
 | `site` | An npm workspace and no Rust |
-| `content` | Neither |
+| `content` | No Rust, and an npm workspace of the tools its content is authored with |
 
 `cold-storage` is a submodule too, and the kit renders nothing into it.
 
@@ -44,7 +44,7 @@ The kind decides a repository's shape.
 | Repository | Kind | What it holds |
 | --- | --- | --- |
 | `contracts` | library | Every wire and file shape and its validation, the suite runtime, telemetry, redaction, the backend's client, both generators and the packages they write |
-| `engines` | library | The authored engines and their manifests, the voxel and particle runtimes, the case harness, and the adversarial and performance runtimes with the match runner |
+| `engines` | library | The authored engines and their manifests, the voxel, particle and lattice playback runtimes, the case harness, and the adversarial and performance runtimes with the match runner |
 | `ui-common` | library | `@clockwyrks/ui` and `@clockwyrks/run-stats` |
 | `tool-model-core` | tool, library only | `model-core`, `voxel-mesh`, `model-skin` |
 | `tool-sprite` | tool | `draw` (`draw`, `draw-sheet`) |
@@ -71,7 +71,7 @@ The kind decides a repository's shape.
 | `console.testcabinet.ai` | site | The operator console |
 | `gg.rocks` | site | gg's public site |
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
-| `test-suites` | content | The test cases and game jams |
+| `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
 Every repository but `contracts`, `test-suites` and `cold-storage` is still a
 directory of the superrepo's own tree today.
@@ -108,9 +108,17 @@ directory of the superrepo's own tree today.
 
 `engines` holds the engine catalog (`built_in_catalog`, published by its
 engines crate), the `simple-*` and `structured-*` packages, `case-harness`,
-`voxel-runtime`, `particle-runtime`, and `foray-core`, `foray-host`,
-`lattice-core` and `lattice-host` with the match-play logic and the foray and
-lattice reference controllers and SDKs.
+`voxel-runtime`, `particle-runtime`, `lattice-runtime` (the browser playback
+of a factory, with `lattice-core` compiled to its playback ABI), and
+`foray-core`, `foray-host`, `lattice-core` and `lattice-host` with the
+match-play logic and the foray and lattice reference controllers and SDKs.
+
+`test-suites` holds the authored content and, as `tools/lattice-designer`, the
+lattice factory designer: the dev-only tool a performance scenario is laid out
+with, which runs the layout through `@clockwyrks/lattice-runtime` as it is
+drawn and saves it in place as one of the lattice version's scored scenarios.
+See [the factory
+designer](/testing/performance/lattice/architecture/#the-factory-designer).
 
 `microservice-driver` holds the run engine: `RunEngine` and its lib root,
 execution, the container runtimes, seeding, the harnesses and the harness
@@ -172,7 +180,8 @@ the-spec-cabinet        -> contracts, engines, ui-common
 testcabinet.ai          -> contracts (run-record), engines (runtimes), ui-common
 console.testcabinet.ai  -> contracts (run-record, backend-api), engines, ui-common
 client-tauri            -> nothing of this project (it loads the console by URL)
-test-suites             -> engines (packages alone; the validators import them)
+test-suites             -> engines (packages alone; the validators and the
+                           designer import them)
 gg.rocks                -> nothing of this project
 ```
 
@@ -190,7 +199,8 @@ microservice-backend -> test-suites              ingest
 microservice-driver -> gg                        the pinned released binary
 microservice-driver -> tool-*                    the tool images
 test-suites -> microservice-backend              the sample packs
-console.testcabinet.ai -> test-suites            the vendored replay assets
+console.testcabinet.ai -> test-suites            the vendored sprite atlas and
+                                                 reference scenarios
 the-spec-cabinet -> test-suites                  the suite being authored
 client-tauri -> console.testcabinet.ai           the URL it loads
 microservice-driver -> microservice-artifacts, microservice-repos

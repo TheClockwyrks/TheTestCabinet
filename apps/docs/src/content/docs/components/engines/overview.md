@@ -10,15 +10,16 @@ test types play a produced controller in. It depends on
 [`contracts`](/components/contracts/overview/) alone, and the superrepo checks
 it out at `engines/`.
 
-| Part                                                                                 | Holds                                                                                                            |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `crates/engines` (`test-cabinet-engines`)                                            | The authored engines' manifests, embedded at build time, and `built_in_catalog`                                  |
-| `packages/simple-2d`, `simple-3d`, `structured-2d`, `structured-3d`                  | The [authored engines](/engines/overview/)' runtimes; each manifest is at `engines/<slug>/`                      |
-| `packages/case-harness` (`@clockwyrks/case-harness`)                                 | The shared harness a case's engineless validators are written over                                               |
-| `packages/voxel-runtime`, `packages/particle-runtime`                                | The [voxel](/components/voxel-runtime/overview/) and [particle](/components/particle-runtime/overview/) runtimes |
-| `crates/foray-core`, `crates/foray-host`, the `foray-ref-*` crates and the SDK       | The [adversarial](/testing/adversarial/foray/architecture/) simulation, its wasm host and baselines              |
-| `crates/lattice-core`, `crates/lattice-host`, the `lattice-ref-*` crates and the SDK | The [performance](/testing/performance/lattice/architecture/) simulation, its wasm host and baselines            |
-| `match_play`                                                                         | The match runner over the two hosts                                                                              |
+| Part                                                                                 | Holds                                                                                                                      |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `crates/engines` (`test-cabinet-engines`)                                            | The authored engines' manifests, embedded at build time, and `built_in_catalog`                                            |
+| `packages/simple-2d`, `simple-3d`, `structured-2d`, `structured-3d`                  | The [authored engines](/engines/overview/)' runtimes; each manifest is at `engines/<slug>/`                                |
+| `packages/case-harness` (`@clockwyrks/case-harness`)                                 | The shared harness a case's engineless validators are written over                                                         |
+| `packages/voxel-runtime`, `packages/particle-runtime`                                | The [voxel](/components/voxel-runtime/overview/) and [particle](/components/particle-runtime/overview/) runtimes           |
+| `packages/lattice-runtime` (`@clockwyrks/lattice-runtime`)                           | The browser playback of a lattice factory: the renderer, the interpolation and `lattice-core` compiled to the playback ABI |
+| `crates/foray-core`, `crates/foray-host`, the `foray-ref-*` crates and the SDK       | The [adversarial](/testing/adversarial/foray/architecture/) simulation, its wasm host and baselines                        |
+| `crates/lattice-core`, `crates/lattice-host`, the `lattice-ref-*` crates and the SDK | The [performance](/testing/performance/lattice/architecture/) simulation, its wasm host and baselines                      |
+| `match_play`                                                                         | The match runner over the two hosts                                                                                        |
 
 ## The authored engines
 
@@ -52,6 +53,17 @@ are vendored into a model's workspace by a full-stack case, which is why they
 take `@clockwyrks/asset-contract` from `contracts` and nothing else of the
 project. The `ui-common` library and both sites mount them to play a produced
 asset back.
+
+`@clockwyrks/lattice-runtime` is the [browser
+playback](/testing/performance/lattice/architecture/#browser-playback) of the
+performance type: the canvas renderer, the interpolation between ticks, and
+`lattice-core` compiled to its playback ABI, committed beside them and rebuilt
+from this repository's crate when the simulation changes. It takes nothing of
+the project. The console plays a run's factory and the case's Reference tab
+through it, and the lattice factory designer in `test-suites` runs a layout
+through it as the layout is drawn. The sprite atlas and the reference scenarios
+are the lattice version's own content, which the console vendors from
+`test-suites`.
 
 ## Foray, lattice and the match runner
 
