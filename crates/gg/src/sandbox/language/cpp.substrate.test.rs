@@ -537,8 +537,10 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
          toolchain prefix: {failure}",
         tree.display()
     );
+    // clang reaches its sysroot through `bin/..`, from the `.cfg` beside its binary, so the frame
+    // reads `/wasi-sdk/bin/../share/wasi-sysroot/...`; what matters is the prefix it starts from.
     assert!(
-        failure.contains("/wasi-sdk/share/wasi-sysroot/"),
+        failure.contains("at /wasi-sdk/") && failure.contains("/share/wasi-sysroot/include/"),
         "the header that checked it was not named under gg's own toolchain prefix: {failure}"
     );
     assert_eq!(hardened.logs, ["before"]);
