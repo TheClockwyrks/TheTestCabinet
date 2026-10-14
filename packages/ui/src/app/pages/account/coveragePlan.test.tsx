@@ -1053,6 +1053,63 @@ describe("CoverageReviewQueue", () => {
     return <CoverageReviewQueue queue={queue()} />;
   }
 
+  function longQueue(count: number): CoverageQueue {
+    return {
+      runs: Array.from({ length: count }, (_, index) => ({
+        runId: `r${index + 1}`,
+        slug: "zeta",
+        version: "v1.0.0",
+        variant: "base",
+        engine: "none",
+        harness: "claude",
+        model: "opus",
+        finishedAt: "2026-08-15T00:00:00Z",
+      })),
+      truncated: false,
+    };
+  }
+
+  function renderQueueAt(url: string, count: number) {
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <GalleryDataProvider value={galleryValue()}>
+          <CoverageReviewQueue queue={longQueue(count)} />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  const shownRunIds = () =>
+    screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href")?.split("/")[2]);
+
+  it("draws a long queue 20 runs a page, in its order", () => {
+    renderQueueAt("/account/ladders/l1", 45);
+    expect(shownRunIds()).toHaveLength(20);
+    expect(shownRunIds()[0]).toBe("r1");
+    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    expect(shownRunIds()[0]).toBe("r21");
+    expect(shownRunIds()).toHaveLength(20);
+    // The count beside the title is the whole queue, not the page.
+    expect(screen.getByText("45")).toBeTruthy();
+  });
+
+  it("opens on the page the URL names, beside the board's own page", () => {
+    renderQueueAt("/account/ladders/l1?page=2&labelPage=3", 45);
+    expect(shownRunIds()).toEqual(["r41", "r42", "r43", "r44", "r45"]);
+  });
+
+  it("falls back to the last page once the queue no longer reaches it", () => {
+    renderQueueAt("/account/ladders/l1?labelPage=9", 45);
+    expect(shownRunIds()[0]).toBe("r41");
+  });
+
+  it("draws no pager for a queue that fits one page", () => {
+    renderQueueAt("/account/ladders/l1", 20);
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
   it("names a queued run's engine, so two pins do not read alike", () => {
     render(
       <MemoryRouter initialEntries={["/account/coverage/p1"]}>

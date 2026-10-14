@@ -210,6 +210,11 @@ Both serve their own unreviewed queue in their own order rather than
 newest-first. A review queue is for labelling runs after the fact, and nothing on
 it launches or holds back a run.
 
+The console shows a review queue, Label runs, 20 runs a page in the queue's
+order. The page lives in the URL as `labelPage`, so reviewing a run and going
+back returns to the same page. A page the shrinking queue no longer reaches
+falls back to its last one.
+
 The account-wide runs-in-flight limit lives in Settings → Runs. A plan and a
 ladder may override it, and either may be set to no limit.
 
@@ -348,10 +353,13 @@ dispatch. The console reads the whole board in one
 [`GET /ladders/{id}/progress`](/components/backend/api/#ladders) and pages it
 itself, which keeps the filters and the counts beside them exact between reads.
 
-Expanded, a climber lists every rung with its slot status: Running, Blocked,
+Expanded, a climber lists its rungs with their slot status: Running, Blocked,
 Passed, Failed, Pending, or Skipped. Only a running climber's current rung is
-highlighted, and the highlight changes no row's layout. A rung's evidence reads
-as its tally, for example "2 of 3 runs passed (1 needed)".
+highlighted, and the highlight changes no row's layout. The rungs show 5 a page,
+and a climber opens on the page holding the rung it stands at: its current rung,
+or the rung it failed, was blocked or was stopped at. A completed climber opens
+on the first page. The rung track in the card's header shows every rung. A
+rung's evidence reads as its tally, for example "2 of 3 runs passed (1 needed)".
 
 A ladder's status note states only what the summary figures cannot: the blocked
 climbers and the fix for each, or a dispatch that cannot climb because its

@@ -509,6 +509,66 @@ describe("ClimberRow", () => {
     return { onRetry };
   }
 
+  describe("paging the rungs", () => {
+    const twelve = Array.from({ length: 12 }, (_, i) => rung(i));
+    const slots12 = (current: number) =>
+      twelve.map((_, i) =>
+        slot(i, {
+          status:
+            i < current ? "passed" : i === current ? "running" : "pending",
+        }),
+      );
+    const shownRungNumbers = () =>
+      [...document.querySelectorAll("[class*=rungIndex]")].map(
+        (el) => el.textContent,
+      );
+    const expand = () =>
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+
+    it("draws 5 rungs a page and opens on the page of the climber's rung", () => {
+      renderRow({ currentRung: 7, slots: slots12(7) }, { rungs: twelve });
+      expand();
+      expect(shownRungNumbers()).toEqual(["6", "7", "8", "9", "10"]);
+      fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
+      expect(shownRungNumbers()).toEqual(["11", "12"]);
+      fireEvent.click(screen.getByRole("button", { name: "Page 1" }));
+      expect(shownRungNumbers()).toEqual(["1", "2", "3", "4", "5"]);
+    });
+
+    it("opens a failed climber on the page of the rung it failed", () => {
+      renderRow(
+        { status: "failed", currentRung: 10, slots: slots12(10) },
+        { rungs: twelve },
+      );
+      expand();
+      expect(shownRungNumbers()).toEqual(["11", "12"]);
+    });
+
+    it("opens a completed climber on the first page", () => {
+      renderRow(
+        { status: "completed", currentRung: null, slots: slots12(12) },
+        { rungs: twelve },
+      );
+      expand();
+      expect(shownRungNumbers()).toEqual(["1", "2", "3", "4", "5"]);
+    });
+
+    it("draws no pager for a climb that fits one page", () => {
+      renderRow();
+      expand();
+      expect(shownRungNumbers()).toEqual(["1", "2", "3"]);
+      expect(
+        screen.queryByRole("navigation", { name: "Pagination" }),
+      ).toBeNull();
+    });
+
+    it("keeps the whole climb on the rung track while the list is paged", () => {
+      renderRow({ currentRung: 7, slots: slots12(7) }, { rungs: twelve });
+      expand();
+      expect(document.querySelectorAll("[class*=rungStep]")).toHaveLength(12);
+    });
+  });
+
   it("answers where the climber stands without being expanded", () => {
     renderRow();
     expect(screen.getByText("Running rung 2")).toBeTruthy();

@@ -1,7 +1,9 @@
-import { Link } from "react-router";
-import { Panel } from "@clockwyrks/ui";
+import { useCallback } from "react";
+import { Link, useSearchParams } from "react-router";
+import { Pagination, Panel } from "@clockwyrks/ui";
 import type { CoverageQueue } from "@clockwyrks/run-record/coverage";
 import { claimSectionReturn } from "../../components/backReturn";
+import { useClientPage } from "../../components/useClientPage";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { formatTimeAgo } from "../../format";
 import { routes } from "../../routes";
@@ -34,6 +36,40 @@ import styles from "./Coverage.module.scss";
 // `intro` is a line under the heading saying what the queue is *for*: optional
 // labelling after the fact, so a list of runs is never read as something the plan or
 // the climb waits on.
+//
+// The queue is drawn a page at a time: a ladder of many models over many rungs leaves
+// hundreds of runs to label, and the board under it should not sit a screen's length
+// away. The page rides in the URL as its own key, beside the climber board's `page`,
+// so reviewing a run and pressing back lands on the same page.
+
+/** How many runs the queue draws per page. Matches the run listings. */
+export const QUEUE_RUNS_PER_PAGE = 20;
+
+/** The URL key the queue's page rides in, 1-based like `page`. */
+export const QUEUE_PAGE_PARAM = "labelPage";
+
+/** The queue's page as a 0-based index, read from and written to the URL. */
+function useQueuePage() {
+  const [params, setParams] = useSearchParams();
+  const raw = Number.parseInt(params.get(QUEUE_PAGE_PARAM) ?? "", 10);
+  const page = Number.isFinite(raw) && raw >= 1 ? raw - 1 : 0;
+  const setPage = useCallback(
+    (next: number, opts?: { replace?: boolean }) => {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next <= 0) p.delete(QUEUE_PAGE_PARAM);
+          else p.set(QUEUE_PAGE_PARAM, String(next + 1));
+          return p;
+        },
+        { replace: opts?.replace ?? false },
+      );
+    },
+    [setParams],
+  );
+  return { page, setPage };
+}
+
 export function CoverageReviewQueue({
   queue,
   returnLabel = "Back to the coverage plan",
@@ -48,6 +84,8 @@ export function CoverageReviewQueue({
   intro?: string;
 }) {
   const testCaseName = useTestCaseName();
+  const { page, setPage } = useQueuePage();
+  const shown = useClientPage(queue.runs, QUEUE_RUNS_PER_PAGE, page, setPage);
   if (queue.runs.length === 0) {
     if (!emptyMessage) return null;
     return (
@@ -70,7 +108,7 @@ export function CoverageReviewQueue({
       </header>
       {intro && <p className={styles.queueIntro}>{intro}</p>}
       <ol className={styles.queueList}>
-        {queue.runs.map((entry) => (
+        {shown.items.map((entry) => (
           <li key={entry.runId}>
             <Link
               className={styles.queueRow}
@@ -101,10 +139,15 @@ export function CoverageReviewQueue({
           </li>
         ))}
       </ol>
+      <Pagination
+        page={shown.current}
+        pageCount={shown.pageCount}
+        onPageChange={setPage}
+      />
       {queue.truncated && (
         <p className={styles.queueMore}>
-          More are waiting behind these. The queue is walked from the front, not
-          paged.
+          More are waiting behind these, and join the list as these are
+          labelled.
         </p>
       )}
     </Panel>
