@@ -91,7 +91,7 @@ function ProbesContent({ model }: { model: ModelSummary }) {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Probe history</h2>
         {state.status === "loading" && (
-          <Spinner variant="flap" label="Loading probes…" />
+          <InlineSpinner label="Loading probes…" />
         )}
         {state.status === "unavailable" && (
           <p className={styles.empty}>Probes are not available here.</p>
@@ -122,7 +122,7 @@ function ProbesContent({ model }: { model: ModelSummary }) {
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Probe detail</h2>
           {detail.status === "loading" && (
-            <Spinner variant="flap" label="Loading probe…" />
+            <InlineSpinner label="Loading probe…" />
           )}
           {detail.status === "error" && (
             <p className={styles.notice} role="alert">
@@ -133,6 +133,21 @@ function ProbesContent({ model }: { model: ModelSummary }) {
         </section>
       )}
     </div>
+  );
+}
+
+// A wait shown in the flow of text: the flapping ship, sized to the text, with
+// its label beside it rather than beneath it. The label is what the status
+// announces; the ship is decoration, hidden from assistive tech so the wait is
+// not announced twice.
+function InlineSpinner({ label }: { label: string }) {
+  return (
+    <span className={styles.inlineSpinner} role="status" aria-live="polite">
+      <span className={styles.inlineMark} aria-hidden="true">
+        <Spinner variant="flap" />
+      </span>
+      {label}
+    </span>
   );
 }
 
@@ -411,12 +426,7 @@ function ProbeHistory({
               {probe.provider ?? "default route"}
             </span>
             <span className={styles.rowStatus}>
-              {probe.status === "running" && (
-                <>
-                  <Spinner variant="flap" className={styles.rowSpinner} />
-                  Running
-                </>
-              )}
+              {probe.status === "running" && <InlineSpinner label="Running" />}
               {probe.status === "failed" && (
                 <span
                   className={styles.failed}
@@ -450,9 +460,7 @@ function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
   return (
     <div className={styles.detail}>
       <div className={styles.summaryRow}>
-        {probe.status === "running" && (
-          <Spinner variant="flap" label="Probing…" />
-        )}
+        {probe.status === "running" && <InlineSpinner label="Probing…" />}
         {probe.status === "complete" && probe.verdict && (
           <VerdictBadge verdict={probe.verdict} />
         )}

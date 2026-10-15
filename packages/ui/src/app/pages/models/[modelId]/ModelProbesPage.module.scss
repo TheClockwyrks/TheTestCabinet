@@ -149,8 +149,23 @@
   gap: t.$space-xs;
 }
 
-.rowSpinner {
-  width: 1.25rem;
+// A wait in the flow of text: the ship and its label side by side.
+.inlineSpinner {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The flapping ship sized to the text beside it (its art is 200 × 157): 1.75em
+// is 24px beside a row's 0.85rem text and 28px beside 1rem text. Nested under
+// .inlineSpinner to outweigh the Spinner's own 2.25rem width.
+.inlineSpinner .inlineMark {
+  display: inline-flex;
+  flex: none;
+
+  img {
+    width: 1.75em;
+  }
 }
 
 .rowRates {

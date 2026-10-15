@@ -299,6 +299,32 @@ describe("ModelProbesPage", () => {
     expect(screen.getAllByText("all languages").length).toBeGreaterThan(0);
   });
 
+  // Each wait is one live status region whose text is its label alone, with the
+  // ship beside it hidden: the history row's Running and the detail's
+  // Probing…, and the two loads before either arrives.
+  const statusTexts = () =>
+    screen.queryAllByRole("status").map((el) => el.textContent);
+
+  it("announces each running wait by its label alone", async () => {
+    renderPage(
+      signedInStubs({ listModelProbes: vi.fn().mockResolvedValue([RUNNING]) }),
+    );
+
+    await waitFor(() => expect(statusTexts()).toEqual(["Running", "Probing…"]));
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("announces the loads of the history and of a probe", async () => {
+    renderPage(
+      signedInStubs({
+        getModelProbe: vi.fn().mockReturnValue(new Promise(() => {})),
+      }),
+    );
+
+    expect(statusTexts()).toEqual(["Loading probes…"]);
+    await waitFor(() => expect(statusTexts()).toEqual(["Loading probe…"]));
+  });
+
   it("pins the probe to one language arm through the selector", async () => {
     const trigger = vi.fn().mockResolvedValue(RUNNING);
     renderPage(
