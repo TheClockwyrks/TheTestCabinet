@@ -7,7 +7,7 @@ subscription authentication alone. The Test Cabinet makes the account credential
 available to the `agy` CLI inside the run container. For the contracts shared by
 every harness, covering how a mode is selected and how subscription credentials
 are copied into the container, see
-[Agent Harnesses](/components/core/harnesses/#authentication).
+[Agent Harnesses](/components/driver/harnesses/#authentication).
 
 ## Subscription
 

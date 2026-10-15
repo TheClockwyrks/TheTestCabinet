@@ -2,67 +2,45 @@
 title: Overview
 ---
 
-The Test Cabinet's CLI is the `tcab` binary, an enqueue-and-watch client of the
-[backend](/components/backend/overview/). It exposes the backend's run-queue
-control plane on the command line so test case runs can be scripted and
-benchmark sweeps run in batch.
+The Test Cabinet's CLI is the `tcab` binary, the second binary of the
+`microservice-driver` repository, built over the same run engine as the
+[driver](/components/driver/overview/). It is the tool a developer or an
+operator runs on their own machine: it validates a tree, analyzes its code,
+captures and publishes a case's references, ingests definitions into a backend,
+and inspects what a run would seed and prompt. A run itself is launched from the
+[console](/components/web/overview/) and executed by a driver; the CLI launches
+nothing.
 
-Every run executes remotely. `tcab run` enqueues a run on the backend's job
-queue, a [dispatcher](/components/dispatcher/overview/) claims it, and a per-run
-[driver](/components/driver/overview/) pod executes it and streams progress back
-through the backend. The CLI therefore needs no container runtime of its own,
-only a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
-[Execution](/components/core/execution/).
+The CLI needs no container runtime. A command that resolves a test case takes
+it from the local checkout or from a backend (`TCAB_BACKEND_URL`), and a
+command that reaches a deployed environment crosses its
+[edge](/deployment/kubernetes/edge/) with an Access credential, a person's user
+token or automation's service token.
 
 ## Commands
 
-### Running
+### Inspecting a run's inputs
 
-- `run` enqueues a run for a test case version,
-  [variant](/testing/end-to-end/overview/),
-  [harness](/components/core/harnesses/), model,
-  [orchestrator](/components/core/orchestrators/) and
-  [engine](/components/core/engines/), streams the run's live [event
-  stream](/components/core/events/) until it finishes, then reads the produced
-  [run record](/components/core/run-records/) back. `--max-runtime` overrides
-  the case's per-run cap, `--auth-mode` selects the harness authentication mode,
-  and `--retry-count` sets how many times the backend retries the run after a
-  terminal infrastructure error or a catastrophic build, with `0` disabling
-  retries.
-  `--out-dir` also writes the fetched record as `<record-id>.json` there.
-  Requires `TCAB_BACKEND_URL` and a logged-in account.
-
-  `--harness` selects one of the third-party CLI harnesses. A
-  [gg](/gg/overview/) run carries a capability set and is launched from a
-  console. `--engine` selects the runtime the game is built on, defaulting to
-  `none`, and `seed` and `validate` take the same flag.
-
-- `seed` runs only the [seeding](/components/core/execution/#seeding) step for a
-  chosen variant and leaves the result on disk, so the exact inputs a harness
+- `seed` runs only the [seeding](/components/driver/execution/#seeding) step for
+  a chosen variant and leaves the result on disk, so the exact inputs a harness
   would receive can be inspected without launching a container.
 - `prompt` renders and prints the prompt a run would hand the harness for a
   given variant, without seeding or launching anything.
-- `validate` runs [validation](/components/core/validation/) over a produced
+- `validate` runs [validation](/components/driver/validation/) over a produced
   implementation and reports whether the tree satisfied everything the case
   declares. It leaves the directory as it found it, apart from the install and
   build it runs there and the media it synthesizes under `.vendor/`, so it is
   safe to point at a case's committed reference implementation. See [Exit
   codes](#exit-codes) for what makes it fail.
-- `harnesses` lists the supported agent harnesses and whether each one's
-  resolved authentication mode has the credentials it needs.
-- `orchestrators` lists the built-in orchestrators and what each one does.
-- `engines` lists the built-in engines and what each one provides.
-- `test-case-groups` lists the [test-case
-  groups](/components/core/test-case-groups/) and each one's member cases.
 
-These listings accept `--json`.
-
-`run`, `seed`, `prompt` and `validate` each name a test case by its slug and
-version, resolving it against the local checkout or the backend. A
+`seed`, `prompt` and `validate` each name a test case by its slug and version,
+resolving it against the local checkout or the backend. A
 [test suite](/test-suites/overview/)'s test case is named the same way, by the
 catalog identity its definition was ingested under. `--variant` defaults to
 `base`, which is the only variant a suite-defined test case carries; naming a
-variant the case does not declare is refused.
+variant the case does not declare is refused. `--engine` selects the
+[engine](/components/engines/engines/) the seed, the prompt and the validation
+are rendered for, defaulting to `none`.
 
 ### Definitions
 
@@ -72,51 +50,23 @@ variant the case does not declare is refused.
   expanding to every version it declares or an `id@version` naming exactly one,
   and naming none scans the whole checkout. `--force` overwrites a version the
   store already holds, which is what iterating in place on one version string
-  needs. The command prints a line per version as it lands and closes with the
-  ingested and skipped counts. Requires `TCAB_BACKEND_URL`; the endpoint is open,
-  so no account is needed. See
-  [Running](/development/running/) for the local loop this sits in.
-  `--env <staging|prod>` targets a deployed environment instead, through
-  `az aks command invoke`: the backend pod's ingest sidecar refreshes its
-  checkout, with the test suites submodule, to the tip of the branch the
-  environment ingests, then scans it. It needs only an authenticated `az`, and
-  the feed is printed once the invoke returns.
-
-### Accounts
-
-- `register` creates an account on the [auth
-  service](/components/auth/overview/) (`--username`, `--display-name`,
-  `--password` or `TCAB_PASSWORD`), then logs in and stores the resulting token.
-- `login` logs in to an existing account and stores the bearer token.
-- `logout` discards the stored token.
-
-### Reviewing and publishing
-
-- `review <run-id> [--writeup writeup.md]` submits a
-  [review](/components/core/results/#reviews) for a produced run, attributed to
-  the logged-in account, from a writeup the reviewer authored locally. It
-  defaults to `writeup.md` in the working directory. For a validator-rated run
-  the writeup carries a single run-wide `aesthetic` rating and may carry
-  `review.<id>` lines overriding individual validator verdicts; for a legacy
-  run it carries `rating.<domain>` ratings with checklist verdicts. A run may
-  carry several reviews, one per account.
-- `publish <run-id>...` does self-review and publish in one step: it submits the
-  operator's own review from a `<run-id>.md` writeup in the working directory,
-  enqueues the publish, and streams the release's progress until it
-  finishes. Publishing a legacy run requires at least one review, which the
-  self-review satisfies. A validator-rated run with no writeup is published
-  without a self-review, and the command says so. Whether a writeup-less run is
-  validator-rated is decided by asking the backend for the run's case version,
-  so a run that lacks a writeup while the backend cannot be reached is refused
-  with that reason. Every run's writeup is gated before anything is submitted,
-  so a batch is never left half-published. `--dry-run` prints the plan instead.
-  Where different people review, use `review` and have an operator publish.
+  needs. `--changed` limits the scan to the versions whose content differs from
+  what the store holds, and combines with a target and with `--env`. The
+  command prints a line per version as it lands and closes with the
+  ingested and skipped counts. Against a local backend it requires
+  `TCAB_BACKEND_URL` and the backend's service token (`TCAB_BACKEND_SERVICE_TOKEN`).
+  See [Running](/development/running/) for the local loop this sits in.
+  `--env <staging|prod>` targets a deployed environment instead, through its
+  edge hostname with the [service token](#authentication): the backend's ingest
+  sidecar refreshes its `test-suites` checkout, and the `cold-storage` clone
+  beside it, to the tip of the branch the environment ingests, then scans it,
+  and the feed streams back as it does locally.
 
 ### Reference implementations and baselines
 
 `publish-reference --env <prod|staging> <slug> [<version>] [--variant <slug>]
 [--engine <slug>] [--all-variants]` deploys a case's [reference
-implementations](/components/core/results/#reference-implementations) and
+implementations](/components/backend/results/#reference-implementations) and
 records where they landed. `--env` is required, so a publish always names the
 environment it targets. It selects the Cloudflare Pages project, prod's
 `test-cabinet-references` or staging's `test-cabinet-references-staging`.
@@ -126,49 +76,51 @@ The unit of work is the variant-on-an-engine pair, resolved from each targeted
 variant's [`reference_implementation`](/testing/end-to-end/manifests/) key. For
 each pair the command runs the case's `[build]` install then build in that
 pair's reference directory, scrubs the output with the same secret-redaction
-pass the [publisher](/components/core/results/#secret-redaction) uses, deploys
-the static build to that Pages project under a per-variant, per-engine branch
-alias, reads the served URL back out of `wrangler`'s output, and writes it into
-the committed `test-cases/reference-builds.lock.json` under the `--env` key. The
-URL is parsed rather than constructed because Cloudflare truncates long
+pass a run's [publish](/components/backend/results/#secret-redaction) uses,
+deploys the static build to that Pages project under a per-variant, per-engine
+branch alias, reads the served URL back out of `wrangler`'s output, and writes
+it into the committed `test-cases/reference-builds.lock.json` under the `--env`
+key. The URL is parsed rather than constructed because Cloudflare truncates long
 subdomains.
 
 The command contacts no backend, so it requires only `wrangler`. The private
 backends ingest the lockfile from their own checkout on the next
 `tcab ingest --env <env>`, which upserts the `case_reference_build` table the
-version response and public snapshot read. The command also refreshes each
+version response and public dataset read. The command also refreshes each
 variant's committed baseline validation media from the build it deploys.
 `--skip-baselines` deploys without re-capturing when that media is current.
 
-An [asset-generation](/testing/asset-generation/overview/) case declares no
-`[build]` table and produces no site, so the same command takes a different path
-for it: it seeds a scratch workspace from the manifest, runs the variant's
-`reference-impl/<variant>/draw.sh` with the case's drawing binary on `PATH`, and
-uploads the frames and action logs to the public snapshot bucket under
-`media/references/<slug>/<version>/<variant>/frames/`. That path needs the
-target environment's `TCAB_R2_*` credentials rather than `wrangler`. It writes
-no lockfile because the keys are constructible, so the backend discovers what
+`publish-asset-reference --env <prod|staging> <slug> [<version>]
+[--variant <slug>] [--all-variants]` is the counterpart for an
+[asset-generation](/testing/asset-generation/overview/) case, which declares no
+`[build]` table and produces no site. It seeds a scratch workspace from the
+manifest, runs the variant's `reference-impl/<variant>/draw.sh` with the case's
+drawing binary on `PATH`, and writes the frames and action logs to the public
+bucket under `media/references/<slug>/<version>/<variant>/frames/` through the
+environment's [artifacts service](/components/artifacts/overview/#routes)
+(`PUT /public/{key}`), crossing the edge with the service token. It writes no
+lockfile because the keys are constructible, so the backend discovers what
 exists by listing that prefix at ingest.
 
 `capture-baselines <slug> [<version>] [--variant <slug>] [--all-variants]
 [--engine <slug>] [--dry-run]` regenerates a case version's committed baseline
 [validation](/testing/end-to-end/instrumentation/) media. A variant has one
-reference implementation per [engine](/components/core/engines/), so the unit it
-works in is the variant/engine pair. For each targeted pair it runs the case's
-`[build]` install then build in that reference-implementation directory,
+reference implementation per [engine](/components/engines/engines/), so the
+unit it works in is the variant/engine pair. For each targeted pair it runs the
+case's `[build]` install then build in that reference-implementation directory,
 produces every [scripted review
 item](/testing/end-to-end/manifests/#automated-validation)'s declared outputs
 from it, and writes them under the version's
 `validation-baseline/<engine>/<variant>/` in the `cold-storage` submodule,
 together with the [shared image
-store](/components/core/validation/#the-shared-image-store) the recordings among
-them draw from. That directory is regenerated wholesale, so a renamed or removed
-output never lingers. The media is the expected-behavior half of the comparison
-a reviewer makes and is a fixed property of the case version.
+store](/components/driver/validation/#the-shared-image-store) the recordings
+among them draw from. That directory is regenerated wholesale, so a renamed or
+removed output never lingers. The media is the expected-behavior half of the
+comparison a reviewer makes and is a fixed property of the case version.
 
 The cold-storage root defaults to `cold-storage/` beside the catalog's
 `test-cases/`, and `TCAB_COLD_STORAGE_DIR` overrides it (see [where baselines
-live](/components/core/validation/#where-baselines-live)). A capture into the
+live](/components/driver/validation/#where-baselines-live)). A capture into the
 default root refuses to run until the submodule is checked out.
 
 How the outputs are produced follows the case, exactly as it does per run: a
@@ -197,9 +149,9 @@ analyze <dir> [--seed-commit <sha>] [--tree-basis <pre-validation|post-validatio
               [--top <n>] [--json]
 ```
 
-It is the same analysis a run records about its produced tree, pointed at any
-tree on disk, so it needs no run, container, backend or credentials, and it
-executes nothing in the tree it reads.
+It is the same analysis a run records about its produced tree, the driver's own
+module pointed at any tree on disk, so it needs no run, container, backend or
+credentials, and it executes nothing in the tree it reads.
 
 `--seed-commit` makes the authored set exact when the directory is a seeded run
 workspace. Left off, every file in the tree is treated as authored, which is the
@@ -211,8 +163,8 @@ document for piping onward.
 `tcab` exits `0` only when the thing it was asked to do succeeded, so a script
 or a CI step reads the status rather than the log. Anything that stopped a
 command from doing its job, such as an unresolvable case, an unreachable
-backend, a missing browser or a rejected login, exits non-zero with the reason
-on standard error.
+backend, a missing browser or a refused service token, exits non-zero with the
+reason on standard error.
 
 Two commands additionally carry a verdict: they ran to completion and the answer
 they arrived at is itself a pass or a fail. Both report every fault they found.
@@ -229,7 +181,7 @@ of these is a fault the tree earned:
 - A gating validator decided a verdict against the build.
 - A gating validator did not run against the build, whether it failed the
   debug-API contract or was recorded
-  [inconclusive](/components/core/validation/#validators). Scoring skips an
+  [inconclusive](/components/driver/validation/#validators). Scoring skips an
   inconclusive unit, but `validate` asks whether the tree satisfied everything
   the case declares, and a unit that decided nothing has not. The final line
   separates the two: contract failures by verdict id, and inconclusive units
@@ -251,22 +203,24 @@ produce.
 
 ## Authentication
 
-The CLI deals with several independent kinds of credential and keeps them apart.
+The CLI keeps its credentials apart.
 
-- Harness API keys are supplied to the run's container as secrets so the agent
-  harness can reach its model provider. See
-  [Authentication](/components/core/harnesses/#authentication).
-- Reading definitions and runs from the backend is handled at the network
-  layer. The CLI must be on the backend's private network and presents no token
-  to read.
-- Account credentials authenticate the mutating backend calls (launching a run,
-  reviewing, publishing) and the launch gate. `tcab login` or `tcab register`
-  signs in to the [auth service](/components/auth/overview/) (`TCAB_AUTH_URL`)
-  and stores the resulting bearer token at `~/.config/tcab/credentials.json`,
-  overridable with `TCAB_CONFIG_DIR`. The CLI sends it on every launch, review
-  and publish so the account is recorded. `TCAB_TOKEN` overrides the stored
-  token for non-interactive use, and a password may be supplied with
-  `--password` or `TCAB_PASSWORD`.
-- Release credentials, the repository-host and Cloudflare tokens used to
-  [release](/components/core/results/#publish) a run's code and playable build,
-  live with the backend's publisher Job rather than with `tcab`.
+- A deployed environment is reached through its edge with an Access credential
+  on every request. As a person, it is a user token from `cloudflared access
+  login` on the environment's origin, placed in `TCAB_ACCESS_TOKEN` and sent as
+  the `cf-access-token` header; the assertion the edge mints carries the
+  person's `email`. For automation, it is the service token
+  `TCAB_ACCESS_CLIENT_ID` and `TCAB_ACCESS_CLIENT_SECRET`, sent as the
+  `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers, whose assertion
+  carries a `common_name`, which is what the backend records the call under.
+  `--env` selects the hostname, `console.testcabinet.ai` for prod and
+  `console.staging.testcabinet.ai` for staging, and the command addresses the
+  backend under `/api/` and the artifacts service under `/artifacts/`. See
+  [Identity](/components/auth/overview/).
+- A local backend is reached directly, and `ingest` presents its service token.
+  `seed`, `prompt` and `validate` read definitions, which any identity may do.
+- Release credentials for a reference implementation, the Cloudflare token
+  `wrangler` deploys with, live in `wrangler`'s own configuration. The
+  credentials that release a run's code and playable build live with the
+  [repos service](/components/repos/overview/) and the publisher Job rather
+  than with `tcab`.

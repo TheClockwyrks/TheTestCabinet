@@ -149,7 +149,7 @@ Points to get right:
 - `[particle]` is required for, and only for, a particle case. `depth` is
   required for `particle-3d` and rejected for `particle-2d`. There is no
   simulation seed.
-- Core emits the authored `system.json`, the emitter, force, and curve
+- The driver emits the authored `system.json`, the emitter, force, and curve
   definition the review UI and a game simulate live, to a path it provides. It
   is not manifest-declared.
 - A particle case declares no `[model]`, no `[[reference]]`, no `[build]`, and

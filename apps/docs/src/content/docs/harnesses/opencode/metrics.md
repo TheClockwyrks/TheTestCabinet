@@ -11,7 +11,7 @@ across every step.
 
 ## Token classes
 
-The [normalized classes](/components/core/metrics/#tokens) are derived from
+The [normalized classes](/components/contracts/metrics/#tokens) are derived from
 these keys within `part.tokens`, where the cache counts are nested one level
 deeper in a `cache` object:
 
@@ -34,4 +34,4 @@ OpenCode reports no run cost of its own, so the comparable cost is computed
 from the model's list price. The `openrouter/` prefix is stripped from
 the model ID (`openrouter/minimax/minimax-m3` is priced as
 `minimax/minimax-m3`) and the list price's rates are applied to the recorded
-token classes. See [Cost](/components/core/metrics/#cost).
+token classes. See [Cost](/components/contracts/metrics/#cost).

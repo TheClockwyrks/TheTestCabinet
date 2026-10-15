@@ -4,7 +4,8 @@ title: Sprite binaries
 
 A sprite asset-generation run draws through a drawing binary on its `PATH`. That
 binary is the only channel for making a mark. Two binaries share one drawing
-implementation, built from `crates/draw`:
+implementation, built from `crates/draw` in the
+[`tool-sprite`](/development/repositories/#the-repositories) repository:
 
 - `draw` draws a single sprite: one 32-bit RGBA canvas.
 - `draw-sheet` draws a sprite sheet: one separate image per frame. It is `draw`
@@ -12,12 +13,12 @@ implementation, built from `crates/draw`:
   keyframe animation of layers.
 
 Each binary has its own asset-generation
-[run-container image](/components/core/execution/#containerization): `draw` in
+[run-container image](/components/driver/execution/#containerization): `draw` in
 `test-cabinet-sprite` (`asset_kind = "sprite"`) and `draw-sheet` in
 `test-cabinet-sprite-sheet` (`asset_kind = "sprite-sheet"`), so a sprite
 asset-generation run carries only the tool its `asset_kind` names. Both
 [full-stack](/testing/full-stack/overview/) images carry both binaries, because
-one full-stack run produces every asset its game needs. After the run, core
+one full-stack run produces every asset its game needs. After the run, the driver
 regenerates each frame from its recorded log through the same library and
 compares the result to the model's preview. See
 [Evaluation](/testing/asset-generation/evaluation/).

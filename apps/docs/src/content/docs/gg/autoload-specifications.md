@@ -21,7 +21,7 @@ read, produce a better build?
 ## What is loaded
 
 The files are the ones the test case provided: its specs in the order they were
-seeded, followed by its rendered reference images. The Test Cabinet's `core`
+seeded, followed by its rendered reference images. The Test Cabinet's driver
 computes the list when it seeds the run, since it is the authority on which
 seeded files came from the case rather than from a starter-workspace scaffold,
 and hands it to gg at launch.

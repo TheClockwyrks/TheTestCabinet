@@ -93,14 +93,14 @@ version of every field it does not override.
 
 ## Storage
 
-Saved agents are per-account and private, stored by the backend:
+Saved agents are per-identity and private, stored by the backend:
 
-| Endpoint                 | Purpose               |
-| ------------------------ | --------------------- |
-| `GET /gg/agents`         | The account's agents. |
-| `POST /gg/agents`        | Save one.             |
-| `PUT /gg/agents/{id}`    | Update one in place.  |
-| `DELETE /gg/agents/{id}` | Delete one.           |
+| Endpoint                 | Purpose                |
+| ------------------------ | ---------------------- |
+| `GET /gg/agents`         | The identity's agents. |
+| `POST /gg/agents`        | Save one.              |
+| `PUT /gg/agents/{id}`    | Update one in place.   |
+| `DELETE /gg/agents/{id}` | Delete one.            |
 
 A configuration records the saved agent each of its profiles follows and the
 fields it overrides, beside the resolved capability set itself.

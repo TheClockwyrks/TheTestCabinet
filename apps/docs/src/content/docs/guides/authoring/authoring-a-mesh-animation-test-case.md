@@ -105,7 +105,7 @@ binary is on its `PATH` and its `--help` is the operations and rig-subcommand
 contract, so no operations schema is seeded.
 
 The per-part extracted meshes are emitted as binary glTF under `meshes/`, and
-`rig.json` is written back, by core when the model runs `render`. Neither is
+`rig.json` is written back, by the driver when the model runs `render`. Neither is
 declared in the manifest.
 
 ## Procedure
@@ -161,7 +161,7 @@ character, and the required animation names. Describe motion in world terms and
 keep the required animation set minimal, exactly as the
 [brief rules](/guides/authoring/authoring-a-voxel-animation-test-case/#writing-the-brief)
 for a voxel animation describe. The shared quality directive (`ASSET_QUALITY_PREAMBLE` in
-`crates/core/src/prompt.rs`) is prepended to every asset-generation prompt at
+`contracts/crates/suites/src/prompt.rs`) is prepended to every asset-generation prompt at
 render time, so the brief stays factual.
 
 ### 3. Write `prompt.hbs`

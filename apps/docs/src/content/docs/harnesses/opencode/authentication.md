@@ -4,7 +4,7 @@ title: Authentication
 
 The Test Cabinet drives OpenCode with API-key authentication against the
 OpenRouter-backed models it is configured for. For the contracts shared by every
-harness, see [Agent Harnesses](/components/core/harnesses/#authentication).
+harness, see [Agent Harnesses](/components/driver/harnesses/#authentication).
 
 ## API key
 

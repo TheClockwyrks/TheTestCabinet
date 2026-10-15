@@ -217,8 +217,8 @@ object of toggles the capability writes. It is a **withholding** set: it names
 the families held back, and one it does not name is offered — so `{}` is the
 declaration that offers all twelve. That is a reading of the object rather than
 a default gg fell back to, which is why it differs from
-[`docViewTypes`](/gg/responses-as-code/), where each member is an arm and the
-object has to name every one of them.
+[`docViewTypes`](/gg/responses-as-code/views/#documentation-views), where each
+member is an arm and the object has to name every one of them.
 
 ```json
 {

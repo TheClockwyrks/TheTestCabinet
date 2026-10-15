@@ -143,7 +143,7 @@ spoke.
 
 Capture and assembly are split. In the container, gg appends one JSON object per
 line to `.gg/replay.ndjson` and never holds a message body in memory. On the
-host, after the tree is collected, `core` folds those lines into the served
+host, after the tree is collected, the driver folds those lines into the served
 record. That split is what keeps gg's own diagnostics off the run's runtime
 budget: gg assembles nothing.
 
@@ -320,19 +320,20 @@ record stating another format may carry entry kinds this build has never heard
 of, and reporting it as a format-1 record would hand a reader entries it cannot
 mean, so parsing fails instead. `formatVersion` is required: a record that states
 no format at all is malformed and does not parse. The refusal costs nothing
-operationally, because the backend stores and serves records as opaque bytes, so
-any stored record still downloads with a run's archive.
+operationally, because the artifacts service stores and serves the tree as
+opaque bytes, so any stored record still downloads with a run's archive.
 
 ## Serving and consuming
 
-The record is stored gzipped at the run tree's root, mirrored into the backend
-store by the driver, and served at `GET /runs/{id}/replay`, content-negotiated
-on the request's `Accept-Encoding`. A browser is handed the stored bytes
-verbatim; a gzip-unaware client is handed them decoded. The negotiation keys on
-the request header rather than on the stored bytes, because the workspace HTTP
-client is built without gzip support while browsers always advertise it. Code
-analysis is served through the same helper, under the same store slot shape and
-route pair.
+The record is stored gzipped at the run tree's root, which the driver uploads
+to the [artifacts service](/components/artifacts/overview/#routes), and it is
+served from there at `GET /runs/{id}/replay`, content-negotiated on the
+request's `Accept-Encoding`, and in the run's `archive.tar.gz`. A browser is
+handed the stored bytes verbatim; a gzip-unaware client is handed them decoded.
+The negotiation keys on the request header rather than on the stored bytes,
+because the workspace HTTP client is built without gzip support while browsers
+always advertise it. The code-analysis document is served the same way, from
+the same tree root at `GET /runs/{id}/code-analysis`.
 
 The record has no console view. Every gg surface the console renders, live and
 post-run alike, is folded from the [telemetry](/gg/telemetry/overview/) stream,

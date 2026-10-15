@@ -26,7 +26,7 @@ Changing the prompt, specs, or reference of a case is always a new version.
 ## Where errata live
 
 An erratum is authored as a `[[erratum]]` entry in an `errata.toml` file beside
-the version's manifest:
+the version's manifest, in the `test-suites` repository:
 
 ```
 test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
@@ -42,7 +42,7 @@ Three properties follow from that location:
 - Shared by every test type. The mechanism is identical for end-to-end,
   full-stack, asset-generation, adversarial, performance, and game-jam cases.
 
-Errata live in the same tree the backend ingests from a git checkout, so
+Errata live in the tree the backend ingests from its `test-suites` checkout, so
 publishing one takes no `tcab` release: commit the file and re-ingest.
 
 ## Anatomy of an erratum

@@ -52,8 +52,10 @@ observes.
 
 ## Who reads it
 
-The record is written on every run, mirrored to the backend and served at
-`GET /runs/{id}/replay`. Nothing in this repository deserializes it: the console
+The record is written on every run at the run tree's root, which the driver
+uploads to the [artifacts service](/components/artifacts/overview/#routes), and
+it is served from there at `GET /runs/{id}/replay` and in a run's archive
+download. Nothing in this repository deserializes it: the console
 is built from telemetry alone, live and post-run. It is a diagnostic for a
 person, reached by downloading a run's archive or that route and opening the
 JSON, when a run hung, stalled, or ended somewhere the telemetry summary cannot

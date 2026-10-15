@@ -17,20 +17,19 @@ Each harness has the same five pages:
 - Authentication: the API-key variable it reads and, where supported, how a
   subscription is supplied.
 - Events: how the harness's raw output is translated into the normalized
-  [harness event](/components/core/events/) stream.
+  [harness event](/components/driver/events/) stream.
 - Metrics: how its token usage and cost become the normalized
-  [metrics](/components/core/metrics/).
+  [metrics](/components/contracts/metrics/).
 - Telemetry: what the harness exports, what a run configures to make it, and
   whether its spans join the run's own trace.
 
-[Agent Harnesses](/components/core/harnesses/) defines the cross-cutting
+[Agent Harnesses](/components/driver/harnesses/) defines the cross-cutting
 contracts these pages reference: installation, availability, authentication,
 usage reporting, and event translation. The declarative half of each harness
 (its name, CLI binary, and install command) is authored under
 `harnesses/<slug>/harness.toml`. The imperative half is code:
-`crates/core/src/harness_registry.rs` for invocation and usage,
-`crates/core/src/event.rs` for event translation, and
-`crates/core/src/harness_telemetry.rs` for telemetry.
+the `microservice-driver` modules `harness_registry` for invocation and usage,
+`event` for event translation, and `harness_telemetry` for telemetry.
 
 ## Supported harnesses
 

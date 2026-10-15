@@ -35,14 +35,14 @@ model is inherently rigged and animated. Every skinned case declares required
 animations and every skinned model carries a skeleton. A character with no
 deformation is a static `-model` kind instead.
 
-The skinning binaries live in `crates/mc-skin`, `crates/sn-skin`, and
-`crates/dc-skin`, on a shared `crates/model-skin` library holding the skeleton
-binding, the bone-heat weighting, the linear-blend deform, and the skinned-`.glb`
-encode. That library is built on `crates/voxel-mesh` for the SDF field type and
-extraction, and `crates/model-core` for the rig and animation model, the CLI
-record plumbing, color, config, and the generic `wgpu` renderer. Each binary is
-baked into its own
-[run-container image](/components/core/execution/#containerization), one per
+The skinning binaries are `mc-skin` in `tool-mc`, `sn-skin` in `tool-sn` and
+`dc-skin` in `tool-dc`, on the shared `model-skin` library of `tool-model-core`
+holding the skeleton binding, the bone-heat weighting, the linear-blend deform,
+and the skinned-`.glb` encode. That library is built on the same repository's
+`voxel-mesh` for the SDF field type and extraction, and `model-core` for the rig
+and animation model, the CLI record plumbing, color, config, and the generic
+`wgpu` renderer. Each binary is baked into its own
+[run-container image](/components/driver/execution/#containerization), one per
 `asset_kind`, so a run carries only the tool it uses. The binary emits a skinned
 `mesh.glb` and the rig in `rig.json`, and the
 [validator](/testing/asset-generation/evaluation/) parses those and confirms
@@ -195,10 +195,11 @@ required animation is present and actually animates.
 
 The preview is a 3D orbit view of the skinned mesh, 512 pixels square, produced
 by the same generic mesh renderer the mesh binaries use, which lives in
-`crates/model-core`. It renders with `wgpu` targeting Mesa lavapipe, a software
-Vulkan implementation, so it runs CPU-only and headless with no GPU in the
-container. A plain `render` draws the character at rest; a `--time` render draws
-it deformed by linear-blend skinning at that instant.
+`model-core` in the `tool-model-core` repository. It renders with `wgpu`
+targeting Mesa lavapipe, a software Vulkan implementation, so it runs CPU-only
+and headless with no GPU in the container. A plain `render` draws the character
+at rest; a `--time` render draws it deformed by linear-blend skinning at that
+instant.
 
 The still preview is what a model reads and a reviewer sees. The interactive,
 rotatable, posable 3D view is the frontend's rendering of the emitted `.glb`. See
@@ -230,7 +231,7 @@ container. Because a skinned character is one field and one mesh, this is one
 file rather than a `{part}` template, and its `[tool].preview` and
 `[output].actions` are single files too, even though a skinned kind is animated.
 This is the skinned exception to the `{part}` rule that gives the rigid animated
-kinds one file per part. The `mesh.glb` and `rig.json` are emitted by core's
+kinds one file per part. The `mesh.glb` and `rig.json` are emitted by the driver's
 seeded configuration rather than declared in the manifest.
 
 The `mesh.glb` holds one mesh whose primitive carries, alongside the four

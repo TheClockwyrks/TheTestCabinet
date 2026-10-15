@@ -193,6 +193,7 @@ catchable
 ccore
 cdylib
 centerplane
+cfargotunnel
 charconv
 chartable
 Chebyshev
@@ -210,6 +211,7 @@ cliffed
 Clippy
 clippy
 clockwyrks
+cloudflareaccess
 cloudflarestorage
 cmath
 cobaltine
@@ -846,6 +848,7 @@ scoreable
 Scourge
 screenful
 scroller
+SeaORM
 seedable
 Sela
 selfcheck
@@ -941,6 +944,7 @@ Tauri
 tauri
 tcab
 tchip
+TCQ
 TEAVM
 teavm
 teleporter

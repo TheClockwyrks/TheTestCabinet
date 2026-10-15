@@ -29,7 +29,7 @@ point in the harness pipeline. Three properties keep it separate.
   views built for them: the agent tree, the run-global project board,
   context-fill graphs, and the [analysis section](/gg/analysis/overview/).
 - It is invoked directly rather than as an orchestrated subprocess. The
-  [orchestrator](/orchestrators/overview/) layer loops a stateless external
+  [orchestrator](/components/driver/orchestrators/) layer loops a stateless external
   harness across sessions, because such a harness cannot continue past its own
   context window. gg continues within one logical session through
   [compaction](/gg/compaction/) and integrates directly with The Test Cabinet,
@@ -37,7 +37,7 @@ point in the harness pipeline. Three properties keep it separate.
 
 gg reuses the shared run infrastructure, which is test-case-level rather than
 harness-level: the run container, the test case's seeding and `init`, the run's
-maximum-runtime bound, and the [validation](/components/core/validation/) and
+maximum-runtime bound, and the [validation](/components/driver/validation/) and
 scoring of the produced game. A gg run yields the same playable, scoreable,
 reviewable artifact, and records a richer run record on the way.
 
@@ -339,18 +339,20 @@ rest of the request in full.
 
 gg is installed by context. Locally it runs with no external resources, so a
 developer can exercise it fully offline from a local build. In k8s the driver
-image bakes it, and a run with no local binary downloads a published release from
-gg's release container at run time, the same shape as the third-party harnesses'
-install step. The install runs in the run's
-setup stage, so it is recorded as
-[setup](/components/core/metrics/#durations) rather than as the model's session.
+image carries the release the driver pins, fetched from gg's release container
+when the image is built, and a run with no local binary downloads that release
+at run time, the same shape as the third-party harnesses' install step. The
+install runs in the run's setup stage, so it is recorded as
+[setup](/components/contracts/metrics/#durations) rather than as the model's
+session.
 
 The release object is a bare static-musl executable named `gg-<target>` under
 the prefix `v<version>`, published for both `x86_64` and `aarch64`. The
-driver picks the architecture, not the run container. The version in that URL is
-`core`'s own, and `gg --version`, read out of the run container, is what a run
-records as its `subject.harnessVersion`, so the two crates are versioned in
-lockstep. See [Releasing `gg`](/development/releasing/#releasing-gg).
+driver picks the architecture, not the run container. The version in that URL
+is the gg version the driver pins, declared once in the driver and independent
+of any crate's version, and `gg --version`, read out of the run container, is
+what a run records as its `subject.harnessVersion`. See [Releasing
+`gg`](/development/releasing/#releasing-gg).
 
 ## Capabilities
 

@@ -112,7 +112,7 @@ A brief authored as `specs/brief.md.hbs` reads its volume from `{{voxel.width}}`
 `{{voxel.maxY}}`, and `{{voxel.maxZ}}`, so one brief serves every size variant.
 
 The shared quality directive (`ASSET_QUALITY_PREAMBLE` in
-`crates/core/src/prompt.rs`) is prepended to every asset-generation prompt at
+`contracts/crates/suites/src/prompt.rs`) is prepended to every asset-generation prompt at
 render time, so the brief stays factual.
 
 ### 3. Write `prompt.hbs`

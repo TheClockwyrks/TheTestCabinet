@@ -16,7 +16,7 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
 ## Conventions
 
 - The API is JSON over HTTP. Request and response bodies are camelCase, matching
-  the [run record](/components/core/run-records/) contract.
+  the [run record](/components/contracts/run-records/) contract.
 - A collection of objects is returned wrapped, under a named key (for example
   `{ "testCases": [...] }`). The three reads that return a plain list of values
   are bare JSON arrays: the validation-file keys, a run's events, and a jam's
@@ -24,17 +24,24 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
   [reviewer scheduling](#coverage-plans-and-ladders)
   collections are bare arrays too.
 - Timestamps are RFC 3339 strings.
-- Harness slugs are those defined in [Harnesses](/components/core/harnesses/).
+- Harness slugs are those defined in [Harnesses](/components/driver/harnesses/).
 - Ratings are the tiers defined in
-  [Reviews](/components/core/results/#ratings): a functional rating is one of
+  [Reviews](/components/backend/results/#ratings): a functional rating is one of
   `flawless`, `great`, `passable`, `scuffed`, `broken`, and an aesthetic rating
   is one of `legendary`, `amazing`, `good`, `okay`, `slop`.
-- The reads on this page are open. The mutating run endpoints require an
-  `Authorization: Bearer <token>` header identifying the acting account, which
-  the backend verifies against the [auth service](/components/auth/overview/). A
-  missing or invalid token is a `401`; an auth service that cannot be reached to
-  answer is a `502`. See
-  [Authentication](/components/backend/overview/#authentication).
+- Every request identifies its caller, in one of two ways: an Access assertion
+  in `Cf-Access-Jwt-Assertion`, which every request through the edge carries
+  and the backend verifies against the Access application's certificates and
+  audience tag, or a backend-minted token in `Authorization: Bearer <token>`,
+  the service token or a per-job token. A request carrying neither, or an
+  assertion that fails to verify, is a `401`. See
+  [Identity](/components/backend/overview/#identity).
+- A read on this page is open: any identity reaches it. A route marked as
+  taking a person's assertion is attributed to that assertion's `email`, and
+  refuses a service token's assertion and a backend-minted token with `403`. A
+  route marked as taking the service token accepts the service token or a
+  service token's assertion, and refuses a person with `403`. A route the queue
+  components drive takes the per-job token the component holds.
 - Errors use one envelope across every endpoint, paired with an HTTP status
   (`400`, `401`, `404`, `409`, `422`, `500`, `502`):
 
@@ -47,9 +54,9 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
 
 Container images are resolved by each runner from its own registry
 configuration, so they are absent from this API. See
-[Execution](/components/core/execution/#containerization).
+[Execution](/components/driver/execution/#containerization).
 
-## Health and client configuration
+## Health
 
 ### `GET /healthz`
 
@@ -77,13 +84,6 @@ empty store.
 The signal latches. Once the store is populated the backend stays ready, and a
 later re-ingest does not withdraw it: a re-ingest swaps each version into place
 atomically, so resolution keeps working throughout one.
-
-### `GET /config`
-
-The per-deployment URLs a console needs to reach the data plane: `artifactsUrl`,
-`arenaUrl`, `grafanaUrl`, and `snapshotUrl` (the public read base of the
-snapshot bucket). Each is `null` when the deployment configures no such service,
-and the console degrades that feature. An open read.
 
 ## `POST /ingest`
 
@@ -114,7 +114,7 @@ under `refusedPrunes`, one sentence per refusal naming what was kept. A refusal
 is reported only when the store held something the prune would have removed.
 `force` does not lift the refusal.
 
-The request body is optional JSON:
+The route takes the service token. The request body is optional JSON:
 
 ```jsonc
 {
@@ -122,8 +122,13 @@ The request body is optional JSON:
   "force": true, // re-ingest even versions already in the store
   "mode": "changed", // ingest only versions whose content differs from the store
   "catalogVersion": "a1b2c3", // tag a whole-catalog ingest with its content version
+  "refresh": true, // have the ingest sidecar refresh its checkout first
 }
 ```
+
+`refresh` has the deployed backend's ingest sidecar refresh its `test-suites`
+checkout, and the `cold-storage` clone beside it, to the tip of the branch the
+environment ingests before the scan. A backend with no sidecar ignores it.
 
 Each `testCases` entry is either a bare case id, its slug or folder name,
 expanding to every version the case declares (`"carom"`), or a version-qualified
@@ -210,8 +215,8 @@ prune was refused, `refusedPrunes`. The closing `done` line carries
 The stream has already sent a `200` by the time it knows the outcome, so a late
 failure arrives as a closing `error` line rather than an HTTP error status.
 
-A scan that actually (re)ingested a version queues a [public
-snapshot](/components/backend/snapshot/) refresh.
+A scan that actually (re)ingested a version rewrites the [public
+dataset](/components/backend/snapshot/)'s case documents and index objects.
 
 ## Test case resolution
 
@@ -225,7 +230,7 @@ Experimental versions are included only when the backend is configured to offer
 them. Each entry also carries the display metadata a listing renders, the name,
 test type, asset shape, difficulty, tags, and summary, read from the case's
 latest visible version, plus the case's
-[showcase](/components/core/showcase/#the-case-showcase) preview when that
+[showcase](/components/driver/showcase/#the-case-showcase) preview when that
 version has one: the first variant, in manifest order, that declares a
 showcase, with its media list. The preview carries only the addressing; each
 file is fetched from the [showcase
@@ -363,7 +368,7 @@ A representative response:
           "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/base/title.png",
         },
       ],
-      // Variant-specific reviewer checklist items, for the web console's
+      // Variant-specific reviewer checklist items, for the console's
       // guided review. Empty when the variant declares none. On an engine-format
       // version each graded point carries its `domains` and `failureCap`.
       "reviewItems": [],
@@ -425,7 +430,7 @@ match, or replay block. `404` if the version has not been ingested. Schema:
 #### Rendering for an engine
 
 An optional `engine` query parameter names the
-[engine](/components/core/engines/) each variant's `prompt` is rendered for. The
+[engine](/components/engines/engines/) each variant's `prompt` is rendered for. The
 [rendered specs route](#get-test-casesslugversionsversionspecsvariant) takes the
 same parameter, under the same rule. A case's `prompt.hbs` and its `.hbs` specs
 branch on the selected engine, so one stored template renders into different
@@ -464,7 +469,7 @@ automated-validation directory (`validation/`), as a sorted JSON string array,
 walked recursively. It covers the debug drivers plus the shared modules they
 import, such as `validation/_helpers.mjs`. A backend-driven run fetches the
 whole set through the artifacts route so a script's sibling imports resolve when
-the [validator](/components/core/validation/) runs it. These files are
+the [validator](/components/driver/validation/) runs it. These files are
 reporter-side and are never seeded into the model's run container. The array is
 empty for a version that declares no scripted items.
 
@@ -484,16 +489,16 @@ declares. The array is empty for an authored version.
 
 Fetch one reference build's committed baseline validation media
 (`<item>__<output>.<ext>`, or one of the `img.<id>.<ext>` files of the [shared
-image store](/components/core/validation/#the-shared-image-store) its recordings
+image store](/components/driver/validation/#the-shared-image-store) its recordings
 draw from), synthesized from the reference implementation. The engine is part of
 the address because a variant has one reference implementation per
-[engine](/components/core/engines/), and a run is only comparable against the
+[engine](/components/engines/engines/), and a run is only comparable against the
 one it was itself built on.
 
 ### `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
 
 Fetch one media file of a variant's authored
-[case showcase](/components/core/showcase/#the-case-showcase), where `{file}` is
+[case showcase](/components/driver/showcase/#the-case-showcase), where `{file}` is
 the plain file name the carousel declares. It is the case-side counterpart of a
 run's `GET /runs/{id}/showcase/{file}`, addressed by case, version, and variant
 because the showcase is authored material committed with the version rather than
@@ -602,7 +607,7 @@ it.
 ### `GET /suites/{slug}/versions/{version}/reference-builds/{engine}/{path...}`
 
 Serve one file of an uploaded reference build, with the content types and index
-fallback the [artifact service](/components/artifacts/overview/) uses for a run's
+fallback the [artifacts service](/components/artifacts/overview/) uses for a run's
 `build/`. The build's root, with or without the trailing slash, serves its
 `index.html`.
 
@@ -610,7 +615,7 @@ fallback the [artifact service](/components/artifacts/overview/) uses for a run'
 
 ### `GET /test-case-groups`
 
-The ingested [test-case groups](/components/core/test-case-groups/), under
+The ingested [test-case groups](/components/backend/test-case-groups/), under
 `groups`, in display order: the ordering rank is applied before serving and
 does not ride the wire. Each entry carries the group's slug, name, optional
 summary, and its member case slugs in authored order. An open read.
@@ -631,15 +636,18 @@ summary, and its member case slugs in authored order. An open read.
 ## Reviewing, publishing, and reading runs
 
 A run reaches the gallery through two mutating steps: attach one or more
-reviews, then publish it (the [lifecycle](/components/core/results/#lifecycle)).
-Each requires a bearer token. Reads require none.
+reviews, then publish it (the
+[lifecycle](/components/backend/results/#lifecycle)). Each takes a person's
+assertion.
 
-A produced run's [run record](/components/core/run-records/) is stored privately
-when the run finishes, reported by the [driver](/components/driver/overview/)
-with the job's terminal status, and the produced build and media land on the
-[artifact service](/components/artifacts/overview/), playable for review. The
-public release of the source repo and the Cloudflare build happens at publish
-time.
+A produced run's [run record](/components/contracts/run-records/) is stored
+privately when the run finishes, reported by the
+[driver](/components/driver/overview/) with the job's terminal status; the
+produced build and media land on the [artifacts
+service](/components/artifacts/overview/), playable for review, and the
+implementation's bundle on the [repos service](/components/repos/overview/).
+The public release of the source repository and the Cloudflare build happens at
+publish time.
 
 `POST /jobs/{id}/status`, the driver-authenticated status endpoint that carries
 that record, also accepts a `canceled` status, and it is the only status
@@ -667,17 +675,17 @@ state is left alone. Either way the answer is `204`.
 
 ### `POST /runs/{id}/reviews`
 
-Submit a [review](/components/core/results/#reviews) for a produced run: the
+Submit a [review](/components/backend/results/#reviews) for a produced run: the
 per-domain functional `ratings`, the run-wide `aesthetic` tier, the markdown
 `writeup`, the checklist verdicts, and an `editNote`. Which of them a run
 accepts follows its case version. A validator-rated run requires the single
 `aesthetic` tier and refuses `ratings`, since the functional verdicts are the
 validators'; its `checklist` is optional and partial, carrying only the points
 the reviewer overrides. A legacy run takes `ratings` and the full checklist and
-refuses `aesthetic`. The review is attributed to the account the bearer token
-resolves to, taken from the token rather than the body. A run carries many
-reviews, one per account, and re-submitting from the same account updates that
-account's own review.
+refuses `aesthetic`. The review is attributed to the assertion's `email`, taken
+from the assertion rather than the body. A run carries many reviews, one per
+reviewer identity, and re-submitting under the same identity updates that
+reviewer's own review.
 
 On a validator-rated run each `checklist` entry is the reviewer's verdict for
 one declared verdict id, an item id or an `<item>.<sub>` composite, with a
@@ -708,11 +716,15 @@ when an edit arrives without a note. Schema:
 Release a run and make it public. The endpoint gates the run (`422` when it
 fails), then enqueues a per-publish `tcab-publisher` Job and answers
 `202 Accepted` with the publish-job id and the live URL to observe the release
-on. The run flips public when that Job reports a terminal success.
+on. When that Job reports a terminal success carrying the repository and build
+links, the backend marks the run published, has the artifacts service copy the
+run's media to the public bucket, writes the run's document and the index
+objects through it, and mints the run's short code; see
+[Publish](/components/backend/results/#publish).
 
 A run whose release is already under way answers with that publish job rather
 than a second one, whether an operator or the backend's
-[automatic publishing](/components/core/results/#automatic-publishing) enqueued
+[automatic publishing](/components/backend/results/#automatic-publishing) enqueued
 it. A completed validator-rated run is enqueued by the backend when it finishes,
 so this endpoint is how every other publishable run is released and how a failed
 release is retried.
@@ -737,7 +749,8 @@ A publish job whose publisher died before reporting stops blocking after an
 hour, and a failed publish never blocks at all: it stays immediately retryable.
 As a second layer, the publisher itself re-checks the run's publication state
 before doing any external work, and skips the release, reporting the links the
-run already carries, when the run is already published.
+run already carries, when the run is already published. The repository push is
+idempotent on the repos service's side as well.
 
 ### `DELETE /runs/{id}`
 
@@ -752,11 +765,13 @@ The job that produced the run is deleted with it, except a job the backend
 no run, because a comparison arm that recorded it follows its `retried_by` to the
 retry's run.
 
-The run's playable build and recorded logs live in the separate [artifact
-service](/components/artifacts/overview/), which the backend asks over
-`TCAB_ARTIFACTS_URL` to prune the run's tree as well. That prune is best-effort
-and never fails the delete; it runs only when that URL and the service token are
-both configured. A tree a failed prune leaves behind is reclaimed by the
+The run's playable build and recorded logs live on the separate [artifacts
+service](/components/artifacts/overview/), and its bundle on the [repos
+service](/components/repos/overview/); the backend asks each over
+`TCAB_ARTIFACTS_URL` and `TCAB_REPOS_URL` to prune the run's tree and bundle as
+well. Each prune is best-effort and never fails the delete; it runs only when
+that URL and the service token are both configured. A tree a failed prune
+leaves behind is reclaimed by the
 [sweep](/components/backend/overview/#artifact-reclamation).
 
 Deletion acts on the stored row rather than on the record, so it also deletes a
@@ -792,8 +807,8 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 - `state=failures` — the publishable-failure worklist: catastrophic, timed-out,
   hung, and harness-error runs, pending and published. Infrastructure failures
   are excluded, as they are never publishable.
-- `state=unreviewed` — the strict subset of the review worklist that no account
-  has reviewed yet. The automatically graded test types are excluded, since no
+- `state=unreviewed` — the strict subset of the review worklist that no
+  reviewer has reviewed yet. The automatically graded test types are excluded, since no
   reviewer can clear them from the list.
 - `state=unpublished` — every unpublished run whatever its terminal state,
   including infrastructure failures and the canceled gg runs that were recorded,
@@ -823,15 +838,14 @@ launched, leaves no record, so it is listed by no selector.
 - Default, `fields` omitted — the full stored run per row, in the shape of the
   [detail endpoint](#get-runsid) (record, reviews, ratings, and score).
 - `fields=summary` — a lightweight summary card per row: the run's id and
-  timestamps, its [subject](/components/core/run-records/#subject) including the
-  test type, [metrics](/components/core/metrics/), the `validationLoaded`
+  timestamps, its [subject](/components/contracts/run-records/#subject) including the
+  test type, [metrics](/components/contracts/metrics/), the `validationLoaded`
   signal, state, the functional `rating`, the `aesthetic` rating,
   `validatorRated`, the `score` and `reviewCount`, the denormalized case name, a
   performance run's fuel result, the ranking slice of a run's code analysis, and
   links. This is the same summary shape the [public
-  snapshot](/components/backend/snapshot/#runsjson--the-run-index) ships as its
-  run index, whose schema is
-  [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
+  dataset](/components/backend/snapshot/#runsjson--the-run-index)'s run index
+  holds as its row.
 
 #### Two pagination modes
 
@@ -863,7 +877,7 @@ The offset mode additionally accepts:
   matching any of them. Like `version`, it silences `latestVersions`.
 - Filter `testCases`, a comma-separated list of case slugs, narrowing to runs
   matching any of them, so one query covers a [test-case
-  group](/components/core/test-case-groups/)'s member cases. It ANDs with the
+  group](/components/backend/test-case-groups/)'s member cases. It ANDs with the
   other filters, `testCase` included, and `latestVersions` composes with it as
   with any case slice.
 - Filter `ggConfigId`, the id of a [gg configuration](/gg/configurations/),
@@ -901,8 +915,9 @@ The offset mode additionally accepts:
 
 One stored run, as `{ record, reviews, published, links, rating, aesthetic,
 validatorRated, score }`: its record with links populated, the array of reviews
-it carries with each reviewer's identity, whether it is published, its links,
-and the run's ratings and score. Each review carries the `ratings` or the
+it carries with each reviewer's identity, whether it is published, its links
+with the short `code` a published run carries, and the run's ratings and
+score. Each review carries the `ratings` or the
 run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
 shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
 
@@ -948,9 +963,7 @@ detail and its summary card always report the same functional rating and score.
   "score": { "earned": 64, "total": 68, "reviews": 1, "overallGrade": null },
   "reviews": [
     {
-      "reviewerId": "acct_7yq…",
-      "reviewer": "Ada",
-      "username": "ada",
+      "reviewer": "ada@clockwyrks.com",
       "ratings": [],
       "aesthetic": "amazing",
       "writeup": "Plays well, but…",
@@ -968,30 +981,40 @@ detail and its summary card always report the same functional rating and score.
   "links": {
     "sourceRepo": "https://github.com/…",
     "playableBuild": "https://…",
+    "code": "d483a2f9",
   },
 }
 ```
 
 ### `GET /runs/{id}/events`
 
-The run's recorded normalized [event stream](/components/core/events/) as a JSON
+The run's recorded normalized [event stream](/components/driver/events/) as a JSON
 array, empty when the run recorded none. Raw harness output is never served.
 `404` for an unknown run.
 
+### `GET /runs/{id}/bundle`
+
+The run's implementation as a git bundle, fetched from the
+[repos service](/components/repos/overview/) with the service token and
+streamed as `application/octet-stream` under the file name `<run-id>.bundle`.
+The route takes a person's assertion. `404` for an unknown run or a run with no
+bundle.
+
 ### `POST /snapshot/refresh`
 
-Force an immediate [public snapshot](/components/backend/snapshot/)
-regeneration, upload, and deploy-hook fire, outside the normal coalescing
-window. The response reports whether the snapshot was refreshed, the run count
-it covers, and whether the deploy hook fired.
+Rewrite the whole [public dataset](/components/backend/snapshot/) from the full
+published set, outside the normal coalescing window: every document and index
+object is written through the artifacts service and the `index.json` pointer
+swapped last. The route takes the service token. The response reports whether
+the dataset was rewritten and the run count it covers.
 
 ## Coverage plans and ladders
 
-The reviewer scheduling surface: what runs an account wants to exist, and how
-many of them it keeps in flight at once. Every endpoint here requires a bearer
-token and is keyed to the token's account. There is no path parameter naming a
-user, and an id that belongs to another account answers `404` rather than `403`,
-so one account cannot probe another's plan ids. The concepts live on
+The reviewer scheduling surface: what runs a reviewer wants to exist, and how
+many of them it keeps in flight at once. Every endpoint here takes a person's
+assertion and is keyed to its `email`. There is no path parameter naming a
+reviewer, and an id that belongs to another reviewer answers `404` rather than
+`403`, so one reviewer cannot probe another's plan ids. The concepts live on
 [Coverage plans](/components/backend/coverage/) and
 [Ladders](/components/backend/ladders/); this section is the wire contract.
 
@@ -1038,7 +1061,7 @@ configuration's current `ggConfigName`, and the `model` its root agent binds to.
 A member's runs and a run launched by hand from the same configuration share one
 [coverage cell](/components/backend/coverage/#what-identifies-a-gg-cell), so every
 endpoint that enqueues a gg run applies one rule to the capability set it carries.
-The set's `presetId` must name a gg configuration the token's account holds, or the
+The set's `presetId` must name a gg configuration the caller holds, or the
 launch is refused with `400`; `POST /gg/runs` and the gg runs of `POST /jobs` and
 `POST /jobs/batch` each answer to it, and a batch reports the refusal at that run's
 own index. The enqueued set records that configuration's current name in
@@ -1048,17 +1071,17 @@ as it arrived and belongs to no configuration's cell.
 
 ### The runs-in-flight limit
 
-- `GET|PUT /coverage-settings` — the account-wide `inFlightLimit`: how many of a
+- `GET|PUT /coverage-settings` — the reviewer-wide `inFlightLimit`: how many of a
   plan's or a ladder's jobs may be in flight at once. It is a
   [tagged shape](/components/backend/coverage/#the-runs-in-flight-limit),
   `{ "kind": "bounded", "runs": N }` or `{ "kind": "unbounded" }`: a bound of `0`
   is a legitimate value that launches nothing, and unbounded launches every
-  missing cell at once. `GET` reports `isDefault` when the account has never
+  missing cell at once. `GET` reports `isDefault` when the reviewer has never
   chosen one, and no row is materialized on read.
   Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
 
 A plan's and a ladder's `inFlightLimit` override takes the same shape and is
-nullable: null inherits the account's setting.
+nullable: null inherits the reviewer's setting.
 
 ### Groups and plans
 
@@ -1067,8 +1090,8 @@ nullable: null inherits the account's setting.
   [pinned cases](#pinned-cases) (`kind: "case"`). Plans and ladders reference them
   by id, so editing a group reshapes everything that points at it. A plan that
   references a deleted group ignores the dangling id at coverage time; there is no
-  cascade. A `combo` member naming a gg configuration the account does not own is
-  refused with `400`.
+  cascade. A `combo` member naming a gg configuration the caller does not own
+  is refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
   themselves: members, `runsPerCell`, `outerAxis`, the optional
   `inFlightLimit` override, and `retryCount`, the
@@ -1125,7 +1148,7 @@ those runs, so a cell never reads more than its target.
   cell's shortfall. Answers `204`; `404` when the cell is not one of the plan's,
   and `409` when it is not blocked.
 - `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
-  account has not reviewed, among the runs its cells hold, in the plan's own
+  reviewer has not reviewed, among the runs its cells hold, in the plan's own
   order rather than newest-first like the global unreviewed listing. Capped rather
   than paginated, with `truncated` set when there is more behind it.
 
@@ -1210,7 +1233,7 @@ starts a dispatch of it.
   when no dispatch is running or the climber is not blocked for one of those two
   reasons.
 - `GET /ladders/{id}/queue` — the completed runs the latest dispatch counts that
-  the requesting account has not reviewed, in the ladder's own order. A run the
+  the requesting reviewer has not reviewed, in the ladder's own order. A run the
   dispatch read rather than launched is offered the same way.
 
 The backend runs every launch pass of a dispatch itself, prompted by Run, a
@@ -1219,7 +1242,7 @@ climber's Retry, and every finishing run of one of its rung slots' cells
 
 ## Stopping runs in bulk
 
-Three global sweeps. All require a bearer token, and all answer
+Three global sweeps. All take a person's assertion, and all answer
 `{ "canceled": n, "includedWaiting": bool, "includedActive": bool }`.
 
 | endpoint                    | sweeps                              |
@@ -1230,7 +1253,7 @@ Three global sweeps. All require a bearer token, and all answer
 
 These are global and scoped to nothing: they cancel matching jobs whatever
 launched them, including runs launched by hand and runs launched by another
-account. They are the "stop the cabinet" controls; the scoped equivalent is a
+reviewer. They are the "stop the cabinet" controls; the scoped equivalent is a
 plan's [`halt`](#halting-a-plan) or a ladder's
 [`stop`](#ladders). Cancelling a single job by id remains
 `POST /jobs/{id}/cancel`, which these reuse rather than reimplement.
@@ -1242,7 +1265,8 @@ first. `cancel-waiting` needs no confirmation.
 
 The model catalog is the list of subjects a run can be attributed to (see
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
-`GET /models` and `GET /models/seed` are open; the rest require a bearer token.
+`GET /models` and `GET /models/seed` are open; the rest take a person's
+assertion.
 
 | endpoint                            | does                                                  |
 | ----------------------------------- | ----------------------------------------------------- |
@@ -1261,7 +1285,7 @@ policy. `listPrice` is the list price, per token, with `listPriceAsOf` the date
 the figures were taken and `listPriceSource` where they came from: `hand` for a
 set the operator entered on the form, by changing a rate or the date,
 `openrouter` for one
-[resolved from OpenRouter](/components/core/metrics/#list-price-resolution). All
+[resolved from OpenRouter](/components/contracts/metrics/#list-price-resolution). All
 three are null until all three rates are set. The list price is the only price
 an entry carries.
 
@@ -1286,7 +1310,7 @@ from them. A slug OpenRouter does not list is a
 `404`.
 
 `POST /models/list-prices/refresh` runs a
-[list price refresh](/components/core/metrics/#list-price-refresh) over every
+[list price refresh](/components/contracts/metrics/#list-price-refresh) over every
 curated entry and queues a snapshot refresh when any rate changed, including
 when the refresh stopped part-way through. It takes no body and answers a
 `ListPriceRefreshOut` when the refresh has finished:
@@ -1300,7 +1324,7 @@ when the refresh stopped part-way through. It takes no body and answers a
 - `unchanged`: entries whose resolved rate equals the stored one, dated again.
 - `unresolved`: entries OpenRouter yielded no rate for, kept as they were.
 
-A run's [comparable cost](/components/core/metrics/#cost) is priced from the
+A run's [comparable cost](/components/contracts/metrics/#cost) is priced from the
 list price. Every enqueue path fills a curated entry's missing list price by the
 list price resolution, and refuses a launch naming a model the catalog has no
 entry for, or one OpenRouter yields no rate for, with the reason named; a gg
@@ -1352,7 +1376,7 @@ the backend process, so a backend restart fails any probe still `running`.
 
 ### `POST /models/{slug}/probes`
 
-Trigger a probe. Requires a bearer token: the backend spends its own OpenRouter
+Trigger a probe. Takes a person's assertion: the backend spends its own OpenRouter
 key (`TCAB_OPENROUTER_API_KEY`, see
 [Configuration](/components/backend/overview/#configuration)) on the caller's
 behalf. The request body is optional JSON, every field optional:
@@ -1398,7 +1422,7 @@ the error that voided the call. An open read.
 ### `GET /models/{slug}/probe-providers`
 
 The providers OpenRouter lists for the model, as name and context length, for
-pinning a probe to one. Requires a bearer token, because it reaches a third
+pinning a probe to one. Takes a person's assertion, because it reaches a third
 party on the caller's behalf.
 
 ### `GET /models/{slug}/candidates`
@@ -1411,7 +1435,7 @@ is the developer's endpoint, and its recorded fault rate, `null` for a provider
 with no recorded calls, which orders as a rate of zero. The response also
 reports the native level the filter used, null when the catalog entry switches
 the quantization filter off and no endpoint declares a level, and a `refusal`
-naming why the list is empty when it is. Requires a bearer token, because it
+naming why the list is empty when it is. Takes a person's assertion, because it
 reaches a third party on the caller's behalf.
 
 ```jsonc
@@ -1456,7 +1480,7 @@ therefore answer different questions.
 - `runs`: the total recorded run count.
 - `tokens`: the summed total tokens, with `unreportedRuns` counting the runs
   whose metrics reported no tokens; those contribute nothing to the sum.
-- `cost`: the summed [comparable cost](/components/core/metrics/#cost) in USD,
+- `cost`: the summed [comparable cost](/components/contracts/metrics/#cost) in USD,
   with `unreportedRuns` counting the runs whose comparable cost is unknown;
   those contribute nothing to the sum.
 - `testCases` and `models`: distinct test-case slugs and distinct model ids
@@ -1620,7 +1644,7 @@ reported start and the recorded one name the same moment. A queued, pending, or
 dispatched run omits the field, since it has not started.
 
 A duration ticked from `startedAt` is elapsed wall clock, so it reads higher than the
-[run time](/components/core/metrics/#durations) the finished run records, and steps
+[run time](/components/contracts/metrics/#durations) the finished run records, and steps
 down once the run lands.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
@@ -1682,6 +1706,6 @@ Two client-side details are load-bearing:
 A test case's reference mockups are rendered to screenshots once, by the
 backend, at ingest. Rendering there makes the validation baseline byte-identical
 across every runner: a runner downloads the rendered image, seeds it as the
-visual target, and uses it as the [validation](/components/core/validation/)
+visual target, and uses it as the [validation](/components/driver/validation/)
 baseline. Runners still need a headless browser locally for the load check and
 per-check capture; only the reference baseline render lives on the backend.

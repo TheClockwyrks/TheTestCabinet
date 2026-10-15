@@ -91,7 +91,7 @@ rather than a silent blank. The context exposes exactly:
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
 - `{{engine.slug}}`, `{{engine.name}}`, and `{{engine.docs}}` — the
-  [engine](/components/core/engines/) selected for the run, always present.
+  [engine](/components/engines/engines/) selected for the run, always present.
   `slug` is `none` when no engine is selected, and `docs` is then empty;
   otherwise `docs` is the absolute in-container path of the seeded engine
   documentation.
@@ -153,7 +153,7 @@ on. Each file seeds at its path relative to that directory, so
 Which directory is seeded depends on how the case
 [names it](/testing/end-to-end/manifests/#the-starter-project): an engineless
 case names one with the top-level `workspace` key, and a case that supports
-[engines](/components/core/engines/) names one per engine in a `[workspaces]`
+[engines](/components/engines/engines/) names one per engine in a `[workspaces]`
 table, because a starter project is written against a runtime. A variant may
 replace either with its own.
 
@@ -167,7 +167,7 @@ Workspace files are seeded verbatim; they are never rendered as templates.
 Hidden entries are skipped, with an allowlist of exceptions that are seeded:
 `.gitignore`, `.cargo`, `.prettierrc.json`, and `.prettierignore`. A run's
 implementation is released as a git repository when it is
-[published](/components/core/results/), and the `.gitignore` keeps the build
+[published](/components/backend/results/), and the `.gitignore` keeps the build
 artifacts a run produces out of the public per-run source repository. A case
 that builds inside its run tree should ship a `.gitignore` covering its
 artifacts. `.cargo` carries the Cargo build configuration a Rust case relies
@@ -201,7 +201,7 @@ supplies. Carom and Coil use `npm install && npx playwright install chromium`.
 The command is bounded by the run's maximum runtime, so a hung setup cannot run
 unbounded. That bound covers the init as a whole: every attempt, check, and delay
 between them shares it. It is verified and retried the way validation's
-[dependency install](/components/core/validation/#the-dependency-install) is:
+[dependency install](/components/driver/validation/#the-dependency-install) is:
 after each attempt, every package the install would place in the container,
 decided by the same rule, must be present on disk, and a non-zero exit or a
 missing package is run again after a delay, up to three attempts in all. Each

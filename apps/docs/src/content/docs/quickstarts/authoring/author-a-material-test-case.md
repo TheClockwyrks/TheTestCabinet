@@ -35,7 +35,7 @@ test-cases/asset-generation/<difficulty>/<slug>/<version>/
 
 A run seeds the brief, `material.config.json` carrying the map size, declared
 channels, tiling, and log paths, a single empty action log, and a blank starting
-preview per declared map. Core emits the per-map PNGs and `material.json`, so the
+preview per declared map. The driver emits the per-map PNGs and `material.json`, so the
 manifest names neither. The case is reviewed by a human against its brief, so it
 declares no `[[reference]]` and carries no target image.
 

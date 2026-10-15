@@ -38,7 +38,7 @@ test-cases/asset-generation/<difficulty>/<slug>/<version>/
 A run seeds the brief, `<binary>.config.json`, and a `rig.json` pre-populated
 with the required animation declarations alone, with empty tracks, `parts: []`,
 and `joints: []`. The `-anim` binary's `--help` is the operation and
-rig-subcommand contract. Core emits the per-part meshes and the filled `rig.json`
+rig-subcommand contract. The driver emits the per-part meshes and the filled `rig.json`
 on `render`. The case declares no `[[reference]]` and carries no target model.
 
 ## Steps

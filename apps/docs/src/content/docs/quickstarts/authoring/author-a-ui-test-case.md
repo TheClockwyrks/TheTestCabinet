@@ -34,7 +34,7 @@ test-cases/asset-generation/<difficulty>/<slug>/<version>/
 ```
 
 A run seeds the brief, `paint.config.json`, a single empty action log, and a
-blank starting preview per element. Core emits the flattened per-element PNGs and
+blank starting preview per element. The driver emits the flattened per-element PNGs and
 `ui.json`, so the manifest names neither. The case is reviewed by a human against
 its brief, so it declares no `[[reference]]` and carries no target image.
 

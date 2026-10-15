@@ -2,8 +2,9 @@
 title: "Overview"
 ---
 
-gg streams richer telemetry than the normalized [event](/components/core/events/)
-and [metric](/components/core/metrics/) contracts require, and the backend and
+gg streams richer telemetry than the normalized
+[event](/components/driver/events/) and [metric](/components/contracts/metrics/)
+contracts require, and the backend and
 console read that stream natively. gg runs headless, so the stream is the only
 live window into a run.
 

@@ -64,7 +64,7 @@ is baked into the same image and available on `PATH`.
 `[output].actions` is a single interleaved operation log and must not carry
 `{map}`, because the two binaries share one recorded stream.
 
-Core emits one PNG per declared map plus the `material.json` carrying the map
+The driver emits one PNG per declared map plus the `material.json` carrying the map
 paths, each map's color space, and the world-space tiling scale. Neither is
 manifest-declared. See
 [the output contract](/testing/asset-generation/material-binaries/#the-output-contract).

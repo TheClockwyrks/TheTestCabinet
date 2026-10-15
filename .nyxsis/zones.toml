@@ -1,0 +1,17 @@
+[zone.EDGE]
+name = "Identity and the edge"
+
+[zone.DATA]
+name = "Run data: the artifacts and repos services"
+
+[zone.SITE]
+name = "The gallery and share links"
+
+[zone.SHELL]
+name = "The operator client"
+
+[zone.REPOS]
+name = "Repository extractions"
+
+[zone.GGH]
+name = "gg, the harness"

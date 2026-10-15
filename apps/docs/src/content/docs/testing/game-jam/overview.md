@@ -55,8 +55,8 @@ keeps the same capabilities:
 ## The standing game-jam directive
 
 Every jam's prompt is prefixed at render time with a standing directive
-(`GAME_JAM_PREAMBLE` in `crates/core/src/prompt.rs`). It stays high level: this
-is a jam, any genre is fair game, the design is the model's to invent, the two
+(`GAME_JAM_PREAMBLE` in `contracts/crates/suites/src/prompt.rs`). It stays high
+level: this is a jam, any genre is fair game, the design is the model's to invent, the two
 things judged above all are that the game is playable and enjoyable, and the
 entry competes against other models' entries on presentation, polish, theme,
 audio, and creativity, including assets it must genuinely produce. It closes by
@@ -69,8 +69,8 @@ to verify and commit.
 
 Two further standing blocks follow the jam's own brief, each behind a divider:
 the gameplay README requirement, always, and the distinctness section when
-earlier entries exist. Both are rendered from `crates/core/src/prompt.rs` rather
-than from any jam's `prompt.hbs`.
+earlier entries exist. Both are rendered from
+`contracts/crates/suites/src/prompt.rs` rather than from any jam's `prompt.hbs`.
 
 ## The gameplay README
 

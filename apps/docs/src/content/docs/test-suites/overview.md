@@ -27,8 +27,9 @@ includes as a git submodule checked out at `test-suites/`. Suite definitions and
 The Test Cabinet release on independent cadences, and a suite only needs a Test
 Cabinet release when it calls for functionality that does not exist yet.
 
-Each suite is a folder named by its slug, holding the drafts The Spec Cabinet
-authors and the versions exported from them:
+Each suite is a folder under the repository's `test-suites/` directory, named
+by its slug, holding the drafts The Spec Cabinet authors and the versions
+exported from them:
 
 ```text
 <slug>/suite.toml                          # the suite manifest

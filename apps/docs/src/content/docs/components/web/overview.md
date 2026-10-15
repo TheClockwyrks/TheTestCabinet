@@ -2,51 +2,64 @@
 title: Overview
 ---
 
-The web console is The Test Cabinet's runner and reporter GUI, delivered as a
-static browser bundle. It mounts the routed application from the [UI
-library](/components/ui/overview/) with the run-execution surface enabled, and
-reads its service URLs from the deployment's runtime config.
+The console is The Test Cabinet's runner and reporter GUI, delivered as a
+static browser bundle from the `console.testcabinet.ai` repository. It mounts
+the routed application from the [UI library](/components/ui/overview/) with the
+run-execution surface enabled, and reaches every service it uses at a path of
+its own origin.
 
-From the console a person signs in, configures and launches a run, watches its
-live [event](/components/core/events/) stream, returns to a run still in
-progress, kills a run before it finishes, reads the
+From the console a person configures and launches a run, watches its live
+[event](/components/driver/events/) stream, returns to a run still in progress,
+kills a run before it finishes, reads the
 [specification](/testing/end-to-end/overview/) a run was built from,
-[reviews](/components/core/results/#reviews) a finished run, and
-[publishes](/components/core/results/#publish) it.
+[reviews](/components/backend/results/#reviews) a finished run, and shares a
+[published](/components/backend/results/#publish) one.
 
 The console executes no test case itself. It enqueues the run at the backend,
 where a [dispatcher](/components/dispatcher/overview/) claims it and a per-run
 [driver](/components/driver/overview/) `Job` runs it. The driver stores the
 finished record on the backend, so the console has no push step.
 
+The repository builds against `contracts` (`@clockwyrks/run-record` and
+`@clockwyrks/backend-api`), `engines` and `ui-common`, and vendors the replay
+assets it needs from `test-suites`.
+
 ## Service dependencies
 
-The console is bound to exactly one [backend](/components/backend/overview/) at
-a time. That backend is the source of truth for the test-case catalog, the run
-queue, produced and published runs, and the [console
-stream](/components/backend/api/#the-console-stream) of completion notifications
-and run-lifecycle events, all reached over the [backend HTTP
-API](/components/backend/api/).
+The console is served at one origin per environment, `console.testcabinet.ai`
+in prod and `console.staging.testcabinet.ai` in staging, and every service it
+talks to is a path of that origin:
 
-Three further services are called directly, and the backend reports the base URL
-of each from `GET /config`:
-
-- The [auth service](/components/auth/overview/) serves register, log in, and
-  account profile pictures. The console posts credentials to it and carries the
-  returned bearer token when it reviews or publishes.
-- The [artifact service](/components/artifacts/overview/) serves a produced
-  run's build, proof media, showcase files, and asset-generation media before it
-  is published.
-- The [arena service](/components/arena/overview/) runs
+- `/api/` is the [backend](/components/backend/overview/), the source of truth
+  for the test-case catalog, the run queue, produced and published runs, and
+  the [console stream](/components/backend/api/#the-console-stream) of
+  completion notifications and run-lifecycle events, all reached over the
+  [backend HTTP API](/components/backend/api/).
+- `/artifacts/` is the [artifacts service](/components/artifacts/overview/),
+  which serves a run's build, proof media, showcase files, and asset-generation
+  media, published or not. The console resolves every media link under it.
+- `/arena/` is the [arena service](/components/arena/overview/), which runs
   [adversarial](/testing/adversarial/overview/) matches and tournaments.
+
+The origin is a Cloudflare Tunnel into the cluster, fronted by Cloudflare
+Access; see [Edge](/deployment/kubernetes/edge/). A person signs in on the
+Microsoft login page the first time they open the origin, and the browser holds
+the Access cookie from then on. Every request the console makes carries that
+cookie, so the console stores no token and presents no login form. The reviewer
+a review is attributed to is the [identity](/components/auth/overview/) of the
+assertion the edge adds to the request.
 
 ## Configuration
 
-The backend URL is resolved from the first of three sources that supplies one: a
-value the operator stored through the console, the deployment's runtime
-`/config.js` (read as `window.__TCAB_CONFIG__`), and the build-time
-`VITE_BACKEND_URL`. The auth service URL resolves the same way and falls back to
-the backend URL. With no backend URL the console reports itself unconfigured.
+The console names no service URL. Its requests address paths of its own origin,
+so a deployment configures nothing at start. The one build-time value,
+`VITE_SHARE_ORIGIN`, is the origin a [share link](#sharing-a-published-run) is
+built on, `https://tcab.ai` for prod and `https://staging.tcab.ai` for staging,
+so the two environments are two builds of the bundle. In development the
+Vite dev server proxies `/api`, `/artifacts` and `/arena` to the forwarded
+local services; `TCAB_PROXY_BACKEND`, `TCAB_PROXY_ARTIFACTS` and
+`TCAB_PROXY_ARENA` in a gitignored `.env.development.local` override the
+targets.
 
 Browser tracing is gated on `VITE_OTEL_EXPORTER_OTLP_ENDPOINT`. When that
 variable is set the console exports spans over OTLP/HTTP and injects a
@@ -73,20 +86,19 @@ re-queries whenever a run finishes, is published, is killed, or is deleted.
 
 Every other surface reads bounded, scoped summary sets. The home page also reads
 [cabinet statistics](/components/backend/api/#get-statscabinet), draws its
-[showcase](/components/core/showcase/) from runs at the `legendary` aesthetic
+[showcase](/components/driver/showcase/) from runs at the `legendary` aesthetic
 tier, and scopes a group leaderboard to the member cases of its [test-case
-group](/components/core/test-case-groups/). Only a run's detail page loads that
-run's full [record](/components/core/run-records/) and its reviews, [one run at
-a time](/components/backend/api/#get-runsid). Lightweight
-[`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) records
-back every listing, leaderboard, and metric.
+group](/components/backend/test-case-groups/). Only a run's detail page loads that
+run's full [record](/components/contracts/run-records/) and its reviews, [one run at
+a time](/components/backend/api/#get-runsid). Summary records back every
+listing, leaderboard, and metric.
 
 ## The test cases section
 
 `/test-cases` is the searchable catalog of every visible case. From a case a
-person reads its description and [showcase](/components/core/showcase/) media,
+person reads its description and [showcase](/components/driver/showcase/) media,
 launches the deployed [reference
-build](/components/core/results/#reference-implementations) for the anchored
+build](/components/backend/results/#reference-implementations) for the anchored
 variant and engine, reads the anchored version's own description, reads the
 case's changelog, and reads how runs of the case are scored. While an older
 version is anchored, the page names the latest version and links to it.
@@ -104,22 +116,21 @@ fetched on demand, because a starter project can be large.
 ## The runs section
 
 `/runs` is the run index and the reviewer's worklists, each its own route. The
-all-runs index and the signed-in account's
+all-runs index and the signed-in reviewer's
 [comparisons](/comparisons/overview/), published or not, render on every host,
-and the read-only static site lists the published set off its snapshot. The
-worklists are console-only, and the public gallery leaves their routes
-unmounted.
+and the read-only gallery lists the published set. The worklists are
+console-only, and the public gallery leaves their routes unmounted.
 
 - Failures: the produced publishable failures awaiting publish, so a real model
   failure can be told from a subscription auth-token refresh before it is
   released.
-- Unreviewed: completed runs no account has reviewed yet (`state=unreviewed`),
+- Unreviewed: completed runs no reviewer has reviewed yet (`state=unreviewed`),
   validator-rated runs included, since a review can be added to those at any
   time.
 - Unpublished: runs that have cleared the publish gate but have not been
   released (`state=publishable`), which is the publish backlog. A completed
   validator-rated run
-  [publishes itself](/components/core/results/#automatic-publishing), so it is
+  [publishes itself](/components/backend/results/#automatic-publishing), so it is
   here only while its release is in flight or after its release failed.
 - Unreadable: runs whose stored record this build can no longer read
   ([`GET /runs/unreadable`](/components/backend/api/#get-runsunreadable)). The
@@ -137,7 +148,7 @@ WebM clip at its recorded pace.
 
 A run's checklist is the case's checklist restricted to the run's engine,
 holding the points whose [validator covers that
-engine](/components/core/validation/). A review records one run-wide aesthetic
+engine](/components/driver/validation/). A review records one run-wide aesthetic
 tier, a writeup, and a verdict for each point of that checklist. Publish is
 offered whether or not a review exists.
 
@@ -146,11 +157,23 @@ can fail. Its slice is the publish gate rather than everything unpublished, so
 it offers only rows the backend will accept. A batch publish enqueues each
 release and stops there. A refused gate surfaces immediately, and a release that
 fails after starting arrives as a
-[publish-failed notification](/components/core/results/#publish).
+[publish-failed notification](/components/backend/results/#publish).
+
+## Sharing a published run
+
+A published run carries a short code on its record, assigned the first time it
+publishes and never reassigned. The run's share control offers the two links
+[tcab.ai](/components/site/serving/) resolves from that code:
+`<share origin>/r/<code>`, the run's verdict page on the gallery, and
+`<share origin>/p/<code>`, its play page. Both are built from the record's code
+and the build's share origin, never from the console's own location, so a link
+copied from the console opens on the public gallery. A run with no code offers
+no share control.
 
 ## Planning and steering runs
 
-The console's Account section is where a reviewer declares what they want run:
+The console's Account section, the signed-in identity's own, is where a
+reviewer declares what they want run:
 [coverage plans](/components/backend/coverage/), which are cases against
 combinations with a target per cell, and [ladders](/components/backend/ladders/),
 an ordered climb each combination ascends automatically until it fails a rung.
@@ -158,7 +181,7 @@ Both serve their own unreviewed queue in their own order rather than
 newest-first. A review queue is for labelling runs after the fact, and nothing on
 it launches or holds back a run.
 
-The account-wide runs-in-flight limit lives in Settings → Runs. A plan and a
+The reviewer's runs-in-flight limit lives in Settings → Runs. A plan and a
 ladder may override it, and either may be set to no limit.
 
 A control carries its own state, so nothing beside it restates that state. Every
@@ -308,13 +331,14 @@ first. All three report how many runs they actually cancelled.
 
 ## Deployment
 
-`vite build` emits a fully static bundle, packaged as the `tcab-web` image: nginx
-serving that bundle, with an entrypoint that renders `/config.js` from the
-container's environment. One image therefore serves every environment, because
-the service URLs are injected at start rather than baked at build.
+`vite build` emits a fully static bundle, packaged as the `tcab-web` image:
+nginx serving that bundle. The bundle names no service URL, so the image takes
+no configuration at start, and the prod and staging images differ only in the
+share origin their builds carry.
 
-The console is an operator tool. It reads from and writes to the private backend,
-so it is served on the same private network as the services it talks to. In a
-cluster deployment it is the in-cluster `tcab-web` workload, reached at a private
-hostname through the [internal
-ingress](/deployment/kubernetes/internal-ingress/).
+The console is an operator tool. It reads from and writes to the private
+backend, so it is reachable only through the environment's Cloudflare Tunnel,
+at `/` of the environment's origin, behind the Access application that protects
+the origin. See [Edge](/deployment/kubernetes/edge/). The [operator
+client](/components/client/overview/) is a shell that loads this same origin,
+so a person on a desktop or on Android uses the console deployed here.

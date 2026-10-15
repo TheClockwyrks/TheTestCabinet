@@ -42,7 +42,7 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
 The baseline media captured from the reference implementations is committed to
 the `cold-storage` submodule under the same path, in
 `validation-baseline/<engine>/<variant>/` (see [where baselines
-live](/components/core/validation/#where-baselines-live)).
+live](/components/driver/validation/#where-baselines-live)).
 
 A run receives the selected variant's seeded specs, the case's assets, and the
 workspace for the run's engine; an engine run also receives the vendored
@@ -50,7 +50,7 @@ engine and its documentation at `engine/`. The prompt is rendered and handed
 to the harness as its instruction; it is never written to the run's disk.
 
 A workspace is one starter project per supported
-[engine](/components/core/engines/). An engine's workspace vendors the engine
+[engine](/components/engines/engines/). An engine's workspace vendors the engine
 and the entry stub it requires. The engineless (`none`) workspace provides
 configuration only: a `package.json`, tool configuration, and an `index.html`,
 with no source code, so the model owns the code it is judged on. See

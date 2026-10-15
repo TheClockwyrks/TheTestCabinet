@@ -44,7 +44,7 @@ and `material.json` paths, and one blank preview PNG per declared map. No
 operations schema is seeded.
 
 The authoritative output is the maps the tools emit: one PNG per declared
-channel plus `material.json`, both produced by core. The operation log is
+channel plus `material.json`, both produced by the driver. The operation log is
 recorded for the run record and the live preview.
 
 ## Procedure
@@ -187,8 +187,8 @@ Points to get right:
   `roughness`, `metallic`, `ao`, and `emissive`. `height` is never listed.
 - `[output].actions` is a single log rather than a `{map}` template, because the
   two binaries share one recorded stream.
-- Core emits the per-map PNGs and `material.json` to paths it provides, so
-  neither is manifest-declared.
+- The driver emits the per-map PNGs and `material.json` to paths it provides,
+  so neither is manifest-declared.
 - A material case declares no `[model]`, no `[[reference]]`, no `[build]`, and
   no `[[check]]`.
 - The single `overall` `[[domain]]` is the whole review. The material is judged

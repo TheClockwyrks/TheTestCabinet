@@ -73,7 +73,7 @@ than a separately scored artifact.
 
 Asset generation therefore happens once and the generated files are committed.
 The binaries are on `PATH` only while the run is live. They are absent when the
-build is re-run to [validate](/components/core/validation/) it and when the
+build is re-run to [validate](/components/driver/validation/) it and when the
 published source is rebuilt, so a case's build must be self-contained: it
 bundles the committed asset files. A build that shells out to `draw` or the
 other binaries fails wherever those tools are absent, which is a load failure
@@ -111,7 +111,7 @@ play back in the console exactly as the game plays them.
 
 Every full-stack case's prompt is prefixed at render time with a standing
 quality directive (`FULL_STACK_2D_PREAMBLE` and `FULL_STACK_3D_PREAMBLE` in
-`crates/core/src/prompt.rs`). It tells the model that this is a full-stack
+`contracts/crates/suites/src/prompt.rs`). It tells the model that this is a full-stack
 build, that the on-`PATH` binaries are there to author real art, animation,
 effects, and sound, that the build must be self-contained and bundle the
 committed files, and that the assets are held to the same quality ceiling as the

@@ -26,12 +26,11 @@ directly.
 ## The pattern
 
 ```
-in-container binary ──TCP──▶ host listener (core) ──▶ driver
-                                                       └─▶ backend relay
-                                                             └─▶ console
+in-container binary ──TCP──▶ host listener (driver) ──▶ backend relay
+                                                          └─▶ console
 ```
 
-1. The host opens a listener. The core binds an ephemeral TCP port on the run
+1. The host opens a listener. The driver binds an ephemeral TCP port on the run
    host for the lifetime of the run and mints an opaque per-run token. The
    listener is tied to the run and is torn down when the run ends. An ephemeral
    port per run keeps concurrent runs from colliding, and the token causes a
@@ -41,7 +40,7 @@ in-container binary ──TCP──▶ host listener (core) ──▶ driver
    and token into the configuration the in-container binary reads. For the
    drawing tool that is the `live` block of `draw.config.json`. The host address
    is `host.docker.internal`, mapped into the container as described in
-   [Containerization](/components/core/execution/#containerization).
+   [Containerization](/components/driver/execution/#containerization).
 
 3. The in-container process streams updates. As it works, the binary connects
    back to the seeded endpoint and sends each update as a framed message
@@ -49,23 +48,22 @@ in-container binary ──TCP──▶ host listener (core) ──▶ driver
    timeouts and swallowing every error, so the work it reports on succeeds even
    when the listener is slow or gone.
 
-4. The listener decodes and hands off. The core validates the token, decodes the
-   payload into a typed value, and passes it to the runner, concurrently with
-   the harness session.
+4. The listener decodes and hands off. The driver's run engine validates the
+   token, decodes the payload into a typed value, and hands it to the run's
+   sinks, concurrently with the harness session.
 
-5. The runner relays it over the run's live channel. The
+5. The driver relays it over the run's live channel. The
    [driver](/components/driver/overview/) posts each payload to the
    [backend](/components/backend/overview/), which keeps the latest payload per
    key and fans it out on the run's live NDJSON stream as a tagged line that a
-   subscriber tells apart from a [harness event](/components/core/events/) by
+   subscriber tells apart from a [harness event](/components/driver/events/) by
    its `type`. The [UI library](/components/ui/overview/) consumes it and renders
    the live view.
 
 ## Properties
 
-- Opened per run type. The core opens the listener for the run types that stream
-  progress, currently asset-generation, and only when the runner accepts the
-  payloads.
+- Opened per run type. The run engine opens the listener for the run types
+  that stream progress, the asset-generation kinds.
 - Best-effort. Dropped or skipped updates are acceptable. The authoritative
   output is the collected working tree.
 - Transient. Live payloads are a real-time view and are absent from the run
@@ -94,8 +92,8 @@ adding a transport.
 
 1. In the in-container binary, read an optional live endpoint from its seeded
    config and send a framed, token-tagged update at each step, best-effort.
-2. In the core, define the payload type and have the run lifecycle start the
-   listener, seed the endpoint, and add the host mapping.
-3. In the driver, post each payload to the backend for relay on the run's live
-   stream.
+2. In the driver's run engine, define the payload type and have the run
+   lifecycle start the listener, seed the endpoint, and add the host mapping.
+3. In the driver's sinks, post each payload to the backend for relay on the
+   run's live stream.
 4. In the UI, render the live view.

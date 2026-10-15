@@ -4,43 +4,150 @@ description: "The repositories of The Test Cabinet, the edges between them, how 
 ---
 
 The Test Cabinet is a set of repositories, and this one, `the-test-cabinet`, is
-the superrepo that holds each of them as a submodule at its root. Every
-repository lives in the `the-test-cabinet` project of the `genyume` Azure
-DevOps organization under its plain name, and is mirrored to GitHub under
-`TheClockwyrks` by the same name; the superrepo's mirror is `TheTestCabinet`.
-The documentation site and the issue board stay in the superrepo, and so do
-the kit and the gates over the whole set.
+the superrepo that holds each of them as a submodule at its root. The superrepo
+holds the documentation site, the issue board, the repository kit and the gates
+over the whole set, and no code of the product's own. Every repository lives in
+the `the-test-cabinet` project of the `genyume` Azure DevOps organization under
+its plain name, and is mirrored to GitHub under `TheClockwyrks` by the same
+name; the superrepo's mirror is `TheTestCabinet`.
+
+A repository is named by its category where several repositories of a type
+exist (`microservice-*`, `tool-*`). A library carries no prefix, a site is named
+by its hostname, and the hub is `contracts`.
+
+## The dependency rule
+
+The set is a hub and its spokes, with `contracts` as the hub. A library
+repository may be depended on; an application, site, shell, tool-binary or
+content repository is never depended on. Every shape two repositories exchange,
+and everything that keeps repositories in step, lives in `contracts`. The
+backend's API package, `@clockwyrks/backend-api`, is generated there, so the
+console takes it from the hub and no application depends on another.
+
+## The kinds
+
+The kind decides a repository's shape.
+
+| Kind | Shape |
+| --- | --- |
+| `library` | A Rust workspace that commits no `Cargo.lock`, and an npm workspace |
+| `application` | A Rust binary crate that commits its lock, and an npm workspace |
+| `tool` | A library workspace whose binaries are also baked into the run-container images; depended on as a library is |
+| `shell` | A Tauri workspace, a Rust shell crate that commits its lock plus an npm workspace, building desktop and Android bundles; depends on nothing of the project at build time |
+| `site` | An npm workspace and no Rust |
+| `content` | No Rust, and an npm workspace of the tools its content is authored with |
+
+`cold-storage` is a submodule too, and the kit renders nothing into it.
 
 ## The repositories
 
 | Repository | Kind | What it holds |
 | --- | --- | --- |
-| `contracts` | library | The data contracts: the run record, the asset contract and the shapes the components exchange |
-| `engines` | library | The authored engines, the voxel and particle runtimes and the case harness |
-| `gg` | application | The in-container coding harness |
-| `platform` | application | The CLI and the services: backend, dispatcher, driver, artifacts and arena |
-| `web` | application | The web console, the gallery, the UI library and the run statistics |
+| `contracts` | library | Every wire and file shape and its validation, the suite runtime, telemetry, redaction, the backend's client, both generators and the packages they write |
+| `engines` | library | The authored engines and their manifests, the voxel, particle and lattice playback runtimes, the case harness, and the adversarial and performance runtimes with the match runner |
+| `ui-common` | library | `@clockwyrks/ui` and `@clockwyrks/run-stats` |
+| `tool-model-core` | tool, library only | `model-core`, `voxel-mesh`, `model-skin` |
+| `tool-sprite` | tool | `draw` (`draw`, `draw-sheet`) |
+| `tool-paint` | tool | `paint`, the UI and material binaries |
+| `tool-voxel` | tool | `voxel`, `voxel-anim` |
+| `tool-mc` | tool | `mc`, `mc-anim`, `mc-skin` |
+| `tool-sn` | tool | `sn`, `sn-anim`, `sn-skin` |
+| `tool-dc` | tool | `dc`, `dc-anim`, `dc-skin` |
+| `tool-particle` | tool | `particle-core`, `particle-2d`, `particle-3d` |
+| `tool-audio-core` | tool, library only | `audio-core` |
+| `tool-sfx-synth` | tool | `sfx-synth` |
+| `tool-sfx-sample` | tool | `sfx-sample` |
+| `tool-music` | tool | `music` |
+| `microservice-backend` | application | `tcab-backend` and its ingest sidecar |
+| `microservice-dispatcher` | application | `tcab-dispatcher` |
+| `microservice-driver` | application | `tcab-driver`, the run engine, and the `tcab` CLI as a second binary |
+| `microservice-artifacts` | application | `tcab-artifacts`, the write-through store of run trees and the one writer of both object stores |
+| `microservice-repos` | application | `tcab-repos`, the write-through store of run implementations as git bundles and the public push |
+| `microservice-publisher` | application | `tcab-publisher`, the per-publish Job |
+| `microservice-arena` | application | `tcab-arena` |
+| `gg` | application | gg, its SDKs, the program-language toolchains, the sandbox packages and artifact crates, the `agent-prompts` and `gg-sdk-documentation` skills, and gg's documentation pages |
 | `the-spec-cabinet` | application | The authoring tool for test suites |
+| `testcabinet.ai` | site | The public gallery, the `tcab.ai` share-link Worker and the gallery's preview-tag Worker |
+| `console.testcabinet.ai` | site | The operator console |
 | `gg.rocks` | site | gg's public site |
-| `test-suites` | content | The test cases and game jams |
+| `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
+| `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-`contracts` is checked out at `contracts/`. It holds
-`crates/contracts` (`test-cabinet-contracts`, with its fixtures),
-`crates/suites` (`test-cabinet-suites`, the test suite runtime, which depends
-on `test-cabinet-contracts` and on no `platform` crate, so `platform` and The Spec
-Cabinet run the same suite logic), `crates/contract-codegen`, which generates
-from the contracts crate alone, the two packages it generates,
-`packages/run-record` and `packages/asset-contract`, and their JSON Schemas under
-`schema/`. The other repositories are still the superrepo's own directories.
-`platform`'s side of the cut with `contracts` is `crates/api-codegen` and the
-package it generates, `packages/backend-api` (`@clockwyrks/backend-api`), which
-is the one package `web` takes from `platform`.
+Every repository but `contracts`, `test-suites` and `cold-storage` is still a
+directory of the superrepo's own tree today.
 
-The kind decides a repository's shape. A library carries a Rust workspace and
-commits no `Cargo.lock`; an application carries one and commits its lock. A
-site carries an npm workspace and no Rust, and a content repository carries
-neither. `cold-storage` is a submodule too, and the kit renders nothing into
-it.
+### Where each responsibility lives
+
+`contracts` is checked out at `contracts/` and holds:
+
+- `crates/contracts` (`test-cabinet-contracts`): the run record, the asset
+  contract, the harness contract (gg's types, the session record and journal,
+  metrics), code analysis, cold storage, the showcase, the toolchain report,
+  the layout of a run tree, the test case and suite formats, the job API and
+  publish-job API wire types, the reference lock format, the match-play shapes,
+  the ingest wire structs, `AssetPreview`, `Writeup` and its parser,
+  `SEED_COMMIT_MESSAGE`, `RUN_IMAGE_OVERRIDE_ENVS`, `MODALITY_IMAGE`, the
+  harness display names, the key names redaction scrubs, the `proof_*` naming
+  rules and the `find_build_output` layout rules, and the asset-reference key
+  layout. Its `fixtures/` holds the scoring goldens.
+- `crates/suites` (`test-cabinet-suites`): the suite runtime. Resolving and
+  validating a suite, the engine catalog resolution, the browser driver, the
+  vitest validator, the `test_case`, `test_case_group` and `test_suite`
+  loaders, `prompt` rendering and the color parsers a test case needs. A
+  browser call takes the traceparent from its caller. It names no engine
+  table; `engines` publishes `built_in_catalog`, which binds this crate's
+  catalog to the authored engines, and a caller that needs the built-in
+  catalog takes it from `engines`.
+- `crates/telemetry`: the OpenTelemetry plumbing every service initializes.
+- `crates/redact`: secret scrubbing.
+- `crates/backend-client`: the backend's HTTP client over the contract types,
+  used by the driver, the CLI, the arena and the publisher.
+- `crates/contract-codegen` and `crates/api-codegen`, with the packages they
+  write, `packages/run-record`, `packages/asset-contract` and
+  `packages/backend-api`, and the JSON Schemas under `schema/`.
+
+`engines` holds the engine catalog (`built_in_catalog`, published by its
+engines crate), the `simple-*` and `structured-*` packages, `case-harness`,
+`voxel-runtime`, `particle-runtime`, `lattice-runtime` (the browser playback
+of a factory, with `lattice-core` compiled to its playback ABI), and
+`foray-core`, `foray-host`, `lattice-core` and `lattice-host` with the
+match-play logic and the foray and lattice reference controllers and SDKs.
+
+`test-suites` holds the authored content and, as `tools/lattice-designer`, the
+lattice factory designer: the dev-only tool a performance scenario is laid out
+with, which runs the layout through `@clockwyrks/lattice-runtime` as it is
+drawn and saves it in place as one of the lattice version's scored scenarios.
+See [the factory
+designer](/testing/performance/lattice/architecture/#the-factory-designer).
+
+`microservice-driver` holds the run engine: `RunEngine` and its lib root,
+execution, the container runtimes, seeding, the harnesses and the harness
+registry with their telemetry, the orchestrators, events and the exec stream,
+gg's launch and session assembly, the install and lockfile checks, the
+post-run stages, the audio and toolchain stages, the three validators
+(validation, adversarial and performance), preview rendering, reference
+rendering with the reference renderer and version
+materialization, salvage, code analysis and the local half of the run record.
+For the CLI binary it also holds the remote backend, the asset-reference
+builder and the Pages build deploy helper.
+
+`microservice-backend` holds the review and comparison scoring with its
+aggregation and gating, pricing, TCQ (`gg_query`), model-id canonicalization,
+the publish and auto-publish orchestration, the public snapshot's composition
+(documents, media, index objects and short codes, written through
+`microservice-artifacts`), the Access assertion check and what of accounts the
+Access identity needs, `entities` (the SeaORM models), `migration` and
+`db-auth`.
+
+`microservice-artifacts` holds the playable serving and the object-store
+writer; `microservice-repos` the git half of a publish; and
+`microservice-publisher` the Pages half. Each owner defines its own error
+type.
+
+gg's version is a pinned gg version declared once in the driver, independent
+of any crate version. The driver image fetches that release from the blob
+container, and the backend image fetches `gg-reference` the same way; see
+[Releasing gg](/development/releasing/#releasing-gg).
 
 ## The edges
 
@@ -49,31 +156,60 @@ manifest names: a Rust dependency on another repository's crate, or an npm
 dependency on a package another repository produces.
 
 ```text
-contracts        -> nothing of this project
-engines          -> contracts (crates, and of the packages @clockwyrks/asset-contract alone)
-gg               -> contracts
-platform         -> contracts, engines
-web              -> contracts, engines, platform (@clockwyrks/backend-api alone)
-the-spec-cabinet -> contracts, engines, web (@clockwyrks/ui alone)
-test-suites      -> engines (packages alone)
-gg.rocks         -> nothing of this project
+contracts               -> nothing of this project
+engines                 -> contracts
+ui-common               -> contracts, engines (the voxel and particle runtimes)
+tool-model-core         -> contracts (the asset-contract types)
+tool-sprite             -> contracts
+tool-paint, tool-voxel, tool-mc, tool-sn, tool-dc, tool-particle
+                        -> contracts, tool-model-core
+tool-audio-core         -> contracts
+tool-sfx-synth, tool-sfx-sample, tool-music
+                        -> contracts, tool-audio-core
+microservice-backend    -> contracts, engines (the built-in catalog, for ingest)
+microservice-dispatcher -> contracts
+microservice-driver     -> contracts, engines, tool-sprite, tool-voxel,
+                           tool-model-core, tool-audio-core
+                           (seeding, previews, validation, audio staging)
+microservice-artifacts  -> contracts
+microservice-repos      -> contracts
+microservice-publisher  -> contracts
+microservice-arena      -> contracts, engines
+gg                      -> contracts
+the-spec-cabinet        -> contracts, engines, ui-common
+testcabinet.ai          -> contracts (run-record), engines (runtimes), ui-common
+console.testcabinet.ai  -> contracts (run-record, backend-api), engines, ui-common
+client-tauri            -> nothing of this project (it loads the console by URL)
+test-suites             -> engines (packages alone; the validators and the
+                           designer import them)
+gg.rocks                -> nothing of this project
 ```
 
-No repository depends on gg at build time: `platform` runs a pinned release of
+No repository depends on gg at build time: the driver runs a pinned release of
 its binary. The table is `edges.py` in the kit's `ci` library
 (`templates/repository/ci/src/the_test_cabinet_ci/edges.py`), with the kind of
 every repository and the package each `@clockwyrks/` name is produced by.
 
 A data edge is one no manifest can name, such as a run reading a suite or the
-CLI pinning gg's released binary. The table records them beside the build
+driver pinning gg's released binary. The table records them beside the build
 edges, and the superrepo's `dependency-graph` gate reports them.
 
 ```text
-platform -> test-suites          ingest, and the files the performance image copies
-platform -> gg                   the pinned released binary
-test-suites -> platform          the sample packs the audio declarations resolve against
-web -> test-suites               the replay assets the console vendors
-the-spec-cabinet -> test-suites  the suite being authored
+microservice-backend -> test-suites              ingest
+microservice-driver -> gg                        the pinned released binary
+microservice-driver -> tool-*                    the tool images
+test-suites -> microservice-backend              the sample packs
+console.testcabinet.ai -> test-suites            the vendored sprite atlas and
+                                                 reference scenarios
+the-spec-cabinet -> test-suites                  the suite being authored
+client-tauri -> console.testcabinet.ai           the URL it loads
+microservice-driver -> microservice-artifacts, microservice-repos
+                                                 HTTP, the run tree and bundle uploads
+microservice-backend -> microservice-artifacts, microservice-repos
+                                                 HTTP, the dataset writes and the
+                                                 bundle reads it serves
+microservice-publisher -> microservice-artifacts, microservice-repos
+                                                 HTTP, during a publish
 ```
 
 Two gates hold the edges. Each repository's `dependency-edges` gate reads its
@@ -117,36 +253,23 @@ feed as the registry of the `@clockwyrks` scope.
 
 ## Inside the superrepo
 
-The superrepo's own workspaces, which hold every repository not yet split out,
-build against a checked-out repository by path. Its Cargo crates name
-`contracts`' crates as `path = "../../contracts/crates/<crate>"`, its root
-`Cargo.toml` lists `contracts` under `exclude`, since that directory is a
-workspace of its own, and its root `package.json` lists `contracts/packages/*`
-among its workspaces. So a build inside the superrepo compiles the checkout at
-the commit the superrepo pins, and neither the feed nor a git source is
-fetched for it.
-
 Cargo reads `.cargo/config.toml` from every parent of the directory it runs in,
 so a build inside a submodule inherits the superrepo's. Its `[patch]` tables
 redirect each repository's public source to the sibling checkout, so a change
-to `contracts` is seen by a build of `platform` the moment it is saved. The tables
-sit between two marker lines of the superrepo's configuration, which also holds
-the monorepo's own aliases and build settings, and
-`scripts/repos/sources.py patch-table --write` writes them.
+to `contracts` is seen by a build of `microservice-driver` the moment it is
+saved. The tables sit between two marker lines of the superrepo's
+configuration, and `scripts/repos/sources.py patch-table --write` writes them.
 
 A repository that is not checked out has its table written as a comment.
 Cargo loads every patch path eagerly, so an entry naming a missing directory
 fails every build under the superrepo. An active table applies to every Cargo
 workspace beneath the superrepo, and a workspace that does not use an entry
 records it in its lock as `[[patch.unused]]`, at the patched crate's version.
-So the locks of the workspaces nested under `packages/` (gg's guest and its
-Rust library set, which gg's build resolves with `--locked`) carry those
-entries. `[net] git-fetch-with-cli` joins the
-block once an entry is active: cargo still fetches a patched source to resolve
-the lock file, and while the mirrors are private
-`scripts/repos/sources.py rewrites --apply` sends each mirror's fetch to its
-Azure remote through the user's git configuration, which only the command-line
-fetch reads.
+`[net] git-fetch-with-cli` joins the block once an entry is active: cargo still
+fetches a patched source to resolve the lock file, and while the mirrors are
+private `scripts/repos/sources.py rewrites --apply` sends each mirror's fetch
+to its Azure remote through the user's git configuration, which only the
+command-line fetch reads.
 
 `.package-links.json` is the npm counterpart. It names every package the npm
 workspace of each checked-out repository produces, a repository's workspace
@@ -159,10 +282,8 @@ The `dependency-graph` gate holds the three together. Every submodule is a
 repository of the table or one the kit renders nothing into; the patch table
 covers every repository carrying a crate; and a checked-out repository carries
 its record, a patch entry per crate it declares, manifests its edges permit,
-CI image pins this checkout names, and package links that are current. With a
-repository carrying crates checked out, the superrepo's `Cargo.lock` is current
-against it (`cargo metadata --locked --offline`). A submodule that is not
-checked out is noted and passed over.
+CI image pins this checkout names, and package links that are current. A
+submodule that is not checked out is noted and passed over.
 
 ## The record of what builds together
 
@@ -179,27 +300,18 @@ every patch table and writes it back.
 
 ### Bumping a pin
 
-The superrepo's `Cargo.lock` records the version and the dependencies of every
-crate its workspace reaches by path, and its `package-lock.json` those of every
-package its npm workspace holds. A pin bump that changes either leaves both
-stale, and every `--locked` cargo command and `npm ci` then fails. So a commit
-that moves the `contracts` pin carries, in the same commit:
+A commit that moves a repository's pin carries, in the same commit:
 
-1. the gitlink, a commit on `contracts`' `master`
+1. the gitlink, a commit on the repository's `master`
    (`git -C contracts checkout <commit>`);
-2. the root lock, updated for the three crates:
-   `cargo update --offline -p test-cabinet-contracts -p test-cabinet-suites -p contract-codegen`;
-3. each nested lock under `packages/`, rewritten by
-   `cargo metadata --offline --format-version 1` in its directory, when a
-   crate's version moved;
-4. `npm install` at the root, and the `package-lock.json` it writes;
-5. the matching `ciImageTag`, when the `contracts` pipeline's image pin moved,
+2. in every checked-out application that depends on it, the lock resolved
+   again by its `scripts/resolve-lock.sh`, when a crate's version moved;
+3. the package links, rewritten by `scripts/repos/link-packages.sh`, when a
+   package moved;
+4. the matching `ciImageTag`, when the repository's pipeline's image pin moved,
    which the `dependency-graph` gate requires.
 
-The `dependency-graph` gate names a stale root or nested `Cargo.lock` at commit
-time, and the
-`web-browser-test` gate a `playwright` pin of `contracts` that differs from the
-image's.
+The `dependency-graph` gate names a stale lock or a stale link at commit time.
 
 ## The kit
 
@@ -215,30 +327,32 @@ other value a file needs is derived from those by `scripts/repos/context.py`,
 the template's context extension, from the tables `scripts/repos/render.py`
 and the kit's `edges.py` hold:
 
-- the scaffolded crate, `crates/<directory>` with the package name the
-  monorepo gives it (`crates/cli` and `test-cabinet-cli` for `platform`);
+- the scaffolded crate, `crates/<directory>` with the package name the crate
+  carries (`crates/driver` and `test-cabinet-driver` for `microservice-driver`);
 - the workspace's dependencies along the repository's Rust edges;
 - the pipeline's repository resources, the closure of those edges;
-- the CI images, at the commit `ci/images/tags.yml` pins as `ciImageTag`, with
-  the Rust job in the `rust-browser` image for a repository whose suite drives
-  a browser and in the `rust` image otherwise (`RUST_TRACKS` in `render.py`);
+- the CI images, at the commit `ci/images/tags.yml` pins as `ciImageTag`: the
+  Rust job runs in the `rust-browser` image for a repository whose suite drives
+  a browser, in the `android` image for a `shell`, and in the `rust` image
+  otherwise (`RUST_TRACKS` in `render.py`);
 - the Windows job, for a repository `WINDOWS_TESTS` names;
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
+- for a `tool`, the image job that bakes its binaries, and for a `shell`, the
+  bundle jobs;
 - the mirror, the feed and the branches.
 
-A crate's workspace uses resolver `"3"`, the monorepo's, and sets
-`publish = false` under `[workspace.package]`, since a crate is consumed by its
-git source. `.cargo/config.toml` documents the private items
-(`[build] rustdocflags = ["--document-private-items"]`), as the superrepo's
-does, so the `rust-doc` gate judges the same documentation inside the
-superrepo and in the pipeline. The root `.gitattributes` opens with
-`* text=auto eol=lf`, so every text file checks out with LF on every host, and
-declares the binary formats after it. Every repository carries the superrepo's
-MIT `LICENSE`, the license its crates and packages declare. The commit hooks'
-large-file check leaves out `history/commit-map`, the map an extracted
-repository commits from its history's rewrite, which is larger than the check's
-500 KB.
+A crate's workspace uses resolver `"3"` and sets `publish = false` under
+`[workspace.package]`, since a crate is consumed by its git source.
+`.cargo/config.toml` documents the private items
+(`[build] rustdocflags = ["--document-private-items"]`), so the `rust-doc` gate
+judges the same documentation inside the superrepo and in the pipeline. The
+root `.gitattributes` opens with `* text=auto eol=lf`, so every text file checks
+out with LF on every host, and declares the binary formats after it. Every
+repository carries the superrepo's MIT `LICENSE`, the license its crates and
+packages declare. The commit hooks' large-file check leaves out
+`history/commit-map`, the map an extracted repository commits from its
+history's rewrite, which is larger than the check's 500 KB.
 
 A file a kind does not carry has a conditional name that renders to nothing,
 and a kind carrying no crate is rendered no workspace and no Rust gate.
@@ -264,9 +378,8 @@ gate installs the workspace with `npm ci`, which requires the lock, and the
 first `uv run --project ci` would otherwise leave `ci/uv.lock` untracked, as
 the superrepo commits its own. A repository whose first commit is made by hand
 runs `npm install` at its root and `uv lock --project ci`, and commits the
-locks they write. `protect.py` creates `staging` and
-`nightly` and copies the superrepo's branch policies onto `master` and
-`staging`.
+locks they write. `protect.py` creates `staging` and `nightly` and copies the
+superrepo's branch policies onto `master` and `staging`.
 
 A kit change reaches a repository through a three-way merge:
 
@@ -291,21 +404,28 @@ The kit renders the gate runner into every repository, with these gates:
 | `dependency-edges` | The manifests against the repository's edges |
 | `typescript` | The npm workspace at the root, in a kind carrying one: installed from its lock, built, type-checked and tested |
 | `playwright-image` | On a Rust track that drives a browser: the workspace's `playwright` finds the browser the image carries |
+| `build-context` | In a kind that builds an image: every Dockerfile's `COPY` sources and its Rust pins |
 | `markdownlint`, `cspell`, `format` | The prose and the formatting |
 | `python-lint`, `ci-tests`, `shell-tests`, `no-nul-bytes` | The gate runner and the scripts |
 
-A repository may add gates of its own, such as `contracts`' `contract-drift`.
-The gate is a file the repository writes under `ci/gates/`, and the kit leaves
-it to the repository; `EXTRA_GATES` in `render.py` names it and the job it
-runs in, and the render gives it one step there. Every gate a repository adds
-is hookless, and the rendered `ci/tests/test_wiring.py` holds each to its one
-step.
+A repository may add gates of its own, such as `contracts`' `contract-drift`,
+`engines`' `seeded-contract` or `test-suites`' `frozen-paths`, `spec-prose`,
+`spec-vocabulary`, `audio-packs` and `validators-typecheck`. The gate is a file
+the repository writes under `ci/gates/`, and the kit leaves it to the
+repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and
+the render gives it one step there. Every gate a repository adds is hookless,
+and the rendered `ci/tests/test_wiring.py` holds each to its one step.
 
 A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the
-Rust job and every other check in the checks job, inside the web image. A tag's
-run then publishes each public package of the workspace to the feed, at the
-version its manifest carries, which is the tag's.
+Rust job and every other check in the checks job, inside the web image. On
+`master` and `staging` an application's run then builds its image and pushes
+it to the registry as `<name>:<commit>`, and a tool's run builds the image
+carrying its binaries the same way. A tag's run publishes each public package
+of the workspace to the feed, at the version its manifest carries, which is
+the tag's, and an application's or shell's tag publishes its binaries or
+bundles as pipeline artifacts of that run; see
+[Releasing](/development/releasing/).
 
 A repository's pipeline names each CI image it runs in by commit,
 `ubuntu-the-test-cabinet-<track>-cicd:<commit>`, at the `ciImageTag` of the
@@ -344,6 +464,11 @@ image the superrepo's devcontainer names as `PLAYWRIGHT_IMAGE`, so an image
 bump that moves that image's tag moves the `playwright` devDependency of each
 such repository in the same change as the `render.py --update` that brings the
 new pins.
+
+A `shell` runs its Rust job and its bundle jobs in the `android` image, the
+Rust image with the Android SDK and NDK and Tauri's build tools on top, which
+the superrepo's image pipeline builds for that kind alone. The desktop bundles
+of the other platforms are built on hosted agents of each platform.
 
 A repository `WINDOWS_TESTS` names runs its suite on Windows too, in the
 `windows` job of the gates stage on a hosted `windows-2022` agent. The job runs

@@ -52,5 +52,5 @@ There is no simulation seed. A particle effect is simulated live rather than
 baked, so it varies slightly from one play to the next, exactly as a real
 particle editor plays a system.
 
-Core emits the authored `system.json`, the emitter, force, and curve definition
+The driver emits the authored `system.json`, the emitter, force, and curve definition
 the review UI and a game simulate live. It is not manifest-declared.

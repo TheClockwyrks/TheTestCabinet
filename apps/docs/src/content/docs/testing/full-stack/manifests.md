@@ -105,7 +105,7 @@ both halves required, and naming one pack twice is an error. `sample_rate`,
 emits, while a full-stack run emits as many clips as its game needs.
 
 A version carrying no `[audio]` table at all receives a fixed set pinned in
-`crates/core`: `combat-core@0.1.0`, `gm-lite@0.1.0`, `cinematic@0.1.0`, and
+the `contracts` crate: `combat-core@0.1.0`, `gm-lite@0.1.0`, `cinematic@0.1.0`, and
 `synthwave@0.1.0`, in that order. The set is pinned by ref rather than read from
 `containers/sample-packs/`, so publishing a pack leaves it unchanged and a
 [frozen](/development/frozen-versions/) version keeps the palette it was

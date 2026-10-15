@@ -9,8 +9,8 @@ it was launched from, so a study is a sweep over configurations and the [query
 language](/gg/analysis/query-language/) can slice results by one.
 
 gg is headless, so the console is the only place a configuration is authored. It
-lives in the account section, with the rest of an operator's saved, reusable,
-account-scoped tooling, rather than being reassembled inside every launch form.
+lives with the rest of an operator's saved, reusable tooling, scoped to the
+signed-in identity, rather than being reassembled inside every launch form.
 
 ## Registering one
 
@@ -452,14 +452,14 @@ setting per agent profile.
 
 ## Storage
 
-Configurations are per-account and private, stored by the backend:
+Configurations are per-identity and private, stored by the backend:
 
-| Endpoint                  | Purpose                       |
-| ------------------------- | ----------------------------- |
-| `GET /gg/configs`         | The account's configurations. |
-| `POST /gg/configs`        | Register one.                 |
-| `PUT /gg/configs/{id}`    | Update one in place.          |
-| `DELETE /gg/configs/{id}` | Delete one.                   |
+| Endpoint                  | Purpose                        |
+| ------------------------- | ------------------------------ |
+| `GET /gg/configs`         | The identity's configurations. |
+| `POST /gg/configs`        | Register one.                  |
+| `PUT /gg/configs/{id}`    | Update one in place.           |
+| `DELETE /gg/configs/{id}` | Delete one.                    |
 
 A configuration is stored with every agent written out in full, alongside the
 saved agent each imported profile follows and the fields it overrides.
@@ -475,7 +475,7 @@ Picking gg in the Orchestrator selector switches the form into the gg run
 mode:
 
 - The per-row Harness column becomes a gg configuration column, offering
-  the account's configurations.
+  the identity's configurations.
 - The row grows one model picker per launch slot the chosen configuration
   exposes: its [configuration slots](#configuration-slots), then the
   [passthrough](#configuration-slots) slots of its agents. Each is labelled with
@@ -580,7 +580,7 @@ value, and each of them is a declaration gg would otherwise read past:
   what a roster entry says, and an entry permitting nothing is a delegation the
   document describes and the run cannot make.
 
-The [orchestrator](/orchestrators/overview/) dimension does not apply to a gg
+The [orchestrator](/components/driver/orchestrators/) dimension does not apply to a gg
 run (see [Overview](/gg/overview/#how-gg-fits-into-the-test-cabinet)). gg is
 offered in that selector because that is where an operator says how a run is
 conducted, which makes it the one place the choice belongs. gg is offered for

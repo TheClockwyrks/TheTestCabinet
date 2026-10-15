@@ -2,15 +2,15 @@
 title: Coverage Plans
 ---
 
-A **coverage plan** is an account's standing declaration of the runs it wants to
-exist: a set of [pinned cases](#pinned-cases) crossed with a set of
+A **coverage plan** is a reviewer's standing declaration of the runs it wants
+to exist: a set of [pinned cases](#pinned-cases) crossed with a set of
 [combinations](#combinations), plus a target number of runs for each
 `case × combination` **cell**. The backend expands that declaration into a
 matrix, counts what already exists against it, and launches the missing runs
 when its owner asks it to [fill](#filling-a-plan) the plan.
 
-Plans are per [account](/components/backend/overview/#authentication) and an
-account may hold many. Their members are normally pointers to reusable **coverage
+Plans are per [reviewer identity](/components/backend/overview/#identity) and
+a reviewer may hold many. Their members are normally pointers to reusable **coverage
 groups**, where a group holds either combinations or pinned cases, so one saved
 set of models can drive several plans and editing the group reshapes all of them
 at once. A plan may also pin one-off members directly, and the two sets are
@@ -33,19 +33,19 @@ The validation scripts are assumed correct, so a run's result is known the momen
 it finishes. Reviews never gate, meter, or trigger the launching of runs on a plan
 or a ladder. A review stays an optional label: an aesthetic rating, a writeup, or
 checklist overrides. A completed validator-rated run
-[publishes itself](/components/core/results/#automatic-publishing) when it
+[publishes itself](/components/backend/results/#automatic-publishing) when it
 finishes, whatever launched it, and publishing any other run reads reviews as
-described in [Results](/components/core/results/).
+described in [Results](/components/backend/results/).
 
-"Unreviewed" means there is no [review](/components/core/results/#reviews) row
-for the requesting account, so two reviewers pointed at the same cabinet share its
-runs and keep separate review queues.
+"Unreviewed" means there is no [review](/components/backend/results/#reviews) row
+for the requesting reviewer, so two reviewers pointed at the same cabinet share
+its runs and keep separate review queues.
 
 ## Pinned cases
 
 A plan's case axis is a set of pinned cases, and a pin names four things: a
 [test case](/testing/overview/)'s slug, an exact version, a variant of that
-version, and the [engine](/components/core/engines/) its runs are built on. A pin
+version, and the [engine](/components/engines/engines/) its runs are built on. A pin
 that names no engine covers the `none` engine.
 
 The engine is part of the pin because a result is only comparable with another
@@ -64,7 +64,7 @@ shapes:
 
 - a **harness combination**: a harness, the model it runs, and a provider for a
   provider-routed harness;
-- a **gg combination**: a [gg configuration](/gg/configurations/) the account has
+- a **gg combination**: a [gg configuration](/gg/configurations/) the reviewer has
   saved, plus a model for each
   [launch slot](/gg/configurations/#configuration-slots) that configuration asks
   for.
@@ -75,7 +75,7 @@ third-party harness and the same case under a gg configuration are two cells,
 each counted on its own and each asking for `runsPerCell` runs.
 
 A gg combination is launched like everything else. The launch pass resolves the
-configuration as the account saved it at that moment, binds its launch slots to
+configuration as the reviewer saved it at that moment, binds its launch slots to
 the models the member names, and enqueues a gg run carrying that capability set.
 
 ### What identifies a gg cell
@@ -84,7 +84,7 @@ A harness cell is identified by `case@version/variant/engine × harness/model`. 
 gg cell adds the configuration's id and the models the bound set runs on.
 
 The id is the identity because an operator renames a configuration freely and two
-of an account's configurations may carry one name. A
+of a reviewer's configurations may carry one name. A
 [ladder's climber key](/components/backend/ladders/#climbers) names a
 configuration by its id as well, so a member, the cell counted for it, and the
 climber that carries its results all resolve to the same configuration. The name
@@ -97,8 +97,8 @@ and differ on a reviewer's are two arms of a study, and a cell reading only the
 root model would merge them.
 
 Every endpoint that enqueues a run refuses a launch naming a configuration the
-launching account does not own. Counts are global, so an id recorded by an
-account that cannot resolve it would satisfy a cell of somebody else's plan.
+launching reviewer does not own. Counts are global, so an id recorded by a
+reviewer that cannot resolve it would satisfy a cell of somebody else's plan.
 
 ### A member that cannot be launched
 
@@ -106,7 +106,7 @@ A gg member stops being launchable when the configuration it names has been
 deleted, when it leaves a launch slot unbound, or when it binds a model the
 catalog can resolve no context window for. A harness member stops being
 launchable when the catalog can resolve no
-[list price](/components/core/metrics/#cost) for its model, and so does a gg
+[list price](/components/contracts/metrics/#cost) for its model, and so does a gg
 member binding such a model.
 
 The matrix reports the reason on the cell as `unlaunchable`, and a launch pass
@@ -250,7 +250,7 @@ the cases with the combinations, and returns one cell per pair:
 `pending` is a subset of `inFlight` rather than an addition to it, and is
 surfaced separately so that a plan at its limit with nothing running is
 distinguishable from a wedged dispatcher. A job sits `pending` when its harness
-is at its [parallelism cap](/components/core/harnesses/#per-harness-configuration),
+is at its [parallelism cap](/components/driver/harnesses/#per-harness-configuration),
 or when it is a [game jam](/testing/game-jam/overview/#repeat-runs) run of a model
 that already has a jam run in flight.
 
@@ -309,8 +309,8 @@ with everything else waiting on it. Its own jobs in flight are the jobs whose
 state is `queued`, `pending`, `dispatched`, `starting`, or `running`. Completed
 runs never occupy the limit, reviewed or not.
 
-The account's default is held by `GET`/`PUT /coverage-settings` as
-`inFlightLimit`, a bound of ten runs until the account chooses one. A plan or a
+The reviewer's default is held by `GET`/`PUT /coverage-settings` as
+`inFlightLimit`, a bound of ten runs until the reviewer chooses one. A plan or a
 ladder may override it. The limit is a tagged shape rather than a bare number:
 
 ```json
@@ -324,7 +324,7 @@ jobs are in flight, and its bound is clamped to a ceiling of 500 runs. An
 target and the harness parallelism preference still apply. A bound of `0`
 launches nothing.
 
-The override is nullable, and null is not zero. Null inherits the account's
+The override is nullable, and null is not zero. Null inherits the reviewer's
 setting, a bound of `0` launches nothing, and unbounded launches everything. Each
 is a distinct instruction.
 
@@ -398,7 +398,7 @@ not launch with why.
 ### Harness parallelism comes first
 
 The queue will not start a run whose harness is already at its
-[maximum parallelism](/components/core/harnesses/#per-harness-configuration), so
+[maximum parallelism](/components/driver/harnesses/#per-harness-configuration), so
 a walk that ignored the cap would hand the whole limit to the first harness it
 met and leave every other harness in the plan idle.
 
@@ -469,7 +469,7 @@ a halt reaches it.
 ## The scoped review queue
 
 `GET /coverage-plans/{id}/queue` returns the plan's completed runs the requesting
-account has not reviewed, in the order its cells are emitted rather than
+reviewer has not reviewed, in the order its cells are emitted rather than
 newest-first, so a case's repeats can be labelled side by side. Only the
 [cell's runs](#a-cells-runs) are offered, so a run beyond a cell's target never
 reaches the queue. The queue is
@@ -511,7 +511,8 @@ plan.
 
 A job records two nullable columns:
 
-- **`user_id`**, the account that launched it.
+- **`user_id`**, the [identity](/components/backend/overview/#identity) that
+  launched it.
 - **`origin`**, the plan or ladder that launched it, or null for a launch by
   hand from the run form.
 
@@ -541,8 +542,8 @@ failing block.
 
 ## Endpoints
 
-The plan surface, all auth-gated and keyed to the token's account, is specified
-in the [HTTP API](/components/backend/api/#coverage-plans-and-ladders): groups
-and plans, the matrix, the account-wide settings, filling, the per-cell retry,
+The plan surface, keyed to the caller's identity, is specified in the [HTTP
+API](/components/backend/api/#coverage-plans-and-ladders): groups and plans,
+the matrix, the reviewer-wide settings, filling, the per-cell retry,
 the scoped queue, and the two halting controls. The ladder counterparts are on
 the [Ladders](/components/backend/ladders/) page.

@@ -38,7 +38,7 @@ test-cases/asset-generation/<difficulty>/<slug>/<version>/
 
 A run seeds the brief, `<binary>.config.json`, and a `rig.json` pre-populated
 with the required animations alone, with the skinning binary on `PATH`. Its
-`--help` is the operation contract. Core emits the single `mesh.glb` and the
+`--help` is the operation contract. The driver emits the single `mesh.glb` and the
 filled `rig.json` on `render`. The case declares no `[[reference]]` and carries
 no target mesh.
 

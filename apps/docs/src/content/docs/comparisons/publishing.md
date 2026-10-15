@@ -3,36 +3,39 @@ title: "Publishing"
 ---
 
 Publishing puts a comparison, and optionally the runs behind it, on the public
-site, so a reader can drill from the comparison into an individual run.
-Comparisons are created and run from the web console; the public site renders them read-only.
+gallery, so a reader can drill from the comparison into an individual run.
+Comparisons are created and run from the console; the public gallery
+renders them read-only.
 
 ## Published objects
 
 The comparison record itself: its controls, arms, aggregated
 [statistics](/comparisons/statistics/), and
-[diagnostics](/comparisons/diagnostics/), folded into the public [R2
-snapshot](/components/backend/snapshot/).
+[diagnostics](/comparisons/diagnostics/), written into the public
+[snapshot](/components/backend/snapshot/).
 
 The runs behind it, each published like any other run, so a reader can open a
 single run's full record, events, and per-run diagnostics.
 
 ## Run publishing
 
-Publishing a run is a full release. Each published run spawns a per-publish
-`tcab-publisher` pod that creates a public GitHub repo for the source and a
-Cloudflare Pages deploy for the playable build
-(`crates/publisher/src/publish.rs`). Publishing a comparison's runs therefore
-means one pod, repo, and deploy per run, against GitHub and Cloudflare rate
-limits.
+Publishing a run is a full release. Each published run is one publish Job, run
+by `microservice-publisher`, which fetches the run's build output from the
+[artifacts service](/components/artifacts/overview/), deploys it to Cloudflare
+Pages, and has the [repos service](/components/repos/overview/) push the run's
+implementation to its public GitHub repository; see
+[Publish](/components/backend/results/#publish). Publishing a comparison's runs
+therefore means one Job, repository, and deploy per run, against GitHub and
+Cloudflare rate limits.
 
 `POST /comparisons/{id}/publish` enqueues one publish job per
 [counted](/comparisons/experiments/#which-runs-an-arm-holds) arm run and lets
-the dispatcher drain them through the existing queue (`POST /publish-jobs/next`
-→ pod → `POST /publish-jobs/{id}/result`). Run ids are deduplicated across arms
+the dispatcher drain them through the publish lane (`POST /publish-jobs/next`
+→ Job → `POST /publish-jobs/{id}/result`). Run ids are deduplicated across arms
 first, so a run shared by two arms is published once.
 
 A completed validator-rated arm run
-[publishes itself](/components/core/results/#automatic-publishing) when it
+[publishes itself](/components/backend/results/#automatic-publishing) when it
 finishes, so most of an arm's runs are public or releasing before the
 comparison is published. The comparison publish enqueues nothing for a run that
 is already published, and a run whose release is under way keeps the job it
@@ -50,8 +53,8 @@ and Cloudflare release, so the heavy case is the one to budget for.
 ## Review gate
 
 A completed legacy run needs at least one human
-[review](/components/core/results/#reviews) before it can be published;
-`gate_publishable` (`crates/backend/src/db.rs`) rejects a zero-review completed
+[review](/components/backend/results/#reviews) before it can be published;
+`gate_publishable` in `microservice-backend` rejects a zero-review completed
 legacy run. A completed
 [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run and the
 publishable failure states (catastrophic, timed out, harness error) are
@@ -77,35 +80,35 @@ tab states that no manual review has been written, the reviewer list is guarded
 on the review count, and the aggregate `rating` and `score` fields resolve to
 nothing. The run's automated validation results stay available on its own tabs.
 
-## Rendering the comparison on the public site
+## Rendering the comparison on the public gallery
 
-A published comparison is folded into the snapshot, like a game-jam aggregate.
+A published comparison is written into the snapshot, like a game-jam aggregate.
 
-The snapshot builder (`crates/backend/src/snapshot.rs`) emits one document per
-comparison at `<prefix>/comparisons/<id>.json` plus a `comparisons.json` index,
-scrubbed like every other public object. Each is assembled by the same
-`assemble_comparison` the internal `/comparisons` API uses, over the whole
-experiment's runs rather than only the published ones, so the public numbers
-match the console's exactly.
+The snapshot writer in `microservice-backend` emits one document per comparison
+at `<prefix>/comparisons/<id>.json` plus a `comparisons.json` index, scrubbed
+like every other public object and written through the artifacts service. Each
+is assembled by the same `assemble_comparison` the internal `/comparisons` API
+uses, over the whole experiment's runs rather than only the published ones, so
+the public numbers match the console's exactly.
 
-The static site reads those objects at build time
-(`apps/site/vite-plugin-snapshot.ts` and `apps/site/src/staticGallery.ts`),
-exactly as it inlines runs and cases. A snapshot published without a comparisons
-index renders as no comparisons rather than failing the build.
+The gallery reads the comparison index from the bucket and fetches each document
+by key, exactly as it reads runs and cases. An empty index renders as no
+comparisons.
 
-The pages under `packages/ui/src/app/pages/comparisons/` render for both hosts.
-Create, edit, trigger, and publish affordances are gated on `canExecute`
-(`GalleryDataInput`), which is true in the web console and false on the static
-site, so the same page is interactive internally and read-only publicly.
+The pages under `packages/ui/src/app/pages/comparisons/` in `ui-common` render
+for both hosts. Create, edit, trigger, and publish affordances are gated on
+`canExecute` (`GalleryDataInput`), which is true in the console and false on
+the gallery, so the same page is interactive internally and read-only publicly.
 
 ## Publish flow
 
 1. An operator builds and runs a [comparison](/comparisons/experiments/)
    internally, and its arms fill with auto-validated runs.
-2. The operator publishes it. The comparison is marked published, a publish job
-   is enqueued per publishable arm run, and the snapshot debounce is woken.
-3. The dispatcher drains the publish jobs. Each completed publish flips
-   `run.published` and wakes the snapshot debounce again.
-4. The [publisher](/components/backend/snapshot/) regenerates the R2 snapshot
-   with the comparison and its published runs, and fires the Cloudflare Pages
-   deploy hook. The public site rebuilds and the comparison is live, read-only.
+2. The operator publishes it. The comparison is marked published and a publish
+   job is enqueued per publishable arm run.
+3. The dispatcher drains the publish jobs. Each completed publish marks its run
+   published and writes the run's document, media, and short code into the
+   bucket.
+4. The backend writes the comparison's document and the updated index objects
+   through the artifacts service and swaps the `index.json` pointer. The gallery
+   reads the bucket at request time, so the comparison is live and read-only.

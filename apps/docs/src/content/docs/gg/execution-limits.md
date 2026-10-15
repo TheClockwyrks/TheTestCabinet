@@ -21,10 +21,10 @@ Five ceilings stop work:
 A ceiling is a safeguard, and a run is not expected to reach one. A run that
 breaches any of them, in any agent of its tree, stops early and gg exits `3`. The
 host records such a run as
-[`limit_exceeded`](/components/core/run-records/#status) and never retries it.
+[`limit_exceeded`](/components/contracts/run-records/#status) and never retries it.
 
 Five further bounds are declared, resolved and recorded with those five.
-[`maxParallel`](#parallelism) queues agents rather than stopping them,
+[`maxParallel`](#maxparallel) queues agents rather than stopping them,
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
 rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs),
 [`modelStreamIdleSecs`](#modelstreamidlesecs) and
@@ -152,7 +152,7 @@ configuration arms none.
 
 ## The ceilings
 
-### `maxParallel` {#parallelism}
+### `maxParallel`
 
 How many of the run's agents may run at once: the root and every subagent, issue
 implementer and reviewer, counted together regardless of which profile or model

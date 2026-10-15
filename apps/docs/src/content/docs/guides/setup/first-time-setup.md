@@ -4,12 +4,12 @@ title: First Time Setup
 
 ## Overview
 
-A fresh checkout reaches its first run once three things are in place: the
-toolchain builds, a backend with a dispatcher draining its queue is reachable,
-and an account exists to launch under.
+A fresh checkout reaches its first run once two things are in place: the
+toolchain builds, and a backend with a dispatcher draining its queue is
+reachable.
 
-`tcab` is an enqueue-and-watch client. `tcab run` posts the run to the
-[backend](/components/backend/overview/) queue, an in-cluster
+A run is launched from the [console](/components/web/overview/), which posts
+it to the [backend](/components/backend/overview/) queue; an in-cluster
 [dispatcher](/components/dispatcher/overview/) claims it, and a per-run
 [driver](/components/driver/overview/) Job executes it in an isolated sandbox
 pod. The container runtime, run-container image, and headless browser a run needs
@@ -20,19 +20,22 @@ guide is the task-oriented path over it.
 
 ## The `tcab` command
 
-Runs are driven by the `tcab` CLI (binary `tcab`, crate `test-cabinet-cli`).
+The `tcab` CLI, the second binary of the `microservice-driver` repository's
+`test-cabinet-driver` crate, inspects a run's inputs, validates and publishes
+references, and ingests the catalog; see the [CLI](/components/cli/overview/).
 There are two ways to invoke it:
 
-- A released binary, `tcab run …`. A tag's release-pipeline run publishes the
+- A released binary, `tcab …`. A tag of `microservice-driver` publishes the
   smoke-tested `tcab-linux` (static musl, `x86_64`) and `tcab-windows`
   artifacts; every other platform, macOS included, builds `tcab` from source
-  with `cargo build --release -p test-cabinet-cli` (see
+  with `cargo build --release -p test-cabinet-driver --bin tcab` (see
   [Releasing `tcab`](/development/releasing/#releasing-tcab)).
-- A source checkout, `cargo run -p test-cabinet-cli -- run …`. Everything after
-  `--` is passed to `tcab`. Use this form while working in the repository.
+- A source checkout, `cargo run -p test-cabinet-driver --bin tcab -- …`.
+  Everything after `--` is passed to `tcab`. Use this form while working in the
+  repository.
 
 Wherever a guide shows `tcab <args>`, the source-checkout equivalent is
-`cargo run -p test-cabinet-cli -- <args>`.
+`cargo run -p test-cabinet-driver --bin tcab -- <args>`.
 
 ## 1. Toolchain
 
@@ -40,15 +43,22 @@ Work inside the dev container, which carries the pinned toolchains. Before its
 first start, copy your host's file to `.devcontainer/.env` (`.env.macos` on a
 Mac, `.env.podman` on a Linux Podman host, none on an Ubuntu Docker host; see
 [The dev container](/development/running/#the-dev-container)). The image
-bakes in gg's program-language toolchains, so its first build takes a while and
-the container builds the whole workspace as soon as it is created.
+bakes in gg's program-language toolchains, so its first build takes a while. On
+creation `post-create.sh` installs the git hooks, initializes `contracts` and
+`test-suites`, runs `npm ci` and links the checked-out repositories' packages,
+and nothing builds in the background.
 
-The repository is both a Cargo (Rust) and an npm (TypeScript) workspace. Build
-both once:
+The superrepo holds every repository as a submodule, and each is both a Cargo
+(Rust) and an npm (TypeScript) workspace where its kind carries one. Build the
+repository you work in from its own checkout, and link the TypeScript packages
+once so a consumer builds against its sibling checkouts (see
+[Building Rust](/development/building/#building-rust) and
+[Building TypeScript](/development/building/#building-typescript)):
 
 ```sh
-cargo build --workspace          # Rust: core, CLI, services
-npm install                      # TypeScript: installs every workspace
+cargo build --workspace          # in microservice-driver/: the driver and tcab
+npm ci && npm run build          # in engines/, and in each npm workspace you need
+scripts/repos/link-packages.sh   # at the superrepo root
 ```
 
 The pinned Rust toolchain is declared in `rust-toolchain.toml`. Every check is a
@@ -62,10 +72,9 @@ musl prerequisites.
 
 ## 2. A reachable backend
 
-`tcab run` requires `TCAB_BACKEND_URL` pointing at a backend whose queue a
-dispatcher is draining, and a logged-in account. For local development, stand
-that stack up on a k3d cluster, which runs its nodes as containers and so needs a
-container runtime on `PATH`:
+A run needs a console whose backend queue a dispatcher is draining. For local
+development, stand that stack up on a k3d cluster, which runs its nodes as
+containers and so needs a container runtime on `PATH`:
 
 ```sh
 export ANTHROPIC_API_KEY=…                  # the harness key the cluster gives the run
@@ -74,8 +83,11 @@ make -C deployments/local local-forward     # hold the data-plane port-forwards 
 export TCAB_BACKEND_URL=http://127.0.0.1:8787
 ```
 
-`local-forward` exposes the backend on `:8787`, auth on `:8789`, artifacts on
-`:8790`, the arena on `:8791`, and Grafana on `:3000`.
+`local-forward` exposes the backend on `:8787`, artifacts on `:8790`, the arena
+on `:8791`, repos on `:8792`, and Grafana on `:3000`. The local stack runs with
+no edge in front of it, so `tcab` presents no Access credential to it; a
+deployed environment is reached through its origin instead, see
+[Sign In](/quickstarts/setup/sign-in/).
 
 [Running the Local Service Stack](/guides/development/running-the-local-service-stack/)
 covers that stack in full. The harness provider key is supplied to the cluster,
@@ -89,19 +101,19 @@ Every run executes inside a run-container image selected by the test case's
 generation, and by its
 [`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) for full
 stack. The
-[harness](/components/core/harnesses/) is installed into that image at run time,
-so there is no per-harness image.
+[harness](/components/driver/harnesses/) is installed into that image at run
+time, so there is no per-harness image.
 
 The driver resolves and pulls the image from the registry and records the
-resolved digest in the [run record](/components/core/run-records/). The cluster
-resolves it from `TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG`, or a per-image
-`TCAB_CONTAINER_IMAGE_*` override; see
-[Execution](/components/core/execution/#containerization). Nothing has to be
+resolved digest in the [run record](/components/contracts/run-records/). The
+cluster resolves it from `TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG`, or a
+per-image `TCAB_CONTAINER_IMAGE_*` override; see
+[Execution](/components/driver/execution/#containerization). Nothing has to be
 built on the host to make a first run.
 
-`make -C deployments/local local-up` builds these images from `containers/` and
-imports them into the local cluster. Rebuild them after changing tooling that is
-baked into them:
+`make -C deployments/local local-up` builds these images from
+`microservice-driver/containers/` and imports them into the local cluster.
+Rebuild them after changing tooling that is baked into them:
 
 ```sh
 make -C deployments/local run-images              # every run image
@@ -110,18 +122,15 @@ make -C deployments/local run-image-voxel-animation   # a single image
 ```
 
 The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,
-`goose`, `kilo`, `opencode`, `pi`, and `gg`. List them with:
-
-```sh
-tcab harnesses          # human-readable table; add --json for machine output
-```
+`goose`, `kilo`, `opencode`, `pi`, and `gg`. The console's harness
+configuration view lists them with their readiness.
 
 ### The audio store
 
 A run whose case declares [audio packs](/testing/full-stack/manifests/#audio) is
 staged with them when its container starts, read from a host audio store. In a
-cluster the driver image carries the store. For a local `tcab run`, fetch it
-once:
+cluster the driver image carries the store. For a host-side `tcab validate`,
+fetch it once:
 
 ```sh
 az acr login --name testcabinet
@@ -141,9 +150,9 @@ falls back to that source on its own when the pull fails.
 
 ## 4. A headless browser
 
-The [validator](/components/core/validation/) and the reference renderer drive a
-Playwright browser. For a backend-driven run this happens inside the cluster. A
-host Chromium is required only for the local commands that render directly:
+The [validator](/components/driver/validation/) and the reference renderer drive
+a Playwright browser. For a backend-driven run this happens inside the cluster.
+A host Chromium is required only for the local commands that render directly:
 `tcab validate`, `tcab capture-baselines`, and `tcab publish-reference`. Install
 the pinned revision through the pinning workspace:
 
@@ -159,16 +168,11 @@ to the working directory. `TCAB_BROWSER_DRIVER` overrides that path.
 The CLI keeps two kinds of credential separate (see
 [CLI Authentication](/components/cli/overview/#authentication)):
 
-- Your account. `tcab` authenticates every mutating call with a bearer token
-  from the [auth service](/components/auth/overview/): launching a run,
-  reviewing, and publishing. Register and log in once:
-
-  ```sh
-  tcab register --username dev --display-name "Dev"   # or: tcab login --username dev
-  ```
-
-  The token is stored at `~/.config/tcab/credentials.json`, relocatable with
-  `TCAB_CONFIG_DIR`.
+- Your identity. A deployed environment sits behind Cloudflare Access, and
+  `tcab` presents an Access credential on every request to it: a user token
+  from `cloudflared access login`, or a service token for automation. The
+  local stack has no edge and needs neither. See
+  [Sign In](/quickstarts/setup/sign-in/).
 
 - The harness API key. Supplied to the cluster. The local stack reads the
   provider key from your environment or the repo-root `.env` and creates a Secret
@@ -180,27 +184,27 @@ The CLI keeps two kinds of credential separate (see
 
 ## 6. Make a first run
 
-With the stack up and forwarded, `TCAB_BACKEND_URL` set, and an account logged
-in:
+A run is launched from the console. With the stack up and forwarded, start the
+console from source and open <http://127.0.0.1:1430>; against a deployment,
+open its origin and sign in:
 
 ```sh
-tcab run \
-  --test-case carom --version v1.0.0 --variant base \
-  --harness claude --model claude-opus-4-8
+npm run dev   # in console.testcabinet.ai/
 ```
 
-This enqueues the run and prints the queued job id. The in-cluster driver seeds a
-fresh repository with the selected variant's specs and screenshots, hands the
-rendered prompt to the harness in a sandbox pod, then builds and
-[load-checks](/components/core/validation/#load-check) the result and runs the
-declared checks. `tcab` streams the live
-[event stream](/components/core/events/) throughout and prints the produced run
-record's summary when it finishes.
+Open the `carom` case, pick `v1.0.0` and the `base` variant, choose the `claude`
+harness and a model, and start the run. The console shows the queued job. The
+in-cluster driver seeds a fresh repository with the selected variant's specs and
+screenshots, hands the rendered prompt to the harness in a sandbox pod, then
+builds and [load-checks](/components/driver/validation/#load-check) the result
+and runs the declared checks. The console streams the live
+[event stream](/components/driver/events/) throughout and shows the produced
+run record's summary when it finishes.
 
-`--test-case`, `--version`, `--variant`, `--harness`, and `--model` are all
-required. `--max-runtime <hours>` overrides the case's default cap for this
-invocation. `--out-dir <dir>` also writes the fetched record to
-`<dir>/<run-id>.json`.
+`tcab` inspects the inputs a run is given without launching one: `tcab seed`
+leaves the seeded repository on disk, `tcab prompt` prints the rendered prompt,
+and `tcab validate` runs the case's validation over a produced tree, each
+naming the case by `--test-case`, `--version` and `--variant`.
 
 ## Next steps
 

@@ -71,7 +71,7 @@ the lock and is left alone.
 
 The audio bucket is private and distinct from the backend's public
 [snapshot](/components/backend/snapshot/) bucket. The snapshot bucket is
-public-read, so the site fetches it anonymously at build time; the audio objects
+public-read, so the gallery fetches it anonymously at runtime; the audio objects
 stay private. R2's public access is a per-bucket switch, so the two need
 separate buckets, and they have different writer identities and different blast
 radius. R2 charges no egress, so the fetch is free.
@@ -245,10 +245,11 @@ to Freesound.
 
 The lock is copied into the store beside the tree it describes, so the same check
 runs wherever the store ends up. [Staging a
-run](/components/core/execution/#staged-audio) verifies every clip it copies into
+run](/components/driver/execution/#staged-audio) verifies every clip it copies into
 a container against it.
 
-`./containers/build.sh audio-store` and the Azure pipeline both run the stager
+`containers/build.sh audio-store` in `microservice-driver/` and the Azure
+pipeline both run the stager
 and build the data-only `audio-store` image over its output. Run the stager on
 its own to materialize the tree without building.
 
@@ -256,7 +257,7 @@ its own to materialize the tree without building.
 node scripts/stage-audio-store.mjs                 # every published pack
 node scripts/stage-audio-store.mjs gm-lite@0.1.0   # only the refs you name
 
-./containers/build.sh audio-store                  # the image, locally
+microservice-driver/containers/build.sh audio-store   # the image, locally
 ```
 
 The `audio-store` image is what carries the store to a machine with no audio
@@ -282,7 +283,7 @@ take the bytes straight from the object store:
 make -C deployments/local audio-store
 make -C deployments/local local-rebuild
 
-# a host-side `tcab run` / `tcab validate`
+# a host-side `tcab validate`
 scripts/fetch-audio-store.sh --stage
 ```
 

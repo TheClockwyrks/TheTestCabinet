@@ -37,7 +37,7 @@ The capability is built in three layers, each with its own page.
 
 3. [Publishing](/comparisons/publishing/). A comparison, and optionally the runs
    behind it, is published to the public site so a reader can drill into an
-   individual run. Comparisons are created and run from the web console; the
+   individual run. Comparisons are created and run from the console; the
    public site renders them read-only.
 
 ## Design principles
@@ -52,8 +52,8 @@ Present data; never declare a winner. A comparison shows distributions, spreads,
 sample sizes, and per-run detail. It computes no verdict, crowns no winner, and
 asserts no ranking; the reader decides from the presented data. This extends the
 site-wide stance that [metrics measure resources, not
-rank](/components/core/metrics/), and that [a run is never reduced to a single
-number](/components/core/results/).
+rank](/components/contracts/metrics/), and that [a run is never reduced to a single
+number](/components/backend/results/).
 
 ## gg in comparisons
 

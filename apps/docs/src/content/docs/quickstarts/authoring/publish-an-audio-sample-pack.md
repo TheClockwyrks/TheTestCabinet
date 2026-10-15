@@ -67,12 +67,13 @@ verifies it against `objects.lock.json`, and lays out a shared clip tree under
 a failed presign, or a digest mismatch fails staging, and staging never contacts
 Freesound.
 
-`./containers/build.sh audio-store` runs the stager and builds the data-only
-image over its output. The Azure pipeline builds and pushes the same image to
-`testcabinet.azurecr.io` on every push to `master` and `staging`.
+`containers/build.sh audio-store` in `microservice-driver/` runs the stager and
+builds the data-only image over its output. The Azure pipeline builds and
+pushes the same image to `testcabinet.azurecr.io` on every push to `master` and
+`staging`.
 
 ```sh
-./containers/build.sh audio-store
+microservice-driver/containers/build.sh audio-store
 ```
 
 The driver image copies that store in, and `scripts/fetch-audio-store.sh` pulls it
@@ -83,7 +84,7 @@ The pipeline pushes that image once the pack reaches `staging` or `master`, so
 it is not something to wait for before trying the pack.
 `make -C deployments/local audio-store` builds the store the local driver image
 carries from this checkout, and `scripts/fetch-audio-store.sh --stage` does the
-same for a host-side `tcab run` — both straight out of the object store, with no
+same for a host-side `tcab validate` — both straight out of the object store, with no
 registry involved.
 
 ## Verify

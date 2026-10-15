@@ -198,7 +198,7 @@ Read the seeded output to confirm the new variant's set is self-contained, then
 lint the specs with `npm run lint:specs`.
 
 Every objective point the variant adds names a
-[validator](/components/core/validation/#validators), and a validator is only
+[validator](/components/driver/validation/#validators), and a validator is only
 worth having once it has been run against the variant's own reference
 implementation: a validator that fails there is a broken validator, not a failing
 build. Author the variant's reference implementation alongside its validators,

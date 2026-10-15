@@ -2,16 +2,16 @@
 title: Overview
 ---
 
-The particle runtime (`@clockwyrks/particle-runtime`, in
-`packages/particle-runtime`) is the shared TypeScript library that turns a
+The particle runtime (`@clockwyrks/particle-runtime`, in the `engines`
+repository) is the shared TypeScript library that turns a
 [particle](/testing/asset-generation/overview/#particle-effects) run's produced
 `system.json` into a playable effect. It simulates the effect live, stepping its
 emitters and forces and evaluating each particle's life curves every frame, so
 every play integrates forward from the authored description.
 
 It is a code-sharing library rather than a component: it ships no service and
-runs in no process of its own. Both the in-repo particle viewer that reviews
-particle runs and games that embed a produced effect consume it, so the
+runs in no process of its own. Both the UI library's particle viewer that
+reviews particle runs and games that embed a produced effect consume it, so the
 simulation math lives in one place.
 
 ## The pure-core and bindings split
@@ -36,7 +36,7 @@ radial-gradient discs into a `CanvasRenderingContext2D`, additive by default. It
 serves a `particle-2d` effect that composites into a flat scene.
 
 The core re-exports `InterpSpec`, the F-curve interpolation enum, from
-[`@clockwyrks/run-record`](/components/core/run-records/), so that shape has a
+[`@clockwyrks/run-record`](/components/contracts/run-records/), so that shape has a
 single source of truth. The rest of the `system.json` shapes are declared
 locally, matching the documented contract.
 

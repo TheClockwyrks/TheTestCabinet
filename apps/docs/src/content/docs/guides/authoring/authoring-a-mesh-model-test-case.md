@@ -76,7 +76,7 @@ action log, and a blank starting preview. The meshing binary is on its `PATH` an
 its `--help` is the operations contract, so no operations schema is seeded.
 
 The extracted triangle mesh the review viewer renders is emitted as a binary
-glTF, at a path core provides rather than the manifest, when the model runs
+glTF, at a path the driver provides rather than the manifest, when the model runs
 `render`.
 
 ## Procedure
@@ -121,8 +121,9 @@ Write `specs/brief.md`, a single self-contained file describing:
 A brief authored as `specs/brief.md.hbs` reads its volume from `{{voxel.width}}`,
 `{{voxel.height}}`, `{{voxel.depth}}`, and the inclusive maxima `{{voxel.maxX}}`,
 `{{voxel.maxY}}`, and `{{voxel.maxZ}}`. The shared quality directive
-(`ASSET_QUALITY_PREAMBLE` in `crates/core/src/prompt.rs`) is prepended to every
-asset-generation prompt at render time, so the brief stays factual.
+(`ASSET_QUALITY_PREAMBLE` in `contracts/crates/suites/src/prompt.rs`) is
+prepended to every asset-generation prompt at render time, so the brief stays
+factual.
 
 The rules that make a brief good:
 
@@ -178,7 +179,7 @@ Author `test-case.toml` per the
   binary renders the PNG to. It is a single file, such as `model.png`, with no
   `{part}` token.
 - `[output]` names the recorded operation log, a single file such as
-  `actions.json` with no `{part}` token. The extracted mesh is emitted by core.
+  `actions.json` with no `{part}` token. The extracted mesh is emitted by the driver.
 - `variants` is an ordered array of paths to standalone variant files, the
   first being the default (usually `base`). As a root key it precedes the first
   table header.

@@ -5,35 +5,40 @@ title: Overview
 The driver is the per-run executor: it runs exactly one test case and exits. The
 [dispatcher](/components/dispatcher/overview/) creates one driver `Job` per
 claimed run. The driver resolves the definition from the
-[backend](/components/backend/overview/), drives the run through the
-[core](/components/core/overview/), streams live progress back to the backend,
-uploads the produced tree to the [artifact
-service](/components/artifacts/overview/), and reports its terminal status
-carrying the produced [run record](/components/core/run-records/).
+[backend](/components/backend/overview/), runs it through its own run engine,
+streams live progress back to the backend, uploads the produced tree to the
+[artifacts service](/components/artifacts/overview/) and the implementation's
+git bundle to the [repos service](/components/repos/overview/), and reports its
+terminal status carrying the produced [run
+record](/components/contracts/run-records/).
 
 Everything the driver needs arrives in its environment when the dispatcher
 creates the `Job`. It serves nothing, takes no flags, and keeps no state beyond
 the run; the only sockets it opens are the per-run listeners its sandbox
 connects back to.
 
-## Relationship to the core
+## The run engine
 
-Like every other [runner](/components/architecture/#runners-and-reporters), the
-driver takes a run's behavior from the core. It assembles the same
-[`RunEngine`](/components/core/execution/) any other host does, with
-backend-streaming sinks in place of the in-process ones.
+The driver owns a run's behavior end to end. Its `RunEngine` is the one
+implementation of a run, and the pages beside this one specify its stages:
 
-- It drives the launch request the dispatcher passed in through the core. The
-  request names a version, a variant, a [harness](/components/core/harnesses/),
-  a model, and an [orchestrator](/components/core/orchestrators/).
-- It streams the run's live [harness events](/components/core/events/) to the
-  backend as they happen, along with the live drawing [preview
-  frames](/testing/asset-generation/sprite-binaries/#live-preview) of an
-  asset-generation run. The backend's relay fans them out to every watching
-  console.
-- It produces the same [run record](/components/core/run-records/) any other
-  host would and reports it with the terminal status. The backend persists it
-  using the events the relay already accumulated.
+- [Execution](/components/driver/execution/): seeding the workspace, starting
+  the sandbox and driving the [harness](/components/driver/harnesses/) session
+  under an [orchestrator](/components/driver/orchestrators/).
+- [Events](/components/driver/events/): the normalized event stream every
+  harness's output is lifted into.
+- [Validation](/components/driver/validation/): the three validators, the
+  toolchain stage and the post-run stages that turn a produced tree into
+  verdicts, plus the [showcase](/components/driver/showcase/) capture.
+- [Code analysis](#code-analysis): the static read of the code the model wrote.
+
+The launch request the dispatcher passed in names a version, a variant, a
+harness, a model, and an orchestrator. The driver streams the run's live harness
+events to the backend as they happen, along with the live drawing [preview
+frames](/testing/asset-generation/sprite-binaries/#live-preview) of an
+asset-generation run, and the backend's relay fans them out to every watching
+console. It produces the run record and reports it with the terminal status,
+and the backend persists it using the events the relay already accumulated.
 
 The driver reports `starting` before any work, advances the job to `running`
 once setup finishes and the harness session is about to begin, and posts its
@@ -109,13 +114,13 @@ The engine therefore gets back a normal harness outcome marked canceled,
 carrying the tokens, the cost and the session summary the run accumulated, and
 walks its whole post-session path: it collects the produced tree out of the
 sandbox, runs the post-run analysis stages, folds the metrics, and assembles the
-[run record](/components/core/run-records/). The one stage a cancellation skips
-is [validation](/components/core/validation/), which is fresh work judging
+[run record](/components/contracts/run-records/). The one stage a cancellation skips
+is [validation](/components/driver/validation/), which is fresh work judging
 output an operator chose to stop, so a canceled run's validation summary is
 empty rather than failed. The record's terminal state is
-[`canceled`](/components/core/run-records/#status).
+[`canceled`](/components/contracts/run-records/#status).
 
-The driver then runs every artifact upload it runs for any other run and posts a
+The driver then runs every upload it runs for any other run and posts a
 `canceled` status carrying the record. The backend persists it with the events
 its relay accumulated and attaches it to the already-canceled job, changing
 nothing else: no state change, no completion notification, and no retry.
@@ -126,12 +131,12 @@ Two paths produce a bare canceled record instead: the session does not wind down
 inside the grace, or the run errors on its way out. Both concern a session that
 had been launched, since a run killed before that is destroyed rather than
 recorded bare. In both the driver builds the record itself from what it still
-holds: state [`canceled`](/components/core/run-records/#status), the detail
+holds: state [`canceled`](/components/contracts/run-records/#status), the detail
 `canceled by operator`, and the resolved case identity and test type when the
 definition had materialized. That record carries no produced tree and zero
 metrics.
 
-That record anchors the [events](/components/core/events/) the run streamed
+That record anchors the [events](/components/driver/events/) the run streamed
 right up to the kill, which the backend already holds, and is what brings the
 killed run into the run list. Recording here is best-effort: the job is already
 terminal and the teardown still has to happen, so a record that cannot be built
@@ -175,7 +180,7 @@ cancels an in-flight sandbox creation on the client side only and the sandbox
 can still appear just after the first sweep looked.
 
 A wound-down gg run appears in the run list like any other unpublished run and
-is [never publishable](/components/core/results/#publish).
+is [never publishable](/components/backend/results/#publish).
 
 Any other late status a winding-down driver posts before it notices the kill is
 discarded by the backend, so only the driver's own `canceled` acknowledgement
@@ -240,32 +245,42 @@ cannot change a host-side fault. A collection failure report names the
 innermost cause of the failure.
 
 The sandbox pod is ephemeral and its disk is lost on exit, so the driver uploads
-the produced run tree to the [artifact service](/components/artifacts/overview/)
-(`TCAB_ARTIFACTS_URL`, forwarded by the dispatcher) before reporting terminal
-status, and stamps the playable-build link onto the record. That tree is the
-playable build, the proof media, and the asset media. By the time a console sees
-the run finish, its build and media are already servable. When the artifacts URL
-is unset the upload is skipped.
+the produced run tree to the artifacts service (`TCAB_ARTIFACTS_URL`, forwarded
+by the dispatcher) as one tar, `POST /runs/{id}/artifacts` with its per-job
+token, before reporting terminal status, and stamps the playable-build link onto
+the record. That tree is the playable build, the proof media, the asset media,
+the validation media, the showcase files, the code-analysis document and the
+recorded logs. By the time a console sees the run finish, its build and media
+are already servable from the artifacts service, which is the one store a
+console reads a run's media from and the one the backend publishes it from.
+When the artifacts URL is unset the upload is skipped.
 
-The artifact service serves a run only to the console session that produced it,
-so the driver also mirrors a backend-driven run's servable media into the
-[backend](/components/backend/overview/) store: every run's
-proof-of-implementation media, synthesized validation media and code-analysis
-document, the files of a run's [showcase](/components/core/showcase/), an
-adversarial run's controller wasm and proof replays, a performance run's scored
-scenarios, an asset-generation run's regenerated and preview images with their
-action log, and a captured gg replay. That store, rather than the artifact
-service, is what the backend exports the public snapshot from and what a console
-reads a run's media from. Each mirror is best-effort: a failure is logged and
-the run's record still reports.
+## The implementation bundle
 
-The store is the fast path rather than the record of truth. It is an ephemeral
-volume in production, so it can be empty for a run published after a backend
-restart. The [snapshot builder](/components/backend/overview/) falls back to the
-artifact service for any run media missing from the store and re-exports it to
-durable R2, so a store wipe self-heals on the next refresh.
-`scripts/backfill-run-media.sh` populates the store and triggers a refresh
-immediately rather than waiting for the next publish.
+A run's workspace is a git repository whose first commit is the seed. At run
+end, after the post-run stages, the driver commits everything the model left
+uncommitted on top of the history the run holds, with the commit message the
+[contract](/components/contracts/overview/) defines, writes `git bundle --all`
+and uploads the bundle to the repos service (`TCAB_REPOS_URL`, forwarded by the
+dispatcher) with `POST /runs/{id}/bundle` and its per-job token. The bundle is
+what a console downloads, what a re-analysis reads and what the run's public
+repository is pushed from at [publish](/components/backend/results/#publish).
+
+The commit happens after the tree is collected out of the sandbox, on the
+driver's own copy, so the sandbox never holds a credential and the committed
+tree is exactly the one the validators judged. A bundle upload that fails is
+logged and the run's record still reports, so a run is never lost for want of
+its bundle; the console then offers no download for it.
+
+## Code analysis
+
+The driver runs the [static code analyzer](/gg/analysis/code-analysis/) over the
+collected tree before the uploads: a deterministic, execute-nothing read of the
+code the model wrote, with the seed commit telling the authored files from the
+seeded ones. The bounded tier of the analysis rides on the run record and the
+unbounded tier is written into the run tree as `code-analysis.json.gz`, which the
+artifacts upload carries. The analysis is the driver's own module, so a run's
+analysis and the `tcab` CLI's read of a tree on disk are the same code.
 
 ## RBAC
 
@@ -276,32 +291,37 @@ get/create. Both exec verbs are required, because the driver's Kubernetes client
 execs over a WebSocket, which the API server authorizes as `get`. The
 [dispatcher](/components/dispatcher/overview/) names this ServiceAccount on
 every `Job` it creates. The manifests are in `deployments/k8s/base/rbac.yaml`.
-See [Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
+See [Run plane](/deployment/kubernetes/run-plane/#rbac).
 
 ## Deployment
 
-The driver is the `test-cabinet-driver` crate (`crates/driver`). It is a client
-rather than a server, so it carries no app-level auth of its own. Its streaming
-calls authenticate to the backend with the per-job token the dispatcher passed
-in. Its configuration is entirely environment variables, documented in
-`crates/driver/src/config.rs`.
+The driver is the `tcab-driver` binary of the `microservice-driver` repository,
+which also builds the [`tcab` CLI](/components/cli/overview/) as a second
+binary over the same run engine. The driver is a client rather than a server,
+so it carries no app-level auth of its own. Its streaming calls authenticate to
+the backend with the per-job token the dispatcher passed in, and it never
+crosses the [edge](/deployment/kubernetes/edge/). Its configuration is entirely
+environment variables, documented in the repository's `crates/driver/src/config.rs`.
 
-The driver image carries the tooling a run needs end to end in-process: `git` to
-seed each run's fresh repository, and a Node runtime with the bundled Playwright
-browser to run an end-to-end case's build steps and load-check the build with a
-headless screenshot. That is the same browser toolchain the
-[backend](/components/backend/overview/) bakes to render references, so the
-image layers the driver binary on the Node and browser base. It also bakes the
-static-musl gg binary the core copies into each sandbox pod, so a gg run
-installs locally with no network egress; that binary is the one the pipeline
-built and self-checked in the run images, and the one the backend's reference
-documents were projected by. Publishing is a separate backend
-operation, so the image ships no publish CLIs. The driver runs unprivileged and
-needs no Docker or Podman daemon.
+The driver image carries the tooling a run needs end to end in-process: `git`
+to seed each run's fresh repository and commit its bundle, and a Node runtime
+with the bundled Playwright browser to run an end-to-end case's build steps and
+load-check the build with a headless screenshot. That is the same browser
+toolchain the [backend](/components/backend/overview/) bakes to render
+references, so the image layers the driver binary on the Node and browser base.
+It also bakes the static-musl gg binary the driver copies into each sandbox
+pod, so a gg run installs locally with no network egress; that binary is the
+release the driver pins, and the one the backend's reference documents were
+projected by. Publishing is a separate operation, so the image ships no publish
+CLIs. The driver runs unprivileged and needs no Docker or Podman daemon.
 
 ### Installing gg
 
-The core resolves the gg binary a run installs in this order:
+The driver declares the gg release it runs once, as a pinned gg version
+independent of any crate version. Its image fetches that release from gg's
+release container at build time, and the backend image fetches the matching
+`gg-reference` the same way. The driver resolves the gg binary a run installs
+in this order:
 
 1. `TCAB_GG_INSTALL=release` forces a download.
 2. `TCAB_GG_BINARY` names a local binary, which must exist.
@@ -316,7 +336,7 @@ sandbox with one `curl`:
 | Variable                  | Sets        | Default                                                          |
 | ------------------------- | ----------- | ---------------------------------------------------------------- |
 | `TCAB_GG_RELEASE_URL`     | `<base>`    | `https://testcabinetartifacts.blob.core.windows.net/gg-releases` |
-| `TCAB_GG_RELEASE_VERSION` | `<version>` | the core's own package version                                   |
+| `TCAB_GG_RELEASE_VERSION` | `<version>` | the driver's pinned gg version                                   |
 | `TCAB_GG_RELEASE_TARGET`  | `<target>`  | `<arch>-unknown-linux-musl` for the driver's architecture        |
 
 The default base is gg's release container, which the Azure pipeline publishes

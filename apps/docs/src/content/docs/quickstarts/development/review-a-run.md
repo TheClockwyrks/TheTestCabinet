@@ -15,19 +15,19 @@ the items' point weights produce the review's score. Either way a run's score
 averages across its reviews and its rating is the worst across them; a
 validator-rated run with no reviews keeps the validators' own figures.
 
-Every review is attributed to the account that wrote it and a run carries one
-review per account. Publishing a legacy run requires at least one review. A
-completed validator-rated run
-[publishes itself](/components/core/results/#automatic-publishing) when it
+Every review is attributed to the identity the reviewer's Access assertion
+carries and a run carries one review per identity. Publishing a legacy run
+requires at least one review. A completed validator-rated run
+[publishes itself](/components/backend/results/#automatic-publishing) when it
 finishes, so its review is usually added after it is public. The full
 workflow is
 [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
 
-## Review in the web console
+## Review in the console
 
-The [web console](/components/web/overview/) is the primary way to review.
-[Sign in](/quickstarts/setup/register-and-login/), open the finished run, play
-its build, and fill in the review editor:
+The [console](/components/web/overview/), reached through Cloudflare Access,
+is where a run is reviewed. Open the finished run, play its build, and fill in
+the review editor:
 
 - Read the checklist. Items are presented one at a time, with a rail of every
   item alongside. On a validator-rated run each item arrives pre-filled with
@@ -36,22 +36,23 @@ its build, and fill in the review editor:
   a legacy run each item shows its point weight and takes a pass or fail
   verdict plus an optional note, and answered ones are marked done. When the
   item declares them, the case's expected reference is shown beside the
-  agent's submitted [proof](/components/core/validation/#proofs).
+  agent's submitted [proof](/components/driver/validation/#proofs).
 - Rate the run: one aesthetic tier for the whole build on a validator-rated
   run, or each scoring domain on the functional scale on a legacy run, and
   write the prose writeup. Saving the review requires the rating, and on a
   legacy run every domain rated and every item answered.
 
-The web console submits the review and publishes as two separate actions. A
-run's Proof tab lists every proof the build submitted, browsable independent of
-the checklist.
+The console submits the review and publishes as two separate actions. A run's
+Proof tab lists every proof the build submitted, browsable independent of the
+checklist.
 
 ## Edit a review
 
-Re-submitting from the same account updates that account's review in place. Use
-Edit review on your own review to revise a verdict, a rating, or the writeup.
+Re-submitting from the same identity updates that identity's review in place.
+Use Edit review on your own review to revise a verdict, a rating, or the
+writeup.
 
-A verdict [automated validation](/components/core/validation/) decided is
+A verdict [automated validation](/components/driver/validation/) decided is
 recoverable in an edit: a point whose answer differs from the machine's
 carries a Restore control, and the checklist rail's Restore validator verdicts
 puts every overridden point back at once, keeping the notes. See
@@ -62,19 +63,12 @@ Each edit is kept as a revision in the review's public edit history alongside a
 generated diff of the ratings, verdicts, and writeup. The review keeps its first
 submission time and records an edited marker for the latest revision.
 
-## Review from the CLI
+## The review document
 
-From a [signed-in](/quickstarts/setup/register-and-login/) shell, submit a review
-for a stored run by its backend run id:
-
-```sh
-tcab review <run-id> --writeup writeup.md
-```
-
-`--writeup` defaults to `writeup.md` in the working directory. The file opens
-with YAML frontmatter followed by the prose body. For a validator-rated run
-the frontmatter carries one bare `aesthetic` line rating the whole run, plus
-an optional `review.<id>` line per verdict override, with a binary `pass` or
+The console writes the review as one document, which the backend parses:
+YAML frontmatter followed by the prose body. For a validator-rated run the
+frontmatter carries one bare `aesthetic` line rating the whole run, plus an
+optional `review.<id>` line per verdict override, with a binary `pass` or
 `fail` status and any remainder kept as the note:
 
 ```markdown
@@ -136,5 +130,6 @@ rating.
 
 ## Next step
 
-[Publish a Run](/quickstarts/devops/publish-a-run/) once a legacy run's review
-is in place. A completed validator-rated run needs no publish step.
+[Publish a Run](/quickstarts/devops/publish-a-run/) from the console once a
+legacy run's review is in place. A completed validator-rated run needs no
+publish step.

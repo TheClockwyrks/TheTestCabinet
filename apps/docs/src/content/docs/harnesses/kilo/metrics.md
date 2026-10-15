@@ -11,7 +11,7 @@ across every step.
 
 ## Token classes
 
-The [normalized classes](/components/core/metrics/#tokens) are derived from
+The [normalized classes](/components/contracts/metrics/#tokens) are derived from
 these keys within `part.tokens`, where the cache counts are nested one level
 deeper in a `cache` object:
 
@@ -32,4 +32,4 @@ the uncached input class.
 
 The comparable cost is computed from the list price held on the model's
 catalog entry, applied to the recorded token classes, rather than from the
-per-step cost Kilo Code reports. See [Cost](/components/core/metrics/#cost).
+per-step cost Kilo Code reports. See [Cost](/components/contracts/metrics/#cost).

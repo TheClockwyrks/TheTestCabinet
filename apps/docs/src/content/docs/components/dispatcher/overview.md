@@ -5,10 +5,11 @@ title: Overview
 The dispatcher is a stateless controller that turns the
 [backend](/components/backend/overview/)'s queues into Kubernetes work. It
 claims a queued run and creates one [driver](/components/driver/overview/) `Job`
-to execute it, and claims a queued publish and creates one publisher `Job` to
-release it. The backend's job tables are the source of truth, so the dispatcher
-holds no durable state of its own. It sits entirely behind the backend. A
-console enqueues work at the backend and never addresses the dispatcher.
+to execute it, and claims a queued publish and creates one
+[publisher](/components/backend/results/#publish) `Job` to release it. The
+backend's job tables are the source of truth, so the dispatcher holds no durable
+state of its own. It sits entirely behind the backend. A console enqueues work
+at the backend and never addresses the dispatcher.
 
 ## The control loop
 
@@ -68,7 +69,7 @@ dispatcher.
 - Per-harness maximum parallelism. The backend hands back only a job whose
   harness has fewer than its configured limit of runs already in flight, holding
   the rest in the `pending` state until a slot frees. See
-  [Harnesses](/components/core/harnesses/#per-harness-configuration).
+  [Harnesses](/components/driver/harnesses/#per-harness-configuration).
 - One game-jam entry per jam and model. The backend holds a
   [game-jam](/testing/game-jam/overview/) job back while another run of the same
   jam by the same model is in flight under any harness, so a model's jam entries
@@ -116,7 +117,9 @@ was running.
 
 The dispatcher's product for a claimed run is one `batch/v1` `Job` running the
 driver image, with exactly the environment the driver reads: the backend URL,
-the job id and its per-job token, the serialized launch request,
+the [artifacts](/components/artifacts/overview/) and
+[repos](/components/repos/overview/) URLs the run tree and bundle are uploaded
+to, the job id and its per-job token, the serialized launch request,
 `TCAB_DRIVER_RUNTIME=kubernetes`, the `TCAB_K8S_*` sandbox-pod passthroughs, and
 the `TCAB_CONTAINER_*` run-image selection the driver resolves the sandbox image
 from. A deployment therefore pins the run images by `:<git-sha>` here rather
@@ -258,15 +261,18 @@ deployment that points the driver at a different sandbox namespace
 reaping fails in that namespace, which is logged and never fatal. Naming a
 `Secret` on a `Job` needs no `secrets` rule, because the kubelet reads and
 projects it. The manifests are in `deployments/k8s/base/rbac.yaml`. See
-[Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
+[Run plane](/deployment/kubernetes/run-plane/#rbac).
 
 ## Deployment
 
-The dispatcher is the `test-cabinet-dispatcher` crate (`crates/dispatcher`),
-with no HTTP server and no flags. Its whole configuration is environment
-variables, documented in `crates/dispatcher/src/config.rs`. `TCAB_BACKEND_URL`,
-`TCAB_BACKEND_SERVICE_TOKEN` and `TCAB_DRIVER_IMAGE` are required, and
-`TCAB_PUBLISHER_IMAGE` enables the publish path.
+The dispatcher is the `tcab-dispatcher` binary of the `microservice-dispatcher`
+repository, with no HTTP server and no flags. Its whole configuration is
+environment variables, documented in the repository's
+`crates/dispatcher/src/config.rs`.
+`TCAB_BACKEND_URL`, `TCAB_BACKEND_SERVICE_TOKEN` and `TCAB_DRIVER_IMAGE` are
+required, and `TCAB_PUBLISHER_IMAGE` enables the publish path. The dispatcher
+never crosses the [edge](/deployment/kubernetes/edge/): it reaches the backend
+over its in-cluster `Service`.
 
 It is deployed as a single-replica `Deployment` with no `Service`, since it
 binds no socket. A second replica would only race the same atomic claim. Local
