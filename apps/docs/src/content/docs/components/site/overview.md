@@ -49,7 +49,11 @@ snapshot's [summary index](/components/backend/snapshot/#runsjson--the-run-index
 one `RunSummary` card per published run, which every list, card, leaderboard and
 metric reads. It also holds one listing card per case, the address of the
 showcase media each card previews, the model catalog, the test-case groups, the
-comparisons and the gg document corpus.
+comparisons and the gg document corpus. A case is listed once any run of it is
+published, and its card previews the showcase of its newest version that has
+one, from the snapshot's
+[case showcases](/components/backend/snapshot/#case-showcasesjson--case-showcases),
+so the preview does not wait on a run of that version.
 
 A run's file holds its full record, its reviews and the address of every media
 file the run published. A case's file holds what spans its versions: each
