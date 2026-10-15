@@ -364,6 +364,30 @@ describe("ModelProbesPage", () => {
     expect(trigger).not.toHaveBeenCalled();
   });
 
+  // A phone stacks each rollup row into its cells, each printed beside its
+  // column's name, and wraps a call's facts between facts with the separators
+  // hidden; the text itself reads the same at every width.
+  it("names each rollup cell by its column and keeps a call's facts in one line of text", async () => {
+    renderPage();
+
+    const scenario = await screen.findByRole("cell", { name: "baseline" });
+    const cells = [...scenario.closest("tr")!.querySelectorAll("td")];
+    expect(cells.map((cell) => cell.dataset.label)).toEqual([
+      "Language",
+      "Scenario",
+      "Pass",
+      "Labels",
+      "Providers",
+    ]);
+    expect(
+      screen.getAllByText((_, el) =>
+        el?.tagName === "SPAN"
+          ? el.textContent === "DeepInfra · tool_calls · 5.3s · $0.0041"
+          : false,
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("surfaces the backend's error envelope in the alert", async () => {
     renderPage(
       signedInStubs({
