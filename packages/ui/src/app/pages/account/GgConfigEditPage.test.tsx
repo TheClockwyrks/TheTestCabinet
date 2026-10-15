@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -6,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, Outlet, RouterProvider, createMemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE } from "@clockwyrks/run-record/gg-system-prompt";
 import {
@@ -152,21 +153,41 @@ beforeEach(() => {
 // editor actually left it rather than merely closing a dialog.
 const CONFIG_LIST = "the gg configurations list";
 
+// Somewhere else in the app, reached by a link outside the page, so a test can leave the
+// form the way an operator would rather than only through its own back control.
+const ELSEWHERE = "somewhere else in the app";
+// The page the history holds before the form, which the browser's back button returns to.
+const EARLIER = "the page before the form";
+
 function renderPage(path = "/account/gg/new") {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <BackendProvider value={backendValue()}>
-        <Routes>
-          <Route path="/account/gg/new" element={<GgConfigEditPage />} />
-          <Route
-            path="/account/gg/:configId/edit"
-            element={<GgConfigEditPage />}
-          />
-          <Route path="/account/gg" element={<div>{CONFIG_LIST}</div>} />
-        </Routes>
-      </BackendProvider>
-    </MemoryRouter>,
+  // A data router, as the hosts mount the app under: only a data router can hold a
+  // navigation, which is how the form asks before being left.
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <>
+            <Link to="/elsewhere">Elsewhere</Link>
+            <Outlet />
+          </>
+        ),
+        children: [
+          { path: "/account/gg/new", element: <GgConfigEditPage /> },
+          { path: "/account/gg/:configId/edit", element: <GgConfigEditPage /> },
+          { path: "/account/gg", element: <div>{CONFIG_LIST}</div> },
+          { path: "/elsewhere", element: <div>{ELSEWHERE}</div> },
+          { path: "/before", element: <div>{EARLIER}</div> },
+        ],
+      },
+    ],
+    { initialEntries: ["/before", path], initialIndex: 1 },
   );
+  const view = render(
+    <BackendProvider value={backendValue()}>
+      <RouterProvider router={router} />
+    </BackendProvider>,
+  );
+  return { ...view, router };
 }
 
 // Open one of the form's tabs by its label. Matched on the label element rather than the
@@ -964,6 +985,173 @@ describe("going back from the configuration", () => {
       within(dialog).getByRole("button", { name: "Create configuration" }),
     ).toBeDisabled();
     expect(within(dialog).getByText(/at least one agent/i)).toBeInTheDocument();
+  });
+});
+
+// Leaving the page by any other way than its back control: a link elsewhere in the app,
+// or the browser's own back button. Each is a navigation the page did not start, held by
+// the leave guard and asked about through the same dialog the back control raises.
+describe("leaving the configuration by any route", () => {
+  beforeEach(() => createGgConfig.mockClear());
+
+  async function editName() {
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "no-shell" },
+    });
+  }
+
+  function followLink() {
+    fireEvent.click(screen.getByRole("link", { name: "Elsewhere" }));
+  }
+
+  it("follows a link without asking when nothing was edited", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+
+    followLink();
+    expect(await screen.findByText(ELSEWHERE)).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("holds a link with work to lose, and stays if told to keep editing", async () => {
+    renderPage();
+    await editName();
+
+    followLink();
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(ELSEWHERE)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. no-compaction")).toHaveValue(
+      "no-shell",
+    );
+  });
+
+  it("goes where the link led once the work is discarded", async () => {
+    renderPage();
+    await editName();
+
+    followLink();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Discard changes",
+      }),
+    );
+    expect(await screen.findByText(ELSEWHERE)).toBeInTheDocument();
+    expect(createGgConfig).not.toHaveBeenCalled();
+  });
+
+  // Saving from the dialog goes on to where the operator was headed, not to the list of
+  // configurations the header's own Save returns to.
+  it("saves and goes where the link led", async () => {
+    renderPage();
+    await editName();
+
+    followLink();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Create configuration",
+      }),
+    );
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(ELSEWHERE)).toBeInTheDocument();
+    expect(screen.queryByText(CONFIG_LIST)).not.toBeInTheDocument();
+  });
+
+  it("stays on the form, error showing, when the save fails", async () => {
+    createGgConfig.mockRejectedValueOnce(new Error("the backend is down"));
+    renderPage();
+    await editName();
+
+    followLink();
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Create configuration",
+      }),
+    );
+    expect(await screen.findByText(/the backend is down/)).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(ELSEWHERE)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. no-compaction")).toHaveValue(
+      "no-shell",
+    );
+  });
+
+  it("holds the browser's back button, and lets it through once discarded", async () => {
+    const { router } = renderPage();
+    await editName();
+
+    await act(() => router.navigate(-1));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Discard changes",
+      }),
+    );
+    expect(await screen.findByText(EARLIER)).toBeInTheDocument();
+  });
+
+  // An open agent's edits are already the configuration's, so leaving the page with one
+  // open asks about the configuration as a whole — and says the agent goes with it.
+  it("asks about the whole configuration when left with an edited agent open", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    fireEvent.change(nameField(), { target: { value: "conductor" } });
+
+    followLink();
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText("Unsaved changes to this configuration"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/the agent open in it/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(nameField()).toHaveValue("conductor");
+  });
+
+  // The agent's own back control may already be asking when a navigation away arrives
+  // (the browser's back button, say). One dialog asks at a time: the page-level question
+  // covers the agent too, and the agent's comes back if the operator keeps editing.
+  it("asks one question at a time when leaving while the agent's dialog is up", async () => {
+    const { router } = renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    fireEvent.change(nameField(), { target: { value: "conductor" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Back to / }));
+    expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
+
+    await act(() => router.navigate(-1));
+    const dialogs = await screen.findAllByRole("alertdialog");
+    expect(dialogs).toHaveLength(1);
+    expect(
+      within(dialogs[0]!).getByText("Unsaved changes to this configuration"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(dialogs[0]!).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
+    expect(
+      screen.getByText("Unsaved changes to conductor"),
+    ).toBeInTheDocument();
+  });
+
+  // The header's own Save leaves for the list once the work is stored, and that exit is
+  // not itself asked about: there is nothing left to lose.
+  it("leaves without asking once the header's Save has stored the work", async () => {
+    renderPage();
+    await editName();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+    expect(await screen.findByText(CONFIG_LIST)).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 });
 
