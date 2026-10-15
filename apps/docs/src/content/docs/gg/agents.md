@@ -19,7 +19,8 @@ Account → gg Agents lists the saved agents on the signed-in account. Creating
 or editing one opens the same per-agent view a configuration opens, with its
 [model slots](/gg/configurations/#agent-slots) on their own Slots tab and a
 one-line note saying what the agent is for, shown wherever the library is
-listed.
+listed. Leaving it with unsaved changes asks first, by whatever route, as the
+[configuration editor](/gg/configurations/#agents) does.
 
 The agent's own name is the library's name for it. The library assigns each
 saved agent an id of its own, which is what an importing configuration points
