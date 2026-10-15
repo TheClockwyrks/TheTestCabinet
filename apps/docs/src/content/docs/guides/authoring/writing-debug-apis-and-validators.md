@@ -663,9 +663,15 @@ so the validator is made cheaper and the ceiling stays where it is.
 
 ### The suite finishes inside its budget
 
-A run is validated on a two-core host, and the runner caps a case's whole suite
-run at forty-five minutes, stopping it and leaving every point it had not
-reached undecided. A case is authored to finish in fifteen minutes there,
+A run is validated on a two-core host, and the runner bounds the suites twice. A
+suite still running past the test timeout its project declares fails the point it
+backs, whether or not vitest's own timer could fire, because a check that
+long past its own budget is one the build would not let validation drive. The
+whole suite run is capped at forty-five minutes, and every
+point whose suite had not finished by then is left undecided while the suites that
+finished keep their verdicts. See [validation that fails to
+complete](/components/core/validation/#validation-that-fails-to-complete). A case
+is authored to finish in fifteen minutes there,
 measured by running the suites against the reference implementation, which
 leaves the margin a loaded host needs.
 
