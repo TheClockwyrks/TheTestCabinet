@@ -54,8 +54,9 @@ declare module "virtual:tcab-snapshot" {
    * absolute URLs and keyed by the previewed `<slug>/<version>/<variant>` subject
    * then by the authored file name (a video's `.webm` request resolving to its
    * published `.mp4`). The catalog is a listing, so this one slice of a case
-   * version's showcase media is index data; the version's own file carries the
-   * same addresses with the rest of its media.
+   * version's showcase media is index data. The previewed version may have no
+   * file of its own (no published run built it), so these addresses are the
+   * only ones the site holds for it.
    */
   export const catalogShowcaseMediaUrls: Record<string, Record<string, string>>;
 }

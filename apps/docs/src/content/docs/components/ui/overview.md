@@ -12,7 +12,9 @@ one application.
 It ships no service and runs in no process of its own. Each GUI mounts the
 shared app inside its own router and supplies it a data source, and the two
 hosts differ only in where that data comes from and which capabilities they
-enable.
+enable. The router is a React Router data router, because only a data router
+can hold a navigation, and a form holding unsaved work asks before any
+navigation leaves it.
 
 ## Subpath entries
 

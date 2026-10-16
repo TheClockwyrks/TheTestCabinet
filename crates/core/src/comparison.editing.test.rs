@@ -144,7 +144,7 @@ fn n_and_labels_are_not_arm_edits() {
 
 /// The arm results of `config` with each arm's held and landed counts set by hand.
 fn results(config: &ComparisonConfig, counts: &[(usize, usize)]) -> Vec<ComparisonArmResult> {
-    let mut arms = aggregate_comparison(config, &[], &BTreeMap::new(), &BTreeSet::new());
+    let mut arms = aggregate_comparison(config, &[], false, &BTreeMap::new(), &BTreeSet::new());
     for (arm, (held, landed)) in arms.iter_mut().zip(counts) {
         arm.live_run_ids = (0..*held).map(|i| format!("{}-{i}", arm.arm.id)).collect();
         arm.n_observed = *landed;

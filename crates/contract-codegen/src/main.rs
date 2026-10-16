@@ -634,7 +634,8 @@ fn main() -> Result<()> {
                 snap::CasePackageOut, snap::CaseReferenceSheetOut,
                 snap::CaseShowcaseMediaOut, snap::CaseShowcaseOut, snap::CaseWorkspaceFileOut,
                 snap::CaseVariantRenderingOut, snap::CaseVariantOut,
-                snap::CaseMetadata,
+                snap::CaseMetadata, snap::CaseShowcasesFile, snap::CaseVersionShowcases,
+                snap::CaseVariantShowcase,
                 snap::ModelCatalogFile,
                 snap::TestCaseGroupsFile,
                 snap::ComparisonsIndex, snap::ComparisonFile,
@@ -1210,6 +1211,10 @@ fn main() -> Result<()> {
         anon(
             "snapshot/case.schema.json",
             root_schema::<snap::CaseMetadata>(),
+        ),
+        anon(
+            "snapshot/case-showcases.schema.json",
+            root_schema::<snap::CaseShowcasesFile>(),
         ),
     ])?;
     for (rel_path, value) in schemas {

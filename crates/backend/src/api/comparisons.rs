@@ -380,7 +380,13 @@ pub(crate) async fn assemble_comparison(
                 &stored.config.controls.variant,
                 &stored.config.controls.engine_slug,
             );
-            aggregate_comparison(&stored.config, &items, &runs, &live)
+            aggregate_comparison(
+                &stored.config,
+                &items,
+                manifest.validator_rated(),
+                &runs,
+                &live,
+            )
         }
         Err(_) => Vec::new(),
     };

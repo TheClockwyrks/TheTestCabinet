@@ -167,10 +167,11 @@ export interface ValidatorFailure {
  * The **scored** points this run's validators failed, each with the cap it
  * imposes and the domains it imposes it on — exactly the failures
  * `validatorDomainRatings` lowers a domain for, using the same failure
- * semantics ({@link automatedVerdicts}), so the breakdown and the rating can never
- * disagree. A point excluded from scoring (an erratum) never caps anything and is
- * omitted; so is a failure of a point the case no longer declares. Ordered by the
- * checklist's own order.
+ * semantics ({@link automatedVerdicts}). The breakdown accounts for every rating
+ * below Flawless except one: a run whose validators decided no scored point is
+ * Broken with no failure to list. A point excluded from scoring (an erratum) never
+ * caps anything and is omitted; so is a failure of a point the case no longer
+ * declares. Ordered by the checklist's own order.
  */
 export function validatorFailures(
   items: readonly ReviewItemSummary[],

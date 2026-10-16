@@ -731,7 +731,8 @@ export function automatedOnlyScore(
  * The verdict-slice core of {@link automatedOnlyScore}, generalized so a review's
  * {@link effectiveVerdicts | effective checklist} — the validators' verdicts
  * overlaid with the reviewer's overrides — scores through the identical rule (see
- * {@link validatorReviewScore}). Mirrors `covered_score` in the Rust core
+ * {@link validatorReviewScore}, which applies it through
+ * {@link validatorCoveredScore}). Mirrors `covered_score` in the Rust core
  * (crates/core/src/comparison.rs).
  */
 export function coveredScore(
@@ -775,7 +776,10 @@ function restrictItemsToCovered(
  * the point's declared `domains` is lowered to `min(current, FAILURE_CAP_RATING[cap])`,
  * so a domain ends at the lowest cap among its failures. An inconclusive point, a
  * point with no script result, and a point excluded from scoring (`scored === false`)
- * never lower anything; a verdict naming no declared point is ignored. `items` must
+ * never lower anything while some other scored point is decided; a verdict naming no
+ * declared point is ignored. When `items` declare scored points and the validators
+ * decide none of them, every domain is `broken` (see {@link decidesAScoredPoint}).
+ * `items` must
  * be the run's effective checklist and `domains` its effective domain ids, in order.
  * A thin wrapper over {@link verdictDomainRatings}, which applies the same
  * failure-cap rule to a verdict slice the caller already holds. Mirrors
@@ -795,8 +799,11 @@ export function validatorDomainRatings(
  * {@link effectiveVerdicts | effective checklist} (validator verdicts overlaid
  * with the reviewer's overrides) rates through the identical rule.
  *
- * Every domain starts `flawless`; each **failing** verdict on a **scored** point
- * lowers each of the point's declared `domains` to
+ * When `items` declare at least one scored point and `verdicts` decide none of
+ * them ({@link decidesAScoredPoint}), every domain is `broken`, whatever left the
+ * points undecided: a build nothing could judge has demonstrated nothing.
+ * Otherwise every domain starts `flawless`; each **failing** verdict on a
+ * **scored** point lowers each of the point's declared `domains` to
  * `min(current, FAILURE_CAP_RATING[cap])`. A point with no verdict, a point
  * excluded from scoring (`scored === false`, an erratum), and a verdict naming no
  * declared point never lower anything. Mirrors `verdict_domain_ratings` in the
@@ -807,9 +814,10 @@ export function verdictDomainRatings(
   items: readonly WeightedItem[],
   verdicts: readonly ReviewVerdict[],
 ): DomainRating[] {
+  const start: Rating = decidesNothing(items, verdicts) ? "broken" : "flawless";
   const ratings: DomainRating[] = domains.map((domain) => ({
     domain: domain.id,
-    rating: "flawless",
+    rating: start,
   }));
   const lower = (domain: string, cap: FailureCap) => {
     const entry = ratings.find((r) => r.domain === domain);
@@ -824,6 +832,76 @@ export function verdictDomainRatings(
     for (const domain of point.domains) lower(domain, point.cap);
   }
   return ratings;
+}
+
+/**
+ * Whether `verdicts` decide at least one **scored** point of `items`: some verdict
+ * names a scored item graded as a whole, or a scored sub-item of a scored item.
+ * The point's weight and failure cap play no part, so an uncapped or weight-zero
+ * scored point counts as decided. A verdict naming an undeclared point, the
+ * {@link OVERALL_VERDICT_ID}, or a point an erratum excludes from scoring
+ * (`scored === false`) decides nothing. Mirrors `decides_a_scored_point` in the
+ * Rust core.
+ */
+export function decidesAScoredPoint(
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): boolean {
+  const scored = new Set(scoredPointIds(items));
+  return verdicts.some((verdict) => scored.has(verdict.id));
+}
+
+/**
+ * Whether `items` declare scored points and `verdicts` decide none of them: the
+ * condition under which a validator-rated checklist rates every domain `broken`
+ * and scores zero over the declared weight. A checklist that declares no scored
+ * point at all keeps the ordinary rule. Mirrors `decides_nothing` in the Rust core.
+ */
+function decidesNothing(
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): boolean {
+  return (
+    scoredPointIds(items).length > 0 && !decidesAScoredPoint(items, verdicts)
+  );
+}
+
+/**
+ * The verdict ids of every scored point `items` declare: each scored item graded
+ * as a whole, and each scored sub-item of a scored item. Mirrors
+ * `scored_point_ids` in the Rust core.
+ */
+function scoredPointIds(items: readonly WeightedItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.scored === false) continue;
+    if (!item.subItems || item.subItems.length === 0) {
+      ids.push(item.id);
+      continue;
+    }
+    for (const sub of item.subItems) {
+      if (sub.scored !== false) ids.push(subItemVerdictId(item.id, sub.id));
+    }
+  }
+  return ids;
+}
+
+/**
+ * The score of a validator-rated checklist of `verdicts` over `items`: the
+ * {@link coveredScore}, which counts on both sides only the points holding a
+ * verdict, except that a checklist deciding no scored point (while `items` declare
+ * some) scores zero over the declared weight of every scored point, so every
+ * scored point counts as lost. Erratum-excluded points count toward neither side
+ * either way. Mirrors `validator_covered_score` in the Rust core.
+ */
+export function validatorCoveredScore(
+  items: readonly WeightedItem[],
+  verdicts: readonly ReviewVerdict[],
+): Score {
+  if (decidesNothing(items, verdicts)) {
+    return { earned: 0, total: scoreChecklist(items, []).total };
+  }
+  return coveredScore(items, verdicts);
 }
 
 /**
@@ -862,8 +940,10 @@ function failingPoint(
 /**
  * **The validator-decided functional rating of a run**: the worst across its
  * {@link validatorDomainRatings}, composed with the toolchain gate
- * ({@link gatedRating}). Always non-null for a validator-rated run — with zero
- * failures it is `flawless` — since the domain set is never empty. Mirrors
+ * ({@link gatedRating}). Always non-null for a validator-rated run, since the
+ * domain set is never empty: with zero failures it is `flawless`, unless the
+ * checklist decided no scored point, in which case {@link verdictDomainRatings}
+ * has already rated every domain `broken`. Mirrors
  * `validator_rating` in the Rust core.
  */
 export function validatorRating(
@@ -879,7 +959,9 @@ export function validatorRating(
  * toolchain gate ({@link gatedScore}). This is the run's score while it has no
  * reviews — available the moment the run completes (`reviews` is `0`); once
  * reviews exist, {@link validatorAggregateScore} folds their overrides in. A thin
- * wrapper over {@link coveredScore} on the {@link automatedVerdicts}. Mirrors
+ * wrapper over {@link validatorCoveredScore} on the {@link automatedVerdicts}, so
+ * validators that decided no scored point score zero over the declared weight.
+ * Mirrors
  * `validator_score` in the Rust core.
  */
 export function validatorScore(
@@ -892,7 +974,7 @@ export function validatorScore(
 
 /**
  * The verdict-slice core of {@link validatorScore}, and the zero-review fixed
- * point of {@link validatorAggregateScore}: the {@link coveredScore} of
+ * point of {@link validatorAggregateScore}: the {@link validatorCoveredScore} of
  * `verdicts` over `items`, gated, with `reviews` `0`. Mirrors
  * `verdicts_own_score` in the Rust core.
  */
@@ -901,7 +983,7 @@ function verdictsOwnScore(
   items: readonly WeightedItem[],
   verdicts: readonly ReviewVerdict[],
 ): AggregateScore {
-  const { earned, total } = coveredScore(items, verdicts);
+  const { earned, total } = validatorCoveredScore(items, verdicts);
   return { earned: gated ? 0 : earned, total, reviews: 0 };
 }
 
@@ -950,12 +1032,13 @@ export function validatorReviewRating(
 }
 
 /**
- * One review's score on a validator-rated run: the {@link coveredScore} of its
- * {@link effectiveVerdicts | effective checklist} — numerator **and** denominator
- * restricted to the points holding an effective verdict, mirroring
+ * One review's score on a validator-rated run: the {@link validatorCoveredScore}
+ * of its {@link effectiveVerdicts | effective checklist} — numerator **and**
+ * denominator restricted to the points holding an effective verdict, mirroring
  * {@link automatedOnlyScore}'s exclusion rule, with erratum-excluded points
- * counting toward neither side — zeroed by the toolchain gate. A review with no
- * overrides reproduces the automated-only score exactly; one that decides a point
+ * counting toward neither side, or zero over the declared weight when the
+ * effective checklist decides no scored point — zeroed by the toolchain gate. A
+ * review with no overrides reproduces the validators' score exactly; one that decides a point
  * the validators left undecided grows the denominator by that point's weight.
  * Mirrors `validator_review_score` in the Rust core.
  */
@@ -965,7 +1048,10 @@ export function validatorReviewScore(
   auto: readonly ReviewVerdict[],
   overrides: readonly ReviewVerdict[],
 ): Score {
-  const score = coveredScore(items, effectiveVerdicts(auto, overrides));
+  const score = validatorCoveredScore(
+    items,
+    effectiveVerdicts(auto, overrides),
+  );
   return { earned: gated ? 0 : score.earned, total: score.total };
 }
 
@@ -1008,8 +1094,10 @@ export function validatorAggregateRating(
  * ({@link validatorScore}, `reviews` `0`); with one or more, the **average** of
  * the reviews' {@link validatorReviewScore | effective scores} over the shared
  * total (via {@link aggregateScore}). A review with no overrides reproduces the
- * validators' figures exactly, so today's behavior is the fixed point. The
- * toolchain gate applies at this aggregation seam ({@link gatedScore}). Mirrors
+ * validators' figures exactly, so today's behavior is the fixed point; a review
+ * whose effective checklist decides no scored point contributes zero over the
+ * declared weight ({@link validatorCoveredScore}). The toolchain gate applies at
+ * this aggregation seam ({@link gatedScore}). Mirrors
  * `validator_aggregate_score` in the Rust core.
  */
 export function validatorAggregateScore(
@@ -1019,7 +1107,7 @@ export function validatorAggregateScore(
   reviews: readonly (readonly ReviewVerdict[])[],
 ): AggregateScore {
   const scores = reviews.map((overrides) =>
-    coveredScore(items, effectiveVerdicts(auto, overrides)),
+    validatorCoveredScore(items, effectiveVerdicts(auto, overrides)),
   );
   const aggregate = aggregateScore(scores);
   if (aggregate === null) return verdictsOwnScore(gated, items, auto);

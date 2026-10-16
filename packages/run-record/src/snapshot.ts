@@ -74,6 +74,14 @@ export type SnapshotIndex = {
    * none, and a reader treats the absent key as an empty group set.
    */
   testCaseGroupsKey?: string;
+  /**
+   * Where this snapshot's case showcases live (`<prefix>/case-showcases.json`):
+   * the showcases of every non-experimental version of each case with a
+   * published run, whichever version that run built.
+   * Optional on the wire because it postdates the other keys: a reader of a
+   * snapshot written before it previews a case from its case documents instead.
+   */
+  caseShowcasesKey?: string;
 };
 
 /**
@@ -987,6 +995,53 @@ export type CaseMetadata = {
    * snapshot written before this field existed still loads.
    */
   errata: Array<CaseErratumOut>;
+};
+
+/**
+ * The case showcase file (`case-showcases.json`): the authored showcases of every
+ * non-experimental version of each case with a published run.
+ *
+ * Gated on the **case** having a published run, not on the version: the gallery
+ * lists a case once any run of it is published, and a showcase is the case's own
+ * presentation, captured from its reference implementation, rather than anything
+ * a run produced. So a listed case previews its newest showcase even while its
+ * runs are on older versions, and a case with no published run uploads nothing
+ * the gallery would not show.
+ */
+export type CaseShowcasesFile = {
+  schemaVersion: number;
+  /**
+   * One entry per version declaring at least one showcase, ordered by slug and
+   * then by version.
+   */
+  showcases: Array<CaseVersionShowcases>;
+};
+
+/**
+ * One case version's showcases, as [`CaseShowcasesFile`] lists them.
+ */
+export type CaseVersionShowcases = {
+  slug: string;
+  version: string;
+  /**
+   * Every variant of the version that declares a showcase, in manifest order —
+   * the order a preview picks its first from.
+   */
+  variants: Array<CaseVariantShowcase>;
+};
+
+/**
+ * One variant's showcase within [`CaseVersionShowcases`].
+ */
+export type CaseVariantShowcase = {
+  /**
+   * The variant's slug.
+   */
+  variant: string;
+  /**
+   * The description and the carousel, each entry naming its published key.
+   */
+  showcase: CaseShowcaseOut;
 };
 
 /**

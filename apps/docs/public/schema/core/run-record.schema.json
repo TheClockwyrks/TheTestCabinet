@@ -695,7 +695,7 @@
         },
         "preconditionUnmet": {
           "default": false,
-          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nAn inconclusive result leaves the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand. Which inconclusive outcome it\nwas is carried by [`inconclusive`](Self::inconclusive), and the\n[`detail`](Self::detail) names the reason in prose. Only ever `true` alongside\n`ran == false`.",
+          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nAn inconclusive result leaves the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand. A validator-rated run that\ndecides no scored point at all is still rated broken and scores zero over the\ndeclared weight (see [`crate::review::verdict_domain_ratings`]). Which\ninconclusive outcome it was is carried by [`inconclusive`](Self::inconclusive),\nand the [`detail`](Self::detail) names the reason in prose. Only ever `true`\nalongside `ran == false`.",
           "type": "boolean"
         },
         "ran": {
@@ -1077,7 +1077,7 @@
         },
         {
           "const": "timedOut",
-          "description": "The run exceeded its wall-clock cap and was stopped, which is a fact about the\nhost. A machine busy enough to stretch a conforming build's suites past the\nbudget must never turn that build into a failing one, so the points the run\nleft undecided stay undecided rather than failing.",
+          "description": "The run exceeded its wall-clock cap and was stopped, which is a fact about the\nhost. A machine busy enough to stretch a conforming build's suites past the\nbudget must never turn that build into a failing one, so the points the run\nleft undecided stay undecided rather than failing. A run the cap leaves with\nno decided point at all is still rated broken.",
           "type": "string"
         }
       ]

@@ -43,6 +43,7 @@ use time::macros::format_description;
 use test_cabinet_core::content_labels::{self, ContentLabels};
 use test_cabinet_core::redact::SecretScrubber;
 use test_cabinet_core::run_record::RunRecord;
+use test_cabinet_core::test_case::version_key;
 
 use crate::api::ModelOut;
 use crate::db::StoredRun;
@@ -1080,14 +1081,52 @@ impl SnapshotBuilder {
                 )
             })
             .collect();
+        //
+        // A version's showcases follow a looser rule (see [`CaseShowcasesFile`]): every
+        // non-experimental version of a case with a published run of *any* version
+        // publishes them, so the gallery can preview a listed case with its newest
+        // showcase. A version that has a case document names the same showcase
+        // objects on it.
+        let cases_with_runs: std::collections::HashSet<&str> =
+            versions_with_runs.iter().map(|(slug, _)| *slug).collect();
+        let mut case_showcases: Vec<CaseVersionShowcases> = Vec::new();
         for manifest in &self.cases {
-            if !versions_with_runs.contains(&(manifest.slug.as_str(), manifest.version.as_str())) {
+            let has_runs =
+                versions_with_runs.contains(&(manifest.slug.as_str(), manifest.version.as_str()));
+            let showcased =
+                !manifest.experimental && cases_with_runs.contains(manifest.slug.as_str());
+            if !has_runs && !showcased {
+                continue;
+            }
+            let (showcases, showcase_objects) = self.case_showcases(manifest).await;
+            objects.extend(showcase_objects);
+            if showcased {
+                let variants: Vec<CaseVariantShowcase> = manifest
+                    .variants
+                    .iter()
+                    .filter_map(|variant| {
+                        showcases
+                            .get(&variant.slug)
+                            .map(|showcase| CaseVariantShowcase {
+                                variant: variant.slug.clone(),
+                                showcase: showcase.clone(),
+                            })
+                    })
+                    .collect();
+                if !variants.is_empty() {
+                    case_showcases.push(CaseVersionShowcases {
+                        slug: manifest.slug.clone(),
+                        version: manifest.version.clone(),
+                        variants,
+                    });
+                }
+            }
+            if !has_runs {
                 continue;
             }
             let (references, reference_objects) = self.case_references(manifest);
             let (validation_baselines, baseline_objects) =
                 self.case_validation_baselines(manifest).await;
-            let (showcases, showcase_objects) = self.case_showcases(manifest).await;
             let (workspace_files, workspace_objects) = self.case_workspace_files(manifest);
             let variant_reference_builds = self
                 .reference_builds
@@ -1110,9 +1149,25 @@ impl SnapshotBuilder {
             )?);
             objects.extend(reference_objects);
             objects.extend(baseline_objects);
-            objects.extend(showcase_objects);
             objects.extend(workspace_objects);
         }
+
+        // case-showcases.json — the showcases of every non-experimental version of
+        // each case with a published run, in slug then version order so the document
+        // is stable across refreshes.
+        case_showcases.sort_by(|a, b| {
+            a.slug
+                .cmp(&b.slug)
+                .then_with(|| version_key(&a.version).cmp(&version_key(&b.version)))
+                .then_with(|| a.version.cmp(&b.version))
+        });
+        objects.push(json_object(
+            format!("{prefix}/case-showcases.json"),
+            &CaseShowcasesFile {
+                schema_version: SCHEMA_VERSION,
+                showcases: case_showcases,
+            },
+        )?);
 
         // models.json — the composed model catalog (curated ⋃ derived-from-runs,
         // with each model's list price), so the public site renders the Models section from
@@ -1224,6 +1279,7 @@ impl SnapshotBuilder {
                 comparisons_prefix: format!("{prefix}/comparisons/"),
                 gg_runs_key: format!("{prefix}/gg-runs.json"),
                 test_case_groups_key: Some(format!("{prefix}/test-case-groups.json")),
+                case_showcases_key: Some(format!("{prefix}/case-showcases.json")),
             },
         )?;
 
@@ -3264,6 +3320,56 @@ pub struct SnapshotIndex {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub test_case_groups_key: Option<String>,
+    /// Where this snapshot's case showcases live (`<prefix>/case-showcases.json`):
+    /// the showcases of every non-experimental version of each case with a
+    /// published run, whichever version that run built.
+    /// Optional on the wire because it postdates the other keys: a reader of a
+    /// snapshot written before it previews a case from its case documents instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub case_showcases_key: Option<String>,
+}
+
+/// The case showcase file (`case-showcases.json`): the authored showcases of every
+/// non-experimental version of each case with a published run.
+///
+/// Gated on the **case** having a published run, not on the version: the gallery
+/// lists a case once any run of it is published, and a showcase is the case's own
+/// presentation, captured from its reference implementation, rather than anything
+/// a run produced. So a listed case previews its newest showcase even while its
+/// runs are on older versions, and a case with no published run uploads nothing
+/// the gallery would not show.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseShowcasesFile {
+    pub schema_version: u32,
+    /// One entry per version declaring at least one showcase, ordered by slug and
+    /// then by version.
+    pub showcases: Vec<CaseVersionShowcases>,
+}
+
+/// One case version's showcases, as [`CaseShowcasesFile`] lists them.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseVersionShowcases {
+    pub slug: String,
+    pub version: String,
+    /// Every variant of the version that declares a showcase, in manifest order —
+    /// the order a preview picks its first from.
+    pub variants: Vec<CaseVariantShowcase>,
+}
+
+/// One variant's showcase within [`CaseVersionShowcases`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseVariantShowcase {
+    /// The variant's slug.
+    pub variant: String,
+    /// The description and the carousel, each entry naming its published key.
+    pub showcase: CaseShowcaseOut,
 }
 
 /// The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map
@@ -4671,7 +4777,8 @@ fn aggregate_aesthetic_inner(
 /// ([`test_cabinet_core::review::validator_aggregate_score`]: each review's
 /// checklist overlays the validators' verdicts and the run averages the reviews'
 /// effective scores; with zero reviews the validators' own figure stands), always
-/// `Some`. Otherwise the aggregate reviewer score: the case's declared checklist
+/// `Some`; an effective checklist that decides no scored point scores zero over the
+/// declared weight. Otherwise the aggregate reviewer score: the case's declared checklist
 /// weights scored against each of the run's `reviews`, then averaged (see
 /// [`test_cabinet_core::review::aggregate_score`]), `None` when the run carries no
 /// reviews. Either way `None` for a run whose terminal state is not

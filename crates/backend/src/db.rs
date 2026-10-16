@@ -467,6 +467,12 @@ const RUN_GG_CONFIG_ID_BACKFILL: &str = "run.gg_config_id";
 /// The `backfill_state` key of [`Db::backfill_in_flight_gg_config_ids`].
 const JOB_GG_CONFIG_ID_BACKFILL: &str = "job.gg_config_id";
 
+/// The `backfill_state` key of [`Db::recompute_validator_ratings`], named for the rating
+/// rule whose arrival it applies to the stored runs: a validator-rated run whose
+/// checklist decides no scored point is broken. Each change to how the validators rate
+/// a run names a key of its own here, so the pass runs once more under the new rule.
+const RUN_VALIDATOR_RATING_UNDECIDED_BROKEN: &str = "run.validator_rating.undecided_broken";
+
 /// The SeaORM-backed store.
 pub struct Db {
     handle: ConnHandle,
@@ -2549,8 +2555,9 @@ pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<Aes
 /// [scored](test_cabinet_core::run_record::RunState::is_scored) — a catastrophic
 /// failure, a timeout, or any tier that released nothing — has no rating at all
 /// (`None`), whatever its case version. Its build never loaded, so no validator
-/// ran against it, and the validators' figure over an empty verdict set would
-/// otherwise read as flawless.
+/// ran against it, and the run is unscored rather than rated. A completed run whose
+/// validators decided no scored point is rated broken instead
+/// ([`verdict_domain_ratings`](test_cabinet_core::review::verdict_domain_ratings)).
 pub(crate) fn functional_rating(
     manifest: Option<&StoredManifest>,
     record: &RunRecord,
@@ -8460,6 +8467,138 @@ impl Db {
             backfilled += 1;
         }
         Ok(backfilled)
+    }
+
+    /// Recompute the lifted `run.rating` and `run.validator_rating` columns of every
+    /// completed validator-rated run once, when the validator rating rule changes, so the
+    /// readers of the stored columns (the console's rating sort and filter, the stats
+    /// board, a ladder's gate) agree with the snapshot and the run detail, which decide
+    /// the figures afresh on every read.
+    ///
+    /// [`Self::backfill_validator_rating`] fills only `NULL`s, so it cannot correct a row
+    /// that holds the previous rule's figure; this pass rewrites each candidate through
+    /// the same seams [`Self::push`] and [`Self::add_review`] use (`lifted_rating` over
+    /// the run's reviews, `validator_only_rating` without them) and writes only the rows
+    /// whose figures changed. A changed row is stamped (`touch_run`), and a changed
+    /// published row marks the snapshot dirty so the gallery refreshes once.
+    ///
+    /// **One-shot**, marked in [`backfill_state`] under
+    /// `RUN_VALIDATOR_RATING_UNDECIDED_BROKEN`; a later change to the rating rule names
+    /// a new key. A candidate whose case version the store cannot read (a deployment
+    /// whose store starts empty, or a version that left it) leaves the pass unmarked,
+    /// so the next ingest that changes the store, or the next boot, runs it again. A
+    /// record that no longer deserializes is skipped without blocking the marker, as
+    /// [`Self::backfill_validator_rating`] skips it, since no later pass could read it
+    /// either. Paged by an `id` cursor. Returns how many rows were rewritten.
+    ///
+    /// A verdict a ladder dispatch has already recorded stands, as every recorded
+    /// verdict does; the rewritten ratings reach the verdicts the gate decides after
+    /// the pass.
+    pub async fn recompute_validator_ratings(
+        &self,
+        store: &crate::store::DefinitionStore,
+    ) -> Result<usize> {
+        const BATCH: u64 = 256;
+        if self
+            .backfill_completed(RUN_VALIDATOR_RATING_UNDECIDED_BROKEN)
+            .await?
+        {
+            return Ok(0);
+        }
+        type Row = (
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            bool,
+        );
+        let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
+        let mut unresolved = false;
+        let mut published_changed = false;
+        let mut rewritten = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::TestCaseSlug)
+                .column(run::Column::TestCaseVersion)
+                .column(run::Column::RecordJson)
+                .column(run::Column::Rating)
+                .column(run::Column::ValidatorRating)
+                .column(run::Column::Published)
+                .filter(run::Column::RunState.eq("completed"))
+                .filter(run::Column::ValidatorRated.eq(true));
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows: Vec<Row> = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.0.clone());
+
+            // The batch's reviews in one query, grouped by run.
+            let ids: Vec<String> = rows.iter().map(|row| row.0.clone()).collect();
+            let mut review_map: HashMap<String, Vec<StoredReview>> = HashMap::new();
+            for review in review::Entity::find()
+                .filter(review::Column::RunId.is_in(ids))
+                .all(&self.conn())
+                .await?
+            {
+                review_map
+                    .entry(review.run_id.clone())
+                    .or_default()
+                    .push(stored_review(review)?);
+            }
+
+            for (id, slug, version, record_json, rating, validator_rating, published) in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&record_json) else {
+                    continue;
+                };
+                let manifest = manifests
+                    .entry((slug.clone(), version.clone()))
+                    .or_insert_with(|| store.read_manifest(&slug, &version).ok());
+                let Some(manifest) = manifest.as_ref() else {
+                    unresolved = true;
+                    continue;
+                };
+                if !manifest.validator_rated() {
+                    continue;
+                }
+                let reviews = review_map.get(&id).map(Vec::as_slice).unwrap_or(&[]);
+                let next_rating = lifted_rating(Some(manifest), &record, reviews);
+                let next_validator = validator_only_rating(Some(manifest), &record)
+                    .map(|rating| rating.as_str().to_string());
+                if next_rating == rating && next_validator == validator_rating {
+                    continue;
+                }
+                run::Entity::update_many()
+                    .col_expr(run::Column::Rating, Expr::value(next_rating))
+                    .col_expr(run::Column::ValidatorRating, Expr::value(next_validator))
+                    .filter(run::Column::Id.eq(id.as_str()))
+                    .exec(&self.conn())
+                    .await?;
+                touch_run(&self.conn(), &id).await?;
+                published_changed |= published;
+                rewritten += 1;
+            }
+        }
+        if published_changed {
+            set_dirty(&self.conn()).await?;
+        }
+        if !unresolved {
+            self.mark_backfill_complete(RUN_VALIDATOR_RATING_UNDECIDED_BROKEN)
+                .await?;
+        }
+        Ok(rewritten)
     }
 
     /// Backfill the lifted `code_analyzer_version` column for runs whose record already

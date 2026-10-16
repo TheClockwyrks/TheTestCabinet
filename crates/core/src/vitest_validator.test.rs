@@ -8,7 +8,7 @@
 //! that needed a node toolchain on the host would prove less and fail more.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::*;
 use crate::engine::{EngineCatalog, EngineSelection};
@@ -740,6 +740,7 @@ fn a_run_that_outlives_its_cap_leaves_every_point_inconclusive_rather_than_faile
         &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
         Caps {
             suite: Duration::from_millis(300),
+            check: Some(Duration::from_millis(300)),
             install: Duration::from_millis(300),
         },
     );
@@ -810,12 +811,15 @@ fn a_suite_that_declined_to_decide_is_held_apart_from_one_the_runner_could_not_e
 
 #[test]
 fn the_cap_is_the_default_until_the_environment_names_a_usable_one() {
-    assert_eq!(timeout_from(None), VITEST_TIMEOUT);
-    assert_eq!(timeout_from(Some(" 90 ")), Duration::from_secs(90));
+    assert_eq!(timeout_from(None, VITEST_TIMEOUT), VITEST_TIMEOUT);
+    assert_eq!(
+        timeout_from(Some(" 90 "), VITEST_TIMEOUT),
+        Duration::from_secs(90)
+    );
     for unusable in ["", "0", "-1", "ninety", "90s", "1.5"] {
         assert_eq!(
-            timeout_from(Some(unusable)),
-            VITEST_TIMEOUT,
+            timeout_from(Some(unusable), VITEST_CHECK_TIMEOUT),
+            VITEST_CHECK_TIMEOUT,
             "`{unusable}` names no budget, so the default stands",
         );
     }
@@ -1059,9 +1063,9 @@ fn a_short_excerpt_is_left_alone() {
 // --- The command ------------------------------------------------------------
 
 #[test]
-fn vitest_is_run_over_the_cases_project_with_the_json_reporter() {
+fn vitest_is_run_over_the_cases_project_with_the_progress_reporter() {
     let command = vitest_command(
-        Path::new("/tmp/tcab-vitest/report.json"),
+        Path::new("/tmp/tcab-vitest/progress-reporter.mjs"),
         &["validation/color/ball.test.ts".to_string()],
     );
     assert!(
@@ -1069,19 +1073,15 @@ fn vitest_is_run_over_the_cases_project_with_the_json_reporter() {
         "the case's project is named, not the build's own: {command}",
     );
     assert!(
-        command.contains("--reporter=json"),
-        "the result is parsed rather than scraped: {command}",
-    );
-    assert!(
-        command.contains("--outputFile='/tmp/tcab-vitest/report.json'"),
-        "the report is written where the runner reads it: {command}",
+        command.contains("--reporter='/tmp/tcab-vitest/progress-reporter.mjs'"),
+        "the result is streamed to the runner rather than scraped: {command}",
     );
 }
 
 #[test]
 fn the_declared_suites_are_named_to_vitest_after_its_options() {
     let command = vitest_command(
-        Path::new("/tmp/tcab-vitest/report.json"),
+        Path::new("/tmp/tcab-vitest/progress-reporter.mjs"),
         &[
             "validation/color/ball.test.ts".to_string(),
             "validation/gameplay/serve-initial.test.ts".to_string(),
@@ -1820,4 +1820,430 @@ fn a_point_scoped_away_from_the_run_s_engine_names_no_suite() {
         vec!["validation/gameplay/serve-initial.test.ts".to_string()],
         "the engine-backed run never names the suite that decides a point it does not carry",
     );
+}
+
+// --- The limit on one suite -------------------------------------------------
+
+/// A stand-in for vitest, written into `repo`: it works through the files it is handed
+/// one at a time, as a single worker does, and reports each through the progress stream
+/// exactly as the progress reporter would, declaring a 500 ms test timeout. A file whose name says `hang` never
+/// finishes, one that says `slow` takes two seconds, one that says `crash` takes the
+/// whole process down before it finishes, and one that says `missing` is never
+/// collected at all.
+///
+/// Each file is reported under `repo` as the runner spells it, JSON-escaped, rather
+/// than under `$PWD`: Git Bash on Windows spells the same directory `/c/…`, which is
+/// not a path the runner can make relative to the tree.
+fn fake_vitest(repo: &Path) -> impl Fn(&[String]) -> String {
+    let root = serde_json::to_string(&repo.to_string_lossy()).expect("a JSON string");
+    let root = &root[1..root.len() - 1];
+    std::fs::write(
+        repo.join("fake-vitest.sh"),
+        format!("root={}\n", quote(root))
+            + r#"out="$TCAB_VITEST_PROGRESS_FILE"
+case "$*" in *setup-throws*)
+  echo "Error: globalSetup threw: the reference server could not bind its port" >&2
+  printf '{"event":"done"}\n' >> "$out"
+  exit 1 ;;
+esac
+for f in "$@"; do
+  case "$f" in *missing*) continue ;; esac
+  printf '{"event":"start","file":"%s/%s","testTimeout":500}\n' "$root" "$f" >> "$out"
+  case "$f" in
+    *hang*) sleep 30 ;;
+    *slow*) sleep 2 ;;
+    *crash*) echo "the worker died" >&2; exit 1 ;;
+  esac
+  printf '{"event":"end","report":{"name":"%s/%s","message":"","assertionResults":[{"fullName":"holds","title":"holds","status":"passed","failureMessages":[]}]}}\n' "$root" "$f" >> "$out"
+done
+printf '{"event":"done"}\n' >> "$out"
+"#,
+    )
+    .expect("the stand-in for vitest");
+    |files: &[String]| {
+        let mut command = "sh fake-vitest.sh".to_string();
+        for file in files {
+            command.push(' ');
+            command.push_str(&quote(file));
+        }
+        command
+    }
+}
+
+/// Drive `files` through the stand-in under a whole-run `suite` cap, holding each file
+/// to the fixed `check` limit when one is given and to its declared limit otherwise.
+fn drive_fake(files: &[&str], check: Option<Duration>, suite: Duration) -> Outcomes {
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let filters: Vec<String> = files.iter().map(|file| (*file).to_string()).collect();
+    // The tree holds every suite file but the ones the stand-in never collects.
+    for file in filters.iter().filter(|file| !file.contains("missing")) {
+        let path = repo.path().join(file);
+        std::fs::create_dir_all(path.parent().expect("a suite file has a folder"))
+            .expect("the suite's folder");
+        std::fs::write(&path, "").expect("the suite file");
+    }
+    drive(
+        repo.path(),
+        &filters,
+        Caps {
+            suite,
+            check,
+            install: suite,
+        },
+        scratch.path(),
+        &[],
+        &fake_vitest(repo.path()),
+    )
+}
+
+fn overran(outcomes: &Outcomes) -> Vec<&str> {
+    outcomes
+        .overran
+        .iter()
+        .map(|(file, _)| file.as_str())
+        .collect()
+}
+
+fn reported(outcomes: &Outcomes) -> Vec<&str> {
+    outcomes
+        .reports
+        .iter()
+        .map(|report| report.file.as_str())
+        .collect()
+}
+
+#[test]
+fn a_suite_that_overruns_its_limit_is_stopped_and_the_rest_still_run() {
+    let started = Instant::now();
+    let outcomes = drive_fake(
+        &[
+            "validation/a.test.ts",
+            "validation/hang.test.ts",
+            "validation/b.test.ts",
+        ],
+        Some(Duration::from_millis(500)),
+        Duration::from_secs(60),
+    );
+
+    assert_eq!(
+        overran(&outcomes),
+        ["validation/hang.test.ts"],
+        "the suite that never finished is the one stopped",
+    );
+    assert_eq!(
+        reported(&outcomes),
+        ["validation/a.test.ts", "validation/b.test.ts"],
+        "the suite before it keeps its report, and the one after it is run again",
+    );
+    assert!(
+        outcomes.cut_short.is_none(),
+        "every suite finished or overran, so nothing was cut short",
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "the stuck suite cost its own limit and no more: {:?}",
+        started.elapsed(),
+    );
+}
+
+#[test]
+fn every_suite_that_overruns_is_stopped_on_its_own_limit() {
+    let outcomes = drive_fake(
+        &[
+            "validation/hang-one.test.ts",
+            "validation/a.test.ts",
+            "validation/hang-two.test.ts",
+        ],
+        Some(Duration::from_millis(300)),
+        Duration::from_secs(60),
+    );
+
+    assert_eq!(
+        overran(&outcomes),
+        ["validation/hang-one.test.ts", "validation/hang-two.test.ts"],
+    );
+    assert_eq!(reported(&outcomes), ["validation/a.test.ts"]);
+}
+
+#[test]
+fn the_whole_run_cap_keeps_every_report_that_arrived_before_it() {
+    let outcomes = drive_fake(
+        &[
+            "validation/a.test.ts",
+            "validation/slow.test.ts",
+            "validation/b.test.ts",
+        ],
+        Some(Duration::from_secs(30)),
+        Duration::from_millis(800),
+    );
+
+    assert_eq!(
+        reported(&outcomes),
+        ["validation/a.test.ts"],
+        "the suite that finished before the cap keeps its report",
+    );
+    assert!(
+        outcomes.overran.is_empty(),
+        "no suite overran its own limit"
+    );
+    let failure = outcomes
+        .cut_short
+        .as_ref()
+        .expect("the cap cut the run short");
+    assert_eq!(failure.inconclusive, Inconclusive::TimedOut);
+}
+
+#[test]
+fn a_vitest_that_ends_before_reporting_everything_leaves_the_rest_not_run() {
+    let outcomes = drive_fake(
+        &[
+            "validation/a.test.ts",
+            "validation/crash.test.ts",
+            "validation/b.test.ts",
+        ],
+        Some(Duration::from_secs(30)),
+        Duration::from_secs(60),
+    );
+
+    assert_eq!(reported(&outcomes), ["validation/a.test.ts"]);
+    let failure = outcomes
+        .cut_short
+        .as_ref()
+        .expect("vitest ended without reporting the run complete");
+    assert_eq!(failure.inconclusive, Inconclusive::NotRun);
+    assert!(
+        failure.reason.contains("the worker died"),
+        "the reason carries what vitest printed: {}",
+        failure.reason,
+    );
+}
+
+#[test]
+fn a_suite_vitest_never_collected_is_a_suite_the_project_does_not_contain() {
+    let outcomes = drive_fake(
+        &["validation/a.test.ts", "validation/missing.test.ts"],
+        Some(Duration::from_secs(30)),
+        Duration::from_secs(60),
+    );
+
+    assert_eq!(reported(&outcomes), ["validation/a.test.ts"]);
+    assert!(
+        outcomes.cut_short.is_none(),
+        "vitest reported everything it was going to",
+    );
+    let items = vec![item("missing", "validation/simple-2d/missing.test.ts")];
+    let result = outcomes.result_for(&suite_for(&items));
+    assert_eq!(result.inconclusive, Some(Inconclusive::NotRun));
+    assert!(
+        result
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no suite at"),
+        "{:?}",
+        result.detail,
+    );
+}
+
+#[test]
+fn a_suite_vitest_finished_without_reporting_records_vitests_own_output() {
+    // A global setup throws before any file runs: vitest reports it is done, exits
+    // non-zero, and never reports a file.
+    let outcomes = drive_fake(
+        &["validation/setup-throws.test.ts"],
+        Some(Duration::from_secs(30)),
+        Duration::from_secs(60),
+    );
+
+    assert!(reported(&outcomes).is_empty());
+    assert!(outcomes.cut_short.is_none(), "vitest finished reporting");
+    let items = vec![item(
+        "setup-throws",
+        "validation/simple-2d/setup-throws.test.ts",
+    )];
+    let result = outcomes.result_for(&suite_for(&items));
+    assert_eq!(result.inconclusive, Some(Inconclusive::NotRun));
+    assert!(result.precondition_unmet && !result.ran);
+    assert!(result.verdicts.is_empty(), "no failure is synthesized");
+    let detail = result.detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.starts_with(
+            "vitest finished without reporting the suite at `validation/setup-throws.test.ts` \
+             (exit 1): "
+        ),
+        "the suite exists, so the detail never claims the project lacks it: {detail}",
+    );
+    assert!(
+        detail.contains("globalSetup threw: the reference server could not bind its port"),
+        "{detail}",
+    );
+    assert!(detail.len() <= VITEST_OUTPUT_LIMIT);
+
+    // However much vitest printed, the statement that leads the detail survives.
+    let long = Outcomes {
+        unreported: Some(Unreported {
+            exit: "exit 1".to_string(),
+            output: "x".repeat(VITEST_OUTPUT_LIMIT * 2),
+            absent: BTreeSet::new(),
+        }),
+        ..Outcomes::default()
+    };
+    let detail = long
+        .result_for(&suite_for(&items))
+        .detail
+        .unwrap_or_default();
+    assert!(
+        detail.starts_with("vitest finished without reporting the suite at"),
+        "{detail}"
+    );
+    assert!(detail.len() <= VITEST_OUTPUT_LIMIT);
+
+    // A vitest that printed nothing says so rather than leaving the reason dangling.
+    let silent = Outcomes {
+        unreported: Some(Unreported {
+            exit: "exit 1".to_string(),
+            output: " \n".to_string(),
+            absent: BTreeSet::new(),
+        }),
+        ..Outcomes::default()
+    };
+    let detail = silent
+        .result_for(&suite_for(&items))
+        .detail
+        .unwrap_or_default();
+    assert!(detail.ends_with("(exit 1) and printed nothing"), "{detail}");
+}
+
+#[test]
+fn a_suite_that_overran_fails_its_point_and_the_ones_cut_short_are_undecided() {
+    let items = vec![
+        item("serve-speed", "validation/simple-2d/serve-speed.test.ts"),
+        item("no-tunnel", "validation/simple-2d/no-tunnel.test.ts"),
+    ];
+    let suites: Vec<Suite> = drive_units(&items)
+        .iter()
+        .map(|unit| Suite::of(unit, "simple-2d"))
+        .collect();
+    let outcomes = Outcomes {
+        reports: Vec::new(),
+        overran: vec![(
+            "validation/serve-speed.test.ts".to_string(),
+            Duration::from_secs(120),
+        )],
+        cut_short: Some(RunnerFailure::timed_out(
+            "the vitest step exceeded its 2700s cap",
+        )),
+        unreported: None,
+    };
+    let results: Vec<DebugScriptResult> = suites
+        .iter()
+        .map(|suite| outcomes.result_for(suite))
+        .collect();
+
+    let overran = &results[0];
+    assert!(!overran.ran, "a suite stopped part way did not complete");
+    assert!(!overran.precondition_unmet, "and it is the build's failure");
+    assert_eq!(overran.inconclusive, None);
+    assert_eq!(overran.verdicts.len(), 1);
+    assert!(!overran.verdicts[0].pass, "its point fails");
+    assert!(
+        overran
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("120s"),
+        "the limit it overran is recorded: {:?}",
+        overran.detail,
+    );
+
+    let cut_short = &results[1];
+    assert_eq!(cut_short.inconclusive, Some(Inconclusive::TimedOut));
+    assert!(cut_short.verdicts.is_empty(), "the cap decides nothing");
+
+    let score = crate::comparison::automated_only_score(&items, &results);
+    let one_point = crate::comparison::automated_only_score(&items[..1], &results[..1]);
+    assert_eq!(
+        score.total, one_point.total,
+        "the overrun point is scored and lost; the one the cap cut short is not scored",
+    );
+    assert!(score.total > 0);
+    assert_eq!(score.earned, 0.0);
+}
+
+#[test]
+fn a_progress_line_still_being_written_is_left_for_the_next_read() {
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let path = repo.path().join("progress.ndjson");
+    // Encoded rather than spliced in, since a Windows path's backslashes are escapes.
+    let start = format!(
+        "{}\n",
+        serde_json::json!({
+            "event": "start",
+            "file": repo.path().join("validation/a.test.ts"),
+        }),
+    );
+    std::fs::write(&path, format!("{start}{{\"event\":\"do")).expect("a partial stream");
+    let mut progress = Progress::new(path.clone(), repo.path());
+
+    progress.read();
+    assert_eq!(progress.started.len(), 1, "the whole line is read");
+    assert!(!progress.done, "the partial one is not");
+
+    std::fs::write(&path, format!("{start}{{\"event\":\"done\"}}\n")).expect("the line completed");
+    progress.read();
+    assert!(progress.done, "it is read once it is whole");
+    assert_eq!(progress.started.len(), 1, "and nothing is read twice");
+}
+
+#[test]
+fn a_suite_is_held_to_the_timeouts_its_project_declares() {
+    // The stand-in declares a 500 ms test timeout. No fixed limit is set, so that is
+    // the limit enforced.
+    let started = Instant::now();
+    let outcomes = drive_fake(
+        &["validation/a.test.ts", "validation/hang.test.ts"],
+        None,
+        Duration::from_secs(60),
+    );
+
+    assert_eq!(
+        outcomes.overran,
+        [(
+            "validation/hang.test.ts".to_string(),
+            Duration::from_millis(500)
+        )],
+    );
+    assert_eq!(reported(&outcomes), ["validation/a.test.ts"]);
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn the_declared_limit_is_the_projects_test_timeout_for_each_check() {
+    assert_eq!(declared_limit(Some(300_000), 1), Duration::from_secs(300));
+    assert_eq!(declared_limit(Some(300_000), 3), Duration::from_secs(900));
+    assert_eq!(
+        declared_limit(Some(300_000), 0),
+        Duration::from_secs(300),
+        "a file whose checks were not counted yet is held to one",
+    );
+    for undeclared in [None, Some(0)] {
+        assert_eq!(
+            declared_limit(undeclared, 1),
+            VITEST_CHECK_TIMEOUT,
+            "a project with no test timeout is still bounded",
+        );
+    }
+}
+
+#[test]
+fn a_fixed_limit_is_only_what_the_environment_names_usably() {
+    assert_eq!(seconds_in(" 45 "), Some(Duration::from_secs(45)));
+    for unusable in ["", "0", "-1", "ninety", "90s", "1.5"] {
+        assert_eq!(seconds_in(unusable), None, "`{unusable}`");
+    }
 }

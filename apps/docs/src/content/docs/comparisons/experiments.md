@@ -185,6 +185,13 @@ The covered items are then scored by the same `score_checklist` a human review
 goes through, over the case's effective review items for the variant, common
 plus variant with errata exclusions applied.
 
+On a [validator-rated](/terminology/#validator-rated) case version, a completed
+run whose validators decided no scored point scores zero over the declared
+weight of every scored point, as it does on its own page, where it is rated
+[`broken`](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating).
+It counts toward the arm's score and fails the pass rate. On any other version a
+run with no covered point contributes to neither.
+
 An arm's score is the mean fraction across its scored runs, reported with every
 run's individual point. A run counts toward the arm's [pass
 rate](/comparisons/statistics/) only when it earned every auto-covered point.

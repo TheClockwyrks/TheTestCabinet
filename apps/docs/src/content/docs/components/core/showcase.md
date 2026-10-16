@@ -138,9 +138,15 @@ The showcase travels the definition pipeline the way specs do:
   plus the carousel, and the catalog listing carries each case's showcase
   preview: the latest visible version's first variant, in manifest order, that
   declares one. See the [backend API](/components/backend/api/#get-test-cases).
-- The [public snapshot](/components/backend/snapshot/#case-media) publishes each
-  media file content-addressed under
-  `media/cases/<slug>/<version>/showcase/<variant>/<digest>-<file>` and names it
-  on the case document's variant. A `.webm` clip is transcoded to `.mp4` for
-  universal playback, with the entry's `file` kept as authored, exactly as run
-  media is.
+- The [public snapshot](/components/backend/snapshot/#case-showcasesjson--case-showcases)
+  publishes the showcase of every non-experimental version of each case with a
+  published run, whichever version that run built, because a showcase presents
+  the case rather than a run. Each media file is content-addressed under
+  `media/cases/<slug>/<version>/showcase/<variant>/<digest>-<file>`, listed in
+  the snapshot's `case-showcases.json`, and also named on the case document's
+  variant for a version the snapshot publishes a case document for. A `.webm`
+  clip is transcoded to `.mp4` for universal playback, with the entry's `file`
+  kept as authored, exactly as run media is.
+- The public site lists a case once any run of it is published, and previews it
+  with the showcase of its newest version that has one, read from
+  `case-showcases.json`.

@@ -92,30 +92,45 @@
 //!
 //! # Bounded by construction
 //!
-//! The whole suite run is capped at [`vitest_timeout`] of wall clock and the output
-//! retained per suite at [`VITEST_OUTPUT_LIMIT`] bytes, exactly as the
-//! [toolchain stage](crate::toolchain_stage) bounds its commands. The cap costs a
-//! suite that never terminates that much wall clock and nothing more: the command is
-//! spawned into its own process group and the whole group is killed, so no worker the
-//! suite started outlives the run that stopped waiting for it.
+//! Every suite file is bounded by the test timeout its own project declares (see
+//! [`declared_limit`]), the whole suite run at [`vitest_timeout`], and the output retained per suite at
+//! [`VITEST_OUTPUT_LIMIT`] bytes, as the [toolchain stage](crate::toolchain_stage)
+//! bounds its commands. Either limit is enforced by killing vitest's process group, so
+//! no worker a suite started outlives the run that stopped waiting for it.
+//!
+//! The limit on one suite cannot be vitest's own test timeout. That timeout is a timer
+//! in the same JavaScript thread as the check, and a build whose frame never returns
+//! holds that thread, so the timer never fires. The runner watches from outside
+//! instead: vitest is handed a progress reporter
+//! (`vitest_progress_reporter.mjs`) that appends a line to a file as each suite starts
+//! and as it finishes, and the runner reads that file while it waits. A suite still
+//! running when its limit expires is stopped by stopping vitest, and fails the point
+//! it backs; vitest is then started again over the suites that had not finished, so
+//! one suite overrunning costs every other suite nothing.
+//!
+//! The results arrive the same way, one file at a time as each finishes, so a run
+//! the whole-run cap stopped keeps every verdict it had already reached.
 //!
 //! # Every negative answer says which kind it is
 //!
-//! A suite that ran and failed is the build's result. Every other negative answer
-//! decides nothing — no verdict is synthesized and the reviewer decides the point by
-//! hand — and names which kind it is through [`Inconclusive`].
+//! A suite that ran and failed is the build's result, and so is a suite that overran
+//! its own limit: a check takes seconds, so one still running long after is one the
+//! build would not let validation drive. Every other negative answer decides nothing —
+//! no verdict is synthesized and the reviewer decides the point by hand — and names
+//! which kind it is through [`Inconclusive`].
 //!
 //! A suite whose checks were all skipped is how a validator says its scenario was not
 //! constructible against this build. A suite the runner could not execute — no vitest
-//! in the tree, no project for the run's engine, a report that would not parse — is a
-//! fact about the case or the produced tree. A run stopped at the cap is a fact about
-//! the host, and is held apart from both so a busy machine never reads as a broken
-//! build.
+//! in the tree, no project for the run's engine, a run that ended before reporting it
+//! — is a fact about the case or the produced tree. A suite the whole-run cap stopped
+//! before it finished is a fact about the host, and is held apart from both so a busy
+//! machine never reads as a broken build.
 
 #[cfg(test)]
 #[path = "vitest_validator.test.rs"]
 mod tests;
 
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -132,15 +147,16 @@ use crate::validator::{DriveUnit, VALIDATION_SCRIPT_DIR, drive_units, relocate_o
 
 /// The default wall-clock cap on the whole validator suite run.
 ///
-/// A case's validators are a few dozen in-process suites that step a simulation for
+/// A case's validators are hundreds of in-process suites that step a simulation for
 /// thousands of frames, and a contended host stretches that severalfold, so the budget
-/// is tens of minutes. The cap exists for the suite that never terminates: a validator
-/// left waiting on something must cost the run this much and no more.
+/// is tens of minutes. Each suite is bounded on its own by its project's declared
+/// test timeout (see [`declared_limit`]); this cap bounds the sum, so a run of many slow suites costs this much and no more.
 ///
 /// The budget is deliberately far above what a conforming build needs even on a loaded
-/// machine. Crossing it decides nothing (see [`Inconclusive::TimedOut`]), so a generous
-/// cap costs a hung run some extra wall clock once, while a tight one hands a whole
-/// project of points to a reviewer whenever the host is busy.
+/// machine. Crossing it decides nothing for the suites it left unfinished (see
+/// [`Inconclusive::TimedOut`]), so a generous cap costs a slow run some extra wall
+/// clock once, while a tight one hands a project's points to a reviewer whenever the
+/// host is busy.
 ///
 /// [`VITEST_TIMEOUT_ENV`] overrides it, and [`vitest_timeout`] is what the runner reads.
 pub const VITEST_TIMEOUT: Duration = Duration::from_secs(45 * 60);
@@ -155,15 +171,62 @@ pub const VITEST_TIMEOUT_ENV: &str = "TCAB_VITEST_TIMEOUT_SECS";
 /// The wall-clock cap this environment puts on a suite run: [`VITEST_TIMEOUT_ENV`]
 /// when it names a positive whole number of seconds, and [`VITEST_TIMEOUT`] otherwise.
 pub fn vitest_timeout() -> Duration {
-    timeout_from(std::env::var(VITEST_TIMEOUT_ENV).ok().as_deref())
+    timeout_from(
+        std::env::var(VITEST_TIMEOUT_ENV).ok().as_deref(),
+        VITEST_TIMEOUT,
+    )
 }
 
-/// The cap `raw` asks for, or [`VITEST_TIMEOUT`] when it asks for nothing usable.
-fn timeout_from(raw: Option<&str>) -> Duration {
-    raw.map(str::trim)
-        .and_then(|value| value.parse::<u64>().ok())
+/// The limit on one suite file whose project declares no test timeout of its own.
+///
+/// Every case's validator project declares one, so this is a backstop rather than a
+/// budget: vitest resolves an undeclared timeout to its own default, and a `0`, which
+/// vitest reads as no timeout at all, still leaves a suite that never finishes bounded.
+pub const VITEST_CHECK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// The environment variable that replaces every suite file's declared limit with a
+/// fixed one, in whole seconds, on the same terms [`VITEST_TIMEOUT_ENV`] overrides the
+/// whole-run cap. A host deliberately squeezing a hung suite sets it; a run otherwise
+/// enforces exactly what the case declares.
+pub const VITEST_CHECK_TIMEOUT_ENV: &str = "TCAB_VITEST_CHECK_TIMEOUT_SECS";
+
+/// The fixed limit this environment puts on every suite file in place of the declared
+/// one: [`VITEST_CHECK_TIMEOUT_ENV`] when it names a positive whole number of seconds,
+/// and `None` otherwise.
+pub fn vitest_check_timeout() -> Option<Duration> {
+    std::env::var(VITEST_CHECK_TIMEOUT_ENV)
+        .ok()
+        .and_then(|raw| seconds_in(&raw))
+}
+
+/// The limit a suite file is held to, given the test timeout its project resolved (in
+/// milliseconds) and how many checks it holds.
+///
+/// It is the project's own test timeout for each check: the same allowance vitest
+/// already gives a check, enforced from outside the thread a hung build holds, so a
+/// check that never hands its thread back fails on its own instead of holding up every
+/// suite after it. A project that resolved no positive test timeout is held to
+/// [`VITEST_CHECK_TIMEOUT`].
+pub fn declared_limit(test_ms: Option<u64>, tests: usize) -> Duration {
+    let Some(test_ms) = test_ms.filter(|ms| *ms > 0) else {
+        return VITEST_CHECK_TIMEOUT;
+    };
+    let tests = u64::try_from(tests.max(1)).unwrap_or(u64::MAX);
+    Duration::from_millis(test_ms.saturating_mul(tests))
+}
+
+/// A positive whole number of seconds `raw` names, if it names one.
+fn seconds_in(raw: &str) -> Option<Duration> {
+    raw.trim()
+        .parse::<u64>()
+        .ok()
         .filter(|seconds| *seconds > 0)
-        .map_or(VITEST_TIMEOUT, Duration::from_secs)
+        .map(Duration::from_secs)
+}
+
+/// The limit `raw` asks for, or `default` when it asks for nothing usable.
+fn timeout_from(raw: Option<&str>, default: Duration) -> Duration {
+    raw.and_then(seconds_in).unwrap_or(default)
 }
 
 /// Wall-clock cap on the dependency install this runner falls back to when nothing
@@ -187,19 +250,23 @@ pub const VITEST_ASSERTION_LIMIT: usize = 1024;
 /// reads the environment once and every step of a run is bounded by the same budget.
 #[derive(Debug, Clone, Copy)]
 struct Caps {
-    /// The cap on the suite run itself.
+    /// The cap on the suite run itself, across every time vitest is started.
     suite: Duration,
+    /// A fixed limit on every suite file in place of the one its project declares.
+    check: Option<Duration>,
     /// The cap on the dependency install the runner falls back to.
     install: Duration,
 }
 
 impl Caps {
-    /// The caps this environment sets: [`vitest_timeout`] for the suites, and the
-    /// fixed [`VITEST_INSTALL_TIMEOUT`] for an install that is the toolchain stage's
-    /// command over the toolchain stage's tree.
+    /// The caps this environment sets: [`vitest_timeout`] for the suite run,
+    /// [`vitest_check_timeout`] in place of each suite's declared limit, and the fixed
+    /// [`VITEST_INSTALL_TIMEOUT`] for an install that is the toolchain stage's command
+    /// over the toolchain stage's tree.
     fn from_env() -> Self {
         Self {
             suite: vitest_timeout(),
+            check: vitest_check_timeout(),
             install: VITEST_INSTALL_TIMEOUT,
         }
     }
@@ -220,6 +287,19 @@ pub const VITEST_CONFIG_FILE: &str = "vitest.config.ts";
 /// suite may `process.chdir` for reasons of its own, so a relative path would name
 /// different directories to the runner and to the suite.
 pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
+
+/// The environment variable naming the file the progress reporter appends to: an
+/// absolute host path in the runner's own scratch directory, one per time vitest is
+/// started.
+pub const VITEST_PROGRESS_ENV: &str = "TCAB_VITEST_PROGRESS_FILE";
+
+/// The progress reporter vitest is handed, written into the runner's scratch directory
+/// for each run rather than staged into the tree: it is the runner's instrument, not
+/// the case's, and nothing in the produced tree may depend on it.
+const PROGRESS_REPORTER: &str = include_str!("vitest_progress_reporter.mjs");
+
+/// The name the progress reporter is written under in the scratch directory.
+const PROGRESS_REPORTER_FILE: &str = "progress-reporter.mjs";
 
 /// The local vitest binary a produced tree's install leaves behind.
 const VITEST_BIN: &str = "node_modules/.bin/vitest";
@@ -319,16 +399,22 @@ fn run_vitest_suites_bounded(
         media_dir,
         caps,
     ) {
-        Ok(reports) => suites
-            .iter()
-            .map(|suite| {
-                suite.result(
-                    reports
-                        .iter()
-                        .find(|report| Some(&report.file) == suite.file.as_ref()),
-                )
-            })
-            .collect::<Vec<_>>(),
+        Ok(outcomes) => {
+            if let Some(failure) = &outcomes.cut_short {
+                tracing::warn!(
+                    engine,
+                    reason = failure.reason,
+                    outcome = failure.outcome_tag(),
+                    reported = outcomes.reports.len(),
+                    "the validator run ended before every suite finished; the points of the \
+                     unfinished ones are left for the reviewer",
+                );
+            }
+            suites
+                .iter()
+                .map(|suite| outcomes.result_for(suite))
+                .collect::<Vec<_>>()
+        }
         Err(failure) => {
             tracing::warn!(
                 engine,
@@ -445,17 +531,69 @@ impl RunnerFailure {
     }
 }
 
-/// Stage the case's validator project, run vitest over it, and return the parsed
-/// per-file reports.
+/// What a suite run settled for the suite files it was asked to run.
+#[derive(Debug, Default)]
+struct Outcomes {
+    /// Every file vitest reported, in the order the reports arrived.
+    reports: Vec<SuiteReport>,
+    /// Every file stopped for running past its own limit, with that limit. Each fails
+    /// its point.
+    overran: Vec<(String, Duration)>,
+    /// Why the files that neither reported nor overran went unfinished, when the run
+    /// ended before vitest had reported everything it was going to. `None` when vitest
+    /// finished reporting, so a file it never reported is one it never collected.
+    cut_short: Option<RunnerFailure>,
+    /// What vitest said when it finished reporting without reporting some of the files
+    /// it was asked to run. A global setup that throws before any file runs ends vitest
+    /// this way, and the excerpt is what names that cause on each file it left
+    /// unreported. `None` when vitest reported every file it was asked to run.
+    unreported: Option<Unreported>,
+}
+
+/// How vitest ended when it finished reporting without reporting every file it was
+/// asked to run.
+#[derive(Debug, Default)]
+struct Unreported {
+    /// vitest's exit, as [`exit_description`] words it.
+    exit: String,
+    /// vitest's own output, untrimmed; [`Suite::not_collected`] bounds it.
+    output: String,
+    /// The unreported files the tree does not hold, which vitest could never have
+    /// collected. Every other unreported file exists and went unreported for the reason
+    /// vitest's output gives.
+    absent: BTreeSet<String>,
+}
+
+impl Outcomes {
+    /// The result for `suite`.
+    fn result_for(&self, suite: &Suite) -> DebugScriptResult {
+        let Some(file) = suite.file.as_ref() else {
+            return suite.result(None);
+        };
+        if let Some(report) = self.reports.iter().find(|report| &report.file == file) {
+            return suite.result(Some(report));
+        }
+        if let Some((_, limit)) = self.overran.iter().find(|(overran, _)| overran == file) {
+            return suite.overran(*limit);
+        }
+        match &self.cut_short {
+            Some(failure) => suite.inconclusive(&failure.reason, failure.inconclusive),
+            None => suite.not_collected(self.unreported.as_ref()),
+        }
+    }
+}
+
+/// Stage the case's validator project, run vitest over it, and return what the run
+/// settled for each suite file.
 ///
 /// `media_dir` is the run's validation media directory: it is created here, before
 /// vitest starts, and named to the suites in [`VALIDATION_MEDIA_ENV`] so each of them
 /// can write the outputs its point declares. The runner collects what they wrote once
 /// this returns.
 ///
-/// `Err` is reserved for a failure of the runner itself, which is a fact about the
-/// host or the case rather than about the build, and every suite is reported as
-/// inconclusive because of it.
+/// `Err` is reserved for a failure of the runner before any suite could start, which
+/// is a fact about the host or the case rather than about the build, and every suite
+/// is reported as inconclusive because of it.
 fn execute(
     test_case: &TestCaseVersion,
     engine: &str,
@@ -464,7 +602,7 @@ fn execute(
     filters: &[String],
     media_dir: &Path,
     caps: Caps,
-) -> Result<Vec<SuiteReport>, RunnerFailure> {
+) -> Result<Outcomes, RunnerFailure> {
     let repo = &artifacts.repo_path;
     let project = project_dir(test_case, engine);
     if !project.join(VITEST_CONFIG_FILE).is_file() {
@@ -504,8 +642,10 @@ fn execute(
         .map_err(|err| {
             RunnerFailure::not_run(format!("could not create a scratch directory: {err}"))
         })?;
-    let report_path = scratch.path().join("report.json");
-    let command = vitest_command(&report_path, filters);
+    let reporter = scratch.path().join(PROGRESS_REPORTER_FILE);
+    std::fs::write(&reporter, PROGRESS_REPORTER).map_err(|err| {
+        RunnerFailure::not_run(format!("could not write the progress reporter: {err}"))
+    })?;
     // The directory exists before the first suite loads, so a suite may write into it
     // without creating anything itself — and the media the run collects is only ever
     // under a directory this runner chose.
@@ -515,35 +655,271 @@ fn execute(
             media_dir.display(),
         ))
     })?;
-    let ran = run_bounded(
+    Ok(drive(
         repo,
-        &command,
-        caps.suite,
+        filters,
+        caps,
         scratch.path(),
-        "vitest",
         &[(VALIDATION_MEDIA_ENV, absolute(media_dir))],
-    )?;
+        &|filters| vitest_command(&reporter, filters),
+    ))
+}
 
-    let json = std::fs::read_to_string(&report_path).map_err(|_| {
-        RunnerFailure::not_run(format!(
-            "vitest wrote no JSON report ({}): {}",
-            exit_description(ran.code),
-            bounded(&ran.combined(), VITEST_OUTPUT_LIMIT),
-        ))
-    })?;
-    parse_report(&json, repo).map_err(RunnerFailure::not_run)
+/// Run the suite files `filters` names under `caps`, starting vitest again after any
+/// suite is stopped for overrunning its own limit, until every file has finished,
+/// overrun, or been cut short.
+///
+/// `command` builds the shell line that runs the given files with the progress
+/// reporter, which appends to the file [`VITEST_PROGRESS_ENV`] names. It is a parameter
+/// so a test can stand a script in for vitest and prove the watchdog without one.
+///
+/// Each start of vitest gets a progress file of its own, read while the run is waiting
+/// and once more after it ends, so a line written the moment before vitest was stopped
+/// is still counted. Every start removes at least one file from what is left to run —
+/// a file that finished or one that overran — so the loop ends.
+fn drive(
+    repo: &Path,
+    filters: &[String],
+    caps: Caps,
+    scratch: &Path,
+    env: &[(&str, String)],
+    command: &dyn Fn(&[String]) -> String,
+) -> Outcomes {
+    // One budget for the whole run, however many times vitest is started inside it.
+    let deadline = Instant::now() + caps.suite;
+    let mut outcomes = Outcomes::default();
+    let mut pending: Vec<String> = filters.to_vec();
+    let mut attempt = 0;
+    while !pending.is_empty() {
+        attempt += 1;
+        let progress_path = scratch.join(format!("progress-{attempt}.ndjson"));
+        let mut progress = Progress::new(progress_path.clone(), repo);
+        let mut overran: Vec<(String, Duration)> = Vec::new();
+        let mut env = env.to_vec();
+        env.push((VITEST_PROGRESS_ENV, absolute(&progress_path)));
+
+        let ran = run_watched(
+            repo,
+            &command(&pending),
+            caps.suite,
+            deadline,
+            scratch,
+            "vitest",
+            &env,
+            &mut || {
+                progress.read();
+                overran = progress.overrunning(caps.check);
+                !overran.is_empty()
+            },
+        );
+        progress.read();
+
+        let finished = std::mem::take(&mut progress.reports);
+        pending.retain(|file| !finished.iter().any(|report| &report.file == file));
+        // A file that reported in the moment between being found overrunning and
+        // being stopped finished, and its own report stands.
+        overran.retain(|(file, _)| pending.contains(file));
+        outcomes.reports.extend(finished);
+
+        match ran {
+            // Stopped because a suite overran. Every suite still running beside it was
+            // stopped with it through no fault of its own, so it is run again.
+            Ok(None) => {
+                tracing::warn!(
+                    suites = ?overran,
+                    "a validator suite ran past its own limit and was stopped; it fails its \
+                     point and the suites left unfinished are run again",
+                );
+                pending.retain(|file| !overran.iter().any(|(overran, _)| overran == file));
+                outcomes.overran.append(&mut overran);
+            }
+            Ok(Some(ran)) => {
+                if !pending.is_empty() {
+                    if progress.done {
+                        // vitest finished without reporting these files. The suites
+                        // stay not-run, and its own output says why, which a global
+                        // setup that threw before any file ran needs to be seen. A
+                        // file the tree does not hold is one vitest could never have
+                        // collected, which is the reason that suite records instead.
+                        outcomes.unreported = Some(Unreported {
+                            exit: exit_description(ran.code),
+                            output: ran.combined(),
+                            absent: pending
+                                .iter()
+                                .filter(|file| !repo.join(file.as_str()).is_file())
+                                .cloned()
+                                .collect(),
+                        });
+                    } else {
+                        outcomes.cut_short = Some(RunnerFailure::not_run(format!(
+                            "vitest ended before it reported this suite ({}): {}",
+                            exit_description(ran.code),
+                            bounded(&ran.combined(), VITEST_OUTPUT_LIMIT),
+                        )));
+                    }
+                }
+                break;
+            }
+            // The whole-run cap, or a vitest that could not be started at all.
+            Err(failure) => {
+                outcomes.cut_short = Some(failure);
+                break;
+            }
+        }
+    }
+    outcomes
+}
+
+/// One start of vitest as the progress reporter describes it, read incrementally off
+/// the file it appends to.
+struct Progress {
+    path: PathBuf,
+    /// How many bytes of the file have been consumed: always the end of a whole line.
+    consumed: u64,
+    /// The roots a reported path is made relative to: the tree as it was reached and
+    /// its canonical spelling, because vitest reports a file's real path, which is not
+    /// the path the tree was reached by when any component of it is a symlink.
+    roots: Vec<PathBuf>,
+    /// Every file vitest has started, in the order it started them.
+    started: Vec<Started>,
+    /// Every file vitest has finished, in the order they finished.
+    reports: Vec<SuiteReport>,
+    /// Whether vitest reported the run complete.
+    done: bool,
+}
+
+/// One line of the progress reporter's stream.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "event", rename_all = "camelCase")]
+enum ProgressEvent {
+    /// Vitest started a file: its absolute path, and the test timeout its project
+    /// resolved, in milliseconds.
+    #[serde(rename_all = "camelCase")]
+    Start {
+        file: String,
+        #[serde(default)]
+        test_timeout: Option<u64>,
+    },
+    /// Vitest collected a file: how many checks it holds.
+    Collected { file: String, tests: usize },
+    /// Vitest finished a file: the JSON reporter's entry for it.
+    End { report: ReporterFile },
+    /// Vitest reported everything it was going to.
+    Done,
+}
+
+impl Progress {
+    fn new(path: PathBuf, repo: &Path) -> Self {
+        let roots = std::iter::once(repo.to_path_buf())
+            .chain(repo.canonicalize().ok())
+            .collect();
+        Self {
+            path,
+            consumed: 0,
+            roots,
+            started: Vec::new(),
+            reports: Vec::new(),
+            done: false,
+        }
+    }
+
+    /// Take in every whole line appended since the last read. A trailing partial line
+    /// is left for the next read, and a line that does not parse is skipped: the
+    /// stream is the runner's own instrument, so nothing else writes to it.
+    fn read(&mut self) {
+        use std::io::{Read, Seek, SeekFrom};
+        let Ok(mut file) = File::open(&self.path) else {
+            return;
+        };
+        let mut appended = Vec::new();
+        if file.seek(SeekFrom::Start(self.consumed)).is_err()
+            || file.read_to_end(&mut appended).is_err()
+        {
+            return;
+        }
+        let Some(last_newline) = appended.iter().rposition(|byte| *byte == b'\n') else {
+            return;
+        };
+        let whole = &appended[..=last_newline];
+        self.consumed += whole.len() as u64;
+        for line in String::from_utf8_lossy(whole).lines() {
+            match serde_json::from_str::<ProgressEvent>(line) {
+                Ok(event) => self.apply(event),
+                Err(err) => tracing::debug!(%err, "skipped an unreadable progress line"),
+            }
+        }
+    }
+
+    fn apply(&mut self, event: ProgressEvent) {
+        let roots: Vec<&Path> = self.roots.iter().map(PathBuf::as_path).collect();
+        match event {
+            ProgressEvent::Start { file, test_timeout } => {
+                let file = relative_to(&file, &roots);
+                if !self.started.iter().any(|started| started.file == file) {
+                    self.started.push(Started {
+                        file,
+                        since: Instant::now(),
+                        test_ms: test_timeout,
+                        tests: 1,
+                    });
+                }
+            }
+            ProgressEvent::Collected { file, tests } => {
+                let file = relative_to(&file, &roots);
+                if let Some(started) = self.started.iter_mut().find(|started| started.file == file)
+                {
+                    started.tests = tests;
+                }
+            }
+            ProgressEvent::End { report } => self.reports.push(suite_report(report, &roots)),
+            ProgressEvent::Done => self.done = true,
+        }
+    }
+
+    /// Every file that has not finished and has run past its limit — `fixed` when the
+    /// host set one, and the limit its project declares otherwise — with that limit.
+    fn overrunning(&self, fixed: Option<Duration>) -> Vec<(String, Duration)> {
+        self.started
+            .iter()
+            .filter(|started| {
+                !self
+                    .reports
+                    .iter()
+                    .any(|report| report.file == started.file)
+            })
+            .map(|started| {
+                let limit = fixed.unwrap_or_else(|| declared_limit(started.test_ms, started.tests));
+                (started, limit)
+            })
+            .filter(|(started, limit)| started.since.elapsed() >= *limit)
+            .map(|(started, limit)| (started.file.clone(), limit))
+            .collect()
+    }
+}
+
+/// A suite file vitest has started.
+struct Started {
+    /// Its path relative to the tree.
+    file: String,
+    /// When the runner first saw it start.
+    since: Instant,
+    /// The test timeout its project resolved, in milliseconds.
+    test_ms: Option<u64>,
+    /// How many checks it holds: one until vitest reports its collection, which is
+    /// what nearly every validator file holds.
+    tests: usize,
 }
 
 /// The shell line the validators are run with.
 ///
-/// The JSON reporter is written to a file rather than read off stdout so a suite that
-/// prints on its own cannot corrupt the report, and the config is named explicitly
+/// The progress reporter writes to a file rather than stdout so a suite that prints on
+/// its own cannot corrupt what the runner reads, and the config is named explicitly
 /// because the build's own `vitest.config.ts` at the workspace root is a different
 /// project entirely.
 ///
 /// `filters` are vitest's positional file filters — the staged path of every suite
-/// this variant's checklist names. They are what keeps a run to its own variant's
-/// suites.
+/// this variant's checklist names that has not yet finished. They are what keeps a
+/// run to its own variant's suites.
 ///
 /// Vitest's rule is a case-insensitive SUBSTRING test against the file's
 /// project-relative path, not an exact match, so a filter is only as precise as the
@@ -551,11 +927,11 @@ fn execute(
 /// [`VALIDATION_SCRIPT_DIR`] and carries the suite's own `.test.ts` name, so
 /// containing it means being it — short of a validator project nesting a second
 /// `validation/` directory, or shipping two suites whose paths differ only in case.
-fn vitest_command(report_path: &Path, filters: &[String]) -> String {
+fn vitest_command(reporter: &Path, filters: &[String]) -> String {
     let mut command = format!(
-        "npx vitest run --config {} --reporter=json --outputFile={}",
+        "npx vitest run --config {} --reporter={}",
         quote(&format!("{VALIDATION_SCRIPT_DIR}/{VITEST_CONFIG_FILE}")),
-        quote(&report_path.to_string_lossy()),
+        quote(&reporter.to_string_lossy()),
     );
     for filter in filters {
         command.push(' ');
@@ -858,6 +1234,36 @@ fn run_bounded(
     tag: &str,
     env: &[(&str, String)],
 ) -> Result<Ran, RunnerFailure> {
+    run_watched(
+        repo,
+        command,
+        timeout,
+        Instant::now() + timeout,
+        scratch,
+        tag,
+        env,
+        &mut || false,
+    )?
+    .ok_or_else(|| RunnerFailure::not_run(format!("the {tag} step was stopped")))
+}
+
+/// [`run_bounded`] against a `deadline` that may have started running down before this
+/// command did, with `watch` consulted on every poll.
+///
+/// `cap` is the budget the deadline was set from, for the reason a timeout carries.
+/// `watch` returning `true` stops the command and its whole tree at once, and is
+/// answered with `Ok(None)`: the caller asked for the stop, so it already knows why.
+#[allow(clippy::too_many_arguments)]
+fn run_watched(
+    repo: &Path,
+    command: &str,
+    cap: Duration,
+    deadline: Instant,
+    scratch: &Path,
+    tag: &str,
+    env: &[(&str, String)],
+    watch: &mut dyn FnMut() -> bool,
+) -> Result<Option<Ran>, RunnerFailure> {
     let out_path = scratch.join(format!("{tag}.stdout"));
     let err_path = scratch.join(format!("{tag}.stderr"));
     let stdout = File::create(&out_path)
@@ -892,7 +1298,6 @@ fn run_bounded(
         .spawn()
         .map_err(|err| RunnerFailure::not_run(format!("could not start `sh`: {err}")))?;
 
-    let deadline = Instant::now() + timeout;
     let code = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status.code(),
@@ -908,16 +1313,20 @@ fn run_bounded(
             stop(&mut child);
             return Err(RunnerFailure::timed_out(format!(
                 "the {tag} step exceeded its {}s cap",
-                timeout.as_secs(),
+                cap.as_secs(),
             )));
+        }
+        if watch() {
+            stop(&mut child);
+            return Ok(None);
         }
         std::thread::sleep(POLL_INTERVAL);
     };
-    Ok(Ran {
+    Ok(Some(Ran {
         code,
         stdout: std::fs::read_to_string(&out_path).unwrap_or_default(),
         stderr: std::fs::read_to_string(&err_path).unwrap_or_default(),
-    })
+    }))
 }
 
 /// Stop a command that outlived its cap, together with everything it started.
@@ -926,9 +1335,24 @@ fn run_bounded(
 /// leaves node and its workers running. Those keep loading the host long after the run
 /// stopped waiting for them, which is how one suite over its budget makes the next
 /// case's suites slower still. The command is spawned into its own process group, so
-/// signalling the group reaches the whole tree; the shell is killed directly afterwards
-/// for the platforms that have no groups, and reaped either way.
+/// signalling the group reaches the whole tree. Windows has no groups, so the tree is
+/// walked from the shell down with `taskkill /T` instead, before the shell itself dies
+/// and its children lose the parent the walk finds them by. The shell is then killed
+/// directly and reaped either way.
+///
+/// On Windows a child left running also holds every inheritable handle it was spawned
+/// with, the runner's own stdout and stderr among them, so whatever runs the runner
+/// would wait on output that never closes.
 fn stop(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &child.id().to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     #[cfg(unix)]
     {
         // Through `sh` rather than a `kill` binary: `kill` is a shell builtin, and this
@@ -949,6 +1373,11 @@ fn stop(child: &mut std::process::Child) {
 // --- The report ------------------------------------------------------------
 
 /// Vitest's JSON reporter document, narrowed to the fields a verdict is decided from.
+///
+/// The runner reads the progress reporter's stream rather than this document, but each
+/// `end` line of that stream carries exactly one of this document's entries, so the
+/// tests state realistic reports in vitest's own shape.
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReporterDocument {
@@ -1018,6 +1447,7 @@ pub(crate) struct SuiteReport {
 ///
 /// Paths are rewritten relative to `repo` so a file matches the review item that
 /// declared it regardless of where the tree happens to live on the host.
+#[cfg(test)]
 pub(crate) fn parse_report(json: &str, repo: &Path) -> Result<Vec<SuiteReport>, String> {
     let document: ReporterDocument = serde_json::from_str(json)
         .map_err(|err| format!("vitest's JSON report could not be read: {err}"))?;
@@ -1029,37 +1459,44 @@ pub(crate) fn parse_report(json: &str, repo: &Path) -> Result<Vec<SuiteReport>, 
     Ok(document
         .test_results
         .into_iter()
-        .map(|file| SuiteReport {
-            file: relative_to(&file.name, &roots),
-            message: file
-                .message
-                .map(|message| sanitize_failure(&message))
-                .filter(|message| !message.is_empty()),
-            tests: file
-                .assertion_results
-                .into_iter()
-                .map(|test| TestOutcome {
-                    label: if test.full_name.trim().is_empty() {
-                        test.title
-                    } else {
-                        test.full_name
-                    },
-                    status: match test.status.as_str() {
-                        "passed" => TestStatus::Passed,
-                        "failed" => TestStatus::Failed,
-                        _ => TestStatus::Skipped,
-                    },
-                    failure: (!test.failure_messages.is_empty()).then(|| {
-                        test.failure_messages
-                            .iter()
-                            .map(|message| sanitize_failure(message))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    }),
-                })
-                .collect(),
-        })
+        .map(|file| suite_report(file, &roots))
         .collect())
+}
+
+/// One reporter entry as the report of the file it names, keyed relative to the first
+/// of `roots` the file lies under. The progress reporter streams the same entry the
+/// JSON reporter writes, so both arrive here.
+fn suite_report(file: ReporterFile, roots: &[&Path]) -> SuiteReport {
+    SuiteReport {
+        file: relative_to(&file.name, roots),
+        message: file
+            .message
+            .map(|message| sanitize_failure(&message))
+            .filter(|message| !message.is_empty()),
+        tests: file
+            .assertion_results
+            .into_iter()
+            .map(|test| TestOutcome {
+                label: if test.full_name.trim().is_empty() {
+                    test.title
+                } else {
+                    test.full_name
+                },
+                status: match test.status.as_str() {
+                    "passed" => TestStatus::Passed,
+                    "failed" => TestStatus::Failed,
+                    _ => TestStatus::Skipped,
+                },
+                failure: (!test.failure_messages.is_empty()).then(|| {
+                    test.failure_messages
+                        .iter()
+                        .map(|message| sanitize_failure(message))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }),
+            })
+            .collect(),
+    }
 }
 
 /// A reported path as a forward-slashed path relative to the first of `roots` it lies
@@ -1113,16 +1550,7 @@ impl Suite {
     /// The result for this suite, given the report of the file that decides it.
     pub(crate) fn result(&self, report: Option<&SuiteReport>) -> DebugScriptResult {
         let Some(report) = report else {
-            // The case names a validator vitest did not collect. That is a statement
-            // about the case's project, never about the build, so the point is left
-            // for the reviewer rather than failed.
-            return self.inconclusive(
-                &format!(
-                    "the validator project contains no suite at `{}`",
-                    self.file.as_deref().unwrap_or(&self.script_rel),
-                ),
-                Inconclusive::NotRun,
-            );
+            return self.not_collected(None);
         };
         if report.tests.is_empty() {
             // The file raised before any test ran, which for a validator means the
@@ -1184,6 +1612,69 @@ impl Suite {
             }],
             ..self.shell()
         }
+    }
+
+    /// The result for a suite stopped because it was still running `limit` after vitest
+    /// started it: a failed verdict, exactly as a suite that could not drive the
+    /// build's surface earns one. A check takes seconds, so a suite this far past its
+    /// budget is one the build would not let validation drive.
+    pub(crate) fn overran(&self, limit: Duration) -> DebugScriptResult {
+        let seconds = limit.as_secs();
+        DebugScriptResult {
+            ran: false,
+            precondition_unmet: false,
+            inconclusive: None,
+            detail: Some(format!(
+                "the suite was still running {seconds}s after it started, past the time its \
+                 validator project allows it, and was stopped"
+            )),
+            verdicts: vec![AutoVerdict {
+                id: self.verdict_id.clone(),
+                pass: false,
+                assertions: vec![Assertion {
+                    label: "the suite finishes inside its time limit".to_string(),
+                    pass: false,
+                    expected: Some(format!("finishes within {seconds}s")),
+                    actual: Some(format!("still running after {seconds}s")),
+                }],
+            }],
+            ..self.shell()
+        }
+    }
+
+    /// The result for a suite vitest never reported, which is a statement about the
+    /// case's project or the host, never about the build, so the point is left for the
+    /// reviewer rather than failed.
+    ///
+    /// `unreported` is how vitest ended when it finished without reporting the suite
+    /// (see [`Outcomes::unreported`]). A suite whose file the tree holds went
+    /// unreported for a reason vitest's own output gives, such as a global setup that
+    /// threw before any file ran, so its reason leads with that and carries the output,
+    /// bounded so the leading statement always survives. A suite whose file the tree
+    /// does not hold, or one with no record of how vitest ended, is a suite the project
+    /// does not contain.
+    fn not_collected(&self, unreported: Option<&Unreported>) -> DebugScriptResult {
+        let file = self.file.as_deref().unwrap_or(&self.script_rel);
+        let Some(unreported) = unreported.filter(|unreported| !unreported.absent.contains(file))
+        else {
+            return self.inconclusive(
+                &format!("the validator project contains no suite at `{file}`"),
+                Inconclusive::NotRun,
+            );
+        };
+        let mut reason = format!(
+            "vitest finished without reporting the suite at `{file}` ({})",
+            unreported.exit,
+        );
+        if unreported.output.trim().is_empty() {
+            reason.push_str(" and printed nothing");
+        } else {
+            const SEPARATOR: &str = ": ";
+            let room = VITEST_OUTPUT_LIMIT.saturating_sub(reason.len() + SEPARATOR.len());
+            reason.push_str(SEPARATOR);
+            reason.push_str(&bounded(&unreported.output, room));
+        }
+        self.inconclusive(&reason, Inconclusive::NotRun)
     }
 
     /// A result recording that this suite decided nothing, for `reason`, and which

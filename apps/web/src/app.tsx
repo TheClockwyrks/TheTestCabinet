@@ -12,7 +12,7 @@ import {
 } from "@clockwyrks/ui/client";
 import { createHttpArena, fetchArenaUrl } from "@clockwyrks/ui/transport";
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter } from "react-router";
+import { RouterProvider, createBrowserRouter } from "react-router";
 
 import {
   useBackendConnection,
@@ -81,11 +81,17 @@ function WebGallery() {
     [backendUrl, arenaUrl],
   );
   const data = useLiveGallery(arena);
+  // A data router, because only a data router can hold a navigation: a form with unsaved
+  // work asks before any link, back control or history step takes the operator away from
+  // it. The gallery declares its own routes beneath the one catch-all route here. Built
+  // when the gallery mounts rather than when the module loads, so it starts from the
+  // address the page is at by then.
+  const [router] = useState(() =>
+    createBrowserRouter([{ path: "*", element: <GalleryApp /> }]),
+  );
   return (
     <GalleryDataProvider value={data}>
-      <BrowserRouter>
-        <GalleryApp />
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </GalleryDataProvider>
   );
 }

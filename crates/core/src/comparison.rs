@@ -428,8 +428,11 @@ pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptRe
 /// The verdict-slice core of [`automated_only_score`], generalized so a review's
 /// [effective checklist](crate::review::effective_verdicts) — the validators'
 /// verdicts overlaid with the reviewer's overrides — scores through the identical
-/// rule (see [`crate::review::validator_review_score`]). Mirrors `coveredScore`
-/// in `packages/run-stats/src/scoring.ts`.
+/// rule (see [`crate::review::validator_review_score`], which applies it through
+/// [`crate::review::validator_covered_score`]: a validator-rated checklist that
+/// decides no scored point scores zero over the declared weight instead of the
+/// `0/0` this returns; a comparison of a validator-rated version scores its runs
+/// the same way). Mirrors `coveredScore` in `packages/run-stats/src/scoring.ts`.
 pub fn covered_score(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> Score {
     let covered: BTreeSet<String> = verdicts.iter().map(|v| v.id.clone()).collect();
     let restricted = restrict_items_to_covered(items, &covered);

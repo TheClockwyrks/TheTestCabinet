@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "CaseShowcaseMediaOut": {
+      "description": "One entry of an exported case showcase: `file` is the authored file name the\nUI keys the entry by (kept as authored even when the published bytes are a\ntranscode); `key` is the snapshot-relative object key holding the media as\npublished (a `.webm` clip transcoded to `.mp4`, everything else verbatim).",
+      "properties": {
+        "file": {
+          "description": "The media file's authored name in the showcase directory.",
+          "type": "string"
+        },
+        "key": {
+          "description": "The snapshot-relative object key of the published bytes.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind",
+          "description": "Whether the file is a still image, a video clip, or a replay recording."
+        },
+        "name": {
+          "description": "The short caption for the entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind", "key"],
+      "type": "object"
+    },
+    "CaseShowcaseOut": {
+      "description": "A variant's authored showcase as case metadata exports it — the case-side\ncounterpart of a run's `showcaseMedia[]`, but authored and committed with the\nversion rather than produced by a run.",
+      "properties": {
+        "description": {
+          "description": "The showcase description — the authored `showcase.md`, verbatim markdown.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in declared order.",
+          "items": {
+            "$ref": "#/$defs/CaseShowcaseMediaOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
+      "type": "object"
+    },
+    "CaseVariantShowcase": {
+      "description": "One variant's showcase within [`CaseVersionShowcases`].",
+      "properties": {
+        "showcase": {
+          "$ref": "#/$defs/CaseShowcaseOut",
+          "description": "The description and the carousel, each entry naming its published key."
+        },
+        "variant": {
+          "description": "The variant's slug.",
+          "type": "string"
+        }
+      },
+      "required": ["variant", "showcase"],
+      "type": "object"
+    },
+    "CaseVersionShowcases": {
+      "description": "One case version's showcases, as [`CaseShowcasesFile`] lists them.",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "variants": {
+          "description": "Every variant of the version that declares a showcase, in manifest order —\nthe order a preview picks its first from.",
+          "items": {
+            "$ref": "#/$defs/CaseVariantShowcase"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": ["slug", "version", "variants"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/snapshot/case-showcases.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The case showcase file (`case-showcases.json`): the authored showcases of every\nnon-experimental version of each case with a published run.\n\nGated on the **case** having a published run, not on the version: the gallery\nlists a case once any run of it is published, and a showcase is the case's own\npresentation, captured from its reference implementation, rather than anything\na run produced. So a listed case previews its newest showcase even while its\nruns are on older versions, and a case with no published run uploads nothing\nthe gallery would not show.",
+  "properties": {
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "showcases": {
+      "description": "One entry per version declaring at least one showcase, ordered by slug and\nthen by version.",
+      "items": {
+        "$ref": "#/$defs/CaseVersionShowcases"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["schemaVersion", "showcases"],
+  "title": "CaseShowcasesFile",
+  "type": "object"
+}

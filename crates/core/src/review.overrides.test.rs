@@ -341,3 +341,115 @@ fn the_aggregate_takes_the_worst_rating_and_the_average_score_across_reviews() {
     assert_eq!(gated.total, 2);
     assert_eq!(gated.reviews, 2);
 }
+
+#[test]
+fn a_review_deciding_an_undecided_point_lifts_the_nothing_decided_rule() {
+    let domains = [domain("gameplay")];
+    let items = [
+        capped_item("serve", FailureCap::Scuffed, &["gameplay"]),
+        capped_item("hud", FailureCap::Great, &["gameplay"]),
+    ];
+    // The validators decided nothing: broken, 0 over the declared 2.
+    let scripts = [inconclusive("serve"), inconclusive("hud")];
+    let auto = crate::comparison::automated_verdicts(&scripts);
+    assert!(auto.is_empty());
+    assert_eq!(
+        validator_review_rating(false, &domains, &items, &auto, &[]),
+        Some(Rating::Broken)
+    );
+    assert_eq!(
+        validator_review_score(false, &items, &auto, &[]),
+        Score {
+            earned: 0.0,
+            total: 2
+        }
+    );
+
+    // A reviewer passing one point decides it: the ordinary rule over the covered
+    // points, flawless at 1/1.
+    let passing = [pass("serve")];
+    assert_eq!(
+        validator_review_rating(false, &domains, &items, &auto, &passing),
+        Some(Rating::Flawless)
+    );
+    assert_eq!(
+        validator_review_score(false, &items, &auto, &passing),
+        Score {
+            earned: 1.0,
+            total: 1
+        }
+    );
+    // Failing it instead lowers the domain to the point's cap.
+    assert_eq!(
+        validator_review_rating(false, &domains, &items, &auto, &[fail("serve")]),
+        Some(Rating::Scuffed)
+    );
+
+    // Overrides naming an undeclared point decide nothing: still broken, 0/2.
+    let stray = [pass("ghost")];
+    assert_eq!(
+        validator_review_rating(false, &domains, &items, &auto, &stray),
+        Some(Rating::Broken)
+    );
+    assert_eq!(
+        validator_review_score(false, &items, &auto, &stray).total,
+        2
+    );
+}
+
+#[test]
+fn an_override_of_an_erratum_excluded_point_keeps_the_review_broken() {
+    let domains = [domain("gameplay")];
+    let mut excluded = capped_item("serve", FailureCap::Broken, &["gameplay"]);
+    excluded.scored = false;
+    let items = [
+        excluded,
+        capped_item("hud", FailureCap::Great, &["gameplay"]),
+    ];
+    let scripts = [inconclusive("serve"), inconclusive("hud")];
+    let auto = crate::comparison::automated_verdicts(&scripts);
+    let overrides = [pass("serve")];
+    assert_eq!(
+        validator_review_rating(false, &domains, &items, &auto, &overrides),
+        Some(Rating::Broken)
+    );
+    assert_eq!(
+        validator_review_score(false, &items, &auto, &overrides),
+        Score {
+            earned: 0.0,
+            total: 1
+        }
+    );
+}
+
+#[test]
+fn an_aesthetic_only_review_keeps_a_nothing_decided_run_broken() {
+    let domains = [domain("gameplay")];
+    let items = [
+        capped_item("serve", FailureCap::Great, &["gameplay"]),
+        capped_item("hud", FailureCap::Great, &["gameplay"]),
+    ];
+    let scripts = [inconclusive("serve"), inconclusive("hud")];
+    let auto = crate::comparison::automated_verdicts(&scripts);
+
+    // One reviewer decides both points (flawless, 2/2); the other overrides
+    // nothing (broken, 0/2). The run takes the worst rating and averages the
+    // earned weight over the shared declared total.
+    let deciding = [pass("serve"), pass("hud")];
+    let reviews: [&[ReviewVerdict]; 2] = [&deciding, &[]];
+    assert_eq!(
+        validator_aggregate_rating(false, &domains, &items, &auto, reviews),
+        Some(Rating::Broken)
+    );
+    let score = validator_aggregate_score(false, &items, &auto, reviews);
+    assert_eq!(score.reviews, 2);
+    assert_eq!(score.total, 2);
+    assert!((score.earned - 1.0).abs() < f64::EPSILON);
+
+    // With only the deciding review the run reads its figures.
+    let reviews: [&[ReviewVerdict]; 1] = [&deciding];
+    assert_eq!(
+        validator_aggregate_rating(false, &domains, &items, &auto, reviews),
+        Some(Rating::Flawless)
+    );
+}
