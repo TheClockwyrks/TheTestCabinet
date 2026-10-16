@@ -851,7 +851,9 @@ cannot read answers `404` here and is reached through [`GET
 - `rating`: the run's functional rating. On a validator-rated run the
   validators' rating while the run has no reviews, present from completion,
   and the worst of its reviews' effective ratings once it has any; on a legacy
-  run the review aggregate. Composed with the toolchain gate either way. `null`
+  run the review aggregate. A completed validator-rated run whose effective
+  checklist decides no scored point is `broken`. Composed with the toolchain
+  gate either way. `null`
   while unset, which is a legacy run with no review, and `null` for every run
   that did not complete: a catastrophic failure, a timeout, or any other
   failure tier is unscored, whatever its case version, since no build loaded
@@ -863,7 +865,9 @@ cannot read answers `404` here and is reached through [`GET
   same `{ earned, total, reviews, overallGrade }` the summary card carries. On
   a validator-rated run the validators' score while the run has no reviews
   (`reviews` is `0`), present from completion, and the mean of its reviews'
-  effective scores once it has any, with `reviews` counting them; on a legacy
+  effective scores once it has any, with `reviews` counting them. A run or review
+  whose effective checklist decides no scored point scores `earned: 0` over the
+  declared weight of the scored points. On a legacy
   run the mean across its reviews, `null` while unreviewed. `null` when the
   run's case version is not ingested, and `null` for every run that did not
   complete, for the same reason its `rating` is.

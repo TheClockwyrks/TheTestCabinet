@@ -322,7 +322,9 @@ The gate reads the [slot's runs](#a-rung-slots-runs). A completed run is read
 at its validator rating: the functional rating the
 [validators decide](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
 from the run record and the case version's checklist, with the toolchain gate on
-top. A run that ended on the model's own failure (catastrophic, timed out,
+top. A completed run whose validators decided no scored point carries the
+validator rating `broken`, so it fails any floor above `broken`. A run that ended
+on the model's own failure (catastrophic, timed out,
 harness error, limit exceeded, or hung) is read as `broken`, whatever
 `unloadedCountsAsBroken` says, and uses one of the rung's runs. The model had its
 attempt and produced nothing to rate.
@@ -335,6 +337,14 @@ The run's stored `rating` folds in every reviewer's checklist overrides, so the
 gate never reads it, and it never reads a review. The backend lifts the validator
 rating onto the run row as `validator_rating` when the run is pushed, and a
 re-push rewrites it.
+
+Every change to how the validators rate a run ships with a one-time pass that
+recomputes the stored `validator_rating` and `rating` of every completed
+validator-rated run under the new rule. The pass runs at startup and again after
+each ingest that changes the definition store, and completes once it has read
+the case version of every such run. A verdict a dispatch recorded before the
+pass rewrote its runs stands, as every recorded verdict does, so only the
+verdicts the gate decides afterwards read the recomputed rating.
 
 A completed run whose build never loaded counts as `broken` outright when the
 ladder's `unloadedCountsAsBroken` is on, which it is by default.

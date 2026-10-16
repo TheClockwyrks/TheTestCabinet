@@ -450,10 +450,14 @@ over the suites that had not finished. A suite that was running beside the stopp
 one is run again rather than charged for it.
 
 Three outcomes are held apart from that failure, and each leaves the point
-undecided rather than synthesizing a verdict. An undecided point lowers no
-rating, counts toward neither side of the score, and is left for a reviewer to
-decide. The result records which of the three it was, so a reviewer reads the
-real reason a point went undecided.
+undecided rather than synthesizing a verdict. While the run decides at least one
+scored point, an undecided point lowers no rating, counts toward neither side of
+the score, and is left for a reviewer to decide. A run whose validators decide no
+scored point, whichever of the three outcomes left them undecided, is rated
+`broken` and scores zero over the declared weight (see
+[the validator-decided functional rating](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)).
+The result records which of the three it was, so a reviewer reads the real reason
+a point went undecided.
 
 The first is an unmet precondition, which a validator states by skipping a check.
 A setup often searches the model's own world for a place to pose its scenario,
@@ -466,7 +470,12 @@ reports an unmet precondition.
 The second is a check that never ran. A validator project the run's engine has
 none of, a tree with no vitest to run one, a suite the project does not contain,
 or a report that could not be read are facts about the case or the produced tree.
-Each is recorded with its reason and costs the build nothing.
+Each is recorded with its reason and costs the build nothing unless no scored
+point of the run is decided at all. When vitest finishes without reporting a
+suite whose file the tree holds, the recorded reason says so and carries a
+bounded excerpt of vitest's own output, so a global setup that threw before any
+file ran names its real cause. A suite whose file the tree does not hold is
+recorded as one the project does not contain.
 
 The third is a suite the run never finished because the whole run exceeded its
 time budget. A case's validator suites are capped as a whole as well as one by
@@ -475,7 +484,8 @@ and the stopped run's whole process tree goes with it. The cap defaults to
 forty-five minutes and is set by `TCAB_VITEST_TIMEOUT_SECS`. No single suite
 overran its own limit, so crossing it is a fact about the host rather than about
 the build. Every suite that finished before the cap keeps its verdict, and every
-point whose suite had not finished records that the budget expired.
+point whose suite had not finished records that the budget expired. A run the cap
+leaves with no decided point is still rated `broken`.
 
 A point excluded from scoring for the version, through an
 [erratum](/testing/end-to-end/manifests/) that links its verdict id, is still

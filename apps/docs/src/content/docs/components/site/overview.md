@@ -154,8 +154,9 @@ the runs that recorded the figure. A game jam carries a whole-game overall
 grade in place of a domain rating.
 
 A run's score is carried on its summary card in the snapshot's run index. A
-validator-rated run's score is its validators' earned share of the declared
-checklist weight while the run has no reviews, and the average of its reviews'
+validator-rated run's score is its validators' earned share of the checklist
+weight they decided, or zero of the declared weight when they decided none, while
+the run has no reviews, and the average of its reviews'
 effective scores once it has any. A legacy run's reviews each contribute their
 earned share, averaged across the run's reviews.
 
