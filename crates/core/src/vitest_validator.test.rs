@@ -1830,10 +1830,17 @@ fn a_point_scoped_away_from_the_run_s_engine_names_no_suite() {
 /// finishes, one that says `slow` takes two seconds, one that says `crash` takes the
 /// whole process down before it finishes, and one that says `missing` is never
 /// collected at all.
+///
+/// Each file is reported under `repo` as the runner spells it, JSON-escaped, rather
+/// than under `$PWD`: Git Bash on Windows spells the same directory `/c/…`, which is
+/// not a path the runner can make relative to the tree.
 fn fake_vitest(repo: &Path) -> impl Fn(&[String]) -> String {
+    let root = serde_json::to_string(&repo.to_string_lossy()).expect("a JSON string");
+    let root = &root[1..root.len() - 1];
     std::fs::write(
         repo.join("fake-vitest.sh"),
-        r#"out="$TCAB_VITEST_PROGRESS_FILE"
+        format!("root={}\n", quote(root))
+            + r#"out="$TCAB_VITEST_PROGRESS_FILE"
 case "$*" in *setup-throws*)
   echo "Error: globalSetup threw: the reference server could not bind its port" >&2
   printf '{"event":"done"}\n' >> "$out"
@@ -1841,13 +1848,13 @@ case "$*" in *setup-throws*)
 esac
 for f in "$@"; do
   case "$f" in *missing*) continue ;; esac
-  printf '{"event":"start","file":"%s/%s","testTimeout":500}\n' "$PWD" "$f" >> "$out"
+  printf '{"event":"start","file":"%s/%s","testTimeout":500}\n' "$root" "$f" >> "$out"
   case "$f" in
     *hang*) sleep 30 ;;
     *slow*) sleep 2 ;;
     *crash*) echo "the worker died" >&2; exit 1 ;;
   esac
-  printf '{"event":"end","report":{"name":"%s/%s","message":"","assertionResults":[{"fullName":"holds","title":"holds","status":"passed","failureMessages":[]}]}}\n' "$PWD" "$f" >> "$out"
+  printf '{"event":"end","report":{"name":"%s/%s","message":"","assertionResults":[{"fullName":"holds","title":"holds","status":"passed","failureMessages":[]}]}}\n' "$root" "$f" >> "$out"
 done
 printf '{"event":"done"}\n' >> "$out"
 "#,
@@ -2168,9 +2175,13 @@ fn a_suite_that_overran_fails_its_point_and_the_ones_cut_short_are_undecided() {
 fn a_progress_line_still_being_written_is_left_for_the_next_read() {
     let repo = tempfile::tempdir().expect("a scratch tree");
     let path = repo.path().join("progress.ndjson");
+    // Encoded rather than spliced in, since a Windows path's backslashes are escapes.
     let start = format!(
-        "{{\"event\":\"start\",\"file\":\"{}/validation/a.test.ts\"}}\n",
-        repo.path().display(),
+        "{}\n",
+        serde_json::json!({
+            "event": "start",
+            "file": repo.path().join("validation/a.test.ts"),
+        }),
     );
     std::fs::write(&path, format!("{start}{{\"event\":\"do")).expect("a partial stream");
     let mut progress = Progress::new(path.clone(), repo.path());

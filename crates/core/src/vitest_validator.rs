@@ -1335,9 +1335,24 @@ fn run_watched(
 /// leaves node and its workers running. Those keep loading the host long after the run
 /// stopped waiting for them, which is how one suite over its budget makes the next
 /// case's suites slower still. The command is spawned into its own process group, so
-/// signalling the group reaches the whole tree; the shell is killed directly afterwards
-/// for the platforms that have no groups, and reaped either way.
+/// signalling the group reaches the whole tree. Windows has no groups, so the tree is
+/// walked from the shell down with `taskkill /T` instead, before the shell itself dies
+/// and its children lose the parent the walk finds them by. The shell is then killed
+/// directly and reaped either way.
+///
+/// On Windows a child left running also holds every inheritable handle it was spawned
+/// with, the runner's own stdout and stderr among them, so whatever runs the runner
+/// would wait on output that never closes.
 fn stop(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &child.id().to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     #[cfg(unix)]
     {
         // Through `sh` rather than a `kill` binary: `kill` is a shell builtin, and this
