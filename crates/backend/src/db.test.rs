@@ -6655,6 +6655,125 @@ async fn the_backfill_rates_validator_rated_runs_stored_before_the_column() {
     assert_eq!(lifted(&db, "r1").await.rating.as_deref(), Some("great"));
 }
 
+/// Overwrite one run's lifted `rating` and `validator_rating`, as a row stored under an
+/// earlier rating rule reads.
+async fn stale_ratings(db: &Db, id: &str, rating: &str, validator_rating: &str) {
+    run::Entity::update_many()
+        .col_expr(run::Column::Rating, Expr::value(rating))
+        .col_expr(run::Column::ValidatorRating, Expr::value(validator_rating))
+        .filter(run::Column::Id.eq(id))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+}
+
+/// [`validator_record`] whose every point the validators left undecided: each script
+/// was stopped by the whole-run cap.
+fn undecided_record(id: &str) -> RunRecord {
+    use test_cabinet_core::validation::Inconclusive;
+    let mut record = validator_record(id, &[("serve", true), ("hud", true)]);
+    for script in &mut record.validation.debug_scripts {
+        script.ran = false;
+        script.precondition_unmet = true;
+        script.inconclusive = Some(Inconclusive::TimedOut);
+        script.verdicts.clear();
+    }
+    record
+}
+
+#[tokio::test]
+async fn the_recompute_rewrites_stored_ratings_under_the_current_rule_once() {
+    use test_cabinet_core::review::AestheticRating;
+    let dir = tempfile::tempdir().unwrap();
+    let store = crate::store::DefinitionStore::open(dir.path()).unwrap();
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    let mut legacy = validator_manifest();
+    legacy.version = "v0.9.0".to_string();
+    legacy.engine_format = false;
+
+    // Two runs the validators decided nothing about, stored with the previous rule's
+    // flawless figure; one of them published and reviewed with a deciding override.
+    for id in ["undecided", "reviewed"] {
+        db.push(&undecided_record(id), &links(), None, Some(&manifest))
+            .await
+            .unwrap();
+        stale_ratings(&db, id, "flawless", "flawless").await;
+    }
+    db.add_review(
+        "reviewed",
+        &override_review("u1", AestheticRating::Good, &[("hud", false)]),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    stale_ratings(&db, "reviewed", "flawless", "flawless").await;
+    run::Entity::update_many()
+        .col_expr(run::Column::Published, Expr::value(true))
+        .filter(run::Column::Id.eq("reviewed"))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+    // A decided run whose stored figures are already right, and a legacy run.
+    db.push(
+        &validator_record("decided", &[("serve", true), ("hud", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    let mut legacy_record = record("legacy");
+    legacy_record.subject.test_case_version = legacy.version.clone();
+    db.push(&legacy_record, &links(), None, Some(&legacy))
+        .await
+        .unwrap();
+    db.mark_uploaded("2026-10-01T00:00:00Z", 0).await.unwrap();
+    let decided_before = lifted(&db, "decided").await;
+    let legacy_before = lifted(&db, "legacy").await;
+
+    // The store does not hold the version yet: nothing is written, and the pass stays
+    // unmarked so the ingest that supplies the version, or the next boot, runs it again.
+    assert_eq!(db.recompute_validator_ratings(&store).await.unwrap(), 0);
+    assert_eq!(
+        lifted(&db, "undecided").await.rating.as_deref(),
+        Some("flawless")
+    );
+    assert!(!db.snapshot_state().await.unwrap().dirty);
+
+    store.write_manifest(&manifest).unwrap();
+    store.write_manifest(&legacy).unwrap();
+    assert_eq!(db.recompute_validator_ratings(&store).await.unwrap(), 2);
+    let undecided = lifted(&db, "undecided").await;
+    assert_eq!(undecided.rating.as_deref(), Some("broken"));
+    assert_eq!(undecided.validator_rating.as_deref(), Some("broken"));
+    // The review's override decides `hud` (capped at great) for that review, so the
+    // run's rating folds it in while the validators' own figure stays broken.
+    let reviewed = lifted(&db, "reviewed").await;
+    assert_eq!(reviewed.rating.as_deref(), Some("great"));
+    assert_eq!(reviewed.validator_rating.as_deref(), Some("broken"));
+    assert!(
+        db.snapshot_state().await.unwrap().dirty,
+        "a changed published run refreshes the gallery"
+    );
+    // Rows whose figures were already right are left untouched, stamp included.
+    let decided = lifted(&db, "decided").await;
+    assert_eq!(decided.rating.as_deref(), Some("great"));
+    assert_eq!(decided.updated_at, decided_before.updated_at);
+    let legacy_after = lifted(&db, "legacy").await;
+    assert_eq!(legacy_after.rating, legacy_before.rating);
+    assert_eq!(legacy_after.validator_rating, None);
+
+    // One-shot: a stale row written after the pass completed is no longer examined.
+    stale_ratings(&db, "undecided", "flawless", "flawless").await;
+    assert_eq!(db.recompute_validator_ratings(&store).await.unwrap(), 0);
+    assert_eq!(
+        lifted(&db, "undecided").await.rating.as_deref(),
+        Some("flawless")
+    );
+}
+
 #[tokio::test]
 async fn a_dispatch_counts_the_models_outcomes_and_never_infrastructure() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -8649,8 +8768,38 @@ fn functional_rating_takes_the_lowest_cap_among_failing_points() {
     let manifest = validator_manifest();
     // No failure: every domain is flawless.
     assert_eq!(
-        functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", true)]),
+            &[]
+        ),
         Some(Rating::Flawless)
+    );
+    // Nothing decided at all: every domain is broken.
+    assert_eq!(
+        functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
+        Some(Rating::Broken)
+    );
+    // A review deciding a point lifts that; an aesthetic-only one does not.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[]),
+            &[override_review(
+                "u1",
+                AestheticRating::Good,
+                &[("hud", true)]
+            )]
+        ),
+        Some(Rating::Flawless)
+    );
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[]),
+            &[aesthetic_review("u1", AestheticRating::Good)]
+        ),
+        Some(Rating::Broken)
     );
     // The cosmetic point fails: both domains capped at great.
     assert_eq!(
@@ -8761,10 +8910,19 @@ fn a_run_that_did_not_complete_has_no_functional_rating() {
             None
         );
     }
-    // The completed tier is the one that rates.
+    // The completed tier is the one that rates, and a completed run whose
+    // validators decided nothing is broken.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", true)]),
+            &[]
+        ),
+        Some(Rating::Flawless)
+    );
     assert_eq!(
         functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
-        Some(Rating::Flawless)
+        Some(Rating::Broken)
     );
 }
 

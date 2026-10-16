@@ -130,6 +130,7 @@
 #[path = "vitest_validator.test.rs"]
 mod tests;
 
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -542,6 +543,25 @@ struct Outcomes {
     /// ended before vitest had reported everything it was going to. `None` when vitest
     /// finished reporting, so a file it never reported is one it never collected.
     cut_short: Option<RunnerFailure>,
+    /// What vitest said when it finished reporting without reporting some of the files
+    /// it was asked to run. A global setup that throws before any file runs ends vitest
+    /// this way, and the excerpt is what names that cause on each file it left
+    /// unreported. `None` when vitest reported every file it was asked to run.
+    unreported: Option<Unreported>,
+}
+
+/// How vitest ended when it finished reporting without reporting every file it was
+/// asked to run.
+#[derive(Debug, Default)]
+struct Unreported {
+    /// vitest's exit, as [`exit_description`] words it.
+    exit: String,
+    /// vitest's own output, untrimmed; [`Suite::not_collected`] bounds it.
+    output: String,
+    /// The unreported files the tree does not hold, which vitest could never have
+    /// collected. Every other unreported file exists and went unreported for the reason
+    /// vitest's output gives.
+    absent: BTreeSet<String>,
 }
 
 impl Outcomes {
@@ -558,7 +578,7 @@ impl Outcomes {
         }
         match &self.cut_short {
             Some(failure) => suite.inconclusive(&failure.reason, failure.inconclusive),
-            None => suite.result(None),
+            None => suite.not_collected(self.unreported.as_ref()),
         }
     }
 }
@@ -714,12 +734,29 @@ fn drive(
                 outcomes.overran.append(&mut overran);
             }
             Ok(Some(ran)) => {
-                if !progress.done && !pending.is_empty() {
-                    outcomes.cut_short = Some(RunnerFailure::not_run(format!(
-                        "vitest ended before it reported this suite ({}): {}",
-                        exit_description(ran.code),
-                        bounded(&ran.combined(), VITEST_OUTPUT_LIMIT),
-                    )));
+                if !pending.is_empty() {
+                    if progress.done {
+                        // vitest finished without reporting these files. The suites
+                        // stay not-run, and its own output says why, which a global
+                        // setup that threw before any file ran needs to be seen. A
+                        // file the tree does not hold is one vitest could never have
+                        // collected, which is the reason that suite records instead.
+                        outcomes.unreported = Some(Unreported {
+                            exit: exit_description(ran.code),
+                            output: ran.combined(),
+                            absent: pending
+                                .iter()
+                                .filter(|file| !repo.join(file.as_str()).is_file())
+                                .cloned()
+                                .collect(),
+                        });
+                    } else {
+                        outcomes.cut_short = Some(RunnerFailure::not_run(format!(
+                            "vitest ended before it reported this suite ({}): {}",
+                            exit_description(ran.code),
+                            bounded(&ran.combined(), VITEST_OUTPUT_LIMIT),
+                        )));
+                    }
                 }
                 break;
             }
@@ -1498,16 +1535,7 @@ impl Suite {
     /// The result for this suite, given the report of the file that decides it.
     pub(crate) fn result(&self, report: Option<&SuiteReport>) -> DebugScriptResult {
         let Some(report) = report else {
-            // The case names a validator vitest did not collect. That is a statement
-            // about the case's project, never about the build, so the point is left
-            // for the reviewer rather than failed.
-            return self.inconclusive(
-                &format!(
-                    "the validator project contains no suite at `{}`",
-                    self.file.as_deref().unwrap_or(&self.script_rel),
-                ),
-                Inconclusive::NotRun,
-            );
+            return self.not_collected(None);
         };
         if report.tests.is_empty() {
             // The file raised before any test ran, which for a validator means the
@@ -1597,6 +1625,41 @@ impl Suite {
             }],
             ..self.shell()
         }
+    }
+
+    /// The result for a suite vitest never reported, which is a statement about the
+    /// case's project or the host, never about the build, so the point is left for the
+    /// reviewer rather than failed.
+    ///
+    /// `unreported` is how vitest ended when it finished without reporting the suite
+    /// (see [`Outcomes::unreported`]). A suite whose file the tree holds went
+    /// unreported for a reason vitest's own output gives, such as a global setup that
+    /// threw before any file ran, so its reason leads with that and carries the output,
+    /// bounded so the leading statement always survives. A suite whose file the tree
+    /// does not hold, or one with no record of how vitest ended, is a suite the project
+    /// does not contain.
+    fn not_collected(&self, unreported: Option<&Unreported>) -> DebugScriptResult {
+        let file = self.file.as_deref().unwrap_or(&self.script_rel);
+        let Some(unreported) = unreported.filter(|unreported| !unreported.absent.contains(file))
+        else {
+            return self.inconclusive(
+                &format!("the validator project contains no suite at `{file}`"),
+                Inconclusive::NotRun,
+            );
+        };
+        let mut reason = format!(
+            "vitest finished without reporting the suite at `{file}` ({})",
+            unreported.exit,
+        );
+        if unreported.output.trim().is_empty() {
+            reason.push_str(" and printed nothing");
+        } else {
+            const SEPARATOR: &str = ": ";
+            let room = VITEST_OUTPUT_LIMIT.saturating_sub(reason.len() + SEPARATOR.len());
+            reason.push_str(SEPARATOR);
+            reason.push_str(&bounded(&unreported.output, room));
+        }
+        self.inconclusive(&reason, Inconclusive::NotRun)
     }
 
     /// A result recording that this suite decided nothing, for `reason`, and which

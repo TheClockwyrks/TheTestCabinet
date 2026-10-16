@@ -1834,6 +1834,11 @@ fn fake_vitest(repo: &Path) -> impl Fn(&[String]) -> String {
     std::fs::write(
         repo.join("fake-vitest.sh"),
         r#"out="$TCAB_VITEST_PROGRESS_FILE"
+case "$*" in *setup-throws*)
+  echo "Error: globalSetup threw: the reference server could not bind its port" >&2
+  printf '{"event":"done"}\n' >> "$out"
+  exit 1 ;;
+esac
 for f in "$@"; do
   case "$f" in *missing*) continue ;; esac
   printf '{"event":"start","file":"%s/%s","testTimeout":500}\n' "$PWD" "$f" >> "$out"
@@ -1864,6 +1869,13 @@ fn drive_fake(files: &[&str], check: Option<Duration>, suite: Duration) -> Outco
     let repo = tempfile::tempdir().expect("a scratch tree");
     let scratch = tempfile::tempdir().expect("a scratch directory");
     let filters: Vec<String> = files.iter().map(|file| (*file).to_string()).collect();
+    // The tree holds every suite file but the ones the stand-in never collects.
+    for file in filters.iter().filter(|file| !file.contains("missing")) {
+        let path = repo.path().join(file);
+        std::fs::create_dir_all(path.parent().expect("a suite file has a folder"))
+            .expect("the suite's folder");
+        std::fs::write(&path, "").expect("the suite file");
+    }
     drive(
         repo.path(),
         &filters,
@@ -2028,6 +2040,75 @@ fn a_suite_vitest_never_collected_is_a_suite_the_project_does_not_contain() {
 }
 
 #[test]
+fn a_suite_vitest_finished_without_reporting_records_vitests_own_output() {
+    // A global setup throws before any file runs: vitest reports it is done, exits
+    // non-zero, and never reports a file.
+    let outcomes = drive_fake(
+        &["validation/setup-throws.test.ts"],
+        Some(Duration::from_secs(30)),
+        Duration::from_secs(60),
+    );
+
+    assert!(reported(&outcomes).is_empty());
+    assert!(outcomes.cut_short.is_none(), "vitest finished reporting");
+    let items = vec![item(
+        "setup-throws",
+        "validation/simple-2d/setup-throws.test.ts",
+    )];
+    let result = outcomes.result_for(&suite_for(&items));
+    assert_eq!(result.inconclusive, Some(Inconclusive::NotRun));
+    assert!(result.precondition_unmet && !result.ran);
+    assert!(result.verdicts.is_empty(), "no failure is synthesized");
+    let detail = result.detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.starts_with(
+            "vitest finished without reporting the suite at `validation/setup-throws.test.ts` \
+             (exit 1): "
+        ),
+        "the suite exists, so the detail never claims the project lacks it: {detail}",
+    );
+    assert!(
+        detail.contains("globalSetup threw: the reference server could not bind its port"),
+        "{detail}",
+    );
+    assert!(detail.len() <= VITEST_OUTPUT_LIMIT);
+
+    // However much vitest printed, the statement that leads the detail survives.
+    let long = Outcomes {
+        unreported: Some(Unreported {
+            exit: "exit 1".to_string(),
+            output: "x".repeat(VITEST_OUTPUT_LIMIT * 2),
+            absent: BTreeSet::new(),
+        }),
+        ..Outcomes::default()
+    };
+    let detail = long
+        .result_for(&suite_for(&items))
+        .detail
+        .unwrap_or_default();
+    assert!(
+        detail.starts_with("vitest finished without reporting the suite at"),
+        "{detail}"
+    );
+    assert!(detail.len() <= VITEST_OUTPUT_LIMIT);
+
+    // A vitest that printed nothing says so rather than leaving the reason dangling.
+    let silent = Outcomes {
+        unreported: Some(Unreported {
+            exit: "exit 1".to_string(),
+            output: " \n".to_string(),
+            absent: BTreeSet::new(),
+        }),
+        ..Outcomes::default()
+    };
+    let detail = silent
+        .result_for(&suite_for(&items))
+        .detail
+        .unwrap_or_default();
+    assert!(detail.ends_with("(exit 1) and printed nothing"), "{detail}");
+}
+
+#[test]
 fn a_suite_that_overran_fails_its_point_and_the_ones_cut_short_are_undecided() {
     let items = vec![
         item("serve-speed", "validation/simple-2d/serve-speed.test.ts"),
@@ -2046,6 +2127,7 @@ fn a_suite_that_overran_fails_its_point_and_the_ones_cut_short_are_undecided() {
         cut_short: Some(RunnerFailure::timed_out(
             "the vitest step exceeded its 2700s cap",
         )),
+        unreported: None,
     };
     let results: Vec<DebugScriptResult> = suites
         .iter()

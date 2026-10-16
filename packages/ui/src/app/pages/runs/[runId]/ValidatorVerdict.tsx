@@ -5,6 +5,7 @@ import {
   RATING_META,
   aggregateAestheticRating,
   automatedVerdicts,
+  decidesAScoredPoint,
   effectiveVerdicts,
   formatPoints,
   isToolchainGated,
@@ -45,8 +46,9 @@ export interface ValidatorReviewInput {
  */
 export interface ValidatorDecision {
   /** The functional rating: with no reviews the validators' own; with reviews
-   * the worst across the reviews' effective ratings. Always present — zero
-   * failures is Flawless. */
+   * the worst across the reviews' effective ratings. Always present: zero
+   * failures is Flawless, and a checklist that decides no scored point is
+   * Broken. */
   rating: Rating | null;
   /** The score: the validators' own with no reviews, else the average of the
    * reviews' effective scores (toolchain-gated either way). */
@@ -56,6 +58,9 @@ export interface ValidatorDecision {
   domainRatings: Map<string, Rating>;
   /** Whether the toolchain gate held the run at Broken / zero points. */
   gated: boolean;
+  /** Whether the run reads Broken because an effective checklist (the
+   * validators' own with no reviews, or one review's) decided no scored point. */
+  undecided: boolean;
 }
 
 /**
@@ -96,17 +101,25 @@ export function decideValidatorRun(
       );
     }
   }
+  const rating = validatorAggregateRating(
+    gated,
+    model.domains,
+    model.items,
+    auto,
+    overrides,
+  );
   return {
-    rating: validatorAggregateRating(
-      gated,
-      model.domains,
-      model.items,
-      auto,
-      overrides,
-    ),
+    rating,
     score: validatorAggregateScore(gated, model.items, auto, overrides),
     domainRatings,
     gated,
+    // A checklist with no scored point never rates Broken on its own, so a
+    // Broken run with an undeciding verdict set is Broken for that reason.
+    undecided:
+      rating === "broken" &&
+      verdictSets.some(
+        (verdicts) => !decidesAScoredPoint(model.items, verdicts),
+      ),
   };
 }
 
@@ -160,7 +173,9 @@ export function ValidatorVerdict({
               {rating
                 ? decision.gated
                   ? "Held at Broken: the toolchain typecheck failed, so the build does not compile."
-                  : RATING_META[rating].description
+                  : decision.undecided
+                    ? "Held at Broken: no checklist point was decided, so the build demonstrated nothing."
+                    : RATING_META[rating].description
                 : ""}
             </span>
           </p>

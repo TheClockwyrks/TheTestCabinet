@@ -243,7 +243,7 @@ fn folds_each_arm_into_its_own_distribution_and_never_merges_them() {
     }
 
     let config = pi_vs_kilo();
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     assert_eq!(arms.len(), 2);
 
     let pi = &arms[0];
@@ -311,7 +311,7 @@ fn a_run_that_drifts_from_a_control_is_surfaced_as_a_confound() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     let confound = arms[0]
         .confounds
         .iter()
@@ -378,7 +378,7 @@ fn a_harness_arm_and_a_gg_arm_are_aggregated_side_by_side() {
         run_ids: vec!["gg-1".into(), "gg-2".into()],
     });
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     assert_eq!(arms.len(), 2);
     // Each arm keeps its own runs and its own distribution — never merged.
     assert_eq!(arms[0].n_observed, 1);
@@ -412,7 +412,7 @@ fn a_run_under_a_different_harness_than_the_arm_declares_is_a_confound() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     let confound = arms[0]
         .confounds
         .iter()
@@ -426,7 +426,7 @@ fn an_arm_with_no_present_runs_summarizes_to_nothing() {
     let items = [item("a", 3)];
     let runs: BTreeMap<String, RunRecord> = BTreeMap::new();
     let config = pi_vs_kilo();
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     assert_eq!(arms[0].n_observed, 0);
     assert!(arms[0].cost.is_none());
     assert!(arms[0].tokens.is_none());
@@ -466,7 +466,7 @@ fn session_duration_summarizes_measured_runs_and_skips_unmeasured_ones() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into(), "pi-3".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     let summary = arms[0]
         .session_duration
         .as_ref()
@@ -510,7 +510,7 @@ fn an_arm_reports_each_counted_run_as_a_raw_point() {
     // `job-3` was recorded but never counted, so it has no point.
     config.arms[0].run_ids = vec!["job-2".into(), "job-1".into(), "job-3".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     assert_eq!(
         arms[0].run_points,
         vec![
@@ -576,7 +576,7 @@ fn a_run_on_a_different_engine_than_the_comparison_declares_is_a_confound() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     let confound = arms[0]
         .confounds
         .iter()
@@ -620,7 +620,7 @@ fn an_arm_whose_runs_all_ran_the_declared_engine_is_not_confounded() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
     assert!(
         arms[0].confounds.is_empty(),
         "an arm that held every control constant must report nothing: {:?}",
@@ -652,7 +652,7 @@ fn an_arm_reports_the_recorded_ids_that_still_exist() {
     // `pi-1` has reported back, `pi-3` is still in flight, and `pi-2` was deleted.
     let config = pi_vs_kilo();
     let live = BTreeSet::from(["pi-1".to_string(), "pi-3".to_string()]);
-    let arms = aggregate_comparison(&config, &items, &runs, &live);
+    let arms = aggregate_comparison(&config, &items, false, &runs, &live);
 
     // Launch order, not sorted order, and not the order the records happened to land.
     assert_eq!(arms[0].live_run_ids, vec!["pi-1", "pi-3"]);
@@ -674,7 +674,74 @@ fn an_arm_reports_only_its_own_live_ids() {
     let runs = BTreeMap::new();
     let config = pi_vs_kilo();
     let live = BTreeSet::from(["pi-2".to_string(), "kilo-1".to_string()]);
-    let arms = aggregate_comparison(&config, &items, &runs, &live);
+    let arms = aggregate_comparison(&config, &items, false, &runs, &live);
     assert_eq!(arms[0].live_run_ids, vec!["pi-2"]);
     assert_eq!(arms[1].live_run_ids, vec!["kilo-1"]);
+}
+
+/// A debug-script result whose suite never finished: the whole-run cap stopped it,
+/// so it decided nothing.
+fn timed_out_script(item_id: &str) -> DebugScriptResult {
+    DebugScriptResult {
+        ran: false,
+        precondition_unmet: true,
+        inconclusive: Some(crate::validation::Inconclusive::TimedOut),
+        detail: Some("the vitest step exceeded its 2700s cap".into()),
+        verdicts: vec![],
+        ..script(item_id, true)
+    }
+}
+
+/// On a validator-rated version a completed run whose validators decided no scored
+/// point is broken, so a comparison scores it zero over the declared weight and fails
+/// it on the pass rate, as every other seam does. A run that never completed has no
+/// build to judge and stays out of both, and a version that is not validator-rated
+/// keeps leaving a run with no covered point out.
+#[test]
+fn a_validator_rated_run_that_decided_nothing_scores_zero_over_the_declared_weight() {
+    let items = [item("a", 3), item("b", 2)];
+    let mut runs = BTreeMap::new();
+    for (id, scripts, state) in [
+        (
+            "pi-1",
+            vec![script("a", true), script("b", true)],
+            RunState::Completed,
+        ),
+        (
+            "pi-2",
+            vec![timed_out_script("a"), timed_out_script("b")],
+            RunState::Completed,
+        ),
+        ("pi-3", vec![], RunState::TimedOut),
+    ] {
+        let mut run = record(Run {
+            id,
+            harness: HarnessSlug::Pi,
+            model: "anthropic/claude-opus-4.8",
+            cost: 0.5,
+            tokens: 100,
+            tool_calls: &[],
+            scripts,
+            auth: AuthMode::ApiKey,
+        });
+        run.status.state = state;
+        runs.insert(id.to_string(), run);
+    }
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+
+    let arms = aggregate_comparison(&config, &items, true, &runs, &all_live(&config));
+    let score = arms[0].score.as_ref().expect("two scored runs");
+    assert_eq!(score.n, 2, "the run that never completed is not scored");
+    let totals: Vec<(f64, u32)> = score.points.iter().map(|p| (p.earned, p.total)).collect();
+    assert_eq!(totals, [(5.0, 5), (0.0, 5)]);
+    assert!((score.mean_fraction - 0.5).abs() < 1e-9);
+    let pass = arms[0].pass_rate.as_ref().expect("a pass rate");
+    assert_eq!((pass.passed, pass.n), (1, 2));
+
+    let arms = aggregate_comparison(&config, &items, false, &runs, &all_live(&config));
+    let score = arms[0].score.as_ref().expect("one scored run");
+    assert_eq!(score.n, 1, "a legacy version leaves an uncovered run out");
+    let pass = arms[0].pass_rate.as_ref().expect("a pass rate");
+    assert_eq!((pass.passed, pass.n), (1, 1));
 }

@@ -4777,7 +4777,8 @@ fn aggregate_aesthetic_inner(
 /// ([`test_cabinet_core::review::validator_aggregate_score`]: each review's
 /// checklist overlays the validators' verdicts and the run averages the reviews'
 /// effective scores; with zero reviews the validators' own figure stands), always
-/// `Some`. Otherwise the aggregate reviewer score: the case's declared checklist
+/// `Some`; an effective checklist that decides no scored point scores zero over the
+/// declared weight. Otherwise the aggregate reviewer score: the case's declared checklist
 /// weights scored against each of the run's `reviews`, then averaged (see
 /// [`test_cabinet_core::review::aggregate_score`]), `None` when the run carries no
 /// reviews. Either way `None` for a run whose terminal state is not

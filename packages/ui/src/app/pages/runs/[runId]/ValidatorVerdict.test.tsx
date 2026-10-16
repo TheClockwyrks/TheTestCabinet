@@ -135,9 +135,74 @@ describe("decideValidatorRun", () => {
     expect(decision.rating).toBe("scuffed");
     expect(decision.score).toMatchObject({ earned: 1.5, total: 3 });
   });
+
+  it("is Broken at zero over the declared weight when nothing was decided", () => {
+    // Every validator was inconclusive: no scored point is decided.
+    const undecided = {
+      id: "r-2",
+      validation: {
+        debugScripts: ["serve", "ai", "hud"].map((sub) => ({
+          itemId: "rules",
+          subItemId: sub,
+          title: "Rules",
+          categoryTitle: "Rules",
+          script: "validation/rules.mjs",
+          gates: true,
+          ran: false,
+          preconditionUnmet: true,
+          inconclusive: "timedOut",
+          verdicts: [],
+          outputs: [],
+        })),
+      },
+    } as unknown as RunRecord;
+    const decision = decideValidatorRun(undecided, model);
+    expect(decision.rating).toBe("broken");
+    expect(decision.undecided).toBe(true);
+    expect(decision.domainRatings.get("single-player")).toBe("broken");
+    expect(decision.domainRatings.get("versus")).toBe("broken");
+    expect(decision.score).toMatchObject({ earned: 0, total: 3 });
+
+    // A review deciding one point lifts it for that review.
+    const reviewed = decideValidatorRun(undecided, model, [
+      { checklist: [{ id: "rules.hud", status: "pass" }] },
+    ]);
+    expect(reviewed.rating).toBe("flawless");
+    expect(reviewed.undecided).toBe(false);
+    expect(reviewed.score).toMatchObject({ earned: 1, total: 1 });
+
+    // A run with no debug scripts at all reads the same.
+    const empty = decideValidatorRun(
+      { id: "r-3", validation: {} } as unknown as RunRecord,
+      model,
+    );
+    expect(empty.rating).toBe("broken");
+    expect(empty.score).toMatchObject({ earned: 0, total: 3 });
+  });
+
+  it("is not marked undecided when a decided failure broke it", () => {
+    const decision = decideValidatorRun(
+      run([{ id: "rules.serve", pass: false }]),
+      model,
+    );
+    expect(decision.rating).toBe("broken");
+    expect(decision.undecided).toBe(false);
+  });
 });
 
 describe("ValidatorVerdict", () => {
+  it("says why a run nothing decided is Broken", () => {
+    render(
+      <ValidatorVerdict
+        run={{ id: "r-3", validation: {} } as unknown as RunRecord}
+        model={model}
+        reviews={[]}
+      />,
+    );
+    expect(screen.getByText("0 / 3")).toBeTruthy();
+    expect(screen.getByText(/no checklist point was decided/)).toBeTruthy();
+  });
+
   it("shows the rating, points, and a compact per-domain strip", () => {
     render(<ValidatorVerdict run={run()} model={model} reviews={[]} />);
 

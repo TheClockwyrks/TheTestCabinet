@@ -3803,6 +3803,21 @@ fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
 }
 
 #[test]
+fn a_validator_rated_run_that_decided_nothing_summarizes_broken_at_zero() {
+    let manifest = validator_manifest();
+    // No validator decided a point: every scored point counts as lost.
+    let run = validator_run("r1", "2026-06-17T21:40:00Z", &[]);
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 0.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 0);
+    assert_eq!(
+        crate::db::functional_rating(Some(&manifest), &run.record, &run.reviews),
+        Some(test_cabinet_core::review::Rating::Broken)
+    );
+}
+
+#[test]
 fn run_summary_score_folds_reviewer_overrides_on_a_validator_rated_version() {
     use test_cabinet_core::review::VerdictStatus;
     let manifest = validator_manifest();

@@ -12,12 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comparison::{
     ArmDiagnostics, ArmRunPoint, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig,
-    Confound, ScorePoint, automated_only_score,
+    Confound, ScorePoint, automated_only_score, automated_verdicts,
 };
 use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
 use crate::metrics::TokenCounts;
 use crate::model_id::canonical_model_id;
-use crate::review::Score;
+use crate::review::{Score, validator_covered_score};
 use crate::run_record::{AuthMode, RunRecord};
 use crate::test_case::ReviewItem;
 
@@ -39,16 +39,23 @@ const FULL_MARKS_EPSILON: f64 = 1e-9;
 /// computed here; what a recorded id stands for is not a question this module can
 /// answer), and each arm reports its own share of `live` as
 /// [`live_run_ids`](ComparisonArmResult::live_run_ids).
+///
+/// `validator_rated` is whether the case version is
+/// [validator-rated](crate::test_case::TestCaseVersion::validator_rated): on such a
+/// version a completed run whose validators decided no scored point scores zero over
+/// the declared weight ([`validator_covered_score`]), exactly as it scores on its own
+/// page, rather than being left out of the arm's score and pass rate.
 pub fn aggregate_comparison(
     config: &ComparisonConfig,
     items: &[ReviewItem],
+    validator_rated: bool,
     runs: &BTreeMap<String, RunRecord>,
     live: &BTreeSet<String>,
 ) -> Vec<ComparisonArmResult> {
     config
         .arms
         .iter()
-        .map(|arm| aggregate_arm(config, arm, items, runs, live))
+        .map(|arm| aggregate_arm(config, arm, items, validator_rated, runs, live))
         .collect()
 }
 
@@ -57,6 +64,7 @@ fn aggregate_arm(
     config: &ComparisonConfig,
     arm: &ComparisonArm,
     items: &[ReviewItem],
+    validator_rated: bool,
     runs: &BTreeMap<String, RunRecord>,
     live: &BTreeSet<String>,
 ) -> ComparisonArmResult {
@@ -119,15 +127,20 @@ fn aggregate_arm(
 
     // Automated-only scores, over the runs that carry validators. A run whose
     // covered denominator is zero (no auto-checkable points ran) contributes to
-    // neither the score nor the pass rate.
+    // neither the score nor the pass rate, except on a validator-rated version, where
+    // a completed run whose validators decided no scored point is broken and scores
+    // zero over the declared weight, as it does everywhere else it is shown.
     let mut points: Vec<ScorePoint> = Vec::new();
     let mut passed = 0u64;
     for r in &arm_runs {
         let scripts = &r.validation.debug_scripts;
-        if scripts.is_empty() {
+        let Score { earned, total } = if validator_rated && r.status.state.is_scored() {
+            validator_covered_score(items, &automated_verdicts(scripts))
+        } else if scripts.is_empty() {
             continue;
-        }
-        let Score { earned, total } = automated_only_score(items, scripts);
+        } else {
+            automated_only_score(items, scripts)
+        };
         if total == 0 {
             continue;
         }
