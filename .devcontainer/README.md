@@ -153,7 +153,8 @@ rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/` submodule, which every build compiles
 against, and the `test-suites/` submodule, the suites checkout the local backend
-ingests (not `cold-storage/`, which is optional and about 2 GB),
+ingests (not `cold-storage/`, which is optional and about 2 GB), through
+`tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
 directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
 workspace's locked dependencies when the container is created.
@@ -668,3 +669,31 @@ The image's SSH client is configured with `WarnWeakCrypto no` in
 `/etc/ssh/ssh_config.d/50-warn-weak-crypto.conf`, which the toolchain image
 holds, so a connection to a forge offering no post-quantum key exchange prints no
 warning about it.
+
+## Submodule checkout
+
+The `contracts/` and `test-suites/` submodules live in the organization's other
+repositories, reached over SSH at `ssh.dev.azure.com`. `post-create.sh` checks
+them out ahead of `npm ci`, whose workspace lists the packages `contracts/`
+holds, and `post-start.sh` checks them out again at every start, each through
+`tools/submodule-checkout.sh` after the SSH agent is published. The script pins
+Azure DevOps' published RSA host key in `~/.ssh/known_hosts`, so the first clone
+does not stop at the interactive host-key prompt nothing is there to answer, and
+runs `git submodule update --init contracts test-suites` through the host's agent
+when the checkout holds a `.gitmodules`. Passed submodule paths, it checks out
+those instead; `cold-storage/` is left to a `git submodule update --init
+cold-storage` by hand. It never fails the step it runs from: a host with no
+agent, or no network, keeps a working container and says so, and the next start
+or that command checks the submodules out once SSH works.
+
+It never holds the step either. A connection can stall where it cannot fail: an
+agent whose key waits on an approval nobody is there to give answers
+`ssh-add -l` and never signs, and a network can accept a connection and carry
+nothing. A submodule already cloned is then fetched without a word, so the step
+would stop with nothing said, and whatever started the container, the Nyxsis
+agent included, would wait on it until its own deadline and count the container
+as never having come up. The script therefore says how long it gives the checkout
+before it begins, connects with `ConnectTimeout` and `ServerAliveInterval`, and
+stops a checkout that outlives the deadline, saying that it did. The deadline is
+120 seconds, or the positive whole number of seconds `SUBMODULE_CHECKOUT_TIMEOUT`
+states in the container's environment.

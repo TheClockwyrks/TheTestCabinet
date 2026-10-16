@@ -25,18 +25,25 @@
 # catalogues are reflected with; everything else that build needs is in the
 # image, so a container is ready to build the workspace when this returns.
 #
-# The `git submodule update` populates `contracts/`, the contracts repository
-# whose crates and packages the workspace builds against, and `test-suites/`, the
-# suites checkout The Test Cabinet ingests from. It names those two alone, because
-# cold-storage beside them is optional and about 2 GB. It needs the same git credentials that
-# fetched the superproject, it is a no-op when the host clone the checkout is
-# mounted from already populated it, and a failure is said rather than failing
-# the creation of a container that is otherwise ready.
+# tools/submodule-checkout.sh populates `contracts/`, the contracts repository
+# whose crates and packages the workspace builds against, and `test-suites/`,
+# the suites checkout The Test Cabinet ingests from. It names those two alone,
+# because cold-storage beside them is optional and about 2 GB. It runs ahead of
+# `npm ci`, which lists contracts' packages in the npm workspace, and after
+# tools/ssh-agent.sh, because the clone goes through the host agent that script
+# publishes: this runs before post-start.sh, so the agent is published here
+# first (the script is idempotent, and post-start.sh publishes it again). The
+# checkout pins Azure DevOps' host key so the first clone stops at no prompt,
+# is a no-op when the host clone the checkout is mounted from already
+# populated it, and says a failure rather than failing the creation of a
+# container that is otherwise ready; a host with no agent to publish is one
+# such failure, said by the agent script and held here, so the submodules are
+# checked out at the next start, or by hand, once SSH works.
 set -euo pipefail
 
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  git submodule update --init contracts test-suites ||
-    echo "submodule update failed; contracts/ is a build input and test-suites/ the suites checkout The Test Cabinet ingests; run 'git submodule update --init contracts test-suites' manually"
+  bash .devcontainer/tools/ssh-agent.sh || true
+  bash .devcontainer/tools/submodule-checkout.sh || true
   bash scripts/setup-hooks.sh
 else
   echo "--- the commit hook (skipped: this is not a git repository yet)"
