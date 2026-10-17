@@ -11,6 +11,12 @@
 //! **batching** every event ready in one drain into a single `post_events` (the
 //! events endpoint takes a batch) and posting previews individually.
 //!
+//! The engine's announcement that the harness session has ended
+//! ([`EventSink::session_ended`](test_cabinet_core::EventSink::session_ended))
+//! rides the same channel, so the relay reports the job `validating` only after
+//! every event the session produced has been posted: a console never shows a run
+//! validating while the session's last events are still arriving.
+//!
 //! The relay runs for the whole run and must be **awaited after the sinks are
 //! dropped** (which closes the channel): only then is the backlog guaranteed
 //! flushed to the backend before the terminal status — carrying the record — is
@@ -25,15 +31,19 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::client::JobClient;
 
-/// One item handed to the relay: a harness event or an asset-preview frame. They
-/// share one channel so the relay drains them in production order, then splits
-/// them — events batched, previews individual — when it posts.
+/// One item handed to the relay: a harness event, an asset-preview frame, or the
+/// end of the harness session. They share one channel so the relay drains them in
+/// production order, then splits them — events batched, previews individual, the
+/// session's end as a status report — when it posts.
 #[derive(Debug, Clone)]
 pub enum Outbound {
     /// A normalized harness event, to be batched into `post_events`.
     Event(HarnessEvent),
     /// A live asset-generation preview frame, posted individually.
     Preview(AssetPreview),
+    /// The harness session has ended. The relay flushes every event queued before
+    /// it, then reports the job `validating`.
+    SessionEnded,
 }
 
 /// Create the relay channel. Returns the sending half (cloned into the two sinks)
@@ -62,6 +72,12 @@ impl test_cabinet_core::EventSink for BackendEventSink {
         // which the driver only does after the run ends; an event arriving then is
         // safely discarded rather than panicking the run.
         let _ = self.tx.send(Outbound::Event(event.clone()));
+    }
+
+    fn session_ended(&mut self) {
+        // Queued behind every event the session emitted, so the relay posts them
+        // all before it reports the job `validating`.
+        let _ = self.tx.send(Outbound::SessionEnded);
     }
 }
 
@@ -94,9 +110,15 @@ impl test_cabinet_core::PreviewSink for BackendPreviewSink {
 /// at a time, in order relative to the events around them. The channel closes
 /// when both sink halves drop; the task then flushes any final batch and returns.
 ///
+/// The end of the session flushes the pending batch, then reports the job
+/// `validating` (`POST /jobs/{id}/status`), so the report follows every event that
+/// preceded it.
+///
 /// A failed backend call is logged and the item dropped, not fatal: live
 /// streaming is best-effort (the authoritative record is sent with the terminal
-/// status), so a transient relay error must not abort the run.
+/// status), so a transient relay error must not abort the run. A lost `validating`
+/// report only leaves the console showing the run `running` until its terminal
+/// report.
 pub async fn relay_task(client: Arc<JobClient>, mut rx: UnboundedReceiver<Outbound>) {
     while let Some(first) = rx.recv().await {
         // Coalesce this wakeup's ready items into one drain, preserving order:
@@ -111,6 +133,12 @@ pub async fn relay_task(client: Arc<JobClient>, mut rx: UnboundedReceiver<Outbou
                     flush_events(&client, &mut batch).await;
                     if let Err(err) = client.post_preview(&preview).await {
                         tracing::warn!(error = %err, "relaying preview frame to the backend failed");
+                    }
+                }
+                Some(Outbound::SessionEnded) => {
+                    flush_events(&client, &mut batch).await;
+                    if let Err(err) = client.post_status_validating().await {
+                        tracing::warn!(error = %err, "could not report `validating` to the backend; continuing");
                     }
                 }
                 None => {}

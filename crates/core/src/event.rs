@@ -372,6 +372,14 @@ pub trait EventSink: Send {
     /// Handle a single event. Called in the order events are produced, before the
     /// invocation completes.
     fn emit(&mut self, event: &HarnessEvent);
+
+    /// The engine's announcement that the harness session has ended: every event
+    /// the session produced has already been [emitted](Self::emit), and
+    /// everything the engine does from here on (collecting the tree, tearing the
+    /// container down, the post-run analysis, the toolchain, validation) is
+    /// post-session work. Called at most once per run, and not at all when the
+    /// session could not be driven to its end. The default does nothing.
+    fn session_ended(&mut self) {}
 }
 
 /// An [`EventSink`] that discards every event.

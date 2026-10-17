@@ -58,25 +58,51 @@ use crate::store::{CaseNames, StoredManifest};
 /// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
 /// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
-/// and `running` each have a driver Job coming up or executing, and `storing` has
-/// one that has finished its run and is waiting on the artifact store to take the
-/// tree.
-const IN_FLIGHT_STATES: [&str; 6] = [
+/// `running` and `validating` each have a driver Job coming up or executing (a
+/// `validating` one has ended its harness session and is collecting and validating
+/// the run), and `storing` has one that has finished its run and is waiting on the
+/// artifact store to take the tree.
+const IN_FLIGHT_STATES: [&str; 7] = [
     "queued",
     "pending",
     "dispatched",
     "starting",
     "running",
+    "validating",
     "storing",
 ];
 
 /// The job state of a run whose driver is waiting to store its artifact tree.
 pub const STORING_STATE: &str = "storing";
 
+/// The job state of a run whose harness session has ended and whose driver is doing
+/// the post-session work: collecting the tree, the post-run analysis, the case's
+/// toolchain, validation and the upload of the tree.
+pub const VALIDATING_STATE: &str = "validating";
+
 /// The job states a driver exists for: claimed, and not yet terminal. A driver's
 /// `storing` report is taken only from one of these, and these are what the
 /// dispatcher may report lost.
-pub const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+pub const DRIVEN_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    STORING_STATE,
+];
+
+/// The driven job states a driver's `validating` report moves a job out of: every
+/// one before `validating` in the lifecycle. A job already `validating` stays put,
+/// a `storing` one is moved only by the [wait's end](Db::set_job_stored),
+/// and nothing terminal is ever moved, so a late report never moves a job
+/// backwards or overwrites a cancellation.
+const VALIDATING_FROM_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// The driven job states a driver's `running` report moves a job out of: the ones
+/// before `running` in the lifecycle, and `running` itself, whose repeat report
+/// refreshes it. A `validating` job's session is over, so a late `running` report
+/// leaves it, a `storing` one, and anything terminal where they are.
+const RUNNING_FROM_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
 /// The column value that stores an [unbounded](InFlightLimit::Unbounded) runs-in-flight
 /// limit.
@@ -119,7 +145,7 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 /// A `storing` run counts too. Its session is over, but its record and README are
 /// not stored yet, which is what a game jam's next entry waits for, and the whole
 /// queue is on hold while any run is storing in any case.
-const ACTIVE_SLOT_STATES: [&str; 4] = DRIVEN_STATES;
+const ACTIVE_SLOT_STATES: [&str; 5] = DRIVEN_STATES;
 
 /// The in-flight job states that have **cost nothing yet**: the job is waiting to be
 /// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
@@ -131,14 +157,15 @@ const ACTIVE_SLOT_STATES: [&str; 4] = DRIVEN_STATES;
 pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 
 /// The in-flight job states that are **already spending**: a driver Job exists and is
-/// being created, starting up, or executing, so the tokens for that run are partly or
+/// being created, starting up, executing, validating, or waiting on the artifact
+/// store, so the tokens for that run are partly or
 /// wholly paid for.
 ///
 /// Cancelling these discards work in progress, which is why the controls that reach
 /// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
 /// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
-pub const CANCELABLE_ACTIVE_STATES: [&str; 4] = DRIVEN_STATES;
+pub const CANCELABLE_ACTIVE_STATES: [&str; 5] = DRIVEN_STATES;
 
 /// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
@@ -3768,8 +3795,8 @@ impl Db {
             .collect())
     }
 
-    /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
-    /// running — for every coverage cell whose case slug is in `slugs`, in a single
+    /// Count the **in-flight** jobs — queued, pending, dispatched, starting,
+    /// running, validating or storing — for every coverage cell whose case slug is in `slugs`, in a single
     /// grouped query (the companion to [`Self::count_counted_runs_by_cell`], keyed the
     /// same way). In-flight jobs count toward a cell's target alongside counted runs, so
     /// a launch pass never launches a cell twice while its runs are still executing (or
@@ -6626,7 +6653,7 @@ impl Db {
     /// runs started (and so finished) before the next case's. Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
-    /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
+    /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`/`validating`/`storing`). A harness with
     /// no configured limit is always claimable.
     ///
     /// It additionally **serializes a game jam per model**: a `game-jam` job is not
@@ -6990,7 +7017,7 @@ impl Db {
         let mut active = model.into_active_model();
         active.state = Set(state.to_string());
         active.updated_at = Set(now.to_string());
-        if unstarted && matches!(state, "starting" | "running") {
+        if unstarted && matches!(state, "starting" | "running" | "validating") {
             active.started_at = Set(Some(now.to_string()));
         }
         if let Some(detail) = detail {
@@ -7058,8 +7085,8 @@ impl Db {
         self.get_job(id).await
     }
 
-    /// Return a `storing` job to `running`: its driver's wait on the artifact
-    /// store is over. Clears the reason the wait recorded as the job's `detail`,
+    /// Return a `storing` job to `validating`, the state it left for the wait: its
+    /// driver's wait on the artifact store is over. Clears the reason the wait recorded as the job's `detail`,
     /// and replaces the job's [held report](job::Model::held_report_json) when
     /// `held_report` is given. Returns the updated row, or `None` when the job is
     /// not `storing`. One conditional `UPDATE`, for the reason
@@ -7071,7 +7098,7 @@ impl Db {
         held_report: Option<&str>,
     ) -> Result<Option<job::Model>> {
         let mut update = job::Entity::update_many()
-            .col_expr(job::Column::State, Expr::value("running"))
+            .col_expr(job::Column::State, Expr::value(VALIDATING_STATE))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(Option::<String>::None))
             .filter(job::Column::Id.eq(id))
@@ -7079,6 +7106,59 @@ impl Db {
         if let Some(held_report) = held_report {
             update = update.col_expr(job::Column::HeldReportJson, Expr::value(held_report));
         }
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get_job(id).await
+    }
+
+    /// Move a job to `validating`: its driver's harness session has ended and the
+    /// driver is collecting and validating the run. Stamps `updated_at`, and
+    /// `started_at` when the job has none (a run whose session ended has started,
+    /// whatever reports were missed).
+    ///
+    /// Only a `dispatched`, `starting` or `running` job moves. Returns the updated
+    /// row, or `None` when nothing moved: the job is unknown, still waiting for a
+    /// driver, already `validating` or `storing`, or terminal. The move is one
+    /// conditional `UPDATE`, for the reason [`set_job_storing`](Self::set_job_storing)
+    /// is: a cancellation or a terminal report that commits beside it is never
+    /// overwritten, and a job is never moved backwards.
+    pub async fn set_job_validating(&self, id: &str, now: &str) -> Result<Option<job::Model>> {
+        let update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value(VALIDATING_STATE))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(
+                job::Column::StartedAt,
+                Func::coalesce([Expr::col(job::Column::StartedAt).into(), Expr::value(now)]).into(),
+            )
+            .filter(job::Column::Id.eq(id))
+            .filter(job::Column::State.is_in(VALIDATING_FROM_STATES));
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get_job(id).await
+    }
+
+    /// Move a job to `running`: its driver's harness session has started. Stamps
+    /// `updated_at`, and `started_at` when the job has none, the fallback anchor
+    /// for a driver that never reported `starting` (see
+    /// [`set_job_state`](Self::set_job_state)).
+    ///
+    /// Only a `dispatched`, `starting` or `running` job moves. Returns the updated
+    /// row, or `None` when nothing moved: the job is unknown, still waiting for a
+    /// driver, already `validating` or `storing`, or terminal. One conditional
+    /// `UPDATE`, for the reason [`set_job_validating`](Self::set_job_validating)
+    /// is: a late `running` report never moves a job backwards.
+    pub async fn set_job_running(&self, id: &str, now: &str) -> Result<Option<job::Model>> {
+        let update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value("running"))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(
+                job::Column::StartedAt,
+                Func::coalesce([Expr::col(job::Column::StartedAt).into(), Expr::value(now)]).into(),
+            )
+            .filter(job::Column::Id.eq(id))
+            .filter(job::Column::State.is_in(RUNNING_FROM_STATES));
         if update.exec(&self.conn()).await?.rows_affected == 0 {
             return Ok(None);
         }
@@ -7155,8 +7235,8 @@ impl Db {
             .await?)
     }
 
-    /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
-    /// `running`), in queue order. This is the console's active-run list: a run it is
+    /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`,
+    /// `running`, `validating` or `storing`), in queue order. This is the console's active-run list: a run it is
     /// watching survives a page reload because the backend remembers it — including
     /// one held back (`pending`) or spinning up (`starting`). Ordering it by queue
     /// position rather than enqueue time means the list reads in the order the runs

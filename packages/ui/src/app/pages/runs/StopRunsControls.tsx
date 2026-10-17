@@ -25,12 +25,14 @@ const WAITING_STATES: InProgressRun["state"][] = ["queued", "pending"];
 
 // The job phases that are already burning a driver, a container, and tokens.
 // `dispatched` reaches the console mapped onto `starting` — see `InProgressRun` —
-// so those two names cover three of the backend's active states. A `storing` run
+// so those two names cover three of the backend's active states. A `validating`
+// run's model has finished but its driver is still validating the build. A `storing` run
 // has finished but still holds its driver, which waits on the artifact store until
 // the tree is stored or the run is canceled.
 const ACTIVE_STATES: InProgressRun["state"][] = [
   "starting",
   "running",
+  "validating",
   "storing",
 ];
 

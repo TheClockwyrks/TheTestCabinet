@@ -351,7 +351,7 @@ impl StoreWait for RunWait<'_> {
     }
 
     async fn over(&self, stored: bool) {
-        // `running` is the state the job was in before the wait, and the one it
+        // `validating` is the state the job was in before the wait, and the one it
         // holds while the driver finishes its report.
         let report = self.client.post_status_wait_over(stored);
         match tokio::time::timeout(WAIT_REPORT_TIMEOUT, report).await {

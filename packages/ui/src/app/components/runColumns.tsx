@@ -32,6 +32,7 @@ import {
   formatUsd,
   totalTokens,
 } from "../format";
+import { RunActiveMarker } from "./RunActiveMarker";
 import { RunSelectBox, type RunSelectionContext } from "./RunSelect";
 import { sortRows, type SortState } from "./useTableSort";
 import { UnpublishedTag } from "./UnpublishedTag";
@@ -164,13 +165,16 @@ function categoryLabel(testType: string): string {
 // without one so it reads as a settled state rather than imminent progress. The
 // whole queue is also held in "pending" while the artifact store cannot take
 // another run's tree, and `ActiveStatus` then says so in the cell's tooltip.
-// "storing" is a finished run whose driver is waiting on the artifact store; it
-// carries an ellipsis because the driver keeps retrying on its own.
+// "validating" is a run whose model has finished, its build being validated; it
+// carries an ellipsis like "running…" because it is work in progress that ends on
+// its own. "storing" is a finished run whose driver is waiting on the artifact
+// store; it carries an ellipsis because the driver keeps retrying on its own.
 const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
   queued: "queued…",
   pending: "pending",
   starting: "starting…",
   running: "running…",
+  validating: "validating…",
   storing: "storing…",
   failed: "failed",
 };
@@ -179,10 +183,14 @@ const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
 // own when the backend reported none.
 const STORING_TITLE = "Waiting to store artifacts";
 
+// What a "validating" run's tooltip says: the label alone does not say that the
+// model is done, which is the whole difference from "running…".
+const VALIDATING_TITLE = "The model has finished; validating the build";
+
 // An in-progress run's status cell. A run the artifact store is holding back
 // carries the reason as its tooltip, since "pending" alone cannot tell that hold
 // from a harness at its cap. A run waiting on the store says so, with the driver's
-// reason when the backend reported one.
+// reason when the backend reported one. A validating run says its model is done.
 function ActiveStatus({
   state,
   detail,
@@ -198,7 +206,9 @@ function ActiveStatus({
         ? detail
           ? `${STORING_TITLE}: ${detail}`
           : STORING_TITLE
-        : undefined;
+        : state === "validating"
+          ? VALIDATING_TITLE
+          : undefined;
   return (
     <span className={styles.activeStatus} data-state={state} title={title}>
       {ACTIVE_STATE_LABEL[state]}
@@ -305,8 +315,9 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 20,
     resizable: false,
     // Selectable logs swap the hover caret for a checkbox; an in-progress row's
-    // box overlays the live spinner (passed through `active`) so the gutter still
-    // signals the run is running until the row is hovered or picked.
+    // box overlays the live marker (its phase passed through `active`) so the
+    // gutter still signals the run is in flight — and whether its model is still
+    // working or its build is being validated — until the row is hovered or picked.
     render: (row, ctx) =>
       ctx.selection ? (
         <RunSelectBox id={row.summary.id} selection={ctx.selection} />
@@ -315,9 +326,13 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       ),
     renderActive: (run, ctx) =>
       ctx.selection ? (
-        <RunSelectBox id={run.runId} active selection={ctx.selection} />
+        <RunSelectBox
+          id={run.runId}
+          active={run.state}
+          selection={ctx.selection}
+        />
       ) : (
-        <span className={styles.spinner} aria-hidden="true" />
+        <RunActiveMarker state={run.state} />
       ),
   },
   {

@@ -7,6 +7,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import type { InProgressRun } from "../../client/types";
+import { RunActiveMarker } from "./RunActiveMarker";
 import styles from "./RunLog.module.scss";
 
 /**
@@ -148,15 +150,17 @@ function checkboxHandlers(toggle: (range: boolean) => void) {
  * toggles the selection instead of falling through to the row's link and opening
  * the run. The little box inside is only the visual: invisible at rest (like the
  * caret it replaces), fading in on row hover or whenever the row is selected, and
- * overlaying the live spinner an in-progress row shows through until hovered.
+ * overlaying the live marker an in-progress row shows through until hovered.
+ * `active` is the in-progress row's live phase, which picks the marker's
+ * animation; a finished row passes none and shows no marker.
  */
 export function RunSelectBox({
   id,
-  active = false,
+  active,
   selection,
 }: {
   id: string;
-  active?: boolean;
+  active?: InProgressRun["state"];
   selection: RunSelectionContext;
 }) {
   const selected = selection.isSelected(id);
@@ -174,7 +178,7 @@ export function RunSelectBox({
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
-      {active && <span className={styles.spinner} aria-hidden="true" />}
+      {active && <RunActiveMarker state={active} decorative />}
       <span className={styles.selectBox} aria-hidden="true" />
     </span>
   );

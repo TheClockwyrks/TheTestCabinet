@@ -1,7 +1,7 @@
 //! Lost-driver detection: which backend jobs no live driver `Job` is executing.
 //!
 //! The backend believes a driver is executing every job it holds as `dispatched`,
-//! `starting` or `running`. That belief outlives the driver when the driver dies with
+//! `starting`, `running`, `validating` or `storing`. That belief outlives the driver when the driver dies with
 //! no one to report it: the whole machine restarted (a local cluster's node container,
 //! taking every driver pod and the dispatcher down together), or a driver `Job` failed
 //! while no dispatcher held its per-job token, or a driver exited after its final

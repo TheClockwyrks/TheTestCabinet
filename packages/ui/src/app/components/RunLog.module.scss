@@ -167,6 +167,22 @@ a.row {
   border-top-color: transparent;
   animation: spin 0.8s linear infinite;
 
+  // A validating run's model has finished and its build is being validated: a
+  // whole ring that breathes, in its own color, so a view that shows the marker
+  // without the status column still tells it from a model at work. The cyan is
+  // the flawless rating tier's, the palette's only cool hue clear of the accent,
+  // the negative, and the caution color.
+  &[data-state="validating"] {
+    border-color: var(--tcab-rating-flawless);
+    animation: breathe 1.6s ease-in-out infinite;
+
+    // Still a whole ring, which the running arc never is, so the two stay apart
+    // with the motion stood down.
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+
   .row[data-failed] & {
     animation: none;
     border-color: t.$color-negative;
@@ -177,6 +193,19 @@ a.row {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
@@ -262,7 +291,8 @@ a.row {
 
 // Reveal the box on row hover (mirrors the caret it stands in for) and whenever
 // the cell is selected; hide the live spinner behind it so the gutter shows one
-// control at a time.
+// control at a time. `visibility` as well as `opacity`, because the validating
+// marker's breathing animates its opacity, which would win over a plain zero.
 a.row:hover .selectBox,
 .selectCell[data-selected] .selectBox {
   opacity: 1;
@@ -271,6 +301,7 @@ a.row:hover .selectBox,
 a.row:hover .selectCell .spinner,
 .selectCell[data-selected] .spinner {
   opacity: 0;
+  visibility: hidden;
 }
 
 // The picked state: a filled box with a check. Shared by the row cell and the

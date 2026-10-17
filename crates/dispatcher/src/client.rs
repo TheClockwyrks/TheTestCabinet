@@ -87,8 +87,12 @@ pub enum JobState {
     Dispatched,
     /// The driver pod is up and running the pre-run container setup.
     Starting,
-    /// The driver is executing the run.
+    /// The driver is executing the run's harness session.
     Running,
+    /// The harness session has ended and the driver is doing the post-session work
+    /// (collecting the tree, the post-run analysis, validation, the upload). The
+    /// driver pod is alive for all of it.
+    Validating,
     /// The run has finished and its driver is waiting on the artifact store to take
     /// its tree. The driver pod is alive for the whole wait.
     Storing,
@@ -110,7 +114,7 @@ impl JobState {
     pub fn is_driven(self) -> bool {
         matches!(
             self,
-            Self::Dispatched | Self::Starting | Self::Running | Self::Storing
+            Self::Dispatched | Self::Starting | Self::Running | Self::Validating | Self::Storing
         )
     }
 
@@ -267,7 +271,7 @@ impl BackendClient {
     }
 
     /// The jobs the backend still has in flight (`GET /jobs/active`), every state from
-    /// `queued` to `running`.
+    /// `queued` to `storing`.
     pub async fn active_jobs(&self) -> Result<Vec<ActiveJob>, ClientError> {
         let response = self
             .http
@@ -299,8 +303,9 @@ impl BackendClient {
 
     /// Report a job whose driver is gone without having reported
     /// (`POST /jobs/{id}/lost`, service token). `detail` says what the dispatcher found.
-    /// The backend fails the job only while it is still `dispatched`, `starting` or
-    /// `running`, so a report racing the driver's own is harmless.
+    /// The backend fails the job only while it is still `dispatched`, `starting`,
+    /// `running`, `validating` or `storing`, so a report racing the driver's own is
+    /// harmless.
     pub async fn report_lost(
         &self,
         job_id: &str,

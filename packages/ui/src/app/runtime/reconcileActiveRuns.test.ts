@@ -172,6 +172,13 @@ describe("reconcileActiveRuns", () => {
     expect(toUpdate).toEqual([]);
   });
 
+  it("moves a tracked run into validating once its model has finished", () => {
+    expect(
+      reconcileActiveRuns([run("a", "running")], [ok(run("a", "validating"))])
+        .toUpdate,
+    ).toEqual([{ runId: "a", state: "validating" }]);
+  });
+
   it("moves a tracked run into storing with the reason the worker reports", () => {
     const storing = { ...run("a", "storing"), detail: "disk full" };
     expect(

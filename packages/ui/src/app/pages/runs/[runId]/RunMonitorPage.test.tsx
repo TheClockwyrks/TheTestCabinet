@@ -226,6 +226,19 @@ describe("RunMonitorPage", () => {
     );
   });
 
+  it("says a validating run's model has finished and its build is being validated", async () => {
+    const { value } = makeWorkers(() => {
+      // The session is over, so the stream has gone quiet.
+    });
+
+    renderMonitor(value, inFlight({ state: "validating" }));
+    await settle();
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "The model has finished; validating the build.",
+    );
+  });
+
   it("says nothing of storage while the run is still running", async () => {
     const { value } = makeWorkers(() => {});
 

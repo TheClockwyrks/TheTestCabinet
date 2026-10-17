@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { storingRunNotice } from "../../../../client/artifactStorage";
+import { validatingRunNotice } from "../../../../client/runPhase";
 import { useWorkers } from "../../../../client/context";
 import type {
   AssetPreview,
@@ -64,6 +65,7 @@ export function RunMonitorPage() {
   // drawn anything.
   const inProgress = runtime.inProgress.find((r) => r.runId === runId);
   const storingNotice = storingRunNotice(inProgress);
+  const validatingNotice = validatingRunNotice(inProgress);
   // The declared slots come off the case's `sheet`/`model`, which are detail —
   // not part of the catalog listing — so the run's own case is fetched by slug.
   const { testCase: caseSummary } = useTestCase(inProgress?.testCaseSlug);
@@ -189,6 +191,14 @@ export function RunMonitorPage() {
       {status.kind === "running" && storingNotice && (
         <p className={`${styles.notice} ${styles.warn}`} role="status">
           {storingNotice}
+        </p>
+      )}
+
+      {/* The model has finished and its build is being validated: the feed has
+          gone quiet because the session is over, not because the run stalled. */}
+      {status.kind === "running" && validatingNotice && (
+        <p className={styles.notice} role="status">
+          {validatingNotice}
         </p>
       )}
 

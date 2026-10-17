@@ -1790,7 +1790,8 @@ pub async fn halt_plan(
 }
 
 /// `POST /coverage-plans/{id}/halt-all` — end filling and cancel **every** job the plan
-/// launched, including the ones already dispatched, starting, or running.
+/// launched, including the ones already dispatched, starting, running, validating or
+/// storing.
 ///
 /// The rare control: those jobs are partly or wholly paid for, so the console must
 /// confirm before calling this and must never make it the default action. 404 when the

@@ -693,8 +693,8 @@ pub struct LadderDispatchSummary {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LadderStopInput {
-    /// Whether to cancel the dispatch's `dispatched`, `starting` and `running` jobs as
-    /// well as its waiting ones. Those are partly or wholly paid for, so a client
+    /// Whether to cancel the dispatch's `dispatched`, `starting`, `running`,
+    /// `validating` and `storing` jobs as well as its waiting ones. Those are partly or wholly paid for, so a client
     /// confirms first.
     #[serde(default)]
     pub cancel_running: bool,
@@ -1020,8 +1020,8 @@ pub async fn run(
 }
 
 /// `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
-/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting` and `running`
-/// ones too. `409` when no dispatch is running.
+/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting`, `running`,
+/// `validating` and `storing` ones too. `409` when no dispatch is running.
 ///
 /// The end is a conditional update. The cancel reaches the jobs whose origin names this
 /// dispatch, and the jobs an earlier dispatch of this ladder left in flight, which this

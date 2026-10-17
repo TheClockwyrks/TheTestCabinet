@@ -180,6 +180,17 @@ describe("StopRunsControls", () => {
     expect(getRun).not.toHaveBeenCalled();
   });
 
+  // A run whose model has finished is still validating its build on its driver,
+  // so stopping it is an active sweep's job.
+  it("counts a run validating its build as active", () => {
+    mount([inFlight("run-v", "validating")], 1);
+
+    expect(screen.getByRole("button", { name: "Kill active" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Clear pending" }),
+    ).toBeDisabled();
+  });
+
   // A finished run waiting on the artifact store still holds its driver, and
   // canceling it is what ends that wait, so the active sweep has to offer it.
   it("counts a run waiting to store its artifacts as active", () => {

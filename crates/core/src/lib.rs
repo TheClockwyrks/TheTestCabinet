@@ -1863,6 +1863,9 @@ where
                 cancel,
             )
             .await?;
+        // Tell the sink the session is over before any post-session work, so an
+        // observer can tell the model working apart from the run being validated.
+        events.session_ended();
         // The run timer the instant the session ended. Everything the run engine did
         // before this point is setup and everything after it is teardown, so this
         // read plus `session_elapsed` is what separates the model's own working time

@@ -170,6 +170,22 @@ fn a_job_waiting_to_store_its_tree_is_in_flight() {
 }
 
 #[test]
+fn a_validating_job_is_in_flight() {
+    assert_eq!(JobState::from_db("validating"), JobState::Validating);
+    assert!(!JobState::Validating.is_terminal());
+    assert_eq!(
+        serde_json::to_value(JobState::Validating).unwrap(),
+        "validating"
+    );
+    assert_eq!(
+        serde_json::to_value(DriverState::Validating).unwrap(),
+        "validating"
+    );
+    let parsed: DriverState = serde_json::from_str(r#""validating""#).unwrap();
+    assert!(matches!(parsed, DriverState::Validating));
+}
+
+#[test]
 fn a_storing_run_event_carries_the_drivers_reason() {
     let event = RunEvent::storing("job-1", summary(), Some("HTTP 500: no space left"));
     let json = serde_json::to_value(&event).unwrap();

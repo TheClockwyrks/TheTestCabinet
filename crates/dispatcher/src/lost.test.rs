@@ -109,6 +109,7 @@ fn a_job_waiting_to_store_its_tree_is_driven_and_so_can_be_lost() {
         ("dispatched", true),
         ("starting", true),
         ("running", true),
+        ("validating", true),
         ("succeeded", false),
         ("failed", false),
         ("canceled", false),
@@ -116,6 +117,18 @@ fn a_job_waiting_to_store_its_tree_is_driven_and_so_can_be_lost() {
         let state: JobState = serde_json::from_str(&format!("\"{wire}\"")).unwrap();
         assert_eq!(state.is_driven(), driven, "{wire}");
     }
+}
+
+#[test]
+fn a_validating_job_is_driven_and_so_can_be_lost() {
+    use crate::client::JobState;
+
+    // A validating job's driver is alive collecting and validating the run. One
+    // that died must be found, or the job would stay in flight for good.
+    let validating: JobState = serde_json::from_str(r#""validating""#).unwrap();
+    assert_eq!(validating, JobState::Validating);
+    assert!(validating.is_driven());
+    assert!(!validating.is_terminal());
 }
 
 #[test]
