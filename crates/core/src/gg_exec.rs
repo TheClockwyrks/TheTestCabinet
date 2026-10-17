@@ -592,6 +592,9 @@ pub(crate) async fn run_gg_session(
         limit_breach,
         ..
     } = sink;
+    // gg's tool calls and program function calls, counted off the telemetry its
+    // events carry by the same function that counts a stored gg run.
+    let tool_calls = crate::tool_tally::gg_tool_calls(&translated_events);
 
     // A canceled session is not classified: nothing it did or did not do is a fault to
     // report, and its exit code says only how far the wind-down got. Hand back everything
@@ -611,7 +614,7 @@ pub(crate) async fn run_gg_session(
                 // the way out; absent when it did not, in which case the same figures
                 // remain derivable from the persisted event stream.
                 gg_summary,
-                tool_calls: BTreeMap::new(),
+                tool_calls,
                 canceled: true,
             });
         }
@@ -695,10 +698,7 @@ pub(crate) async fn run_gg_session(
         // before it ended, lifted onto the run record so aggregate queries need not
         // re-parse the event stream. `None` if the run ended before emitting one.
         gg_summary,
-        // gg accounts its own per-tool activity through its telemetry (see
-        // `ggToolBreakdown`), not the third-party event parser, so the parser-side
-        // tally is empty for a gg run.
-        tool_calls: BTreeMap::new(),
+        tool_calls,
         // This session ended on its own terms; the cancellation path returns above.
         canceled: false,
     })

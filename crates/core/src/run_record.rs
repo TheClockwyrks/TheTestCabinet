@@ -759,9 +759,9 @@ pub struct RunRecord {
     /// [`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so
     /// a harness comparison can diagnose tool-call behavior (a re-reading or
     /// over-shelling harness shows here) that a count derived from the event stream
-    /// alone would miss. Defaulted and omitted when
-    /// empty so records written before the field existed still deserialize, and a
-    /// gg run — whose per-tool detail comes from its own telemetry — carries none.
+    /// alone would miss. A Codex run and a gg run, whose output names no tools, are
+    /// counted off their events (see [`crate::tool_tally`]). Defaulted and omitted
+    /// when empty so records written before the field existed still deserialize.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tool_calls: BTreeMap<String, u64>,
     /// The earlier entries this **game-jam** run was seeded with and briefed to build

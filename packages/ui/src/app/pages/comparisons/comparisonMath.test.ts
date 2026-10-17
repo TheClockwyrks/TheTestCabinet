@@ -15,6 +15,8 @@ import {
   remainingForArm,
   runsInFlight,
   toolCallChartData,
+  toolKind,
+  TOOL_KINDS,
   totalMissingRuns,
 } from "./comparisonMath";
 
@@ -330,56 +332,68 @@ describe("presentedRatio", () => {
 });
 
 describe("toolCallChartData", () => {
-  it("keeps every distinct tool as its own series when under the cap", () => {
+  it("stacks each arm's tools by the kind of work they do", () => {
     const { segments, series } = toolCallChartData([
-      { armLabel: "pi", toolCalls: { read: 10, write: 4 } },
-      { armLabel: "kilo", toolCalls: { read: 2, todowrite: 53 } },
-    ]);
-    expect(series.map((s) => s.name).sort()).toEqual(
-      ["read", "todowrite", "write"].sort(),
-    );
-    // Every non-zero (arm, tool) pair is its own segment; a tool an arm never
-    // called gets no segment for that arm.
-    expect(segments).toHaveLength(4);
-    expect(
-      segments.find((s) => s.group === "kilo" && s.series === "todowrite")
-        ?.value,
-    ).toBe(53);
-  });
-
-  it("folds tools past the series cap into a trailing 'other', ranked by total across every arm", () => {
-    const arms = [
+      { armLabel: "pi", toolCalls: { read: 10, write: 4, ls: 2 } },
       {
-        armLabel: "pi",
-        toolCalls: {
-          a: 100,
-          b: 90,
-          c: 80,
-          d: 70,
-          e: 60,
-          f: 50,
-          g: 1, // the 7th tool — pushed into "other" even though every arm has one
-        },
+        armLabel: "codex",
+        toolCalls: { apply_patch: 3, command: 7, read: 1 },
       },
-    ];
-    const { series, segments } = toolCallChartData(arms);
-    expect(series.map((s) => s.name)).toEqual([
-      "a",
-      "b",
-      "c",
-      "d",
-      "e",
-      "f",
-      "other",
     ]);
-    expect(segments.find((s) => s.series === "other")?.value).toBe(1);
+    // Only the kinds some arm called, in the fixed kind order.
+    expect(series.map((s) => s.name)).toEqual(["reading", "editing", "shell"]);
+    const value = (arm: string, kind: string) =>
+      segments.find((s) => s.group === arm && s.series === kind)?.value;
+    expect(value("pi", "reading")).toBe(12);
+    expect(value("codex", "editing")).toBe(3);
+    // A kind an arm never called gets no segment for that arm.
+    expect(value("pi", "shell")).toBeUndefined();
   });
 
-  it("assigns colors from the fixed categorical list, in series order", () => {
-    const { series } = toolCallChartData([
-      { armLabel: "pi", toolCalls: { read: 1, write: 1 } },
+  it("counts gg's program functions under the same kinds as its tools", () => {
+    expect(toolKind("files.read_file")).toBe(toolKind("read_file"));
+    expect(toolKind("delegation.spawn_subagent")).toBe("subagents");
+    expect(toolKind("board.create_issue")).toBe("board");
+    expect(toolKind("memories.search_memories")).toBe("memory");
+    expect(toolKind("context.compact")).toBe("context");
+    expect(toolKind("apply_patch")).toBe("editing");
+    expect(toolKind("Read")).toBe("reading");
+    expect(toolKind("session.finish")).toBe("other");
+  });
+
+  it("names every kind's tools, most-called first, in the tooltip", () => {
+    const { segments } = toolCallChartData([
+      {
+        armLabel: "gg",
+        toolCalls: { read_file: 2, tree: 5, create_issue: 1, mystery: 4 },
+      },
     ]);
-    // Two distinct series get two distinct colors.
-    expect(new Set(series.map((s) => s.color)).size).toBe(series.length);
+    expect(segments[0]?.title).toBe(
+      [
+        "gg",
+        "reading: 7 (tree 5, read_file 2)",
+        "board: 1 (create_issue 1)",
+        "other: 4 (mystery 4)",
+      ].join("\n"),
+    );
+  });
+
+  it("gives every kind its own fixed color", () => {
+    const all = Object.values(TOOL_KINDS).map((names) => names[0]!);
+    const { series } = toolCallChartData([
+      {
+        armLabel: "gg",
+        toolCalls: Object.fromEntries([...all, "mystery"].map((n) => [n, 1])),
+      },
+    ]);
+    expect(series).toHaveLength(10);
+    expect(new Set(series.map((s) => s.color)).size).toBe(10);
+    // The same kind keeps its color whichever kinds a comparison has.
+    const alone = toolCallChartData([
+      { armLabel: "pi", toolCalls: { compact: 1 } },
+    ]).series;
+    expect(alone[0]?.color).toBe(
+      series.find((s) => s.name === "context")?.color,
+    );
   });
 });

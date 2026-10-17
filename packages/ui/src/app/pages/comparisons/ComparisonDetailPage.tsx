@@ -4,6 +4,7 @@ import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   ChartWidget,
   distributionChart,
+  MIN_DISTRIBUTION_SLOT,
   stackedBarChart,
 } from "@clockwyrks/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
@@ -632,18 +633,21 @@ export function ComparisonDetailPage() {
 
         <ChartWidget
           title="Tool-call diagnostics"
-          chartTitle="Tool calls by arm, including consumed tools"
-          hint="Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
+          chartTitle="Tool calls by arm and kind of work, including consumed tools"
+          hint="Every tool call grouped by the kind of work it does; hover a bar for the tools behind each kind. gg's tool calls and program functions count under the same kinds, and its board, memory and context tools have their own. Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
           spec={
             toolCallData.segments.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   stackedBarChart(
                     toolCallData.segments,
                     palette,
                     toolCallData.series,
                     {
                       y: "tool calls",
+                      xTickRotate: LABEL_ROTATE,
+                      availableWidth,
+                      minSlot: MIN_DISTRIBUTION_SLOT,
                     },
                   )
           }

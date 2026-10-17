@@ -352,13 +352,17 @@ pub(crate) async fn assemble_comparison(
         .into_iter()
         .collect();
     // A held run whose record this build cannot decode is absent here, and keeps its
-    // place in the arm's `run_ids` without contributing a figure.
-    let runs: BTreeMap<String, RunRecord> = db
-        .get_runs(&held)
+    // place in the arm's `run_ids` without contributing a figure. The runs are read
+    // without their event streams, which only a run still to be counted needs.
+    let mut runs: BTreeMap<String, RunRecord> = db
+        .get_runs_without_events(&held)
         .await?
         .into_iter()
         .map(|stored| (stored.record.id.clone(), stored.record))
         .collect();
+    // A Codex or gg run stored before its harness was counted is counted now, once
+    // (docs/comparisons/diagnostics.md, "Counting an earlier run").
+    db.count_uncounted_tool_calls(&mut runs).await?;
     let arms = match store.read_manifest(
         &stored.config.controls.case_slug,
         &stored.config.controls.version,

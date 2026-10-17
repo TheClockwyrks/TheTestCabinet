@@ -65,6 +65,7 @@ pub mod salvage;
 pub mod seeding;
 pub mod test_case;
 pub mod test_case_group;
+pub mod tool_tally;
 pub mod toolchain;
 pub mod toolchain_report;
 pub mod toolchain_stage;

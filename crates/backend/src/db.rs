@@ -653,6 +653,7 @@ impl Db {
             // therefore returns it to the listings.
             run::Column::RecordReadable,
             run::Column::RecordFormat,
+            run::Column::ToolCallsCounted,
         ];
         if validator_rated {
             refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
@@ -706,6 +707,7 @@ impl Db {
             state_reclaimed_reason: NotSet,
             // Automatic publishing's own mark, which a push likewise leaves alone.
             auto_publish_deferred: NotSet,
+            tool_calls_counted: Set(tool_calls_counted(&record)),
             record_json: Set(record_json),
             record_readable: Set(true),
             record_format: Set(RUN_RECORD_FORMAT as i32),
@@ -9589,6 +9591,14 @@ pub use state_reclaim::UploadedOver;
 #[cfg(test)]
 #[path = "db.state_reclaim.test.rs"]
 mod state_reclaim_tests;
+
+#[path = "db.tool_calls.rs"]
+mod tool_calls;
+use tool_calls::tool_calls_counted;
+
+#[cfg(test)]
+#[path = "db.tool_calls.test.rs"]
+mod tool_calls_tests;
 
 #[path = "db.publish_retry.rs"]
 mod publish_retry;

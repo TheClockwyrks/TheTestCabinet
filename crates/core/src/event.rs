@@ -442,8 +442,8 @@ pub struct EventParser {
     /// miss the consumed ones (Kilo calls `todowrite` dozens of times a run). Not
     /// part of the [event stream](HarnessEvent) — it is surfaced separately on the
     /// run outcome. Populated for the tool-name harnesses (Kilo, OpenCode, Cline,
-    /// Pi, Goose, Claude); item-based Codex, whose every tool maps to a semantic
-    /// event with no consumed todos, is represented by those events instead.
+    /// Pi, Goose, Claude); item-based Codex names no tools, so its tally is counted
+    /// off the events its items become (see [`crate::tool_tally`]).
     tool_calls: BTreeMap<String, u64>,
 }
 

@@ -440,6 +440,12 @@ interface StackedAxisLabels {
    */
   availableWidth?: number;
   /**
+   * The narrowest a bar's slot is drawn with tilted labels, `MIN_ROTATED_SLOT`
+   * unless given; a chart that names each bar with a long label, such as an
+   * arm's, passes `MIN_DISTRIBUTION_SLOT`.
+   */
+  minSlot?: number;
+  /**
    * The bar order along x, as the full list of group names. Pass it whenever the
    * groups have a meaningful order that is not their sorted order — Plot sorts an
    * ordinal domain it infers, which puts `"100"` before `"70"` and silently
@@ -481,6 +487,7 @@ export function stackedBarChart(
           labels.xTickRotate,
           Number(base.marginLeft),
           labels.availableWidth,
+          labels.minSlot,
         )
       : {}),
     x: {
