@@ -295,16 +295,17 @@ describe("a validating run", () => {
     const marker = getByRole("img", { name: "Validating" });
     expect(marker).toHaveAttribute("data-state", "validating");
     expect(marker).toHaveAttribute("title", "Validating");
+    // A checklist of three lines, not the running spinner's ring.
+    expect(marker.children).toHaveLength(3);
   });
 
   it("leaves a running run's marker as the running spinner", () => {
     const { getByRole } = render(
       column("caret").renderActive(activeRun, ctx()),
     );
-    expect(getByRole("img", { name: "Running" })).toHaveAttribute(
-      "data-state",
-      "running",
-    );
+    const marker = getByRole("img", { name: "Running" });
+    expect(marker).toHaveAttribute("data-state", "running");
+    expect(marker.children).toHaveLength(0);
   });
 
   it("draws its marker under the selectable log's checkbox too", () => {

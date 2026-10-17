@@ -167,22 +167,6 @@ a.row {
   border-top-color: transparent;
   animation: spin 0.8s linear infinite;
 
-  // A validating run's model has finished and its build is being validated: a
-  // whole ring that breathes, in its own color, so a view that shows the marker
-  // without the status column still tells it from a model at work. The cyan is
-  // the flawless rating tier's, the palette's only cool hue clear of the accent,
-  // the negative, and the caution color.
-  &[data-state="validating"] {
-    border-color: var(--tcab-rating-flawless);
-    animation: breathe 1.6s ease-in-out infinite;
-
-    // Still a whole ring, which the running arc never is, so the two stay apart
-    // with the motion stood down.
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-    }
-  }
-
   .row[data-failed] & {
     animation: none;
     border-color: t.$color-negative;
@@ -196,16 +180,69 @@ a.row {
   }
 }
 
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(0.7);
-    opacity: 0.45;
+// A validating run's marker, in the spinner's place and at its size: the model
+// has finished and its build is being checked, drawn as three lines filling in
+// turn like items ticked off a list. Its shape and motion, rather than its
+// color, tell it from a model at work, so a view that shows the marker without
+// the status column still tells the two apart.
+.checklist {
+  justify-self: center;
+  display: grid;
+  align-content: space-between;
+  width: 0.75rem;
+  height: 0.75rem;
+  padding-block: 1px;
+  color: t.$color-accent;
+}
+
+.checklistLine {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: color-mix(in srgb, currentColor 25%, transparent);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: left;
+    animation: tick 1.8s ease-out infinite;
   }
 
-  50% {
-    transform: scale(1);
-    opacity: 1;
+  &:nth-child(2)::after {
+    animation-delay: 0.3s;
+  }
+
+  &:nth-child(3)::after {
+    animation-delay: 0.6s;
+  }
+
+  // With the motion stood down the list rests filled, which the running arc
+  // never resembles.
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      animation: none;
+      transform: scaleX(1);
+    }
+  }
+}
+
+@keyframes tick {
+  0% {
+    transform: scaleX(0);
+  }
+
+  25%,
+  80% {
+    transform: scaleX(1);
+  }
+
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
   }
 }
 
@@ -292,14 +329,14 @@ a.row {
 // Reveal the box on row hover (mirrors the caret it stands in for) and whenever
 // the cell is selected; hide the live spinner behind it so the gutter shows one
 // control at a time. `visibility` as well as `opacity`, because the validating
-// marker's breathing animates its opacity, which would win over a plain zero.
+// marker's lines animate their own opacity, which would show through a plain zero.
 a.row:hover .selectBox,
 .selectCell[data-selected] .selectBox {
   opacity: 1;
 }
 
-a.row:hover .selectCell .spinner,
-.selectCell[data-selected] .spinner {
+a.row:hover .selectCell :is(.spinner, .checklist),
+.selectCell[data-selected] :is(.spinner, .checklist) {
   opacity: 0;
   visibility: hidden;
 }

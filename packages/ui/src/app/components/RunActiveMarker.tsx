@@ -18,10 +18,10 @@ const MARKER_NAME: Readonly<Record<InProgressRun["state"], string>> = {
 
 /**
  * The in-progress marker an active run log row shows in its caret gutter (and in
- * a phone card's corner): a spinning arc while the run is in flight, a whole ring
- * that breathes once the model has finished and its build is being validated, and
- * a frozen ring in the negative color once the run is observed to have failed.
- * The phase drives the animation through `data-state`.
+ * a phone card's corner): a spinning arc while the run is in flight, a checklist
+ * whose lines fill in turn once the model has finished and its build is being
+ * validated, and a frozen ring in the negative color once the run is observed to
+ * have failed.
  *
  * `decorative` hides it from assistive technology, for the selectable log, where
  * it sits inside a checkbox whose own label names the control; it keeps its
@@ -35,20 +35,24 @@ export function RunActiveMarker({
   decorative?: boolean;
 }) {
   const name = MARKER_NAME[state];
-  return decorative ? (
+  const validating = state === "validating";
+  const a11y = decorative
+    ? { "aria-hidden": true as const }
+    : { role: "img", "aria-label": name };
+  return (
     <span
-      className={styles.spinner}
+      className={validating ? styles.checklist : styles.spinner}
       data-state={state}
       title={name}
-      aria-hidden="true"
-    />
-  ) : (
-    <span
-      className={styles.spinner}
-      data-state={state}
-      title={name}
-      role="img"
-      aria-label={name}
-    />
+      {...a11y}
+    >
+      {validating && (
+        <>
+          <span className={styles.checklistLine} />
+          <span className={styles.checklistLine} />
+          <span className={styles.checklistLine} />
+        </>
+      )}
+    </span>
   );
 }
