@@ -4,6 +4,8 @@ import type {
   ComparisonArmResult,
   ScorePoint,
 } from "@clockwyrks/run-record/comparison";
+import { SortableHeaderCell } from "../../components/SortableHeaderCell";
+import { sortRows, useTableSort } from "../../components/useTableSort";
 import styles from "./ArmScoreWidget.module.scss";
 
 interface ArmScoreWidgetProps {
@@ -14,6 +16,13 @@ interface ArmScoreWidgetProps {
 }
 
 const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+
+// What each sortable column orders the arms by, as the run log's columns do: an
+// arm with no figure yet sorts last in either direction.
+const SORT_KEYS: Record<string, (arm: ComparisonArmResult) => number | null> = {
+  score: (a) => a.score?.meanFraction ?? null,
+  passed: (a) => a.passRate?.rate ?? null,
+};
 
 /**
  * The score & pass-rate widget: every arm's score and pass rate, as a table a
@@ -26,6 +35,10 @@ const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
  */
 export function ArmScoreWidget({ arms, colorForArm }: ArmScoreWidgetProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  // The order is the reader's, kept across comparisons the way a run log's is;
+  // with no sort the arms keep the config's order.
+  const { sort, cycle } = useTableSort("ttc:sort:comparison-arms");
+  const ordered = sortRows(arms, sort, (columnId) => SORT_KEYS[columnId]);
   const allOpen = arms.length > 0 && arms.every((a) => open.has(a.arm.id));
 
   const toggle = (id: string) =>
@@ -53,13 +66,40 @@ export function ArmScoreWidget({ arms, colorForArm }: ArmScoreWidgetProps) {
     >
       <div className={styles.frame}>
         <div className={styles.rows}>
-          <div className={styles.headings} aria-hidden>
-            <span>Configuration</span>
-            <span className={styles.num}>Avg score</span>
-            <span className={styles.num}>Passed</span>
-            <span />
+          {/* The shared header cells are column headers, which need a row and a
+              table around them; the row takes no box, so the cells sit on the
+              table's grid like every row below. */}
+          <div
+            className={styles.headings}
+            role="table"
+            aria-label="Sort the configurations"
+          >
+            <div className={styles.headingRow} role="row">
+              <SortableHeaderCell
+                columnId="configuration"
+                label="Configuration"
+                sortable={false}
+                sort={sort}
+                onSort={cycle}
+              />
+              <SortableHeaderCell
+                columnId="score"
+                label="Avg score"
+                numeric
+                sort={sort}
+                onSort={cycle}
+              />
+              <SortableHeaderCell
+                columnId="passed"
+                label="Passed"
+                numeric
+                sort={sort}
+                onSort={cycle}
+              />
+              <span />
+            </div>
           </div>
-          {arms.map((a) => (
+          {ordered.map((a) => (
             <ArmScoreRow
               key={a.arm.id}
               arm={a}

@@ -1,6 +1,6 @@
 import type { ComparisonArmResult } from "@clockwyrks/run-record/comparison";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ArmScoreWidget } from "./ArmScoreWidget";
 
 /** An arm with three scored runs out of 24 points, one of them full. */
@@ -53,7 +53,25 @@ function renderWidget(arms: readonly ComparisonArmResult[]) {
 const rowFor = (label: string) =>
   screen.getByRole("button", { name: new RegExp(label) });
 
+/** An arm with the given average score and pass rate. */
+function rated(id: string, meanFraction: number, rate: number) {
+  const arm = scored(id, id);
+  return {
+    ...arm,
+    score: { ...arm.score!, meanFraction },
+    passRate: { ...arm.passRate!, rate },
+  } as ComparisonArmResult;
+}
+
+/** The arms' detail ids in the order the table shows their rows. */
+const rowOrder = () =>
+  screen
+    .getAllByRole("button", { expanded: false })
+    .map((row) => row.getAttribute("aria-controls"));
+
 describe("ArmScoreWidget", () => {
+  afterEach(() => localStorage.clear());
+
   it("shows each arm as a closed row with its average score and passed count", () => {
     renderWidget([scored("pi", "pi"), bare("kilo", "kilo")]);
     const pi = rowFor("pi");
@@ -101,5 +119,31 @@ describe("ArmScoreWidget", () => {
     fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
     expect(rowFor("pi")).toHaveAttribute("aria-expanded", "false");
     expect(rowFor("kilo")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("sorts the arms by average score and by pass rate, blanks last", () => {
+    renderWidget([
+      rated("a", 0.5, 0.9),
+      rated("b", 0.9, 0.1),
+      bare("c", "c"),
+      rated("d", 0.2, 0.5),
+    ]);
+    const ids = (...names: string[]) => names.map((n) => `arm-score-${n}`);
+    expect(rowOrder()).toEqual(ids("a", "b", "c", "d"));
+
+    const byScore = screen.getByRole("button", { name: "Sort by Avg score" });
+    fireEvent.click(byScore);
+    expect(rowOrder()).toEqual(ids("d", "a", "b", "c"));
+    fireEvent.click(byScore);
+    expect(rowOrder()).toEqual(ids("b", "a", "d", "c"));
+    expect(
+      screen.getByRole("columnheader", { name: /Avg score/ }),
+    ).toHaveAttribute("aria-sort", "descending");
+    // A third click returns the arms to the comparison's own order.
+    fireEvent.click(byScore);
+    expect(rowOrder()).toEqual(ids("a", "b", "c", "d"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Passed" }));
+    expect(rowOrder()).toEqual(ids("b", "d", "a", "c"));
   });
 });
