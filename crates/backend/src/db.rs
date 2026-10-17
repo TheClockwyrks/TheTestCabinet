@@ -78,17 +78,6 @@ pub const STORING_STATE: &str = "storing";
 /// dispatcher may report lost.
 pub const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
-/// What one id a comparison arm recorded stands for ([`Db::resolve_arm_runs`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArmRunStatus {
-    /// The run's job, or its retry's, is still queued or running.
-    InFlight,
-    /// The run landed and counts toward the arm's `n`; the id of the stored run.
-    Counted(String),
-    /// The run landed but does not count, was deleted, or its job stored none.
-    NotCounted,
-}
-
 /// The column value that stores an [unbounded](InFlightLimit::Unbounded) runs-in-flight
 /// limit.
 ///
@@ -1052,18 +1041,7 @@ impl Db {
         // run by a plain column (`job.record_id` / `publish_job.run_id`, no foreign
         // key back to the run), so they would otherwise be orphaned — delete them in
         // the same transaction so a deleted run leaves nothing behind.
-        //
-        // The one job kept is an attempt the backend retried: a comparison arm
-        // records the attempt's job id and reaches the retry's run through its
-        // `retried_by`, which nothing else links back to. It keeps that link and
-        // loses the run.
         run::Entity::delete_by_id(run_id.to_string())
-            .exec(&txn)
-            .await?;
-        job::Entity::update_many()
-            .col_expr(job::Column::RecordId, Expr::value(Option::<String>::None))
-            .filter(job::Column::RecordId.eq(run_id))
-            .filter(job::Column::RetriedBy.is_not_null())
             .exec(&txn)
             .await?;
         job::Entity::delete_many()
@@ -3620,135 +3598,6 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
-    /// What each id a comparison arm recorded stands for (docs/comparisons/experiments.md,
-    /// "Which runs an arm holds"), keyed by the recorded id. Every id in `ids` has an
-    /// entry.
-    ///
-    /// The id a launch hands back is a **job** id, and the record its driver mints later
-    /// carries an id of its own ([`test_cabinet_core::mint_run_id`]). So a recorded job
-    /// id is followed along `retried_by` to the last attempt (an attempt and its retry
-    /// are one run), and that attempt along `record_id` to the run it stored. An id no
-    /// job carries is read as a run id directly.
-    ///
-    /// The run then counts or it does not: a completed run and a catastrophic, timed-out,
-    /// limit-exceeded or hung one count, and a harness or infrastructure failure, a
-    /// cancel, a deleted run and a job that stored none do not, nor does a run whose
-    /// record this build cannot read.
-    pub async fn resolve_arm_runs(
-        &self,
-        ids: &[String],
-    ) -> Result<std::collections::BTreeMap<String, ArmRunStatus>> {
-        use std::collections::{BTreeMap, BTreeSet};
-        if ids.is_empty() {
-            return Ok(BTreeMap::new());
-        }
-        let conn = self.conn();
-
-        // Every job reachable from the recorded ids along `retried_by`, fetched a
-        // generation at a time: (state, record_id, retried_by) by job id.
-        let mut jobs: BTreeMap<String, (String, Option<String>, Option<String>)> = BTreeMap::new();
-        let mut frontier: BTreeSet<String> = ids.iter().cloned().collect();
-        while !frontier.is_empty() {
-            let rows: Vec<(String, String, Option<String>, Option<String>)> = job::Entity::find()
-                .select_only()
-                .column(job::Column::Id)
-                .column(job::Column::State)
-                .column(job::Column::RecordId)
-                .column(job::Column::RetriedBy)
-                .filter(job::Column::Id.is_in(frontier.iter().cloned().collect::<Vec<_>>()))
-                .into_tuple()
-                .all(&conn)
-                .await?;
-            frontier.clear();
-            for (id, state, record_id, retried_by) in rows {
-                if let Some(next) = &retried_by
-                    && !jobs.contains_key(next)
-                {
-                    frontier.insert(next.clone());
-                }
-                jobs.insert(id, (state, record_id, retried_by));
-            }
-            frontier.retain(|id| !jobs.contains_key(id));
-        }
-
-        // Each recorded id's last attempt: in flight, or the run id it resolves to.
-        enum Resolved {
-            InFlight,
-            Run(String),
-            Nothing,
-        }
-        let mut resolved: Vec<(String, Resolved)> = Vec::with_capacity(ids.len());
-        for id in ids {
-            let mut current = id.clone();
-            let mut seen = BTreeSet::new();
-            let outcome = loop {
-                let Some((state, record_id, retried_by)) = jobs.get(&current) else {
-                    // No job carries the id: an id that is already a run id.
-                    break Resolved::Run(current);
-                };
-                if let Some(next) = retried_by
-                    && jobs.contains_key(next)
-                    && seen.insert(current.clone())
-                {
-                    current = next.clone();
-                    continue;
-                }
-                if IN_FLIGHT_STATES.contains(&state.as_str()) {
-                    break Resolved::InFlight;
-                }
-                break match record_id {
-                    Some(record_id) => Resolved::Run(record_id.clone()),
-                    None => Resolved::Nothing,
-                };
-            };
-            resolved.push((id.clone(), outcome));
-        }
-
-        // The stored state of every run a recorded id resolved to, and whether this
-        // build can read its record: a comparison's statistics read the record, so a
-        // run they cannot read is not one the arm holds.
-        let wanted: Vec<String> = resolved
-            .iter()
-            .filter_map(|(_, r)| match r {
-                Resolved::Run(id) => Some(id.clone()),
-                _ => None,
-            })
-            .collect();
-        let states: BTreeMap<String, String> = if wanted.is_empty() {
-            BTreeMap::new()
-        } else {
-            run::Entity::find()
-                .select_only()
-                .column(run::Column::Id)
-                .column(run::Column::RunState)
-                .filter(run::Column::Id.is_in(wanted))
-                .filter(run::Column::RecordReadable.eq(true))
-                .into_tuple::<(String, String)>()
-                .all(&conn)
-                .await?
-                .into_iter()
-                .collect()
-        };
-        let counted = arm_counted_run_states();
-
-        Ok(resolved
-            .into_iter()
-            .map(|(id, r)| {
-                let status = match r {
-                    Resolved::InFlight => ArmRunStatus::InFlight,
-                    Resolved::Run(run_id) => match states.get(&run_id) {
-                        Some(state) if counted.contains(&state.as_str()) => {
-                            ArmRunStatus::Counted(run_id)
-                        }
-                        _ => ArmRunStatus::NotCounted,
-                    },
-                    Resolved::Nothing => ArmRunStatus::NotCounted,
-                };
-                (id, status)
-            })
-            .collect())
-    }
-
     /// The legacy single-per-account plans that the startup backfill has not yet
     /// copied into `coverage_plan` (`migrated = false`). Each is returned with its
     /// parsed combinations and cases so the backfill can inline them as one-off
@@ -6236,18 +6085,6 @@ pub(crate) fn counted_run_states() -> Vec<&'static str> {
     test_cabinet_core::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.counts_as_model_result())
-        .map(run_state_str)
-        .collect()
-}
-
-/// The wire strings of the run states a comparison arm counts toward its `N`: the
-/// [counted](counted_run_states) states less `harness_error`, for which an arm launches a
-/// replacement (docs/comparisons/experiments.md, "Which runs an arm holds").
-fn arm_counted_run_states() -> Vec<&'static str> {
-    use test_cabinet_core::run_record::RunState;
-    RunState::ALL
-        .into_iter()
-        .filter(|state| state.counts_as_model_result() && *state != RunState::HarnessError)
         .map(run_state_str)
         .collect()
 }

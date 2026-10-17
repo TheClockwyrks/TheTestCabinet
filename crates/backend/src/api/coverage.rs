@@ -2263,6 +2263,48 @@ pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> Pl
     }
 }
 
+/// The [cell identity](MemberCellIdentity) `combo`'s runs carry, or `None` when it names
+/// no cell: a gg member whose configuration the account no longer holds, that leaves a
+/// launch slot unbound, or whose bound set `POST /gg/runs` would refuse.
+///
+/// The identity [`resolve_member`] gives a launchable member, without the
+/// [drift](gg_member_drift) check. Drift decides whether the member may be launched now,
+/// and leaves the runs it already has, and the cell they are counted in, where they are.
+/// A [comparison arm](super::comparisons) reads its runs through this.
+pub(super) fn member_cell_identity(
+    combo: &ReviewPlanCombo,
+    library: &GgLibrary,
+) -> Option<MemberCellIdentity> {
+    let Some(id) = combo.gg_config_ref() else {
+        return Some((
+            combo.harness.as_str().to_string(),
+            test_cabinet_core::model_id::launch_model_id(
+                &combo.model,
+                combo.harness,
+                combo.provider.as_deref(),
+            ),
+            String::new(),
+            String::new(),
+        ));
+    };
+    let config = library.config(id)?;
+    if gg_member_defect(combo, library).is_some() {
+        return None;
+    }
+    let mut bound = config
+        .capability_set
+        .bind_launch_slots(&combo.gg_bindings());
+    bound.preset = Some(config.name.clone());
+    bound.preset_id = Some(config.id.clone());
+    let identity = super::gg::gg_launch_identity(&bound).ok()?;
+    Some((
+        HarnessSlug::Gg.as_str().to_string(),
+        identity.model,
+        config.id.clone(),
+        identity.capability_set.bound_model_key(),
+    ))
+}
+
 /// Resolve referenced combination groups and one-off combinations into the de-duped
 /// member list a matrix (or a ladder's climber board) is built from.
 ///

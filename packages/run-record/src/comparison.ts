@@ -153,9 +153,7 @@ export type ArmDiagnostics = {
  */
 export type ArmRunPoint = {
   /**
-   * The stored run's own id, which is the id the run's page is addressed by. It
-   * differs from the id the arm [recorded](ComparisonArm::run_ids), which names
-   * the job that produced the run.
+   * The run's id, which is the id the run's page is addressed by.
    */
   runId: string;
   /**
@@ -273,10 +271,8 @@ export type ComparisonArm = {
    */
   modelId?: string;
   /**
-   * The gg [configuration](crate::gg) this arm runs, for a gg-configuration arm —
-   * the launcher's key for it (`builtin:<name>` for a shared built-in,
-   * `saved:<id>` for one registered on the account), so a built-in is as usable
-   * as an account's own.
+   * The saved gg [configuration](crate::gg) this arm runs, for a gg-configuration
+   * arm: the launcher's key for it, `saved:<id>`, or the bare id.
    */
   ggConfigId?: string;
   /**
@@ -286,17 +282,6 @@ export type ComparisonArm = {
    * a single [`model_id`](Self::model_id).
    */
   ggSlotModels?: { [key in string]: string };
-  /**
-   * The ids of the runs launched for this arm, in launch order. Aggregation reads
-   * exactly these runs, so an arm's membership is explicit and unambiguous — the
-   * only reliable way to tell two gg arms apart (they can share a root model but
-   * differ in capability set, which no run tuple distinguishes).
-   *
-   * Each is the id a launch handed back, which is a **job** id; the backend
-   * resolves it to the run that job stands for (docs/comparisons/experiments.md,
-   * "Which runs an arm holds").
-   */
-  runIds?: Array<string>;
 };
 
 /**
@@ -328,7 +313,7 @@ export type ComparisonConfig = {
  */
 export type ComparisonArmResult = {
   /**
-   * The arm this result is for (carries its identity and run ids).
+   * The arm this result is for.
    */
   arm: ComparisonArm;
   /**
@@ -336,30 +321,33 @@ export type ComparisonArmResult = {
    */
   nDesired: number;
   /**
-   * The number of the arm's **counted** runs that have landed: the runs its
-   * statistics are computed from.
+   * The ids of the runs the arm **holds**: the first `n` counted runs of the arm's
+   * coverage cell to finish, whoever launched them, in the order they finished
+   * (docs/comparisons/experiments.md, "Which runs an arm holds").
+   *
+   * What a "trigger missing runs" tops up against, with
+   * [`in_flight`](Self::in_flight) beside it.
+   */
+  runIds: Array<string>;
+  /**
+   * The jobs of the arm's cell in flight, whoever launched them, up to what the arm
+   * still needs: `n` less [`run_ids`](Self::run_ids). An arm holding `n` runs reads
+   * none.
+   */
+  inFlight: number;
+  /**
+   * The number of held runs whose record this build can read: the runs the arm's
+   * statistics are computed from. Below `run_ids.len()` only when a held run's record
+   * no longer decodes.
    */
   nObserved: number;
   /**
-   * The arm's recorded [run ids](ComparisonArm::run_ids) that the arm **holds**:
-   * each one still in flight, or resolved to a stored run that counts toward `n`
-   * (docs/comparisons/experiments.md, "Which runs an arm holds"). In the arm's
-   * launch order.
-   *
-   * This is the count a "trigger missing runs" tops up against, and neither figure
-   * beside it can serve. [`ComparisonArm::run_ids`] records every run ever
-   * launched, so an arm whose runs were deleted, canceled or failed on
-   * infrastructure would keep counting them and never be topped up again.
-   * [`n_observed`](Self::n_observed) counts only the runs whose record has landed,
-   * so topping up against it relaunches every run still in flight.
-   *
-   * Always serialized, empty array included: an arm with no live runs and a backend
-   * that predates the field are different answers, and a console can only tell them
-   * apart if "none are live" arrives as `[]` rather than as a missing key. The
-   * TypeScript type stays optional so a console still reads a record written by an
-   * older backend, which is the one case where the key is genuinely absent.
+   * Why the arm cannot be launched now, or `None` when it can: a gg configuration
+   * that is gone, leaves a launch slot unbound, or imports a saved agent edited since
+   * it was last saved, whose launches would land in another cell. The arm keeps the
+   * runs its cell holds, and nothing is launched for it.
    */
-  liveRunIds?: Array<string>;
+  unlaunchable?: string;
   /**
    * The comparable-cost (USD) distribution across the arm's runs.
    */
@@ -445,8 +433,7 @@ export type Comparison = {
    */
   arms: Array<ComparisonArmResult>;
   /**
-   * Whether every arm holds `n` counted runs and none in flight
-   * ([`is_complete`]).
+   * Whether every arm holds `n` runs ([`is_complete`]).
    */
   complete: boolean;
 };

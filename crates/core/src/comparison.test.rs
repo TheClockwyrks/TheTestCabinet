@@ -202,3 +202,26 @@ fn covered_score_restricts_both_sides_to_the_verdicts_points() {
     assert_eq!(score.total, 5);
     assert!((score.earned - 3.0).abs() < 1e-9);
 }
+
+/// An arm result holding `held` runs with `in_flight` jobs of its cell in flight.
+fn arm_result(held: usize, in_flight: u32) -> ComparisonArmResult {
+    serde_json::from_value(serde_json::json!({
+        "arm": { "id": "a", "label": "A" },
+        "nDesired": 2,
+        "runIds": (0..held).map(|i| format!("r{i}")).collect::<Vec<_>>(),
+        "inFlight": in_flight,
+        "nObserved": held,
+        "diagnostics": { "tokens": {} },
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_comparison_is_complete_once_every_arm_holds_n_runs() {
+    assert!(is_complete(2, &[arm_result(2, 0), arm_result(3, 0)]));
+    assert!(!is_complete(2, &[arm_result(2, 0), arm_result(1, 1)]));
+    assert!(
+        !is_complete(2, &[]),
+        "a comparison with no arm results is never complete"
+    );
+}
