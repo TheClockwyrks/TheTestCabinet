@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from "react-router";
 import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   ChartWidget,
-  SectionWidget,
   distributionChart,
   stackedBarChart,
 } from "@clockwyrks/ui";
@@ -40,6 +39,7 @@ import {
 } from "./comparisonMath";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import { MedianRatioTile } from "./MedianRatioTile";
+import { ArmScoreWidget } from "./ArmScoreWidget";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
@@ -628,84 +628,7 @@ export function ComparisonDetailPage() {
 
         {/* A peer of the three charts rather than a hand-rolled section: same
             panel, same header treatment, same place in the column's rhythm. */}
-        <SectionWidget
-          title="Score & pass rate"
-          hint="The automated-only score across each arm's runs — every run's own point beside the mean — and the pass rate with its Wilson 95% interval."
-        >
-          <div className={styles.armRows}>
-            {arms.map((a) => {
-              // The jobs of the arm's cell it is still waiting on, stated rather
-              // than left as a silent gap between the arm's `n` and its desired
-              // count. The same figure the top-up counts, so the two never disagree.
-              const inFlight = a.inFlight ?? 0;
-              // Held runs whose record this build can no longer read: they keep
-              // their place and contribute no figure.
-              const unreadable = Math.max(
-                0,
-                (a.runIds?.length ?? 0) - a.nObserved,
-              );
-              return (
-                <div key={a.arm.id} className={styles.armRow}>
-                  <div className={styles.armRowHead}>
-                    <span className={styles.armLabel}>
-                      <span
-                        className={styles.armSwatch}
-                        style={{ background: colorForArm.get(a.arm.id) }}
-                        aria-hidden
-                      />
-                      {a.arm.label}
-                    </span>
-                    <span className={styles.armN}>
-                      n={a.nObserved} of {a.nDesired} desired
-                      {inFlight > 0 && ` · ${inFlight} still in flight`}
-                      {unreadable > 0 && ` · ${unreadable} unreadable`}
-                    </span>
-                  </div>
-                  {a.score ? (
-                    <div className={styles.scoreRow}>
-                      <span className={styles.scoreMean}>
-                        {Math.round(a.score.meanFraction * 100)}% avg
-                        (automated-only)
-                      </span>
-                      {a.score.points.map((p, i) => (
-                        <span key={i} className={styles.scorePoint}>
-                          {p.earned}/{p.total}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className={styles.armEmpty}>No scored runs yet.</p>
-                  )}
-                  {a.passRate ? (
-                    <div className={styles.meterRow}>
-                      <div className={styles.meter}>
-                        <span
-                          className={styles.meterFill}
-                          style={{ width: `${a.passRate.rate * 100}%` }}
-                        />
-                        <span
-                          className={styles.meterInterval}
-                          style={{
-                            left: `${a.passRate.wilsonLow * 100}%`,
-                            width: `${(a.passRate.wilsonHigh - a.passRate.wilsonLow) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <span className={styles.meterLabel}>
-                        {a.passRate.passed}/{a.passRate.n} passed (
-                        {Math.round(a.passRate.rate * 100)}%), Wilson{" "}
-                        {Math.round(a.passRate.wilsonLow * 100)}%–
-                        {Math.round(a.passRate.wilsonHigh * 100)}%
-                      </span>
-                    </div>
-                  ) : (
-                    <p className={styles.armEmpty}>No pass-rate data yet.</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </SectionWidget>
+        <ArmScoreWidget arms={arms} colorForArm={colorForArm} />
 
         <ChartWidget
           title="Tool-call diagnostics"

@@ -239,131 +239,13 @@
   gap: t.$space-xl;
 }
 
-// The per-arm rows inside the score & pass-rate widget. They sit on the widget's
-// own surface rather than each being a card of its own: a panel inside a panel
-// reads as a second, competing surface, and the arms are rows of one block.
-.armRows {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-lg;
-}
-
-.armRow {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-md;
-
-  // A hairline between arms, never above the first — the widget's header is
-  // already the rule above it.
-  & + & {
-    padding-top: t.$space-lg;
-    border-top: t.$border-hairline solid t.$color-border;
-  }
-}
-
-.armRowHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-// "No scored runs yet." inside a widget. Panel-bound, so unlike `.empty` out on
-// the backdrop it deliberately takes no readability halo.
-.armEmpty {
-  margin: 0;
-  color: t.$color-text-muted;
-}
-
+// An arm's identity dot (the median-ratio tiles).
 .armSwatch {
   display: inline-block;
   width: 0.75rem;
   height: 0.75rem;
   border-radius: 999px;
   flex: none;
-}
-
-.armLabel {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  color: t.$color-text;
-  font-size: t.$font-lg;
-}
-
-.armN {
-  color: t.$color-text-muted;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-}
-
-// The automated-only score: the mean fraction plus every run's own point,
-// mirroring the statistics page's "at small n the points matter more than any
-// single summary."
-.scoreRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: t.$space-sm;
-}
-
-.scoreMean {
-  font-family: var(--ttc-font);
-  font-size: t.$font-lg;
-  color: t.$color-text;
-}
-
-.scorePoint {
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  background: t.$color-bg-2;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  padding: t.$space-2xs t.$space-sm;
-}
-
-// The pass-rate meter: a filled bar for the observed rate, with a lighter band
-// overlaid across the Wilson interval so the uncertainty at small n is visible
-// rather than implied by the point estimate alone. Mirrors the coverage
-// plan's `.groupBar` track.
-.meter {
-  position: relative;
-  display: flex;
-  width: 100%;
-  max-width: 20rem;
-  height: 0.6rem;
-  background: t.$color-bg-2;
-  border-radius: t.$radius-sm;
-  overflow: hidden;
-}
-
-.meterFill {
-  display: block;
-  height: 100%;
-  background: t.$color-accent;
-}
-
-.meterInterval {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  background: color-mix(in srgb, t.$color-text 35%, transparent);
-}
-
-.meterRow {
-  display: flex;
-  align-items: center;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-.meterLabel {
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  white-space: nowrap;
 }
 
 .editor {
