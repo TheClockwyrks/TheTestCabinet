@@ -260,8 +260,9 @@ style.
   tree. Absent for a run that failed before its workspace was seeded.
 - Tool calls: how many times each tool the harness's agent invoked was called
   over the run, keyed by lowercased raw tool name, including tools recognized
-  without emitting an event. A gg run carries none, since its per-tool detail
-  comes from its own telemetry.
+  without emitting an event. A gg run counts its tool calls and the functions its
+  programs called, and a Codex run counts its normalized events, as
+  [the diagnostics](/comparisons/diagnostics/#tool-call-counts) describe.
 - The bounded tier of the run's [code analysis](/gg/analysis/code-analysis/): a
   deterministic, execute-nothing static read of the code the model wrote,
   computed after the tree is collected and before validation rewrites it. Nothing
