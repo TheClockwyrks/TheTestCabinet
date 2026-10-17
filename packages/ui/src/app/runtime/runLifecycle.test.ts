@@ -239,6 +239,28 @@ describe("runListAction", () => {
     );
   });
 
+  it("moves a run whose model has finished into validating", () => {
+    expect(
+      runListAction(event("state-changed", "validating"), [tracked("a")]),
+    ).toEqual({ kind: "update", runId: "a", state: "validating" });
+  });
+
+  it("returns a storing run to validating once its wait ends, dropping the reason", () => {
+    // The driver reports `validating` again when a store wait ends.
+    const storing: InProgressRun = {
+      ...tracked("a", "storing"),
+      detail: "artifact service returned HTTP 503",
+    };
+    expect(
+      runListAction(event("state-changed", "validating"), [storing]),
+    ).toEqual({
+      kind: "update",
+      runId: "a",
+      state: "validating",
+      detail: null,
+    });
+  });
+
   it("seeds a storing run it has never seen with its reason", () => {
     const action = runListAction(
       { ...event("state-changed", "storing"), detail: "disk full" },

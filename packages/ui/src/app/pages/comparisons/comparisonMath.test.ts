@@ -7,29 +7,24 @@ import type {
 } from "@clockwyrks/run-record/comparison";
 import {
   armDistributionGroups,
-  appendRunIds,
   armTopUps,
-  clearRunIds,
-  countedRunIds,
   harnessArmLaunchItems,
   isGgArm,
   medianRatio,
   presentedRatio,
-  pruneDeadRunIds,
   remainingForArm,
-  reportedLiveRunIds,
   runsInFlight,
   toolCallChartData,
+  toolKind,
+  TOOL_KINDS,
   totalMissingRuns,
-  withArmRunIds,
 } from "./comparisonMath";
 
 function arm(overrides: Partial<ComparisonArm> = {}): ComparisonArm {
-  return { id: "arm-1", label: "pi", runIds: [], ...overrides };
+  return { id: "arm-1", label: "pi", ...overrides };
 }
 
-/** An aggregated arm result: what the arm records, plus which of those runs the
- *  backend found still exist. */
+/** An aggregated arm result: the runs the arm holds and its jobs in flight. */
 function result(
   armOverrides: Partial<ComparisonArm> = {},
   resultOverrides: Partial<ComparisonArmResult> = {},
@@ -37,150 +32,36 @@ function result(
   return {
     arm: arm(armOverrides),
     nDesired: 3,
+    runIds: [],
+    inFlight: 0,
     nObserved: 0,
     diagnostics: {},
     ...resultOverrides,
   } as ComparisonArmResult;
 }
 
-// The field has three states and the third is not the second — an absent field
-// means the backend never reported liveness (it predates the field), NOT that
-// nothing is live. Conflating them relaunches whole experiments and prunes every
-// stored run id out of the config.
-describe("reportedLiveRunIds / countedRunIds", () => {
-  it("reports the arm's still-existing runs when the backend sent them", () => {
-    const r = result({ runIds: ["a", "b", "c"] }, { liveRunIds: ["a", "b"] });
-    expect(reportedLiveRunIds(r)).toEqual(["a", "b"]);
-    expect(countedRunIds(r)).toEqual(["a", "b"]);
-  });
-
-  it("trusts a reported empty array as 'none of them are live'", () => {
-    // A current backend always serializes the field, so `[]` is a positive
-    // statement: the arm's three recorded runs are all gone.
-    const r = result({ runIds: ["a", "b", "c"] }, { liveRunIds: [] });
-    expect(reportedLiveRunIds(r)).toEqual([]);
-    expect(countedRunIds(r)).toEqual([]);
-  });
-
-  it("reads an absent field as 'not reported', falling back to the arm's own ids", () => {
-    // A backend older than the field sends no key at all. Reading that as "none
-    // live" would wipe the arm out; instead it counts what it recorded, exactly
-    // as the page did before liveness existed.
-    const r = result({ runIds: ["a", "b", "c"] });
-    expect(reportedLiveRunIds(r)).toBeUndefined();
-    expect(countedRunIds(r)).toEqual(["a", "b", "c"]);
-  });
-
-  it("falls back to none for an unreported arm that has launched nothing", () => {
-    expect(countedRunIds(result())).toEqual([]);
-  });
-});
-
 describe("remainingForArm", () => {
-  it("is N minus the arm's runs that still exist", () => {
+  it("is N less the runs the arm holds and its jobs in flight", () => {
+    expect(remainingForArm(3, result({}, { runIds: ["r1"] }))).toBe(2);
     expect(
-      remainingForArm(
-        5,
-        result({ runIds: ["a", "b"] }, { liveRunIds: ["a", "b"] }),
-      ),
-    ).toBe(3);
+      remainingForArm(3, result({}, { runIds: ["r1"], inFlight: 1 })),
+    ).toBe(1);
   });
 
-  it("never goes negative once an arm has met or exceeded N", () => {
+  it("never goes negative once an arm has met N", () => {
     expect(
-      remainingForArm(
-        2,
-        result({ runIds: ["a", "b", "c"] }, { liveRunIds: ["a", "b", "c"] }),
-      ),
+      remainingForArm(2, result({}, { runIds: ["r1", "r2"], inFlight: 0 })),
     ).toBe(0);
   });
 
-  it("offers an arm's runs again once they are deleted — the whole reason live ids exist", () => {
-    // The arm still records three launches; the backend reports none of them are
-    // there any more. Counting `runIds` would leave this arm believing itself
-    // full forever.
-    expect(
-      remainingForArm(
-        3,
-        result({ runIds: ["a", "b", "c"] }, { liveRunIds: [] }),
-      ),
-    ).toBe(3);
+  it("offers nothing for an arm the backend reports unlaunchable", () => {
+    const drifted = result({}, { unlaunchable: "edited since it was saved" });
+    expect(remainingForArm(3, drifted)).toBe(0);
   });
 
-  it("counts an unreported arm's own recorded ids rather than offering to relaunch it", () => {
-    // No `liveRunIds` key at all (a backend older than the field). Treating that
-    // as "none live" would offer to relaunch the entire arm; the arm records
-    // three launches and wants three, so there is nothing to trigger.
-    expect(remainingForArm(3, result({ runIds: ["a", "b", "c"] }))).toBe(0);
-    expect(remainingForArm(5, result({ runIds: ["a", "b", "c"] }))).toBe(2);
-  });
-
-  it("counts a run that is still in flight, so nothing is launched twice", () => {
-    // Two runs exist (queued or running) but neither record has landed, so
-    // `nObserved` is 0. Topping up against that would double the arm.
-    expect(
-      remainingForArm(
-        3,
-        result(
-          { runIds: ["a", "b"] },
-          { liveRunIds: ["a", "b"], nObserved: 0 },
-        ),
-      ),
-    ).toBe(1);
-  });
-});
-
-describe("pruneDeadRunIds", () => {
-  const config = (arms: ComparisonArm[]): ComparisonConfig => ({
-    controls: {
-      caseSlug: "carom",
-      version: "v1.0.0",
-      variant: "base",
-      orchestratorSlug: "one-shot",
-      engineSlug: "none",
-    },
-    arms,
-    n: 3,
-  });
-
-  it("drops the ids whose runs no longer exist, keeping launch order", () => {
-    const next = pruneDeadRunIds(
-      config([arm({ id: "a", runIds: ["r1", "r2", "r3"] })]),
-      [result({ id: "a" }, { liveRunIds: ["r3", "r1"] })],
-    );
-    expect(next.arms[0]!.runIds).toEqual(["r1", "r3"]);
-  });
-
-  it("empties an arm the backend reports no live runs for", () => {
-    const next = pruneDeadRunIds(
-      config([arm({ id: "a", runIds: ["r1", "r2"] })]),
-      [result({ id: "a" }, { liveRunIds: [] })],
-    );
-    expect(next.arms[0]!.runIds).toEqual([]);
-  });
-
-  it("never prunes an arm whose result reports no liveness at all", () => {
-    // The load-bearing case: against a backend that does not send the field, the
-    // pruned config is what gets PUT back — clearing `runIds` here would destroy
-    // the record of which runs belong to which arm, permanently.
-    const before = config([arm({ id: "a", runIds: ["r1", "r2"] })]);
-    const next = pruneDeadRunIds(before, [result({ id: "a" })]);
-    expect(next.arms[0]!.runIds).toEqual(["r1", "r2"]);
-    // Untouched, not rebuilt — nothing about this arm changed.
-    expect(next.arms[0]).toBe(before.arms[0]);
-  });
-
-  it("leaves an arm alone when every recorded run still exists", () => {
-    const before = config([arm({ id: "a", runIds: ["r1"] })]);
-    const next = pruneDeadRunIds(before, [
-      result({ id: "a" }, { liveRunIds: ["r1"] }),
-    ]);
-    expect(next.arms[0]).toBe(before.arms[0]);
-  });
-
-  it("leaves an arm the aggregation reported nothing for untouched", () => {
-    const before = config([arm({ id: "a", runIds: ["r1"] })]);
-    expect(pruneDeadRunIds(before, []).arms[0]!.runIds).toEqual(["r1"]);
+  it("offers nothing for a result that reports no held runs at all", () => {
+    const unreported = result({}, { runIds: undefined });
+    expect(remainingForArm(3, unreported)).toBe(0);
   });
 });
 
@@ -193,55 +74,31 @@ describe("armTopUps / totalMissingRuns", () => {
       orchestratorSlug: "one-shot",
       engineSlug: "none",
     },
-    arms: [
-      arm({ id: "a", runIds: ["r1", "r2"] }),
-      arm({ id: "b", runIds: ["r3"] }),
-    ],
+    arms: [arm({ id: "a" }), arm({ id: "b" })],
     n: 2,
   };
 
-  it("counts each arm against the runs it still has", () => {
-    // Arm a's two runs were deleted (reported as none live); arm b's one run
-    // survives.
+  it("counts each arm against the runs it holds and has in flight", () => {
     const results = [
-      result({ id: "a", runIds: ["r1", "r2"] }, { liveRunIds: [] }),
-      result({ id: "b", runIds: ["r3"] }, { liveRunIds: ["r3"] }),
+      result({ id: "a" }, { runIds: [], inFlight: 1 }),
+      result({ id: "b" }, { runIds: ["r3"] }),
     ];
-    const tops = armTopUps(config, results);
-    expect(tops.map((t) => [t.arm.id, t.remaining])).toEqual([
-      ["a", 2],
-      ["b", 1],
-    ]);
-    expect(totalMissingRuns(config, results)).toBe(3);
+    expect(armTopUps(config, results).map((t) => t.remaining)).toEqual([1, 1]);
+    expect(totalMissingRuns(config, results)).toBe(2);
   });
 
-  it("reads an unreported arm's launches off the stored config, not the echoed arm", () => {
-    // The aggregation echoes a trimmed arm (no `runIds` on it at all). The config
-    // is the authority on what the arm has launched — it is what gets written
-    // back — so an unreported arm must be counted off the config, or the page
-    // offers to relaunch runs the config plainly records.
-    const echoed = [
-      { ...result({ id: "a" }), arm: { id: "a", label: "pi" } },
-      { ...result({ id: "b" }), arm: { id: "b", label: "gg" } },
-    ] as unknown as ComparisonArmResult[];
-    expect(armTopUps(config, echoed).map((t) => t.remaining)).toEqual([0, 1]);
+  it("offers nothing for an arm no result carries", () => {
+    expect(armTopUps(config, []).map((t) => t.remaining)).toEqual([0, 0]);
   });
+});
 
-  it("offers nothing for a full comparison no arm of which reports liveness", () => {
-    // Every arm is at `N` by its own record and the backend sent no liveness for
-    // any of them: "Trigger missing runs" must offer 0, not the whole experiment.
+describe("runsInFlight", () => {
+  it("sums every arm's jobs in flight", () => {
     const results = [
-      result({ id: "a", runIds: ["r1", "r2"] }),
-      result({ id: "b", runIds: ["r3"] }),
+      result({ id: "a" }, { inFlight: 2 }),
+      result({ id: "b" }, { inFlight: 1 }),
     ];
-    expect(armTopUps(config, results).map((t) => t.remaining)).toEqual([0, 1]);
-    expect(totalMissingRuns(config, results)).toBe(1);
-  });
-
-  it("falls back to an arm's own recorded ids when no result carries it", () => {
-    // Never expected (the backend computes one result per arm) — but the safe
-    // direction is under-launching, not double-launching.
-    expect(armTopUps(config, []).map((t) => t.remaining)).toEqual([0, 1]);
+    expect(runsInFlight(results)).toBe(3);
   });
 });
 
@@ -347,74 +204,6 @@ describe("harnessArmLaunchItems", () => {
         2,
       ),
     ).toEqual([]);
-  });
-});
-
-describe("appendRunIds", () => {
-  it("appends every successful result's run id in order", () => {
-    expect(
-      appendRunIds(
-        ["r0"],
-        [{ runId: "r1" }, { error: "boom" }, { runId: "r2" }],
-      ),
-    ).toEqual(["r0", "r1", "r2"]);
-  });
-
-  it("skips a duplicate id rather than recording it twice", () => {
-    expect(appendRunIds(["r0"], [{ runId: "r0" }, { runId: "r1" }])).toEqual([
-      "r0",
-      "r1",
-    ]);
-  });
-
-  it("treats a missing existing list as empty", () => {
-    expect(appendRunIds(undefined, [{ runId: "r1" }])).toEqual(["r1"]);
-  });
-
-  it("drops every failed launch", () => {
-    expect(appendRunIds([], [{ error: "a" }, { error: "b" }])).toEqual([]);
-  });
-});
-
-describe("withArmRunIds", () => {
-  const config: ComparisonConfig = {
-    controls: {
-      caseSlug: "carom",
-      version: "v1.0.0",
-      variant: "base",
-      orchestratorSlug: "one-shot",
-      engineSlug: "none",
-    },
-    arms: [
-      {
-        id: "a",
-        label: "pi",
-        harnessSlug: "pi",
-        modelId: "claude-opus-4-8",
-        runIds: ["r1"],
-      },
-      {
-        id: "b",
-        label: "gg — config A",
-        ggConfigId: "builtin:default",
-        ggSlotModels: { primary: "anthropic/claude-opus-4.8" },
-        runIds: [],
-      },
-    ],
-    n: 3,
-  };
-
-  it("replaces only the named arm's runIds", () => {
-    const next = withArmRunIds(config, "b", ["r2", "r3"]);
-    expect(next.arms.find((a) => a.id === "b")?.runIds).toEqual(["r2", "r3"]);
-    // The untouched arm (and every other field) is unchanged.
-    expect(next.arms.find((a) => a.id === "a")?.runIds).toEqual(["r1"]);
-    expect(next.n).toBe(3);
-  });
-
-  it("is a no-op for an unknown arm id", () => {
-    const next = withArmRunIds(config, "does-not-exist", ["r9"]);
-    expect(next.arms).toEqual(config.arms);
   });
 });
 
@@ -543,85 +332,68 @@ describe("presentedRatio", () => {
 });
 
 describe("toolCallChartData", () => {
-  it("keeps every distinct tool as its own series when under the cap", () => {
+  it("stacks each arm's tools by the kind of work they do", () => {
     const { segments, series } = toolCallChartData([
-      { armLabel: "pi", toolCalls: { read: 10, write: 4 } },
-      { armLabel: "kilo", toolCalls: { read: 2, todowrite: 53 } },
-    ]);
-    expect(series.map((s) => s.name).sort()).toEqual(
-      ["read", "todowrite", "write"].sort(),
-    );
-    // Every non-zero (arm, tool) pair is its own segment; a tool an arm never
-    // called gets no segment for that arm.
-    expect(segments).toHaveLength(4);
-    expect(
-      segments.find((s) => s.group === "kilo" && s.series === "todowrite")
-        ?.value,
-    ).toBe(53);
-  });
-
-  it("folds tools past the series cap into a trailing 'other', ranked by total across every arm", () => {
-    const arms = [
+      { armLabel: "pi", toolCalls: { read: 10, write: 4, ls: 2 } },
       {
-        armLabel: "pi",
-        toolCalls: {
-          a: 100,
-          b: 90,
-          c: 80,
-          d: 70,
-          e: 60,
-          f: 50,
-          g: 1, // the 7th tool — pushed into "other" even though every arm has one
-        },
+        armLabel: "codex",
+        toolCalls: { apply_patch: 3, command: 7, read: 1 },
       },
-    ];
-    const { series, segments } = toolCallChartData(arms);
-    expect(series.map((s) => s.name)).toEqual([
-      "a",
-      "b",
-      "c",
-      "d",
-      "e",
-      "f",
-      "other",
     ]);
-    expect(segments.find((s) => s.series === "other")?.value).toBe(1);
+    // Only the kinds some arm called, in the fixed kind order.
+    expect(series.map((s) => s.name)).toEqual(["reading", "editing", "shell"]);
+    const value = (arm: string, kind: string) =>
+      segments.find((s) => s.group === arm && s.series === kind)?.value;
+    expect(value("pi", "reading")).toBe(12);
+    expect(value("codex", "editing")).toBe(3);
+    // A kind an arm never called gets no segment for that arm.
+    expect(value("pi", "shell")).toBeUndefined();
   });
 
-  it("assigns colors from the fixed categorical list, in series order", () => {
+  it("counts gg's program functions under the same kinds as its tools", () => {
+    expect(toolKind("files.read_file")).toBe(toolKind("read_file"));
+    expect(toolKind("delegation.spawn_subagent")).toBe("subagents");
+    expect(toolKind("board.create_issue")).toBe("board");
+    expect(toolKind("memories.search_memories")).toBe("memory");
+    expect(toolKind("context.compact")).toBe("context");
+    expect(toolKind("apply_patch")).toBe("editing");
+    expect(toolKind("Read")).toBe("reading");
+    expect(toolKind("session.finish")).toBe("other");
+  });
+
+  it("names every kind's tools, most-called first, in the tooltip", () => {
+    const { segments } = toolCallChartData([
+      {
+        armLabel: "gg",
+        toolCalls: { read_file: 2, tree: 5, create_issue: 1, mystery: 4 },
+      },
+    ]);
+    expect(segments[0]?.title).toBe(
+      [
+        "gg",
+        "reading: 7 (tree 5, read_file 2)",
+        "board: 1 (create_issue 1)",
+        "other: 4 (mystery 4)",
+      ].join("\n"),
+    );
+  });
+
+  it("gives every kind its own fixed color", () => {
+    const all = Object.values(TOOL_KINDS).map((names) => names[0]!);
     const { series } = toolCallChartData([
-      { armLabel: "pi", toolCalls: { read: 1, write: 1 } },
+      {
+        armLabel: "gg",
+        toolCalls: Object.fromEntries([...all, "mystery"].map((n) => [n, 1])),
+      },
     ]);
-    // Two distinct series get two distinct colors.
-    expect(new Set(series.map((s) => s.color)).size).toBe(series.length);
-  });
-});
-
-describe("clearRunIds", () => {
-  it("empties every arm's recorded runs and keeps everything else", () => {
-    const config = {
-      controls: {},
-      n: 2,
-      arms: [
-        { id: "a", label: "A", runIds: ["a-1", "a-2"] },
-        { id: "b", label: "B", runIds: ["b-1"] },
-      ],
-    } as unknown as ComparisonConfig;
-    const cleared = clearRunIds(config);
-    expect(cleared.arms.map((a) => a.runIds)).toEqual([[], []]);
-    expect(cleared.arms.map((a) => a.label)).toEqual(["A", "B"]);
-    expect(cleared.n).toBe(2);
-    // The input is left as it was.
-    expect(config.arms[0]!.runIds).toEqual(["a-1", "a-2"]);
-  });
-});
-
-describe("runsInFlight", () => {
-  it("counts the held runs that have not landed, across arms", () => {
-    const results = [
-      { arm: { id: "a" }, liveRunIds: ["a-1", "a-2"], nObserved: 1 },
-      { arm: { id: "b" }, liveRunIds: ["b-1"], nObserved: 1 },
-    ] as unknown as ComparisonArmResult[];
-    expect(runsInFlight(results)).toBe(1);
+    expect(series).toHaveLength(10);
+    expect(new Set(series.map((s) => s.color)).size).toBe(10);
+    // The same kind keeps its color whichever kinds a comparison has.
+    const alone = toolCallChartData([
+      { armLabel: "pi", toolCalls: { compact: 1 } },
+    ]).series;
+    expect(alone[0]?.color).toBe(
+      series.find((s) => s.name === "context")?.color,
+    );
   });
 });

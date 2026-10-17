@@ -189,10 +189,16 @@ pub enum DriverState {
     /// the container runtime, materializing the served definition) — the run is not
     /// yet executing the harness, but it will as soon as setup finishes.
     Starting,
-    /// Execution has begun. Also what a driver that was [`Storing`](Self::Storing)
-    /// reports once its upload has landed, returning the job to `running` while it
-    /// finishes its report.
+    /// Execution has begun: setup has finished and the harness session is about to
+    /// start.
     Running,
+    /// The harness session has ended and the driver is doing everything after it:
+    /// collecting the tree, the post-run analysis, the case's toolchain, validation
+    /// and the upload of the tree. Also what a driver that was
+    /// [`Storing`](Self::Storing) reports once its wait on the artifact store is
+    /// over, with `artifactsStored` saying how it ended, returning the job to
+    /// `validating` while it finishes its report.
+    Validating,
     /// The run has finished and the driver is waiting on the artifact store: an
     /// upload of the run's tree failed for a reason that is the store's rather than
     /// the run's, and the driver is holding the only copy while it retries. The
@@ -242,7 +248,7 @@ pub struct StatusUpdate {
     /// report: `true` when the upload landed and `false` when every attempt failed,
     /// so the run has nothing to release. Absent when the driver has no artifact
     /// service to upload to, and on every non-terminal report but one: the
-    /// `running` report that ends a wait on the store carries `true` when the wait
+    /// `validating` report that ends a wait on the store carries `true` when the wait
     /// ended with the tree stored. The backend leaves what it has recorded for the
     /// run as it is when the field is absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -359,8 +365,13 @@ pub enum JobState {
     /// container runtime, materializing the definition) — not yet executing the
     /// harness, but it will as soon as setup finishes.
     Starting,
-    /// The driver is executing the run.
+    /// The driver is executing the run's harness session: the model is working.
     Running,
+    /// The harness session has ended and the driver is doing the post-session work
+    /// (collecting the tree, the post-run analysis, the case's toolchain, validation
+    /// and the upload of the tree). Still in flight and driven exactly like
+    /// `running`.
+    Validating,
     /// The run has finished and its driver is waiting to store its artifact tree,
     /// because the artifact store could not take it. The driver holds the only copy
     /// and keeps retrying. While any job is in this state the backend hands out no
@@ -383,6 +394,7 @@ impl JobState {
             "dispatched" => Self::Dispatched,
             "starting" => Self::Starting,
             "running" => Self::Running,
+            "validating" => Self::Validating,
             "storing" => Self::Storing,
             "succeeded" => Self::Succeeded,
             "failed" => Self::Failed,

@@ -806,6 +806,62 @@ describe("GgRunMonitorPage", () => {
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 
+  it("says a validating run's model has finished and its build is being validated", () => {
+    // The in-flight list has this run `validating`: its session is over.
+    const validating: InProgressRun = {
+      runId: "job-1",
+      testCaseSlug: "pong",
+      testCaseVersion: "v1.0.0",
+      variant: "base",
+      harnessSlug: "gg",
+      modelId: "m",
+      state: "validating",
+    };
+    function Tracked() {
+      const { track } = useRunsRuntime();
+      useEffect(() => track(validating), [track]);
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={["/runs/gg/job-1/live"]}>
+        <WorkersProvider value={workersValue(EVENTS)}>
+          <RunsRuntimeProvider>
+            <Tracked />
+            <Routes>
+              <Route
+                path="/runs/gg/:jobId/live"
+                element={<GgRunMonitorPage />}
+              />
+            </Routes>
+          </RunsRuntimeProvider>
+        </WorkersProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Validating")).toBeInTheDocument();
+    expect(
+      screen.getByText("the model has finished; validating the build"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("The model has finished; validating the build."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+  });
+
+  it("reads a run whose gg session has ended as validating, before the job says so", () => {
+    // The telemetry stream reports the session's end; the run is still live because
+    // the driver is validating the build, and the in-flight list has not caught up.
+    renderMonitor([
+      sessionStarted(),
+      gg({ type: "session_ended", status: "completed" }),
+    ]);
+    expect(screen.getByText("Validating")).toBeInTheDocument();
+    expect(
+      screen.getByText("gg session ended: completed. Validating the build…"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+  });
+
   it("says it is waiting for a runner only while nothing has been allocated", () => {
     // An empty stream is the one case the wording is true of: the dispatcher has not
     // claimed the run, so there is no container and nothing has begun.

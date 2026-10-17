@@ -31,7 +31,6 @@ import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
 import { armLabel, type ArmDraft, type ArmKind } from "./armDraft";
-import { pruneDeadRunIds } from "./comparisonMath";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
@@ -55,7 +54,6 @@ function emptyArm(kind: ArmKind): ArmDraft {
     modelId: "",
     ggConfig: "",
     slotModels: {},
-    runIds: [],
   };
 }
 
@@ -91,7 +89,6 @@ export function ComparisonEditPage() {
   // Whether the comparison being edited was complete when loaded, which decides what
   // an edit to its configurations does to their runs (docs/comparisons/
   // experiments.md, "Editing a comparison").
-  const [loadedComplete, setLoadedComplete] = useState(false);
   // The controls as loaded. The form edits the case, version, variant and engine;
   // the rest are written back as they were, since a change to any control starts
   // every configuration over.
@@ -171,13 +168,7 @@ export function ComparisonEditPage() {
         // since must not leave the form able to save one it would refuse.
         setEngine(c.config.controls.engineSlug);
         nField.set(c.config.n);
-        // Saving is a write, and a write is where the arms' recorded run ids are
-        // pruned of the runs that no longer exist (docs/comparisons/experiments.md).
-        // Loading the drafts from the pruned config is what carries that through
-        // an edit: the ids the form writes back are the ones still live, so an arm
-        // whose runs were deleted stops counting them and can be topped up again.
-        setArms(pruneDeadRunIds(c.config, c.arms).arms.map(draftFromArm));
-        setLoadedComplete(c.complete);
+        setArms(c.config.arms.map(draftFromArm));
         setLoadedControls(c.config.controls);
         setLoading(false);
       })
@@ -248,7 +239,6 @@ export function ComparisonEditPage() {
               ...emptyArm(kind),
               id: a.id,
               label: a.label,
-              runIds: a.runIds,
               ...(kind === "gg" && ggOptions[0]
                 ? {
                     ggConfig: ggOptions[0].key,
@@ -530,9 +520,10 @@ export function ComparisonEditPage() {
           <p className={exec.sectionLabel}>Configurations compared</p>
           {editing && (
             <p className={exec.muted}>
-              {loadedComplete
-                ? "This comparison is complete. Adding, removing or changing a configuration, or changing the test above, starts every configuration over."
-                : "A configuration you leave unchanged keeps its runs, including runs still in flight. A configuration you add or change starts with no runs, and changing the test above starts every configuration over."}
+              Each configuration holds the existing runs of its test and
+              configuration, whoever launched them. A configuration you add or
+              change holds the runs that configuration already has, and lowering
+              N lets go of each configuration's latest runs.
             </p>
           )}
           <div className={exec.comboList}>
@@ -712,15 +703,12 @@ export function ComparisonEditPage() {
   );
 }
 
-/** The stored arm a row saves as. The run ids are carried through untouched: an
- *  edit that only renames an arm (or corrects its model) must not orphan the runs
- *  already launched for it — and a configuration edited out from under its runs
- *  surfaces on the detail page as a confound rather than silently. */
+/** The stored arm a row saves as. Its runs follow from what it runs, so nothing
+ *  about them is stored. */
 function armFromDraft(arm: ArmDraft, label: string): ComparisonArm {
   const base = {
     id: arm.id,
     label: arm.label.trim() || label,
-    ...(arm.runIds.length > 0 ? { runIds: arm.runIds } : {}),
   };
   if (arm.kind === "harness") {
     return {
@@ -753,6 +741,5 @@ function draftFromArm(arm: ComparisonArm): ArmDraft {
     modelId: arm.modelId ?? "",
     ggConfig: arm.ggConfigId ?? "",
     slotModels: { ...(arm.ggSlotModels ?? {}) },
-    runIds: arm.runIds ?? [],
   };
 }

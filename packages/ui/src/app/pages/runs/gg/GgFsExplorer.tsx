@@ -1,4 +1,12 @@
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useState,
+  type ReactNode,
+} from "react";
 import panels from "./GgPanels.module.scss";
 import { cx, fsGuide, fsIndent } from "./ggFsTree";
 import { ChevronIcon, FolderIcon, FolderOpenIcon } from "./ggIcons";
@@ -72,10 +80,27 @@ export function useFsFolders(): FsFolders {
 }
 
 /**
+ * What a file row tells the shell it sits in: the name of the selected file, which the
+ * narrow layout's tree toggle shows while the tree is folded away, and that the reader
+ * has just chosen a file, which folds the tree away again so the file is what they see.
+ */
+interface FsShell {
+  setCurrent: (name: string) => void;
+  fileChosen: () => void;
+}
+
+const FsShellContext = createContext<FsShell | null>(null);
+
+/**
  * The two-pane explorer shell: the filesystem sidebar and the detail pane beside it.
  *
  * The sidebar is a `<nav>` with an accessible name, because a page can hold more than one
  * of these and "which tree is this" is otherwise unanswerable to a screen reader.
+ *
+ * On a narrow screen there is no room for the two panes side by side, so the tree folds
+ * into a toggle above the detail pane, naming the selected file. Opening it lays the tree
+ * over the top of the pane, and choosing a file folds it away again. The wide layout
+ * never shows the toggle; which layout applies is the stylesheet's call.
  */
 export function FsExplorer({
   sidebarLabel,
@@ -100,14 +125,44 @@ export function FsExplorer({
   /** The detail pane: whatever the current selection resolves to. */
   children: ReactNode;
 }) {
+  const [treeOpen, setTreeOpen] = useState(false);
+  const [current, setCurrent] = useState<string | null>(null);
+  const fileChosen = useCallback(() => setTreeOpen(false), []);
+  const sidebarId = useId();
   return (
-    <div className={panels.explorer}>
-      <nav className={panels.explorerSidebar} aria-label={sidebarLabel}>
-        {sidebarHead}
-        <ul className={panels.fsTree}>{tree}</ul>
-      </nav>
-      <div className={panels.explorerContent}>{children}</div>
-    </div>
+    <FsShellContext.Provider value={{ setCurrent, fileChosen }}>
+      <div
+        className={panels.explorer}
+        data-tree-open={treeOpen ? "" : undefined}
+      >
+        <button
+          type="button"
+          className={panels.explorerToggle}
+          aria-expanded={treeOpen}
+          aria-controls={sidebarId}
+          onClick={() => setTreeOpen((open) => !open)}
+        >
+          <span className={panels.fsCaret} aria-hidden="true">
+            <ChevronIcon
+              className={treeOpen ? panels.fsCaretOpen : undefined}
+            />
+          </span>
+          <span className={panels.explorerToggleLabel}>{sidebarLabel}</span>
+          {current && (
+            <span className={panels.explorerToggleCurrent}>{current}</span>
+          )}
+        </button>
+        <nav
+          id={sidebarId}
+          className={panels.explorerSidebar}
+          aria-label={sidebarLabel}
+        >
+          {sidebarHead}
+          <ul className={panels.fsTree}>{tree}</ul>
+        </nav>
+        <div className={panels.explorerContent}>{children}</div>
+      </div>
+    </FsShellContext.Provider>
   );
 }
 
@@ -214,6 +269,11 @@ export function FsFileRow({
   /** Trailing row content: counts, badges, status dots. */
   meta?: ReactNode;
 }) {
+  const shell = useContext(FsShellContext);
+  const setCurrent = shell?.setCurrent;
+  useEffect(() => {
+    if (selected) setCurrent?.(ariaLabel);
+  }, [selected, ariaLabel, setCurrent]);
   return (
     <li>
       <button
@@ -226,7 +286,10 @@ export function FsFileRow({
         style={fsIndent(depth)}
         aria-label={ariaLabel}
         aria-current={selected ? "true" : undefined}
-        onClick={onSelect}
+        onClick={() => {
+          onSelect();
+          shell?.fileChosen();
+        }}
       >
         {icon}
         <span className={panels.fsName}>{name}</span>

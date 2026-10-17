@@ -636,9 +636,9 @@ pub struct HarnessOutcome {
     /// emitting an event (the todo tools). Accumulated by the
     /// [event parser](crate::event::EventParser) as the stream is translated, and
     /// recorded onto the run so a comparison can diagnose tool-call behavior that a
-    /// count derived from the event stream alone would miss. Empty for a gg run
-    /// (whose per-tool detail comes from its own telemetry) and for any harness
-    /// with no tool activity.
+    /// count derived from the event stream alone would miss. Codex and gg name no
+    /// tools in their output, so theirs is counted off the run's events (see
+    /// [`crate::tool_tally`]). Empty for a session with no tool activity.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub tool_calls: std::collections::BTreeMap<String, u64>,
     /// Whether this session was ended by an **operator cancellation** rather than by the

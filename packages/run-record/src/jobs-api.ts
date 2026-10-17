@@ -16,6 +16,7 @@ import type { HarnessSlug, RunRecord, TokenPrices } from "./index";
 export type DriverState =
   | "starting"
   | "running"
+  | "validating"
   | "storing"
   | "succeeded"
   | "failed"
@@ -261,7 +262,7 @@ export type StatusUpdate = {
    * report: `true` when the upload landed and `false` when every attempt failed,
    * so the run has nothing to release. Absent when the driver has no artifact
    * service to upload to, and on every non-terminal report but one: the
-   * `running` report that ends a wait on the store carries `true` when the wait
+   * `validating` report that ends a wait on the store carries `true` when the wait
    * ended with the tree stored. The backend leaves what it has recorded for the
    * run as it is when the field is absent.
    */
@@ -294,6 +295,7 @@ export type JobState =
   | "dispatched"
   | "starting"
   | "running"
+  | "validating"
   | "storing"
   | "succeeded"
   | "failed"
@@ -566,7 +568,8 @@ export type BulkCancelOut = {
   includedWaiting: boolean;
   /**
    * Whether the sweep reached runs that were already executing (`dispatched`,
-   * `starting`, `running`) — the ones whose work was discarded.
+   * `starting`, `running`, `validating` or `storing`) — the ones whose work was
+   * discarded.
    */
   includedActive: boolean;
 };

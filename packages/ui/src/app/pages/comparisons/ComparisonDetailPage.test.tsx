@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -84,7 +78,6 @@ const COMPARISON = {
         label: "gg minimal",
         ggConfigId: "saved:cfg-minimal",
         ggSlotModels: { "root.primary": "openai/gpt-5.6-sol" },
-        runIds: [],
       },
     ],
     n: 1,
@@ -97,11 +90,9 @@ const COMPARISON = {
         ggConfigId: "saved:cfg-minimal",
       },
       nDesired: 1,
+      runIds: [],
+      inFlight: 0,
       nObserved: 0,
-      // A current backend always serializes this, so an empty array is its
-      // positive statement that the arm has no live runs — distinct from the
-      // field being absent, which no current backend does.
-      liveRunIds: [],
       diagnostics: { tokens: NO_TOKENS },
     },
   ],
@@ -117,34 +108,17 @@ const SAVED_GG_CONFIG = {
   agentSources: [],
 };
 
-/** A comparison whose arm records `runIds` for runs that no longer exist — the
- *  operator launched them, deleted them, and came back to relaunch. The arm's
- *  result carries an empty `liveRunIds`, which is the backend reporting "none of
- *  them are there any more". */
-const COMPARISON_WITH_DELETED_RUNS = {
+/** The same comparison wanting two runs, its cell already holding one run nobody
+ *  launched from this page. */
+const COMPARISON_WITH_EXISTING_RUN = {
   ...COMPARISON,
-  config: {
-    ...COMPARISON.config,
-    arms: [{ ...COMPARISON.config.arms[0]!, runIds: ["gone-1"] }],
-  },
-} as unknown as Comparison;
-
-/** The same arm read off a backend that predates `liveRunIds` and so reports no
- *  liveness at all: the key is absent, not empty. The arm records one run and
- *  wants two. Nothing here says the recorded run is gone. */
-const COMPARISON_FROM_OLD_BACKEND = {
-  ...COMPARISON,
-  config: {
-    ...COMPARISON.config,
-    arms: [{ ...COMPARISON.config.arms[0]!, runIds: ["kept-1"] }],
-    n: 2,
-  },
+  config: { ...COMPARISON.config, n: 2 },
   arms: [
     {
       ...COMPARISON.arms[0]!,
       nDesired: 2,
+      runIds: ["existing-1"],
       nObserved: 1,
-      liveRunIds: undefined,
     },
   ],
 } as unknown as Comparison;
@@ -153,17 +127,13 @@ const COMPARISON_FROM_OLD_BACKEND = {
  *  not complete either. */
 const COMPARISON_FULL = {
   ...COMPARISON,
-  config: {
-    ...COMPARISON.config,
-    arms: [{ ...COMPARISON.config.arms[0]!, runIds: ["alive-1"] }],
-  },
-  arms: [{ ...COMPARISON.arms[0]!, liveRunIds: ["alive-1"], nObserved: 0 }],
+  arms: [{ ...COMPARISON.arms[0]!, inFlight: 1 }],
 } as unknown as Comparison;
 
 /** The same comparison with its one run landed: complete. */
 const COMPARISON_COMPLETE = {
-  ...COMPARISON_FULL,
-  arms: [{ ...COMPARISON.arms[0]!, liveRunIds: ["alive-1"], nObserved: 1 }],
+  ...COMPARISON,
+  arms: [{ ...COMPARISON.arms[0]!, runIds: ["alive-1"], nObserved: 1 }],
   complete: true,
 } as unknown as Comparison;
 
@@ -297,54 +267,24 @@ describe("ComparisonDetailPage", () => {
     expect(screen.getByText("Simple 2D")).toBeInTheDocument();
   });
 
-  it("offers an arm's deleted runs again, and prunes their ids from the config", async () => {
-    // The arm records one run id; the aggregation reports no live runs for it, so
-    // the run was deleted after it was launched. Counting `runIds` would leave the
-    // arm believing itself full and the button offering nothing — the exact
-    // "there's now no ability to trigger" report.
+  it("launches only what the arm's existing runs leave it short of, and writes nothing back", async () => {
+    // The arm's cell already holds a run launched somewhere else, so one of the two
+    // runs is all that is missing.
     const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-new" });
-    const updateComparison = vi.fn().mockResolvedValue(COMPARISON);
-    renderPage(launchGgRun, {
-      getComparison: vi.fn().mockResolvedValue(COMPARISON_WITH_DELETED_RUNS),
-      updateComparison,
-    });
+    const updateComparison = vi.fn();
+    const getComparison = vi
+      .fn()
+      .mockResolvedValue(COMPARISON_WITH_EXISTING_RUN);
+    renderPage(launchGgRun, { getComparison, updateComparison });
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Trigger missing runs (1)" }),
     );
     await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
-
-    await waitFor(() => expect(updateComparison).toHaveBeenCalledTimes(1));
-    // The dead id is gone from what is written back; only the new run remains.
-    expect(updateComparison.mock.calls[0]![1].config.arms[0].runIds).toEqual([
-      "job-new",
-    ]);
-  });
-
-  it("neither relaunches nor prunes an arm a backend reported no liveness for", async () => {
-    // The severe case: against a backend that does not send `liveRunIds`, reading
-    // the absent field as "none live" would offer to relaunch the whole arm and
-    // would clear its stored ids on the way to the PUT — permanently losing which
-    // runs belong to which arm. Only the one genuinely missing run is launched,
-    // and the recorded id survives into what is written back.
-    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-new" });
-    const updateComparison = vi.fn().mockResolvedValue(COMPARISON);
-    renderPage(launchGgRun, {
-      getComparison: vi.fn().mockResolvedValue(COMPARISON_FROM_OLD_BACKEND),
-      updateComparison,
-    });
-
-    // One short of `N`, counted off the arm's own record — not two.
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Trigger missing runs (1)" }),
-    );
-    await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
-
-    await waitFor(() => expect(updateComparison).toHaveBeenCalledTimes(1));
-    expect(updateComparison.mock.calls[0]![1].config.arms[0].runIds).toEqual([
-      "kept-1",
-      "job-new",
-    ]);
+    // The comparison is read back to learn what its arms now hold, and the stored
+    // configuration is left alone.
+    await waitFor(() => expect(getComparison).toHaveBeenCalledTimes(2));
+    expect(updateComparison).not.toHaveBeenCalled();
   });
 
   it("keeps the trigger button visible and says why it is doing nothing", async () => {
@@ -357,36 +297,47 @@ describe("ComparisonDetailPage", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute(
       "title",
-      expect.stringContaining("already holds 1 run, 1 still in flight"),
+      expect.stringContaining(
+        "holds or is waiting on 1 run, 1 still in flight",
+      ),
     );
   });
 
-  it("says a complete comparison is complete and offers a new round", async () => {
-    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-round-2" });
-    const updateComparison = vi.fn().mockResolvedValue(COMPARISON_COMPLETE);
+  it("launches nothing for an arm the backend reports unlaunchable, and says why", async () => {
+    const launchGgRun = vi.fn();
     renderPage(launchGgRun, {
-      getComparison: vi.fn().mockResolvedValue(COMPARISON_COMPLETE),
-      updateComparison,
+      getComparison: vi.fn().mockResolvedValue({
+        ...COMPARISON,
+        arms: [
+          {
+            ...COMPARISON.arms[0]!,
+            unlaunchable: "it imports an agent edited since it was saved",
+          },
+        ],
+      }),
     });
 
     expect(
-      await screen.findByText(/^Complete: every configuration has its 1 run/),
+      await screen.findByText(/cannot be launched: it imports an agent/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /^Trigger/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Trigger missing runs" }),
+    ).toBeDisabled();
+    expect(launchGgRun).not.toHaveBeenCalled();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Run again" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toHaveAccessibleName("Run comparison again");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Run again" }));
+  it("says a complete comparison is complete and launches nothing", async () => {
+    renderPage(vi.fn(), {
+      getComparison: vi.fn().mockResolvedValue(COMPARISON_COMPLETE),
+    });
 
-    // The full N for the arm, and the previous round's run is no longer the arm's.
-    await waitFor(() => expect(updateComparison).toHaveBeenCalledTimes(1));
-    expect(launchGgRun).toHaveBeenCalledTimes(1);
-    expect(updateComparison.mock.calls[0]![1].config.arms[0].runIds).toEqual([
-      "job-round-2",
-    ]);
+    expect(
+      await screen.findByText(/^Complete: every configuration holds its 1 run/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Trigger missing runs" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Run again" })).toBeNull();
   });
 
   it("deletes the comparison through the themed dialog, then leaves for the list", async () => {

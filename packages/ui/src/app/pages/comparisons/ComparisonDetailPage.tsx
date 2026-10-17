@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from "react-router";
 import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   ChartWidget,
-  SectionWidget,
   distributionChart,
+  MIN_DISTRIBUTION_SLOT,
   stackedBarChart,
 } from "@clockwyrks/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
@@ -25,28 +25,29 @@ import { formatCompact, formatRunTime, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { launchBatch } from "../runs/launchBatch";
 import { bindModelSlots } from "../runs/gg/ggConfigDraft";
-import { useGgConfigs } from "../runs/gg/useGgConfigs";
+import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
 import { categoricalColor } from "../../../primitives/plot/palette";
 import {
-  appendRunIds,
   armDistributionGroups,
-  clearRunIds,
   armTopUps,
   harnessArmLaunchItems,
-  countedRunIds,
   isGgArm,
   presentedRatio,
-  pruneDeadRunIds,
   runsInFlight,
   toolCallChartData,
   totalMissingRuns,
-  withArmRunIds,
 } from "./comparisonMath";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import { MedianRatioTile } from "./MedianRatioTile";
+import { ArmScoreWidget } from "./ArmScoreWidget";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
+
+// The arm labels on the distribution charts tilt down to the right, as the
+// metric charts' model labels do, so a comparison of many arms keeps them all
+// legible and scrolls the chart sideways rather than squeezing it.
+const LABEL_ROTATE = 40;
 
 // The comparison detail page (`/comparisons/:id`) — the heart of the feature.
 // Per arm it presents the cost/token/session-duration distribution (a box +
@@ -120,172 +121,105 @@ export function ComparisonDetailPage() {
 
   const canTrigger = Boolean(worker && token);
 
-  // Launch the runs the arms are short of. `fresh` starts a new round instead: every
-  // arm's recorded runs are cleared and each arm launches the full `N`.
-  const launchRuns = useCallback(
-    async (fresh: boolean) => {
-      if (!comparison || !worker || !canTrigger) return;
-      setTriggering(true);
-      setError(null);
-      try {
-        // Every id the arms record that the arm no longer holds is dropped before
-        // anything is launched, so the top-up counts what actually exists and the
-        // config written back below stops carrying the dead ones (docs/comparisons/
-        // experiments.md, "Triggering the runs").
-        let nextConfig = fresh
-          ? clearRunIds(comparison.config)
-          : pruneDeadRunIds(comparison.config, comparison.arms);
-        const { controls } = nextConfig;
-        const topUps = fresh
-          ? nextConfig.arms.map((arm) => ({ arm, remaining: nextConfig.n }))
-          : armTopUps(nextConfig, comparison.arms);
-        // A refused launch comes back as a per-run error rather than a throw, so it is
-        // collected here and shown once the arms are written back.
-        const launchErrors = new Set<string>();
-        for (const { arm, remaining } of topUps) {
-          if (remaining <= 0) continue;
+  // Launch the runs the arms are short of. An arm holds the runs of its coverage
+  // cell whoever launched them, so nothing is recorded on the comparison: every
+  // launched run joins its arm's cell, and the comparison read back afterwards
+  // reports it in flight (docs/comparisons/experiments.md, "Triggering the runs").
+  const triggerMissing = useCallback(async () => {
+    if (!comparison || !worker || !canTrigger) return;
+    setTriggering(true);
+    setError(null);
+    try {
+      const { controls } = comparison.config;
+      // A refused launch comes back as a per-run error rather than a throw, so it is
+      // collected here and shown once the comparison is read back.
+      const launchErrors = new Set<string>();
+      for (const { arm, remaining } of armTopUps(
+        comparison.config,
+        comparison.arms,
+      )) {
+        if (remaining <= 0) continue;
 
-          // A gg arm launches through gg's own endpoint (one request per run, each
-          // isolated so one failure never aborts the rest) with the arm's slot
-          // models bound onto the configuration it names; a harness arm goes
-          // through the shared batch path. The two reconcile into the one arm's
-          // run ids.
-          if (isGgArm(arm)) {
-            const option = ggOptions.find((o) => o.key === arm.ggConfigId);
-            if (!option) {
-              setError(
-                `The gg configuration behind "${arm.label}" is no longer available, so its runs were skipped.`,
-              );
-              continue;
-            }
-            const capabilitySet = bindModelSlots(
-              option.capabilitySet,
-              arm.ggSlotModels ?? {},
+        // A gg arm launches through gg's own endpoint (one request per run, each
+        // isolated so one failure never aborts the rest) with the arm's slot
+        // models bound onto the configuration it names; a harness arm goes
+        // through the shared batch path.
+        if (isGgArm(arm)) {
+          const option = findGgConfig(ggOptions, arm.ggConfigId ?? "");
+          if (!option) {
+            launchErrors.add(
+              `The gg configuration behind "${arm.label}" is no longer available, so its runs were skipped.`,
             );
-            const results: { runId?: string; error?: string }[] = [];
-            for (let i = 0; i < remaining; i++) {
-              try {
-                const ack = await worker.client.launchGgRun(
-                  {
-                    testCase: controls.caseSlug,
-                    version: controls.version,
-                    variant: controls.variant,
-                    capabilitySet,
-                    // The engine is one of the comparison's held-constant controls.
-                    // A gg arm launched engineless while the comparison declares an
-                    // engine would be doing different work from the harness arm it
-                    // is being compared against — confounding the experiment
-                    // against its own control.
-                    engine: resolveEngineSlug(controls.engineSlug),
-                  },
-                  token ?? "",
-                );
-                runtime.track({
-                  testCaseSlug: controls.caseSlug,
-                  testCaseVersion: controls.version,
-                  variant: controls.variant,
-                  harnessSlug: GG_HARNESS_SLUG,
-                  // The run's representative model is its root agent's, which is what
-                  // the backend lifts into the job's launch identity.
-                  modelId: capabilitySet.agents?.[0]?.modelId ?? "",
-                  // What the Runs page actually shows for a gg run: the configuration
-                  // it was launched from, read off the set that was sent rather than
-                  // the picker option, so it is byte-identical to the name the backend
-                  // lifts back out of the stored capability set. Without it the row
-                  // would fall back to the root agent's model for its whole in-flight
-                  // life — the reconcile only patches `state` on rows it already
-                  // tracks, so nothing re-seeds this one until a reload.
-                  ggPreset: capabilitySet.preset ?? null,
-                  engine: resolveEngineSlug(controls.engineSlug),
-                  runId: ack.jobId,
-                  state: "queued",
-                });
-                results.push({ runId: ack.jobId });
-              } catch (e) {
-                results.push({ error: String(e) });
-                launchErrors.add(String(e));
-              }
-            }
-            nextConfig = withArmRunIds(
-              nextConfig,
-              arm.id,
-              appendRunIds(arm.runIds, results),
-            );
-          } else {
-            const launched = await launchBatch(
-              worker,
-              token,
-              runtime.track,
-              harnessArmLaunchItems(controls, arm, remaining),
-            );
-            for (const { error } of launched)
-              if (error) launchErrors.add(error);
-            nextConfig = withArmRunIds(
-              nextConfig,
-              arm.id,
-              appendRunIds(arm.runIds, launched),
-            );
+            continue;
           }
-        }
-        if (backend?.updateComparison && token) {
-          // Written back even when nothing was launched: the prune above is itself a
-          // change worth keeping, and the response is the re-aggregated comparison —
-          // which is how the page learns what its arms' live runs now are.
-          const updated = await backend.updateComparison(
-            comparison.id,
-            {
-              name: comparison.name,
-              description: comparison.description,
-              config: nextConfig,
-            },
-            token,
+          const capabilitySet = bindModelSlots(
+            option.capabilitySet,
+            arm.ggSlotModels ?? {},
           );
-          setComparison(updated);
+          for (let i = 0; i < remaining; i++) {
+            try {
+              const ack = await worker.client.launchGgRun(
+                {
+                  testCase: controls.caseSlug,
+                  version: controls.version,
+                  variant: controls.variant,
+                  capabilitySet,
+                  // The engine is one of the comparison's held-constant controls.
+                  // A gg arm launched engineless while the comparison declares an
+                  // engine would be doing different work from the harness arm it
+                  // is being compared against — confounding the experiment
+                  // against its own control.
+                  engine: resolveEngineSlug(controls.engineSlug),
+                },
+                token ?? "",
+              );
+              runtime.track({
+                testCaseSlug: controls.caseSlug,
+                testCaseVersion: controls.version,
+                variant: controls.variant,
+                harnessSlug: GG_HARNESS_SLUG,
+                // The run's representative model is its root agent's, which is what
+                // the backend lifts into the job's launch identity.
+                modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+                // What the Runs page actually shows for a gg run: the configuration
+                // it was launched from, read off the set that was sent rather than
+                // the picker option, so it is byte-identical to the name the backend
+                // lifts back out of the stored capability set. Without it the row
+                // would fall back to the root agent's model for its whole in-flight
+                // life — the reconcile only patches `state` on rows it already
+                // tracks, so nothing re-seeds this one until a reload.
+                ggPreset: capabilitySet.preset ?? null,
+                engine: resolveEngineSlug(controls.engineSlug),
+                runId: ack.jobId,
+                state: "queued",
+              });
+            } catch (e) {
+              launchErrors.add(String(e));
+            }
+          }
+        } else {
+          const launched = await launchBatch(
+            worker,
+            token,
+            runtime.track,
+            harnessArmLaunchItems(controls, arm, remaining),
+          );
+          for (const { error } of launched) if (error) launchErrors.add(error);
         }
-        if (launchErrors.size > 0) setError([...launchErrors].join(" "));
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setTriggering(false);
       }
-    },
-    [comparison, worker, canTrigger, ggOptions, token, runtime, backend],
-  );
-
-  const triggerMissing = useCallback(() => launchRuns(false), [launchRuns]);
-
-  const runAgain = useCallback(async () => {
-    if (!comparison) return;
-    // A new round clears every arm before it launches, so an arm that cannot launch
-    // would lose its runs with nothing to replace them. Refuse before clearing.
-    const unlaunchable = comparison.config.arms.filter(
-      (arm) => isGgArm(arm) && !ggOptions.some((o) => o.key === arm.ggConfigId),
-    );
-    if (unlaunchable.length > 0) {
-      setError(
-        `The gg configuration behind ${unlaunchable
-          .map((arm) => `"${arm.label}"`)
-          .join(
-            ", ",
-          )} is no longer available, so the comparison cannot run again. Edit the comparison to choose another.`,
-      );
-      return;
+      if (backend?.getComparison && token) {
+        // The re-aggregated comparison is how the page learns what its arms now
+        // hold and have in flight.
+        const updated = await backend.getComparison(comparison.id, token);
+        if (updated) setComparison(updated);
+      }
+      if (launchErrors.size > 0) setError([...launchErrors].join(" "));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setTriggering(false);
     }
-    const n = comparison.config.n;
-    const confirmed = await confirm({
-      title: "Run comparison again",
-      message: (
-        <>
-          Start a new round of <strong>{comparison.name}</strong>? Every
-          configuration launches {n} new run{n === 1 ? "" : "s"}, and the
-          figures shown here are computed from the new runs. The current runs
-          stay in the runs list.
-        </>
-      ),
-      confirmLabel: "Run again",
-    });
-    if (confirmed) await launchRuns(true);
-  }, [comparison, confirm, launchRuns, ggOptions]);
+  }, [comparison, worker, canTrigger, ggOptions, token, runtime, backend]);
 
   const canDelete = Boolean(canExecute && token && backend?.deleteComparison);
 
@@ -341,9 +275,7 @@ export function ComparisonDetailPage() {
   }, [comparison, backend, token]);
 
   // What "Trigger missing runs" would launch right now: per arm, `N` less the runs
-  // it records that still exist. An arm whose runs were deleted is short again, and
-  // says so — the whole point of counting live ids rather than every id ever
-  // launched.
+  // it holds and its cell's jobs in flight.
   const totalMissing = useMemo(
     () =>
       comparison ? totalMissingRuns(comparison.config, comparison.arms) : 0,
@@ -410,11 +342,11 @@ export function ComparisonDetailPage() {
   const triggerHint = !canTrigger
     ? "Connect a worker (the gear in the top bar) to trigger runs."
     : comparison.complete
-      ? `Start a new round: every configuration launches ${comparison.config.n} new run${
+      ? `Every configuration holds its ${comparison.config.n} run${
           comparison.config.n === 1 ? "" : "s"
-        }.`
+        }. Raise N to add runs.`
       : totalMissing === 0
-        ? `Every configuration already holds ${comparison.config.n} run${
+        ? `Every configuration holds or is waiting on ${comparison.config.n} run${
             comparison.config.n === 1 ? "" : "s"
           }, ${heldInFlight} still in flight. Runs that are canceled, deleted or fail outside the model stop counting, and are offered here again.`
         : `Launch the ${totalMissing} run${totalMissing === 1 ? "" : "s"} the configurations are still short of N=${comparison.config.n}.`;
@@ -475,31 +407,19 @@ export function ComparisonDetailPage() {
                 who deleted an arm's runs and came back to relaunch them needs to
                 see *why* the button offers nothing, not an empty toolbar. Its
                 title names the one reason it is disabled. */}
-            {comparison.complete ? (
-              <button
-                type="button"
-                className={exec.primary}
-                disabled={triggering || !canTrigger}
-                title={triggerHint}
-                onClick={runAgain}
-              >
-                {triggering ? "Starting…" : "Run again"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={exec.primary}
-                disabled={triggering || !canTrigger || totalMissing === 0}
-                title={triggerHint}
-                onClick={triggerMissing}
-              >
-                {triggering
-                  ? "Triggering…"
-                  : totalMissing > 0
-                    ? `Trigger missing runs (${totalMissing})`
-                    : "Trigger missing runs"}
-              </button>
-            )}
+            <button
+              type="button"
+              className={exec.primary}
+              disabled={triggering || !canTrigger || totalMissing === 0}
+              title={triggerHint}
+              onClick={triggerMissing}
+            >
+              {triggering
+                ? "Triggering…"
+                : totalMissing > 0
+                  ? `Trigger missing runs (${totalMissing})`
+                  : "Trigger missing runs"}
+            </button>
             <Link
               className={exec.secondary}
               to={routes.comparisonEdit(comparison.id)}
@@ -535,11 +455,20 @@ export function ComparisonDetailPage() {
       )}
       {canExecute && comparison.complete && (
         <p className={`${exec.notice} ${exec.ok}`} role="status">
-          Complete: every configuration has its {comparison.config.n} run
-          {comparison.config.n === 1 ? "" : "s"}. Run again starts a new round.
+          Complete: every configuration holds its {comparison.config.n} run
+          {comparison.config.n === 1 ? "" : "s"}. Raise N to add runs.
         </p>
       )}
       <SubmitNotice message={error} />
+      {canExecute &&
+        arms
+          .filter((a) => a.unlaunchable)
+          .map((a) => (
+            <p key={a.arm.id} className={`${exec.notice} ${exec.warn}`}>
+              &ldquo;{a.arm.label}&rdquo; cannot be launched: {a.unlaunchable}.
+              It keeps the runs it holds, and no runs are triggered for it.
+            </p>
+          ))}
       {publishResult && (
         <p className={`${exec.notice} ${exec.warn}`}>
           Published. {publishResult.enqueued.length} run
@@ -650,9 +579,11 @@ export function ComparisonDetailPage() {
           spec={
             costGroups.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   distributionChart(costGroups, palette, {
                     y: "USD",
+                    xTickRotate: LABEL_ROTATE,
+                    availableWidth,
                     formatValue: (v) => formatUsd(v),
                   })
           }
@@ -666,9 +597,11 @@ export function ComparisonDetailPage() {
           spec={
             tokenGroups.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   distributionChart(tokenGroups, palette, {
                     y: "tokens",
+                    xTickRotate: LABEL_ROTATE,
+                    availableWidth,
                     yTickFormat: "~s",
                     formatValue: formatCompact,
                   })
@@ -683,9 +616,11 @@ export function ComparisonDetailPage() {
           spec={
             sessionGroups.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   distributionChart(sessionGroups, palette, {
                     y: "seconds",
+                    xTickRotate: LABEL_ROTATE,
+                    availableWidth,
                     formatValue: (v) => formatRunTime(v),
                   })
           }
@@ -694,99 +629,25 @@ export function ComparisonDetailPage() {
 
         {/* A peer of the three charts rather than a hand-rolled section: same
             panel, same header treatment, same place in the column's rhythm. */}
-        <SectionWidget
-          title="Score & pass rate"
-          hint="The automated-only score across each arm's runs — every run's own point beside the mean — and the pass rate with its Wilson 95% interval."
-        >
-          <div className={styles.armRows}>
-            {arms.map((a) => {
-              // Runs this arm launched that exist but whose record has not landed
-              // yet. Stated rather than left as a silent gap between the arm's `n`
-              // and its desired count, which otherwise reads as runs that were
-              // never launched at all. Counted off the same ids the top-up
-              // counts (`countedRunIds`), so the two figures can never disagree —
-              // including against a backend that reports no liveness at all,
-              // where both fall back to what the arm itself records.
-              const inFlight = Math.max(
-                0,
-                countedRunIds(a).length - a.nObserved,
-              );
-              return (
-                <div key={a.arm.id} className={styles.armRow}>
-                  <div className={styles.armRowHead}>
-                    <span className={styles.armLabel}>
-                      <span
-                        className={styles.armSwatch}
-                        style={{ background: colorForArm.get(a.arm.id) }}
-                        aria-hidden
-                      />
-                      {a.arm.label}
-                    </span>
-                    <span className={styles.armN}>
-                      n={a.nObserved} of {a.nDesired} desired
-                      {inFlight > 0 && ` · ${inFlight} still in flight`}
-                    </span>
-                  </div>
-                  {a.score ? (
-                    <div className={styles.scoreRow}>
-                      <span className={styles.scoreMean}>
-                        {Math.round(a.score.meanFraction * 100)}% avg
-                        (automated-only)
-                      </span>
-                      {a.score.points.map((p, i) => (
-                        <span key={i} className={styles.scorePoint}>
-                          {p.earned}/{p.total}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className={styles.armEmpty}>No scored runs yet.</p>
-                  )}
-                  {a.passRate ? (
-                    <div className={styles.meterRow}>
-                      <div className={styles.meter}>
-                        <span
-                          className={styles.meterFill}
-                          style={{ width: `${a.passRate.rate * 100}%` }}
-                        />
-                        <span
-                          className={styles.meterInterval}
-                          style={{
-                            left: `${a.passRate.wilsonLow * 100}%`,
-                            width: `${(a.passRate.wilsonHigh - a.passRate.wilsonLow) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <span className={styles.meterLabel}>
-                        {a.passRate.passed}/{a.passRate.n} passed (
-                        {Math.round(a.passRate.rate * 100)}%), Wilson{" "}
-                        {Math.round(a.passRate.wilsonLow * 100)}%–
-                        {Math.round(a.passRate.wilsonHigh * 100)}%
-                      </span>
-                    </div>
-                  ) : (
-                    <p className={styles.armEmpty}>No pass-rate data yet.</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </SectionWidget>
+        <ArmScoreWidget arms={arms} colorForArm={colorForArm} />
 
         <ChartWidget
           title="Tool-call diagnostics"
-          chartTitle="Tool calls by arm, including consumed tools"
-          hint="Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
+          chartTitle="Tool calls by arm and kind of work, including consumed tools"
+          hint="Every tool call grouped by the kind of work it does; hover a bar for the tools behind each kind. gg's tool calls and program functions count under the same kinds, and its board, memory and context tools have their own. Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
           spec={
             toolCallData.segments.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   stackedBarChart(
                     toolCallData.segments,
                     palette,
                     toolCallData.series,
                     {
                       y: "tool calls",
+                      xTickRotate: LABEL_ROTATE,
+                      availableWidth,
+                      minSlot: MIN_DISTRIBUTION_SLOT,
                     },
                   )
           }

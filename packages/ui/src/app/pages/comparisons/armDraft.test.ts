@@ -10,7 +10,6 @@ function draft(overrides: Partial<ArmDraft> = {}): ArmDraft {
     modelId: "",
     ggConfig: "",
     slotModels: {},
-    runIds: [],
     ...overrides,
   };
 }

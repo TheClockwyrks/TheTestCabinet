@@ -4,7 +4,8 @@
 //! backend's `api/jobs.rs`). It does not enqueue or claim — the console and the
 //! dispatcher do — it only *streams its one job's progress back*: a `running`
 //! status when execution begins, batches of harness events and individual asset
-//! preview frames as they are produced, and a terminal `succeeded`/`failed`
+//! preview frames as they are produced, a `validating` status once the harness
+//! session has ended, and a terminal `succeeded`/`failed`
 //! status carrying the produced record. Every call presents the per-job bearer
 //! token the dispatcher passed in.
 //!
@@ -99,17 +100,29 @@ impl JobClient {
             .await
     }
 
+    /// Report that the harness session has ended and the driver has moved on to the
+    /// post-session work — collecting the tree, the post-run analysis, the case's
+    /// toolchain, validation and the upload (`POST /jobs/{id}/status`,
+    /// `validating`).
+    pub async fn post_status_validating(&self) -> Result<(), ClientError> {
+        self.post_status(
+            "status (validating)",
+            &StatusUpdate::of(DriverState::Validating),
+        )
+        .await
+    }
+
     /// Report that the driver's wait on the artifact store is over
-    /// (`POST /jobs/{id}/status`, `running`), returning the job from `storing` to
-    /// the state it holds while the driver finishes its report. `stored` says
+    /// (`POST /jobs/{id}/status`, `validating`), returning the job from `storing`
+    /// to the state it holds while the driver finishes its report. `stored` says
     /// whether the wait ended with the tree stored, which the backend reads as
     /// the store taking uploads again.
     pub async fn post_status_wait_over(&self, stored: bool) -> Result<(), ClientError> {
         self.post_status(
-            "status (running)",
+            "status (validating)",
             &StatusUpdate {
                 artifacts_stored: stored.then_some(true),
-                ..StatusUpdate::of(DriverState::Running)
+                ..StatusUpdate::of(DriverState::Validating)
             },
         )
         .await

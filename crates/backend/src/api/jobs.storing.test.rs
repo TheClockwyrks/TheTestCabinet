@@ -210,13 +210,13 @@ async fn the_hold_ends_when_the_upload_lands() {
     report_storing(&state, "j1").await;
     assert_eq!(state.capacity.status().runs_waiting_to_store, 1);
 
-    // The upload lands: the driver reports `running` again, and says so.
+    // The upload lands: the driver reports `validating` again, and says so.
     assert_eq!(
         post(&state, "j1", wait_over(true)).await,
         StatusCode::NO_CONTENT
     );
     let landed = job(&state, "j1").await;
-    assert_eq!(landed.state, "running");
+    assert_eq!(landed.state, "validating");
     assert_eq!(landed.detail, None, "the wait's reason goes with the wait");
 
     // A tree landed, which is the one thing that proves the store took an upload.
@@ -228,22 +228,22 @@ async fn the_hold_ends_when_the_upload_lands() {
     assert_eq!(claim_run(&state).await.as_deref(), Some("j3"));
     assert_eq!(
         states(&state).await,
-        ["j1=running", "j2=dispatched", "j3=dispatched"]
+        ["j1=validating", "j2=dispatched", "j3=dispatched"]
     );
 }
 
 #[tokio::test]
 async fn a_wait_that_ends_without_a_word_about_the_tree_proves_nothing() {
-    // A driver that says only `running`.
+    // A driver that says only `validating`.
     let (_dir, state) = state_with_a_running_job().await;
     report_storing(&state, "j1").await;
 
     assert_eq!(
-        report(&state, "j1", DriverState::Running, None, None).await,
+        report(&state, "j1", DriverState::Validating, None, None).await,
         StatusCode::NO_CONTENT
     );
 
-    assert_eq!(job(&state, "j1").await.state, "running");
+    assert_eq!(job(&state, "j1").await.state, "validating");
     assert_eq!(
         state.capacity.status().hold_reason,
         Some(HoldReason::ProvingStore)
@@ -536,7 +536,7 @@ fn handover(run_id: &str, run_failure: Option<&str>) -> StatusUpdate {
 fn wait_over(stored: bool) -> StatusUpdate {
     StatusUpdate {
         artifacts_stored: Some(stored),
-        ..StatusUpdate::of(DriverState::Running)
+        ..StatusUpdate::of(DriverState::Validating)
     }
 }
 
@@ -634,7 +634,7 @@ async fn a_driver_lost_after_its_tree_landed_keeps_the_tree() {
     let (_dir, state) = state_with_a_running_job().await;
     post(&state, "j1", handover("r1", None)).await;
     post(&state, "j1", wait_over(true)).await;
-    assert_eq!(job(&state, "j1").await.state, "running");
+    assert_eq!(job(&state, "j1").await.state, "validating");
 
     // Lost between the upload and the terminal report.
     lose(&state, "j1").await;

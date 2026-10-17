@@ -366,9 +366,9 @@ describe("ComparisonEditPage", () => {
 
 describe("ComparisonEditPage, editing", () => {
   // The form edits the case, version, variant and engine. The controls it does not
-  // show are written back as loaded: a change to any control starts every
-  // configuration over, so a save that only renamed the comparison must not read
-  // as one.
+  // show are written back as loaded: a change to any control moves every
+  // configuration onto other runs, so a save that only renamed the comparison must
+  // not read as one.
   it("writes the controls it does not edit back as they were loaded", async () => {
     const stored = {
       id: "cmp-1",
@@ -390,14 +390,12 @@ describe("ComparisonEditPage, editing", () => {
             label: "Kilo",
             harnessSlug: "kilo",
             modelId: "openai/gpt-5.6-sol",
-            runIds: ["job-1"],
           },
           {
             id: "gg",
             label: "gg minimal",
             ggConfigId: "saved:cfg-minimal",
             ggSlotModels: { "root.primary": "openai/gpt-5.6-sol" },
-            runIds: ["job-2"],
           },
         ],
         n: 2,

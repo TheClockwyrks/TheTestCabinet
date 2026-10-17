@@ -1,7 +1,8 @@
 //! The `tcab-driver` binary entrypoint.
 //!
 //! Resolves its configuration from the environment the dispatcher set, reports
-//! `running` to the backend, drives the one run it was created for while streaming
+//! `running` to the backend (and `validating` once the harness session ends),
+//! drives the one run it was created for while streaming
 //! the live events and preview frames back, then reports the terminal status
 //! carrying the produced (or failed) record — and exits. There is no server and no
 //! flags; everything arrives through `TCAB_*` env (see
@@ -108,7 +109,8 @@ async fn main() -> ExitCode {
     // Mark the job starting before any work, so the console shows it left the queue
     // and is spinning up (pre-run container setup). The driver advances it to
     // `running` from inside `drive` once setup finishes and the harness session is
-    // about to begin. A failure to even report this is terminal: the driver cannot
+    // about to begin, and the relay advances it to `validating` once the session
+    // has ended. A failure to even report this is terminal: the driver cannot
     // stream, so there is nothing useful it can still do.
     if let Err(err) = client.post_status_starting().await {
         eprintln!("could not report `starting` to the backend: {err}");

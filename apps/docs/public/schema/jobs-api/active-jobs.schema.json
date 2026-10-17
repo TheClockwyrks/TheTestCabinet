@@ -84,7 +84,12 @@
         },
         {
           "const": "running",
-          "description": "The driver is executing the run.",
+          "description": "The driver is executing the run's harness session: the model is working.",
+          "type": "string"
+        },
+        {
+          "const": "validating",
+          "description": "The harness session has ended and the driver is doing the post-session work\n(collecting the tree, the post-run analysis, the case's toolchain, validation\nand the upload of the tree). Still in flight and driven exactly like\n`running`.",
           "type": "string"
         },
         {

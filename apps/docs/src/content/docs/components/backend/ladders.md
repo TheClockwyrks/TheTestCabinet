@@ -104,8 +104,9 @@ runs themselves are the results, and stay in the run list like any run.
 
 - **Stop** ends the dispatch and cancels the `queued` and `pending` jobs it
   launched. Runs already dispatched or running finish.
-- **Stop and cancel running** also cancels the `dispatched`, `starting`, and
-  `running` jobs it launched. Those are partly or wholly paid for, so the
+- **Stop and cancel running** also cancels the `dispatched`, `starting`,
+  `running`, `validating` and `storing` jobs it launched. Those are partly or
+  wholly paid for, so the
   console confirms it first.
 
 Both also reach the jobs an earlier dispatch of the same ladder launched and
@@ -419,7 +420,8 @@ emission-order-is-execution-order mechanism a plan uses:
   answering "how far does this model get?" soonest.
 
 The dispatch's runs in flight are the jobs it launched that are `queued`,
-`pending`, `dispatched`, `starting`, `running` or `storing`, across every rung. The limit
+`pending`, `dispatched`, `starting`, `running`, `validating` or `storing`, across
+every rung. The limit
 caps those alone. A bound of `0` launches nothing, so a dispatch under it climbs
 only as far as existing runs take it.
 

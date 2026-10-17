@@ -134,9 +134,9 @@ async fn the_first_report_the_backend_accepts_hands_the_record_over_and_later_on
     assert_eq!(received[1].body["state"], "storing");
     assert_eq!(received[1].body["detail"], "HTTP 500");
     assert!(received[1].body["record"].is_null());
-    // The end of the wait is the job returning to `running`, with what became of
-    // the tree.
-    assert_eq!(received[2].body["state"], "running");
+    // The end of the wait is the job returning to `validating`, with what became
+    // of the tree.
+    assert_eq!(received[2].body["state"], "validating");
     assert_eq!(received[2].body["artifactsStored"], true);
 }
 
@@ -215,6 +215,7 @@ async fn a_run_is_already_canceled_only_when_its_job_reads_canceled() {
     for (state, expected) in [
         ("canceled", true),
         ("running", false),
+        ("validating", false),
         ("storing", false),
         ("failed", false),
     ] {

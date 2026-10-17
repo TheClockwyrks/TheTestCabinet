@@ -5,6 +5,7 @@ import {
   distributionChart,
   horizontalBarChart,
   MIN_ROTATED_SLOT,
+  MIN_DISTRIBUTION_SLOT,
   PAGE_TIP_ANCHOR,
   metricLineChart,
   scatterChart,
@@ -545,6 +546,36 @@ describe("distributionChart", () => {
       },
     ];
     expect(() => render(distributionChart(lone, palette))).not.toThrow();
+  });
+
+  // A comparison of many arms tilts its labels and gives each arm a slot wide
+  // enough for its interval, box and points; past what the container holds the
+  // chart is drawn wider, and `Chart` scrolls it.
+  it("tilts the arm labels and widens a chart of many arms past its container", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...groups[0]!,
+      label: `provider/model-${i} · harness`,
+    }));
+    const fit = distributionChart(groups, palette, {
+      xTickRotate: 40,
+      availableWidth: 900,
+    });
+    const wide = distributionChart(many, palette, {
+      xTickRotate: 40,
+      availableWidth: 900,
+    });
+    const plotArea = (o: ReturnType<typeof distributionChart>) =>
+      Number(o.width) - Number(o.marginLeft) - Number(o.marginRight);
+    expect((fit.x as { tickRotate?: number }).tickRotate).toBe(40);
+    expect(plotArea(fit)).toBe(900 - Number(fit.marginLeft) - 20);
+    expect(plotArea(wide)).toBe(12 * MIN_DISTRIBUTION_SLOT);
+    expect(Number(wide.width)).toBeGreaterThan(900);
+  });
+
+  it("keeps the plain axis when no rotation is asked for", () => {
+    const options = distributionChart(groups, palette, { availableWidth: 900 });
+    expect(options.width).toBeUndefined();
+    expect((options.x as { tickRotate?: number }).tickRotate).toBeUndefined();
   });
 
   // The fitted y domain the spec carries, as [low, high].

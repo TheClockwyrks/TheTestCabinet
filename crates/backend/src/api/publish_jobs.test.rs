@@ -158,6 +158,7 @@ fn run_summary_lifts_the_runs_display_identity() {
         state_reclaimed_at: None,
         state_reclaimed_reason: None,
         auto_publish_deferred: false,
+        tool_calls_counted: false,
         record_json: "{}".to_string(),
         record_readable: true,
         record_format: 1,

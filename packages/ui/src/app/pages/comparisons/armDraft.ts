@@ -14,7 +14,7 @@ export type ArmKind = "harness" | "gg";
  *  side's picks mid-edit; only the fields belonging to `kind` are ever saved. */
 export interface ArmDraft {
   /** The arm's stable id — assigned once and preserved across edits, since the
-   *  arm's launched `runIds` are keyed to it. */
+   *  arm's results are keyed to it. */
   id: string;
   kind: ArmKind;
   /** The operator's own label. Blank means "use the derived one". */
@@ -27,8 +27,6 @@ export interface ArmDraft {
   ggConfig: string;
   /** The model bound to each of that configuration's model slots, by slot name. */
   slotModels: Record<string, string>;
-  /** The runs already launched for this arm, carried through an edit untouched. */
-  runIds: string[];
 }
 
 /**
