@@ -1,5 +1,16 @@
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { PLAYWRIGHT_ENV } from "./src/chromium";
+
+// The package's own suite stands in for the runner, which names its Playwright
+// package to a case's project (see `src/chromium.ts`): here that is the
+// package's own pinned dev dependency. Set on this process, before `globalSetup`
+// launches the browser, and inherited by every worker that connects to it.
+process.env[PLAYWRIGHT_ENV] ??= dirname(
+  createRequire(import.meta.url).resolve("playwright/package.json"),
+);
 
 /**
  * The package's OWN suite, which is not a case's.
