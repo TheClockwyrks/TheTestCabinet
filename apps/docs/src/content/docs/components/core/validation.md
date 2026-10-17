@@ -151,6 +151,17 @@ canvas they create, and step it there, with Chromium rendering WebGL2 in
 software. The Playwright Chromium is the one the runner's browser driver uses, so
 a host without it fails the validation stage.
 
+An engineless project drives the build in that same Chromium, through the
+browser driver's own Playwright package. A Playwright release launches only the
+Chromium revision it was released with, and the build's dependencies are the
+model's to choose, so the validators load Playwright from the runner and never
+from the tree. The runner hands vitest the package's directory as
+`TCAB_PLAYWRIGHT`: the one its own environment names in that variable, otherwise
+the `playwright` package Node resolves from the browser driver's directory. The
+shared harness loads Playwright from that directory alone. A runner with neither
+leaves `TCAB_PLAYWRIGHT` unset, and every point the engineless validators back is
+left undecided with that as its reason.
+
 Deciding the run's points means running that project:
 
 - Stage the case's `validation/<engine>/` directory into the collected tree at

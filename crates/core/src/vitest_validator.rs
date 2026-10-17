@@ -130,6 +130,10 @@
 #[path = "vitest_validator.test.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "vitest_validator.playwright.test.rs"]
+mod playwright_tests;
+
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -292,6 +296,17 @@ pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
 /// absolute host path in the runner's own scratch directory, one per time vitest is
 /// started.
 pub const VITEST_PROGRESS_ENV: &str = "TCAB_VITEST_PROGRESS_FILE";
+
+/// The environment variable naming the runner's own Playwright package to the
+/// validators: the absolute path of the package's directory.
+///
+/// An engineless project drives the build in the Chromium the browser driver's pinned
+/// Playwright installed, and a Playwright release launches only the revision it was
+/// released with. The tree's own Playwright is whatever the model's dependencies
+/// resolved, so the shared harness loads the package this names and never the tree's.
+/// The runner names the package an explicit `TCAB_PLAYWRIGHT` in its own environment
+/// names, otherwise the one Node resolves from the browser driver's directory.
+pub const PLAYWRIGHT_ENV: &str = "TCAB_PLAYWRIGHT";
 
 /// The progress reporter vitest is handed, written into the runner's scratch directory
 /// for each run rather than staged into the tree: it is the runner's instrument, not
@@ -655,14 +670,50 @@ fn execute(
             media_dir.display(),
         ))
     })?;
+    let mut env = vec![(VALIDATION_MEDIA_ENV, absolute(media_dir))];
+    match runner_playwright() {
+        Some(playwright) => env.push((PLAYWRIGHT_ENV, absolute(&playwright))),
+        // An engine project never loads Playwright, so this is no refusal: the
+        // engineless harness reports the missing package on every point it backs.
+        None => tracing::warn!(
+            "the runner has no Playwright package of its own; an engineless project's \
+             validators cannot drive the build"
+        ),
+    }
     Ok(drive(
         repo,
         filters,
         caps,
         scratch.path(),
-        &[(VALIDATION_MEDIA_ENV, absolute(media_dir))],
+        &env,
         &|filters| vitest_command(&reporter, filters),
     ))
+}
+
+/// The runner's own Playwright package, which [`PLAYWRIGHT_ENV`] names to the
+/// validators: the one an explicit [`PLAYWRIGHT_ENV`] in the runner's environment
+/// names, otherwise the one the browser driver resolves
+/// ([`playwright_beside`] the driver script
+/// [`browser::driver_path`](crate::browser::driver_path) locates). `None` when there is
+/// neither.
+fn runner_playwright() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os(PLAYWRIGHT_ENV) {
+        return Some(PathBuf::from(explicit));
+    }
+    playwright_beside(&crate::browser::driver_path()?)
+}
+
+/// The `playwright` package Node resolves for the script at `driver`: the first
+/// `node_modules/playwright` holding a `package.json` in the script's directory or one
+/// of its ancestors. A baked driver installs its own beside it; a repository checkout
+/// hoists the workspace's to the root.
+fn playwright_beside(driver: &Path) -> Option<PathBuf> {
+    let driver = std::path::absolute(driver).ok()?;
+    driver
+        .parent()?
+        .ancestors()
+        .map(|dir| dir.join("node_modules").join("playwright"))
+        .find(|package| package.join("package.json").is_file())
 }
 
 /// Run the suite files `filters` names under `caps`, starting vitest again after any
