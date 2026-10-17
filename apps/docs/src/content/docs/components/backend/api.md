@@ -655,10 +655,7 @@ snapshot and the gallery. A published run whose
 record this build cannot read is deleted, since it is already absent from both.
 `404` if unknown. The response reports the run id and `deleted: true`.
 
-The job that produced the run is deleted with it, except a job the backend
-[retried](/components/backend/coverage/#which-runs-count). That job is kept with
-no run, because a comparison arm that recorded it follows its `retried_by` to the
-retry's run.
+The job that produced the run is deleted with it.
 
 The run's playable build and recorded logs live in the separate [artifact
 service](/components/artifacts/overview/), which the backend asks over

@@ -22,6 +22,9 @@ using the same counting rules, the same runs-in-flight limit, and the same launc
 algorithm applied to an ordered series of cases. This page specifies everything
 the two share; the ladder page covers only the difference.
 
+A [comparison arm](/comparisons/experiments/#which-runs-an-arm-holds) holds the
+runs of a cell by the same counting rules, under the comparison's `N`.
+
 ## Counts are global, reviews are labels
 
 A cell is filled by runs of that exact cell, whoever launched them and for
