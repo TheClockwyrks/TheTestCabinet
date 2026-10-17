@@ -43,6 +43,11 @@ import { MedianRatioTile } from "./MedianRatioTile";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
+// The arm labels on the distribution charts tilt down to the right, as the
+// metric charts' model labels do, so a comparison of many arms keeps them all
+// legible and scrolls the chart sideways rather than squeezing it.
+const LABEL_ROTATE = 40;
+
 // The comparison detail page (`/comparisons/:id`) — the heart of the feature.
 // Per arm it presents the cost/token/session-duration distribution (a box +
 // CI over the arm's runs — never a single averaged bar, and never merged across
@@ -573,9 +578,11 @@ export function ComparisonDetailPage() {
           spec={
             costGroups.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   distributionChart(costGroups, palette, {
                     y: "USD",
+                    xTickRotate: LABEL_ROTATE,
+                    availableWidth,
                     formatValue: (v) => formatUsd(v),
                   })
           }
@@ -589,9 +596,11 @@ export function ComparisonDetailPage() {
           spec={
             tokenGroups.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   distributionChart(tokenGroups, palette, {
                     y: "tokens",
+                    xTickRotate: LABEL_ROTATE,
+                    availableWidth,
                     yTickFormat: "~s",
                     formatValue: formatCompact,
                   })
@@ -606,9 +615,11 @@ export function ComparisonDetailPage() {
           spec={
             sessionGroups.length === 0
               ? undefined
-              : (palette) =>
+              : (palette, availableWidth) =>
                   distributionChart(sessionGroups, palette, {
                     y: "seconds",
+                    xTickRotate: LABEL_ROTATE,
+                    availableWidth,
                     formatValue: (v) => formatRunTime(v),
                   })
           }
