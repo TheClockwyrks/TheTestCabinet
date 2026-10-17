@@ -167,7 +167,8 @@ leaves that job to [lost-driver detection](#lost-drivers).
 ## Lost drivers
 
 The backend believes a driver is executing every job it holds as `dispatched`,
-`starting`, `running` or `storing`. That belief outlives the driver when nobody is left to
+`starting`, `running`, `validating` or `storing`. That belief outlives the
+driver when nobody is left to
 report its death:
 
 - the whole machine restarted, taking every driver pod and the dispatcher down
@@ -178,8 +179,8 @@ report its death:
 
 Each tick, the dispatcher reads the backend's jobs in flight (`GET /jobs/active`)
 and then lists its `Job`s. A driven job with no `Active` driver `Job` is missing.
-A driven job is one in the `dispatched`, `starting`, `running` or `storing`
-state. A job missing for two minutes without a break is lost, and the dispatcher
+A driven job is one in the `dispatched`, `starting`, `running`, `validating`
+or `storing` state. A job missing for two minutes without a break is lost, and the dispatcher
 reports it with `POST /jobs/{id}/lost`. That call uses the service token, so it
 needs no per-job token a restart could have lost. The detail names what the
 cluster shows: the dead pod's reason, a driver that exited without its report

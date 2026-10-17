@@ -524,12 +524,13 @@ notification fires, and no retry is enqueued.
 A `storing` status is the driver reporting that it is
 [waiting on the artifact store](/components/driver/overview/#waiting-on-the-store),
 with the upload's failure as `detail`. It moves a `dispatched`, `starting`,
-`running` or `storing` job to `storing` and records the detail, and it moves no
-job in any other state. The first one of a wait carries the run's `record`, and
+`running`, `validating` or `storing` job to `storing` and records the detail, and
+it moves no job in any other state. The first one of a wait carries the run's `record`, and
 `runFailure` when the run failed, which the backend keeps on the job and
 [finishes the run from](/components/backend/overview/#a-driver-lost-while-it-waits)
-if the driver is lost. A later `running` status returns the job to `running`,
-and carries `artifactsStored` to say how the wait ended. A `storing` job is in
+if the driver is lost. A later `validating` status returns the job to
+`validating`, and carries `artifactsStored` to say how the wait ended. A
+`storing` job is in
 flight: `GET /jobs/active` lists it with its `detail`, it can be canceled, and
 the dispatcher can report it lost.
 
@@ -555,8 +556,8 @@ so the job stays `canceled` with no record attached.
 `POST /jobs/{id}/lost` is the dispatcher's report of a job whose driver is
 [gone without reporting](/components/dispatcher/overview/#lost-drivers). It
 requires the service token and takes a `failed` status with a detail and no record
-(`422` otherwise). A job still `dispatched`, `starting`, `running` or `storing`
-is failed exactly as the driver's own `failed` report would fail it, unless it
+(`422` otherwise). A job still `dispatched`, `starting`, `running`, `validating`
+or `storing` is failed exactly as the driver's own `failed` report would fail it, unless it
 holds a report its driver
 [handed over](/components/backend/overview/#a-driver-lost-while-it-waits), which
 lands in its place. A job in any other state is left alone. Either way the
@@ -1136,10 +1137,10 @@ those runs, so a cell never reads more than its target.
 
 ### Halting a plan
 
-| endpoint                             | ends filling | cancels                                                       |
-| ------------------------------------ | ------------ | ------------------------------------------------------------- |
-| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                                 |
-| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running`, `storing` |
+| endpoint                             | ends filling | cancels                                                                     |
+| ------------------------------------ | ------------ | --------------------------------------------------------------------------- |
+| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                                               |
+| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running`, `validating`, `storing` |
 
 Both reuse the same atomic cancel transition
 [`POST /jobs/{id}/cancel`](#stopping-runs-in-bulk) uses, and reach only jobs whose
@@ -1189,7 +1190,8 @@ starts a dispatch of it.
   resolves no climbers, or holds a rung that is not validator-rated.
 - `POST /ladders/{id}/stop` — end the running dispatch and cancel the `queued` and
   `pending` jobs it launched. With `{ "cancelRunning": true }` it also cancels
-  the `dispatched`, `starting`, `running` and `storing` jobs it launched, which a client
+  the `dispatched`, `starting`, `running`, `validating` and `storing` jobs it
+  launched, which a client
   must confirm first. Both reach the jobs an
   [earlier dispatch](/components/backend/ladders/#stopping-a-dispatch) of the
   ladder left in flight as well.
@@ -1227,11 +1229,11 @@ climber's Retry, and every finishing run of one of its rung slots' cells
 Three global sweeps. All require a bearer token, and all answer
 `{ "canceled": n, "includedWaiting": bool, "includedActive": bool }`.
 
-| endpoint                    | sweeps                                         |
-| --------------------------- | ---------------------------------------------- |
-| `POST /jobs/cancel-waiting` | `queued`, `pending`                            |
-| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running`, `storing` |
-| `POST /jobs/cancel-all`     | both, in one transition                        |
+| endpoint                    | sweeps                                                       |
+| --------------------------- | ------------------------------------------------------------ |
+| `POST /jobs/cancel-waiting` | `queued`, `pending`                                          |
+| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running`, `validating`, `storing` |
+| `POST /jobs/cancel-all`     | both, in one transition                                      |
 
 These are global and scoped to nothing: they cancel matching jobs whatever
 launched them, including runs launched by hand and runs launched by another

@@ -313,7 +313,8 @@ A plan or a ladder never fires its whole shortfall at once by default. It keeps
 at most _N_ of its own jobs in flight, so it shares the global FIFO queue fairly
 with everything else waiting on it. Its own jobs in flight are the jobs whose
 [origin](#attribution-which-plan-or-ladder-launched-a-run) names it and whose
-state is `queued`, `pending`, `dispatched`, `starting`, `running` or `storing`. Completed
+state is `queued`, `pending`, `dispatched`, `starting`, `running`, `validating`
+or `storing`. Completed
 runs never occupy the limit, reviewed or not.
 
 The account's default is held by `GET`/`PUT /coverage-settings` as
@@ -528,8 +529,8 @@ Two controls, distinct because stopping carries two different costs:
 - **`halt`** ends the plan's filling, then cancels the plan's `queued` and
   `pending` jobs. Those jobs have no driver and have spent nothing, so it needs
   no confirmation. This is the common case.
-- **`halt all`** does the above, plus `dispatched`, `starting`, `running` and
-  `storing`.
+- **`halt all`** does the above, plus `dispatched`, `starting`, `running`,
+  `validating` and `storing`.
   Those runs are partly or wholly paid for, so it is confirmed before it runs.
 
 Both reuse the same atomic cancel transition a single `POST /jobs/{id}/cancel`

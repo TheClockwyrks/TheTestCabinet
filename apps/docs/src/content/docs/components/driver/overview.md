@@ -36,12 +36,19 @@ backend-streaming sinks in place of the in-process ones.
   using the events the relay already accumulated.
 
 The driver reports `starting` before any work, advances the job to `running`
-once setup finishes and the harness session is about to begin, and posts its
-terminal status once, after the relay has drained so that every streamed event
-has reached the backend first. The run's own start is taken immediately after
-the `starting` report, so the [`startedAt`](/components/backend/api/#topics) the
-backend stamps from that transition names the same instant the produced record
-does.
+once setup finishes and the harness session is about to begin, and advances it
+to `validating` once the session has ended. It posts its terminal status once,
+after the relay has drained so that every streamed event has reached the backend
+first. The run's own start is taken immediately after the `starting` report, so
+the [`startedAt`](/components/backend/api/#topics) the backend stamps from that
+transition names the same instant the produced record does.
+
+A `validating` job is one whose model has finished working. The state covers
+everything after the session: collecting the tree, the post-run analysis, the
+case's toolchain, validation and the upload of the tree. The engine announces
+the session's end through its event sink, and the driver posts `validating`
+through the relay after the events that preceded it, so a console never shows
+the run validating while the session's last events are still arriving.
 
 ## Sandbox container runtime
 
@@ -300,7 +307,7 @@ waits, and the backend
 [finishes the run from it](/components/backend/overview/#a-driver-lost-while-it-waits)
 if the pod is lost.
 
-When the wait ends the driver reports `running` again, with `artifactsStored`
+When the wait ends the driver reports `validating` again, with `artifactsStored`
 saying whether the tree was stored, and goes on to its terminal report. A
 report that fails to reach the backend is logged and the wait continues.
 

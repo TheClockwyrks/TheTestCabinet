@@ -362,7 +362,8 @@ run at the [backend](#backend) and watch it.
 
 The runs-in-flight limit is how many of a [coverage](#coverage) plan's or a
 [ladder](#ladder) dispatch's own jobs may be queued, pending, dispatched,
-starting, or running at once. It exists so one plan or ladder shares the global
+starting, running, validating or storing at once. It exists so one plan or
+ladder shares the global
 queue fairly with everything else waiting on it. It is an account-wide setting
 overridable per plan and per ladder, and is either a bound or no limit, which
 launches every missing run at once. Completed runs never occupy it.
