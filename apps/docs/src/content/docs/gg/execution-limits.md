@@ -129,7 +129,7 @@ neither has an off it could take instead.
 `modelCallTimeoutSecs`, `modelStreamIdleSecs`, `providerCacheMissLimit`,
 `maxModelRetries` and `modelRetryMaxDelaySecs` are the keys an absence answers
 with a figure rather than with "off". Every model call is made under the first
-two, so a configuration that leaves them out is conducted under 900 and 60
+two, so a configuration that leaves them out is conducted under 1800 and 60
 seconds. Every provider is held to the miss limit, so leaving it out leaves a
 provider after 2 unexpected cache misses. Every failed model request is retried
 on a schedule, so a configuration that leaves the last two out retries ten times
@@ -271,13 +271,16 @@ and exit code as they were.
 The ceiling on one attempt at a model request, in seconds, from sending the
 request to the last chunk of its reply. A breach does not stop anything: the
 attempt is recorded as a `model_timeout` error turn and the agent asks the same
-question again. A configuration that leaves the key out is conducted under 900
+question again. A configuration that leaves the key out is conducted under 1800
 seconds, because there is no run whose calls may hang forever, and `0` refuses
 the launch.
 
-A reply that goes quiet is cut sooner by
-[`modelStreamIdleSecs`](#modelstreamidlesecs), so the ceiling is what bounds a
-reply whose deltas keep arriving for longer than it. The backoff between the
+It is the only bound on the wait for a reply's first delta, so a model that
+thinks at length without streaming, or a provider that delivers a reply in one
+piece, is given the whole ceiling to answer. A reply that goes quiet after it
+has started is cut sooner by [`modelStreamIdleSecs`](#modelstreamidlesecs), so
+the ceiling is what bounds a reply whose deltas keep arriving for longer than
+it. The backoff between the
 client's retries sits outside it, so a long retry schedule runs to its end under
 any ceiling. A timeout surfaces immediately, without spending the retry
 schedule, since each retry would cost the full ceiling again. A `model_timeout`
@@ -285,20 +288,22 @@ turn names the figure that fired.
 
 ### `modelStreamIdleSecs`
 
-How long a model request may go without a delta from the model, in seconds,
-before the attempt is cancelled. Every reply is read as a
-[stream](/gg/loop-detection/#the-transport), and the clock restarts on each
-chunk whose `delta` carries content, reasoning or tool-call arguments. It starts
-when the request is sent, so a provider that never sends a response head is
-cut by it too. Keep-alive comments and blank lines leave it running, which is
-what separates a provider that has stopped answering from a model that is still
-thinking: a model that reasons for minutes streams reasoning deltas for the
-whole of that time.
+How long a reply that has started streaming may go without a further delta
+from the model, in seconds, before the attempt is cancelled. Every reply is read
+as a [stream](/gg/loop-detection/#the-transport). The clock is armed by the
+first chunk whose `delta` carries content, reasoning or tool-call arguments, and
+restarts on each such chunk after it. Keep-alive comments, blank lines and
+chunks carrying no delta leave it running, which is what separates a provider
+that has stopped answering mid-reply from a model that is still streaming.
+
+Until the first delta arrives the bound is unarmed, and the wait is bounded by
+[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) alone. A model that streams no
+reasoning, and a provider that sends nothing until the reply is complete, are
+never cut for silence before their reply begins: a reply that arrives in one
+piece inside the call ceiling is a reply, whatever the bound here.
 
 A configuration that leaves the key out is conducted under 60 seconds, and `0`
-refuses the launch. A provider that sends nothing until its reply is complete
-needs a figure above its longest reply, at which point
-[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) is the bound that fires first.
+refuses the launch.
 
 A cancelled attempt is a transport failure. It is retried on the client's
 [schedule](#maxmodelretries-and-modelretrymaxdelaysecs) and logged like any
@@ -680,7 +685,7 @@ ceiling that produced it:
   "capabilities": [ /* … */ ],
   "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-5" }],
   "limits": { "maxParallel": 16, "maxTurns": 60, "maxRuntimeSecs": 5400,
-              "modelCallTimeoutSecs": 900, "modelStreamIdleSecs": 60,
+              "modelCallTimeoutSecs": 1800, "modelStreamIdleSecs": 60,
               "providerCacheMissLimit": 2,
               "maxModelRetries": 10, "modelRetryMaxDelaySecs": 60,
               "maxConsecutiveErrors": 5,
@@ -692,7 +697,7 @@ ceiling that produced it:
 In the console the limits are a Run limits fieldset above the capability groups
 in the [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration is seeded with the parallelism and journal figures, a model-call
-timeout of 900 seconds, a stream idle bound of 60 seconds, a cache-miss limit of
+timeout of 1800 seconds, a stream idle bound of 60 seconds, a cache-miss limit of
 2, the retry schedule's 10 retries against a 60-second delay ceiling, a
 consecutive-error ceiling of 5, and an error rate of 0.2 over a window of 50
 turns; the turn, runtime and cost fields start empty. Each seeded error figure
@@ -712,8 +717,8 @@ that integer, so `60` and `60.0` are one declaration.
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether      | refused                                                            |
 | any of the five ceilings absent                                           | that ceiling unarmed                                               |
-| `modelCallTimeoutSecs` absent                                             | every model call bounded at 900 seconds                            |
-| `modelStreamIdleSecs` absent                                              | every model call cancelled after 60 seconds without a delta        |
+| `modelCallTimeoutSecs` absent                                             | every model call bounded at 1800 seconds                           |
+| `modelStreamIdleSecs` absent                                              | a started reply cancelled after 60 seconds without a delta         |
 | `providerCacheMissLimit` absent                                           | a provider is left after 2 unexpected cache misses                 |
 | `maxModelRetries` or `modelRetryMaxDelaySecs` absent                      | failed requests retried 10 times against a 60-second delay ceiling |
 | `maxModelRetries: 0`                                                      | honoured: the first failure moves the run to the next candidate    |

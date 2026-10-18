@@ -190,8 +190,9 @@ unprivileged run user with the seeded repository as its working directory.
 
 - It is bounded by the run's maximum runtime, the same cap that bounds the
   harness session.
-- It is verified against the workspace's lockfile and retried, up to three
-  attempts, as [Init](/testing/end-to-end/overview/#init) describes. After the
+- It is verified against the workspace's lockfile, which a code-producing case
+  ships and seeding commits, and retried, up to three attempts, as
+  [Init](/testing/end-to-end/overview/#init) describes. After the
   last attempt, a non-zero exit or a declared package still missing aborts the
   run before the harness starts and tears the container down, with the captured
   output surfaced for diagnosis. A timeout aborts it the same way without a
@@ -216,6 +217,14 @@ the platform underneath it.
   [`hung`](/components/contracts/run-records/). This catches a harness that has
   stopped doing anything, such as a stalled provider request or a subagent that
   never returns.
+
+  The Test Cabinet's own harness is held to the window the other way round:
+  [gg](/gg/overview/) emits a [`heartbeat`](/gg/telemetry/overview/) on its
+  stream while an agent waits on anything, at an interval well inside the
+  window, so a gg run is recorded `hung` only when gg itself has stopped. A
+  long tool call, a long model request and a slow subagent all stay alive to
+  the watchdog, and each ends on gg's own bound for it, such as the shell
+  tool's per-call timeout, as a result the model reads on its next turn.
 
 The watchdog's window must stay far below the platform's own limits. A
 Kubernetes kubelet closes an exec stream idle for

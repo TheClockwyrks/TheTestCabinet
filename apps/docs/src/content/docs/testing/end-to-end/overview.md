@@ -163,6 +163,15 @@ pinning Playwright as a dev dependency, so the browser tooling a model verifies
 its build with is a visible part of its own project, installed by the case's
 [init command](#init).
 
+A workspace with a `package.json` ships the `package-lock.json` that pins it,
+so the run begins from a committed lockfile and every file the seed commit
+holds is the case's own. The lockfile pins the project's registry dependencies
+and links each [package](#packages) and [engine](#engines) dependency at its
+vendored `file:` path, so the case's init command is `npm ci` and installs
+exactly what the lockfile pins. The model inherits the lockfile as it inherits
+the rest of the workspace, and the [build interface](#design-requirements)
+requires it committed still.
+
 Workspace files are seeded verbatim; they are never rendered as templates.
 Hidden entries are skipped, with an allowlist of exceptions that are seeded:
 `.gitignore`, `.cargo`, `.prettierrc.json`, and `.prettierignore`. A run's
@@ -195,8 +204,8 @@ once the workspace and specs are seeded and mounted, and before the harness
 starts. It is where a case prepares the workspace it shipped, so the model
 begins against a ready project. It runs as the container's unprivileged run user
 with the seeded repository as its working directory, through `sh -c`, so it can
-be a plain command such as `npm install` or invoke a file the workspace
-supplies. Carom and Coil use `npm install && npx playwright install chromium`.
+be a plain command such as `npm ci` or invoke a file the workspace
+supplies. Carom and Coil use `npm ci && npx playwright install chromium`.
 
 The command is bounded by the run's maximum runtime, so a hung setup cannot run
 unbounded. That bound covers the init as a whole: every attempt, check, and delay
@@ -273,11 +282,12 @@ the model installs its project as usual and imports the library by its bare name
 The spec that relies on the package should describe it as a provided dependency
 to import rather than as a file path.
 
-A case ships no lockfile, so a `packages` case's [init](#init) command must run
-`npm install` or the equivalent. That resolves the `file:` dependency against
-the vendored copy and writes it into the lockfile the model then commits, after
-which the `[build]` step's `npm ci` reinstalls it reproducibly from that
-committed lockfile.
+The workspace's committed `package-lock.json` links each `file:` dependency at
+that path, so the case's [init](#init) command, `npm ci`, installs the vendored
+copy and the `[build]` step's `npm ci` reinstalls it reproducibly from the same
+lockfile the model commits on. The vendored copy is the version the lockfile
+links, and a workspace whose lockfile disagrees with its `package.json` is
+rejected at resolution, before a run is spent.
 
 ## Engines
 
@@ -288,11 +298,13 @@ version can be built on each engine it supports and the results compared. The
 manifest's `engines` key lists the slugs a run of the case may select, and the
 [engine catalogue](/engines/overview/) is the set to name them from.
 
-Seeding vendors the selected engine's runtime into the run repository and writes
-its dependency into the seeded `package.json`, so the build installs and imports
-the engine by its bare package name like any other dependency. A case declaring
-an engine that provides a runtime therefore ships a [workspace](#workspace) with
-a `package.json` for that dependency to land in.
+Seeding vendors the selected engine's runtime into the run repository under
+`.vendor/packages/`, where the engine's [workspace](#workspace) already declares
+it by its `file:` spec, in its `package.json` and in the `package-lock.json`
+that links it, exactly as a [package](#packages) is declared. The build installs
+and imports the engine by its bare package name like any other dependency. A
+case declaring an engine that provides a runtime therefore ships one workspace
+per engine, each with the `package.json` and lockfile for that runtime.
 
 The engine's own documentation is seeded at `engine/` in the run root, and that
 is what the build reads to use the engine. An engine documents its API from its
