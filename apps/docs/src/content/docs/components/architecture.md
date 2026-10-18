@@ -129,7 +129,7 @@ environment, `console.testcabinet.ai` for prod and
 path: `/` the console, `/api/` the backend, `/artifacts/` the artifacts
 service, `/arena/` the arena. TLS terminates at Cloudflare, and the cluster
 holds no `Ingress`, no load balancer, no public IP and no certificate. Grafana
-sits behind the same tunnel and policy at `grafana.console.testcabinet.ai`.
+sits behind the same tunnel and policy at `grafana.testcabinet.ai`.
 
 Each hostname is one Cloudflare Access application whose policy is an Entra ID
 identity allowed by email. Every request through the edge carries an Access

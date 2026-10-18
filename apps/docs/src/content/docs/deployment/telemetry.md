@@ -63,8 +63,8 @@ component defaults to 24 hours, and the `prod` overlay raises it to three days.
 
 The `Service` is `ClusterIP` and carries no `Ingress`. On the overlays that
 include `components/edge`, Grafana is reached at
-`grafana.console.testcabinet.ai` (staging:
-`grafana.console.staging.testcabinet.ai`) through the environment's tunnel,
+`grafana.testcabinet.ai` (staging: `grafana.staging.testcabinet.ai`) through
+the environment's tunnel,
 behind an Access application of its own. Because the `otel-lgtm` image ships
 Grafana with anonymous admin, exposing that hostname is paired with the
 overlay's `patch-grafana-auth.yaml`, which disables anonymous access and sets
