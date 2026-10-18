@@ -97,9 +97,10 @@ intact when a variable names a directory the clone has not filled.
 - An ingest sidecar in the backend pod, which the `staging` and `prod` overlays
   patch in (`patch-backend-ingest.yaml`). It shares the backend's `state`
   volume, writes the checkout the backend reads, and calls `POST /ingest` over
-  localhost, so intra-pod traffic bypasses the `NetworkPolicy` and no token is
-  needed. Each refresh fetches the `test-suites` branch tip, authenticated with
-  the read-only credential in the
+  localhost, so intra-pod traffic bypasses the `NetworkPolicy`. It presents the
+  backend's shared service token, which the ingest route takes. Each refresh
+  fetches the `test-suites` branch tip, authenticated with the read-only
+  credential in the
   [`tcab-test-suites-credential` Secret](/deployment/overview/#secrets), and
   `cold-storage` shallowly. It runs one forced ingest of the branch tip on
   backend start, then idles. Those overlays suspend the base `CronJob`.

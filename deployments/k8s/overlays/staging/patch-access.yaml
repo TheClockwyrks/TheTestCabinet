@@ -1,0 +1,63 @@
+# The Access application the backend, the artifacts service and the arena verify an
+# edge request's `Cf-Access-Jwt-Assertion` against (see Identity,
+# apps/docs/src/content/docs/components/auth/overview.md#configuration, and Edge,
+# apps/docs/src/content/docs/deployment/kubernetes/edge.md#access-applications).
+#
+# The three services share the environment's origin, so they carry the same audience
+# tag: the one Cloudflare assigned the origin's Access application. The two variables
+# are set together; a service with exactly one of them refuses to start, and one with
+# neither trusts the `Cf-Access-Authenticated-User-Email` header as presented, which
+# is the local overlay's shape and never a deployed one's.
+#
+# The audience below is a value no assertion carries, so every edge request is refused
+# with 401 until the tag of the origin's Access application is written here (step 4 of
+# "Setting up an environment" on the Edge page). The in-cluster callers present the
+# backend's own tokens and are unaffected.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: the-test-cabinet-backend
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ACCESS_TEAM_DOMAIN
+              value: "shrill-term-5c16.cloudflareaccess.com"
+            - name: TCAB_ACCESS_AUDIENCE
+              value: "unset-until-the-access-application-exists"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: artifacts
+          env:
+            - name: TCAB_ACCESS_TEAM_DOMAIN
+              value: "shrill-term-5c16.cloudflareaccess.com"
+            - name: TCAB_ACCESS_AUDIENCE
+              value: "unset-until-the-access-application-exists"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-arena
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: arena
+          env:
+            - name: TCAB_ACCESS_TEAM_DOMAIN
+              value: "shrill-term-5c16.cloudflareaccess.com"
+            - name: TCAB_ACCESS_AUDIENCE
+              value: "unset-until-the-access-application-exists"

@@ -23,7 +23,6 @@ kind: Kustomization
 resources:
   - rbac.yaml
   - backend.yaml
-  - auth.yaml
   - dispatcher.yaml
   - artifacts.yaml
   - arena.yaml

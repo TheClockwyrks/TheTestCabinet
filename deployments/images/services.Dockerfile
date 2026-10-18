@@ -1,13 +1,12 @@
 # syntax=docker/dockerfile:1
-# check=skip=SecretsUsedInArgOrEnv
 # Every Rust SERVICE image for the Kubernetes deployment (and the local stack), in
-# one file: backend, auth, dispatcher, driver, artifacts, arena and publisher.
+# one file: backend, dispatcher, driver, artifacts, arena and publisher.
 #
 # Select one with `--target`:
 #   docker build --target backend -t <registry>/tcab-backend:<tag> \
 #     -f deployments/images/services.Dockerfile .
-# The target names are `backend`, `auth`, `dispatcher`, `driver`, `artifacts`,
-# `arena` and `publisher`. The web console is NOT here — it is the one non-Rust
+# The target names are `backend`, `dispatcher`, `driver`, `artifacts`, `arena` and
+# `publisher`. The web console is NOT here — it is the one non-Rust
 # service image and keeps its own web.Dockerfile (`npm ci` + `vite build`, no crate
 # compiled).
 #
@@ -21,7 +20,7 @@
 # ~19 workspace crates each service pulls in were rebuilt six or seven times over
 # per invocation, every time, even with no source change at all.
 #
-# One shared build stage compiles all seven binaries in a single cargo pass, so the
+# One shared build stage compiles all six binaries in a single cargo pass, so the
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
 # actually depends on — asking for `arena` never runs the gg or npm stages. Two
@@ -30,13 +29,6 @@
 # scripts/ci/service-image.sh replaces it with `--build-context gg-build=<dir>` carrying
 # the gates stage's already-gated binary, and the stage is what the offline local build
 # uses (see its own header below).
-#
-# The check=skip above silences a false positive: BuildKit's SecretsUsedInArgOrEnv
-# lint flags any ENV whose *name* contains "AUTH" (also TOKEN/KEY/SECRET/PASSWORD).
-# The only such ENV here is the auth stage's TCAB_AUTH_BIND — the socket the Axum
-# server listens on (0.0.0.0:8789), a network bind address, not a credential. The
-# same value is already committed in plaintext in the compose file, the k8s
-# manifests and the .env.example files. No secret is baked into any image.
 #
 # The canonical images are built by the Azure pipeline (scripts/ci/service-image.sh)
 # on every push to master and staging, natively per architecture, and pushed to the
@@ -109,7 +101,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     find /src -path /src/target -prune -o -type f -exec touch {} + \
     && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release \
         -p test-cabinet-backend \
-        -p test-cabinet-auth-service \
         -p test-cabinet-dispatcher \
         -p test-cabinet-driver \
         -p test-cabinet-artifacts \
@@ -121,7 +112,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && mkdir -p /out \
     && cp \
         target/release/tcab-backend \
-        target/release/tcab-auth-service \
         target/release/tcab-dispatcher \
         target/release/tcab-driver \
         target/release/tcab-artifacts \
@@ -343,9 +333,10 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
-# The base for the four services that render nothing and shell out to nothing:
-# arena, artifacts, auth and dispatcher. ca-certificates covers their outbound HTTPS
-# (the Kubernetes API, the backend/auth over TLS, telemetry export). No Chromium and
+# The base for the three services that render nothing and shell out to nothing:
+# arena, artifacts and dispatcher. ca-certificates covers their outbound HTTPS
+# (the Kubernetes API, the backend over TLS, the Access certificates, telemetry
+# export). No Chromium and
 # no fonts.
 FROM docker.io/library/debian:bookworm-slim AS runtime-slim
 RUN apt-get update \
@@ -368,7 +359,8 @@ ENTRYPOINT ["tcab-arena"]
 # ── artifacts ────────────────────────────────────────────────────────────────
 # The artifact service receives each run's produced tree from the driver and serves
 # it to the console off a persistent volume. It forwards a driver's per-job token to
-# the backend and a reviewer's token to auth, both over TLS. State (the artifact
+# the backend and fetches the Access certificates it verifies the edge's assertion
+# with, both over TLS. State (the artifact
 # store) is mounted at runtime — a PersistentVolumeClaim in the cluster —
 # so the image carries none; deployments/k8s/base/artifacts.yaml sets the matching
 # TCAB_ARTIFACTS_ROOT.
@@ -377,17 +369,6 @@ COPY --from=build /out/tcab-artifacts /usr/local/bin/tcab-artifacts
 ENV TCAB_ARTIFACTS_BIND=0.0.0.0:8790
 EXPOSE 8790
 ENTRYPOINT ["tcab-artifacts"]
-
-# ── auth ─────────────────────────────────────────────────────────────────────
-# The auth service does no reference rendering, so — unlike the backend — it ships no
-# Chromium and no fonts. State paths are mounted at runtime (a PersistentVolumeClaim
-# in the cluster, a named volume locally); the compose file and
-# deployments/k8s/base/auth.yaml set the matching TCAB_AUTH_DATABASE_URL value.
-FROM runtime-slim AS auth
-COPY --from=build /out/tcab-auth-service /usr/local/bin/tcab-auth-service
-ENV TCAB_AUTH_BIND=0.0.0.0:8789
-EXPOSE 8789
-ENTRYPOINT ["tcab-auth-service"]
 
 # ── dispatcher ───────────────────────────────────────────────────────────────
 # The dispatcher is a thin, long-running controller: it claims queued jobs from the
@@ -517,7 +498,7 @@ COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs pac
 # Install git and the font set, then the driver's Playwright dependency and a
 # Playwright-managed Chromium with the OS libraries it links against
 # (`playwright install --with-deps`). ca-certificates covers the driver's outbound
-# HTTPS (the Kubernetes API, the backend/auth and artifact service over TLS,
+# HTTPS (the Kubernetes API, the backend and artifact service over TLS,
 # telemetry export); git seeds each run's repository; the font set is what test cases
 # render with (the slim base ships none — see containers/README.md). The npm install
 # skips Playwright's own browser download so only the single Chromium we ask for
@@ -612,7 +593,7 @@ FROM docker.io/library/node:24-bookworm-slim AS publisher
 
 ARG WRANGLER_VERSION
 
-# ca-certificates covers the publisher's outbound HTTPS (the backend/auth and
+# ca-certificates covers the publisher's outbound HTTPS (the backend and
 # artifact service over TLS, GitHub and Cloudflare APIs, telemetry export); git
 # commits each run's working tree before push; gnupg + the GitHub apt key let us
 # pull `gh` from GitHub's official repository (a current, supported build). The

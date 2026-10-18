@@ -1,5 +1,5 @@
 # Managed-PostgreSQL component — the reusable, environment-agnostic conversion of
-# the backend + auth service from their default embedded-SQLite shape to a managed
+# the backend from its default embedded-SQLite shape to a managed
 # database. Layered onto an environment overlay via its `components:` list; today
 # both overlays/prod and overlays/staging include it, so the staging↔prod
 # parity the base+overlay split buys is preserved (one definition of the Postgres
@@ -14,21 +14,20 @@
 # `kind: Deployment`).
 #
 # What it does:
-#   1. Deletes the base's `tcab-backend` and `tcab-auth` StatefulSets (a kind change
-#      can't be a patch). Their ClusterIP Services and everything else in the base
-#      are untouched; the replacement Deployments reuse the same selector labels, so
-#      the Services keep routing.
-#   2. Adds the replacement backend + auth Deployments, with the connection strings
-#      wired from each environment's Secret. See secrets.postgres.example.yaml. The
-#      auth Deployment is fully stateless; the backend keeps ONE volume — a
-#      `tcab-backend-state` PVC for its definition store + ingest checkout, which is
-#      regenerable but expensive to regenerate (see deployment-backend.yaml).
+#   1. Deletes the base's `tcab-backend` StatefulSet (a kind change can't be a
+#      patch). Its ClusterIP Service and everything else in the base are untouched;
+#      the replacement Deployment reuses the same selector labels, so the Service
+#      keeps routing.
+#   2. Adds the replacement backend Deployment, with the connection string wired
+#      from the environment's Secret. See secrets.postgres.example.yaml. The backend
+#      keeps ONE volume — a `tcab-backend-state` PVC for its definition store +
+#      ingest checkout, which is regenerable but expensive to regenerate (see
+#      deployment-backend.yaml).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 
 resources:
   - deployment-backend.yaml
-  - deployment-auth.yaml
 
 patches:
   - target:
@@ -40,12 +39,3 @@ patches:
       kind: StatefulSet
       metadata:
         name: tcab-backend
-  - target:
-      kind: StatefulSet
-      name: tcab-auth
-    patch: |
-      $patch: delete
-      apiVersion: apps/v1
-      kind: StatefulSet
-      metadata:
-        name: tcab-auth

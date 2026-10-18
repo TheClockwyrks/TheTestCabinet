@@ -18,6 +18,13 @@ pub fn require_token() -> Result<String> {
     load_token().context("set TCAB_TOKEN to a bearer token the backend accepts")
 }
 
+/// The backend's shared service token, `TCAB_BACKEND_SERVICE_TOKEN`, which a call to a
+/// local backend that takes the service token presents, since no edge stands in
+/// front of it to assert an identity.
+pub fn service_token() -> Option<String> {
+    nonempty_env("TCAB_BACKEND_SERVICE_TOKEN")
+}
+
 /// Read a non-empty environment variable, trimmed.
 fn nonempty_env(key: &str) -> Option<String> {
     std::env::var(key)

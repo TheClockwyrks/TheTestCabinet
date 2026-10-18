@@ -263,6 +263,9 @@ async fn an_upload_attaches_every_archive_from_its_working_directory() {
 
 // --- The commands, run -------------------------------------------------------------
 
+/// The service token the stand-in sidecar carries in its environment.
+const SERVICE_TOKEN: &str = "the-service-token";
+
 /// An [`AzRunner`] that runs the invoked command through `sh` in the working
 /// directory it is given, with `kubectl`, `git`, and `curl` played by scripts, and
 /// answers as `az aks command invoke --output json` does.
@@ -299,16 +302,18 @@ impl ShellAz {
             bin.path(),
             "curl",
             r#"#!/bin/sh
-out=""; data=""; url=""
+out=""; data=""; url=""; authorization=none
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) out="$2"; shift 2 ;;
-    -w|-X|-H|--data-binary) shift 2 ;;
+    -H) case "$2" in authorization:*) authorization="$2" ;; esac; shift 2 ;;
+    -w|-X|--data-binary) shift 2 ;;
     --data) data="$2"; shift 2 ;;
     -*) shift ;;
     *) url="$1"; shift ;;
   esac
 done
+printf '%s %s\n' "${url#http://127.0.0.1:8787}" "$authorization" >> "$RECORD/authorizations"
 case "$url" in
   */ingest) printf %s "$data" > "$RECORD/ingest-body"; cat "$RECORD/feed" ;;
   */reference-builds/*)
@@ -367,6 +372,7 @@ impl AzRunner for ShellAz {
             .current_dir(cwd.unwrap_or(self.bin.path()))
             .env("PATH", path)
             .env("RECORD", self.bin.path())
+            .env("TCAB_BACKEND_SERVICE_TOKEN", SERVICE_TOKEN)
             .output()
             .await?;
         let logs = format!(
@@ -532,4 +538,39 @@ async fn the_upload_command_posts_each_archive_and_reads_each_answer() {
 #[test]
 fn a_shell_word_survives_single_quotes() {
     assert_eq!(shell_quote("it's"), r#"'it'\''s'"#);
+}
+
+#[tokio::test]
+async fn every_call_from_the_sidecar_presents_the_service_token() {
+    let feed = "{\"event\":\"start\",\"total\":0}\n{\"event\":\"done\",\"total\":0,\"ingested\":0,\"skipped\":0}\n";
+    let az = ShellAz::new(feed);
+    let backend = RemoteBackend::new(staging(), Arc::clone(&az) as Arc<dyn AzRunner>);
+    backend
+        .ingest(&[], true, IngestMode::Changed, &mut |_| {}, &mut |_| {})
+        .await
+        .expect("the ingest finished");
+    backend
+        .stored_versions(&[("carom".to_owned(), "v1.0.0".to_owned())])
+        .await
+        .expect("the invoke ran");
+    backend
+        .upload_reference_builds(&[ReferenceBuildArchive {
+            slug: "carom".to_owned(),
+            version: "v1.0.0".to_owned(),
+            engine: "none".to_owned(),
+            archive: vec![1, 2, 3],
+        }])
+        .await
+        .expect("the invoke ran");
+
+    let calls = String::from_utf8(az.record("authorizations")).expect("the record is text");
+    let bearer = format!("authorization: Bearer {SERVICE_TOKEN}");
+    assert_eq!(
+        calls.lines().collect::<Vec<_>>(),
+        [
+            format!("/ingest {bearer}"),
+            format!("/test-suites/carom/v1.0.0 {bearer}"),
+            format!("/suites/carom/versions/v1.0.0/reference-builds/none {bearer}"),
+        ]
+    );
 }

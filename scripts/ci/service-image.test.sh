@@ -99,9 +99,8 @@ for service in backend dispatcher artifacts arena publisher; do
 done
 
 out="$(run auth "$SHA")"
-check_equal "auth builds" "0" "$?"
-check_equal "auth is tcab-auth-service" \
-	"$(expected tcab-auth-service deployments/images/services.Dockerfile amd64 "--target auth")" "$(build_line)"
+check_equal "auth is no longer a service" "1" "$?"
+check_contains "and is named unknown" "unknown service 'auth'" "$out"
 
 out="$(run driver "$SHA")"
 check_equal "driver builds" "0" "$?"

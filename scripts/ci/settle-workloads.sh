@@ -6,8 +6,8 @@
 #
 # The workspace template's scripts/ci/deploy.sh applies the whole overlay but waits
 # on the backend Deployment, `the-test-cabinet-backend`, alone, and undoes only that
-# one. The same apply rolls every other Test Cabinet workload (the auth service, the
-# dispatcher, the artifact and arena services, the console, the telemetry stack).
+# one. The same apply rolls every other Test Cabinet workload (the dispatcher, the
+# artifact and arena services, the console, the telemetry stack).
 # This settles them: in ONE `az aks command invoke`, it waits concurrently on every
 # Deployment and StatefulSet in the namespace except the backend, each for the
 # rollout timeout, then, for each that did not become ready, describes its pods,

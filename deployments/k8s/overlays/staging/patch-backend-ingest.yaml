@@ -6,8 +6,8 @@
 # and it clones into its own emptyDir the backend never reads). This co-locates ingest
 # INSIDE the backend pod as a sidecar: it shares the `state` volume (writing the
 # /state/checkout the backend ingests) and calls POST /ingest over localhost — intra-pod
-# traffic, so the NetworkPolicy never applies and no service token / extra route is
-# needed. It runs a ONE-SHOT forced ingest on backend start, then idles; every pipeline
+# traffic, so the NetworkPolicy never applies — presenting the backend's shared service
+# token, which the ingest route takes. It runs a ONE-SHOT forced ingest on backend start, then idles; every pipeline
 # deploy starts a new backend pod, so every deploy re-ingests the branch tip it shipped
 # (see the prod copy of this patch). /state is a PVC (see
 # components/postgres/deployment-backend.yaml), so on a cold volume (first deploy,
@@ -105,6 +105,7 @@ spec:
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
               n=0
               until curl -fsS -X POST http://127.0.0.1:8787/ingest \
+                     -H "authorization: Bearer $TCAB_BACKEND_SERVICE_TOKEN" \
                      -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
                 n=$((n + 1))
                 if [ "$n" -ge 10 ]; then
@@ -115,6 +116,14 @@ spec:
               done
               [ "$n" -lt 10 ] && echo "ingest: triggered ok"
               exec sleep infinity
+          env:
+            # The backend's shared service token, which POST /ingest takes. The
+            # on-demand refresh run through `kubectl exec` presents it from here too.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
           volumeMounts:
             - name: state
               mountPath: /state

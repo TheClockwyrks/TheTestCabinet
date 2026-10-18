@@ -4,7 +4,7 @@
 #
 #   scripts/ci/service-image.sh <service> <sha>
 #
-# <service> is a target of deployments/images/services.Dockerfile (backend, auth,
+# <service> is a target of deployments/images/services.Dockerfile (backend,
 # dispatcher, driver, artifacts, arena, publisher) or `web`, which has a Dockerfile
 # of its own. The build is native: the pipeline runs this once on an amd64 agent and
 # once on an arm64 agent, and scripts/ci/manifest.sh fuses the two arch tags into the
@@ -48,7 +48,6 @@ dockerfile=deployments/images/services.Dockerfile
 target="$SERVICE"
 case "$SERVICE" in
 	backend | dispatcher | driver | artifacts | arena | publisher) image="tcab-${SERVICE}" ;;
-	auth) image=tcab-auth-service ;;
 	web)
 		image=tcab-web
 		dockerfile=deployments/images/web.Dockerfile

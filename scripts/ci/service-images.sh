@@ -8,13 +8,13 @@
 # script's arguments and environment (TCAB_PREBUILT_GG for the two images that bake
 # this run's gg) are the whole contract; this one adds the order and the builder.
 #
-# WHY ONE JOB BUILDS THE EIGHT. Seven of the services are targets of
+# WHY ONE JOB BUILDS THE SEVEN. Six of the services are targets of
 # deployments/images/services.Dockerfile, and every one of them is assembled from
-# the same `build` stage: one `cargo build --release` of all seven binaries. Built
-# as eight separate jobs, each on a fresh agent with an empty builder, that compile
-# ran seven times per architecture — twenty minutes each on a hosted amd64 agent,
+# the same `build` stage: one `cargo build --release` of all six binaries. Built
+# as seven separate jobs, each on a fresh agent with an empty builder, that compile
+# ran six times per architecture — twenty minutes each on a hosted amd64 agent,
 # ten on the arm64 pool, which also runs one job at a time and pays a VM provision
-# for each. On one builder the first target compiles and the six after it take the
+# for each. On one builder the first target compiles and the five after it take the
 # `build` stage from the builder's local cache, so the compile happens once per
 # architecture and the assemblies are seconds. `web` has a Dockerfile of its own
 # and shares nothing, so it goes last, after the images that wait on the compile.
@@ -35,8 +35,8 @@ if [[ $# -ne 1 ]]; then
 fi
 readonly SHA="$1"
 
-# The eight services scripts/ci/service-image.sh knows, in the order argued above.
-readonly SERVICES=(backend auth dispatcher driver artifacts arena publisher web)
+# The seven services scripts/ci/service-image.sh knows, in the order argued above.
+readonly SERVICES=(backend dispatcher driver artifacts arena publisher web)
 
 for service in "${SERVICES[@]}"; do
 	if ! "${CI_LIB_DIR}/service-image.sh" "$service" "$SHA"; then

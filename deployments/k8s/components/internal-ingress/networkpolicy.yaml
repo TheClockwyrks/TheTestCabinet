@@ -13,7 +13,7 @@
 # label on every namespace, so selecting on it admits exactly that namespace's pods.
 # Needs a NetworkPolicy-enforcing CNI (Calico/Cilium) to take effect.
 
-# Admit the ingress controller to the four services it routes to (backend/auth/
+# Admit the ingress controller to the three services it routes to (backend/
 # artifacts/arena), each on its bind port.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -25,7 +25,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/name
         operator: In
-        values: ["tcab-backend", "tcab-auth", "tcab-artifacts", "tcab-arena"]
+        values: ["tcab-backend", "tcab-artifacts", "tcab-arena"]
   policyTypes: ["Ingress"]
   ingress:
     - from:
@@ -35,8 +35,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8787 # tcab-backend
-        - protocol: TCP
-          port: 8789 # tcab-auth
         - protocol: TCP
           port: 8790 # tcab-artifacts
         - protocol: TCP
