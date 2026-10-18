@@ -611,6 +611,7 @@ async fn finalize_adversarial_backend_upload(
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_adversarial_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -636,6 +637,7 @@ async fn finalize_performance_backend_upload(
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_performance_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -660,6 +662,7 @@ async fn finalize_proof_backend_upload(config: &Config, record: &test_cabinet_co
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_proofs_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -686,6 +689,7 @@ async fn finalize_validation_backend_upload(
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_validation_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -710,6 +714,7 @@ async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_c
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_replay_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -739,6 +744,7 @@ async fn finalize_code_analysis_backend_upload(
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_code_analysis_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -761,6 +767,7 @@ async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_co
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_assets_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )
@@ -785,6 +792,7 @@ async fn finalize_showcase_backend_upload(config: &Config, record: &test_cabinet
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_showcase_to_backend(
         &config.backend_url,
+        &config.job_token,
         record,
         &out_dir,
     )

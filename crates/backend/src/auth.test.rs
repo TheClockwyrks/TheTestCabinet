@@ -455,6 +455,71 @@ async fn a_job_token_reads_and_uploads_run_media_but_takes_nothing_else() {
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
 
+#[tokio::test]
+async fn a_publish_job_token_reads_but_takes_no_route_for_a_person_or_the_service() {
+    let (_dir, state, router) = local_backend().await;
+    state
+        .db
+        .enqueue_publish_job(crate::db::NewPublishJob {
+            id: "p1".to_string(),
+            run_id: "r1".to_string(),
+            job_token: "token-p1".to_string(),
+            created_at: "2026-10-18T00:00:00Z".to_string(),
+        })
+        .await
+        .unwrap();
+
+    let (status, body) = call(
+        &router,
+        "GET",
+        "/runs/r1",
+        &[Cred::Bearer("token-p1")],
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "a publish-job token reads: {body}");
+
+    let (status, _) = call(
+        &router,
+        "GET",
+        "/runs/r1",
+        &[Cred::Bearer("token-p1-not")],
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a near-miss is no identity"
+    );
+
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/snapshot/refresh",
+        &[Cred::Bearer("token-p1")],
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn a_job_token_reads_on_a_verifying_backend_too() {
+    // In-cluster callers never cross the edge, so they carry no assertion: their
+    // token is their identity whatever mode the backend runs in.
+    let (_dir, _state, router) = verifying_backend().await;
+    let (status, body) = call(
+        &router,
+        "GET",
+        "/runs/r1",
+        &[Cred::Bearer("token-j1")],
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "a job token reads: {body}");
+}
+
 // ---- Verifying mode -------------------------------------------------------
 
 #[tokio::test]

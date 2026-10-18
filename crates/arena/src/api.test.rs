@@ -54,8 +54,30 @@ fn version_json(slug: &str, version: &str) -> serde_json::Value {
     })
 }
 
+/// The service token the stub backend takes.
+const SERVICE_TOKEN: &str = "svc-token";
+
+/// Refuse a request that does not present [`SERVICE_TOKEN`] with `401`, as the
+/// backend refuses a caller without an identity.
+async fn require_service_token(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let expected = format!("Bearer {SERVICE_TOKEN}");
+    let presented = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+    if presented == Some(expected.as_str()) {
+        next.run(request).await
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
+}
+
 /// Spawn the stub backend on an ephemeral port and return its base URL. It answers
-/// the four endpoints the arena fetches controller inputs from.
+/// the four endpoints the arena fetches controller inputs from, to a caller
+/// presenting [`SERVICE_TOKEN`] only.
 async fn spawn_stub_backend() -> String {
     let app = Router::new()
         .route(
@@ -98,7 +120,8 @@ async fn spawn_stub_backend() -> String {
                     }))
                 },
             ),
-        );
+        )
+        .layer(axum::middleware::from_fn(require_service_token));
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
@@ -110,10 +133,17 @@ async fn spawn_stub_backend() -> String {
     format!("http://{addr}")
 }
 
-/// Build the arena router pointed at `backend_url`, with the given executor cap.
+/// Build the arena router pointed at `backend_url`, with the given executor cap,
+/// presenting [`SERVICE_TOKEN`] to the backend.
 fn app(backend_url: &str, cap: usize) -> Router {
+    app_with_token(backend_url, cap, Some(SERVICE_TOKEN))
+}
+
+/// Build the arena router pointed at `backend_url`, presenting `token` (or none).
+fn app_with_token(backend_url: &str, cap: usize, token: Option<&str>) -> Router {
     let state = AppState {
         backend_url: Arc::new(backend_url.trim_end_matches('/').to_string()),
+        backend_service_token: token.map(|t| Arc::new(t.to_string())),
         tournaments: TournamentRegistry::new(),
         executor: Arc::new(MatchExecutor::new(cap)),
     };
@@ -226,4 +256,35 @@ async fn a_run_local_controller_is_rejected_400() {
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_match_without_the_service_token_is_refused_by_the_backend() {
+    // The backend answers no caller without an identity, reads included, so an arena
+    // configured without the service token cannot even resolve the version.
+    let backend = spawn_stub_backend().await;
+    let app = app_with_token(&backend, 2, None);
+
+    let body = serde_json::json!({
+        "testCase": "pacman",
+        "version": "1.0.0",
+        "red": { "id": "random", "kind": "baseline" },
+        "blue": { "id": "greedy-raider", "kind": "baseline" }
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/matches")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("401"),
+        "the backend's refusal is surfaced: {text}"
+    );
 }

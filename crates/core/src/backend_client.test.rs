@@ -1169,6 +1169,71 @@ async fn ingest_reports_every_line_and_closes_with_the_summary() {
     );
 }
 
+/// Whether a recorded request head carries `Authorization: Bearer <token>`.
+fn presents_bearer(request: &str, token: &str) -> bool {
+    let expected = format!("authorization: bearer {token}");
+    request
+        .lines()
+        .any(|line| line.trim().to_ascii_lowercase() == expected)
+}
+
+#[tokio::test]
+async fn ingest_presents_the_clients_token() {
+    let (base, request) =
+        serve_ingest_feed(&[r#"{"event":"done","total":0,"ingested":0,"skipped":0}"#]).await;
+    let mut on_progress = |_: &IngestProgress| {};
+    HttpBackendClient::new(base)
+        .with_token(Some("svc-token".to_string()))
+        .ingest(&[], false, IngestMode::Absent, &mut on_progress)
+        .await
+        .expect("the scan completes");
+
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(
+        presents_bearer(&request, "svc-token"),
+        "the ingest presents the service token: {request}"
+    );
+}
+
+#[tokio::test]
+async fn a_read_presents_the_clients_token() {
+    // Reads need an identity too, so the token rides every request, not only the
+    // mutating ones.
+    let (base, request) = serve_ingest_feed(&[r#"{"versions":["v1.0.0"]}"#]).await;
+    let versions = HttpBackendClient::new(base)
+        .with_token(Some("job-token".to_string()))
+        .versions("carom")
+        .await
+        .expect("the read succeeds");
+
+    assert_eq!(versions, vec!["v1.0.0".to_string()]);
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(
+        request.starts_with("GET /test-cases/carom/versions "),
+        "{request}"
+    );
+    assert!(
+        presents_bearer(&request, "job-token"),
+        "the read presents the token: {request}"
+    );
+}
+
+#[tokio::test]
+async fn a_client_without_a_token_sends_no_authorization() {
+    let (base, request) = serve_ingest_feed(&[r#"{"versions":[]}"#]).await;
+    HttpBackendClient::new(base)
+        .with_token(Some(String::new()))
+        .versions("carom")
+        .await
+        .expect("the read succeeds");
+
+    let request = request.lock().expect("the request is recorded").clone();
+    assert!(
+        !request.to_ascii_lowercase().contains("authorization:"),
+        "an empty token sends no header: {request}"
+    );
+}
+
 #[tokio::test]
 async fn a_whole_checkout_scan_names_no_targets() {
     let (base, request) =

@@ -1,11 +1,12 @@
 //! Arena-service configuration, sourced entirely from environment variables — the
-//! same pattern the backend, auth, and artifact services use, so the service can be
+//! same pattern the backend and artifact services use, so the service can be
 //! driven from a systemd unit or a container with no config file.
 //!
 //! | Variable | Required | Purpose | Default |
 //! | --- | --- | --- | --- |
 //! | `TCAB_ARENA_BIND` | no | Address the Axum server binds. | `0.0.0.0:8791` |
 //! | `TCAB_BACKEND_URL` | no | The backend the service fetches controller inputs from and persists finished tournaments + replays back to. | `http://127.0.0.1:8787` |
+//! | `TCAB_BACKEND_SERVICE_TOKEN` | no | The shared service token the service presents on every backend call: every read needs an identity, and persisting a tournament takes the service token. Unset, the service presents none and the backend refuses its calls. | — |
 //! | `TCAB_ARENA_MAX_CONCURRENT` | no | The capacity guard: how many matches/tournaments may run their CPU-bound wasm concurrently before the service rejects with `503`. | `2` |
 //!
 //! A bind on `0.0.0.0` is deliberate: like the artifact service the arena is a
@@ -37,6 +38,11 @@ pub struct Config {
     /// listing) and persists finished tournaments + replays back to it. The arena
     /// holds no state of its own.
     pub backend_url: String,
+    /// The shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the service presents
+    /// as `Authorization: Bearer` on every backend call, reads included, or `None`
+    /// when unset. The backend's routes for persisting a tournament take it, and
+    /// every other route needs an identity.
+    pub backend_service_token: Option<String>,
     /// The capacity guard (`TCAB_ARENA_MAX_CONCURRENT`): the maximum number of
     /// matches/tournaments whose CPU-bound wasm may run concurrently. At capacity
     /// the service rejects with `503` rather than queueing, so a flood can't starve
@@ -48,13 +54,21 @@ impl Config {
     /// Resolve the configuration from the process environment. Every variable has a
     /// default, so the service starts with no configuration for local dev.
     pub fn from_env() -> Self {
+        Self::from_lookup(|key| std::env::var(key).ok())
+    }
+
+    /// Resolve the configuration from `lookup`, which answers a variable's value
+    /// or `None` when it is unset. An empty value counts as unset.
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Self {
+        let var = |key: &str| lookup(key).filter(|v| !v.is_empty());
         Self {
-            bind: env_or("TCAB_ARENA_BIND", DEFAULT_BIND),
-            backend_url: env_or("TCAB_BACKEND_URL", DEFAULT_BACKEND_URL)
+            bind: var("TCAB_ARENA_BIND").unwrap_or_else(|| DEFAULT_BIND.to_string()),
+            backend_url: var("TCAB_BACKEND_URL")
+                .unwrap_or_else(|| DEFAULT_BACKEND_URL.to_string())
                 .trim_end_matches('/')
                 .to_string(),
-            max_concurrent_matches: std::env::var("TCAB_ARENA_MAX_CONCURRENT")
-                .ok()
+            backend_service_token: var("TCAB_BACKEND_SERVICE_TOKEN"),
+            max_concurrent_matches: var("TCAB_ARENA_MAX_CONCURRENT")
                 .and_then(|v| v.parse::<usize>().ok())
                 .filter(|n| *n > 0)
                 .unwrap_or(DEFAULT_MAX_CONCURRENT),
@@ -62,10 +76,6 @@ impl Config {
     }
 }
 
-/// Read an environment variable, falling back to a default when unset or empty.
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| default.to_string())
-}
+#[cfg(test)]
+#[path = "config.test.rs"]
+mod tests;

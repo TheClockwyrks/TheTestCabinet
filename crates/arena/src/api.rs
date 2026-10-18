@@ -51,6 +51,9 @@ pub struct AppState {
     /// The backend base URL (no trailing slash). Every handler builds a fresh
     /// [`HttpBackendClient`] from it to resolve controllers and publish tournaments.
     pub backend_url: Arc<String>,
+    /// The shared service token presented on every backend call, or `None` when
+    /// the service was configured without one.
+    pub backend_service_token: Option<Arc<String>>,
     /// The per-pod tournament-job tracker.
     pub tournaments: TournamentRegistry,
     /// Bounds concurrent CPU-bound match/tournament execution.
@@ -58,9 +61,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// A backend client pointed at the configured backend.
+    /// A backend client pointed at the configured backend, presenting the service
+    /// token on every call: reads need an identity too, and persisting a tournament
+    /// takes the service token.
     fn backend(&self) -> HttpBackendClient {
         HttpBackendClient::new((*self.backend_url).clone())
+            .with_token(self.backend_service_token.as_deref().cloned())
     }
 }
 

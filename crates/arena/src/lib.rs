@@ -65,6 +65,7 @@ pub fn build(config: Config) -> ArenaService {
     let bind = config.bind.clone();
     let state = AppState {
         backend_url: Arc::new(config.backend_url),
+        backend_service_token: config.backend_service_token.map(Arc::new),
         tournaments: TournamentRegistry::new(),
         executor: Arc::new(MatchExecutor::new(config.max_concurrent_matches)),
     };

@@ -144,21 +144,22 @@ impl JobClient {
 
     /// Poll this job's current lifecycle state (`GET /jobs/{id}`). This is how the
     /// driver observes an operator cancellation while it runs: the backend flips the
-    /// job to `canceled`, and the next poll here sees it. Reads are open, so this
-    /// needs no token. `None` means the backend does not know the job (a `404`),
+    /// job to `canceled`, and the next poll here sees it. Like every call, it presents
+    /// the per-job token: reads need an identity too. `None` means the backend does not know the job (a `404`),
     /// which the caller treats as "nothing to act on"; a transport, HTTP, or decode
     /// error is surfaced so the caller can simply retry on its next tick.
     pub async fn poll_state(&self) -> Result<Option<JobState>, ClientError> {
         let url = format!("{}/jobs/{}", self.base_url, self.job_id);
-        let response =
-            self.http
-                .get(url)
-                .send()
-                .await
-                .map_err(|source| ClientError::Transport {
-                    what: "status poll",
-                    source,
-                })?;
+        let response = self
+            .http
+            .get(url)
+            .bearer_auth(&self.job_token)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "status poll",
+                source,
+            })?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -269,3 +270,7 @@ impl JobClient {
         format!("{}/jobs/{}/{suffix}", self.base_url, self.job_id)
     }
 }
+
+#[cfg(test)]
+#[path = "client.test.rs"]
+mod tests;

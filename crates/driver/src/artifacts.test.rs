@@ -32,7 +32,12 @@ use super::{
 struct Upload {
     path: String,
     body_len: usize,
+    /// The request's `Authorization` header value, when it carried one.
+    authorization: Option<String>,
 }
+
+/// The per-job token every mirror upload is expected to present.
+const TOKEN: &str = "job-tok-1";
 
 /// A stub backend that records each POST the upload makes and answers `204`. It
 /// loops per connection so reqwest's keep-alive reuse of one socket for several
@@ -128,6 +133,11 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Option<Upload> {
                 .map(|v| v.trim().parse::<usize>().unwrap_or(0))
         })
         .unwrap_or(0);
+    let authorization = head.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.eq_ignore_ascii_case("authorization")
+            .then(|| value.trim().to_string())
+    });
     while buf.len() < header_end + content_length {
         let n = socket.read(&mut chunk).await.ok()?;
         if n == 0 {
@@ -138,7 +148,21 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Option<Upload> {
     Some(Upload {
         path,
         body_len: content_length,
+        authorization,
     })
+}
+
+/// Every mirror upload presents the driver's per-job token: the backend's run-media
+/// upload routes take it, and nothing reaches the backend without an identity.
+fn assert_every_upload_presents_the_job_token(uploads: &[Upload]) {
+    for upload in uploads {
+        assert_eq!(
+            upload.authorization.as_deref(),
+            Some(format!("Bearer {TOKEN}").as_str()),
+            "{} presents the per-job token",
+            upload.path,
+        );
+    }
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -261,11 +285,12 @@ async fn uploads_controller_and_every_replay_to_their_backend_paths() {
         ],
     }));
 
-    upload_adversarial_to_backend(&backend_url, &rec, out.path())
+    upload_adversarial_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
     let uploads = received.lock().unwrap().clone();
+    assert_every_upload_presents_the_job_token(&uploads);
     let paths: Vec<&str> = uploads.iter().map(|u| u.path.as_str()).collect();
     assert!(
         paths.contains(&"/runs/run-1/asset/replay.json"),
@@ -317,7 +342,7 @@ async fn controller_uploads_before_replays_so_a_rejected_replay_cannot_drop_it()
 
     // The rejected replay surfaces as an error (the driver logs it), but the
     // controller was already uploaded before the replay was attempted.
-    let result = upload_adversarial_to_backend(&backend_url, &rec, out.path()).await;
+    let result = upload_adversarial_to_backend(&backend_url, TOKEN, &rec, out.path()).await;
     assert!(result.is_err(), "the rejected replay surfaces as an error");
 
     let paths: Vec<String> = received
@@ -341,7 +366,7 @@ async fn non_adversarial_run_uploads_nothing() {
     let (backend_url, received) = stub_backend().await;
     let out = TempDir::new().unwrap();
 
-    upload_adversarial_to_backend(&backend_url, &record(None), out.path())
+    upload_adversarial_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("no-op succeeds");
 
@@ -373,7 +398,7 @@ async fn missing_files_are_skipped_without_failing() {
         replays: vec![replay_entry("border-soldier", "replay.json")],
     }));
 
-    upload_adversarial_to_backend(&backend_url, &rec, out.path())
+    upload_adversarial_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("missing files are skipped, not fatal");
 
@@ -423,11 +448,12 @@ async fn uploads_each_present_proof_under_its_served_file_name() {
         proof("gameplay", "proof/gameplay.mp4", MediaKind::Video, true),
     ]);
 
-    upload_proofs_to_backend(&backend_url, &rec, out.path())
+    upload_proofs_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
     let uploads = received.lock().unwrap().clone();
+    assert_every_upload_presents_the_job_token(&uploads);
     let paths: Vec<&str> = uploads.iter().map(|u| u.path.as_str()).collect();
     assert!(
         paths.contains(&"/runs/run-1/proof/title-screen.png"),
@@ -503,7 +529,7 @@ async fn uploads_each_present_validation_output_under_its_flat_name() {
         },
     ]);
 
-    upload_validation_to_backend(&backend_url, &rec, out.path())
+    upload_validation_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -557,7 +583,7 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
         }],
     }];
 
-    upload_validation_to_backend(&backend_url, &rec, out.path())
+    upload_validation_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -604,7 +630,7 @@ async fn mirrors_the_recordings_shared_image_store_alongside_the_declared_output
         actual_present: true,
     }]);
 
-    upload_validation_to_backend(&backend_url, &rec, out.path())
+    upload_validation_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -662,7 +688,7 @@ async fn skips_validation_outputs_the_build_did_not_produce() {
         },
     ]);
 
-    upload_validation_to_backend(&backend_url, &rec, out.path())
+    upload_validation_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -694,7 +720,7 @@ async fn served_name_extension_lowercases_and_defaults_to_png() {
         proof("screenshot", "proof/screenshot", MediaKind::Image, true),
     ]);
 
-    upload_proofs_to_backend(&backend_url, &rec, out.path())
+    upload_proofs_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -733,7 +759,7 @@ async fn skips_proofs_the_agent_did_not_produce() {
         proof("gameplay", "proof/gameplay.mp4", MediaKind::Video, false),
     ]);
 
-    upload_proofs_to_backend(&backend_url, &rec, out.path())
+    upload_proofs_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -764,7 +790,7 @@ async fn present_proof_missing_on_disk_is_skipped_without_failing() {
         true,
     )]);
 
-    upload_proofs_to_backend(&backend_url, &rec, out.path())
+    upload_proofs_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("a missing-on-disk proof is skipped, not fatal");
 
@@ -779,7 +805,7 @@ async fn run_with_no_proofs_uploads_nothing() {
     let (backend_url, received) = stub_backend().await;
     let out = TempDir::new().unwrap();
 
-    upload_proofs_to_backend(&backend_url, &record_with_proofs(vec![]), out.path())
+    upload_proofs_to_backend(&backend_url, TOKEN, &record_with_proofs(vec![]), out.path())
         .await
         .expect("no-op succeeds");
 
@@ -834,11 +860,12 @@ async fn uploads_a_single_sprite_under_bare_served_names() {
         detail: None,
     });
 
-    upload_assets_to_backend(&backend_url, &rec, out.path())
+    upload_assets_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
     let uploads = received.lock().unwrap().clone();
+    assert_every_upload_presents_the_job_token(&uploads);
     let paths: Vec<&str> = uploads.iter().map(|u| u.path.as_str()).collect();
     assert!(
         paths.contains(&"/runs/run-1/asset/regenerated.png"),
@@ -890,7 +917,7 @@ async fn uploads_a_sprite_sheet_with_per_frame_index_suffixes() {
         detail: None,
     });
 
-    upload_assets_to_backend(&backend_url, &rec, out.path())
+    upload_assets_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("upload succeeds");
 
@@ -935,7 +962,7 @@ async fn asset_frame_artifacts_missing_on_disk_are_skipped_without_failing() {
         detail: None,
     });
 
-    upload_assets_to_backend(&backend_url, &rec, out.path())
+    upload_assets_to_backend(&backend_url, TOKEN, &rec, out.path())
         .await
         .expect("missing frame artifacts are skipped, not fatal");
 
@@ -959,7 +986,7 @@ async fn non_asset_run_uploads_no_asset_media() {
 
     // A run with no `validation.asset` (here, a plain non-asset record) is a no-op —
     // an adversarial run's replays are mirrored separately.
-    upload_assets_to_backend(&backend_url, &record(None), out.path())
+    upload_assets_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("no-op succeeds");
 
@@ -999,11 +1026,12 @@ async fn uploads_the_assembled_replay_record_from_the_run_tree_root() {
     let bytes = b"\x1f\x8b\x08\x00assembled-replay".to_vec();
     write_replay_artifact(out.path(), &bytes);
 
-    upload_replay_to_backend(&backend_url, &record(None), out.path())
+    upload_replay_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("the replay upload succeeds");
 
     let uploads = received.lock().unwrap().clone();
+    assert_every_upload_presents_the_job_token(&uploads);
     assert_eq!(
         uploads.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
         vec!["/runs/run-1/replay".to_string()],
@@ -1022,7 +1050,7 @@ async fn a_run_that_assembled_no_replay_uploads_nothing() {
     let out = TempDir::new().unwrap();
 
     // The common case by far: session capture is off, so the assembly stage wrote nothing.
-    upload_replay_to_backend(&backend_url, &record(None), out.path())
+    upload_replay_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("no-op succeeds");
 
@@ -1053,11 +1081,12 @@ async fn uploads_the_code_analysis_document_from_the_run_tree_root() {
     let bytes = b"\x1f\x8b\x08\x00code-analysis".to_vec();
     write_code_analysis_artifact(out.path(), &bytes);
 
-    upload_code_analysis_to_backend(&backend_url, &record(None), out.path())
+    upload_code_analysis_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("the code-analysis upload succeeds");
 
     let uploads = received.lock().unwrap().clone();
+    assert_every_upload_presents_the_job_token(&uploads);
     assert_eq!(
         uploads.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
         vec!["/runs/run-1/code-analysis".to_string()],
@@ -1077,7 +1106,7 @@ async fn a_run_with_no_code_analysis_uploads_nothing() {
 
     // A run collected before the analyzer shipped, or one whose tree never reached the
     // host: absence is ordinary, not a failure.
-    upload_code_analysis_to_backend(&backend_url, &record(None), out.path())
+    upload_code_analysis_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("no-op succeeds");
 
@@ -1120,7 +1149,7 @@ async fn uploads_every_showcase_file_except_the_manifest() {
     let oversized = vec![0u8; (test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES + 1) as usize];
     write_impl_file(out.path(), "showcase/huge.png", &oversized);
 
-    upload_showcase_to_backend(&backend_url, &record_with_showcase(), out.path())
+    upload_showcase_to_backend(&backend_url, TOKEN, &record_with_showcase(), out.path())
         .await
         .expect("upload succeeds");
 
@@ -1151,7 +1180,7 @@ async fn run_without_a_captured_showcase_uploads_nothing() {
     // nothing serves them without the record's description and carousel.
     write_impl_file(out.path(), "showcase/title.png", b"png:title");
 
-    upload_showcase_to_backend(&backend_url, &record(None), out.path())
+    upload_showcase_to_backend(&backend_url, TOKEN, &record(None), out.path())
         .await
         .expect("upload succeeds");
 
