@@ -620,9 +620,11 @@ impl RemoteBackend {
     pub fn detail_script(&self, versions: &[(String, String)]) -> String {
         let inner = format!(
             "for path in \"$@\"; do \
-             status=$(curl -sS -o /tmp/tcab-detail -w \"%{{http_code}}\" {AUTHORIZATION} \"{BACKEND}/test-suites/$path\") || status=000; \
+             out=$(mktemp); \
+             status=$(curl -sS -o \"$out\" -w \"%{{http_code}}\" {AUTHORIZATION} \"{BACKEND}/test-suites/$path\") || status=000; \
              printf \"{DETAIL_MARKER} %s %s \" \"$path\" \"$status\"; \
-             tr -d \"\\n\" < /tmp/tcab-detail 2>/dev/null || true; \
+             tr -d \"\\n\" < \"$out\" 2>/dev/null || true; \
+             rm -f \"$out\"; \
              echo; \
              done"
         );
@@ -637,11 +639,13 @@ impl RemoteBackend {
     /// The command posting each attached archive.
     pub fn upload_script(&self, archives: &[ReferenceBuildArchive]) -> String {
         let inner = format!(
-            "status=$(curl -sS -o /tmp/tcab-upload -w \"%{{http_code}}\" -X PUT {AUTHORIZATION} \
+            "out=$(mktemp); \
+             status=$(curl -sS -o \"$out\" -w \"%{{http_code}}\" -X PUT {AUTHORIZATION} \
              -H \"content-type: application/gzip\" --data-binary @- \
              \"{BACKEND}/suites/$2/versions/$3/reference-builds/$4\") || status=000; \
              printf \"{UPLOAD_MARKER} %s %s \" \"$1\" \"$status\"; \
-             tr -d \"\\n\" < /tmp/tcab-upload 2>/dev/null || true; \
+             tr -d \"\\n\" < \"$out\" 2>/dev/null || true; \
+             rm -f \"$out\"; \
              echo"
         );
         let mut script = String::new();
