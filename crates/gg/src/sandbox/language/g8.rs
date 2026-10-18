@@ -75,7 +75,10 @@ use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::RunEnding;
-use crate::sandbox::{ProgramScope, SandboxLimits, run_program};
+use crate::sandbox::{
+    PrepareFailure, PreparedProgram, ProgramScope, SandboxLimits, run_program,
+    run_program_prepared_by,
+};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 /// The five shapes a program's runtime failure takes, from
@@ -382,7 +385,13 @@ pub(super) fn responder(name: &str, args: &Value) -> ToolOutcome {
 /// Nothing here is a stand-in. The alternative — each arm's substrate harness, which leaves out one
 /// production step or another for reasons of its own — would make eleven different roads and one
 /// gate, which is the arrangement this module exists to replace.
-fn drive(arm: GgProgramLanguage, program: &str) -> Read {
+///
+/// With `stored`, the one thing that differs is **where the preparation was done**: the arm's real
+/// prepare step built it, in this process or in an earlier one, and the test suite's
+/// [store of prepared programs](crate::sandbox::prepared_cache) hands back what it built — the
+/// component, or the model-facing failure. The run is [`run_program`]'s own body through
+/// [`run_program_prepared_by`]. See [`gate_stored`].
+fn drive(arm: GgProgramLanguage, program: &str, stored: Option<Stored>) -> Read {
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
     let operations = granted_operations(&all_operations(), false);
@@ -392,15 +401,23 @@ fn drive(arm: GgProgramLanguage, program: &str) -> Read {
         modules: &[],
         ending: RunEnding::None,
     };
-    let (outcome, _api) = run_program(
-        crate::sandbox::language(arm),
-        program,
-        scope,
-        &crate::sandbox::AgentWorkspace::new(),
-        SandboxLimits::AMPLE,
-        None,
-        api,
-    );
+    let language = crate::sandbox::language(arm);
+    let (outcome, _api) = match stored {
+        None => run_program(
+            language,
+            program,
+            scope,
+            &crate::sandbox::AgentWorkspace::new(),
+            SandboxLimits::AMPLE,
+            None,
+            api,
+        ),
+        Some(stored) => {
+            run_program_prepared_by(language, scope, SandboxLimits::AMPLE, None, api, || {
+                stored(program)
+            })
+        }
+    };
     Read {
         attached: outcome
             .result
@@ -426,8 +443,33 @@ struct Read {
     attached: Option<String>,
 }
 
+/// A compiled arm's real preparation of a program, as the test suite's
+/// [store of prepared programs](crate::sandbox::prepared_cache) keeps it: the component the arm's
+/// prepare step built, or the model-facing failure it answered with.
+pub(super) type Stored = fn(&str) -> Result<PreparedProgram, PrepareFailure>;
+
 /// Drive `arm`'s `cases` through the production path and hold every one of them to G8.
 pub(super) fn gate(arm: GgProgramLanguage, cases: &[Case]) {
+    hold(arm, cases, None);
+}
+
+/// [`gate`] for a compiled arm whose preparations are taken from the test suite's
+/// [store of prepared programs](crate::sandbox::prepared_cache) by `stored`.
+///
+/// For the arms whose compiler is a cold toolchain — Kotlin's JVM, `swiftc` — and whose five
+/// programs would otherwise be five cold builds in every process, each followed, on Swift, by a
+/// Cranelift compile of bytes no earlier process produced. A stored preparation is still the arm's
+/// **real** one, built by its production prepare step from the same source, and it still runs
+/// through the turn path's own evaluation and is read back through the production renderer; what
+/// the gate asserts is about that run and that reading, so where the build happened changes none of
+/// it. The build itself — that the arm compiles a program in a workspace of its own — is the
+/// isolation gate's subject (`language/isolation.rs`), which never reads the store.
+pub(super) fn gate_stored(arm: GgProgramLanguage, cases: &[Case], stored: Stored) {
+    hold(arm, cases, Some(stored));
+}
+
+/// The gate itself, over whichever preparation [`gate`] or [`gate_stored`] chose.
+fn hold(arm: GgProgramLanguage, cases: &[Case], stored: Option<Stored>) {
     for shape in Shape::ALL {
         assert!(
             cases.iter().any(|case| case.shape == shape),
@@ -463,7 +505,7 @@ pub(super) fn gate(arm: GgProgramLanguage, cases: &[Case]) {
     // show whoever is closing a hole one cell at a time when the interesting thing is the row.
     let mut wrong: Vec<String> = Vec::new();
     for case in cases {
-        let read = drive(arm, case.program);
+        let read = drive(arm, case.program, stored);
         if std::env::var_os("GG_G8_SHOW").is_some() {
             eprintln!("=== {arm} {} ===\n{}", case.shape.label(), quoted(&read));
         }

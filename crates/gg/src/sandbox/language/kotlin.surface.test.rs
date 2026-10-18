@@ -24,12 +24,12 @@ use test_cabinet_core::gg::{
     CAPABILITY_READ_FILE,
 };
 
-use super::compile::{compile_module, compile_program};
 use super::substrate::{
-    evaluate_as, evaluate_cataloguing, evaluate_closing_docviews, evaluate_refusing,
-    evaluate_with_program, logs, prepare, prepare_with, trap, whole,
+    compiled, compiled_module, evaluate_as, evaluate_cataloguing, evaluate_closing_docviews,
+    evaluate_refusing, evaluate_with_program, logs, prepare, prepare_with, trap, whole,
 };
 use crate::ending::{Ending, EndingRole};
+use crate::sandbox::CodeModule;
 use crate::sandbox::export_names;
 use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
@@ -40,7 +40,6 @@ use crate::sandbox::operations::{
     VIEWS_OPEN_TEXT,
 };
 use crate::sandbox::outcome::SandboxOutcome;
-use crate::sandbox::{CodeModule, PrepareContext};
 use crate::tools::{
     AgentStatusData, ApiData, ArchiveSearchData, SubagentResultData, ToolFailure, ToolOutcome,
 };
@@ -1043,7 +1042,7 @@ fn what_this_arm_does_not_carry_is_recorded_rather_than_discovered() {
             "Thread",
         ),
     ] {
-        let failure = compile_program(source, &[], &PrepareContext::detached())
+        let failure = compiled(source, &[])
             .err()
             .unwrap_or_else(|| panic!("this arm compiled `{source}`, which it must not"));
         let rendered = failure.to_string();
@@ -1099,10 +1098,9 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 
     // AND THE ONE THAT DOES NOT: the short name with neither the line nor the path, which is what an
     // injected scope would have made work.
-    let failure = compile_program(
+    let failure = compiled(
         &whole("", "    gg.log(readFile(\"a.md\").toString())\n"),
         &[],
-        &PrepareContext::detached(),
     )
     .expect_err("a name nothing brought into scope is refused");
     let rendered = failure.to_string();
@@ -1112,13 +1110,12 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     );
 
     // The same for a type, because a signature names types as well as calls.
-    let failure = compile_program(
+    let failure = compiled(
         &whole(
             "",
             "    val code: ApiErrorCode? = null\n    gg.log(code.toString())\n",
         ),
         &[],
-        &PrepareContext::detached(),
     )
     .expect_err("a type nothing brought into scope is refused");
     assert!(
@@ -1140,7 +1137,7 @@ fn a_code_module_is_reached_by_a_path_the_compiler_checks() {
     // What this drives is the whole of what that buys: every return type reached without a reading
     // function, a value handed back through a real crossing, state the module really holds between
     // two calls, and a name that does not exist refused by the COMPILER rather than at run time.
-    let prepared = compile_module(
+    let prepared = compiled_module(
         "helpers",
         r#"private val seen: MutableList<String> = mutableListOf()
 
@@ -1158,7 +1155,6 @@ fun remember(word: String) {
 
 fun recalled(): String = seen.joinToString("+")
 "#,
-        &PrepareContext::detached(),
     )
     .expect("the Kotlin toolchain compiles a code module");
     assert_eq!(
@@ -1206,12 +1202,8 @@ fun recalled(): String = seen.joinToString("+")
     // AND A NAME THAT IS NOT THERE IS THE COMPILER'S REFUSAL, on the turn that wrote it, rather than
     // a `NOT_FOUND` at run time. That is the whole of what a checked path buys a model over a lookup
     // by string.
-    let failure = compile_program(
-        &whole("", "    lib.helpers.absent()\n"),
-        &modules,
-        &PrepareContext::detached(),
-    )
-    .expect_err("a name the module does not export is refused");
+    let failure = compiled(&whole("", "    lib.helpers.absent()\n"), &modules)
+        .expect_err("a name the module does not export is refused");
     let rendered = failure.to_string();
     assert!(
         rendered.contains("Program.kt:2") && rendered.contains("absent"),

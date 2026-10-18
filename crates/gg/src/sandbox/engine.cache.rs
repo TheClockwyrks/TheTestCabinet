@@ -30,7 +30,10 @@
 //! each program's debug information, so two compiles of one Swift program are different bytes, and
 //! at ~7 MB a program they would otherwise be the bulk of the directory. The other compiled arms
 //! (Rust, C++, Java, Kotlin) produce byte-identical artifacts for identical programs, so a program
-//! a later test or a later run compiles again is served from here like a guest is.
+//! a later test or a later run compiles again is served from here like a guest is. So is a Swift
+//! program a test takes from the
+//! [store of prepared programs](crate::sandbox::prepared_cache): the store hands every process the
+//! bytes of the one compile it kept, so those are seen twice too.
 //!
 //! # Concurrency
 //!
@@ -60,8 +63,12 @@ use super::SandboxError;
 
 /// How many bytes of stored entries the directory may hold before the least recently used are
 /// removed. Every embedded guest together is under 200 MB per build; the rest of the ceiling is
-/// room for the compiled arms' programs and for a few builds' worth of guests.
-const MAX_STORED_BYTES: u64 = 4 << 30;
+/// room for the compiled arms' programs and for a few builds' worth of guests. The Swift arm's
+/// programs set the size: each compiles to ~36 MB, and the
+/// [store of prepared programs](crate::sandbox::prepared_cache) hands every test process the same
+/// bytes for one, so a build's couple of hundred Swift fixtures are entries here too — ~7 GB of
+/// them, which a smaller ceiling would evict before the next test that asks.
+const MAX_STORED_BYTES: u64 = 16 << 30;
 
 /// How long a first-sighting marker is kept before a prune removes it. A marker whose bytes are
 /// never compiled again — every Swift program's — would otherwise accumulate forever.

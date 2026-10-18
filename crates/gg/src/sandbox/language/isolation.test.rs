@@ -618,6 +618,48 @@ fn a_pooled_daemon_survives_what_the_shared_build_strategy_did_not() {
 // The gate's own reporting
 // ---------------------------------------------------------------------------------------------
 
+/// **The gate warms a preparation once, before either phase**, as a run warms a language before its
+/// first agent compiles — and the warm-up is not one of the preparations it judges.
+#[test]
+fn a_preparation_is_warmed_once_before_either_phase() {
+    struct Counted {
+        /// Whether each call so far was the warm-up (`true`) or a preparation (`false`), in order.
+        calls: Mutex<Vec<bool>>,
+    }
+
+    impl Preparation for Counted {
+        fn describe(&self) -> String {
+            "a preparation that records its calls".to_string()
+        }
+
+        fn source(&self, marker: &str) -> String {
+            format!("program {marker}\n")
+        }
+
+        fn prepare(&self, source: &str, _context: &PrepareContext) -> Result<String, String> {
+            self.calls.lock().expect("unpoisoned").push(false);
+            Ok(source.to_string())
+        }
+
+        fn warm(&self) {
+            self.calls.lock().expect("unpoisoned").push(true);
+        }
+    }
+
+    let counted = Counted {
+        calls: Mutex::new(Vec::new()),
+    };
+    let breaches = breaches(&counted);
+    assert!(breaches.is_empty(), "{}", render(&breaches));
+    let calls = counted.calls.into_inner().expect("unpoisoned");
+    let mut expected = vec![true];
+    expected.extend(std::iter::repeat_n(false, 2 * WIDTH));
+    assert_eq!(
+        calls, expected,
+        "one warm-up, then every preparation of both phases"
+    );
+}
+
 /// A preparation that cannot handle its own input is reported as a **baseline** failure and nothing
 /// else, so a broken fixture or a language that cannot prepare its own SDK's call is never mistaken
 /// for a corruption.

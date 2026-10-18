@@ -104,6 +104,9 @@ mod locate;
 mod membrane;
 mod operations;
 mod outcome;
+// The test suite's cross-process store of prepared programs: tests alone, never an arm.
+#[cfg(test)]
+mod prepared_cache;
 pub(crate) mod signatures;
 
 pub use invoker::OperationApi;
@@ -366,6 +369,43 @@ pub fn run_program<A: OperationApi>(
     deadline: Option<Instant>,
     api: A,
 ) -> (SandboxOutcome, A) {
+    run_prepared_by(language, scope, limits, deadline, api, || {
+        prepare_program(language, program, scope.modules, workspace)
+    })
+}
+
+/// [`run_program`] with its prepare step supplied by the caller: everything else — the forced
+/// fault, the compile reading, the rejected-program outcome and the evaluation — is the turn path's
+/// own, because it is the same function.
+///
+/// For tests only, and only for a test whose claim is about the **run** of a program a compiled arm
+/// really built: G8 (`language/g8.rs`) hands it a preparation the test suite's
+/// [store of prepared programs](prepared_cache) kept from an earlier process, so the five programs
+/// it drives are not five cold compiles in every process. Nothing in an arm, in [`run_program`] or
+/// in the isolation gate calls it.
+#[cfg(test)]
+pub(crate) fn run_program_prepared_by<A: OperationApi>(
+    language: &'static dyn ProgramLanguage,
+    scope: ProgramScope<'_>,
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    api: A,
+    prepare: impl FnOnce() -> Result<PreparedProgram, PrepareFailure>,
+) -> (SandboxOutcome, A) {
+    run_prepared_by(language, scope, limits, deadline, api, prepare)
+}
+
+/// The body of [`run_program`], with the preparation as a closure so that a test can supply its own
+/// (see `run_program_prepared_by`, which exists in tests only) and the turn path stays the one road
+/// both take.
+fn run_prepared_by<A: OperationApi>(
+    language: &'static dyn ProgramLanguage,
+    scope: ProgramScope<'_>,
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    api: A,
+    prepare: impl FnOnce() -> Result<PreparedProgram, PrepareFailure>,
+) -> (SandboxOutcome, A) {
     // A test may have armed one of the failures gg's own machinery would have to be broken to
     // produce; see `force_next_program_fault`. The `api` is handed straight back — this fault is a
     // stand-in for a before-start failure, which never runs the program and never touches state.
@@ -379,7 +419,7 @@ pub fn run_program<A: OperationApi>(
     // reading is taken around both outcomes because a rejected program is the one whose cost would
     // otherwise be reported as nothing.
     let started = Instant::now();
-    let prepared = prepare_program(language, program, scope.modules, workspace);
+    let prepared = prepare();
     let compile = language.prepare_compiles().then(|| started.elapsed());
     let prepared = match prepared {
         Ok(prepared) => prepared,
