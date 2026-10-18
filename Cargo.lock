@@ -5515,6 +5515,7 @@ name = "test-cabinet-dispatcher"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "axum",
  "k8s-openapi",
  "kube",
  "reqwest 0.12.28",

@@ -46,8 +46,7 @@ export type SnapshotIndex = {
    * (`documents/runs/`) — snapshot-independent, so it is the same string in every
    * generation. Informational: a reader resolves a run's document through the
    * `documentKey` on its summary, because the key carries a content digest and so
-   * cannot be composed from the run id. Operators and
-   * `scripts/recover-run-media-from-snapshot.sh` use it to scope a listing.
+   * cannot be composed from the run id. Operators use it to scope a listing.
    */
   runDocumentsPrefix: string;
   casesPrefix: string;

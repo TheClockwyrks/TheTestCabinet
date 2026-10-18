@@ -231,6 +231,7 @@ impl BackendClient {
         let response = self
             .http
             .get(format!("{}/jobs/{job_id}", self.base_url))
+            .bearer_auth(&self.service_token)
             .send()
             .await
             .map_err(|source| ClientError::Transport {
@@ -366,3 +367,7 @@ impl BackendClient {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "client.test.rs"]
+mod tests;
