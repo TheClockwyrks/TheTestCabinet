@@ -251,6 +251,52 @@ async fn a_local_review_is_attributed_to_the_local_identity() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(reviewers(&state).await, vec!["dev@local".to_string()]);
+
+    // Read back through the API: the run carries the review under the local
+    // identity, and that identity's own review list holds it.
+    let (status, run) = call(
+        &router,
+        "GET",
+        "/api/runs/r1",
+        &[Cred::LocalEmail("dev@local")],
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    let stored: Vec<&str> = run["reviews"]
+        .as_array()
+        .expect("the run lists its reviews")
+        .iter()
+        .filter_map(|review| review["reviewer"].as_str())
+        .collect();
+    assert_eq!(stored, vec!["dev@local"], "{run}");
+
+    let (status, mine) = call(
+        &router,
+        "GET",
+        "/api/account/reviews",
+        &[Cred::LocalEmail("dev@local")],
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{mine}");
+    assert_eq!(mine["total"], 1, "{mine}");
+    assert_eq!(
+        mine["reviews"][0]["review"]["reviewer"], "dev@local",
+        "{mine}"
+    );
+
+    // Another local identity sees the review on the run but not as its own.
+    let (status, theirs) = call(
+        &router,
+        "GET",
+        "/api/account/reviews",
+        &[Cred::LocalEmail("someone@local")],
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{theirs}");
+    assert_eq!(theirs["total"], 0, "{theirs}");
 }
 
 #[tokio::test]
