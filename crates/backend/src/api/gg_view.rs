@@ -36,7 +36,6 @@ mod tests;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -44,6 +43,10 @@ use crate::auth::AuthUser;
 use crate::error::ApiError;
 
 use super::AppState;
+
+pub use test_cabinet_contracts::backend_api::gg::{
+    GgDashboard, GgDashboardInput, GgDashboardPanel, GgSavedQuery, GgSavedQueryInput,
+};
 
 /// The longest a view's display name may be. Names are shown in a list and in a
 /// panel heading, so a pasted wall of text is rejected rather than truncated.
@@ -76,110 +79,6 @@ pub const DASHBOARD_COLUMNS: u32 = 12;
 /// The narrowest a panel may be. A panel spanning no column at all renders nothing,
 /// so a width of zero names no panel the board could draw.
 pub const MIN_PANEL_WIDTH: u32 = 1;
-
-/// An operator's saved TCQ query: a question worth keeping, with the range it was
-/// asked over.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgSavedQuery {
-    /// The query's opaque id (minted on create).
-    pub id: String,
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what the query answers. Empty when unset.
-    pub description: String,
-    /// The query as TCQ **source text**, exactly as it was typed — never its
-    /// compiled form, so `now-30d` re-resolves on every run.
-    pub query: String,
-    /// The time range the query was saved with, as the picker's token (`24h`, `7d`,
-    /// `30d`, `90d`, `1y`, `all`). Beside the text rather than inside it, because the
-    /// range is a control rather than an edit.
-    pub range_id: String,
-    /// RFC 3339 of when the query was last saved.
-    pub updated_at: String,
-}
-
-/// The create/update body for a saved query (the server assigns `id` and
-/// `updatedAt`).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgSavedQueryInput {
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what the query answers.
-    #[serde(default)]
-    pub description: String,
-    /// The query as TCQ source text.
-    pub query: String,
-    /// The time range token to save with it. Defaults to the whole corpus.
-    #[serde(default = "default_range")]
-    pub range_id: String,
-}
-
-/// One panel of a [dashboard](GgDashboard): a heading, a query, and how wide it sits.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgDashboardPanel {
-    /// The panel's heading.
-    pub title: String,
-    /// The panel's query, as TCQ **source text**. A copy, even when the panel was
-    /// built from a saved query — see the module docs.
-    pub query: String,
-    /// How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans.
-    /// A width outside `1..=12` is rejected on save, not corrected into range.
-    pub width: u32,
-}
-
-/// An operator's saved dashboard: panels of TCQ over one board-level range.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgDashboard {
-    /// The dashboard's opaque id (minted on create).
-    pub id: String,
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what the board is for. Empty when unset.
-    pub description: String,
-    /// The board's panels, in render order, at most [`MAX_DASHBOARD_PANELS`].
-    pub panels: Vec<GgDashboardPanel>,
-    /// The board-level time range, as the picker's token. **One per board** — a panel
-    /// never gets its own.
-    pub range_id: String,
-    /// RFC 3339 of when the dashboard was last saved.
-    pub updated_at: String,
-}
-
-/// The create/update body for a dashboard (the server assigns `id` and `updatedAt`).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgDashboardInput {
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what the board is for.
-    #[serde(default)]
-    pub description: String,
-    /// The board's panels, in render order.
-    #[serde(default)]
-    pub panels: Vec<GgDashboardPanel>,
-    /// The board-level time range token. Defaults to the whole corpus.
-    #[serde(default = "default_range")]
-    pub range_id: String,
-}
-
-/// The range token a view carries when none was sent: the whole corpus.
-///
-/// The same default Discover opens on, and for the same reason — gg runs are
-/// experiment material recorded in bursts, so a view that silently defaulted to a
-/// recent window would greet most operators with an empty result and no clue that the
-/// corpus is fine.
-fn default_range() -> String {
-    "all".to_string()
-}
 
 /// `GET /gg/saved-queries` — every saved query the token account owns, by name.
 pub async fn list_saved_queries(

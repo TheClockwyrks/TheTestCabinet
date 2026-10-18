@@ -385,7 +385,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .store
         .read_test_case_groups()?
         .into_iter()
-        .map(crate::api::TestCaseGroupOut::from)
+        .map(crate::api::test_case_group_out)
         .collect();
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())

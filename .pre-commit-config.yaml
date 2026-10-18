@@ -359,8 +359,8 @@ repos:
         pass_filenames: false
 
       # This project's own gates, each a script under ci/gates/. The ones too
-      # slow for a commit (contract-drift, workspace-test, validators-typecheck
-      # and site-build, which build the workspace or its packages first) have
+      # slow for a commit (workspace-test, validators-typecheck and site-build,
+      # which build the workspace or its packages first) have
       # no hook and run in the pipeline and in `make gate` only;
       # ci/tests/test_wiring.py names them.
       - id: frozen-paths

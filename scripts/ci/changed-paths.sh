@@ -107,7 +107,7 @@ reaches_rust() { # path
 		scripts/ci/audio-packs-check.mjs | scripts/ci/audio-store-image.sh | \
 			scripts/ci/build-context.sh | scripts/ci/build-image.sh | \
 			scripts/ci/ci-image-purge.sh | scripts/ci/ci-image.sh | \
-			scripts/ci/contract-drift.sh | scripts/ci/deploy-docs.sh | \
+			scripts/ci/deploy-docs.sh | \
 			scripts/ci/deploy-environment.sh | scripts/ci/deploy.sh | \
 			scripts/ci/gg-dist.sh | scripts/ci/gg-prebuilt.sh | \
 			scripts/ci/gg-version-gate.sh | scripts/ci/k8s-deploy-sets.sh | \

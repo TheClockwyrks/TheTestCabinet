@@ -187,7 +187,7 @@
 # The contracts packages extend the contracts repository's own base tsconfig.
 !/contracts/tsconfig.base.json
 !/contracts/packages/run-record
-!/packages/backend-api
+!/contracts/packages/backend-api
 !/packages/run-stats
 !/packages/ui
 !/packages/voxel-runtime

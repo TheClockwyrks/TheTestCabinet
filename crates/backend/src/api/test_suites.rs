@@ -15,15 +15,17 @@ mod tests;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::Response;
-use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
 use crate::store::DefinitionStore;
-use crate::suite_store::{StoredSuite, SuiteVersionIdentity};
 
 use super::AppState;
 use super::suite_reference_builds::{declared_engines, reference_builds_among};
 use super::test_cases::bytes_response;
+
+pub use test_cabinet_contracts::backend_api::test_suites::{
+    SuiteOut, SuiteVersionResponse, SuitesResponse,
+};
 
 /// `GET /test-suites` — every ingested suite with the versions it holds.
 ///
@@ -176,46 +178,4 @@ fn serve(
         .read_suite_file(slug, version, &key)
         .map_err(ApiError::from)?;
     Ok(bytes_response(path, bytes))
-}
-
-// --- Wire shapes ------------------------------------------------------------
-
-/// `GET /test-suites` — every ingested suite the deployment offers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct SuitesResponse {
-    /// The suites, by slug.
-    pub test_suites: Vec<SuiteOut>,
-}
-
-/// `GET /test-suites/{slug}/{version}` — one suite version's resolved record, with
-/// the reference builds uploaded for it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct SuiteVersionResponse {
-    /// The stored record, served unmapped.
-    #[serde(flatten)]
-    pub suite: StoredSuite,
-    /// The engines with an uploaded reference build, each with the URL its build is
-    /// played at, relative to the backend. An engine the version ships a reference
-    /// implementation for but holds no upload of is absent.
-    pub reference_builds: std::collections::BTreeMap<String, String>,
-    /// The content digest the stored version was ingested from, as lowercase hex
-    /// SHA-256, so a client holding the checkout can tell whether the store still
-    /// matches it. Absent for a record written before digests were recorded.
-    pub digest: Option<String>,
-}
-
-/// One suite in the listing.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct SuiteOut {
-    /// The suite's slug, which is its directory in the suites checkout.
-    pub slug: String,
-    /// Every visible version, oldest first — so the newest, which is the one a row
-    /// describes, is last.
-    pub versions: Vec<SuiteVersionIdentity>,
 }

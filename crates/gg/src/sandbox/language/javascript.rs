@@ -30,7 +30,7 @@
 //!
 //! # The prompt is one file, and both arms render it
 //!
-//! There is a single responses-as-code template, `crates/gg/templates/system-code.hbs`, and this
+//! There is a single responses-as-code template, `system-code.hbs` (in the contracts crate), and this
 //! language reaches its own segment of it through `{{#if (eq language.id "javascript")}}` exactly as
 //! TypeScript reaches its own. What that one template says about a compiler is gated on
 //! [`checker`](super::ProgramLanguage::checker), and this arm answers it `None` — so the sentence

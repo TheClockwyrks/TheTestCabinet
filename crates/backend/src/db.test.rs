@@ -8730,7 +8730,8 @@ async fn a_validator_rated_run_is_rated_at_push_from_its_validators() {
     assert!(stored.reviews.is_empty());
 
     // The summary card reads the lifted rating without a catalog.
-    let card = crate::snapshot::RunSummary::from_stored(&stored);
+    let card =
+        <crate::snapshot::RunSummary as crate::snapshot::RunSummaryExt>::from_stored(&stored);
     assert_eq!(card.rating, Some(Rating::Great));
     assert!(card.validator_rated);
     assert_eq!(card.aesthetic, None);
@@ -8936,7 +8937,8 @@ async fn a_reviewer_override_recomputes_the_lifted_rating() {
     assert_eq!(stored.rating, Some(Rating::Broken));
 
     // The summary card reads the recomputed lifted rating without a catalog.
-    let card = crate::snapshot::RunSummary::from_stored(&stored);
+    let card =
+        <crate::snapshot::RunSummary as crate::snapshot::RunSummaryExt>::from_stored(&stored);
     assert_eq!(card.rating, Some(Rating::Broken));
 }
 
@@ -9048,7 +9050,8 @@ async fn a_legacy_run_never_carries_an_aesthetic_and_is_rated_by_its_reviews() {
         assert_eq!(stored.rating, Some(Rating::Passable));
         assert_eq!(stored.aesthetic, None);
         assert!(stored.reviews[0].aesthetics.is_empty());
-        let card = crate::snapshot::RunSummary::from_stored(&stored);
+        let card =
+            <crate::snapshot::RunSummary as crate::snapshot::RunSummaryExt>::from_stored(&stored);
         assert_eq!(card.rating, Some(Rating::Passable));
         assert!(!card.validator_rated);
         assert_eq!(card.aesthetic, None);

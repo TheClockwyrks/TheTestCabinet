@@ -26,7 +26,7 @@ use crate::db::{
     Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
 };
 use crate::error::ApiError;
-use crate::snapshot::{RunSummary, run_summary_score};
+use crate::snapshot::{RunSummary, RunSummaryExt, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;

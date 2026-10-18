@@ -228,9 +228,8 @@ impl Default for Relay {
 // The notification wire shapes (`Notification`, `NotificationKind`,
 // `NotificationOutcome`), the run-lifecycle event (`RunEvent`, `RunEventKind`), and
 // the run's display identity (`JobSummary`) are shared with the queue's Rust
-// clients, so they live in `core::job_api`; re-export them here so this module —
-// and the `api-codegen` generator that names them as `relay::…` — keep
-// referring to them unchanged.
+// clients, so they live in the contracts crate's `job_api`; re-export them here so
+// the rest of the backend keeps referring to them as `relay::…`.
 pub use test_cabinet_core::{
     JobSummary, Notification, NotificationKind, NotificationOutcome, RunEvent, RunEventKind,
 };

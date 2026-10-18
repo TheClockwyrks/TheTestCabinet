@@ -334,12 +334,6 @@ stages:
             displayName: cargo doctests
             condition: eq(variables['checksReady'], 'true')
 
-          # This project's own gates on this track, one step each like every
-          # gate above.
-          - script: uv run --quiet --project ci gate run contract-drift
-            displayName: "generated contract drift"
-            condition: eq(variables['checksReady'], 'true')
-
           # The project's own steps for this job, after its last check and
           # before the job's test results, which every job running a test gate
           # ends with.

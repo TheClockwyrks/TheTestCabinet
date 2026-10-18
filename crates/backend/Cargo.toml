@@ -15,6 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# The API wire types the backend serves, generated into `@clockwyrks/backend-api`.
+test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
 # The suite runtime and manifest loaders, whose error the catalogs return.
 test-cabinet-suites = { path = "../../contracts/crates/suites" }
 # Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
@@ -60,16 +62,6 @@ flate2 = { workspace = true }
 # Unpacks the gzipped tar of a static build uploaded as a suite reference build.
 tar = "0.4"
 
-# Contract codegen for the backend HTTP API + snapshot wire types. See
-# `crates/core`'s `contract` feature; this turns on core's too so the shared
-# run-record types derive as well.
-ts-rs = { workspace = true, optional = true }
-schemars = { workspace = true, optional = true }
-
-[features]
-# Derive `ts_rs::TS` + `schemars::JsonSchema` on the backend API + snapshot wire
-# types for the `api-codegen` generator. Never enabled by a normal build.
-contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

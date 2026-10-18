@@ -9,7 +9,8 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+
+pub use test_cabinet_contracts::backend_api::error::{ErrorBody, ErrorEnvelope};
 
 /// An error rendered to the contract's HTTP envelope.
 #[derive(Debug)]
@@ -78,22 +79,6 @@ impl ApiError {
     pub fn unavailable(message: impl Into<String>) -> Self {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, "unavailable", message)
     }
-}
-
-/// The JSON body of an error response: `{ "error": { "code", "message" } }`.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ErrorEnvelope {
-    pub error: ErrorBody,
-}
-
-/// The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
-/// a human-readable message.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ErrorBody {
-    pub code: String,
-    pub message: String,
 }
 
 impl IntoResponse for ApiError {

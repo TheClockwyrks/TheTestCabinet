@@ -12,7 +12,7 @@
   "include": ["src"],
   "references": [
     { "path": "../../contracts/packages/run-record" },
-    { "path": "../../packages/backend-api" },
+    { "path": "../../contracts/packages/backend-api" },
     { "path": "../../packages/run-stats" },
     { "path": "../../packages/voxel-runtime" },
     { "path": "../../packages/particle-runtime" }

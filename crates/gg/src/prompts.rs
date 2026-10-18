@@ -5,9 +5,12 @@
 //! the task list and the memories, the [briefs](render_review_brief) it
 //! dispatches agents with, and the [compaction](render_compaction_instruction),
 //! [completion](render_completion_missing) and [context-pressure](render_context_pressure) prose
-//! the loop injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
-//! are [embedded](include_str!) at compile time, so gg keeps its "no external resources" property:
-//! the binary carries its prompts.
+//! the loop injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The
+//! two system prompts are the exception to where the file sits: they are
+//! [`test_cabinet_contracts::gg_system_prompt`]'s, because the backend API package mirrors them for
+//! the console and is generated in the contracts repository. Every template is
+//! [embedded](include_str!) at compile time, so gg keeps its "no external resources" property: the
+//! binary carries its prompts.
 //!
 //! **A prompt does not live anywhere else.** A sentence a model reads is prose that gets tuned, and
 //! prose buried in a `format!` two thousand lines into `agent.rs` does not get tuned — it gets
@@ -143,7 +146,7 @@ use crate::sandbox::language;
 /// The **tool-calling** system prompt: the base framing plus one conditional section per enabled
 /// capability, with each capability's tools named as the free-standing calls a tool-calling run
 /// makes (`add_task`, `spawn_subagent`, `create_epic`).
-const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs");
+const SYSTEM_TOOLS_TEMPLATE: &str = test_cabinet_contracts::gg_system_prompt::SYSTEM_TOOLS_TEMPLATE;
 
 /// The **responses-as-code** system prompt: the code-protocol framing (the reply *is* a program,
 /// how the modules are reached, how documentation is discovered, the message headings) plus the same
@@ -167,7 +170,7 @@ const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs"
 /// It is self-contained Handlebars, like its tool-calling sibling: Handlebars **partials are
 /// unavailable** here by design, so that [the console](default_system_prompt_template_code) can seed
 /// an operator's override editor with one standalone file.
-const SYSTEM_CODE_TEMPLATE: &str = include_str!("../templates/system-code.hbs");
+const SYSTEM_CODE_TEMPLATE: &str = test_cabinet_contracts::gg_system_prompt::SYSTEM_CODE_TEMPLATE;
 
 /// The notice a responses-as-code turn earns when its program ran cleanly and put nothing in the
 /// window — one file for every language, on the same terms as
@@ -924,9 +927,9 @@ pub(crate) fn render_code_nothing_shown_for(
 /// one. The per-capability sections are inlined into this one file, so it is self-contained
 /// Handlebars (no partials).
 ///
-/// The console's copy is generated from the same `.hbs` file (see `scripts/gen-contract.mjs`); this
-/// accessor is the in-crate mirror, used by the prompt tests to pin that the template parses and
-/// renders on its own.
+/// The console's copy is generated from the same `.hbs` file, in the contracts repository (its
+/// `scripts/gen-contract.mjs`); this accessor is the in-crate mirror, used by the prompt tests to
+/// pin that the template parses and renders on its own.
 #[allow(dead_code)]
 pub fn default_system_prompt_template() -> &'static str {
     SYSTEM_TOOLS_TEMPLATE

@@ -134,16 +134,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "api-codegen"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "contract-codegen",
- "test-cabinet-backend",
- "test-cabinet-core",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -700,18 +690,6 @@ name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
-
-[[package]]
-name = "contract-codegen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "schemars",
- "serde",
- "serde_json",
- "test-cabinet-contracts",
- "ts-rs",
-]
 
 [[package]]
 name = "core-foundation"
@@ -5088,7 +5066,6 @@ dependencies = [
  "libsqlite3-sys",
  "opentelemetry",
  "reqwest 0.12.28",
- "schemars",
  "sea-orm",
  "serde",
  "serde_json",
@@ -5096,6 +5073,7 @@ dependencies = [
  "tar",
  "tempfile",
  "test-cabinet-code-analysis",
+ "test-cabinet-contracts",
  "test-cabinet-core",
  "test-cabinet-db-auth",
  "test-cabinet-entities",
@@ -5108,7 +5086,6 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
- "ts-rs",
 ]
 
 [[package]]
@@ -5155,7 +5132,6 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "percent-encoding",
- "schemars",
  "semver",
  "serde",
  "serde_json",
@@ -5163,7 +5139,6 @@ dependencies = [
  "thiserror 2.0.18",
  "toml",
  "toml_edit 0.25.16+spec-1.1.0",
- "ts-rs",
 ]
 
 [[package]]
@@ -5184,7 +5159,6 @@ dependencies = [
  "md-5",
  "png",
  "reqwest 0.12.28",
- "schemars",
  "semver",
  "serde",
  "serde_json",
@@ -5205,7 +5179,6 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
- "ts-rs",
  "wat",
  "which",
 ]
@@ -6003,28 +5976,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "ts-rs"
-version = "12.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "756050066659291d47a554a9f558125db17428b073c5ffce1daf5dcb0f7231d8"
-dependencies = [
- "thiserror 2.0.18",
- "ts-rs-macros",
-]
-
-[[package]]
-name = "ts-rs-macros"
-version = "12.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d90eea51bc7988ef9e674bf80a85ba6804739e535e9cab48e4bb34a8b652aa"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
- "termcolor",
-]
 
 [[package]]
 name = "tungstenite"
@@ -7473,3 +7424,11 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[patch.unused]]
+name = "api-codegen"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "contract-codegen"
+version = "0.1.0"

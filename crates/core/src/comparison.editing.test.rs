@@ -5,7 +5,8 @@
 use super::*;
 use crate::comparison_aggregate::aggregate_comparison;
 use crate::engine::NONE_SLUG;
-use std::collections::BTreeSet;
+use crate::run_record::HarnessSlug;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn harness_arm(id: &str, harness: HarnessSlug, runs: &[&str]) -> ComparisonArm {
     ComparisonArm {

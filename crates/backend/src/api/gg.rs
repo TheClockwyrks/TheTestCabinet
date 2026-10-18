@@ -29,7 +29,6 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::{Deserialize, Serialize};
 
 use test_cabinet_core::LaunchBody;
 use test_cabinet_core::gg::GgCapabilitySet;
@@ -44,61 +43,25 @@ use super::jobs::{
     resolve_gg_model_facts,
 };
 
+pub use test_cabinet_contracts::backend_api::gg::GgRunRequest;
+pub(super) use test_cabinet_contracts::backend_api::gg::saved_config_id;
+
 /// The default variant a gg run targets when the request omits one — the same
 /// baseline variant every case defines.
 fn default_variant() -> String {
     "base".to_string()
 }
 
-/// The body of `POST /gg/runs`: a **gg-native** run request. Only the test case,
-/// version, and variant carry over from a conventional run (those are
-/// test-case-level); everything a third-party run expresses as `(model,
-/// orchestrator)` is instead expressed by the [capability set](GgCapabilitySet),
-/// which binds the models (to [slots](test_cabinet_core::gg::GgSlotBinding)) and
-/// selects the capabilities. There is deliberately no `harness` field — this
-/// endpoint runs the gg harness by construction — and no `orchestrator` field: gg
-/// is its own executor and the orchestrator dimension does not apply.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgRunRequest {
-    /// Test-case slug to run (e.g. `carom`).
-    pub test_case: String,
-    /// Exact, immutable test-case version (e.g. `v1.0.0`).
-    pub version: String,
-    /// Variant to run. Defaults to `base` when omitted.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub variant: Option<String>,
-    /// The declarative capability set configuring the run: its agent profiles (each
-    /// with its own capabilities, model binding, and delegation graph) and the
-    /// run-level model slots and limits. Must bind a model to its
-    /// [root agent](GgCapabilitySet::root).
-    pub capability_set: GgCapabilitySet,
-    /// Optional override for the maximum harness runtime, in seconds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub max_runtime_seconds: Option<u64>,
-    /// How many times to automatically retry this run after a terminal failure The
-    /// Test Cabinet (or a catastrophic build) is responsible for. Defaults to `1`
-    /// (one retry) when omitted; `0` disables retries. The backend clamps it to a
-    /// sane maximum. Same semantics as a conventional run's `retryCount`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub retry_count: Option<u32>,
-    /// Built-in [engine](test_cabinet_core::engine) slug the produced build is
-    /// written against. Omit for the `none` default, which supplies no runtime.
-    ///
-    /// A gg run seeds and builds a workspace like any other run, so it carries the
-    /// engine dimension on the same terms: the slug must be one the engine
-    /// catalogue knows and one the requested case version declares support for,
-    /// both checked when the run executes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub engine: Option<String>,
+/// The backend's reading of a [`GgRunRequest`]: its variant and the launch it becomes.
+trait GgRunRequestExt {
+    /// The variant this run targets, resolving an omitted one to the
+    /// [`default_variant`].
+    fn resolved_variant(&self) -> String;
+    /// The launch body this request enqueues.
+    fn into_launch_body(self) -> Result<LaunchBody, String>;
 }
 
-impl GgRunRequest {
+impl GgRunRequestExt for GgRunRequest {
     /// The variant this run targets, resolving an omitted one to the
     /// [`default_variant`].
     fn resolved_variant(&self) -> String {
@@ -167,27 +130,6 @@ pub(super) struct GgLaunchIdentity {
     pub capability_set: GgCapabilitySet,
     /// The model the run is attributed to: the one its very first turn is charged to.
     pub model: String,
-}
-
-/// The bare id of the saved gg configuration a textual reference names, or `None` when it
-/// names none.
-///
-/// One rule for the two places a configuration is named by text: the
-/// [member](super::ReviewPlanCombo::gg_config_ref) a plan or a ladder stores, and the
-/// [`preset_id`](GgCapabilitySet::preset_id) a launch records on the set it runs. The
-/// console's picker values a configuration as `saved:<id>` and a client may just as
-/// reasonably send the id alone; both name the same configuration, so both must key
-/// identically — a member written one way and a run launched the other way are one
-/// [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/) or the plan
-/// never fills.
-///
-/// A blank reference names nothing. Recorded as an id it would be indistinguishable from the
-/// empty segment a set assembled by hand carries, quietly filing the run into the cell those
-/// share.
-pub(super) fn saved_config_id(reference: &str) -> Option<&str> {
-    let id = reference.trim();
-    let id = id.strip_prefix("saved:").unwrap_or(id);
-    (!id.is_empty()).then_some(id)
 }
 
 /// The current name of every configuration in `refs` that `user_id`'s account holds, keyed

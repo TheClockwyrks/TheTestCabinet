@@ -8,6 +8,9 @@
 //! against, which are exactly the shapes a wrong sanitization would break silently.
 
 use super::*;
+use std::collections::BTreeMap;
+
+use test_cabinet_core::run_record::HarnessSlug;
 
 use super::super::coverage::gg_member_defect;
 use super::super::coverage::{cell_key, resolve_member};

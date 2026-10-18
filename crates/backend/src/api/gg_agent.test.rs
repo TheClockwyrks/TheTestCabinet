@@ -1,4 +1,5 @@
 use super::*;
+use test_cabinet_core::gg::GgAgentConfig;
 
 /// A save body: one named agent profile, with the model slot its binding defers to.
 fn sample_input(name: &str) -> GgSavedAgentInput {

@@ -22,7 +22,7 @@
 //! never silently shifts the numbers. There is no use of wall-clock time or a
 //! thread RNG anywhere in this module.
 
-use serde::{Deserialize, Serialize};
+pub use test_cabinet_contracts::comparison_stats::{MetricSummary, PassRate};
 
 /// The number of bootstrap resamples used for a confidence interval. Large enough
 /// that the interval is stable to three significant figures for the small `n` a
@@ -37,43 +37,14 @@ const CI_ALPHA: f64 = 0.05;
 /// percentile).
 const WILSON_Z: f64 = 1.959_963_984_540_054;
 
-/// A descriptive summary of one numeric metric (comparable cost, total tokens,
-/// session duration) over an arm's `N` runs.
-///
-/// The bar a view draws is the [`median`](Self::median) — the honest "typical"
-/// run for a skewed metric — but the summary carries the full spread so the view
-/// can show the raw shape: the [quartiles](Self::q1) for a box, the
-/// [extremes](Self::min) for whiskers, the [`mean`](Self::mean) (which sits above
-/// the median for a right-skewed metric — that gap is informative, not redundant),
-/// and a bootstrap [confidence interval](Self::ci_low) on the median that widens
-/// honestly as `n` shrinks.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct MetricSummary {
-    /// The number of runs summarized (always shown; never implied).
-    pub n: usize,
-    /// The median — the value a view plots for the arm.
-    pub median: f64,
-    /// The arithmetic mean, shown alongside the median (their gap reveals skew).
-    pub mean: f64,
-    /// The smallest observed value.
-    pub min: f64,
-    /// The largest observed value.
-    pub max: f64,
-    /// The first quartile (25th percentile), the box's lower edge.
-    pub q1: f64,
-    /// The third quartile (75th percentile), the box's upper edge.
-    pub q3: f64,
-    /// The interquartile range, `q3 - q1`.
-    pub iqr: f64,
-    /// The lower bound of the bootstrap confidence interval on the median.
-    pub ci_low: f64,
-    /// The upper bound of the bootstrap confidence interval on the median.
-    pub ci_high: f64,
+/// The computation of a [`MetricSummary`] from an arm's samples.
+pub trait MetricSummaryExt: Sized {
+    /// Summarize `samples`, seeding the bootstrap from `seed`; see
+    /// [`MetricSummary::compute`](MetricSummaryExt::compute).
+    fn compute(samples: &[f64], seed: u64) -> Option<Self>;
 }
 
-impl MetricSummary {
+impl MetricSummaryExt for MetricSummary {
     /// Summarize `samples`, seeding the bootstrap from `seed` (a stable hash of the
     /// arm's sorted run ids). Returns `None` for an empty sample — an arm with no
     /// runs has nothing to summarize, and the caller shows "no runs" rather than a
@@ -82,7 +53,7 @@ impl MetricSummary {
     /// With a single run the distribution collapses to a point: every field equals
     /// that value and the interval has zero width, which is the correct answer —
     /// one observation carries no spread to report.
-    pub fn compute(samples: &[f64], seed: u64) -> Option<Self> {
+    fn compute(samples: &[f64], seed: u64) -> Option<Self> {
         if samples.is_empty() {
             return None;
         }
@@ -106,29 +77,16 @@ impl MetricSummary {
     }
 }
 
-/// An arm's pass rate — the proportion of its runs whose automated validators all
-/// passed — with a **Wilson score interval** rather than a normal one, because a
-/// plain average understates the uncertainty of a small sample.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PassRate {
-    /// The number of runs (the denominator).
-    pub n: u64,
-    /// How many of them passed.
-    pub passed: u64,
-    /// The observed proportion, `passed / n`.
-    pub rate: f64,
-    /// The lower bound of the 95% Wilson score interval.
-    pub wilson_low: f64,
-    /// The upper bound of the 95% Wilson score interval.
-    pub wilson_high: f64,
+/// The computation of a [`PassRate`] from an arm's pass count.
+pub trait PassRateExt: Sized {
+    /// The pass rate of `passed` out of `n` runs, with its Wilson interval.
+    fn compute(passed: u64, n: u64) -> Option<Self>;
 }
 
-impl PassRate {
+impl PassRateExt for PassRate {
     /// The pass rate of `passed` out of `n` runs, with its Wilson interval. Returns
     /// `None` for `n == 0` (no runs, no rate to report).
-    pub fn compute(passed: u64, n: u64) -> Option<Self> {
+    fn compute(passed: u64, n: u64) -> Option<Self> {
         if n == 0 {
             return None;
         }

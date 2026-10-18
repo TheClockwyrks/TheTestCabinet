@@ -19,7 +19,6 @@
     "dev": "npm run dev --workspaces --if-present",
     "format": "node scripts/format-check.mjs --write",
     "format:check": "node scripts/format-check.mjs",
-    "gen:contract": "node scripts/gen-contract.mjs",
     "lint": "eslint --config eslint.config.js --pass-on-unpruned-suppressions .",
     "lint:baseline": "rm -f eslint-suppressions.json && eslint --config eslint.config.js --suppress-all .",
     "lint:docs": "npm run lint:md && npm run spell",

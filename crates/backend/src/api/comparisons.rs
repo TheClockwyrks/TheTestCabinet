@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -36,6 +36,8 @@ use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
+
+pub use test_cabinet_contracts::backend_api::comparisons::ComparisonInput;
 
 /// The longest a comparison's display name may be.
 const MAX_NAME_LEN: usize = 80;
@@ -54,21 +56,6 @@ const MAX_N: u32 = 50;
 /// The fewest arms a comparison may carry: a comparison of one configuration
 /// compares it against nothing.
 const MIN_ARMS: usize = 2;
-
-/// The create/update body for a comparison (the server assigns the id and
-/// timestamps, and owns the published state).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ComparisonInput {
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what is being compared and why.
-    #[serde(default)]
-    pub description: String,
-    /// The controls, varied dimension, and arms to save.
-    pub config: ComparisonConfig,
-}
 
 /// `GET /comparisons` — every comparison the token account owns, most recently
 /// updated first, each with its per-arm results computed from its runs.

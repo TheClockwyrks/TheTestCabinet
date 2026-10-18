@@ -6,7 +6,7 @@ use test_cabinet_core::TestCaseGroup;
 // everything else, `summary`'s null included.
 #[test]
 fn the_wire_shape_carries_everything_but_rank() {
-    let out = TestCaseGroupOut::from(TestCaseGroup {
+    let out = test_case_group_out(TestCaseGroup {
         slug: "tower-defense".to_string(),
         name: "Tower Defense".to_string(),
         summary: Some("Mazes and waves.".to_string()),
@@ -26,7 +26,7 @@ fn the_wire_shape_carries_everything_but_rank() {
         })
     );
 
-    let unsummarized = TestCaseGroupOut::from(TestCaseGroup {
+    let unsummarized = test_case_group_out(TestCaseGroup {
         slug: "sim-economy".to_string(),
         name: "Sim & Economy".to_string(),
         summary: None,

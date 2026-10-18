@@ -14,7 +14,9 @@ use crate::comparison::{
     ArmDiagnostics, ArmRunPoint, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig,
     Confound, ScorePoint, automated_only_score,
 };
-use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
+use crate::comparison_stats::{
+    MetricSummary, MetricSummaryExt, PassRate, PassRateExt, seed_from_run_ids,
+};
 use crate::metrics::TokenCounts;
 use crate::model_id::canonical_model_id;
 use crate::review::Score;

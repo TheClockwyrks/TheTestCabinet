@@ -39,11 +39,10 @@ use test_cabinet_core::preview::AssetPreview;
 use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
 use test_cabinet_core::test_case::TestType;
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
-// Rust clients live in `core` (so neither must depend on this crate) — both the
-// request shapes the driver/dispatcher speak and the server **output** shapes a
-// client deserializes. Re-export them so this module — and `api.rs`'s public
-// re-export, which the `api-codegen` generator names — keep referring to
-// them as `jobs::{LaunchBody, …}`.
+// Rust clients live in the contracts crate (so neither must depend on this crate) —
+// both the request shapes the driver/dispatcher speak and the server **output**
+// shapes a client deserializes. Re-export them so this module — and `api.rs`'s
+// public re-export — keep referring to them as `jobs::{LaunchBody, …}`.
 pub use test_cabinet_core::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
     LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamTopicsBody,
@@ -57,6 +56,9 @@ use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage
 
 use super::AppState;
 use super::gg::{bind_launch_configuration, launch_configuration_names};
+
+pub(super) use test_cabinet_contracts::backend_api::jobs::DEFAULT_RETRY_COUNT;
+pub use test_cabinet_contracts::backend_api::jobs::{BulkCancelOut, StreamOpened, StreamResync};
 
 /// `POST /jobs` — enqueue a run. Requires a bearer token; validates the request,
 /// mints a job id and per-job driver token, stores it in the `queued` state, and
@@ -1572,10 +1574,6 @@ fn spawn_coverage_feed(state: &AppState, job: &job::Model) {
     });
 }
 
-/// The default `retryCount` when a launch request omits it: one retry after a
-/// failure, so the total attempts allowed is `1 + retry_count` = 2.
-pub(super) const DEFAULT_RETRY_COUNT: u32 = 1;
-
 /// The largest `retryCount` honored, clamping an absurd request so a run cannot
 /// re-enqueue itself an unbounded number of times.
 pub(super) const MAX_RETRY_COUNT: u32 = 10;
@@ -2278,28 +2276,6 @@ pub struct LaunchQuery {
     pub origin: Option<String>,
 }
 
-/// The response to one of the three global cancel controls: how many runs the sweep
-/// stopped, and how far into the queue it reached.
-///
-/// The **count is the point**. A sweep that reported only success would leave the
-/// operator unable to tell "the queue was already empty" from "nothing matched", and
-/// those call for opposite next moves. The two scope flags let the console phrase what
-/// it just did ("stopped 12 runs, including 3 already executing") from the response
-/// alone, rather than from which button it happens to have called.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct BulkCancelOut {
-    /// How many jobs moved to the terminal `canceled` state.
-    pub canceled: u32,
-    /// Whether the sweep reached runs that had not started yet (`queued`, `pending`)
-    /// — the ones that had cost nothing.
-    pub included_waiting: bool,
-    /// Whether the sweep reached runs that were already executing (`dispatched`,
-    /// `starting`, `running`) — the ones whose work was discarded.
-    pub included_active: bool,
-}
-
 /// The body of `POST /jobs/{id}/verify-token`: the per-job token to check against
 /// the one minted for the job. Sent by the artifact service to authenticate an
 /// upload. Deserialize-only — no client in this workspace constructs it for the
@@ -2334,37 +2310,6 @@ pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
 /// the per-job stream's heartbeat and axum's default keep-alive period, and stays
 /// well under the 60s idle timeouts proxies and Safari's WebKit networking impose.
 const STREAM_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
-
-/// The console stream's first frame: the id this client quotes back to
-/// `PUT /notifications/{stream}/topics`.
-///
-/// The id is minted per **connection**, not per client, and deliberately so. An
-/// `EventSource` reconnects on its own after a drop, and the reconnected stream is a
-/// new subscriber with default topics — so the client must be told the new id and
-/// re-apply what it wanted. Handing out a client-chosen or long-lived id would hide
-/// that transition and leave a console silently subscribed to nothing.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StreamOpened {
-    /// The connected stream's id.
-    pub stream_id: String,
-}
-
-/// The console stream's "you fell behind" frame: this client was lagged and the
-/// named number of messages were dropped for it.
-///
-/// It carries the count only as a diagnostic — a client's response is the same
-/// whatever the number: re-read the active list (and, if it is showing them, the
-/// produced runs). The frame exists because the stream keeps no backlog, so there is
-/// nothing to replay and silence would be indistinguishable from an idle queue.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StreamResync {
-    /// How many messages were dropped for this client.
-    pub dropped: u64,
-}
 
 // The server output shapes `LaunchAck`, `JobState`, `ActiveJobOut`, and
 // `JobStatusOut` are shared with the queue's Rust clients, so they live in

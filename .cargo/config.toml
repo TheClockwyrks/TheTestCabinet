@@ -83,6 +83,7 @@ rustdocflags = ["--document-private-items"]
 # every build under the superrepo, the monorepo's own included.
 
 [patch."https://github.com/TheClockwyrks/contracts"]
+api-codegen = { path = "contracts/crates/api-codegen" }
 contract-codegen = { path = "contracts/crates/contract-codegen" }
 test-cabinet-contracts = { path = "contracts/crates/contracts" }
 test-cabinet-redact = { path = "contracts/crates/redact" }

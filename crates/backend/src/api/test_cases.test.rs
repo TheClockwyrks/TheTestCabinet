@@ -1,4 +1,5 @@
 use super::*;
+use test_cabinet_core::test_case::{AssetDimension, AssetKind, TestType};
 
 use std::collections::HashMap;
 
