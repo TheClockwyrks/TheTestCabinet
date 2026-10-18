@@ -348,20 +348,6 @@ async fn build_with_prices(
         })
     };
 
-    // A deployment that advertises an artifact service to consoles but gives this
-    // backend no address of its own for it silently loses three things, none of which
-    // announce themselves at the moment they stop working. Say so at boot, where an
-    // operator is already reading. A WARNING and not an error: the artifact URL is
-    // optional by design (a single-box dev setup has no artifact service at all), and
-    // a backend without it serves runs, reviews and the catalog perfectly.
-    if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
-        tracing::warn!(
-            "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
-             tree pruning, the reclamation sweep and the snapshot's artifact media fallback \
-             are all off"
-        );
-    }
-
     let http = reqwest::Client::new();
     // Reclaim the artifact trees no run row references (see `crate::artifacts`). The
     // delete-time prune is best-effort, so this is what bounds how long a tree whose

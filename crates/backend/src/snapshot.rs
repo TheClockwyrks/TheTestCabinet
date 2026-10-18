@@ -159,14 +159,6 @@ type VariantWorkspaceFiles = std::collections::HashMap<
 /// same future cleanup orphaned run media is already waiting on.
 pub const RUN_DOCUMENT_PREFIX: &str = "documents/runs";
 
-/// The bucket prefix a reviewer's profile picture is stored under, keyed by the
-/// reviewer's account id (`pfp/<reviewer-id>`) and — like [`MEDIA_PREFIX`] — kept
-/// **outside** any single snapshot's prefix so it is shared across snapshots and
-/// referenced by a stable key from every per-run document. Unlike run media a
-/// picture is mutable (a reviewer can replace theirs), so each refresh re-fetches
-/// and re-uploads the current bytes rather than skipping an existing object.
-const PFP_PREFIX: &str = "pfp";
-
 /// One object to upload: its R2 key, bytes, and the labels it is served under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnapshotObject {
@@ -254,13 +246,6 @@ pub struct SnapshotBuilder {
     /// default, which uploads every run's document — correct for the dev/single-box
     /// path (no R2) and the unit tests, and the one-time cost of a first refresh.
     existing_documents: std::collections::HashSet<String>,
-    /// The reviewers' profile pictures to export, keyed by reviewer account id.
-    /// Fetched from the auth service before a refresh (see [`Self::with_reviewer_pictures`]),
-    /// each becomes a `pfp/<id>` object and lets the matching reviews carry a
-    /// `pictureKey`. Empty by default (the dev/single-box path and the unit tests),
-    /// which simply omits every review's `pictureKey`.
-    reviewer_pictures:
-        std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
     /// The published harness comparisons to fold into the snapshot, each already
     /// computed to its full read model (arms + distributions + diagnostics) by the
     /// caller — which has the whole-experiment run set — so the builder only
@@ -301,7 +286,6 @@ impl SnapshotBuilder {
             reference_sheets: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
             existing_documents: std::collections::HashSet::new(),
-            reviewer_pictures: std::collections::HashMap::new(),
             comparisons: Vec::new(),
             gg_documents: Vec::new(),
             test_case_groups: Vec::new(),
@@ -361,22 +345,6 @@ impl SnapshotBuilder {
         test_case_groups: Vec<crate::api::TestCaseGroupOut>,
     ) -> Self {
         self.test_case_groups = test_case_groups;
-        self
-    }
-
-    /// Supply the reviewers' profile pictures to export in this snapshot, keyed by
-    /// reviewer account id. Each entry is exported as a `pfp/<id>` object and gives
-    /// the matching reviews a `pictureKey`; an id absent from the map exports no
-    /// avatar (the reviewer has no picture). Fetched from the auth service by the
-    /// caller (see the publisher's `run_refresh`).
-    pub fn with_reviewer_pictures(
-        mut self,
-        reviewer_pictures: std::collections::HashMap<
-            String,
-            test_cabinet_core::accounts::ReviewerPicture,
-        >,
-    ) -> Self {
-        self.reviewer_pictures = reviewer_pictures;
         self
     }
 
@@ -542,11 +510,7 @@ impl SnapshotBuilder {
             let mut document = serde_json::to_value(PerRun {
                 schema_version: SCHEMA_VERSION,
                 record: run.record.clone(),
-                reviews: run
-                    .reviews
-                    .iter()
-                    .map(|review| review_out(review, &self.reviewer_pictures))
-                    .collect(),
+                reviews: run.reviews.iter().map(review_out).collect(),
                 links: links_out(&run.links),
                 events,
                 proof_media,
@@ -627,20 +591,6 @@ impl SnapshotBuilder {
                 runs: summaries,
             },
         )?);
-
-        // pfp/<reviewer-id> — each reviewer's profile picture, exported once under
-        // the content-stable top-level prefix (NOT this snapshot's prefix) so the
-        // per-run documents' `pictureKey`s resolve against the snapshot base. Only
-        // reviewers whose picture was fetched for this refresh appear; the bytes are
-        // served with their own content type (no extension needed).
-        for (reviewer_id, picture) in &self.reviewer_pictures {
-            objects.push(SnapshotObject {
-                key: format!("{PFP_PREFIX}/{reviewer_id}"),
-                bytes: picture.bytes.clone(),
-                content_type: picture.content_type.clone(),
-                content_encoding: None,
-            });
-        }
 
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
         // reference baselines (PNGs) exported under the case prefix and named by
@@ -2803,9 +2753,8 @@ pub struct RunValidationMediaOut {
     schemars(rename = "Review")
 )]
 pub struct Review {
-    /// The reviewing account's id (stable across their reviews).
-    pub reviewer_id: String,
-    /// The reviewer's display name, shown beside their review.
+    /// The reviewer, shown beside their review: the name recorded with the review
+    /// from the identity that wrote it.
     pub reviewer: String,
     /// The reviewer's functional rating for each scoring domain. This review's
     /// overall rating is the worst across them. Empty on a review of a
@@ -2843,31 +2792,13 @@ pub struct Review {
     /// evolved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revisions: Vec<test_cabinet_core::review::ReviewRevision>,
-    /// The snapshot-relative object key of the reviewer's profile picture
-    /// (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
-    /// bytes are exported once per reviewer under the content-stable top-level
-    /// `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
-    /// key against the snapshot base into an absolute avatar URL.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub picture_key: Option<String>,
 }
 
-/// Map a stored review to its snapshot wire shape, exposing the reviewer's
-/// public identity (id + display name) but never any account internals. A
-/// reviewer whose id is in `pictures` (i.e. their profile picture was fetched for
-/// this snapshot) gets a `picture_key` pointing at their exported avatar object.
-fn review_out(
-    review: &crate::db::StoredReview,
-    pictures: &std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
-) -> Review {
-    let reviewer_id = review.reviewer.user_id.clone();
-    let picture_key = pictures
-        .contains_key(&reviewer_id)
-        .then(|| format!("{PFP_PREFIX}/{reviewer_id}"));
+/// Map a stored review to its snapshot wire shape: the reviewer recorded with it
+/// and what they wrote.
+fn review_out(review: &crate::db::StoredReview) -> Review {
     Review {
-        reviewer_id,
-        reviewer: review.reviewer.display_name.clone(),
+        reviewer: review.reviewer.clone(),
         ratings: review.ratings.clone(),
         // Legacy shape, never emitted: a stored legacy row's per-domain tiers are
         // already collapsed into the run-wide `aesthetic` at decode.
@@ -2878,7 +2809,6 @@ fn review_out(
         reviewed_at: review.reviewed_at.clone(),
         edited_at: review.edited_at.clone(),
         revisions: review.revisions.clone(),
-        picture_key,
     }
 }
 

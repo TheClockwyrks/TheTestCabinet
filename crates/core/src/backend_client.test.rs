@@ -514,9 +514,7 @@ async fn list_runs_parses_page_cursor_links_and_reviews() {
             "record": record,
             "published": true,
             "reviews": [{
-                "reviewerId": "u1",
-                "reviewer": "Ada L.",
-                "username": "ada",
+                "reviewer": "ada@clockwyrks.com",
                 "ratings": [{ "domain": "gameplay", "rating": "great" }],
                 "writeup": "Plays well.",
                 "checklist": [],
@@ -542,7 +540,7 @@ async fn list_runs_parses_page_cursor_links_and_reviews() {
     assert_eq!(run.record.id, "run-1");
     assert!(run.published);
     assert_eq!(run.reviews.len(), 1);
-    assert_eq!(run.reviews[0].reviewer, "Ada L.");
+    assert_eq!(run.reviews[0].reviewer, "ada@clockwyrks.com");
     assert_eq!(
         run.reviews[0].ratings,
         vec![crate::review::DomainRating {
@@ -569,9 +567,7 @@ async fn read_run_parses_a_single_stored_run() {
         "record": record,
         "published": true,
         "reviews": [{
-            "reviewerId": "u2",
-            "reviewer": "Grace H.",
-            "username": "grace",
+            "reviewer": "grace@clockwyrks.com",
             "ratings": [{ "domain": "gameplay", "rating": "scuffed" }],
             "writeup": "Janky.",
             "checklist": [],
@@ -595,6 +591,7 @@ async fn read_run_parses_a_single_stored_run() {
             rating: crate::review::Rating::Scuffed,
         }]
     );
+    assert_eq!(run.reviews[0].reviewer, "grace@clockwyrks.com");
     assert_eq!(run.reviews[0].writeup, "Janky.");
     assert!(run.links.source_repo.is_none());
 }

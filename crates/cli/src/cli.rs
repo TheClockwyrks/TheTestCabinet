@@ -44,15 +44,6 @@ pub enum Command {
     /// satisfied everything the case declares.
     Validate(ValidateArgs),
 
-    /// Create an account on the auth service and log in (open self-registration).
-    Register(RegisterArgs),
-
-    /// Log in to an existing account and store the bearer token.
-    Login(LoginArgs),
-
-    /// Revoke the stored token and log out.
-    Logout,
-
     /// Submit a review (from the run's `writeup.md`) for a produced run.
     Review(ReviewArgs),
 
@@ -252,36 +243,6 @@ pub struct ValidateArgs {
     /// anything is built. See `tcab engines`.
     #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
     pub engine: String,
-}
-
-/// Arguments for `tcab register`.
-#[derive(Debug, Args)]
-pub struct RegisterArgs {
-    /// The desired unique username.
-    #[arg(long, value_name = "NAME")]
-    pub username: String,
-
-    /// The human-facing display name shown beside your reviews.
-    #[arg(long, value_name = "NAME")]
-    pub display_name: String,
-
-    /// The account password. If omitted, the `TCAB_PASSWORD` environment variable
-    /// is used (so the command stays scriptable).
-    #[arg(long, value_name = "PASSWORD")]
-    pub password: Option<String>,
-}
-
-/// Arguments for `tcab login`.
-#[derive(Debug, Args)]
-pub struct LoginArgs {
-    /// The account username.
-    #[arg(long, value_name = "NAME")]
-    pub username: String,
-
-    /// The account password. If omitted, the `TCAB_PASSWORD` environment variable
-    /// is used.
-    #[arg(long, value_name = "PASSWORD")]
-    pub password: Option<String>,
 }
 
 /// Arguments for `tcab review`.

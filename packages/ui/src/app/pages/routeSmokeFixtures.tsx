@@ -443,9 +443,7 @@ function legendarySummary(id: string): RunSummary {
 
 function review(): StoredReview {
   return {
-    reviewerId: FIXTURE_IDS.reviewerId,
-    reviewer: "A Reviewer",
-    username: "reviewer",
+    reviewer: FIXTURE_IDS.reviewerId,
     ratings: [{ domain: "approach", rating: "great" }],
     aesthetic: null,
     checklist: [],

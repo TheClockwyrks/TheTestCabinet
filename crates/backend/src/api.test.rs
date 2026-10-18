@@ -81,16 +81,11 @@ struct Harness {
     db: Arc<Db>,
     /// The artifact service the backend is configured to call.
     internal: Arc<ArtifactStub>,
-    /// The artifact service the backend advertises to consoles, which nothing the
-    /// backend does may call.
-    public: Arc<ArtifactStub>,
-    /// The advertised base URL, for the `GET /config` assertion.
-    public_url: String,
     /// Kept alive for the test's duration: dropping it removes the store.
     _store: tempfile::TempDir,
 }
 
-/// Build the harness: two stub artifact services, a stub auth service, the
+/// Build the harness: a stub artifact service, the
 /// environment a deployment sets, and the router `build` would assemble from it.
 ///
 /// Its price source is an unconnectable loopback port, so a test that reaches a
@@ -106,7 +101,6 @@ async fn harness() -> Harness {
 /// [`harness`], with the OpenRouter price source pointed at `prices`.
 async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Harness {
     let (internal_url, internal) = spawn_artifacts().await;
-    let (public_url, public) = spawn_artifacts().await;
     let dir = tempfile::tempdir().unwrap();
 
     // SAFETY: nextest runs each test in its own process, so this environment is
@@ -116,18 +110,12 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         std::env::set_var("TCAB_BACKEND_STORE", dir.path().join("store"));
         std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", SERVICE_TOKEN);
         std::env::set_var("TCAB_ARTIFACTS_URL", &internal_url);
-        std::env::set_var("TCAB_ARTIFACTS_PUBLIC_URL", &public_url);
     }
     let config = Arc::new(Config::from_env().unwrap());
     assert_eq!(
         config.artifacts_internal_url.as_deref(),
         Some(internal_url.as_str()),
         "TCAB_ARTIFACTS_URL is the backend's own address for the service"
-    );
-    assert_eq!(
-        config.artifacts_public_url.as_deref(),
-        Some(public_url.as_str()),
-        "TCAB_ARTIFACTS_PUBLIC_URL is what the console is told"
     );
 
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
@@ -161,8 +149,6 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         router: router(state),
         db,
         internal,
-        public,
-        public_url,
         _store: dir,
     }
 }
@@ -196,9 +182,8 @@ async fn call(router: &Router, request: Request<Body>) -> (StatusCode, serde_jso
 
 #[tokio::test]
 async fn deleting_a_run_prunes_its_tree_through_the_in_cluster_url() {
-    // The wiring the split exists for. Both artifact services are real and reachable
-    // here, so a backend that pruned through the advertised URL would still answer
-    // 200 — what separates the two is which stub recorded the DELETE.
+    // The backend reaches the artifact service at TCAB_ARTIFACTS_URL, the in-cluster
+    // address; the stub records the DELETE it receives there.
     let harness = harness().await;
     harness
         .db
@@ -221,24 +206,18 @@ async fn deleting_a_run_prunes_its_tree_through_the_in_cluster_url() {
         vec!["r1".to_string()],
         "the prune did not go through TCAB_ARTIFACTS_URL"
     );
-    assert!(
-        harness.public.deleted.lock().unwrap().is_empty(),
-        "the prune went through the address the console is given"
-    );
 }
 
 #[tokio::test]
-async fn the_advertised_artifact_url_is_the_one_the_console_reads() {
-    // The other half of the split: `GET /config` carries the browser-facing address,
-    // never the in-cluster one, which resolves to nothing outside the cluster.
+async fn the_backend_serves_no_client_configuration() {
+    // The backend advertises no URL: the console reaches every service by path
+    // under its own origin, so `GET /config` is gone.
     let harness = harness().await;
-    let request = Request::builder()
-        .uri("/config")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = call(&harness.router, request).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["artifactsUrl"], harness.public_url);
+    for uri in ["/config", "/api/config"] {
+        let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let (status, _) = call(&harness.router, request).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
 }
 
 #[tokio::test]

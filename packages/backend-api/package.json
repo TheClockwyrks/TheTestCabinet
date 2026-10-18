@@ -11,10 +11,6 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./account": {
-      "types": "./dist/account.d.ts",
-      "default": "./dist/account.js"
-    },
     "./comparison": {
       "types": "./dist/comparison.d.ts",
       "default": "./dist/comparison.js"

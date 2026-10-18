@@ -75,7 +75,6 @@ members = [
 	"crates/publisher",
 	"crates/artifacts",
 	"crates/arena",
-	"crates/auth-service",
 	"crates/db-auth",
 	"crates/telemetry",
 	"crates/entities",
@@ -488,16 +487,6 @@ hex = "0.4"
 # RustCrypto family as `sha2`/`hmac`, so it costs no new dependency tree.
 md-5 = "0.10"
 percent-encoding = "2"
-
-# The standalone auth service hashes passwords with Argon2id (the password-hashing
-# competition winner; memory-hard, the settled default for new password stores)
-# and mints opaque bearer tokens from OS randomness. `argon2` re-exports the
-# `password-hash` PHC-string machinery so a stored hash carries its own salt and
-# parameters. `rand` supplies the `OsRng` used for both the per-password salt and
-# the token bytes; its `rand_core` matches the one `password-hash` expects. Only
-# `crates/auth-service` pulls these in, so the leaner crates never compile them.
-argon2 = "0.5"
-rand = "0.8"
 
 # The operating system's entropy, at the version `wasmtime-wasi` already pulls in, so gg's own
 # reads and WASI's `random_get` come from one generator.

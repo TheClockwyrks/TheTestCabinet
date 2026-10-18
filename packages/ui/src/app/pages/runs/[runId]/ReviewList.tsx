@@ -66,9 +66,9 @@ export function ReviewList({
         // with an ellipsis; the full prose lives on the review's own page.
         const snippet = review.writeup.trim();
         return (
-          <li key={review.reviewerId || review.reviewer}>
+          <li key={review.reviewer}>
             <Link
-              to={routes.runReview(runId, review.reviewerId)}
+              to={routes.runReview(runId, review.reviewer)}
               className={styles.reviewLink}
             >
               <div className={styles.reviewBody}>

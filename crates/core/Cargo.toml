@@ -112,8 +112,8 @@ tracing = { workspace = true }
 # global propagator a binary may have installed.
 test-cabinet-telemetry = { path = "../telemetry", default-features = false }
 
-# Contract codegen (TS bindings + JSON Schema) for the core's API types (accounts,
-# comparisons, the tournament record, the job API). Both are derived on the same
+# Contract codegen (TS bindings + JSON Schema) for the core's API types
+# (comparisons, the tournament record, the job API). Both are derived on the same
 # types behind the `contract` feature and driven by the `api-codegen` generator; off
 # by default so normal/CLI/wasm builds never compile them.
 ts-rs = { workspace = true, optional = true }

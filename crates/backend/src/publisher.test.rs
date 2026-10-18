@@ -62,11 +62,7 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.add_review(
         id,
         &StoredReview {
-            reviewer: crate::db::Reviewer {
-                user_id: "u1".to_string(),
-                username: "ada".to_string(),
-                display_name: "Ada".to_string(),
-            },
+            reviewer: "ada@clockwyrks.com".to_string(),
             ratings: vec![DomainRating {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,

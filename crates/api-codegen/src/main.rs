@@ -5,7 +5,7 @@
 //! backend's documents (under `apps/docs/public/schema/`, via `schemars`) from the
 //! types in `crates/backend` and `crates/core` that derive `TS` + `JsonSchema` behind
 //! their `contract` feature: the HTTP API's request and response shapes, the run
-//! queue, coverage plans and ladders, the published snapshot documents, accounts,
+//! queue, coverage plans and ladders, the published snapshot documents,
 //! comparisons and the persisted tournament.
 //!
 //! Those types refer to the data contract (a snapshot carries a run record, a ladder
@@ -36,8 +36,7 @@ use test_cabinet_backend::{
     store as bstore, suite_store as bsuite,
 };
 use test_cabinet_core::{
-    accounts as acct, comparison as cmp, comparison_stats as cstats, match_play as mp,
-    test_case as tc,
+    comparison as cmp, comparison_stats as cstats, match_play as mp, test_case as tc,
 };
 
 /// The header stamped on every generated module of the backend API package.
@@ -126,16 +125,6 @@ fn main() -> Result<()> {
                 bapi::ComparisonInput,
             ],
         },
-        // The auth surface: accounts and the register/login request + token
-        // response.
-        TsModule {
-            package: BACKEND_API_PKG,
-            reexports: &[],
-            file: "account.ts",
-            decls: ts_decls![&cfg;
-                acct::Account, acct::RegisterRequest, acct::LoginRequest, acct::AuthnResponse,
-            ],
-        },
         // The published snapshot documents (the static gallery's data): the index,
         // the runs index + summary cards, the per-run document, and case metadata.
         // `ReferenceKind`, `SpecKind` and `ErratumSeverity` are contract types, but
@@ -212,8 +201,7 @@ fn main() -> Result<()> {
         // via the live stream / status / active list, and is alerted on completion
         // over the notification feed. The shared launch/claim/status shapes live in
         // `core::job_api`; the server outputs and the relay's summary/notification
-        // shapes live in `backend`. `ClientConfig` is the console's `GET /config`
-        // body (today just the artifact-service base URL).
+        // shapes live in `backend`.
         TsModule {
             package: BACKEND_API_PKG,
             reexports: &[],
@@ -227,7 +215,6 @@ fn main() -> Result<()> {
                 relay::NotificationOutcome, relay::NotificationKind, relay::Notification,
                 relay::RunEventKind, relay::RunEvent,
                 bapi::StreamOpened, bapi::StreamResync, bapi::StreamTopicsBody,
-                bapi::ClientConfig,
             ],
         },
         // The reviewer coverage surface (console-only): reusable groups, multiple
@@ -435,10 +422,6 @@ fn main() -> Result<()> {
             "jobs-api/stream-topics.schema.json",
             root_schema::<bapi::StreamTopicsBody>(),
         ),
-        anon(
-            "jobs-api/client-config.schema.json",
-            root_schema::<bapi::ClientConfig>(),
-        ),
         // The reviewer coverage surface: a plan, a reusable group, and the coverage
         // matrix a plan expands into. All reference `HarnessSlug`, owned by the
         // run-record document, so that ref is rewritten to a cross-document URL.
@@ -470,23 +453,8 @@ fn main() -> Result<()> {
             "coverage/ladder-progress.schema.json",
             root_schema::<bapi::LadderProgress>(),
         ),
-        // Backend API: the auth surface (the token response is the canonical home
-        // of Account) and the canonical review document (the home of the review
-        // value types the backend + snapshot reference).
-        SchemaDoc {
-            rel_path: "backend-api/auth.schema.json",
-            root: Some("AuthResult"),
-            owns: &["Account"],
-            schema: root_schema::<acct::AuthnResponse>(),
-        },
-        anon(
-            "backend-api/auth-register-request.schema.json",
-            root_schema::<acct::RegisterRequest>(),
-        ),
-        anon(
-            "backend-api/auth-login-request.schema.json",
-            root_schema::<acct::LoginRequest>(),
-        ),
+        // Backend API: the canonical review document (the home of the review value
+        // types the backend + snapshot reference).
         anon(
             "backend-api/error.schema.json",
             root_schema::<berr::ErrorEnvelope>(),

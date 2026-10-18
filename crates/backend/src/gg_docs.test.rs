@@ -12,7 +12,7 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::validation::ValidationSummary;
 
-use crate::db::{Db, Reviewer, StoredReview};
+use crate::db::{Db, StoredReview};
 use crate::store::{
     StoredBuild, StoredReference, StoredReviewItem, StoredSpec, StoredVariant, StoredWorkspace,
     StoredWorkspaceFile,
@@ -104,11 +104,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
 /// checklist items named in `passed` and failing the rest of [`manifest`]'s two.
 fn review(account: &str, rating: Rating, passed: &[&str]) -> StoredReview {
     StoredReview {
-        reviewer: Reviewer {
-            user_id: account.to_string(),
-            username: format!("{account}-handle"),
-            display_name: format!("{account} Display"),
-        },
+        reviewer: account.to_string(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating,

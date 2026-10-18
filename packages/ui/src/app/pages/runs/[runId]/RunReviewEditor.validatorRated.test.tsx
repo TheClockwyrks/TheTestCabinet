@@ -433,8 +433,7 @@ describe("RunReviewEditor on a validator-rated run", () => {
   it("shows an existing review's run-wide aesthetic badge, not a per-card score", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     const review = {
-      reviewerId: "other",
-      reviewer: "Someone",
+      reviewer: "other@example.com",
       ratings: [],
       aesthetic: "good",
       checklist: [],

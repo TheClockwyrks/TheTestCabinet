@@ -112,11 +112,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             showcase: None,
         },
         reviews: vec![StoredReview {
-            reviewer: crate::db::Reviewer {
-                user_id: "u1".to_string(),
-                username: "ada".to_string(),
-                display_name: "Ada L.".to_string(),
-            },
+            reviewer: "ada@clockwyrks.com".to_string(),
             ratings: vec![DomainRating {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
@@ -581,51 +577,15 @@ async fn per_run_file_embeds_full_record_review_and_links() {
     assert_eq!(parsed["reviews"][0]["ratings"][0]["domain"], "gameplay");
     assert_eq!(parsed["reviews"][0]["ratings"][0]["rating"], "great");
     assert_eq!(parsed["reviews"][0]["writeup"], "Plays well.");
-    assert_eq!(parsed["reviews"][0]["reviewer"], "Ada L.");
-    assert_eq!(parsed["reviews"][0]["reviewerId"], "u1");
+    assert_eq!(parsed["reviews"][0]["reviewer"], "ada@clockwyrks.com");
+    // The reviewer is one identity: no account id and no picture ride with it.
+    assert!(parsed["reviews"][0].get("reviewerId").is_none());
+    assert!(parsed["reviews"][0].get("pictureKey").is_none());
 }
 
 #[tokio::test]
-async fn reviewer_picture_is_exported_and_named_by_key_on_the_review() {
+async fn a_snapshot_exports_no_reviewer_pictures() {
     let (_tmp, store) = empty_store();
-    // The run's sole review is by `u1`; supply that reviewer's picture.
-    let mut pictures = std::collections::HashMap::new();
-    pictures.insert(
-        "u1".to_string(),
-        test_cabinet_core::accounts::ReviewerPicture {
-            bytes: vec![1, 2, 3, 4],
-            content_type: "image/webp".to_string(),
-        },
-    );
-    let snapshot = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
-        vec![manifest()],
-        store,
-    )
-    .with_reviewer_pictures(pictures)
-    .build(now())
-    .await
-    .unwrap();
-
-    // The picture rides under the content-stable top-level `pfp/` prefix (not the
-    // snapshot's own prefix), keyed by reviewer id, with its content type.
-    let pfp = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "pfp/u1")
-        .expect("the reviewer's picture object");
-    assert_eq!(pfp.bytes, vec![1, 2, 3, 4]);
-    assert_eq!(pfp.content_type, "image/webp");
-
-    // The review points at it by that key.
-    let parsed = run_document_json(&snapshot, "r1");
-    assert_eq!(parsed["reviews"][0]["pictureKey"], "pfp/u1");
-}
-
-#[tokio::test]
-async fn without_a_reviewer_picture_no_pfp_object_and_no_key() {
-    let (_tmp, store) = empty_store();
-    // No `with_reviewer_pictures`: the reviewer has no picture in this snapshot.
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
         vec![manifest()],
@@ -636,9 +596,6 @@ async fn without_a_reviewer_picture_no_pfp_object_and_no_key() {
     .unwrap();
 
     assert!(!snapshot.objects.iter().any(|o| o.key.starts_with("pfp/")));
-    let parsed = run_document_json(&snapshot, "r1");
-    // The optional key is omitted (skip_serializing_if) when absent.
-    assert!(parsed["reviews"][0].get("pictureKey").is_none());
 }
 
 #[tokio::test]
@@ -2859,7 +2816,6 @@ fn prune_never_touches_media_or_the_index() {
         "index.json".to_string(),
         "media/runs/r1/proof/hunt.mp4".to_string(),
         "media/cases/pong/v1.0.0/references/_common/abcdef0123456789-gameplay.png".to_string(),
-        "pfp/acct_1".to_string(),
     ];
     let stale = stale_generation_keys(
         &keys,
@@ -3700,11 +3656,7 @@ fn aesthetic_reviewer_review(
 ) -> StoredReview {
     use test_cabinet_core::review::AestheticRating;
     StoredReview {
-        reviewer: crate::db::Reviewer {
-            user_id: "u1".to_string(),
-            username: "ada".to_string(),
-            display_name: "Ada L.".to_string(),
-        },
+        reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
         aesthetics: vec![],
         aesthetic: Some(AestheticRating::Good),
@@ -3735,11 +3687,7 @@ async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic
     );
     let mut reviewed = validator_run("r2", "2026-06-17T21:41:00Z", &[("serve", false)]);
     reviewed.reviews.push(StoredReview {
-        reviewer: crate::db::Reviewer {
-            user_id: "u1".to_string(),
-            username: "ada".to_string(),
-            display_name: "Ada L.".to_string(),
-        },
+        reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
         aesthetics: vec![],
         aesthetic: Some(AestheticRating::Legendary),

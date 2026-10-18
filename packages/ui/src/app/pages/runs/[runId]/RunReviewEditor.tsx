@@ -248,7 +248,7 @@ export function RunReviewEditor({
   // the seed for re-reviewing. The reviews arrive from the run-detail layout,
   // fetched with the record.
   const ownReview = useMemo(
-    () => reviews.find((r) => email !== null && r.reviewerId === email),
+    () => reviews.find((r) => email !== null && r.reviewer === email),
     [reviews, email],
   );
   const [ratings, setRatings] = useState<Record<string, Rating>>({});

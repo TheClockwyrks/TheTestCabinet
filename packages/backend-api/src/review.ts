@@ -22,11 +22,8 @@ import type {
  */
 export type Review = {
   /**
-   * The reviewing account's id (stable across their reviews).
-   */
-  reviewerId: string;
-  /**
-   * The reviewer's display name, shown beside their review.
+   * The reviewer, shown beside their review: the name recorded with the review
+   * from the identity that wrote it.
    */
   reviewer: string;
   /**
@@ -71,12 +68,4 @@ export type Review = {
    * evolved.
    */
   revisions?: Array<ReviewRevision>;
-  /**
-   * The snapshot-relative object key of the reviewer's profile picture
-   * (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
-   * bytes are exported once per reviewer under the content-stable top-level
-   * `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
-   * key against the snapshot base into an absolute avatar URL.
-   */
-  pictureKey?: string | null;
 };

@@ -77,7 +77,7 @@ function SingleReview({
   const { reviewerId } = useParams<{ reviewerId: string }>();
   const gallery = useGalleryData();
   const { email } = useIdentity();
-  const review = reviews.find((r) => r.reviewerId === reviewerId);
+  const review = reviews.find((r) => r.reviewer === reviewerId);
   const model = useReviewModel(run.subject);
 
   // The overall rating (worst across domains) or, for a game jam, the whole-game
@@ -119,7 +119,7 @@ function SingleReview({
   // console that can execute can submit it — the reviewer can correct their own
   // review even on a run this worker did not produce locally (the same gate the
   // Verdict tab uses). It returns to the Verdict tab with the form reopened.
-  const isOwn = email !== null && review?.reviewerId === email;
+  const isOwn = email !== null && review?.reviewer === email;
   const canEdit = isOwn && gallery.canExecute;
 
   return (

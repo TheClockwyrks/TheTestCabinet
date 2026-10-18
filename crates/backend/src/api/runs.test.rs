@@ -309,11 +309,7 @@ fn a_validator_rated_run_detail_folds_a_reviews_overrides_into_its_figures() {
     // run-wide aesthetic surfaces on both the run and its review.
     let mut run = detail_run(detail_record(&[("serve", true), ("hud", false)]), true);
     run.reviews.push(StoredReview {
-        reviewer: Reviewer {
-            user_id: "u1".to_string(),
-            username: "ada".to_string(),
-            display_name: "Ada L.".to_string(),
-        },
+        reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
         aesthetics: vec![],
         aesthetic: Some(AestheticRating::Amazing),

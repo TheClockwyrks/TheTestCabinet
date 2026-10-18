@@ -241,11 +241,7 @@ fn routes() -> Router<AppState> {
         // definition store is populated. Point a readinessProbe here and a
         // livenessProbe at /healthz — never both at one endpoint (see `ready`).
         .route("/readyz", get(ready))
-        // The console's client configuration: today just the data-plane artifact
-        // service base URL, so the console can resolve a pre-publish run's build
-        // and media links against it (the control-plane backend never serves the
-        // bytes). A read.
-        .route("/config", get(client_config))
+        // Ingest takes the service token.
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
         // runs, with their observed catalog facts) plus operator-driven config CRUD,
@@ -296,8 +292,8 @@ fn routes() -> Router<AppState> {
         .route("/stats/providers", get(stats::providers))
         .route("/stats/model-accuracy", get(stats::model_accuracy))
         .route("/stats/cabinet", get(stats::cabinet))
-        // Per-harness configuration (today: max parallelism). The list is an open
-        // read; setting a harness's config requires a token.
+        // Per-harness configuration (today: max parallelism). The list is a read;
+        // setting a harness's config takes a person's assertion.
         .route("/harness-config", get(harness_config::list))
         .route("/harness-config/{slug}", post(harness_config::set))
         .route("/test-case-groups", get(test_case_groups::list))
@@ -842,66 +838,4 @@ async fn ready(
             "storeReady": ready,
         })),
     )
-}
-
-/// `GET /config` — the console's client configuration.
-///
-/// The console talks to one backend URL, but a *pre-publish* run's playable build
-/// and proof/asset media live behind the separate **artifact service** (the data
-/// plane — see `crates/artifacts`). Its base URL is reported here so the console
-/// can prefix the root-relative `links.playable_build` (and the `/runs/{id}/proof|asset/…`
-/// paths) a driver sets. `artifactsUrl` carries the **advertised**
-/// `TCAB_ARTIFACTS_PUBLIC_URL`, which is console-facing only; the backend's own
-/// artifact calls go through `TCAB_ARTIFACTS_URL` instead (see
-/// [`crate::artifacts`]). It is `null` when no artifact service is configured — e.g.
-/// a single-box dev setup — in which case the console leaves those links
-/// unresolved. `arenaUrl` likewise
-/// reports the **arena service** (`TCAB_ARENA_PUBLIC_URL`) the console POSTs
-/// adversarial matches/tournaments to and streams live tournament progress from;
-/// `null` degrades the adversarial run UI.
-///
-/// `snapshotUrl` is the **public read** base of the snapshot bucket
-/// (`TCAB_SNAPSHOT_PUBLIC_URL`) — not the credentialed S3 write endpoint the backend
-/// uploads through. The console joins it with keys it derives itself, today an
-/// asset-generation variant's published reference frames; `null` when the deployment
-/// publishes no public snapshot, in which case that media is simply not shown.
-async fn client_config(
-    axum::extract::State(state): axum::extract::State<AppState>,
-) -> axum::Json<ClientConfig> {
-    axum::Json(ClientConfig {
-        artifacts_url: state.config.artifacts_public_url.clone(),
-        arena_url: state.config.arena_url.clone(),
-        grafana_url: state.config.grafana_url.clone(),
-        snapshot_url: state.config.snapshot_url.clone(),
-    })
-}
-
-/// The body of `GET /config`: the console's client-side configuration.
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ClientConfig {
-    /// The artifact service's public base URL, or `null` when artifacts are not
-    /// served separately. The console resolves a pre-publish run's build and media
-    /// links against it.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub artifacts_url: Option<String>,
-    /// The arena service's public base URL, or `null` when adversarial execution is
-    /// not served separately. The console POSTs matches/tournaments and streams live
-    /// tournament progress against it; the adversarial run UI degrades when absent.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub arena_url: Option<String>,
-    /// Grafana's base URL, or `null` when the deployment runs no observability
-    /// stack. The console uses it to link a run to the traces it emitted; absent,
-    /// that link is simply not rendered.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub grafana_url: Option<String>,
-    /// The public snapshot bucket's **read** base URL, or `null` when the deployment
-    /// publishes no public snapshot. The client joins it with the deterministic keys
-    /// it derives — today an asset-generation variant's published reference frames,
-    /// `media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never
-    /// the S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays
-    /// server-side.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub snapshot_url: Option<String>,
 }

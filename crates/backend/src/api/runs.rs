@@ -23,9 +23,7 @@ use test_cabinet_core::review::{
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::{Person, Reviewer as ReviewerIdentity, ServiceCaller};
-use crate::db::{
-    Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
-};
+use crate::db::{SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState};
 use crate::error::ApiError;
 use crate::snapshot::{RunSummary, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
@@ -116,13 +114,8 @@ pub async fn add_review(
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting reviewedAt: {e}")))?;
     let review = StoredReview {
-        // One identity stands for the reviewer's id, handle and display name alike:
-        // the identity the assertion carries is all the backend knows of them.
-        reviewer: Reviewer {
-            user_id: user.0.clone(),
-            username: user.0.clone(),
-            display_name: user.0,
-        },
+        // The identity the assertion carries, never one the body names.
+        reviewer: user.0,
         ratings: request.ratings,
         aesthetics: Vec::new(),
         aesthetic: request.aesthetic,
@@ -703,7 +696,7 @@ pub async fn my_reviews(
             let review = run
                 .reviews
                 .iter()
-                .find(|review| review.reviewer.user_id == user_id)?;
+                .find(|review| review.reviewer == user_id)?;
             Some(MyReviewOut {
                 run: RunSummary::from_stored(run),
                 review: review_out(review),
@@ -847,9 +840,7 @@ fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredR
 /// public identity.
 fn review_out(review: &StoredReview) -> ReviewOut {
     ReviewOut {
-        reviewer_id: review.reviewer.user_id.clone(),
-        reviewer: review.reviewer.display_name.clone(),
-        username: review.reviewer.username.clone(),
+        reviewer: review.reviewer.clone(),
         ratings: review.ratings.clone(),
         aesthetic: review.aesthetic,
         writeup: review.writeup.clone(),
@@ -1158,9 +1149,8 @@ pub struct StoredRunOut {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReviewOut {
-    reviewer_id: String,
+    /// The identity the review is attributed to: the Access assertion's email.
     reviewer: String,
-    username: String,
     ratings: Vec<DomainRating>,
     /// The reviewer's run-wide aesthetic tier (a legacy per-domain row already
     /// collapsed to its worst); absent on a legacy run's review.

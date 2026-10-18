@@ -32,8 +32,8 @@ pub struct Model {
     /// for the default route.
     #[sea_orm(nullable)]
     pub provider: Option<String>,
-    /// The triggering account's id (from the auth service, via the verified
-    /// bearer token).
+    /// The triggering identity: the Access assertion's email. A row made before
+    /// the edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The probed program-language arm's wire id, or `NULL` for every language.
     #[sea_orm(nullable)]

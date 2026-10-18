@@ -324,12 +324,10 @@ interface ResolvedVersion {
   }[];
 }
 
-// One review entry of `GET /runs/{id}` — the reviewer's verdict plus attribution
-// (id, display name, and login username).
+// One review entry of `GET /runs/{id}` — the reviewer's verdict plus the identity
+// it is attributed to.
 interface ReviewResponse {
-  reviewerId: string;
   reviewer: string;
-  username?: string | null;
   ratings: StoredReview["ratings"];
   // The reviewer's run-wide aesthetic tier; absent on a legacy run's review.
   aesthetic?: StoredReview["aesthetic"];
@@ -386,9 +384,7 @@ interface RunSummaryPageResponse {
 // Map one wire review (`ReviewResponse`) to the transport-neutral `StoredReview`.
 function toStoredReview(rv: ReviewResponse): StoredReview {
   return {
-    reviewerId: rv.reviewerId,
     reviewer: rv.reviewer,
-    username: rv.username ?? null,
     ratings: rv.ratings,
     aesthetic: rv.aesthetic ?? null,
     aesthetics: rv.aesthetics ?? [],

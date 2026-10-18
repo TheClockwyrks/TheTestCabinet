@@ -1,5 +1,5 @@
 //! The `review` table: a run's quality reviews. A run may carry many, one per
-//! reviewing account; the run's overall rating is the worst across them and its
+//! reviewer identity; the run's overall rating is the worst across them and its
 //! score the average.
 
 use sea_orm::entity::prelude::*;
@@ -12,16 +12,13 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     /// The run this review belongs to (FK to `run.id`). Indexed and non-unique;
-    /// `(run_id, reviewer_user_id)` is unique, so an account reviews a run once.
+    /// `(run_id, reviewer)` is unique, so an identity reviews a run once.
     pub run_id: String,
-    /// The reviewing account's id (from the auth service, via the verified bearer
-    /// token). Reviews are attributed to an account, not anonymous.
-    pub reviewer_user_id: String,
-    /// The reviewer's username, denormalized at submission so the public snapshot
-    /// is self-contained (accounts live in the auth service's separate database).
-    pub reviewer_username: String,
-    /// The reviewer's display name, denormalized at submission for the same reason.
-    pub reviewer_display_name: String,
+    /// The identity the review is attributed to: the Access assertion's email, or
+    /// a service token's common name, taken from the request rather than the body.
+    /// A review written before the edge asserted the identity holds the display
+    /// name its account had (`m20261018_000058_collapse_review_reviewer`).
+    pub reviewer: String,
     /// The reviewer's per-domain ratings as a JSON array of `{domain, rating}`.
     #[sea_orm(column_type = "Text")]
     pub ratings: String,

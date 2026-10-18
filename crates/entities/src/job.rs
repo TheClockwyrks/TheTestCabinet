@@ -124,9 +124,10 @@ pub struct Model {
     /// chronological order. `0` for rows enqueued before the column existed, which
     /// sorts them ahead of everything minted since — correct, as they are older.
     pub queue_seq: i64,
-    /// The account that launched this job (from the auth service, via the verified
-    /// bearer token), or `NULL` when unknown — every row enqueued before the column
-    /// existed, which reads as an unattributed manual launch.
+    /// The identity that launched this job (the Access assertion's email; a retired
+    /// auth service account id on an older row), or `NULL` when unknown — every row
+    /// enqueued before the column existed, which reads as an unattributed manual
+    /// launch.
     ///
     /// Attribution only. Coverage counting stays **global**: a run counts toward its
     /// cell's target whoever launched it, so an existing run is never re-requested

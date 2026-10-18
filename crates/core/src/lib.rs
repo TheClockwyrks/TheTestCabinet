@@ -9,7 +9,6 @@
 //! thin layers on top of this core; keeping orchestration here is what makes batch
 //! runs and unattended sweeps possible.
 
-pub mod accounts;
 pub mod adversarial_validator;
 pub mod asset_reference;
 pub mod audio_stage;
@@ -119,7 +118,6 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::instrument;
 
-pub use accounts::{Account, AccountsClient, AuthnResponse, LoginRequest, RegisterRequest};
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredBytesSource, CredFile, CredSource, HostCreds, MapCreds, RequestedAuthMode,

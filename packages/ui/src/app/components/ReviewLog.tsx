@@ -256,7 +256,7 @@ export function ReviewLog({ reviews, loading }: ReviewLogProps) {
         {reviews.map((entry) => (
           <Link
             key={entry.run.id}
-            to={routes.runReview(entry.run.id, entry.review.reviewerId)}
+            to={routes.runReview(entry.run.id, entry.review.reviewer)}
             className={styles.row}
           >
             {visible.map((column) => (

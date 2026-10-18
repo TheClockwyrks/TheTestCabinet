@@ -140,7 +140,7 @@ fn review_body() -> serde_json::Value {
 }
 
 /// The reviewer identities stored on run `r1`.
-async fn reviewers(state: &AppState) -> Vec<(String, String, String)> {
+async fn reviewers(state: &AppState) -> Vec<String> {
     state
         .db
         .get_run("r1")
@@ -149,13 +149,7 @@ async fn reviewers(state: &AppState) -> Vec<(String, String, String)> {
         .unwrap()
         .reviews
         .into_iter()
-        .map(|review| {
-            (
-                review.reviewer.user_id,
-                review.reviewer.username,
-                review.reviewer.display_name,
-            )
-        })
+        .map(|review| review.reviewer)
         .collect()
 }
 
@@ -256,14 +250,7 @@ async fn a_local_review_is_attributed_to_the_local_identity() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(
-        reviewers(&state).await,
-        vec![(
-            "dev@local".to_string(),
-            "dev@local".to_string(),
-            "dev@local".to_string()
-        )]
-    );
+    assert_eq!(reviewers(&state).await, vec!["dev@local".to_string()]);
 }
 
 #[tokio::test]
@@ -536,7 +523,7 @@ async fn a_verified_persons_review_is_attributed_to_their_email() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(reviewers(&state).await[0].0, "ada@example.com");
+    assert_eq!(reviewers(&state).await[0], "ada@example.com");
 
     let (status, _) = call(
         &router,
@@ -576,7 +563,7 @@ async fn a_service_tokens_assertion_drives_automation_and_reviews_under_its_name
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(reviewers(&state).await[0].0, "tcab-automation-staging");
+    assert_eq!(reviewers(&state).await[0], "tcab-automation-staging");
 
     let (status, _) = call(
         &router,

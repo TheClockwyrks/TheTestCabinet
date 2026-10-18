@@ -356,10 +356,6 @@
       "description": "RFC 3339 of when the review was last edited, or `None` if it has never been\nedited since it was first submitted. The newest [`Self::revisions`] entry\ncarries the same timestamp.",
       "type": ["string", "null"]
     },
-    "pictureKey": {
-      "description": "The snapshot-relative object key of the reviewer's profile picture\n(`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The\nbytes are exported once per reviewer under the content-stable top-level\n`pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the\nkey against the snapshot base into an absolute avatar URL.",
-      "type": ["string", "null"]
-    },
     "ratings": {
       "description": "The reviewer's functional rating for each scoring domain. This review's\noverall rating is the worst across them. Empty on a review of a\nvalidator-rated run, whose functional rating the validators decide.",
       "items": {
@@ -372,11 +368,7 @@
       "type": "string"
     },
     "reviewer": {
-      "description": "The reviewer's display name, shown beside their review.",
-      "type": "string"
-    },
-    "reviewerId": {
-      "description": "The reviewing account's id (stable across their reviews).",
+      "description": "The reviewer, shown beside their review: the name recorded with the review\nfrom the identity that wrote it.",
       "type": "string"
     },
     "revisions": {
@@ -390,14 +382,7 @@
       "type": "string"
     }
   },
-  "required": [
-    "reviewerId",
-    "reviewer",
-    "ratings",
-    "writeup",
-    "checklist",
-    "reviewedAt"
-  ],
+  "required": ["reviewer", "ratings", "writeup", "checklist", "reviewedAt"],
   "title": "Review",
   "type": "object"
 }

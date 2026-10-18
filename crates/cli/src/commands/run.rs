@@ -5,8 +5,8 @@
 //! dispatcher claims it and a per-run driver pod executes it), the CLI streams the
 //! job's live event feed, and once the stream closes it reads back the produced
 //! record to print the run's summary. Executing the run requires a reachable
-//! backend (`TCAB_BACKEND_URL`) and a logged-in account (the enqueue is gated on
-//! the launching account's bearer token).
+//! backend (`TCAB_BACKEND_URL`) and a bearer (`TCAB_TOKEN`) the enqueue is
+//! attributed through.
 
 use std::path::PathBuf;
 
@@ -24,7 +24,7 @@ use crate::config;
 /// Enqueue a run for the selected test case version, harness, and model on the
 /// backend, stream its live event feed, then report the produced record.
 ///
-/// Requires a backend URL (`TCAB_BACKEND_URL`) and a logged-in account: the CLI
+/// Requires a backend URL (`TCAB_BACKEND_URL`) and a bearer (`TCAB_TOKEN`): the CLI
 /// no longer runs containers itself, it drives the backend's run queue (the k3d
 /// stack) the same way the web console does.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
@@ -34,9 +34,8 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
          http://127.0.0.1:8787)",
     )?;
-    // The enqueue is gated on the launching account, so a launch requires a stored
-    // login token even though plain reads do not.
-    let token = config::require_token().context("launching a run requires a logged-in account")?;
+    // The enqueue is attributed to the caller, so a launch carries a bearer.
+    let token = config::require_token().context("launching a run requires a credential")?;
 
     // An external `--orchestrator-dir` is a local-execution affordance that no
     // longer applies to a backend-driven run; the orchestrator is selected by its

@@ -313,7 +313,6 @@ tmp/
 **/.claude/agent-memory-local
 **/.claude/first-run
 **/.claude/assistant-daemon-state.json
-tcab-auth.sqlite*
 tcab-backend.sqlite*
 /tcab-store/
 /.tcab-driver/

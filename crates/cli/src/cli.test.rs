@@ -375,33 +375,12 @@ fn review_parses() {
 }
 
 #[test]
-fn login_and_register_parse() {
-    let cli = Cli::try_parse_from(["tcab", "login", "--username", "ada", "--password", "secret"])
-        .expect("login parses");
-    match cli.command {
-        Command::Login(args) => {
-            assert_eq!(args.username, "ada");
-            assert_eq!(args.password.as_deref(), Some("secret"));
-        }
-        other => panic!("expected a login command, got {other:?}"),
-    }
-
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "register",
-        "--username",
-        "ada",
-        "--display-name",
-        "Ada L.",
-    ])
-    .expect("register parses");
-    match cli.command {
-        Command::Register(args) => {
-            assert_eq!(args.username, "ada");
-            assert_eq!(args.display_name, "Ada L.");
-            assert!(args.password.is_none());
-        }
-        other => panic!("expected a register command, got {other:?}"),
+fn the_account_commands_are_gone() {
+    for command in ["login", "logout", "register"] {
+        assert!(
+            Cli::try_parse_from(["tcab", command]).is_err(),
+            "`tcab {command}` still parses"
+        );
     }
 }
 

@@ -172,18 +172,6 @@ pub struct Config {
     /// answer `503` naming that script, and nothing else about the backend is
     /// affected.
     pub gg_reference: PathBuf,
-    /// The **advertised** base URL of the **artifact service**
-    /// (`TCAB_ARTIFACTS_PUBLIC_URL`), reported to the console via `GET /config` so it
-    /// can resolve a pre-publish run's `links.playable_build` (and its proof/asset
-    /// media) against the data plane. `None` when artifacts are not served separately
-    /// (e.g. a single-box dev setup with no artifact service) — the console then
-    /// leaves those links unresolved.
-    ///
-    /// Advertised only: it is whatever a *browser* can resolve, which in a
-    /// port-forwarded development cluster is a loopback address no backend pod can
-    /// reach. Every call the backend makes itself goes through
-    /// [`artifacts_internal_url`](Self::artifacts_internal_url).
-    pub artifacts_public_url: Option<String>,
     /// The base URL of the **artifact service** as the backend itself reaches it
     /// (`TCAB_ARTIFACTS_URL`) — the same in-cluster Service address the dispatcher
     /// hands its driver Jobs.
@@ -192,8 +180,7 @@ pub struct Config {
     /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and the
     /// snapshot builder's fallback read of a run's proof/asset media. `None` disables
     /// all three, which is correct for a single-box dev setup with no artifact
-    /// service and is warned about at startup for a deployment that advertises a
-    /// public URL without supplying this one.
+    /// service.
     pub artifacts_internal_url: Option<String>,
     /// How often the artifact reclamation sweep runs
     /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,
@@ -203,52 +190,6 @@ pub struct Config {
     /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
     /// uploaded its tree but not yet reported terminal is protected from the sweep.
     pub artifact_sweep_grace: Duration,
-    /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
-    /// reported to the console via `GET /config` so it can POST adversarial
-    /// matches/tournaments and stream live tournament progress against the data
-    /// plane. `None` when no arena service is configured (e.g. a single-box dev
-    /// setup) — the console then degrades the adversarial run UI. Like
-    /// `artifacts_url` this is a data-plane URL the control plane merely advertises;
-    /// the arena talks HTTP back to this backend for its inputs and results.
-    pub arena_url: Option<String>,
-    /// The base URL of the deployment's **Grafana** (`TCAB_GRAFANA_PUBLIC_URL`),
-    /// reported to the console via `GET /config` so a run can link out to the traces
-    /// it emitted. `None` when the deployment runs no observability stack (the local
-    /// setup, and any overlay that omits the observability component) — the console
-    /// then simply hides the link.
-    ///
-    /// Unlike `artifacts_public_url` and `arena_url` this is not a data-plane URL: the
-    /// backend never calls Grafana, and Grafana never calls the backend. It is
-    /// advertised here purely because `GET /config` is already how the console
-    /// learns per-environment URLs, and threading one more through the console
-    /// image's nginx template would duplicate that mechanism for no gain.
-    pub grafana_url: Option<String>,
-    /// The **public read** base URL of the snapshot bucket
-    /// (`TCAB_SNAPSHOT_PUBLIC_URL`) — an `r2.dev` URL or the custom domain in front
-    /// of it — reported to the console via `GET /config`. `None` when the deployment
-    /// serves no public snapshot (a single-box dev setup), in which case a client
-    /// simply cannot resolve snapshot-hosted media.
-    ///
-    /// Do not confuse this with [`R2Config::endpoint`](test_cabinet_core::r2::R2Config)
-    /// (`TCAB_R2_ENDPOINT`): that is the S3-compatible **write** endpoint the backend
-    /// authenticates against with SigV4 to upload a snapshot, and it is a credentialed
-    /// control-plane URL that must never reach a browser. This one is the anonymous
-    /// read side of the same bucket. The two are different hosts even when they front
-    /// identical bytes.
-    ///
-    /// The console needs it because some snapshot objects are addressed by a
-    /// *derivable* key rather than a stored URL — an asset-generation variant's
-    /// published reference frames (see `test_cabinet_core::asset_reference`), whose
-    /// keys the client builds itself from the case triple and a frame index. Joining
-    /// them onto a base is the client's job; the backend only advertises the base,
-    /// exactly as it does for `artifacts_public_url` and `arena_url`.
-    ///
-    /// The static gallery reaches the same base under its own build-time name
-    /// (`TCAB_SNAPSHOT_URL`, see `.env.site.example`); it bakes the value in at build
-    /// rather than fetching `GET /config`, so the two are set to the same URL but
-    /// consumed by different processes. The name here follows the backend's own
-    /// `TCAB_*_PUBLIC_URL` convention for the URLs it advertises.
-    pub snapshot_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -323,11 +264,7 @@ impl Config {
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
         let ingest_previews = truthy("TCAB_BACKEND_INGEST_PREVIEWS");
 
-        let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
         let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
-        let arena_url = base_url("TCAB_ARENA_PUBLIC_URL");
-        let grafana_url = base_url("TCAB_GRAFANA_PUBLIC_URL");
-        let snapshot_url = base_url("TCAB_SNAPSHOT_PUBLIC_URL");
 
         let artifact_sweep_interval_hours = std::env::var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS")
             .ok()
@@ -358,7 +295,6 @@ impl Config {
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
             gg_reference,
-            artifacts_public_url,
             artifacts_internal_url,
             artifact_sweep_interval: Duration::from_secs(
                 artifact_sweep_interval_hours.saturating_mul(3600),
@@ -366,9 +302,6 @@ impl Config {
             artifact_sweep_grace: Duration::from_secs(
                 artifact_sweep_grace_hours.saturating_mul(3600),
             ),
-            arena_url,
-            grafana_url,
-            snapshot_url,
             allow_experimental,
             ingest_previews,
         })

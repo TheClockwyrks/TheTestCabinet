@@ -1032,14 +1032,11 @@ export interface ReviewDocument {
 // the snapshot's `reviews[]` entries.
 export interface StoredReview extends ReviewDocument {
   // The reviewing identity: the email of the person (or the service token's name)
-  // the edge asserted when the review was submitted. The console compares it with
-  // its own identity to recognise the reader's own review.
-  reviewerId: string;
-  // The reviewer's display name, for attribution in the UI.
+  // the edge asserted when the review was submitted, shown beside the review. The
+  // console compares it with its own identity to recognise the reader's own review.
+  // A review written before the edge asserted the identity carries the display
+  // name its account had.
   reviewer: string;
-  // The reviewer's username (login handle). Absent on the public snapshot, which
-  // exposes only the display name.
-  username?: string | null;
   // When the review was first submitted (ISO-8601), when reported. Unchanged by
   // later edits — see `editedAt`.
   reviewedAt?: string | null;

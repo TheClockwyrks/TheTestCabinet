@@ -153,7 +153,7 @@ export function RunVerdictPage() {
         // editor is offered to revise it even on a run this worker did not produce
         // locally (a reviewer can correct their own published review from anywhere).
         const ownsReview =
-          email !== null && reviews.some((r) => r.reviewerId === email);
+          email !== null && reviews.some((r) => r.reviewer === email);
         return (
           <div className={styles.tabStack}>
             {/* Known issues recorded against this run's exact version, scoped to

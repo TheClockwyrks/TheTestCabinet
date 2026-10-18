@@ -100,17 +100,13 @@ pub struct PublishedRun {
     pub links: RunLinks,
 }
 
-/// A review as the backend serves it on the read side: the reviewing account's
-/// public identity, the per-domain ratings, the prose body, and the reviewer's
-/// verdicts on the case's checklist items.
+/// A review as the backend serves it on the read side: the reviewer's identity,
+/// the per-domain ratings, the prose body, and the reviewer's verdicts on the
+/// case's checklist items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedReview {
-    /// The reviewing account's id.
-    pub reviewer_id: String,
-    /// The reviewing account's display name.
+    /// The identity the review is attributed to: the Access assertion's email.
     pub reviewer: String,
-    /// The reviewing account's login handle.
-    pub username: String,
     /// The reviewer's rating for each of the case's scoring domains. This
     /// review's overall rating is the worst across them.
     pub ratings: Vec<crate::review::DomainRating>,
@@ -2748,11 +2744,7 @@ struct StoredRunBody {
 #[serde(rename_all = "camelCase")]
 struct ReviewOutBody {
     #[serde(default)]
-    reviewer_id: String,
-    #[serde(default)]
     reviewer: String,
-    #[serde(default)]
-    username: String,
     /// The reviewer's rating for each scoring domain. Deserialized straight into
     /// [`crate::review::DomainRating`] — the wire shape matches it.
     #[serde(default)]
@@ -2796,9 +2788,7 @@ fn stored_run_from(body: StoredRunBody) -> PublishedRun {
             .reviews
             .into_iter()
             .map(|review| PublishedReview {
-                reviewer_id: review.reviewer_id,
                 reviewer: review.reviewer,
-                username: review.username,
                 ratings: review.ratings,
                 writeup: review.writeup,
                 checklist: review.checklist,
