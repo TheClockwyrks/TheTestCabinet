@@ -12,7 +12,10 @@
 //! It is a store for **tests**, and only for the tests that ask it for a program. It is never
 //! reachable from an arm, from [`run_program`](super::run_program) or from the isolation gate: a
 //! build cache shared across preparations inside an arm is exactly the breach that gate exists to
-//! catch, so the gate and the turn path keep compiling for real.
+//! catch, so the gate and the turn path keep compiling for real. The one test road that runs a
+//! stored program through the turn path's own evaluation is
+//! [`run_program_prepared_by`](super::run_program_prepared_by), which G8 uses for the compiled arms
+//! whose five programs would otherwise be five cold builds (`language/g8.rs`).
 //!
 //! # What an entry is keyed on
 //!

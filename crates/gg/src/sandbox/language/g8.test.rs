@@ -215,7 +215,8 @@ fn the_location_is_checked_in_both_directions() {
 /// back door.
 ///
 /// So this reads the arm's own substrate test file, whose name is the arm's own id, and insists it
-/// calls the gate. A twelfth arm registered without one fails here, by name, on the day it is
+/// calls the gate — [`gate`], or [`gate_stored`] for a compiled arm that takes its preparations
+/// from the store of prepared programs. A twelfth arm registered without one fails here, by name, on the day it is
 /// registered.
 #[test]
 fn every_registered_arm_is_held_to_the_gate() {
@@ -229,7 +230,7 @@ fn every_registered_arm_is_held_to_the_gate() {
             )
         });
         assert!(
-            source.contains("g8::gate("),
+            source.contains("g8::gate(") || source.contains("g8::gate_stored("),
             "{arm}'s substrate tests never drive gate G8; every registered arm answers all five \
              failure shapes"
         );

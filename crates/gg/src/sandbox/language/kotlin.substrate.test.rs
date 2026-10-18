@@ -39,8 +39,10 @@
 //! the next one's memory. The helpers here — [`prepare`], [`compiled`], [`compiled_module`] — take a
 //! program from the test suite's [store of prepared programs](crate::sandbox::prepared_cache), and
 //! only the first process to ask for one warms the arm and builds it through the production pool.
-//! A test that reads what a real preparation wrote, counts the JVMs one starts, or drives the turn
-//! path calls the production step itself. A function groups the programs that exercise one
+//! [G8](super::super::g8) takes its five programs' preparations from the store too, through
+//! [`compiled_program`], and runs them with the turn path's own code. A test that reads what a real
+//! preparation wrote, counts the JVMs one starts, or drives the turn path calls the production step
+//! itself. A function groups the programs that exercise one
 //! behaviour; one that grows into the slow end of the suite is split rather than extended.
 
 use std::sync::OnceLock;
@@ -139,6 +141,15 @@ pub(super) fn stored(
 /// [`stored`], without saying how: the component, or the failure a model would read.
 pub(super) fn compiled(source: &str, modules: &[CodeModule]) -> Result<Vec<u8>, PrepareFailure> {
     stored(source, modules).0
+}
+
+/// [`compiled`] as the [`PreparedProgram`](crate::sandbox::PreparedProgram) the production prepare
+/// step hands a run: no source, and the component it built. What [G8](super::super::g8) runs.
+fn compiled_program(source: &str) -> Result<crate::sandbox::PreparedProgram, PrepareFailure> {
+    compiled(source, &[]).map(|component| crate::sandbox::PreparedProgram {
+        source: String::new(),
+        component: Some(component),
+    })
 }
 
 /// **A code module bound at `key`, compiled by the production module step**, or the model-facing
@@ -1346,10 +1357,12 @@ fn the_programs_gg_writes_for_this_arm_run() {
 }
 
 /// **Gate [G8](super::super::g8) for Kotlin** — all five shapes a runtime failure takes,
-/// driven through the production path and read back as the model would read them.
+/// driven through the production path and read back as the model would read them. Each program's
+/// real preparation is taken from the [store](crate::sandbox::prepared_cache) through
+/// [`compiled_program`]; see [`g8::gate_stored`].
 #[test]
 fn g8_a_runtime_failure_reaches_the_model() {
-    g8::gate(
+    g8::gate_stored(
         GgProgramLanguage::Kotlin,
         &[
             Case {
@@ -1438,6 +1451,7 @@ fun main() {
                 recorded: Some(TurnErrorType::TranspileCompile),
             },
         ],
+        compiled_program,
     );
 }
 

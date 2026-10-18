@@ -56,10 +56,13 @@
 //! preparations of one program are not byte-for-byte alike on this arm (the debug information
 //! records each preparation's own module-cache hashes), but the store hands every process the
 //! **same** bytes, so the test-only component cache serves the Cranelift compile of a stored
-//! program too, and that compile is most of what a Swift program costs. A test that reads what a
-//! real preparation wrote, or that drives the turn path, calls the production step itself and pays
-//! for both. A function groups the programs that exercise one behaviour; one that grows into the
-//! slow end of the suite is split rather than extended.
+//! program too, and that compile is most of what a Swift program costs. The two tests that run a
+//! program through the turn path — the whole program a model would write, and
+//! [G8](super::super::g8) — take its preparation from the store too, through
+//! [`compiled_program`], and run it with the turn path's own code. A test that reads what a real
+//! preparation wrote calls the production step itself and pays for both. A function groups the
+//! programs that exercise one behaviour; one that grows into the slow end of the suite is split
+//! rather than extended.
 
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -128,6 +131,15 @@ pub(super) fn stored(
 /// [`stored`], without saying how: the component, or the failure a model would read.
 pub(super) fn compiled(source: &str, modules: &[CodeModule]) -> Result<Vec<u8>, PrepareFailure> {
     stored(source, modules).0
+}
+
+/// [`compiled`] as the [`PreparedProgram`](crate::sandbox::PreparedProgram) the production prepare
+/// step hands a run: no source, and the component it built. What [G8](super::super::g8) runs.
+fn compiled_program(source: &str) -> Result<crate::sandbox::PreparedProgram, PrepareFailure> {
+    compiled(source, &[]).map(|component| crate::sandbox::PreparedProgram {
+        source: String::new(),
+        component: Some(component),
+    })
 }
 
 /// **A code module bound at `key`, built by the production module step**, or the model-facing
@@ -926,9 +938,17 @@ fn temp_env<T>(key: &str, value: &str, body: impl FnOnce() -> T) -> T {
 /// **A whole Swift program, written the way a model writes one, runs through gg's own turn path.**
 ///
 /// Everything else in this file drives [`evaluate`], which is the production path with the language
-/// registry left out. This one calls [`run_program`](crate::sandbox::run_program) — the function a
-/// turn calls — so what answers is the registered arm: its real prepare step, a real `swiftc`, the
-/// component it produced and the real membrane.
+/// registry left out. This one runs the body of [`run_program`](crate::sandbox::run_program) — the
+/// function a turn calls — through
+/// [`run_program_prepared_by`](crate::sandbox::run_program_prepared_by), so what answers is the
+/// registered arm: the component its real prepare step built, evaluated by the turn path's own code
+/// against the real membrane. The preparation is taken from the test suite's
+/// [store](crate::sandbox::prepared_cache) through [`compiled_program`]: a fresh `swiftc` build
+/// writes new debug information every time, so in every process it would also be a Cranelift
+/// compile of bytes nothing has seen, which is most of what this test would cost and none of what it
+/// is about. That `run_program` itself prepares a Swift program with a real `swiftc` and runs it is
+/// held by the cross-arm cells that call it (`agreement`, and the compile cost in
+/// `sandbox.compile.test.rs`).
 ///
 /// The program is what the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
 /// ask a model for on this arm and nothing gg supplies: its own `import` lines, its own top-level
@@ -946,9 +966,7 @@ fn a_whole_swift_program_a_model_would_write_runs_through_the_turn_path() {
         modules: &[],
         ending: RunEnding::None,
     };
-    let (outcome, _api) = crate::sandbox::run_program(
-        crate::sandbox::language(GgProgramLanguage::Swift),
-        r#"import gg
+    const PROGRAM: &str = r#"import gg
 import Foundation
 
 struct Summary {
@@ -963,12 +981,14 @@ let notes = file.contents
 let summary = Summary(path: "notes.md", characters: notes.count)
 gg.log(summary.line)
 try views.openText("notes", body: notes)
-"#,
+"#;
+    let (outcome, _api) = crate::sandbox::run_program_prepared_by(
+        crate::sandbox::language(GgProgramLanguage::Swift),
         scope,
-        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,
+        || compiled_program(PROGRAM),
     );
 
     let result = match &outcome.result {
@@ -1003,10 +1023,12 @@ try views.openText("notes", body: notes)
 }
 
 /// **Gate [G8](super::super::g8) for Swift** — all five shapes a runtime failure takes,
-/// driven through the production path and read back as the model would read them.
+/// driven through the production path and read back as the model would read them. Each program's
+/// real preparation is taken from the [store](crate::sandbox::prepared_cache) through
+/// [`compiled_program`]; see [`g8::gate_stored`].
 #[test]
 fn g8_a_runtime_failure_reaches_the_model() {
-    g8::gate(
+    g8::gate_stored(
         GgProgramLanguage::Swift,
         &[
             Case {
@@ -1086,5 +1108,6 @@ exit(
                 recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
+        compiled_program,
     );
 }
