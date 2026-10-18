@@ -17,7 +17,6 @@ use super::{
     read_game_jam_readme, read_showcase, resolve_engine, run_init, with_runtime_cap,
     write_run_streams,
 };
-use crate::engine::EngineCatalogExt as _;
 use crate::execution::ExecOutput;
 use crate::test_case::MediaKind;
 use crate::validation::{DebugScriptResult, StepResult, ValidationSummary};
@@ -892,7 +891,7 @@ fn a_request_naming_no_engine_resolves_and_records_the_engineless_run() {
         "an unspecified engine is the engineless run, not an empty selection",
     );
 
-    let engine = resolve_engine(&EngineCatalog::new(), &request, &case)
+    let engine = resolve_engine(&crate::engine::built_in_catalog(), &request, &case)
         .expect("every case supports the engineless run");
     assert_eq!(engine.slug(), NONE_SLUG);
     assert!(
@@ -922,7 +921,7 @@ fn a_request_naming_no_engine_resolves_and_records_the_engineless_run() {
 #[test]
 fn a_request_naming_a_supported_engine_resolves_it() {
     let engine = resolve_engine(
-        &EngineCatalog::new(),
+        &crate::engine::built_in_catalog(),
         &request_with_engine("simple-2d"),
         &version_supporting_simple_2d(),
     )
@@ -943,7 +942,7 @@ fn a_request_naming_a_supported_engine_resolves_it() {
 fn an_engine_the_case_does_not_support_is_refused_before_any_container_work() {
     let case = version_with_cap(1800);
     let err = resolve_engine(
-        &EngineCatalog::new(),
+        &crate::engine::built_in_catalog(),
         &request_with_engine("simple-2d"),
         &case,
     )
@@ -984,8 +983,12 @@ fn the_engineless_run_is_refused_by_a_case_built_against_an_engine() {
     };
     // `EngineSelection::default()` is the engineless run, which is what a request
     // naming no engine resolves to.
-    let err = resolve_engine(&EngineCatalog::new(), &request_with_override(None), &case)
-        .expect_err("the case declares simple-2d alone");
+    let err = resolve_engine(
+        &crate::engine::built_in_catalog(),
+        &request_with_override(None),
+        &case,
+    )
+    .expect_err("the case declares simple-2d alone");
 
     match &err {
         Error::EngineUnsupportedForCase {
@@ -1003,7 +1006,7 @@ fn the_engineless_run_is_refused_by_a_case_built_against_an_engine() {
 #[test]
 fn the_engineless_run_is_admitted_by_a_case_that_declares_it_alongside_an_engine() {
     let engine = resolve_engine(
-        &EngineCatalog::new(),
+        &crate::engine::built_in_catalog(),
         &request_with_override(None),
         &version_supporting_simple_2d(),
     )
@@ -1017,7 +1020,7 @@ fn the_engineless_run_is_admitted_by_a_case_that_declares_it_alongside_an_engine
 #[test]
 fn an_unknown_engine_slug_does_not_resolve() {
     let err = resolve_engine(
-        &EngineCatalog::new(),
+        &crate::engine::built_in_catalog(),
         &request_with_engine("simpel-2d"),
         &version_supporting_simple_2d(),
     )
@@ -1192,7 +1195,7 @@ fn catalog_staging_simple_2d(version: &str) -> (tempfile::TempDir, EngineCatalog
         format!("{{\"name\":\"@clockwyrks/simple-2d\",\"version\":\"{version}\"}}"),
     )
     .expect("write staged package.json");
-    let catalog = EngineCatalog::with_package_store(store.path());
+    let catalog = crate::engine::built_in_catalog_in(store.path());
     (store, catalog)
 }
 
@@ -1278,7 +1281,7 @@ fn a_declared_range_that_cannot_be_checked_refuses_the_run() {
     // than admitted.
     let store = tempfile::tempdir().expect("temp store");
     let err = resolve_engine(
-        &EngineCatalog::with_package_store(store.path()),
+        &crate::engine::built_in_catalog_in(store.path()),
         &request_with_engine("simple-2d"),
         &version_pinning_simple_2d("1.0.0", None),
     )
@@ -1308,7 +1311,7 @@ fn a_case_declaring_no_range_never_consults_the_package_store() {
     // broken every shipped case version.
     let store = tempfile::tempdir().expect("temp store");
     let engine = resolve_engine(
-        &EngineCatalog::with_package_store(store.path()),
+        &crate::engine::built_in_catalog_in(store.path()),
         &request_with_engine("simple-2d"),
         &version_supporting_simple_2d(),
     )
@@ -1686,7 +1689,10 @@ fn metrics_engine() -> super::RunEngine<
     crate::validator::DispatchValidator,
 > {
     super::RunEngine {
-        catalog: crate::test_case::TestCaseCatalog::new("/nonexistent"),
+        catalog: crate::test_case::TestCaseCatalog::new(
+            "/nonexistent",
+            crate::engine::built_in_catalog(),
+        ),
         seeder: NoopSeeder,
         runtime: ScriptedRuntime::new(Vec::new()),
         collector: super::CliArtifactCollector::new(
@@ -1695,7 +1701,7 @@ fn metrics_engine() -> super::RunEngine<
         ),
         harnesses: Box::new(super::DefaultHarnessRegistry::new()),
         orchestrators: super::OrchestratorCatalog::new(),
-        engines: EngineCatalog::new(),
+        engines: crate::engine::built_in_catalog(),
         renderer: Box::new(crate::reference::BrowserRenderer::new()),
         session_assembler: None,
         analyzer: None,

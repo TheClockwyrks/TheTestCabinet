@@ -3,7 +3,6 @@
 //! client.
 
 use super::*;
-use crate::engine::EngineCatalogExt as _;
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::reference::ReferenceRenderer;
 use crate::run_record::{
@@ -12,7 +11,6 @@ use crate::run_record::{
 use crate::test_case::{
     BuildCommands, ReferenceView, ReviewItem, SpecFile, TestCaseVersion, Variant, WorkspaceFile,
 };
-use crate::test_suite::TestSuiteCatalogExt as _;
 use crate::validation::ValidationSummary;
 
 /// A minimal in-memory [`BackendClient`] returning a one-spec, one-asset,
@@ -1321,7 +1319,12 @@ impl SuiteStubBackend {
             self.materials.clone(),
         );
         let mut resolved = catalog
-            .resolve("carom", "v1.0.0", "end-to-end")
+            .resolve_with(
+                "carom",
+                "v1.0.0",
+                "end-to-end",
+                &crate::engine::built_in_catalog(),
+            )
             .expect("the fixture definition lowers");
         let root = fixture_suites_root().join("carom/versions/v1.0.0");
         resolved.root = std::path::PathBuf::new();
@@ -1459,7 +1462,7 @@ async fn materialize_rebuilds_the_suite_version_a_definition_was_lowered_from() 
     // suite-defined, and the prompt handed to the harness is the one the
     // definition renders — naming the specification documents seeding wrote.
     assert!(crate::test_suite::is_suite_defined(&version));
-    let engine = crate::engine::EngineCatalog::new()
+    let engine = crate::engine::built_in_catalog()
         .resolve(&crate::engine::EngineSelection::new("none".to_string()))
         .expect("the engineless run");
     let variant = version

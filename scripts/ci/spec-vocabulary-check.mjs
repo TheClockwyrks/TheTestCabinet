@@ -16,7 +16,7 @@
 //
 // WHAT IS SEEDED (and therefore checked). `crates/core/src/seeding.rs` copies, for
 // every run, the version's `prompt.hbs` (rendered into the harness instruction by
-// `crates/core/src/prompt.rs`) and the spec files the manifest names — every one of
+// `contracts/crates/suites/src/prompt.rs`) and the spec files the manifest names — every one of
 // which lives under `specs/`: `.md` and `.py` verbatim, `.md.hbs` rendered. So under
 // every `test-cases/**/vX.Y.Z/` and `game-jams/**/vX.Y.Z/` this reads `prompt.hbs`
 // and every file under `specs/`. It deliberately reads ALL of `specs/` rather than
@@ -79,7 +79,7 @@ const SHOW_FROZEN = process.argv.includes("--show-frozen");
 const TREES = ["test-cases", "game-jams"];
 const VERSION_DIR = /^v\d+\.\d+\.\d+$/;
 const FROZEN_MARKER = ".frozen";
-const PROMPT_RS = "crates/core/src/prompt.rs";
+const PROMPT_RS = "contracts/crates/suites/src/prompt.rs";
 // Spec directories hold prose and source today (.md, .md.hbs, .py). Anything else
 // is read as text too — a stray .txt is seeded just the same — except obvious
 // binary media, which cannot carry a sentence.

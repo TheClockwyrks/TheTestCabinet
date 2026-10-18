@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use test_cabinet_core::engine::{EngineCatalog, EngineCatalogExt as _, EngineSelection};
+use test_cabinet_core::engine::EngineSelection;
 use test_cabinet_core::{TestCaseCatalog, TestType, ensure_engine_supported};
 
 /// The directory holding the committed `test-cases/` and `game-jams/`:
@@ -39,7 +39,10 @@ fn catalog_root() -> PathBuf {
 /// list, a missing variant file, or a bad per-variant domain surfaces here).
 #[test]
 fn every_catalog_case_and_variant_resolves() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let cases = catalog.list().expect("list catalog");
     assert!(!cases.is_empty(), "catalog should not be empty");
     for case in &cases {
@@ -98,7 +101,10 @@ fn asset_generation_cases_are_reviewed_on_one_overall_rating() {
     // all: the one rating the reviewer gives is the run's rating. Only each case's
     // LATEST version is held to this; a frozen version keeps whatever checklist the
     // runs recorded against it were judged by.
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let mut checked = 0;
     for case in catalog.list().expect("list catalog") {
         let version = catalog
@@ -227,7 +233,10 @@ fn frozen_version_dirs() -> Vec<PathBuf> {
 /// counts must be equal.
 #[test]
 fn the_catalog_walk_reaches_every_committed_manifest() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved: usize = catalog
         .list()
         .expect("list catalog")
@@ -257,7 +266,10 @@ fn the_catalog_walk_reaches_every_committed_manifest() {
 /// feature existed.
 #[test]
 fn every_frozen_version_still_resolves_unchecked_and_ungated() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     let frozen = frozen_version_dirs();
     assert!(
@@ -323,8 +335,11 @@ fn every_frozen_version_still_resolves_unchecked_and_ungated() {
 /// rather than to a blanket rule.
 #[test]
 fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
-    let catalog = TestCaseCatalog::new(catalog_root());
-    let engines = EngineCatalog::new();
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
+    let engines = test_cabinet_core::engine::built_in_catalog();
 
     let mut checked = 0usize;
     for case in &catalog.list().expect("list catalog") {
@@ -408,7 +423,10 @@ fn every_catalog_version_passes_the_engine_gate_for_the_engines_it_declares() {
 /// the definitions actually shipped.
 #[test]
 fn the_stored_shape_of_every_committed_version_is_unchanged() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     let mut checked = 0usize;
     for case in &catalog.list().expect("list catalog") {

@@ -10,9 +10,8 @@ use std::path::Path;
 use test_cabinet_core::post_run::{PostRunContext, PostRunStage};
 use test_cabinet_core::test_case::{TestCaseVersion, Variant};
 use test_cabinet_core::{
-    ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, EngineCatalog,
-    EngineCatalogExt as _, EngineSelection, HarnessSlug, OrchestratorSelection, ResolvedEngine,
-    RunRequest, TestCaseCatalog,
+    ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, EngineSelection,
+    HarnessSlug, OrchestratorSelection, ResolvedEngine, RunRequest, TestCaseCatalog,
 };
 
 use super::*;
@@ -25,6 +24,7 @@ fn catalog_case() -> (TestCaseVersion, Variant) {
     let catalog = TestCaseCatalog::new(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("testdata/definitions/test-cases"),
+        test_cabinet_core::engine::built_in_catalog(),
     );
     let case = catalog
         .resolve("carom", "v2.1.0")
@@ -77,7 +77,7 @@ async fn stage_for(
 /// Resolve a built-in engine the way the run path does, without a package store: the
 /// version is tolerant of an absent one, and nothing here reads it.
 fn resolved(slug: &str) -> ResolvedEngine {
-    EngineCatalog::with_package_store("/nonexistent/package/store")
+    test_cabinet_core::engine::built_in_catalog_in("/nonexistent/package/store")
         .resolve(&EngineSelection::new(slug))
         .expect("a built-in engine slug")
 }

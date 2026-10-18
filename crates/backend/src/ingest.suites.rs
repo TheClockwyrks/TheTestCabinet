@@ -31,12 +31,11 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use test_cabinet_core::test_suite::TestSuiteCatalogExt as _;
 use test_cabinet_core::test_suite::{
     ASSETS_DIR, AssetFolder, DEBUG_API_DIR, DEBUG_API_FILE, DemoFolder, PROMPTS_DIR, SHOWCASE_DIR,
     SPECIFICATIONS_DIR, SUITE_MANIFEST_FILE, SpecificationFolder, SuiteVersion,
     TEST_CASES_DIR as SUITE_TEST_CASES_DIR, VALIDATORS_DIR, VERSION_MANIFEST_FILE, WORKSPACES_DIR,
-    catalog_identity, load_and_validate, suite_manifest_path_of,
+    catalog_identity, load_and_validate_with, suite_manifest_path_of,
 };
 
 use crate::store::{manifest_in, write_ingest_stamp_in};
@@ -116,7 +115,11 @@ impl Ingestor<'_> {
         // rather than an absolute path.
         let base = self.roots.suites.parent().unwrap_or(&self.roots.suites);
         let location = to_forward_slash(root.strip_prefix(base).unwrap_or(&root));
-        let (loaded, diagnostics) = match load_and_validate(&identity.suite, &root) {
+        let (loaded, diagnostics) = match load_and_validate_with(
+            &identity.suite,
+            &root,
+            &test_cabinet_core::engine::built_in_catalog(),
+        ) {
             Ok(loaded) => loaded,
             Err(error) => return refuse(format!("`{location}` does not read back: {error}")),
         };
@@ -234,7 +237,13 @@ impl Ingestor<'_> {
         let authored = self.case_catalog();
         // Resolved beside the authored catalog, so an identity both catalogs claim is
         // reported as the ambiguity it is rather than quietly overwriting a case.
-        let resolved = match catalog.resolve_beside(suite, version, definition, &authored) {
+        let resolved = match catalog.resolve_beside_with(
+            suite,
+            version,
+            definition,
+            &authored,
+            authored.engines(),
+        ) {
             Ok(resolved) => resolved,
             Err(error) => {
                 tracing::error!(

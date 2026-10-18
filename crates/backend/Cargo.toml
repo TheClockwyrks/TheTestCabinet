@@ -15,6 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# The suite runtime and manifest loaders, whose error the catalogs return.
+test-cabinet-suites = { path = "../../contracts/crates/suites" }
 # Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
 # deployments — mints a token as the Postgres password and rotates the pool.
 # Engaged only when `TCAB_BACKEND_DB_AZURE_AD` is truthy; the default password /

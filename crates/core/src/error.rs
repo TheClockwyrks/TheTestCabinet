@@ -508,10 +508,63 @@ impl From<test_cabinet_contracts::review::WriteupError> for Error {
     }
 }
 
+impl From<test_cabinet_contracts::test_case::VariantNotFound> for Error {
+    fn from(err: test_cabinet_contracts::test_case::VariantNotFound) -> Self {
+        Error::VariantNotFound {
+            slug: err.slug,
+            version: err.version,
+            variant: err.variant,
+        }
+    }
+}
+
 impl From<test_cabinet_suites::Error> for Error {
     fn from(err: test_cabinet_suites::Error) -> Self {
         use test_cabinet_suites::Error as Suites;
         match err {
+            Suites::TestCaseNotFound { slug } => Self::TestCaseNotFound { slug },
+            Suites::DuplicateSlug {
+                slug,
+                folder_a,
+                folder_b,
+            } => Self::DuplicateSlug {
+                slug,
+                folder_a,
+                folder_b,
+            },
+            Suites::TestCaseVersionNotFound { slug, version } => {
+                Self::TestCaseVersionNotFound { slug, version }
+            }
+            Suites::InvalidTestCase {
+                slug,
+                version,
+                detail,
+            } => Self::InvalidTestCase {
+                slug,
+                version,
+                detail,
+            },
+            Suites::VariantNotFound {
+                slug,
+                version,
+                variant,
+            } => Self::VariantNotFound {
+                slug,
+                version,
+                variant,
+            },
+            Suites::SpecRender {
+                slug,
+                version,
+                spec,
+                detail,
+            } => Self::SpecRender {
+                slug,
+                version,
+                spec,
+                detail,
+            },
+            Suites::TestCaseGroup(detail) => Self::TestCaseGroup(detail),
             Suites::InvalidTestSuite {
                 suite,
                 version,

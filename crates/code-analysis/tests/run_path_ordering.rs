@@ -52,12 +52,12 @@ use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, CODE_ANALYSIS_TREE_ARTIFACT,
     CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, EngineCatalog, EngineCatalogExt as _, EngineSelection,
-    EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome,
-    HarnessRegistry, HarnessSlug, MediaKind, NoopEventSink, OrchestratorCatalog,
-    OrchestratorSelection, OutputSink, OutputStream, PrerenderedReferenceRenderer, ProofFile,
-    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
-    TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary, Validator, Variant,
+    ContainerSpec, ContainerStart, EngineSelection, EventFormat, EventSink, ExecOutput,
+    FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, MediaKind,
+    NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
+    RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage,
+    ValidationSummary, Validator, Variant,
 };
 
 /// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
@@ -352,7 +352,10 @@ async fn drive(cancel: &RunCancellation) -> Ran {
     // same value.
     unsafe { std::env::set_var("TCAB_FAKE_API_KEY", "not-a-real-key") };
 
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let test_case = catalog
         // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
         // fixture cannot drift as the case is revised. It also has to be a version
@@ -369,7 +372,10 @@ async fn drive(cancel: &RunCancellation) -> Ran {
     let out_dir = tempfile::tempdir().expect("output dir");
 
     let engine = RunEngine {
-        catalog: TestCaseCatalog::new(catalog_root()),
+        catalog: TestCaseCatalog::new(
+            catalog_root(),
+            test_cabinet_core::engine::built_in_catalog(),
+        ),
         seeder: FsRepoSeeder::new(seed_dir.path()),
         runtime: FakeRuntime,
         collector: FakeCollector {
@@ -381,7 +387,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
-        engines: EngineCatalog::new(),
+        engines: test_cabinet_core::engine::built_in_catalog(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),

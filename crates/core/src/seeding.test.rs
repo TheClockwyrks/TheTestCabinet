@@ -4,7 +4,7 @@ use super::{
     FsRepoSeeder, JsonNode, init_repo, reserve_unique_dir, run_timestamp,
     seed_prior_game_jam_entries,
 };
-use crate::engine::{EngineCatalog, EngineCatalogExt as _, EngineSelection, ResolvedEngine};
+use crate::engine::{EngineSelection, ResolvedEngine};
 use crate::run_record::PriorGameJamEntry;
 
 /// The run timestamp is a fixed-width `YYYYMMDD-HHMMSS` stamp: eight digits, a
@@ -231,7 +231,7 @@ fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
 /// hand-built, so these tests fail if the shipped manifest stops naming a package
 /// or a docs directory.
 fn simple_2d() -> ResolvedEngine {
-    EngineCatalog::new()
+    crate::engine::built_in_catalog()
         .resolve(&EngineSelection::new("simple-2d"))
         .expect("simple-2d is a built-in engine")
 }
@@ -410,7 +410,7 @@ fn vendor_engine_writes_nothing_for_an_engine_with_no_runtime() {
     let (_base, seeder) = seeder_for(&store);
     let original = "{\n  \"name\": \"carom\",\n  \"dependencies\": {}\n}\n";
     let repo = workspace_with_package_json(original);
-    let none = EngineCatalog::new()
+    let none = crate::engine::built_in_catalog()
         .resolve(&EngineSelection::none())
         .expect("`none` is a built-in engine");
 
@@ -603,7 +603,8 @@ fn audio_version(kind: &str, packs: Option<&str>) -> (tempfile::TempDir, crate::
          [[domain]]\nid = \"fidelity\"\ndescription = \"How close the clip is.\"\n"
     );
     std::fs::write(version.join("test-case.toml"), manifest).expect("manifest");
-    let catalog = crate::test_case::TestCaseCatalog::new(dir.path());
+    let catalog =
+        crate::test_case::TestCaseCatalog::new(dir.path(), crate::engine::built_in_catalog());
     let resolved = catalog.resolve("clip", "v1.0.0").expect("resolve");
     (dir, resolved)
 }

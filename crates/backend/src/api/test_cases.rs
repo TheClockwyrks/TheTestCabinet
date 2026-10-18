@@ -12,9 +12,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::content_labels::{self, ContentLabels};
-use test_cabinet_core::engine::{
-    EngineCatalog, EngineCatalogExt as _, EngineSelection, ResolvedEngine,
-};
+use test_cabinet_core::engine::{EngineSelection, ResolvedEngine};
 use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
@@ -176,7 +174,7 @@ impl EngineQuery {
         let Some(slug) = self.engine.as_deref() else {
             return Ok(None);
         };
-        EngineCatalog::new()
+        test_cabinet_core::engine::built_in_catalog()
             .resolve(&EngineSelection::new(slug))
             .map(Some)
             .map_err(|err| ApiError::bad_request(err.to_string()))

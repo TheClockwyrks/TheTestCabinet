@@ -7,13 +7,13 @@ use super::{
     script_verdicts, scripted_validation, validation_media_name,
 };
 use crate::browser::ScriptVerdict;
-use crate::engine::{EngineCatalog, EngineCatalogExt as _, EngineSelection};
+use crate::engine::EngineSelection;
 use crate::execution::ArtifactCollection;
 use crate::test_case::MediaKind;
 
 /// The engine `slug` resolves to.
 fn resolved(slug: &str) -> crate::engine::ResolvedEngine {
-    EngineCatalog::new()
+    crate::engine::built_in_catalog()
         .resolve(&EngineSelection::new(slug))
         .unwrap_or_else(|err| panic!("`{slug}` is a built-in engine: {err}"))
 }

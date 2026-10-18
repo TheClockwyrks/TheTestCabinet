@@ -46,7 +46,6 @@ use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
 use crate::store::{DefinitionStore, StoredManifest};
-use test_cabinet_core::engine::EngineCatalogExt as _;
 use test_cabinet_core::r2::R2Client;
 
 /// The schema version stamped into every snapshot document.
@@ -3426,7 +3425,7 @@ fn case_metadata(
                 if support.slug == test_cabinet_core::engine::NONE_SLUG {
                     continue;
                 }
-                let resolved = match test_cabinet_core::EngineCatalog::new().resolve(
+                let resolved = match test_cabinet_core::engine::built_in_catalog().resolve(
                     &test_cabinet_core::engine::EngineSelection::new(support.slug.clone()),
                 ) {
                     Ok(resolved) => resolved,

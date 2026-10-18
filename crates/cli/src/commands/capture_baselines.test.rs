@@ -213,7 +213,10 @@ fn select_targets_rejects_a_case_with_no_references_at_all() {
 fn resolve_version_prefers_an_explicit_version() {
     // An explicit version short-circuits the catalog entirely, so this needs no
     // fixture tree — which is exactly the property that makes it worth pinning.
-    let catalog = TestCaseCatalog::new(PathBuf::from("does-not-exist"));
+    let catalog = TestCaseCatalog::new(
+        PathBuf::from("does-not-exist"),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     let version =
         resolve_version(&catalog, "carom", Some("v1.0.1")).expect("an explicit version resolves");

@@ -178,3 +178,9 @@ impl From<BackendError> for ApiError {
 
 /// Result alias for the backend's internal layers.
 pub type Result<T, E = BackendError> = std::result::Result<T, E>;
+
+impl From<test_cabinet_suites::Error> for BackendError {
+    fn from(err: test_cabinet_suites::Error) -> Self {
+        Self::Core(err.into())
+    }
+}

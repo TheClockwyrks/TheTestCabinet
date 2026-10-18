@@ -7,7 +7,7 @@
 //! kind — can be malformed without a test failing:
 //!
 //!   - orchestrators (`orchestrators/<slug>/…`)      via [`OrchestratorCatalog`]
-//!   - engines       (`engines/<slug>/engine.toml`)   via [`EngineCatalog`]
+//!   - engines       (`engines/<slug>/engine.toml`)   via `built_in_catalog`
 //!   - harnesses     (`harnesses/<slug>/harness.toml`) via [`DefaultHarnessRegistry`]
 //!   - test-case groups (`test-case-groups/<slug>/test-case-group.toml`)
 //!     via [`TestCaseGroupCatalog`]
@@ -22,9 +22,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use test_cabinet_core::engine::{
-    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineCatalogExt as _, EngineSelection,
-};
+use test_cabinet_core::engine::{BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineSelection};
 use test_cabinet_core::{
     BUILT_IN_SLUGS, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, OrchestratorCatalog,
     OrchestratorSelection, TestCaseCatalog, TestCaseGroupCatalog,
@@ -98,7 +96,7 @@ fn every_orchestrator_manifest_loads() {
 /// never validated) is caught here rather than at launch.
 #[test]
 fn every_engine_manifest_loads() {
-    let catalog = EngineCatalog::new();
+    let catalog = test_cabinet_core::engine::built_in_catalog();
 
     let on_disk: BTreeSet<String> = subdirs(&repo_root().join("engines"))
         .iter()
@@ -177,12 +175,15 @@ fn every_test_case_group_manifest_loads() {
         .unwrap_or_else(|err| panic!("load test-case groups: {err:?}"));
     assert!(!groups.is_empty(), "no test-case groups found");
 
-    let known: BTreeSet<String> = TestCaseCatalog::new(root.join("test-cases"))
-        .list()
-        .unwrap_or_else(|err| panic!("list the test-case catalog: {err:?}"))
-        .into_iter()
-        .map(|case| case.slug)
-        .collect();
+    let known: BTreeSet<String> = TestCaseCatalog::new(
+        root.join("test-cases"),
+        test_cabinet_core::engine::built_in_catalog(),
+    )
+    .list()
+    .unwrap_or_else(|err| panic!("list the test-case catalog: {err:?}"))
+    .into_iter()
+    .map(|case| case.slug)
+    .collect();
     for group in &groups {
         for member in &group.cases {
             assert!(

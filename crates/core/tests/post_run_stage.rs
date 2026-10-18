@@ -29,14 +29,13 @@ use std::time::Duration;
 
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, Clock, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
-    EngineCatalogExt as _, EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder,
-    HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds,
-    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
-    PostRunContext, PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile,
-    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
-    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary,
-    Validator, Variant,
+    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineSelection,
+    EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome,
+    HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
+    OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream, PostRunContext,
+    PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
+    Result as CoreResult, RunCancellation, RunEngine, RunRequest, SubscriptionSpec,
+    TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
 /// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
@@ -295,7 +294,10 @@ fn references(test_case: &TestCaseVersion, variant: &Variant) -> Vec<RenderedRef
 /// runtime cap, and assert the three placement properties the seam exists for.
 #[tokio::test(start_paused = true)]
 async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_the_runtime_cap() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let test_case = catalog
         // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
         // fixture cannot drift as the case is revised. It also has to be a version
@@ -319,7 +321,10 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
     let clock = ManualClock::new();
 
     let engine = RunEngine {
-        catalog: TestCaseCatalog::new(catalog_root()),
+        catalog: TestCaseCatalog::new(
+            catalog_root(),
+            test_cabinet_core::engine::built_in_catalog(),
+        ),
         seeder: FsRepoSeeder::new(seed_dir.path()),
         runtime: FakeRuntime,
         collector: FakeCollector {
@@ -330,7 +335,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
-        engines: EngineCatalog::new(),
+        engines: test_cabinet_core::engine::built_in_catalog(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),

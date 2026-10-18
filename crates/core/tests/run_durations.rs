@@ -37,10 +37,10 @@ use std::time::Duration;
 
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
-    EngineCatalogExt as _, EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder,
-    HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds,
-    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineSelection,
+    EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome,
+    HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
+    OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
     PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
     RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
     TokenCounts, Usage, ValidationSummary, Validator, Variant,
@@ -333,7 +333,10 @@ fn engine<R: ContainerRuntime>(
     variant: &Variant,
 ) -> RunEngine<FsRepoSeeder, R, FakeCollector, SlowValidator> {
     RunEngine {
-        catalog: TestCaseCatalog::new(catalog_root()),
+        catalog: TestCaseCatalog::new(
+            catalog_root(),
+            test_cabinet_core::engine::built_in_catalog(),
+        ),
         seeder: FsRepoSeeder::new(seed_dir),
         runtime,
         collector: FakeCollector {
@@ -343,7 +346,7 @@ fn engine<R: ContainerRuntime>(
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
-        engines: EngineCatalog::new(),
+        engines: test_cabinet_core::engine::built_in_catalog(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             test_case, variant,
         ))),
@@ -394,7 +397,10 @@ fn request(test_case: &TestCaseVersion, variant: &Variant, harness: HarnessSlug)
 /// assert each duration measured the stage it names.
 #[tokio::test]
 async fn each_recorded_duration_measures_the_stage_it_names() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let test_case = catalog
         // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
         // fixture cannot drift as the case is revised, and to a version that
@@ -486,7 +492,10 @@ fn assert_seconds(recorded: f64, expected: Duration, what: &str) {
 /// setup — and the only thing that puts it there is where the session's clock starts.
 #[tokio::test]
 async fn a_gg_run_measures_its_own_install_as_setup() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let test_case = catalog
         .resolve("carom", "v2.1.0")
         .expect("the fixture copy of carom v2.1.0 resolves");

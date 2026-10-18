@@ -10,8 +10,7 @@
 
 use anyhow::Result;
 use test_cabinet_core::{
-    EngineCatalog, EngineCatalogExt as _, EngineManifest, EngineSelection, ResolvedEngine,
-    TestCaseVersion, ensure_engine_supported,
+    EngineManifest, EngineSelection, ResolvedEngine, TestCaseVersion, ensure_engine_supported,
 };
 
 use crate::cli::EnginesArgs;
@@ -26,7 +25,7 @@ use crate::cli::EnginesArgs;
 /// listing is the complete set of values `--engine` accepts. The manifests are
 /// embedded at build time, so nothing here touches the filesystem.
 pub async fn execute(args: EnginesArgs) -> Result<()> {
-    let listing = EngineCatalog::new().all();
+    let listing = test_cabinet_core::engine::built_in_catalog().all();
 
     if args.json {
         print_json(&listing);
@@ -54,7 +53,8 @@ pub async fn execute(args: EnginesArgs) -> Result<()> {
 /// `[[engine]]` range against the version the host package store holds) applies
 /// here too, without this module having to know it exists.
 pub fn resolve_for_case(slug: &str, test_case: &TestCaseVersion) -> Result<ResolvedEngine> {
-    let engine = EngineCatalog::new().resolve(&EngineSelection::new(slug))?;
+    let engine =
+        test_cabinet_core::engine::built_in_catalog().resolve(&EngineSelection::new(slug))?;
     ensure_engine_supported(test_case, &engine)?;
     Ok(engine)
 }

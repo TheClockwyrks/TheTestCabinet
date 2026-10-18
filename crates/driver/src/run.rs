@@ -24,11 +24,10 @@ use test_cabinet_core::ToolchainStage;
 use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
-    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog,
-    EngineCatalogExt as _, Error, FsRepoSeeder, HttpBackendClient, OrchestratorCatalog,
-    PrerenderedReferenceRenderer, PriorGameJamEntry, RenderedReference, RunCancellation, RunEngine,
-    RunRecord, RunRequest, RunState, RunStateExt, TestCaseCatalog, TestCaseVersion, TestType,
-    materialize_version,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, Error, FsRepoSeeder,
+    HttpBackendClient, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
+    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState, RunStateExt,
+    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -328,7 +327,10 @@ where
         // `run_resolved` does not consult the catalog (the version is resolved by
         // the caller), but the struct still carries one; the driver has no
         // checkout, so point it at a placeholder that is never read.
-        catalog: TestCaseCatalog::new(catalog_placeholder()),
+        catalog: TestCaseCatalog::new(
+            catalog_placeholder(),
+            test_cabinet_core::engine::built_in_catalog(),
+        ),
         seeder: FsRepoSeeder::new(seed_dir),
         collector,
         runtime,
@@ -338,7 +340,7 @@ where
         // resolve a run's engine at all: the pod has no checkout to read an
         // `engines/` directory out of, and the engine gate runs before the sandbox
         // is created.
-        engines: EngineCatalog::new(),
+        engines: test_cabinet_core::engine::built_in_catalog(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
         // gg's capture journal is folded into the run tree's `replay.json.gz` here,
         // on the host, after the tree is collected and before validation — so a

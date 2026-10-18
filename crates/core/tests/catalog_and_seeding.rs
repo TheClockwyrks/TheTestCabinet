@@ -29,7 +29,10 @@ fn catalog_root() -> PathBuf {
 /// artifacts where the block tags stood.
 #[test]
 fn carom_instrumentation_renders_per_variant_ball_count() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let version = catalog
         .resolve("carom", "v2.0.0")
         .expect("resolve carom v2.0.0");
@@ -111,7 +114,10 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
 
 #[test]
 fn resolves_locomotivation_game_jam() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved = catalog
         .resolve("locomotivation", "v1.0.0")
         .expect("resolve the locomotivation jam");
@@ -144,7 +150,10 @@ fn resolves_locomotivation_game_jam() {
 
 #[test]
 fn resolves_carom_from_its_manifest() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     // Carom's identity is decoupled from its folder name: the case lives in the
     // `carom/` folder but its manifest pins `slug = "pong"` so the runs published
@@ -372,7 +381,10 @@ fn resolves_carom_from_its_manifest() {
 
 #[test]
 fn seeding_includes_spec_and_reference_images_but_not_source() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let version = catalog
         .resolve("carom", "v1.0.0")
         .expect("resolve carom v1.0.0");
@@ -601,7 +613,10 @@ fn temp_catalog(
     for (name, body) in variant_files {
         std::fs::write(version.join("variants").join(name), body).expect("write variant");
     }
-    let catalog = TestCaseCatalog::new(dir.path().to_path_buf());
+    let catalog = TestCaseCatalog::new(
+        dir.path().to_path_buf(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     (dir, catalog)
 }
 
@@ -768,7 +783,10 @@ fn resolves_foray_from_its_manifest() {
     // type discriminator selects the adversarial tables, and each
     // ([build].module / [contract] / [sandbox] / [simulation] / [match] / [replay])
     // resolves rather than being rejected as an end-to-end manifest would be.
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     // The case is listed alongside the end-to-end cases (the catalog list item
     // carries the slug and its versions; the type is surfaced once resolved).
@@ -881,7 +899,10 @@ fn resolves_lattice_performance_from_its_manifest() {
     // [contract] input+output / [sandbox] fuel_limit / the [[case]] scored set) and
     // forbids the adversarial loop tables, so a manifest that confused the two would
     // be rejected here.
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     let cases = catalog.list().expect("list catalog");
     let listed = cases

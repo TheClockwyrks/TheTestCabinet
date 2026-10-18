@@ -47,19 +47,14 @@ pub mod playable;
 pub mod post_run;
 pub mod preview;
 pub mod pricing;
-pub mod prompt;
 pub mod publish;
 pub mod r2;
 pub mod reference;
 pub mod remote_backend;
-pub mod resolver;
 pub mod review;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
-pub mod test_case;
-pub mod test_case_group;
-pub mod test_suite;
 pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
@@ -77,7 +72,10 @@ pub use test_cabinet_contracts::{
 // at their old paths in the same way.
 // `browser` is the exception: a module of the core's own that re-exports the suites
 // crate's and supplies the trace context its driver calls take.
-pub use test_cabinet_suites::{content_digest, content_labels, vitest_validator};
+pub use test_cabinet_suites::{
+    content_digest, content_labels, prompt, resolver, test_case, test_case_group, test_suite,
+    vitest_validator,
+};
 
 // Secret scrubbing is the contracts repository's redact crate, re-exported at the
 // module path it had here.
@@ -143,8 +141,8 @@ pub use code_analysis::{
 pub use cold_storage::{COLD_STORAGE_DIR, COLD_STORAGE_DIR_ENV, ColdStorage};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use engine::{
-    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineCatalogExt, EngineManifest,
-    EngineSelection, NONE_SLUG, ResolvedEngine, built_in_catalog,
+    BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineManifest, EngineSelection,
+    NONE_SLUG, ResolvedEngine, built_in_catalog, built_in_catalog_in,
 };
 pub use error::{Error, Result};
 pub use event::{
@@ -710,10 +708,10 @@ where
 {
     /// Resolve a [`RunRequest`] into an exact, immutable [`TestCaseVersion`].
     pub fn resolve(&self, request: &RunRequest) -> Result<TestCaseVersion> {
-        match &request.test_case_version {
-            Some(version) => self.catalog.resolve(&request.test_case_slug, version),
-            None => self.catalog.resolve_latest(&request.test_case_slug),
-        }
+        Ok(match &request.test_case_version {
+            Some(version) => self.catalog.resolve(&request.test_case_slug, version)?,
+            None => self.catalog.resolve_latest(&request.test_case_slug)?,
+        })
     }
 
     /// Render the selected variant's reference mockups to screenshots, used both

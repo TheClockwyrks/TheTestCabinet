@@ -1,5 +1,4 @@
 use super::*;
-use test_cabinet_core::engine::EngineCatalogExt as _;
 
 use std::collections::HashMap;
 
@@ -760,7 +759,7 @@ fn engine_aware_manifest() -> StoredManifest {
 /// A resolved engine, read from an empty package store: the manifest is baked in,
 /// and the staged version a store would supply plays no part in rendering.
 fn resolved(slug: &str) -> ResolvedEngine {
-    test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+    test_cabinet_core::engine::built_in_catalog_in("/nonexistent")
         .resolve(&EngineSelection::new(slug))
         .unwrap()
 }

@@ -51,5 +51,10 @@ bytemuck = { workspace = true, optional = true }
 pollster = { workspace = true, optional = true }
 png = { workspace = true, optional = true }
 
+[dev-dependencies]
+# The manifest check a case's preview `background` is refused by, held to this
+# crate's parser (`color.suites.test.rs`).
+test-cabinet-suites = { path = "../../contracts/crates/suites" }
+
 [lints]
 workspace = true

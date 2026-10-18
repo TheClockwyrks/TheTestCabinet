@@ -556,7 +556,7 @@ impl<'a> Ingestor<'a> {
             let declared = self
                 .case_catalog()
                 .declared_trees()
-                .map_err(BackendError::Core)?;
+                .map_err(BackendError::from)?;
             KeepKinds {
                 test_cases: !declared.test_cases,
                 game_jams: !declared.game_jams,
@@ -776,14 +776,14 @@ impl<'a> Ingestor<'a> {
         let declared = if root.is_dir() {
             TestCaseGroupCatalog::new(&root)
                 .list()
-                .map_err(BackendError::Core)?
+                .map_err(BackendError::from)?
         } else {
             Vec::new()
         };
         let known: std::collections::HashSet<String> = self
             .case_catalog()
             .list()
-            .map_err(BackendError::Core)?
+            .map_err(BackendError::from)?
             .into_iter()
             .map(|case| case.slug)
             .collect();
@@ -863,8 +863,8 @@ impl<'a> Ingestor<'a> {
         let Some(entries) = &request.test_cases else {
             // A whole-catalog scan enumerates both trees, so its prune sees every
             // declared version of either kind.
-            for case in catalog.list().map_err(BackendError::Core)? {
-                for version in catalog.versions(&case.slug).map_err(BackendError::Core)? {
+            for case in catalog.list().map_err(BackendError::from)? {
+                for version in catalog.versions(&case.slug).map_err(BackendError::from)? {
                     targets.versions.push(Target::Case {
                         id: case.slug.clone(),
                         version,
@@ -907,7 +907,7 @@ impl<'a> Ingestor<'a> {
                         }
                         continue;
                     }
-                    for version in known.map_err(BackendError::Core)? {
+                    for version in known.map_err(BackendError::from)? {
                         targets.versions.push(Target::Case {
                             id: entry.clone(),
                             version,
@@ -947,7 +947,10 @@ impl<'a> Ingestor<'a> {
 
     /// The authored test-case catalog under the definitions root.
     fn case_catalog(&self) -> TestCaseCatalog {
-        TestCaseCatalog::new(self.roots.test_cases())
+        TestCaseCatalog::new(
+            self.roots.test_cases(),
+            test_cabinet_core::engine::built_in_catalog(),
+        )
     }
 
     /// The suite catalog over the suites root. Its rendered specifications are
@@ -1015,7 +1018,7 @@ impl<'a> Ingestor<'a> {
         // unchanged-skip check and every store key below use the true identity rather
         // than the lookup key, keeping the store directory and the manifest it holds
         // in agreement.
-        let slug = catalog.slug_of(id, version).map_err(BackendError::Core)?;
+        let slug = catalog.slug_of(id, version).map_err(BackendError::from)?;
 
         let has_record = self.store.has_version(&slug, version);
         let skipped = |slug: String, reason| IngestedVersion {
@@ -1031,7 +1034,7 @@ impl<'a> Ingestor<'a> {
         }
         let root = catalog
             .version_root(id, version)
-            .map_err(BackendError::Core)?;
+            .map_err(BackendError::from)?;
         let digest = digest::authored_version_digest(&root, &self.roots.definitions)?;
         let decision = decider.decide(
             has_record,
@@ -1042,7 +1045,7 @@ impl<'a> Ingestor<'a> {
             return Ok(skipped(slug, reason));
         }
 
-        let resolved = catalog.resolve(id, version).map_err(BackendError::Core)?;
+        let resolved = catalog.resolve(id, version).map_err(BackendError::from)?;
 
         let staged = self.store.new_staging_dir(&slug, version)?;
         let built = self

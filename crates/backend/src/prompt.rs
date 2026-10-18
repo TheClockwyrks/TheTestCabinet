@@ -117,6 +117,7 @@ fn render_authored_prompt(
         0,
         engine,
     )
+    .map_err(Error::from)
 }
 
 #[cfg(test)]

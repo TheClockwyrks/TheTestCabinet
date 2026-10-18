@@ -381,7 +381,7 @@ repos:
         name: "seeded spec vocabulary"
         entry: uv run --quiet --project ci gate run spec-vocabulary
         language: system
-        files: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/(prompt\.hbs$|specs/)|^crates/core/src/prompt\.rs$|^scripts/ci/spec-vocabulary-check\.mjs$|^ci/gates/spec-vocabulary\.py$'
+        files: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/(prompt\.hbs$|specs/)|^contracts/crates/suites/src/prompt\.rs$|^scripts/ci/spec-vocabulary-check\.mjs$|^ci/gates/spec-vocabulary\.py$'
         pass_filenames: false
 
       - id: spec-prose

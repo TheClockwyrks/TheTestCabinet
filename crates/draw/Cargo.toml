@@ -46,6 +46,9 @@ serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+# The manifest check a case's `[canvas] background` is refused by, held to this
+# crate's parser (`color.suites.test.rs`).
+test-cabinet-suites = { path = "../../contracts/crates/suites" }
 
 [lints]
 workspace = true

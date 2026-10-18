@@ -29,13 +29,12 @@ use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLi
 use test_cabinet_core::gg_session_record::GG_SESSION_FORMAT_VERSION;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
-    EngineCatalogExt as _, EngineSelection, Error as CoreError, EventFormat, ExecOutput,
-    FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds,
-    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
-    Usage, ValidationSummary, Validator, Variant,
+    ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineSelection,
+    Error as CoreError, EventFormat, ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome,
+    HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink, OrchestratorCatalog,
+    OrchestratorSelection, OutputSink, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
+    Result as CoreResult, RunCancellation, RunEngine, RunRequest, SubscriptionSpec,
+    TestCaseCatalog, TestCaseVersion, Usage, ValidationSummary, Validator, Variant,
 };
 
 /// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
@@ -273,7 +272,10 @@ fn read_record(path: &std::path::Path) -> serde_json::Value {
 /// Drive a gg run whose session hangs and assert the four properties of the salvage.
 #[tokio::test]
 async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
-    let catalog = TestCaseCatalog::new(catalog_root());
+    let catalog = TestCaseCatalog::new(
+        catalog_root(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let test_case = catalog
         // Pinned to a FROZEN version rather than `resolve_latest`, so this test's
         // fixture cannot drift as the case is revised. It also has to be a version
@@ -290,7 +292,10 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
     let out_dir = tempfile::tempdir().expect("output dir");
 
     let engine = RunEngine {
-        catalog: TestCaseCatalog::new(catalog_root()),
+        catalog: TestCaseCatalog::new(
+            catalog_root(),
+            test_cabinet_core::engine::built_in_catalog(),
+        ),
         seeder: FsRepoSeeder::new(seed_dir.path()),
         runtime: HangingRuntime {
             steps: Arc::clone(&steps),
@@ -304,7 +309,7 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
             harness: FakeHarness,
         }),
         orchestrators: OrchestratorCatalog::new(),
-        engines: EngineCatalog::new(),
+        engines: test_cabinet_core::engine::built_in_catalog(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),

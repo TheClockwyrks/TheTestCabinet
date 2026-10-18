@@ -5100,6 +5100,7 @@ dependencies = [
  "test-cabinet-db-auth",
  "test-cabinet-entities",
  "test-cabinet-migration",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5273,6 +5274,7 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
+ "test-cabinet-suites",
  "thiserror 2.0.18",
 ]
 
@@ -5305,7 +5307,10 @@ dependencies = [
 name = "test-cabinet-engines"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
+ "tempfile",
  "test-cabinet-contracts",
+ "test-cabinet-suites",
 ]
 
 [[package]]
@@ -5405,6 +5410,7 @@ dependencies = [
  "pollster",
  "serde",
  "serde_json",
+ "test-cabinet-suites",
  "thiserror 2.0.18",
  "wgpu",
 ]

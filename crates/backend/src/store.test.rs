@@ -1,6 +1,5 @@
 use super::*;
 use tempfile::TempDir;
-use test_cabinet_core::engine::EngineCatalogExt as _;
 
 /// Open a store rooted in a fresh temp directory.
 fn temp_store() -> (TempDir, DefinitionStore) {
@@ -381,7 +380,7 @@ fn a_template_spec_renders_for_the_selected_engine() {
         template: true,
         kind: Default::default(),
     };
-    let simple_2d = test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+    let simple_2d = test_cabinet_core::engine::built_in_catalog_in("/nonexistent")
         .resolve(&test_cabinet_core::engine::EngineSelection::new(
             "simple-2d",
         ))

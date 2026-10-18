@@ -288,7 +288,10 @@ fn stored_manifest_carries_adversarial_specs() {
     // (regression: these fields were dropped, so a quick match 500'd with
     // "an adversarial match requires [contract], [sandbox], and [simulation]").
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        test_cases,
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved = catalog.resolve("foray", "v1.0.0").unwrap();
 
     let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
@@ -324,7 +327,10 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
     // copied version tree (`copy_tree`) and are served by the artifact endpoint; they
     // must never appear in the seed sets (specs/assets/workspace).
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        test_cases,
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved = catalog.resolve("carom", "v2.0.0").unwrap();
 
     let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
@@ -419,7 +425,10 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
         "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
     );
 
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path());
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        dir.path(),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved = catalog
         .resolve("demo", "v1.0.0")
         .expect("resolve tolerates the key");
@@ -474,7 +483,10 @@ fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
     write(&version.join("showcase/base/title.png"), "png:title");
     write(&version.join("showcase/base/rally.json.gz"), "gz:rally");
 
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path().join("test-cases"));
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        dir.path().join("test-cases"),
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
         .expect("build the stored manifest");
@@ -518,7 +530,10 @@ fn stored_manifest_carries_performance_specs() {
     // manifest guards the generalized contract/sandbox shape and the new cases
     // field, mirroring the adversarial regression guard above.
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        test_cases,
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let resolved = catalog.resolve("lattice", "v1.0.0").unwrap();
 
     let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None).unwrap();
@@ -594,7 +609,10 @@ fn stored_manifest_carries_voxel_specs() {
     // the real static Skyshard and rigged Ironward cases guards the ingest path for
     // both voxel kinds, mirroring the adversarial/performance guards above.
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        test_cases,
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     // A static voxel-model case: the volume survives; there is no rig.
     let skyshard = catalog.resolve("skyshard", "v1.0.0").unwrap();
@@ -629,7 +647,10 @@ fn stored_manifest_carries_the_engines_the_case_declares() {
     // supports the engineless run alone, so an engine-backed run is refused whatever
     // the case declares. Carom declares both spellings.
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        test_cases,
+        test_cabinet_core::engine::built_in_catalog(),
+    );
 
     let carom = catalog.resolve("carom", "v3.0.0").unwrap();
     let manifest = build_stored_manifest(&carom, &Keys::rooted(&carom.root), None).unwrap();
@@ -669,7 +690,10 @@ fn every_stored_manifest_preserves_its_asset_shape() {
     // encoding the runner deserializes are lossless).
     use test_cabinet_core::AssetKind;
     let test_cases = committed_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+        test_cases,
+        test_cabinet_core::engine::built_in_catalog(),
+    );
     let cases = catalog.list().expect("list catalog");
     assert!(!cases.is_empty(), "catalog should not be empty");
     for case in &cases {

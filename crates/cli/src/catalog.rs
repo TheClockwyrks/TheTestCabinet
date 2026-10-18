@@ -32,7 +32,7 @@ pub fn root() -> PathBuf {
 
 /// The authored catalog alone, for the commands that only ever read one.
 pub fn catalog() -> TestCaseCatalog {
-    TestCaseCatalog::new(root())
+    TestCaseCatalog::new(root(), test_cabinet_core::engine::built_in_catalog())
 }
 
 /// The resolver over the authored catalog and the suites checkout beside it.
@@ -44,5 +44,5 @@ pub fn resolver() -> TestCaseResolver {
 /// it, which reads each suite's exported versions at
 /// `test-suites/<slug>/versions/v<x.y.z>/`.
 pub fn resolver_at(root: &Path) -> TestCaseResolver {
-    TestCaseResolver::beside(root)
+    TestCaseResolver::beside(root, test_cabinet_core::engine::built_in_catalog())
 }
