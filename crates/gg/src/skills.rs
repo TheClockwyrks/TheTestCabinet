@@ -9,7 +9,7 @@
 //!
 //! - it **strips the front matter** and returns only the body, and
 //! - the body is added to the context window as a
-//!   [`Skill`](test_cabinet_core::gg::GgContextSource)-sourced, **pinned** item, so the
+//!   [`Skill`](test_cabinet_contracts::gg::GgContextSource)-sourced, **pinned** item, so the
 //!   [context accounting](crate::context) attributes it to skills and Phase 2 compaction
 //!   carries it across the boundary verbatim (unlike a file view, which may be evicted or
 //!   summarized). Reading the same skill twice does not duplicate that pinned item.
@@ -21,7 +21,7 @@
 //!   run, shared (`Arc`) between the loop and the `read_skill` tool.
 //! - [`SkillsRuntime`] — the loop's live view: the library plus which skills have been
 //!   read, from which the system-prompt listing and the
-//!   [`SkillsState`](test_cabinet_core::gg::GgTelemetryKind::SkillsState) telemetry are
+//!   [`SkillsState`](test_cabinet_contracts::gg::GgTelemetryKind::SkillsState) telemetry are
 //!   derived.
 //!
 //! The capability is **switchable**: when it is off the loop never builds a library
@@ -32,7 +32,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_SKILLS, GgAgentConfig, GgContextSource, GgModuleOrigin, GgSkillState,
     GgTelemetryKind,
 };

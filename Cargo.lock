@@ -5167,7 +5167,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-core"
-version = "0.7.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -5194,6 +5194,7 @@ dependencies = [
  "test-cabinet-draw",
  "test-cabinet-engines",
  "test-cabinet-model-core",
+ "test-cabinet-redact",
  "test-cabinet-suites",
  "test-cabinet-telemetry",
  "test-cabinet-voxel",
@@ -5256,7 +5257,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "test-cabinet-core",
+ "test-cabinet-contracts",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5348,7 +5349,7 @@ dependencies = [
  "sourcemap",
  "tar",
  "tempfile",
- "test-cabinet-core",
+ "test-cabinet-contracts",
  "thiserror 2.0.18",
  "tiktoken-rs",
  "time",
@@ -5469,6 +5470,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-redact"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "test-cabinet-contracts",
+]
+
+[[package]]
 name = "test-cabinet-sfx-sample"
 version = "0.0.0"
 dependencies = [
@@ -5530,7 +5539,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-telemetry"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "http",

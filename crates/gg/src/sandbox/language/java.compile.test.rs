@@ -553,5 +553,5 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
 /// under `Compiler error`, over a program that compiles and a file the model never wrote.
 #[test]
 fn a_code_module_refused_beside_a_program_is_ggs_failure() {
-    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::Java);
+    crate::sandbox::language::rebuilds::gate(test_cabinet_contracts::gg::GgProgramLanguage::Java);
 }

@@ -90,7 +90,7 @@
 //!   to every agent's [board tools](crate::tools).
 //! - [`BoardRuntime`] — the run's live view: whether the capability is on, the shared store,
 //!   and the derivations the loop needs (the caps, the
-//!   [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry, and the
+//!   [`BoardState`](test_cabinet_contracts::gg::GgTelemetryKind::BoardState) telemetry, and the
 //!   dispatch briefs).
 //!
 //! The capability is **switchable**: when it is off the run builds a
@@ -102,7 +102,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgContextSource,
     GgIssueStatus, GgModuleOrigin, GgRosterEntry, GgTelemetryKind,
 };
@@ -148,7 +148,7 @@ pub const BOARD_MUTATIONS: &[OperationId] = &[
     BOARD_REMOVE_ISSUE,
 ];
 
-/// The project-management capability's params, [named by core](test_cabinet_core::gg) so the
+/// The project-management capability's params, [named by core](test_cabinet_contracts::gg) so the
 /// vocabulary a document is written in and the vocabulary gg reads it by are one declaration.
 ///
 /// Three of them are the board's ceilings, required of an enabled capability and resolved together
@@ -156,7 +156,7 @@ pub const BOARD_MUTATIONS: &[OperationId] = &[
 /// this capability: its absence is the setting — an issue's author names reviewers or does not — and
 /// the [reference](crate::reference) reaches for it by name, building `create_issue` both ways so
 /// the console can show what each one really says.
-pub(crate) use test_cabinet_core::gg::{
+pub(crate) use test_cabinet_contracts::gg::{
     PARAM_MAX_EPICS, PARAM_MAX_ISSUES, PARAM_MAX_RETRIES, PARAM_REVIEWERS,
 };
 
@@ -303,8 +303,8 @@ fn narrow(count: u64) -> usize {
 ///
 /// The board itself is run-global, but who may be *put to work by* it is not: an agent may only
 /// name a profile its own [roster](GgAgentConfig::subagents) lists **for that job** — an
-/// [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) for the issue's `agent`, a
-/// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) for each of its `reviewers` — so no agent can conjure
+/// [implementer](test_cabinet_contracts::gg::GgSubagentScope::Implementer) for the issue's `agent`, a
+/// [reviewer](test_cabinet_contracts::gg::GgSubagentScope::Reviewer) for each of its `reviewers` — so no agent can conjure
 /// workers it was never given, and a profile trusted to write code is not automatically trusted to
 /// review it. Whether reviewers are *demanded* at all is the capability's
 /// [`reviewers`](PARAM_REVIEWERS) feature, likewise per agent.
@@ -314,25 +314,25 @@ fn narrow(count: u64) -> usize {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct IssuePolicy {
     /// The profiles this agent may assign an issue to — its roster entries carrying the
-    /// [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) scope, in declaration order. Empty means it may
+    /// [implementer](test_cabinet_contracts::gg::GgSubagentScope::Implementer) scope, in declaration order. Empty means it may
     /// file no issue at all, which is why a configuration that lets an agent create issues without
     /// giving it any implementers is [refused at launch](crate::validate).
     pub implementers: Vec<GgRosterEntry>,
     /// The profiles this agent may name as an issue's reviewers — its roster entries carrying the
-    /// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope, in declaration order.
+    /// [reviewer](test_cabinet_contracts::gg::GgSubagentScope::Reviewer) scope, in declaration order.
     pub reviewers: Vec<GgRosterEntry>,
     /// Whether `create_issue` demands at least one reviewer.
     pub require_reviewers: bool,
 }
 
 impl IssuePolicy {
-    /// The policy for `agent`: the [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) and
-    /// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) halves of its [roster](GgAgentConfig::subagents), and
+    /// The policy for `agent`: the [implementer](test_cabinet_contracts::gg::GgSubagentScope::Implementer) and
+    /// [reviewer](test_cabinet_contracts::gg::GgSubagentScope::Reviewer) halves of its [roster](GgAgentConfig::subagents), and
     /// whether its project-management configuration switches the [reviewers](PARAM_REVIEWERS)
     /// feature on.
     ///
     /// The two rosters arrive already resolved
-    /// ([`GgCapabilitySet::roster`](test_cabinet_core::gg::GgCapabilitySet::roster)) rather than
+    /// ([`GgCapabilitySet::roster`](test_cabinet_contracts::gg::GgCapabilitySet::roster)) rather than
     /// being read off `agent`, for the same reason the delegation tools' menus are: an entry
     /// carries its target's display name, and only the whole set can look one up.
     pub fn resolve(

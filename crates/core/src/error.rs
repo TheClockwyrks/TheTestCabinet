@@ -502,6 +502,12 @@ pub enum Error {
 /// reads exactly as it did when that code was core's, and `?` in core converts it.
 /// The match is exhaustive, so a variant the suite runtime gains does not compile
 /// until it is mapped here.
+impl From<test_cabinet_contracts::review::WriteupError> for Error {
+    fn from(err: test_cabinet_contracts::review::WriteupError) -> Self {
+        Error::Review(err.0)
+    }
+}
+
 impl From<test_cabinet_suites::Error> for Error {
     fn from(err: test_cabinet_suites::Error) -> Self {
         use test_cabinet_suites::Error as Suites;

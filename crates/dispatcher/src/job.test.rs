@@ -13,8 +13,9 @@ use crate::config::{
     DEFAULT_DRIVER_CPU_LIMIT, DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_REQUEST,
     DriverResources,
 };
-use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::{ClaimedJob, LaunchBody, PublishClaim};
+use test_cabinet_contracts::job_api::{ClaimedJob, LaunchBody};
+use test_cabinet_contracts::publish_job_api::PublishClaim;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 /// A representative claimed job.
 fn claim() -> ClaimedJob {

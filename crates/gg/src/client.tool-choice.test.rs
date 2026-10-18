@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{GgLoopDetection, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgLoopDetection, GgTelemetryKind};
 
 use super::*;
 use crate::model::{Message, ModelClient, ModelError, ToolDefinition};

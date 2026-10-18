@@ -1,6 +1,6 @@
 //! The **reference**: every tool and every responses-as-code function gg offers a model,
 //! projected out of gg's own definitions into the
-//! [contract](test_cabinet_core::gg_reference::GgReference) the console renders.
+//! [contract](test_cabinet_contracts::gg_reference::GgReference) the console renders.
 //!
 //! # Projected, never written
 //!
@@ -56,7 +56,7 @@
 //!
 //! Nothing here is filtered by what any particular run granted, and that is the point rather than an
 //! omission. What *one agent* was offered is a different question, answered by the
-//! [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) event recorded per
+//! [agent surface](test_cabinet_contracts::gg::GgTelemetryKind::AgentSurface) event recorded per
 //! instance; a page that tried to answer both would answer neither.
 //!
 //! # Run data, and the placeholders that stand in for it
@@ -69,11 +69,11 @@
 //! A definition that varies with a *configuration* is handled the other way round, because every one
 //! of its renderings is a real one: one is the entry — the maximal configuration's, wherever that
 //! configuration offers the tool at all — and each of the rest is a
-//! [variant](test_cabinet_core::gg_reference::GgToolVariant) labelled with the configuration that
+//! [variant](test_cabinet_contracts::gg_reference::GgToolVariant) labelled with the configuration that
 //! produces it.
 
-use test_cabinet_core::gg::GgProgramLanguage;
-use test_cabinet_core::gg_reference::{
+use test_cabinet_contracts::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg_reference::{
     GgReference, GgReferenceApi, GgReferenceCategory, GgReferenceEntryKind, GgReferenceLanguage,
 };
 
@@ -114,9 +114,9 @@ pub(crate) const PLACEHOLDER_PROCESS: (&str, &str, &str) = ("<process>", "<state
 /// else.
 pub fn reference() -> GgReference {
     GgReference {
-        // `core`'s version and gg's are the same number by construction — the two crates are
-        // released in lockstep — so this stamps the reference with the build it came out of
-        // without gg having to ask anything else for it.
+        // This binary's own version, which is the release it is published as, so this
+        // stamps the reference with the build it came out of without gg having to ask
+        // anything else for it.
         gg_version: gg_version(),
         categories: categories(),
         tools: tools::tools(),

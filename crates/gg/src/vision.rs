@@ -11,7 +11,7 @@
 //!
 //! 1. **Declared, up front.** The model catalog records the input modalities OpenRouter
 //!    reports per model, and the launch pushes them into the invocation as
-//!    [`model_modalities`](test_cabinet_core::gg::GgInvocation::model_modalities). A
+//!    [`model_modalities`](test_cabinet_contracts::gg::GgInvocation::model_modalities). A
 //!    model declared without `image` is simply never sent one — `read_file` describes
 //!    the file instead of attaching it, and no request is wasted.
 //! 2. **Learned, at runtime.** A model the catalog has no modality list for is treated
@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::MODALITY_IMAGE;
+use test_cabinet_contracts::pricing::MODALITY_IMAGE;
 
 /// What a run knows about its models' image support: the modalities the catalog
 /// declared at launch, plus the models a live request has since proved cannot take an

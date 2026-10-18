@@ -28,26 +28,6 @@ fn impl_with_build(output: &str, files: &[(&str, &str)]) -> TempDir {
 }
 
 #[test]
-fn find_build_output_prefers_dist_then_build_then_out() {
-    let dir = impl_with_build("out", &[("index.html", "<html></html>")]);
-    let impl_dir = dir.path().join("implementation");
-    assert_eq!(find_build_output(&impl_dir), Some(impl_dir.join("out")));
-
-    // `dist` wins when several exist, matching BUILD_OUTPUTS priority.
-    fs::create_dir_all(impl_dir.join("build")).unwrap();
-    fs::create_dir_all(impl_dir.join("dist")).unwrap();
-    assert_eq!(find_build_output(&impl_dir), Some(impl_dir.join("dist")));
-}
-
-#[test]
-fn find_build_output_is_none_without_a_build() {
-    let dir = TempDir::new().unwrap();
-    let impl_dir = dir.path().join("implementation");
-    fs::create_dir_all(&impl_dir).unwrap();
-    assert_eq!(find_build_output(&impl_dir), None);
-}
-
-#[test]
 fn empty_path_serves_index_html() {
     let dir = impl_with_build("dist", &[("index.html", "<html><head></head></html>")]);
     let build = dir.path().join("implementation").join("dist");
@@ -579,24 +559,6 @@ fn serves_a_webm_clip_verbatim_from_the_tree() {
     let served = serve_proof_file(dir.path(), "rally.webm").expect("proof served");
     assert_eq!(served.content_type, "video/webm");
     assert_eq!(served.body, b"\x1aE\xdf\xa3webm");
-}
-
-#[test]
-fn published_extension_is_mp4_for_video_and_verbatim_for_images() {
-    // The public snapshot serves a video proof as mp4 (transcoded from webm)
-    // regardless of the captured extension; an image keeps its own extension.
-    assert_eq!(
-        proof_published_extension(MediaKind::Video, "proof/rally.webm"),
-        "mp4"
-    );
-    assert_eq!(
-        proof_published_extension(MediaKind::Video, "proof/rally.mp4"),
-        "mp4"
-    );
-    assert_eq!(
-        proof_published_extension(MediaKind::Image, "proof/title.png"),
-        "png"
-    );
 }
 
 #[test]

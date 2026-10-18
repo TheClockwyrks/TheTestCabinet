@@ -40,7 +40,7 @@ use std::time::Instant;
 
 use serde_json::Value;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,

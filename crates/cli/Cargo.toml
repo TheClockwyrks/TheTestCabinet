@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { path = "../../contracts/crates/telemetry", features = ["otlp"] }
 # The static code analyzer — `tcab analyze` runs it in-process over a directory. The
 # dependency lives here rather than in core on purpose: core owns the contract types, and
 # keeping the parsers out of it is what stops `oxc` and `syn` from being linked into every

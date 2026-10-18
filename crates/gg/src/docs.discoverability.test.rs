@@ -38,7 +38,7 @@ use crate::sandbox::{
     OperationId, all_languages, capability_operations, catalogue_functions, gating_capabilities,
     instance_operations,
 };
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
     CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
@@ -78,7 +78,7 @@ const CAPABILITY_KEYWORDS: &[(&str, &[&str])] = &[
 /// because of where it stands in a machine.
 ///
 /// Kept apart from [`CAPABILITY_KEYWORDS`] rather than folded into it under the
-/// [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM) capability, because that capability is declared on
+/// [`fsm`](test_cabinet_contracts::gg::CAPABILITY_FSM) capability, because that capability is declared on
 /// the *shell* driving a machine and never on the agent running a state: a row filed under it would
 /// build a grant no real agent has and assert discoverability against a surface nobody is offered.
 /// The assertion itself is the same one, and [`the_positional_call_is_findable_by_its_natural_words`]
@@ -360,7 +360,7 @@ fn the_positional_call_is_findable_by_its_natural_words() {
 /// The subjects are the capabilities that [gate an operation](gating_capabilities) rather than gg's
 /// whole catalogue: a capability with no row in the table has nothing to discover, so there is
 /// nothing about it to be undiscoverable, and demanding keywords for it would be demanding words for
-/// a surface that does not exist. [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE)
+/// a surface that does not exist. [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE)
 /// was the live example for as long as the two calls it buys were gated inline at the membrane and
 /// in no row of the table — which is exactly the shape of gap this file exists to make impossible,
 /// and it escaped this test only because a capability that grants nothing grants nothing to find.

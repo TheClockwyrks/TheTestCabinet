@@ -21,7 +21,7 @@ use tempfile::TempDir;
 use super::*;
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES,
     CAPABILITY_SUBAGENTS, GgAgentModule, GgCapabilityConfig, GgMemoryScope, GgModuleKind,
     GgModuleOrigin, GgSubagentRef, GgTelemetryEvent, MEMORY_PARAM_SCOPE, ROOT_AGENT,

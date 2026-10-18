@@ -5,7 +5,7 @@
 //! lives next door in [`python.substrate.test.rs`](super::substrate_tests). The split is the reason
 //! these cases run in microseconds.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::{FileWindow, PrepareContext};
 

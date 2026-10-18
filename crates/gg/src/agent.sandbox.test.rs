@@ -17,9 +17,9 @@
 
 use super::*;
 use crate::model::Role;
-use test_cabinet_core::gg::SHELL_OUTPUT_OFFLOAD;
-use test_cabinet_core::gg_session_journal::GgJournalLine;
-use test_cabinet_core::gg_session_record::GgSessionEntryKind;
+use test_cabinet_contracts::gg::SHELL_OUTPUT_OFFLOAD;
+use test_cabinet_contracts::gg_session_journal::GgJournalLine;
+use test_cabinet_contracts::gg_session_record::GgSessionEntryKind;
 
 /// A client that answers the first turn with `program` — its whole reply, exactly as this protocol
 /// asks — and then ends the session by calling `finish`.
@@ -278,7 +278,7 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     // were written in, so a dropped `record_program_language` would be invisible.
     assert_eq!(
         summary.program_language,
-        Some(test_cabinet_core::gg::GgProgramLanguage::TypeScript)
+        Some(test_cabinet_contracts::gg::GgProgramLanguage::TypeScript)
     );
     assert_eq!(summary.code_executions, 2);
 
@@ -315,7 +315,7 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     // arm *this* agent was in, and the spellings under `apis` are that language's.
     assert_eq!(
         language,
-        Some(test_cabinet_core::gg::GgProgramLanguage::TypeScript)
+        Some(test_cabinet_contracts::gg::GgProgramLanguage::TypeScript)
     );
     assert!(
         tools.is_empty(),
@@ -348,7 +348,7 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
 /// the context a program is running in would pull the window out from under the turn still using it.
 #[tokio::test]
 async fn a_program_compacts_its_own_context_window() {
-    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, COMPACTION_STRATEGY_SELF_COMPACTION};
+    use test_cabinet_contracts::gg::{CAPABILITY_COMPACTION, COMPACTION_STRATEGY_SELF_COMPACTION};
 
     const SUMMARY: &str = "scaffolded main.ts; next is the render loop";
     let dir = TempDir::new().unwrap();
@@ -420,16 +420,18 @@ async fn responses_as_code_completion_is_gated_by_an_agent_stop_hook() {
     // Gate the ending on a file the program must create before its `finish` is accepted, asserted
     // on the code path because that path applies the gate at a different point from the
     // tool-calling one.
-    set.agents[0].hooks.push(test_cabinet_core::gg::GgHook {
-        event: test_cabinet_core::gg::GgHookEvent::AgentStop,
-        action: test_cabinet_core::gg::GgHookAction::Command {
-            command: "test -f ready.txt".to_string(),
-            cwd: None,
-            timeout_secs: Some(30.0),
-            output: None,
-        },
-        name: "ready".to_string(),
-    });
+    set.agents[0]
+        .hooks
+        .push(test_cabinet_contracts::gg::GgHook {
+            event: test_cabinet_contracts::gg::GgHookEvent::AgentStop,
+            action: test_cabinet_contracts::gg::GgHookAction::Command {
+                command: "test -f ready.txt".to_string(),
+                cwd: None,
+                timeout_secs: Some(30.0),
+                output: None,
+            },
+            name: "ready".to_string(),
+        });
 
     // Turn 1 finishes without creating the file (the hook blocks, the run continues); turn 2
     // creates the file and finishes (the hook passes, the run ends).
@@ -2312,7 +2314,10 @@ fn library_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = code_set(model_id, json!({}));
     crate::tools::grant_configured(
         &mut set.agents[0],
-        crate::tools::configured(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY, params),
+        crate::tools::configured(
+            test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY,
+            params,
+        ),
     );
     set
 }
@@ -2468,7 +2473,10 @@ async fn an_exec_moves_the_library_and_the_successor_fetches_a_pre_exec_program_
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     }];
-    crate::tools::grant(&mut set.agents[0], test_cabinet_core::gg::CAPABILITY_EXEC);
+    crate::tools::grant(
+        &mut set.agents[0],
+        test_cabinet_contracts::gg::CAPABILITY_EXEC,
+    );
     // The code surface offers `delegation.exec` only to an agent that can delegate at all
     // (`availability::can_delegate`), so the subagents capability rides along.
     crate::tools::grant_configured(
@@ -2489,7 +2497,10 @@ async fn an_exec_moves_the_library_and_the_successor_fetches_a_pre_exec_program_
     );
     crate::tools::grant_configured(
         &mut after,
-        crate::tools::configured(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY, json!({})),
+        crate::tools::configured(
+            test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY,
+            json!({}),
+        ),
     );
     set.agents.push(after);
 
@@ -2560,7 +2571,10 @@ async fn a_fork_clones_the_library_and_both_sides_fetch_the_pre_fork_program() {
         description: String::new(),
         scopes: ALL_SUBAGENT_SCOPES.to_vec(),
     }];
-    crate::tools::grant(&mut set.agents[0], test_cabinet_core::gg::CAPABILITY_FORK);
+    crate::tools::grant(
+        &mut set.agents[0],
+        test_cabinet_contracts::gg::CAPABILITY_FORK,
+    );
     crate::tools::grant_configured(
         &mut set.agents[0],
         crate::tools::configured(CAPABILITY_SUBAGENTS, json!({ "maxDepth": 1 })),
@@ -2640,7 +2654,7 @@ async fn a_code_memory_written_under_the_scratchpad_opens_its_documentation() {
     let mut set = code_set("mock/primary", json!({}));
     crate::tools::grant(
         &mut set.agents[0],
-        test_cabinet_core::gg::CAPABILITY_MEMORIES,
+        test_cabinet_contracts::gg::CAPABILITY_MEMORIES,
     );
 
     let (outcome, _events, requests) = drive_recorded_code_run(

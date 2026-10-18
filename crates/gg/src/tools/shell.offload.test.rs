@@ -105,7 +105,7 @@ fn a_written_capability_resolves_to_what_it_says() {
 /// the reason rather than just an inscrutable string comparison.
 #[tokio::test]
 async fn offload_dir_is_not_under_the_gg_binary() {
-    let binary = std::path::Path::new(test_cabinet_core::gg::BINARY_PATH);
+    let binary = std::path::Path::new(test_cabinet_contracts::gg::BINARY_PATH);
     let offload = std::path::Path::new(OFFLOAD_DIR);
     assert!(
         !offload.starts_with(binary),

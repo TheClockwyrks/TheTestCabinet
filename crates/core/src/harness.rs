@@ -157,142 +157,22 @@ const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 /// found a Swift compiler on `PATH` in an end-to-end run would have been handed a
 /// capability no other arm of that comparison has.
 const GG_IMAGE_NAME_SUFFIX: &str = "-gg";
-/// The suffix that names a gg variant's override environment variable, the counterpart of
-/// [`GG_IMAGE_NAME_SUFFIX`]. A gg variant is pinned on its own, exactly as every other
-/// image is: it is a different image with a different build, and an override that covered
-/// both it and its parent could only ever be right for one.
-const GG_IMAGE_OVERRIDE_ENV_SUFFIX: &str = "_GG";
-
-/// The environment variable that pins a verbatim override for the base-wasm
-/// (end-to-end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
-const BASE_WASM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM";
-/// The environment variable that pins a verbatim override for the full-stack (2D)
-/// image.
-const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
-/// The environment variable that pins a verbatim override for the 3D full-stack image.
-/// Separate from the 2D one for the reason every per-image override is separate: the two
-/// full-stack images are different builds, so an override that covered both could only
-/// ever be right for one.
-const FULL_STACK_3D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_3D";
-/// The environment variable that pins a verbatim override for the game-jam image.
-const GAME_JAM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_GAME_JAM";
-/// The environment variable that pins a verbatim override for the sprite image.
-const SPRITE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE";
-/// The environment variable that pins a verbatim override for the sprite-sheet
-/// image.
-const SPRITE_SHEET_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE_SHEET";
-/// The environment variable that pins a verbatim override for the static-voxel image.
-const VOXEL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_VOXEL";
-/// The environment variable that pins a verbatim override for the animated-voxel image.
-const VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION";
-/// The environment variable that pins a verbatim override for the marching-cubes
-/// static (`mc-model`) image.
-const MC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MC";
-/// The environment variable that pins a verbatim override for the marching-cubes
-/// animated (`mc-animation`) image.
-const MC_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MC_ANIMATION";
-/// The environment variable that pins a verbatim override for the surface-nets
-/// static (`sn-model`) image.
-const SN_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SN";
-/// The environment variable that pins a verbatim override for the surface-nets
-/// animated (`sn-animation`) image.
-const SN_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SN_ANIMATION";
-/// The environment variable that pins a verbatim override for the dual-contouring
-/// static (`dc-model`) image.
-const DC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC";
-/// The environment variable that pins a verbatim override for the dual-contouring
-/// animated (`dc-animation`) image.
-const DC_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC_ANIMATION";
-/// The environment variable that pins a verbatim override for the `ui` image.
-const UI_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_UI";
-/// The environment variable that pins a verbatim override for the `material` image.
-const MATERIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MATERIAL";
-/// The environment variable that pins a verbatim override for the `mc-skinned` image.
-const MC_SKINNED_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MC_SKINNED";
-/// The environment variable that pins a verbatim override for the `sn-skinned` image.
-const SN_SKINNED_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SN_SKINNED";
-/// The environment variable that pins a verbatim override for the `dc-skinned` image.
-const DC_SKINNED_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC_SKINNED";
-/// The environment variable that pins a verbatim override for the `particle-2d` image.
-const PARTICLE_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PARTICLE_2D";
-/// The environment variable that pins a verbatim override for the `particle-3d` image.
-const PARTICLE_3D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PARTICLE_3D";
-/// The environment variable that pins a verbatim override for the `sfx-synth` image.
-const SFX_SYNTH_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SFX_SYNTH";
-/// The environment variable that pins a verbatim override for the `sfx-sample` image.
-const SFX_SAMPLE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SFX_SAMPLE";
-/// The environment variable that pins a verbatim override for the `music` image.
-const MUSIC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MUSIC";
-const BLENDER_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BLENDER";
-/// The environment variable that pins a verbatim override for the adversarial
-/// image.
-const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
-/// The environment variable that pins a verbatim override for the performance
-/// image.
-const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
-
-/// Every per-image override environment variable a run's own image can be pinned
-/// with, one per run image, in image build order — **without** the gg variants, which
-/// [`RUN_IMAGE_OVERRIDE_ENVS`] derives from these.
-///
-/// It lives here, beside the override constants and `image_spec_for`, so a new
-/// asset kind is wired in ONE place; the `run_image_override_envs_is_exhaustive`
-/// test fails the build if any kind's `override_env` is missing from this list (or
-/// vice versa), so the dispatcher's forwarded set can never again silently drift
-/// behind the images that exist.
-const RUN_IMAGE_OVERRIDE_ENVS_PLAIN: &[&str] = &[
-    BASE_WASM_IMAGE_OVERRIDE_ENV,
-    FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
-    FULL_STACK_3D_IMAGE_OVERRIDE_ENV,
-    GAME_JAM_IMAGE_OVERRIDE_ENV,
-    SPRITE_IMAGE_OVERRIDE_ENV,
-    SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
-    VOXEL_IMAGE_OVERRIDE_ENV,
-    VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
-    MC_IMAGE_OVERRIDE_ENV,
-    MC_ANIMATION_IMAGE_OVERRIDE_ENV,
-    SN_IMAGE_OVERRIDE_ENV,
-    SN_ANIMATION_IMAGE_OVERRIDE_ENV,
-    DC_IMAGE_OVERRIDE_ENV,
-    DC_ANIMATION_IMAGE_OVERRIDE_ENV,
-    UI_IMAGE_OVERRIDE_ENV,
-    MATERIAL_IMAGE_OVERRIDE_ENV,
-    MC_SKINNED_IMAGE_OVERRIDE_ENV,
-    SN_SKINNED_IMAGE_OVERRIDE_ENV,
-    DC_SKINNED_IMAGE_OVERRIDE_ENV,
-    PARTICLE_2D_IMAGE_OVERRIDE_ENV,
-    PARTICLE_3D_IMAGE_OVERRIDE_ENV,
-    SFX_SYNTH_IMAGE_OVERRIDE_ENV,
-    SFX_SAMPLE_IMAGE_OVERRIDE_ENV,
-    MUSIC_IMAGE_OVERRIDE_ENV,
-    BLENDER_IMAGE_OVERRIDE_ENV,
-    ADVERSARIAL_IMAGE_OVERRIDE_ENV,
-    PERFORMANCE_IMAGE_OVERRIDE_ENV,
-];
-
-/// Every per-image override environment variable [`resolve_run_image`] consults: each
-/// run image's own, and each one's `_GG` counterpart pinning that image's **gg variant**
-/// (the same image plus the language toolchains a `gg` run's programs are compiled with).
-/// This is the **canonical set** a deployment must
-/// forward from the dispatcher into each driver `Job` so a full-ref
-/// `TCAB_CONTAINER_IMAGE_*` override actually reaches the run-image resolution that
-/// runs in the driver (see the dispatcher's `PASSTHROUGH_K8S_VARS`) — the
-/// `TCAB_CONTAINER_REGISTRY`/`_TAG` composition is forwarded separately.
-///
-/// The variants are derived rather than listed, for the same reason their image names
-/// are: there is exactly one per run image and no set of images to keep in step.
-pub static RUN_IMAGE_OVERRIDE_ENVS: std::sync::LazyLock<Vec<String>> =
-    std::sync::LazyLock::new(|| {
-        RUN_IMAGE_OVERRIDE_ENVS_PLAIN
-            .iter()
-            .flat_map(|env| {
-                [
-                    (*env).to_string(),
-                    format!("{env}{GG_IMAGE_OVERRIDE_ENV_SUFFIX}"),
-                ]
-            })
-            .collect()
-    });
+// The per-image override variables are named on more than one side (the dispatcher
+// forwards every one into a driver Job, and the run-image resolution here reads
+// them), so they live in `test_cabinet_contracts::harness`.
+pub use test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS;
+use test_cabinet_contracts::harness::{
+    ADVERSARIAL_IMAGE_OVERRIDE_ENV, BASE_WASM_IMAGE_OVERRIDE_ENV, BLENDER_IMAGE_OVERRIDE_ENV,
+    DC_ANIMATION_IMAGE_OVERRIDE_ENV, DC_IMAGE_OVERRIDE_ENV, DC_SKINNED_IMAGE_OVERRIDE_ENV,
+    FULL_STACK_2D_IMAGE_OVERRIDE_ENV, FULL_STACK_3D_IMAGE_OVERRIDE_ENV,
+    GAME_JAM_IMAGE_OVERRIDE_ENV, GG_IMAGE_OVERRIDE_ENV_SUFFIX, MATERIAL_IMAGE_OVERRIDE_ENV,
+    MC_ANIMATION_IMAGE_OVERRIDE_ENV, MC_IMAGE_OVERRIDE_ENV, MC_SKINNED_IMAGE_OVERRIDE_ENV,
+    MUSIC_IMAGE_OVERRIDE_ENV, PARTICLE_2D_IMAGE_OVERRIDE_ENV, PARTICLE_3D_IMAGE_OVERRIDE_ENV,
+    PERFORMANCE_IMAGE_OVERRIDE_ENV, SFX_SAMPLE_IMAGE_OVERRIDE_ENV, SFX_SYNTH_IMAGE_OVERRIDE_ENV,
+    SN_ANIMATION_IMAGE_OVERRIDE_ENV, SN_IMAGE_OVERRIDE_ENV, SN_SKINNED_IMAGE_OVERRIDE_ENV,
+    SPRITE_IMAGE_OVERRIDE_ENV, SPRITE_SHEET_IMAGE_OVERRIDE_ENV, UI_IMAGE_OVERRIDE_ENV,
+    VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV, VOXEL_IMAGE_OVERRIDE_ENV,
+};
 
 /// How to resolve the run-container image for one kind of run: the composed
 /// image name, and the environment variable that pins a verbatim override for

@@ -49,7 +49,8 @@ use k8s_openapi::api::core::v1::{
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
-use test_cabinet_core::{ClaimedJob, PublishClaim};
+use test_cabinet_contracts::job_api::ClaimedJob;
+use test_cabinet_contracts::publish_job_api::PublishClaim;
 
 use crate::config::Config;
 

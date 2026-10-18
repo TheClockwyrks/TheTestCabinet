@@ -125,20 +125,17 @@ const ENV_RELEASE_TARGET: &str = "TCAB_GG_RELEASE_TARGET";
 pub const DEFAULT_RELEASE_BASE_URL: &str =
     "https://testcabinetartifacts.blob.core.windows.net/gg-releases";
 
-/// The `gg` release version a [`GgInstall::Release`] defaults to — this crate's own
-/// package version.
+/// The `gg` release a [`GgInstall::Release`] defaults to: the one pin of the gg
+/// version a deployment runs.
 ///
-/// The two sides of that equality are worth spelling out, because nothing at the type
-/// level ties them together: *this* crate is what runs in the driver and decides which
-/// release asset to fetch, while the asset itself is built from `crates/gg`, whose
-/// version is what `gg --version` reports and what is recorded as a run's
-/// [`harness_version`](crate::run_record::RunSubject::harness_version). If the two
-/// package versions drift the failure is silent in the worst way — the driver requests
-/// a release that was never published (a run that dies at the install step), or one that does
-/// and holds a *different* build than the corpus is about to be labelled with. So they
-/// are pinned to the same string, and `crates/gg`'s
-/// `the_default_release_version_matches_this_binary` test asserts it.
-pub const DEFAULT_RELEASE_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// It is a literal, independent of any crate's version. gg is released by a `v*` tag of
+/// its own repository, whose release jobs refuse a tag that differs from what the built
+/// `gg --version` reports; the version a run actually used is read back out of the run
+/// container and recorded as its
+/// [`harness_version`](crate::run_record::RunSubject::harness_version), so the pin
+/// decides only which published release is fetched. Bumping it is how a deployment
+/// moves to a new gg, and `TCAB_GG_RELEASE_VERSION` overrides it per deployment.
+pub const DEFAULT_RELEASE_VERSION: &str = "0.7.0";
 
 /// How the `gg` binary is put into the run container.
 ///

@@ -18,13 +18,13 @@
 //!
 //! A hook's [event](GgHookEvent) decides which of two lists it belongs to, and nothing else does:
 //!
-//!  * The two [session events](test_cabinet_core::gg::SESSION_HOOK_EVENTS) fire once per run,
+//!  * The two [session events](test_cabinet_contracts::gg::SESSION_HOOK_EVENTS) fire once per run,
 //!    around the root's session as a whole, and are declared on the run
 //!    ([`GgCapabilitySet::hooks`]).
-//!  * The other eight ([`AGENT_HOOK_EVENTS`](test_cabinet_core::gg::AGENT_HOOK_EVENTS)) fire
+//!  * The other eight ([`AGENT_HOOK_EVENTS`](test_cabinet_contracts::gg::AGENT_HOOK_EVENTS)) fire
 //!    because a *particular agent* wrote a file, ran a command, filled its window, started or
 //!    tried to stop — and are declared on that
-//!    [agent](test_cabinet_core::gg::GgAgentConfig::hooks).
+//!    [agent](test_cabinet_contracts::gg::GgAgentConfig::hooks).
 //!
 //! The agent half is per profile because the agents of a run are not interchangeable. "The build
 //! must pass before you may stop" is right for an implementer, pointless for a planner, and wrong
@@ -79,11 +79,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GG_BUILTIN_HOOKS, GgAgentConfig, GgCapabilitySet, GgHook, GgHookAction, GgHookAgentKind,
     GgHookEvent, GgHookOutcomeKind, GgTelemetryKind,
 };
-use test_cabinet_core::gg_session_record::GgShellOrigin;
+use test_cabinet_contracts::gg_session_record::GgShellOrigin;
 
 use crate::telemetry::Emitter;
 use crate::tools::{OffloadPolicy, ToolContext, run_command};
@@ -113,7 +113,7 @@ const SCRIPT_HOOK_TIMEOUT: Duration = Duration::from_secs(300);
 /// length of time gg chose is exactly what the refusal exists to prevent.
 const TIMEOUT_OF_A_REFUSED_HOOK: Duration = Duration::ZERO;
 
-/// The directory, under the run's own [workspace bookkeeping](test_cabinet_core::gg::GG_WORKSPACE_DIR),
+/// The directory, under the run's own [workspace bookkeeping](test_cabinet_contracts::gg::GG_WORKSPACE_DIR),
 /// that script hooks are materialized into.
 ///
 /// Inside `.gg/` rather than a temp directory so a script is where everything else gg wrote is —

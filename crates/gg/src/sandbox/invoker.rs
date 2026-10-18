@@ -20,7 +20,7 @@
 
 use std::time::Duration;
 
-use test_cabinet_core::gg::GgCallFailure;
+use test_cabinet_contracts::gg::GgCallFailure;
 
 use crate::board::IssueStatus;
 use crate::context::{TurnRange, ViewKind};
@@ -158,7 +158,7 @@ pub struct DocSearchQuery {
 pub struct DocSearchResult {
     /// The results, as the program's return value.
     pub page: DocSearch,
-    /// The [search-results view](test_cabinet_core::gg::GgContextSource::SearchResults) this search
+    /// The [search-results view](test_cabinet_contracts::gg::GgContextSource::SearchResults) this search
     /// placed, replacing whatever the previous one left.
     pub opened: SandboxViewOpened,
 }
@@ -188,13 +188,13 @@ pub struct ViewOpenOutcome {
 /// makes it unique within a turn: an id named only after the tool would collide whenever one
 /// program called one tool twice, which is wrong for anything keyed by it. The prefix is also the
 /// only thing distinguishing the two in the [session
-/// record](test_cabinet_core::gg_session_record::GgSessionRecord), so it is what lets a reader
+/// record](test_cabinet_contracts::gg_session_record::GgSessionRecord), so it is what lets a reader
 /// attribute a recorded `ToolResult` to the open turn's program rather than to a native tool call
 /// the model never made.
 pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
 
 /// **What one model-facing call is recorded as** — the identity the API layer's own
-/// [record](test_cabinet_core::gg::GgTelemetryKind::ApiCall) carries, and the argument both halves
+/// [record](test_cabinet_contracts::gg::GgTelemetryKind::ApiCall) carries, and the argument both halves
 /// of the bracket take.
 ///
 /// One field, because there is one identity: the [operation](super::operations::OperationId) gg
@@ -232,7 +232,7 @@ pub trait OperationApi: Send + 'static {
     ///
     /// Called **before** the work, so anything the call produces (a bridged `ToolCall`/`ToolResult`
     /// pair, a delegation's whole subtree of child events) lands inside the bracket, exactly as the
-    /// tool layer's own [`ToolCall`](test_cabinet_core::gg::GgTelemetryKind::ToolCall) brackets what
+    /// tool layer's own [`ToolCall`](test_cabinet_contracts::gg::GgTelemetryKind::ToolCall) brackets what
     /// it dispatches.
     fn begin_api_call(&mut self, call: ApiIdentity<'_>);
 
@@ -449,7 +449,7 @@ pub trait OperationApi: Send + 'static {
     /// them*, so a blank string is a typo rather than a way of saying it.
     fn close_docviews(&mut self, key: Option<String>) -> Result<u32, ViewRefusal>;
     /// Read a workspace file **and** open a file view of it — the one place the code path
-    /// deliberately does push a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView).
+    /// deliberately does push a [`FileView`](test_cabinet_contracts::gg::GgContextSource::FileView).
     ///
     /// The read is an ordinary serviced `read_file`: the same tool, the same telemetry, the same
     /// session-record entry, the same roster line. What differs is what happens to the result — it also

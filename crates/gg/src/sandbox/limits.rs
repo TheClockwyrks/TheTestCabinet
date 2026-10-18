@@ -64,7 +64,7 @@
 //! # The decision, settled with the first arm that can reach it
 //!
 //! **gg does not extend the timeout to a parked WASI call. The bound on a parked turn is the
-//! run-level idle watchdog**, `test_cabinet_core::exec_stream::HARNESS_IDLE_TIMEOUT` (30 minutes),
+//! run-level idle watchdog**, the driver's `HARNESS_IDLE_TIMEOUT` (30 minutes),
 //! and this ceiling stays what it says it is: a bound on the guest's own *execution*.
 //!
 //! The reason that is an acceptance rather than a gap is that the underlying behaviour — a program
@@ -100,7 +100,7 @@
 use std::time::Duration;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
+use test_cabinet_contracts::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 use wasmtime::ResourceLimiter;
 
 /// The two params this module reads, re-exported from the crate that owns gg's configuration
@@ -109,7 +109,7 @@ use wasmtime::ResourceLimiter;
 ///
 /// The names are **contract-visible** — they are what the console's capability catalogue offers and
 /// what persisted run data records — so they do not change with the sandbox underneath them.
-pub use test_cabinet_core::gg::{PARAM_MAX_MEMORY_BYTES, PARAM_TIMEOUT_SECS};
+pub use test_cabinet_contracts::gg::{PARAM_MAX_MEMORY_BYTES, PARAM_TIMEOUT_SECS};
 
 /// The sandbox limits one program runs under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

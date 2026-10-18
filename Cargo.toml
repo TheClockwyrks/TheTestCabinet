@@ -77,7 +77,6 @@ members = [
 	"crates/arena",
 	"crates/auth-service",
 	"crates/db-auth",
-	"crates/telemetry",
 	"crates/entities",
 	"crates/migration",
 ]
@@ -513,10 +512,10 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 # OpenTelemetry. These crates move in lockstep across the `opentelemetry`
 # ecosystem and are pinned together here so the whole workspace shares one
-# mutually-compatible set; bumping one means bumping all. They are consumed
-# through `crates/telemetry` (`test-cabinet-telemetry`), which splits the light
-# propagation deps (default features) from the heavy exporter/init deps (the
-# `otlp` feature). Transport is OTLP over HTTP/protobuf (collector port 4318),
+# mutually-compatible set; bumping one means bumping all, here and in the
+# contracts repository's workspace. They are consumed through its telemetry
+# crate (`test-cabinet-telemetry`), which splits the light propagation deps
+# (default features) from the heavy exporter/init deps (the `otlp` feature). Transport is OTLP over HTTP/protobuf (collector port 4318),
 # using a non-blocking `reqwest` client with rustls so we inherit the same TLS
 # stack as the rest of the workspace and need no system OpenSSL or `protoc`.
 #

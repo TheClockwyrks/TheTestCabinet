@@ -46,13 +46,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgCallFailure, GgErrorSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
     GgProgramLanguage, GgProviderFault, GgProviderStat, GgRejectedResponses, GgRunLimits,
     GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
     GgUndocumentedCalls, GgUsageFigure,
 };
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
 /// [observes](Self::observe), so the binary can [finalize](Self::finalize) it into a
@@ -458,13 +458,13 @@ impl SessionSummaryTracker {
     /// [finalizing](Self::finalize). Recording
     /// the *resolved* toolset — a capability's tools only when enabled, for the stateful ones only
     /// when their store is non-empty, and only the ones this agent's own
-    /// [allowlist](test_cabinet_core::gg::GgAgentConfig::tools) grants — makes the toolset a
+    /// [allowlist](test_cabinet_contracts::gg::GgAgentConfig::tools) grants — makes the toolset a
     /// first-class, sliceable fact rather than something a query must re-derive from the
     /// capability set.
     ///
     /// Empty for a responses-as-code root, which is offered no tools at all. That is a fact rather
     /// than a gap: what such a root was offered is its
-    /// [`apis`](test_cabinet_core::gg::GgTelemetryKind::AgentSurface::apis), which is a per-instance
+    /// [`apis`](test_cabinet_contracts::gg::GgTelemetryKind::AgentSurface::apis), which is a per-instance
     /// record and not a summary figure.
     pub fn record_effective_tools(&self, tools: Vec<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
@@ -472,14 +472,14 @@ impl SessionSummaryTracker {
     }
 
     /// Record the run's [execution mode](GgSessionSummary::execution_mode) — `"responses_as_code"`
-    /// when the [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability
+    /// when the [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) capability
     /// drove the run, else `"tool_calling"`.
     ///
     /// Like [`record_effective_tools`](Self::record_effective_tools) this is a configuration fact no
     /// event carries, so the binary sets it once (off the run's capability set) before
     /// [finalizing](Self::finalize). Recording the mode the run *actually* ran in makes "does a
     /// code-shaped response help?" a durable, sliceable outcome dimension alongside the
-    /// [`cap.responses-as-code`](test_cabinet_core::gg_query) document field.
+    /// [`cap.responses-as-code`](test_cabinet_contracts::gg_query) document field.
     pub fn record_execution_mode(&self, mode: impl Into<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.execution_mode = Some(mode.into());
@@ -509,7 +509,7 @@ impl SessionSummaryTracker {
     /// A third configuration fact no event carries, so the binary sets it once, immediately after
     /// the orchestrator resolves it and long before any ceiling could be breached. Recording the
     /// *resolved* set rather than leaving a query to re-derive it from the
-    /// [capability set](test_cabinet_core::gg::GgCapabilitySet) is what makes "what was this run
+    /// [capability set](test_cabinet_contracts::gg::GgCapabilitySet) is what makes "what was this run
     /// bounded by?" answerable for every run, including one that declared nothing and inherited the
     /// default — an unrecorded default is an invisible one, and a study that cannot see it cannot
     /// control for it.

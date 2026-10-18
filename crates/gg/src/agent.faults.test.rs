@@ -34,7 +34,7 @@ use std::any::Any;
 
 use super::*;
 use crate::board;
-use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, GgTurnErrorType, GgTurnOutcome};
+use test_cabinet_contracts::gg::{CAPABILITY_AGENT_PERSISTENCE, GgTurnErrorType, GgTurnOutcome};
 
 /// Responses-as-code on, over the [tool-calling default](no_code): these tests need a turn that
 /// reaches the sandbox, and nothing else about the mode.
@@ -223,7 +223,7 @@ async fn a_lowering_defect_records_no_error_type_against_the_model() {
 
     assert_eq!(
         outcomes,
-        vec![(test_cabinet_core::gg::GgTurnOutcome::Fatal, None, None)],
+        vec![(test_cabinet_contracts::gg::GgTurnOutcome::Fatal, None, None)],
         "the turn is published as gg's fault, with no error and no type under it: {outcomes:?}"
     );
 }
@@ -1098,7 +1098,7 @@ async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
     );
 }
 
-/// The [slug](test_cabinet_core::gg::GgAgentConfig::slug) of the profile the slot case below runs as:
+/// The [slug](test_cabinet_contracts::gg::GgAgentConfig::slug) of the profile the slot case below runs as:
 /// [persistent](CAPABILITY_AGENT_PERSISTENCE), so its instances hold their running slot under an
 /// [exclusivity key](crate::subagents::ExclusiveKey) keyed on that id, and a release of one
 /// instance's slot is visible as a release of the *profile*.

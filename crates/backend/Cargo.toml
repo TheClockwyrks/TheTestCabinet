@@ -20,7 +20,7 @@ test-cabinet-core = { path = "../core" }
 # Engaged only when `TCAB_BACKEND_DB_AZURE_AD` is truthy; the default password /
 # SQLite path never touches it.
 test-cabinet-db-auth = { path = "../db-auth" }
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { path = "../../contracts/crates/telemetry", features = ["otlp"] }
 test-cabinet-entities = { workspace = true }
 test-cabinet-migration = { workspace = true }
 

@@ -6,7 +6,7 @@
 //! survives a compaction boundary" shape, but curated at run time rather than authored ahead.
 //! What differs between runs is **how** that store is organized and how much of it the context
 //! window carries, which is the [strategy](MemoryStrategy) the capability's
-//! [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) selects:
+//! [`implementation`](test_cabinet_contracts::gg::GgCapabilityConfig::implementation) selects:
 //!
 //! - [`Scratchpad`](MemoryStrategy::Scratchpad) — a small set whose **bodies are all pinned** in
 //!   the window and carried across a [compaction](crate::compaction) boundary verbatim.
@@ -46,7 +46,7 @@
 //! - [`MemoryRevision`] — one entry of that log.
 //! - [`MemoriesRuntime`] — the loop's live view: whether the capability is on, the shared store,
 //!   and the derivations the loop needs (the strategy and limits the system prompt states, the
-//!   [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) telemetry, and the pinned
+//!   [`MemoryState`](test_cabinet_contracts::gg::GgTelemetryKind::MemoryState) telemetry, and the pinned
 //!   context block, if the strategy has one).
 //!
 //! The capability is **switchable**: when it is off the loop builds a
@@ -57,7 +57,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_MEMORIES, GgAgentConfig, GgCapabilityConfig, GgContextSource, GgMemoryCaps,
     GgMemoryChange, GgMemoryEntry, GgMemoryPeak, GgModuleOrigin, GgProgramLanguage,
     GgTelemetryKind, MEMORY_STRATEGY_KEYWORD_SEARCH, MEMORY_STRATEGY_MARKDOWN,
@@ -84,8 +84,8 @@ use crate::validate::{LaunchDefect, LaunchReport};
 
 /// Which memory instance a holder binds to, re-exported from the contract so gg and the
 /// configurations it reads name the same four things. See
-/// [`GgMemoryScope`](test_cabinet_core::gg::GgMemoryScope) for what each one binds.
-pub use test_cabinet_core::gg::GgMemoryScope as MemoryScope;
+/// [`GgMemoryScope`](test_cabinet_contracts::gg::GgMemoryScope) for what each one binds.
+pub use test_cabinet_contracts::gg::GgMemoryScope as MemoryScope;
 
 #[path = "memories.search.rs"]
 mod search;
@@ -133,7 +133,7 @@ pub const MEMORY_MUTATIONS: &[OperationId] = &[
 /// The six params one memories capability [bounds its store](MemoryCaps) with, re-exported from
 /// the contract so the document, the console's editor and the resolver that reads each one all
 /// spell it the same way. An enabled capability writes all six; see [`MemoryCaps::resolve`].
-pub(crate) use test_cabinet_core::gg::{
+pub(crate) use test_cabinet_contracts::gg::{
     PARAM_MAX_COUNT, PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX, PARAM_MAX_LEN_PER_MEMORY,
     PARAM_MAX_RESULTS, PARAM_MAX_TOTAL_LEN,
 };
@@ -171,7 +171,7 @@ const SLUG_EXTRA_CHARS: [char; 3] = ['-', '_', '.'];
 const MAX_SLUG_LEN: usize = 64;
 
 /// How a run's [memories](self) are organized — the capability's
-/// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation), and the single
+/// [`implementation`](test_cabinet_contracts::gg::GgCapabilityConfig::implementation), and the single
 /// switch behind which tools are offered, which limits apply, and what the window carries.
 ///
 /// An enabled memories capability **names one**, whatever its [scope](MemoryScope), and a run naming
@@ -197,11 +197,11 @@ pub enum MemoryStrategy {
 
 impl MemoryStrategy {
     /// Every strategy gg offers — the vocabulary an
-    /// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) is read
+    /// [`implementation`](test_cabinet_contracts::gg::GgCapabilityConfig::implementation) is read
     /// against, and what a refusal offers the operator back.
     pub const ALL: [Self; 3] = [Self::Scratchpad, Self::Markdown, Self::KeywordSearch];
 
-    /// The strategy an [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation)
+    /// The strategy an [implementation](test_cabinet_contracts::gg::GgCapabilityConfig::implementation)
     /// names — `scratchpad`, `markdown` or `keyword-search`.
     ///
     /// A name gg does not offer is reported into `report` and refuses the launch, and the
@@ -267,13 +267,13 @@ impl MemoryStrategy {
     /// to the model** in prose.
     ///
     /// Every strategy offers a different set of tools, and under
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) each is a method on
+    /// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) each is a method on
     /// an API object rather than a tool name. Any prompt that tells a model to record something —
     /// the [memory compaction](crate::compaction::CompactionStrategy::Memory) instruction, and the
     /// refusal that answers a call made while one is pending — has to name the calls that run
     /// actually has, so they are derived here once instead of being spelled out at each site.
     ///
-    /// `language` is the agent's [program language](test_cabinet_core::gg::GgProgramLanguage), or
+    /// `language` is the agent's [program language](test_cabinet_contracts::gg::GgProgramLanguage), or
     /// `None` for a tool-calling agent. It is a language rather than a `bool` because the *method*
     /// spelling is not gg's to decide: it is resolved from that language's own catalogue
     /// by [`spell`], so an SDK that renamed `editMemory` renames it in these sentences too, and a
@@ -1848,7 +1848,7 @@ impl MemoriesRuntime {
     /// Two questions are answered here, and they are independent. **What** the memories are —
     /// the [strategy](MemoryStrategy) the capability's `implementation` selects and the
     /// [limits](MemoryCaps::resolve) its params resolve — and **whose** they are, which is the
-    /// [`scope`](test_cabinet_core::gg::MEMORY_PARAM_SCOPE):
+    /// [`scope`](test_cabinet_contracts::gg::MEMORY_PARAM_SCOPE):
     ///
     /// * [`isolated`](MemoryScope::Isolated) — a fresh store, held by this instance alone;
     /// * [`shared`](MemoryScope::Shared) — the [registry](MemoryRegistry) entry for this
@@ -2162,7 +2162,7 @@ impl MemoriesRuntime {
 
     /// The pinned context block for the current store, or `None` when the capability is off, the
     /// [strategy](MemoryStore::context_block) pins nothing, or there is nothing yet to show. The
-    /// loop keeps this as the single [`Memory`](test_cabinet_core::gg::GgContextSource::Memory)-sourced
+    /// loop keeps this as the single [`Memory`](test_cabinet_contracts::gg::GgContextSource::Memory)-sourced
     /// item in the window.
     ///
     /// # It is refreshed at a compaction boundary, and only there

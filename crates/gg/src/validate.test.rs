@@ -22,7 +22,7 @@
 //! [`Discarding`](LaunchReport::Discarding) sink is the assertion it claims to be.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, AUTOLOAD_LOCKED_IMPL, CAPABILITY_READ_FILE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GgAgentConfig, GgCapabilityConfig,
     GgCapabilitySet, GgHook, GgHookAction, GgHookEvent, GgLoopDetection, GgMemoryScope,
@@ -1961,7 +1961,7 @@ fn a_set_that_still_carries_a_profiles_internal_id_is_refused() {
 #[test]
 fn a_set_that_still_declares_a_model_slot_is_refused() {
     let mut set = minimal();
-    set.model_slots = vec![test_cabinet_core::gg::GgConfigSlot {
+    set.model_slots = vec![test_cabinet_contracts::gg::GgConfigSlot {
         name: "cheap".to_string(),
         default_model_id: None,
         targets: Vec::new(),
@@ -1973,7 +1973,7 @@ fn a_set_that_still_declares_a_model_slot_is_refused() {
     );
 
     let mut set = minimal();
-    set.agents[0].model_slots = vec![test_cabinet_core::gg::GgModelSlot {
+    set.agents[0].model_slots = vec![test_cabinet_contracts::gg::GgModelSlot {
         name: "brain".to_string(),
         default_model_id: None,
         passthrough: true,
@@ -2004,7 +2004,7 @@ fn refusal_text_or_empty(set: &GgCapabilitySet) -> String {
 /// record a setting its operator never chose.
 #[test]
 fn a_reasoning_setting_naming_both_refuses_the_launch() {
-    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort};
     let mut set = minimal();
     set.agents[0].reasoning = Some(GgReasoning {
         effort: Some(GgReasoningEffort::Low),
@@ -2024,7 +2024,7 @@ fn a_reasoning_setting_naming_both_refuses_the_launch() {
 /// leave the setting out entirely — which is how a profile runs its model at the provider default.
 #[test]
 fn a_reasoning_setting_naming_neither_refuses_the_launch() {
-    use test_cabinet_core::gg::GgReasoning;
+    use test_cabinet_contracts::gg::GgReasoning;
     let mut set = minimal();
     set.agents[0].reasoning = Some(GgReasoning::default());
     let text = refusal_text(&set);
@@ -2040,7 +2040,7 @@ fn a_reasoning_setting_naming_neither_refuses_the_launch() {
 /// turns reasoning off.
 #[test]
 fn a_zero_reasoning_budget_refuses_the_launch() {
-    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort};
     let mut set = minimal();
     set.agents[0].reasoning = Some(GgReasoning {
         effort: None,
@@ -2067,7 +2067,7 @@ fn a_zero_reasoning_budget_refuses_the_launch() {
 /// The well-formed states — one effort, or one non-zero budget — launch untouched.
 #[test]
 fn a_reasoning_setting_naming_one_value_launches() {
-    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort};
     let mut set = minimal();
     set.agents[0].reasoning = Some(GgReasoning {
         effort: Some(GgReasoningEffort::XHigh),

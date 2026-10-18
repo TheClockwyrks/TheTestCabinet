@@ -25,19 +25,15 @@
 use crate::content_labels::{self, ContentLabels};
 use std::path::{Path, PathBuf};
 
-// One list of build-output names, shared with the validator and the code
-// analyzer; it is run-tree layout, so it lives in `test_cabinet_contracts::layout`.
-pub use test_cabinet_contracts::layout::BUILD_OUTPUTS;
-
-/// Find a deployable static build output beside a run's implementation, if one
-/// was produced. Returns the first of [`BUILD_OUTPUTS`] that exists as a
-/// directory, or `None` when the run produced no static build.
-pub fn find_build_output(impl_dir: &Path) -> Option<PathBuf> {
-    BUILD_OUTPUTS
-        .iter()
-        .map(|name| impl_dir.join(name))
-        .find(|candidate| candidate.is_dir())
-}
+// The build-output names, the rule that finds a run's build among them, and the
+// rules a proof is named and labelled by are run-tree layout every side agrees on
+// (the validator, the code analyzer, the snapshot builder, the gallery), so they
+// live in `test_cabinet_contracts::layout` and are re-exported here beside the
+// serving that uses them.
+pub use test_cabinet_contracts::layout::{
+    BUILD_OUTPUTS, find_build_output, proof_labelled_name, proof_published_extension,
+    proof_served_extension,
+};
 
 /// A file resolved from a build, ready to write to an HTTP or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,59 +109,6 @@ pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
         content_encoding: labels.content_encoding,
         body,
     })
-}
-
-/// The name a proof's bytes are labelled from: its recorded `dest`, falling back to
-/// the requested name when the dest carries no usable extension.
-///
-/// A proof is *addressed* as `<proof-id>.<ext>`, and that name keeps only the last
-/// extension — `<proof-id>.gz` for a `dest` of `shots/rally.json.gz`, which cannot
-/// say whether the gzip frames a document or is one. The dest carries the whole
-/// compound suffix, so the labels come from it (see [`crate::content_labels`]).
-pub fn proof_labelled_name<'a>(dest: &'a str, file: &'a str) -> &'a str {
-    let base = dest.rsplit('/').next().unwrap_or(dest);
-    match base.rfind('.') {
-        Some(dot) if dot > 0 && dot + 1 < base.len() => base,
-        _ => file,
-    }
-}
-
-/// The file extension a proof is served under, derived from its `dest` path: the
-/// lowercased extension of the dest's final path segment, defaulting to `png` when
-/// there is none usable (a leading- or trailing-dot segment, or no dot at all).
-///
-/// A proof is addressed everywhere as `<proof-id>.<ext>` — this computes the `<ext>`
-/// from the recorded `dest` so the served name lines up across the producers and
-/// consumers of that name: the driver's backend-store mirror, the backend snapshot
-/// builder, and the gallery's `extensionFor` (`packages/ui/.../proofMedia.ts`). The
-/// extension is cosmetic (the file is resolved by its proof-id stem), but it must
-/// agree on all sides or a snapshot key misses the URL the UI requests.
-pub fn proof_served_extension(dest: &str) -> String {
-    let base = dest.rsplit('/').next().unwrap_or(dest);
-    match base.rfind('.') {
-        Some(dot) if dot > 0 && dot + 1 < base.len() => base[dot + 1..].to_ascii_lowercase(),
-        _ => "png".to_string(),
-    }
-}
-
-/// The file extension a proof is served under **in the public snapshot** — as
-/// opposed to [`proof_served_extension`], which is how it is served live from the
-/// produced tree.
-///
-/// They differ for video only. A run captures its clip as the `.webm` Playwright
-/// records natively (the single format a case's `dest` names), which the live
-/// console serves verbatim; but the snapshot builder transcodes it to H.264
-/// `.mp4` so the public gallery plays on every browser (webm/VP8 does not on
-/// iOS/Safari). So a `Video` proof publishes as `mp4` regardless of its `dest`,
-/// while an `Image` or `Replay` proof publishes under its recorded extension
-/// unchanged — there is no second format either of those is converted into.
-pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) -> String {
-    match kind {
-        crate::test_case::MediaKind::Video => "mp4".to_string(),
-        crate::test_case::MediaKind::Image | crate::test_case::MediaKind::Replay => {
-            proof_served_extension(dest)
-        }
-    }
 }
 
 /// A synthesized validation media file resolved from a run, ready to write to an

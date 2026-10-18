@@ -107,7 +107,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg::{GgOpeningTurn, GgProgramLanguage};
+use test_cabinet_contracts::gg::{GgOpeningTurn, GgProgramLanguage};
 
 use crate::bootstrap::{Bootstrap, BootstrapAgent, seed_bootstrap};
 use crate::context::{ContextModel, HeuristicTokenEstimator};

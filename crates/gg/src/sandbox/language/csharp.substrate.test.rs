@@ -46,7 +46,7 @@
 //! function groups the programs that exercise one behaviour, so they share that cost; one that
 //! grows into the slow end of the suite is split rather than extended.
 
-use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
+use test_cabinet_contracts::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;

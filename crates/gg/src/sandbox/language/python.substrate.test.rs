@@ -30,7 +30,7 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage,
 };
 use wasmtime::component::Component;
@@ -4404,7 +4404,7 @@ fn an_open_with_a_negative_offset_is_refused_before_the_host() {
 fn an_open_is_unavailable_when_the_run_withholds_reading_files() {
     let (outcome, _log) = sdk_granting(
         &caught_code(r#"gg.views.open_file("notes.md")"#),
-        &all_operations_without(test_cabinet_core::gg::CAPABILITY_READ_FILE),
+        &all_operations_without(test_cabinet_contracts::gg::CAPABILITY_READ_FILE),
     );
     assert_caught_code(&outcome, "open_file", "unavailable");
 }
@@ -4512,7 +4512,7 @@ fn a_close_of_an_empty_selector_is_an_argument_error() {
 fn a_close_is_unavailable_when_the_run_withholds_managing_the_window() {
     let (outcome, _log) = sdk_granting(
         &caught_code(r#"gg.views.close("summary")"#),
-        &all_operations_without(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
+        &all_operations_without(test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
     );
     assert_caught_code(&outcome, "close", "unavailable");
 }

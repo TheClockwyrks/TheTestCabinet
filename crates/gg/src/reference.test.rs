@@ -7,7 +7,7 @@ use super::*;
 use crate::memories::MemoryStrategy;
 use crate::tasks::TaskMode;
 use crate::tools::{ALL_TOOL_NAMES, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED};
-use test_cabinet_core::gg::{SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
+use test_cabinet_contracts::gg::{SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
 
 /// Every tool gg can offer appears **exactly once**, with the prose and schema a model would
 /// really be sent.

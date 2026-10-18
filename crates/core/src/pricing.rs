@@ -23,7 +23,7 @@ use crate::metrics::TokenPrices;
 
 // The provider-spelling comparison is part of the contract: gg and the run record
 // agree on it, so it lives in `test-cabinet-contracts` and is re-exported here.
-pub use test_cabinet_contracts::pricing::{provider_key, same_provider};
+pub use test_cabinet_contracts::pricing::{MODALITY_IMAGE, provider_key, same_provider};
 
 /// The OpenRouter models endpoint listing every model and its pricing.
 const MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
@@ -58,10 +58,6 @@ pub struct ModelDetails {
     /// observation.
     pub provider_pin: Option<String>,
 }
-
-/// The modality token OpenRouter uses for image input — the one gg checks before
-/// putting a picture in a prompt.
-pub const MODALITY_IMAGE: &str = "image";
 
 /// The launch-time facts a [gg](crate::gg) run needs about one model, resolved in a
 /// single per-model fetch: the context window its accounting is measured against and

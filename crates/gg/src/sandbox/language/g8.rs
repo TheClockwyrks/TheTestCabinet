@@ -67,7 +67,7 @@
 //! the rendering would agree with itself instead of with the loop.
 
 use serde_json::Value;
-use test_cabinet_core::gg::{GgContextSource, GgProgramLanguage};
+use test_cabinet_contracts::gg::{GgContextSource, GgProgramLanguage};
 
 use crate::agent::code::ModelFacing;
 use crate::limits::TurnErrorType;

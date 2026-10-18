@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource,
     GgModuleDisposition, GgTelemetryKind, MEMORY_PARAM_SCOPE,
@@ -76,7 +76,7 @@ fn plain() -> (MemoryRegistry, InheritedModules, ModuleIds) {
 }
 
 /// A profile enabling `capabilities`, each **fully specified**: the arm and params the
-/// [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog) writes, with the given params'
+/// [authoring catalog](test_cabinet_contracts::gg::gg_authoring_catalog) writes, with the given params'
 /// own keys written over them.
 ///
 /// Authored rather than bare, because a bare capability is not a document gg would launch: an
@@ -204,7 +204,7 @@ fn an_ownership_key_is_refused_on_every_capability() {
         ),
     ] {
         let profile = profile_with(vec![(capability, params)]);
-        let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("mock/echo");
+        let mut set = test_cabinet_contracts::gg::GgCapabilitySet::minimal("mock/echo");
         set.agents[0] = profile;
         assert!(
             crate::validate::refusal(&set)

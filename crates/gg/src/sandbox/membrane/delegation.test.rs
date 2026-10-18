@@ -2,7 +2,7 @@
 //! scheduler rather than by a tool implementation.
 
 use serde_json::json;
-use test_cabinet_core::gg::ROOT_AGENT;
+use test_cabinet_contracts::gg::ROOT_AGENT;
 
 use super::*;
 use crate::sandbox::fake::{CallLog, all_operations, membrane, membrane_with};

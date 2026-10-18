@@ -6,7 +6,7 @@
 //! to revise its title/description/status, `set_blocked_by` to declare which other tasks
 //! must finish first, `complete_task` to mark one done, and `remove_task` to drop one. The
 //! whole list is pushed into the context window as a single
-//! [`TaskList`](test_cabinet_core::gg::GgContextSource)-sourced,
+//! [`TaskList`](test_cabinet_contracts::gg::GgContextSource)-sourced,
 //! [`Pinned`](crate::context::Retention::Pinned) item, so the
 //! [context accounting](crate::context) attributes it to the task list and Phase 2
 //! compaction carries the model's plan across the boundary verbatim.
@@ -37,7 +37,7 @@
 //!   loop and the [task tools](crate::tools).
 //! - [`TasksRuntime`] — the loop's live view: whether the capability is on, the shared
 //!   store, and the derivations the loop needs (the count cap the system prompt states, the
-//!   [`TasksState`](test_cabinet_core::gg::GgTelemetryKind::TasksState) telemetry, and the
+//!   [`TasksState`](test_cabinet_contracts::gg::GgTelemetryKind::TasksState) telemetry, and the
 //!   pinned context block).
 //!
 //! The capability is **switchable**: when it is off the loop builds a
@@ -48,7 +48,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_TASKS, GgAgentConfig, GgContextSource, GgModuleOrigin, GgTaskEntry, GgTaskStatus,
     GgTelemetryKind, TASK_MODE_ISSUES, TASK_MODE_SIMPLE, TASK_MODES,
 };
@@ -61,9 +61,9 @@ use crate::modules::{
 };
 use crate::prompts::{self, TaskItemView, TasksBlockContext};
 
-/// The tasks capability's two params, [named by core](test_cabinet_core::gg) so the vocabulary a
+/// The tasks capability's two params, [named by core](test_cabinet_contracts::gg) so the vocabulary a
 /// document is written in and the vocabulary gg reads it by are one declaration.
-pub(crate) use test_cabinet_core::gg::{PARAM_MAX_TASKS, PARAM_MODE};
+pub(crate) use test_cabinet_contracts::gg::{PARAM_MAX_TASKS, PARAM_MODE};
 
 /// The ceiling a list carries when **no document configured one**.
 ///
@@ -1073,7 +1073,7 @@ impl TasksRuntime {
 
     /// The pinned context block rendering the current task list, or `None` when the
     /// capability is off or there are no tasks. The loop keeps this as the single
-    /// [`TaskList`](test_cabinet_core::gg::GgContextSource::TaskList)-sourced item in the
+    /// [`TaskList`](test_cabinet_contracts::gg::GgContextSource::TaskList)-sourced item in the
     /// window.
     pub fn context_block(&self) -> Option<Message> {
         if !self.enabled {

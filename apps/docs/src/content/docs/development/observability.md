@@ -12,9 +12,10 @@ variables, the local stack, and deployed environments.
 ## Opt-in export
 
 Telemetry is wired through the shared `test-cabinet-telemetry` crate
-(`crates/telemetry`). Every long-lived binary calls its `init()` once at startup;
-the browser [console](/components/web/overview/) calls the equivalent
-`initTelemetry()` before its first fetch. The switch is
+(`crates/telemetry` in [`contracts`](/components/contracts/overview/)). Every
+long-lived binary calls its `init()` once at startup; the browser
+[console](/components/web/overview/) calls the equivalent `initTelemetry()`
+before its first fetch. The switch is
 `OTEL_EXPORTER_OTLP_ENDPOINT`, or `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` in the
 browser:
 

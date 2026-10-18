@@ -11,7 +11,7 @@ use super::*;
 use crate::archive::ArchiveStore;
 use crate::model::{Message, Role};
 use crate::tools::{Tool, ToolContext, ToolFailure};
-use test_cabinet_core::gg::GgContextSource;
+use test_cabinet_contracts::gg::GgContextSource;
 
 fn ctx() -> ToolContext {
     ToolContext::new(std::env::temp_dir())

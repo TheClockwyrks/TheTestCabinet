@@ -36,6 +36,7 @@ use crate::execution::{
 use crate::harness::{AgentHarness, Availability, HarnessInvocation, HarnessOutcome, Usage};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
+use test_cabinet_contracts::harness::api_key_env;
 
 /// How a harness's per-event token numbers combine across its output stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,9 +127,9 @@ struct HarnessManifest {
 /// from the harness slug by [`crate::model_id::openrouter_price_id`], the single
 /// source of truth for that logic.
 struct AdapterSpec {
-    api_key_env: Option<&'static str>,
     /// The variable the key is injected into inside the container, when it
-    /// differs from `api_key_env`. `None` reuses `api_key_env` on both sides.
+    /// differs from the host variable the contracts crate names for the harness
+    /// ([`api_key_env`]). `None` reuses that variable on both sides.
     container_key_env: Option<&'static str>,
     /// The subscription-authentication descriptor, when the harness supports it
     /// (Claude Code, Codex, Antigravity). `None` for an API-key-only harness.
@@ -340,7 +341,7 @@ impl AgentHarness for GgHarness {
     }
 
     fn name(&self) -> &str {
-        "gg"
+        HarnessSlug::Gg.display_name()
     }
 
     /// gg needs no third-party install step. In k8s the gg binary is fetched from a
@@ -352,7 +353,7 @@ impl AgentHarness for GgHarness {
 
     /// gg reaches its model through OpenRouter for Phase 0.
     fn api_key_env(&self) -> Option<&'static str> {
-        Some("OPENROUTER_API_KEY")
+        api_key_env(HarnessSlug::Gg)
     }
 
     /// The key is injected into the container under the same name, because the gg
@@ -569,28 +570,21 @@ fn all_harnesses() -> Vec<Box<dyn AgentHarness>> {
 /// Every API-key value currently set in the host environment, across all
 /// built-in harnesses — both the shared provider variables (`ANTHROPIC_API_KEY`,
 /// `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, …) and the per-harness
-/// `TCAB_API_KEY_<SLUG>` overrides ([`api_key_override_var`](crate::auth::api_key_override_var)).
+/// `TCAB_API_KEY_<SLUG>` overrides: every variable
+/// [`redacted_env_vars`](test_cabinet_contracts::harness::redacted_env_vars) names.
 ///
 /// These are the keys a run launched on this host would have authenticated with,
 /// so the publisher uses them as exact-match redaction literals when releasing a
-/// run's source to its public repository (see [`crate::redact::SecretScrubber::from_host_env`]).
-/// Returns values only — never variable names — and skips blank ones. Order is
-/// not meaningful; values are deduplicated.
+/// run's source to its public repository (see
+/// [`SecretScrubber::from_host_env`](crate::redact::SecretScrubber::from_host_env),
+/// which reads the same variables). Returns values only — never variable names —
+/// and skips blank ones. Values are sorted and deduplicated.
 pub fn host_api_key_values() -> Vec<String> {
-    let mut values = Vec::new();
-    let mut push_env = |var: &str| {
-        if let Ok(value) = std::env::var(var)
-            && !value.trim().is_empty()
-        {
-            values.push(value);
-        }
-    };
-    for slug in HarnessSlug::ALL {
-        if let Some(env) = adapter_spec(slug).api_key_env {
-            push_env(env);
-        }
-        push_env(&crate::auth::api_key_override_var(slug));
-    }
+    let mut values: Vec<String> = test_cabinet_contracts::harness::redacted_env_vars()
+        .iter()
+        .filter_map(|var| std::env::var(var).ok())
+        .filter(|value| !value.trim().is_empty())
+        .collect();
     values.sort();
     values.dedup();
     values
@@ -637,6 +631,17 @@ fn load_manifest(slug: HarnessSlug) -> HarnessManifest {
         manifest.slug.as_str(),
         slug.as_str(),
     );
+    // The display name every other party shows the harness under is the contracts
+    // crate's; the manifest restates it for the reader of the manifest, and the
+    // two must agree.
+    assert_eq!(
+        manifest.name,
+        slug.display_name(),
+        "harness manifest `{}` declares the name `{}`, but its display name is `{}`",
+        slug.as_str(),
+        manifest.name,
+        slug.display_name(),
+    );
     manifest
 }
 
@@ -650,7 +655,7 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
         name: manifest.name,
         binary: manifest.binary,
         install: manifest.install,
-        api_key_env: spec.api_key_env,
+        api_key_env: api_key_env(slug),
         container_key_env: spec.container_key_env,
         subscription: spec.subscription,
         session_args: spec.session_args,
@@ -667,7 +672,6 @@ fn descriptor(slug: HarnessSlug) -> Box<dyn AgentHarness> {
 fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
     match slug {
         HarnessSlug::Claude => AdapterSpec {
-            api_key_env: Some("ANTHROPIC_API_KEY"),
             container_key_env: None,
             // Claude Code reads a Claude subscription from credentials the `claude`
             // CLI writes when the user signs in. `.credentials.json` carries the
@@ -722,7 +726,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Claude,
         },
         HarnessSlug::Codex => AdapterSpec {
-            api_key_env: Some("OPENAI_API_KEY"),
             // `codex exec` authenticates only from `CODEX_API_KEY`; it ignores
             // `OPENAI_API_KEY`, so the key the user exports as `OPENAI_API_KEY`
             // on the host is injected into the container under this name.
@@ -769,7 +772,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Codex,
         },
         HarnessSlug::Cline => AdapterSpec {
-            api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             subscription: None,
             session_args: |model, prompt| {
@@ -809,7 +811,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
         HarnessSlug::Antigravity => AdapterSpec {
             // Antigravity authenticates only through a Google account, so it has no
             // API-key mode; it runs under subscription authentication only.
-            api_key_env: None,
             container_key_env: None,
             // The `agy` CLI writes a Google-account OAuth token to
             // `~/.gemini/antigravity-cli/` when the user signs in; copying it into
@@ -835,7 +836,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Generic,
         },
         HarnessSlug::Goose => AdapterSpec {
-            api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             subscription: None,
             session_args: |model, prompt| {
@@ -867,7 +867,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Goose,
         },
         HarnessSlug::Kilo => AdapterSpec {
-            api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             subscription: None,
             session_args: |model, prompt| {
@@ -905,7 +904,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Kilo,
         },
         HarnessSlug::Opencode => AdapterSpec {
-            api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             subscription: None,
             session_args: |model, prompt| {
@@ -939,7 +937,6 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             event_format: EventFormat::Opencode,
         },
         HarnessSlug::Pi => AdapterSpec {
-            api_key_env: Some("OPENROUTER_API_KEY"),
             container_key_env: None,
             subscription: None,
             session_args: |model, prompt| {

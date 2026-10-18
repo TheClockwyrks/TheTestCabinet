@@ -275,7 +275,7 @@ export interface VariantSummary {
    * runs the variant's authored drawing script and uploads each declared frame's
    * rendered image and the action log it was drawn from to the public snapshot
    * bucket. Only the published indices travel here; the objects are addressed by
-   * the deterministic keys defined in `crates/core/src/asset_reference.rs` and
+   * the deterministic keys defined in the contracts crate's `asset_reference` and
    * resolved through the host's `referenceMediaUrl`. `null` when the variant has no
    * published asset reference, which is the common case — and always null for an
    * end-to-end/full-stack variant, whose reference is a {@link referenceBuilds}

@@ -43,7 +43,7 @@
 use std::time::Instant;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
+use test_cabinet_contracts::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;

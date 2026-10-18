@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
-use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig};
+use test_cabinet_contracts::gg::{GgAgentConfig, GgCapabilityConfig};
 
 use crate::validate::{LaunchDefect, LaunchReport};
 

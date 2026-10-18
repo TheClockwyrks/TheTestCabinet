@@ -124,7 +124,7 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
 /// nothing in scope at all.
 #[test]
 fn a_module_in_scope_leaves_the_models_own_program_alone() {
-    let language = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Ruby);
+    let language = crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::Ruby);
     let module = crate::sandbox::CodeModule {
         name: "helpers".to_string(),
         source: compile_module("def double(n) = n * 2\n", &context()).expect("the module compiles"),

@@ -85,7 +85,9 @@ rustdocflags = ["--document-private-items"]
 [patch."https://github.com/TheClockwyrks/contracts"]
 contract-codegen = { path = "contracts/crates/contract-codegen" }
 test-cabinet-contracts = { path = "contracts/crates/contracts" }
+test-cabinet-redact = { path = "contracts/crates/redact" }
 test-cabinet-suites = { path = "contracts/crates/suites" }
+test-cabinet-telemetry = { path = "contracts/crates/telemetry" }
 
 # engines is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/engines"]

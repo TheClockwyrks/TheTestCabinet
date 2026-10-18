@@ -8,7 +8,7 @@
 //! about the half a snapshot loses.
 
 use serde_json::json;
-use test_cabinet_core::gg::{GgMemoryChange, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgMemoryChange, GgTelemetryKind};
 
 use super::*;
 

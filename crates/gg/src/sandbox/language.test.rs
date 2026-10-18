@@ -5,7 +5,7 @@
 //! off tests that have no need of one.
 
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig, GgProgramLanguage,
 };
 

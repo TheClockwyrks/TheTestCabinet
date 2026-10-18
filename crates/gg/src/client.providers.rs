@@ -14,12 +14,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use serde_json::Value;
-use test_cabinet_core::gg::GgProviderCandidate;
+use test_cabinet_contracts::gg::GgProviderCandidate;
 
 use crate::model::Message;
 
 /// How many unexpected cache misses a provider may produce before the run leaves it, when the
-/// run's [limits](test_cabinet_core::gg::GgRunLimits) write no `providerCacheMissLimit`.
+/// run's [limits](test_cabinet_contracts::gg::GgRunLimits) write no `providerCacheMissLimit`.
 pub const DEFAULT_PROVIDER_CACHE_MISS_LIMIT: u64 = 2;
 
 /// How long after an agent's previous request a reply can still be an unexpected miss: the
@@ -286,8 +286,9 @@ impl CacheTrace {
         let mut previous = self.previous.lock().unwrap_or_else(PoisonError::into_inner);
         let miss = match (previous.as_ref(), cached_tokens) {
             (Some(prior), Some(cached)) => {
-                let recent = test_cabinet_core::pricing::same_provider(&prior.provider, provider)
-                    && sent.saturating_duration_since(prior.sent) < CACHE_MISS_WINDOW;
+                let recent =
+                    test_cabinet_contracts::pricing::same_provider(&prior.provider, provider)
+                        && sent.saturating_duration_since(prior.sent) < CACHE_MISS_WINDOW;
                 let total = prior.shape.bytes();
                 let shared = if recent && total > 0 {
                     // u128 so a long prefix times a large token count cannot overflow.

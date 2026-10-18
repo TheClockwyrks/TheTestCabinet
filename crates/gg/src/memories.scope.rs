@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilitySet, MEMORY_PARAM_SCOPE,
 };
 
@@ -36,7 +36,7 @@ type BoundInstance = (Arc<Mutex<MemoryStore>>, Arc<str>);
 /// neither is told what it wrote itself.
 #[derive(Debug, Default)]
 pub struct MemoryRegistry {
-    /// The store bound to each profile [id](test_cabinet_core::gg::GgAgentConfig::id), with its
+    /// The store bound to each profile [id](test_cabinet_contracts::gg::GgAgentConfig::id), with its
     /// [module id](crate::modules::ModuleIdMint), created lazily.
     entries: Mutex<BTreeMap<String, BoundInstance>>,
 }
@@ -47,7 +47,7 @@ impl MemoryRegistry {
         Self::default()
     }
 
-    /// The store bound to the profile with [id](test_cabinet_core::gg::GgAgentConfig::id)
+    /// The store bound to the profile with [id](test_cabinet_contracts::gg::GgAgentConfig::id)
     /// `profile`, and its [module id](crate::modules::Module::instance_id), creating both
     /// (organized by `strategy`, bounded by `caps`, identified out of `ids`) on the first instance
     /// that asks.

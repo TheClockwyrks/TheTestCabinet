@@ -16,7 +16,7 @@ fn state() -> MembraneState<FakeOperationApi> {
     let log = crate::sandbox::fake::CallLog::default();
     MembraneState::new(
         FakeOperationApi::with(&log, canned_outcome),
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin),
+        crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::Kotlin),
         crate::sandbox::ProgramScope {
             capabilities: &[],
             operations: &[],

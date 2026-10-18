@@ -98,7 +98,7 @@
 
 use std::path::Path;
 
-use test_cabinet_core::gg::{DEFAULT_OPENING_FUNCTIONS, GgProgramLanguage};
+use test_cabinet_contracts::gg::{DEFAULT_OPENING_FUNCTIONS, GgProgramLanguage};
 
 use super::compile::{AgentWorkspace, PrepareContext};
 use super::{CodeModule, ProgramLanguage};
@@ -109,7 +109,7 @@ const MODULE_NAME: &str = "gg-authorship-marker";
 
 /// The modules the [opening program](ProgramLanguage::bootstrap_program) searches and the
 /// documentation keys it opens views of, resolved out of **this arm's own catalogue** exactly as
-/// [`crate::bootstrap`] resolves them — for the [opening turn](test_cabinet_core::gg::GgOpeningTurn) a fresh profile is
+/// [`crate::bootstrap`] resolves them — for the [opening turn](test_cabinet_contracts::gg::GgOpeningTurn) a fresh profile is
 /// seeded with, held by an agent granted everything.
 ///
 /// Read rather than written down, for the two reasons everything else in gg reads a spelling: an

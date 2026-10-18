@@ -651,7 +651,7 @@ fn an_empty_results_view_says_what_to_try_instead() {
 /// The property is worth holding rather than trusting to review because both halves of it are
 /// invisible at the call site. `view.close` is bound to every program while closing documentation
 /// is bought by
-/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE), so a sweep reintroduced here
+/// [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE), so a sweep reintroduced here
 /// would have to either spend a capability its caller never asked about or answer `0` for an agent
 /// that lacks it — and `0` is indistinguishable, to the model reading it, from a selector that named
 /// nothing. It would also give the capability two routes, one of which never names it, which is what

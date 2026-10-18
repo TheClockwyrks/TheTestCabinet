@@ -5,7 +5,7 @@
 //! # Why a configured allowlist is not the whole answer
 //!
 //! A capability says the machinery *may* exist for this agent and an
-//! [allowlist](test_cabinet_core::gg::GgAgentConfig::operations) says which of its calls the agent
+//! [allowlist](test_cabinet_contracts::gg::GgAgentConfig::operations) says which of its calls the agent
 //! was handed. Neither can say whether the run built the machinery: the `memories` capability is on
 //! and the strategy is the [scratchpad](crate::memories::MemoryStrategy::Scratchpad), so there is no
 //! named memory to create; `skills` is on and the workspace authored none, so there is nothing to
@@ -33,7 +33,7 @@
 //! other. The cost is that each condition is stated twice, once per surface, and that is the price
 //! of the two surfaces being independent rather than one being the other's subset by construction.
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FORK, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SUBAGENTS,
     GgAgentConfig,
 };

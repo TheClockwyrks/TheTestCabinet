@@ -686,8 +686,8 @@ fn the_release_url_override_tolerates_a_trailing_slash_and_ignores_an_empty_valu
 }
 
 /// A release install with nothing overridden must resolve to a version that could
-/// actually have been published — i.e. this crate's real version, not the `0.0.0`
-/// every workspace member carried before gg had a release pipeline.
+/// actually have been published — the pin, never the `0.0.0` every workspace member
+/// carried before gg had a release pipeline.
 #[test]
 fn the_default_release_version_is_a_real_published_version() {
     assert_ne!(DEFAULT_RELEASE_VERSION, "0.0.0");

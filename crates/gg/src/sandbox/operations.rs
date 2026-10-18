@@ -44,7 +44,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
     CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
@@ -300,7 +300,7 @@ pub enum Binding {
     ///
     /// It has exactly one member, [`transition_state`](DELEGATION_TRANSITION_STATE), and the arm
     /// exists because that call cannot be spelled as a capability without becoming unreachable. The
-    /// [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM) capability is what makes a profile the *shell*
+    /// [`fsm`](test_cabinet_contracts::gg::CAPABILITY_FSM) capability is what makes a profile the *shell*
     /// driving a machine, and a shell takes no turns; the profile that actually runs a state is an
     /// ordinary one that never declares it. Filing the row under that capability would therefore ask
     /// a question whose answer is `false` for every agent that could ever make the call, and leave a
@@ -844,7 +844,7 @@ pub fn family_of_module(module: &str) -> Option<&'static str> {
 /// Two callers need it and both need it to be complete: the [reference](crate::reference), which
 /// documents the surface as a maximally-granted agent sees it, and gg's own fixtures, which build
 /// such an agent. Neither is asking "which capabilities does gg have" — that is
-/// [the catalog](test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG), and most of its entries buy no
+/// [the catalog](test_cabinet_contracts::gg::GG_CAPABILITY_CATALOG), and most of its entries buy no
 /// call at all.
 pub fn gating_capabilities() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();

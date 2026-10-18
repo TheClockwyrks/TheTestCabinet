@@ -7,7 +7,7 @@
 //! the locations assert is the property the arm was converted for: the file is `program.ts` and the
 //! line is the model's own, reached through `tsc`'s source map and by no arithmetic.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;

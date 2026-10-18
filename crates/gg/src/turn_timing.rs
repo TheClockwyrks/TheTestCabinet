@@ -25,7 +25,7 @@
 
 use std::time::Instant;
 
-use test_cabinet_core::gg::GgTelemetryKind;
+use test_cabinet_contracts::gg::GgTelemetryKind;
 
 use crate::telemetry::Emitter;
 

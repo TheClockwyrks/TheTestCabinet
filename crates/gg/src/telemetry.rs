@@ -2,7 +2,7 @@
 //! [`GgTelemetryEvent`]s to **NDJSON**, one event per line, on a pluggable
 //! [`EventSink`] (stdout in production).
 //!
-//! Because gg is [headless](test_cabinet_core::gg), this stream is the only live
+//! Because gg is [headless](test_cabinet_contracts::gg), this stream is the only live
 //! window into a run — the backend and console read it natively. The wire schema
 //! (v1) is owned by `core`; this module only stamps events with an RFC 3339
 //! timestamp and the session id, serializes them, and hands each line to the sink.
@@ -23,17 +23,17 @@
 //! every event. Because the sink is shared (an [`Arc`]), each agent — the root today, and
 //! spawned subagents in Phase 4B — writes to the one live stream while remaining
 //! individually attributable. A subagent dispatched against a board
-//! [issue](test_cabinet_core::gg::GgBoardIssue) is [scoped to that issue](Emitter::for_agent_on_issue)
+//! [issue](test_cabinet_contracts::gg::GgBoardIssue) is [scoped to that issue](Emitter::for_agent_on_issue)
 //! so its whole stream also carries the `issue_id` it was dispatched for.
 
 use std::io::Write;
 use std::sync::Arc;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GG_SHELL_EVENT_STREAM_CHARS, GgLimitBreach, GgProgramLanguage, GgPromptRef, GgRunLimits,
     GgSessionSummary, GgTelemetryEvent, GgTelemetryKind,
 };
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -90,7 +90,7 @@ pub struct Emitter {
     /// The id of that agent's spawner, once [scoped](Self::for_agent). `None` for the root
     /// agent (no spawner) and on a base emitter.
     parent_agent_id: Option<String>,
-    /// The id of the board [issue](test_cabinet_core::gg::GgBoardIssue) this agent's work is
+    /// The id of the board [issue](test_cabinet_contracts::gg::GgBoardIssue) this agent's work is
     /// scoped to, when it was [dispatched against one](Self::for_agent_on_issue). `None` for the
     /// root and for subagents spawned from a free-form brief.
     issue_id: Option<String>,
@@ -152,7 +152,7 @@ impl Emitter {
     }
 
     /// Derive an emitter scoped to `agent_id` (spawned by `parent_agent_id`) whose work is
-    /// scoped to board [issue](test_cabinet_core::gg::GgBoardIssue) `issue_id`, so every event the
+    /// scoped to board [issue](test_cabinet_contracts::gg::GgBoardIssue) `issue_id`, so every event the
     /// agent emits also carries the issue it was dispatched for. `issue_id: None` is equivalent to
     /// [`for_agent`](Self::for_agent).
     pub fn for_agent_on_issue(
@@ -176,9 +176,9 @@ impl Emitter {
     }
 
     /// Derive an emitter identical to this one but scoped to board
-    /// [issue](test_cabinet_core::gg::GgBoardIssue) `issue_id` — the same agent/session/sink, with
+    /// [issue](test_cabinet_contracts::gg::GgBoardIssue) `issue_id` — the same agent/session/sink, with
     /// the [`issue_id`](Self::issue_id) set. Used to emit an agent's
-    /// [issue review](test_cabinet_core::gg::GgTelemetryKind::IssueReview) transitions on the stream of
+    /// [issue review](test_cabinet_contracts::gg::GgTelemetryKind::IssueReview) transitions on the stream of
     /// the issue under review even though the agent that emits them (the one that completed the
     /// issue) was not itself dispatched against that issue, so the issue rides on the event envelope
     /// rather than the payload.
@@ -243,7 +243,7 @@ impl Emitter {
 
     /// Record the run's [execution mode](GgSessionSummary::execution_mode) on the shared
     /// [summary tracker](SessionSummaryTracker) — `"responses_as_code"` when the
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability drove the
+    /// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) capability drove the
     /// run, else `"tool_calling"`. Like [`record_effective_tools`](Self::record_effective_tools) it
     /// is a configuration fact no event carries; the loop records it once (on the root's emitter)
     /// before [finalizing](Self::finalize_summary).
@@ -305,7 +305,7 @@ impl Emitter {
     /// [`Prompt`](GgTelemetryKind::Prompt) carrying the request as ordered
     /// [pointers](GgPromptRef) into that pool plus the response.
     ///
-    /// `request` is the turn's messages in order, each with the [`GgContextSource`](test_cabinet_core::gg::GgContextSource) band it
+    /// `request` is the turn's messages in order, each with the [`GgContextSource`](test_cabinet_contracts::gg::GgContextSource) band it
     /// occupies *this turn*, its estimated tokens, and its selector tag (from
     /// [`ContextModel::prompt_items`](crate::context::ContextModel::prompt_items)) — the tag
     /// travels onto the pooled definition, so a view's tokens stay attributable to the selector

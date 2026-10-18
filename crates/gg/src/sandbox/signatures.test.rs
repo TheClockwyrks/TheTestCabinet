@@ -9,7 +9,7 @@
 //! it cannot be *stale* — but it can be *mis-reflected*, and these read the emitted document rather
 //! than the SDK for exactly that reason. There is no committed copy anybody reviewed on the way in.
 
-use test_cabinet_core::gg::{CAPABILITY_READ_FILE, GgProgramLanguage};
+use test_cabinet_contracts::gg::{CAPABILITY_READ_FILE, GgProgramLanguage};
 
 use super::*;
 use crate::sandbox::FINISH_FUNCTION;
@@ -238,7 +238,7 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
     let close = member("gg.views", "close");
     assert_eq!(
         close.capability,
-        Some(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
+        Some(test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
         "`close` manages the window, and is bought with the rest of context management"
     );
 
@@ -565,14 +565,14 @@ fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
     // A capability, whose id no catalogue ever learns.
     assert_eq!(
         by_name("get").capability,
-        Some(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY)
+        Some(test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY)
     );
     // And a view call, bought by agent-managed context — which the fixture, again, never says.
     let close = by_name("close");
     assert!(close.ending.is_none());
     assert_eq!(
         close.capability,
-        Some(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
+        Some(test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
     );
 
     // The fixture never says any of that: the JSON carries an operation id and no gate at all.

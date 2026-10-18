@@ -46,7 +46,7 @@
 //!   [`guest_component`](ProgramLanguage::guest_component) — because everything under test here
 //!   happens strictly *before* a guest: preparing, prompting, cataloguing.
 //! * **It has no wire id.** [`id`](ProgramLanguage::id) panics, on purpose: a
-//!   [`GgProgramLanguage`](test_cabinet_core::gg::GgProgramLanguage) is a value an operator
+//!   [`GgProgramLanguage`](test_cabinet_contracts::gg::GgProgramLanguage) is a value an operator
 //!   configures, a run records and a study slices by, and a fixture that could be named in a config
 //!   file would be a fixture that could be *run*. The panic is also load-bearing as a test: it is
 //!   what proves the fixture never reaches the one production path that keys on the wire id — the
@@ -67,7 +67,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::signatures::SignatureCatalogue;
 

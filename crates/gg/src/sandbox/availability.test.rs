@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, COMPACTION_STRATEGY_HANDOFF_COMPACTION,
@@ -54,7 +54,7 @@ fn granted(
 /// A [position](crate::fsm::FsmPosition) in a two-state machine whose entry state has somewhere to
 /// go — the fact that buys the transition, since no capability of the agent's own can.
 fn fsm_position() -> crate::fsm::FsmPosition {
-    use test_cabinet_core::gg::{CAPABILITY_FSM, FSM_PARAM_STATES};
+    use test_cabinet_contracts::gg::{CAPABILITY_FSM, FSM_PARAM_STATES};
     let shell = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ FSM_PARAM_STATES: [

@@ -34,7 +34,7 @@ use super::super::test_cabinet::gg::tasks::{Host as TasksHost, TaskInput, TaskPa
 use super::super::test_cabinet::gg::types::TextEdit;
 use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::*;
-use test_cabinet_core::gg::GgCallFailure;
+use test_cabinet_contracts::gg::GgCallFailure;
 
 use crate::sandbox::fake::{ApiLog, CallLog, FakeOperationApi, membrane_from};
 use crate::sandbox::{FILES_READ_FILE, OPERATIONS};

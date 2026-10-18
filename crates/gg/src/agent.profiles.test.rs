@@ -45,7 +45,7 @@ use super::*;
 use crate::board::{IssueStatus, NewIssue};
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS,
     CAPABILITY_TASKS, GgCapabilityConfig, GgCapabilitySet, GgSubagentRef, GgTelemetryEvent,
     ROOT_AGENT, ROOT_PROFILE_ID,
@@ -218,7 +218,7 @@ fn undeclared_entry_state_set() -> GgCapabilitySet {
         model_id: String::new(),
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "states": [{ "name": "only", "agentId": "ghost" }] }),
-            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
+            ..GgCapabilityConfig::enabled(test_cabinet_contracts::gg::CAPABILITY_FSM)
         }],
         ..GgAgentConfig::root()
     });

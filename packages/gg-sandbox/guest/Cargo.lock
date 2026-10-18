@@ -440,5 +440,13 @@ name = "test-cabinet-contracts"
 version = "0.1.0"
 
 [[patch.unused]]
+name = "test-cabinet-redact"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "test-cabinet-suites"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "test-cabinet-telemetry"
 version = "0.1.0"

@@ -108,8 +108,8 @@ export type LaunchBody = {
    * [`HarnessSlug::Gg`]: a gg run is
    * configured by this set rather than by the `(model, orchestrator)` dimensions
    * a third-party harness run uses. Omitted for every non-gg run. The driver maps
-   * it into [`RunRequest::gg_capability_set`](crate::RunRequest), whose
-   * `validate` enforces the gg⇔capability-set invariant.
+   * it into its run request's `gg_capability_set`, whose `validate` enforces the
+   * gg⇔capability-set invariant.
    */
   ggCapabilitySet?: GgCapabilitySet;
   /**

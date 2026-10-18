@@ -38,7 +38,6 @@ pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
 pub mod install;
-pub mod job_api;
 pub mod lockfile_check;
 pub mod match_play;
 pub mod model_id;
@@ -50,11 +49,8 @@ pub mod preview;
 pub mod pricing;
 pub mod prompt;
 pub mod publish;
-pub mod publish_job_api;
 pub mod r2;
-pub mod redact;
 pub mod reference;
-pub mod reference_lock;
 pub mod remote_backend;
 pub mod resolver;
 pub mod review;
@@ -73,8 +69,8 @@ pub mod validator;
 // their old paths so `test_cabinet_core::gg::GgRunLimits` and the rest name the same
 // items they always did.
 pub use test_cabinet_contracts::{
-    code_analysis, cold_storage, gg, gg_reference, gg_session_journal, gg_session_record, metrics,
-    showcase, toolchain,
+    code_analysis, cold_storage, gg, gg_reference, gg_session_journal, gg_session_record, job_api,
+    metrics, publish_job_api, reference_lock, showcase, toolchain,
 };
 
 // The suite runtime's modules that moved whole into `test-cabinet-suites`, re-exported
@@ -82,6 +78,10 @@ pub use test_cabinet_contracts::{
 // `browser` is the exception: a module of the core's own that re-exports the suites
 // crate's and supplies the trace context its driver calls take.
 pub use test_cabinet_suites::{content_digest, content_labels, vitest_validator};
+
+// Secret scrubbing is the contracts repository's redact crate, re-exported at the
+// module path it had here.
+pub use test_cabinet_redact as redact;
 
 #[cfg(test)]
 #[path = "lib.test.rs"]

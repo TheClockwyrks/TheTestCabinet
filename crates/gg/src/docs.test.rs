@@ -1,6 +1,6 @@
 //! Tests for the [documentation carve-out runtime](super::DocsRuntime).
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
     CAPABILITY_SHELL, CAPABILITY_SUBAGENTS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
 };

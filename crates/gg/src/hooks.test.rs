@@ -7,13 +7,13 @@
 //! against a stubbed runner would prove nothing about the one thing it exists to do.
 
 use super::*;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_HOOK_EVENTS, CAPABILITY_SHELL, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
     ROOT_PROFILE_ID, SHELL_OUTPUT_OFFLOAD,
 };
 
 /// An agent profile carrying `hooks` and nothing else that matters here — the declaration site for
-/// the eight [agent events](test_cabinet_core::gg::AGENT_HOOK_EVENTS), which is what nearly every
+/// the eight [agent events](test_cabinet_contracts::gg::AGENT_HOOK_EVENTS), which is what nearly every
 /// test in this file is about.
 fn agent_with(hooks: Vec<GgHook>) -> GgAgentConfig {
     GgAgentConfig {

@@ -17,10 +17,10 @@
 //! The four tools mirror the editor primitives a coding agent needs, including
 //! `edit_file`'s **exact unique replacement** semantics (matching this repo's own
 //! `Edit`: the `old_string` must occur exactly once). Each is contributed by its **own**
-//! capability — [`read-file`](test_cabinet_core::gg::CAPABILITY_READ_FILE),
-//! [`write-file`](test_cabinet_core::gg::CAPABILITY_WRITE_FILE),
-//! [`edit-file`](test_cabinet_core::gg::CAPABILITY_EDIT_FILE), and
-//! [`list-dir`](test_cabinet_core::gg::CAPABILITY_LIST_DIR) — so a study can vary one
+//! capability — [`read-file`](test_cabinet_contracts::gg::CAPABILITY_READ_FILE),
+//! [`write-file`](test_cabinet_contracts::gg::CAPABILITY_WRITE_FILE),
+//! [`edit-file`](test_cabinet_contracts::gg::CAPABILITY_EDIT_FILE), and
+//! [`list-dir`](test_cabinet_contracts::gg::CAPABILITY_LIST_DIR) — so a study can vary one
 //! filesystem primitive without touching the others.
 //!
 //! # Read modes
@@ -75,12 +75,12 @@ use super::{
     ApiData, ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool,
     ToolContext, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
 };
-use test_cabinet_core::gg::CAPABILITY_READ_FILE;
+use test_cabinet_contracts::gg::CAPABILITY_READ_FILE;
 // The read vocabulary — the two mode ids and the one param — is `crates/core`'s, because the
 // console writes a read-file capability with the same names this reads it back by. Re-exported
 // rather than imported so `crate::tools` still names them for the modules that only ever say which
 // mode a configuration is on.
-pub use test_cabinet_core::gg::{
+pub use test_cabinet_contracts::gg::{
     PARAM_LINE_CAP, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED, READ_MODES,
 };
 
@@ -277,7 +277,7 @@ impl ReadPolicy {
 /// capped arm *would* have run at, so it is read by [`check_declaration`] and every value in it is
 /// still judged.
 pub fn check_launch(
-    profile: &test_cabinet_core::gg::GgAgentConfig,
+    profile: &test_cabinet_contracts::gg::GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) {
     let Some(capability) = profile.capability(CAPABILITY_READ_FILE) else {

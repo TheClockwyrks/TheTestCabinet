@@ -471,11 +471,11 @@ async fn a_handoff_model_that_will_not_resolve_ends_the_run() {
         &mut set.agents[0],
         GgCapabilityConfig {
             implementation: Some(
-                test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
+                test_cabinet_contracts::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
             ),
             ..crate::tools::configured(
                 CAPABILITY_COMPACTION,
-                json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+                json!({ test_cabinet_contracts::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
             )
         },
     );
@@ -540,7 +540,7 @@ impl ClientFactory for BindingRecorder {
 /// provider's default.
 #[tokio::test]
 async fn a_handoff_model_runs_without_the_agents_reasoning_setting() {
-    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort};
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let emitter = Emitter::with_sink(
@@ -558,11 +558,11 @@ async fn a_handoff_model_runs_without_the_agents_reasoning_setting() {
         &mut set.agents[0],
         GgCapabilityConfig {
             implementation: Some(
-                test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
+                test_cabinet_contracts::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
             ),
             ..crate::tools::configured(
                 CAPABILITY_COMPACTION,
-                json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+                json!({ test_cabinet_contracts::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
             )
         },
     );

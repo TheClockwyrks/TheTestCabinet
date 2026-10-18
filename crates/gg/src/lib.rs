@@ -3,19 +3,19 @@
 //! This library backs one entrypoint: the [`gg` binary](run_from_args) (`src/main.rs`), invoked
 //! **directly** by The Test Cabinet's `core` **inside the run container** with a single JSON
 //! invocation file — it drives a
-//! [`GgCapabilitySet`](test_cabinet_core::gg::GgCapabilitySet)-configured session to a produced,
+//! [`GgCapabilitySet`](test_cabinet_contracts::gg::GgCapabilitySet)-configured session to a produced,
 //! scoreable artifact while streaming a first-party
-//! [`GgTelemetryEvent`](test_cabinet_core::gg::GgTelemetryEvent) stream on stdout.
+//! [`GgTelemetryEvent`](test_cabinet_contracts::gg::GgTelemetryEvent) stream on stdout.
 //!
 //! Alongside the session it writes a **capture journal** — the append-only NDJSON stream
 //! that lets a run which *hangs* or *outruns its cap* still be explained. A hung container is torn
 //! down without its tree ever being collected, so the journal is copied out
-//! [before teardown](test_cabinet_core::salvage) and assembled into the run tree's session record.
+//! before teardown (the driver's salvage) and assembled into the run tree's session record.
 //! Capture is the reason the journal exists and the only reason it exists.
 //!
 //! Two of the binary's subcommands run nothing at all, and one runs everything. `gg reference` projects
 //! gg's own tool definitions and each arm's documentation views into the
-//! [contract](test_cabinet_core::gg_reference::GgReference) the console's Reference section
+//! [contract](test_cabinet_contracts::gg_reference::GgReference) the console's Reference section
 //! renders, so the documentation of what a model is offered is generated from what a model is
 //! really offered. `--out` writes the twelve documents — the index and one per program language — as
 //! **files a deployment reads at run time**, which is how they reach a backend that cannot depend on
@@ -88,8 +88,8 @@ use crate::telemetry::Emitter;
 /// Two shapes, and the first one is load-bearing:
 ///
 /// - **`gg --config <PATH>`**, with no subcommand, drives a session. This is the *entire*
-///   invocation contract `core` has ever used ([`gg_exec`](test_cabinet_core::gg_exec) launches
-///   exactly `gg --config <path>`), it is what every released gg accepts, and it is what a
+///   invocation contract the driver has ever used (its gg launch runs exactly
+///   `gg --config <path>`), it is what every released gg accepts, and it is what a
 ///   deployment's baked binary is invoked by. Turning it into `gg run --config` would break every
 ///   run the moment a driver and a binary disagreed on which generation they were, for no gain — so
 ///   the bare form stays, permanently, as an implied [`Command::Run`].
@@ -284,7 +284,7 @@ async fn run_session(config: &std::path::Path) -> ExitCode {
     match agent::run(&invocation, &emitter).await {
         agent::SessionOutcome::Ran => ExitCode::SUCCESS,
         agent::SessionOutcome::LimitExceeded => {
-            ExitCode::from(test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED)
+            ExitCode::from(test_cabinet_contracts::gg::EXIT_LIMIT_EXCEEDED)
         }
         agent::SessionOutcome::HarnessError => ExitCode::FAILURE,
     }
@@ -335,7 +335,7 @@ fn project_reference(out: Option<&std::path::Path>) -> ExitCode {
 /// wants the list opens `index.json`.
 ///
 /// The names are not spelled here: they come from
-/// [`test_cabinet_core::gg_reference`](test_cabinet_core::gg_reference::index_file), which is also
+/// [`test_cabinet_contracts::gg_reference`](test_cabinet_contracts::gg_reference::index_file), which is also
 /// where the backend that reads this directory gets them. The two crates never link each other — a
 /// filename each of them believed in separately would be a contract nothing in the workspace could
 /// check, and the failure would surface as a blank page in a built image.
@@ -347,15 +347,17 @@ fn write_reference(directory: &std::path::Path) -> Result<(), ReferenceWriteErro
         path: directory.to_path_buf(),
         source,
     })?;
-    for language in test_cabinet_core::gg::GgProgramLanguage::ALL {
+    for language in test_cabinet_contracts::gg::GgProgramLanguage::ALL {
         let document = reference::reference_api(*language);
         write_json(
-            &directory.join(test_cabinet_core::gg_reference::document_file(*language)),
+            &directory.join(test_cabinet_contracts::gg_reference::document_file(
+                *language,
+            )),
             &document,
         )?;
     }
     write_json(
-        &directory.join(test_cabinet_core::gg_reference::index_file()),
+        &directory.join(test_cabinet_contracts::gg_reference::index_file()),
         &reference::reference(),
     )
 }

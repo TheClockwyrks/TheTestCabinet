@@ -14,12 +14,12 @@
 //! and handles them before dispatch).
 //!
 //! The tools are contributed to the registry only when the
-//! [`subagents`](test_cabinet_core::gg::CAPABILITY_SUBAGENTS) capability is enabled; when it is
+//! [`subagents`](test_cabinet_contracts::gg::CAPABILITY_SUBAGENTS) capability is enabled; when it is
 //! off, none are offered, and a run stays single-agent.
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgRosterEntry;
+use test_cabinet_contracts::gg::GgRosterEntry;
 
 use super::{Tool, ToolContext, ToolOutcome};
 use crate::model::ToolDefinition;

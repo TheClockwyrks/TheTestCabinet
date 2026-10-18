@@ -25,7 +25,7 @@ use super::substrate::{
     evaluate, evaluate_closing_docviews, evaluate_with_api, logs, prepare, sandbox_error,
 };
 use crate::ending::{Ending, EndingRole};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY,
 };
 
@@ -902,10 +902,10 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     // string is what this file can say a section exists at all, and the parse is what says the seam
     // resolves this catalogue to this arm rather than to a stem filed under the wrong name.
     assert_eq!(
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift)
+        crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::Swift)
             .catalogue()
             .language,
-        test_cabinet_core::gg::GgProgramLanguage::Swift,
+        test_cabinet_contracts::gg::GgProgramLanguage::Swift,
     );
 
     // Identity: the modules, in the order the surface is presented in, each under the Swift path a
@@ -1230,7 +1230,7 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
 /// thing it could get wrong is the import line, and the discarded result of a call that returns one.
 #[test]
 fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
-    let arm = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift);
+    let arm = crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::Swift);
     let window = crate::sandbox::FileWindow {
         offset: 400,
         limit: 200,

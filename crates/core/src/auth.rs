@@ -357,15 +357,9 @@ fn nonempty_env(var: &str) -> Option<String> {
     std::env::var(var).ok().filter(|v| !v.trim().is_empty())
 }
 
-/// The per-harness API-key override variable, `TCAB_API_KEY_<SLUG>` (for example
-/// `TCAB_API_KEY_KILO`). When set, it supplies that one harness's key, taking
-/// precedence over the shared provider variable
-/// ([`api_key_env`](AgentHarness::api_key_env)) so harnesses that share a provider
-/// can be given independent keys. This is the single source of truth for the name:
-/// the run engine reads it here in both the host (CLI) and driver-pod paths.
-pub fn api_key_override_var(slug: HarnessSlug) -> String {
-    format!("TCAB_API_KEY_{}", slug.as_str().to_ascii_uppercase())
-}
+// The per-harness API-key override variable's name is read by redaction as well as
+// by the run engine here, so it lives in `test_cabinet_contracts::harness`.
+pub use test_cabinet_contracts::harness::api_key_override_var;
 
 /// Whether a subscription is present: there is at least one required file and the
 /// `creds` source can supply every required file. Drawn from `creds` so the same

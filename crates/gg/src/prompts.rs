@@ -136,7 +136,7 @@ use std::sync::OnceLock;
 
 use handlebars::{Handlebars, RenderError, handlebars_helper};
 use serde::Serialize;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::language;
 
@@ -506,7 +506,7 @@ pub struct SystemContext {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub code_headings: Vec<CodeHeadingView>,
     /// Whether this agent keeps a [program library](crate::programs) — the
-    /// [capability](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) that lets a program fetch a
+    /// [capability](test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY) that lets a program fetch a
     /// program the agent already ran and hand a patched copy back to be run.
     ///
     /// It gates a section rather than filling one, because there is nothing per-run to state: the
@@ -514,13 +514,13 @@ pub struct SystemContext {
     /// the *shape* of the thing (fetch, patch, hand back) and nothing a number would date.
     pub program_library: bool,
     /// Operator-authored instructions for the agent whose prompt this is — the
-    /// [`GgAgentConfig::custom_instructions`](test_cabinet_core::gg::GgAgentConfig::custom_instructions)
+    /// [`GgAgentConfig::custom_instructions`](test_cabinet_contracts::gg::GgAgentConfig::custom_instructions)
     /// of its profile. `None` (or empty) renders no additional-instructions section. The
     /// template inserts it near the top so it frames the whole session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_instructions: Option<String>,
     /// Whether this agent may **spawn subagents** — the
-    /// [subagents](test_cabinet_core::gg::CAPABILITY_SUBAGENTS) capability, as the offered toolset
+    /// [subagents](test_cabinet_contracts::gg::CAPABILITY_SUBAGENTS) capability, as the offered toolset
     /// reflects it. This alone gates the prompt's Subagents section.
     ///
     /// It is deliberately **not** derived from [`spawnable_agents`](Self::spawnable_agents) being
@@ -530,7 +530,7 @@ pub struct SystemContext {
     /// about a tool it does not have.
     pub subagents: bool,
     /// The agents this one may spawn as subagents (its roster's
-    /// [`subagent`](test_cabinet_core::gg::GgSubagentScope::Subagent) scope), each with the
+    /// [`subagent`](test_cabinet_contracts::gg::GgSubagentScope::Subagent) scope), each with the
     /// caller-scoped description that tells this agent when to use it. Enumerated in the prompt so
     /// the model knows which names `spawn_subagent` accepts. Rendered only
     /// when [`subagents`](Self::subagents) is on.
@@ -561,7 +561,7 @@ pub struct SystemContext {
     /// reference images, and if so whether they are locked into the window. `None` renders no
     /// section — the model was told nothing about a feature it does not have.
     pub autoload_specs: Option<AutoloadView>,
-    /// Whether this agent is a [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) one:
+    /// Whether this agent is a [persistent](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) one:
     /// only one instance of it runs at a time, and its opening window already holds the file views it
     /// had open when it last finished, re-read from the workspace as it stands now.
     ///
@@ -600,7 +600,7 @@ pub struct EndingView {
     pub request_changes: String,
 }
 
-/// The [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS) section's state:
+/// The [autoload-specifications](test_cabinet_contracts::gg::CAPABILITY_AUTOLOAD_SPECS) section's state:
 /// the capability is on (so the section renders at all), and whether the injected material is
 /// **locked** into the window.
 #[derive(Debug, Serialize)]
@@ -711,7 +711,7 @@ pub struct SkillView {
 
 /// One agent this agent may put to work, as the system prompt lists it — the target's name and the
 /// caller-scoped description of when to use it. Used for all three roster
-/// [scopes](test_cabinet_core::gg::GgSubagentScope).
+/// [scopes](test_cabinet_contracts::gg::GgSubagentScope).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnableAgentView {
@@ -815,7 +815,7 @@ fn system_template_name(responses_as_code: bool) -> &'static str {
 /// run renders the [tool-calling arm](SYSTEM_TOOLS_TEMPLATE).
 ///
 /// `template_override` is an agent profile's
-/// [full-template override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template): when
+/// [full-template override](test_cabinet_contracts::gg::GgAgentConfig::system_prompt_template): when
 /// present (and non-blank) it is rendered against the same [`SystemContext`] instead of the
 /// built-in template.
 ///
@@ -860,13 +860,13 @@ pub fn render_system(
     Ok(tidy(&rendered))
 }
 
-/// The [capability set](test_cabinet_core::gg::GgAgentConfig::system_prompt_template) field a
+/// The [capability set](test_cabinet_contracts::gg::GgAgentConfig::system_prompt_template) field a
 /// system-prompt override is written in, named in the two diagnostics about it so an operator can
 /// find the thing they have to edit.
 const SYSTEM_PROMPT_TEMPLATE_FIELD: &str = "systemPromptTemplate";
 
 /// This module's contribution to the [launch refusal](crate::validate): a per-agent
-/// [system-prompt override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template) that does
+/// [system-prompt override](test_cabinet_contracts::gg::GgAgentConfig::system_prompt_template) that does
 /// not **parse** as a Handlebars template.
 ///
 /// Parsing is the half of the contract a document can be held to on its own, with no live context
@@ -878,7 +878,7 @@ const SYSTEM_PROMPT_TEMPLATE_FIELD: &str = "systemPromptTemplate";
 /// An absent or blank override is the ordinary case and takes the built-in template for the agent's
 /// mode. It is not a fallback: nothing was written.
 pub(crate) fn check_launch(
-    profile: &test_cabinet_core::gg::GgAgentConfig,
+    profile: &test_cabinet_contracts::gg::GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) {
     let Some(template) = profile
@@ -919,7 +919,7 @@ pub(crate) fn render_code_nothing_shown_for(
 }
 
 /// The built-in **tool-calling** system-prompt template, verbatim — the default an operator's
-/// [`GgAgentConfig::system_prompt_template`](test_cabinet_core::gg::GgAgentConfig::system_prompt_template)
+/// [`GgAgentConfig::system_prompt_template`](test_cabinet_contracts::gg::GgAgentConfig::system_prompt_template)
 /// override starts from for a tool-calling agent, and what the console seeds its editor with for
 /// one. The per-capability sections are inlined into this one file, so it is self-contained
 /// Handlebars (no partials).

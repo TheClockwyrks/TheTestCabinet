@@ -6,7 +6,7 @@
 //! to a cap so a chatty build can't flood the model's context or the telemetry
 //! stream, and enforces a per-command timeout so a hung command can never wedge the
 //! run. The tool is contributed only when the
-//! [`shell`](test_cabinet_core::gg::CAPABILITY_SHELL) capability is enabled.
+//! [`shell`](test_cabinet_contracts::gg::CAPABILITY_SHELL) capability is enabled.
 //!
 //! # Output offloading
 //!
@@ -36,11 +36,11 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 // The shell vocabulary — the two mode ids and the two ceilings — is `crates/core`'s, because the
 // console writes a shell capability with the same names this reads it back by.
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_SHELL, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_MODES,
     SHELL_OUTPUT_OFFLOAD,
 };
-use test_cabinet_core::gg_session_record::GgShellOrigin;
+use test_cabinet_contracts::gg_session_record::GgShellOrigin;
 
 use super::{
     ApiData, ArgumentError, ShellData, Tool, ToolContext, ToolFailure, ToolOutcome, required_str,
@@ -78,7 +78,7 @@ const CEILING_CONSEQUENCE: &str = "a ceiling of nothing would return none of the
 /// with build logs.
 ///
 /// A **sibling** of the gg binary rather than a child of it. The binary is installed at
-/// [`BINARY_PATH`](test_cabinet_core::gg::BINARY_PATH) — `/tmp/gg`, a regular file — so the
+/// [`BINARY_PATH`](test_cabinet_contracts::gg::BINARY_PATH) — `/tmp/gg`, a regular file — so the
 /// `/tmp/gg/shell` this once was could never be created in a real run: every `create_dir_all`
 /// failed with `ENOTDIR`, offloading fell back to inline output for the whole of every session, and
 /// nothing caught it because a unit test pointing `dir` at a temp directory never touches the
@@ -94,7 +94,7 @@ static OFFLOAD_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // ---------------------------------------------------------------------------
 
 /// How much of a command's output comes back inline, and whether the whole of it is kept on disk —
-/// the [shell](test_cabinet_core::gg::CAPABILITY_SHELL) capability's swappable implementation.
+/// the [shell](test_cabinet_contracts::gg::CAPABILITY_SHELL) capability's swappable implementation.
 ///
 /// A chatty command is one of the few things an agent does that can spend a large fraction of its
 /// context window in a single call, on text it usually needed three lines of. Offloading makes that
@@ -380,7 +380,7 @@ fn saturating_ceiling(count: u64) -> usize {
 /// configuration the arm *would* have run at, so it is read by [`check_declaration`] and every value
 /// in it is still judged.
 pub fn check_launch(
-    profile: &test_cabinet_core::gg::GgAgentConfig,
+    profile: &test_cabinet_contracts::gg::GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) {
     let Some(capability) = profile.capability(CAPABILITY_SHELL) else {

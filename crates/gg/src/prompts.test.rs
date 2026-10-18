@@ -1,4 +1,4 @@
-use test_cabinet_core::gg::{GgAgentConfig, GgProgramLanguage};
+use test_cabinet_contracts::gg::{GgAgentConfig, GgProgramLanguage};
 
 use super::*;
 use crate::ending::EndingRole;

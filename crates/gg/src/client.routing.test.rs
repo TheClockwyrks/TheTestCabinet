@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
-use test_cabinet_core::gg::{GgLoopDetection, GgSlotBinding, PRIMARY_SLOT};
+use test_cabinet_contracts::gg::{GgLoopDetection, GgSlotBinding, PRIMARY_SLOT};
 
 use super::*;
 use crate::model::{Message, ModelClient, ToolDefinition};

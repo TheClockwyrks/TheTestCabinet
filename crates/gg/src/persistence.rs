@@ -1,9 +1,9 @@
 //! **Agent persistence**: the run-wide state that makes one
-//! [agent profile](test_cabinet_core::gg::GgAgentConfig) behave like a single long-lived worker
+//! [agent profile](test_cabinet_contracts::gg::GgAgentConfig) behave like a single long-lived worker
 //! rather than a pool of interchangeable ones.
 //!
 //! This module owns the mechanism behind the
-//! [agent-persistence](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) capability. It has two
+//! [agent-persistence](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) capability. It has two
 //! halves, and both are deliberately small because the hard parts live elsewhere:
 //!
 //! - **One instance at a time.** A persistent profile's instances take their running slot under the
@@ -43,11 +43,11 @@
 //!
 //! Only views. Not the thread, not the task list, not memories, not skills — an agent that carried
 //! its whole conversation over would be one long agent with a confusing turn count, and
-//! [memories](test_cabinet_core::gg::CAPABILITY_MEMORIES) already exist for state a profile wants to
+//! [memories](test_cabinet_contracts::gg::CAPABILITY_MEMORIES) already exist for state a profile wants to
 //! *narrate* across sessions. Persistence answers the narrower question of what the worker was
 //! looking at.
 //!
-//! Both halves work under [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+//! Both halves work under [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE)
 //! as they do under tool calling: a program's `view.openFile` pushes a real file view and its
 //! `view.openText` a real text view, so a code-mode profile's desk is recorded and restored like any
 //! other. (A bare `fs.readFile` still puts nothing in the window and so persists nothing — it fetches
@@ -57,7 +57,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_PERSISTENCE, GgAgentConfig, GgProgramLanguage, GgTelemetryKind,
 };
 
@@ -107,7 +107,7 @@ pub fn is_persistent(profile: &GgAgentConfig) -> bool {
 ///
 /// The key is the profile rather than anything about the *instance* — that is the entire point:
 /// every instance of the profile contends with every other instance, wherever it was spawned from and
-/// whichever [worktree](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) it was dispatched into,
+/// whichever [worktree](test_cabinet_contracts::gg::CAPABILITY_PROJECT_MANAGEMENT) it was dispatched into,
 /// and with no other profile.
 ///
 /// Taken off the **resolved** profile rather than off the id a caller was holding, so the key cannot
@@ -283,7 +283,7 @@ impl PersistenceSetup {
 /// agent had opened them itself, which it effectively did.
 ///
 /// A view of a path that was **already open before the restore** is skipped: a persistent agent that
-/// also [autoloads specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS) would otherwise get
+/// also [autoloads specifications](test_cabinet_contracts::gg::CAPABILITY_AUTOLOAD_SPECS) would otherwise get
 /// two copies of every spec it had read. The comparison is against the window as it stood on entry, not
 /// as the restore is building it, so a desk that held two *different windows* of one large file gets both
 /// back. A file that can no longer be read — deleted, renamed, or moved since it was recorded — is
@@ -360,7 +360,7 @@ pub async fn restore_file_views(
                 )],
             );
             context.push_tool_result(
-                test_cabinet_core::gg::GgContextSource::ToolOutput,
+                test_cabinet_contracts::gg::GgContextSource::ToolOutput,
                 &call_id,
                 crate::completion::submit_program_ack(id.as_deref()),
             );

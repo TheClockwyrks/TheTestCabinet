@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::*;
 use crate::validate::{LaunchDefect, LaunchReport};
-use test_cabinet_core::gg::{GgCapabilityConfig, GgTaskStatus, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgCapabilityConfig, GgTaskStatus, GgTelemetryKind};
 
 /// The ceiling `params` resolves to, asserting gg honoured it exactly as written.
 fn max_tasks(params: Value) -> usize {

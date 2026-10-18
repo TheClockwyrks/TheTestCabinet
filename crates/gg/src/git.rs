@@ -15,7 +15,7 @@
 //!   with — deliberately the map and not the patch;
 //! - [`merge_branch`] merges that branch back into the main tree, either **aborting** a conflict or
 //!   — as the issue path chooses — **leaving it in the tree** for the
-//!   [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) to resolve, with
+//!   [merge agent](test_cabinet_contracts::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) to resolve, with
 //!   [`merge_in_progress`] and [`abort_merge`] to check on and undo that resolution; and
 //! - [`remove_worktree`] tears the worktree and its branch down — run in **every** case (merge,
 //!   conflict, or discard), so no isolated copy is ever left behind.
@@ -230,7 +230,7 @@ pub enum ConflictPolicy {
     /// disposable, where a clash costs nothing but the work on that branch.
     Abort,
     /// **Leave** the conflicted merge in the working tree (`MERGE_HEAD` set, conflict markers in
-    /// the files) so the [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT)
+    /// the files) so the [merge agent](test_cabinet_contracts::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT)
     /// can resolve it and commit. The caller is then responsible for finishing the merge or
     /// [aborting](abort_merge) it — a tree left mid-merge would poison every later merge.
     Keep,

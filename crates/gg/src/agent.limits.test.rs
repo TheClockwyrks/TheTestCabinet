@@ -18,7 +18,7 @@
 //! session-start sandbox warm-up; every other one calls [`Agent::drive`] directly and pays nothing.
 
 use super::*;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     AUTHORED_MAX_PARALLEL, GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnErrorType,
     GgTurnOutcome, SHELL_OUTPUT_MODES,
 };

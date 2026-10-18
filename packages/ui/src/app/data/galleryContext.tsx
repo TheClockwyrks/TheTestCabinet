@@ -568,7 +568,7 @@ export interface GalleryDataInput {
    * is why it needs its own base rather than riding on the artifact/backend media
    * plumbing. `file` is the portion of the key below the variant's prefix, so the
    * page names `frames/<index>.png` and each host prepends the layout defined in
-   * `crates/core/src/asset_reference.rs`.
+   * `contracts/crates/contracts/src/asset_reference.rs`.
    *
    * Omitted (or returning null) by a host with no snapshot bucket configured — the
    * end-to-end analogue of a variant that declares no {@link referenceBuilds}, and

@@ -216,7 +216,7 @@ fn the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself() {
     };
 
     let stops_itself =
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript);
+        crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::TypeScript);
     assert!(stops_itself.stops_itself_at_ggs_deadline());
     let store = store_on(stops_itself, limits);
     let reported = classify(
@@ -231,7 +231,8 @@ fn the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself() {
          {reported}"
     );
 
-    let gg_stops_it = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Python);
+    let gg_stops_it =
+        crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::Python);
     assert!(!gg_stops_it.stops_itself_at_ggs_deadline());
     let store = store_on(gg_stops_it, limits);
     let reported = classify(
@@ -548,7 +549,7 @@ fn the_embedded_component_is_within_the_documented_size_band() {
     );
     assert_eq!(
         component_bytes(crate::sandbox::language(
-            test_cabinet_core::gg::GgProgramLanguage::PureScript,
+            test_cabinet_contracts::gg::GgProgramLanguage::PureScript,
         ))
         .len(),
         bytes,
