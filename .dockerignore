@@ -44,11 +44,12 @@
 *
 
 # …then re-include the Rust workspace and the few files a build embeds. All
-# workspace members live under crates/. The one manifest path that reaches outside
-# it is the contracts repository's, the contracts/ submodule: core, engines and
-# api-codegen depend on its crates by path, and those crates inherit their version
-# and dependencies from its own workspace manifest, so cargo reads that too. This
-# is the complete set cargo needs to resolve and compile any crate.
+# workspace members live under crates/. The workspace names the contracts
+# repository's crates by their public source, and the patch table in .cargo/ sends
+# that source to the contracts/ submodule, whose crates inherit their version and
+# dependencies from its own workspace manifest, so cargo reads that too. This is
+# the complete set cargo needs to resolve and compile any crate; resolving the lock
+# still fetches the patched source, the public mirror, over the network.
 !/Cargo.toml
 !/Cargo.lock
 !/rust-toolchain.toml

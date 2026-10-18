@@ -17,13 +17,13 @@ path = "src/lib.rs"
 # The shared account contract (Account/RegisterRequest/LoginRequest/AuthnResponse)
 # lives in contracts, so the service serializes exactly what every client
 # deserializes.
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 # Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
 # deployment — mints a token as the Postgres password and rotates the pool.
 # Engaged only when `TCAB_AUTH_DB_AZURE_AD` is truthy; the default password /
 # SQLite path never touches it.
 test-cabinet-db-auth = { path = "../db-auth" }
-test-cabinet-telemetry = { path = "../../contracts/crates/telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

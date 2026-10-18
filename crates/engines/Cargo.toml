@@ -17,11 +17,11 @@ path = "src/lib.rs"
 [dependencies]
 # The engine catalog the table is bound to, and the default host package store an
 # engine's version is read from.
-test-cabinet-suites = { path = "../../contracts/crates/suites" }
+test-cabinet-suites = { workspace = true }
 
 [dev-dependencies]
 # The slug-order test holds the table to the contract's `BUILT_IN_SLUGS`.
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 # The none-engine test compares the template views a prompt renders.
 serde_json = { workspace = true }
 tempfile = { workspace = true }

@@ -78,9 +78,9 @@ members = [
 	"crates/entities",
 	"crates/migration",
 ]
-# The contracts repository, a submodule, is a workspace of its own: its crates are
-# path dependencies of this one, built from the checkout at the commit the
-# superrepo pins.
+# The contracts repository, a submodule, is a workspace of its own. Its crates are
+# named under `[workspace.dependencies]` by their public source, and the patch table
+# of `.cargo/config.toml` builds them from the checkout.
 exclude = ["contracts"]
 
 [workspace.package]
@@ -221,6 +221,17 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
+# The crates of the contracts repository, named by its public source, the GitHub
+# mirror, at the tag its dependents pin (`TAGS` in `scripts/repos/render.py`), as
+# the Repositories page's "How a dependency is named" states. No manifest names a
+# path into `contracts/`: inside the superrepo the patch table of
+# `.cargo/config.toml` sends this source to the sibling checkout, which may hold
+# crates and changes the tag does not yet carry.
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

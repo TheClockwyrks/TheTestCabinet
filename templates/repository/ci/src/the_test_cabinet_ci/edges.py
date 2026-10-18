@@ -26,9 +26,9 @@ npm, that leaves the repository is refused: a repository builds on its own,
 and inside the superrepo the patch table and the package links are what point
 it at a sibling checkout.
 
-An edge may be narrowed to some of the target's packages, such as `web`
-taking `@clockwyrks/backend-api` from `platform` and nothing else, and may admit
-the target's npm packages without its crates. The data edges below are no
+An edge may be narrowed to some of the target's packages, such as `engines`
+taking `@clockwyrks/asset-contract` from `contracts` and never the run record,
+and may admit the target's npm packages without its crates. The data edges below are no
 build dependency at all: they are recorded so the `dependency-graph` gate can
 say which jobs need a second checkout.
 """
@@ -58,27 +58,70 @@ class Kind(NamedTuple):
     typescript: bool
 
 
-# The kinds of the Repositories development page.
+# The kinds of the Repositories development page. A `tool` is shaped as a
+# library is, and its binaries are also baked into the run-container images; a
+# `shell` is a Tauri workspace, a binary crate that commits its lock beside an
+# npm workspace.
 KINDS: Mapping[str, Kind] = {
     "library": Kind(crate="library", commits_lock=False, typescript=True),
+    "tool": Kind(crate="library", commits_lock=False, typescript=True),
     "application": Kind(crate="binary", commits_lock=True, typescript=True),
+    "shell": Kind(crate="binary", commits_lock=True, typescript=True),
     "site": Kind(crate="", commits_lock=False, typescript=True),
     "content": Kind(crate="", commits_lock=False, typescript=False),
 }
 
-# Every repository the kit renders, by kind. `cold-storage` is a submodule of
-# the superrepo too, but it is plain content no kit renders.
+# Every repository the kit renders, by kind, in the order of the Repositories
+# page's table. `cold-storage` is a submodule of the superrepo too, but it is
+# plain content no kit renders.
 REPOSITORIES: Mapping[str, str] = {
     "contracts": "library",
     "engines": "library",
+    "ui-common": "library",
+    "tool-model-core": "tool",
+    "tool-sprite": "tool",
+    "tool-paint": "tool",
+    "tool-voxel": "tool",
+    "tool-mc": "tool",
+    "tool-sn": "tool",
+    "tool-dc": "tool",
+    "tool-particle": "tool",
+    "tool-audio-core": "tool",
+    "tool-sfx-synth": "tool",
+    "tool-sfx-sample": "tool",
+    "tool-music": "tool",
+    "microservice-backend": "application",
+    "microservice-dispatcher": "application",
+    "microservice-driver": "application",
+    "microservice-artifacts": "application",
+    "microservice-repos": "application",
+    "microservice-publisher": "application",
+    "microservice-arena": "application",
     "gg": "application",
-    "platform": "application",
-    "web": "application",
     "the-spec-cabinet": "application",
+    "testcabinet.ai": "site",
+    "console.testcabinet.ai": "site",
     "gg.rocks": "site",
+    "client-tauri": "shell",
     "test-suites": "content",
 }
 NOT_RENDERED = frozenset({"cold-storage"})
+
+# The tools whose binaries a run-container image carries. `tool-model-core` and
+# `tool-audio-core` are tools of the library half alone, which other tools and
+# the driver build on.
+TOOL_IMAGES = (
+    "tool-sprite",
+    "tool-paint",
+    "tool-voxel",
+    "tool-mc",
+    "tool-sn",
+    "tool-dc",
+    "tool-particle",
+    "tool-sfx-synth",
+    "tool-sfx-sample",
+    "tool-music",
+)
 
 # The GitHub organisation holding the mirrors, and each repository's mirror
 # there. The mirrors carry the Azure names (plan Q10), so a relative submodule
@@ -98,25 +141,28 @@ AZURE_SSH = (
 
 # Each package the project publishes, to the repository producing it. A
 # package no repository produces is not the project's, and a `@clockwyrks/`
-# package missing here is refused, so a new package is a decision.
+# package missing here is refused, so a new package is a decision. The
+# backend's API package is generated in `contracts`, so the console takes it
+# from the hub and no application depends on another.
 SCOPE = "@clockwyrks/"
 PACKAGES: Mapping[str, str] = {
     "@clockwyrks/run-record": "contracts",
     "@clockwyrks/asset-contract": "contracts",
+    "@clockwyrks/backend-api": "contracts",
+    "@clockwyrks/browser-driver": "contracts",
     "@clockwyrks/simple-2d": "engines",
     "@clockwyrks/simple-3d": "engines",
     "@clockwyrks/structured-2d": "engines",
     "@clockwyrks/structured-3d": "engines",
     "@clockwyrks/voxel-runtime": "engines",
     "@clockwyrks/particle-runtime": "engines",
+    "@clockwyrks/lattice-runtime": "engines",
     "@clockwyrks/case-harness": "engines",
-    "@clockwyrks/browser-driver": "platform",
-    "@clockwyrks/backend-api": "platform",
-    "@clockwyrks/ui": "web",
-    "@clockwyrks/run-stats": "web",
-    "@clockwyrks/web": "web",
-    "@clockwyrks/site": "web",
-    "@clockwyrks/lattice-designer": "web",
+    "@clockwyrks/ui": "ui-common",
+    "@clockwyrks/run-stats": "ui-common",
+    "@clockwyrks/site": "testcabinet.ai",
+    "@clockwyrks/web": "console.testcabinet.ai",
+    "@clockwyrks/lattice-designer": "test-suites",
     "@clockwyrks/gg-sandbox": "gg",
 }
 
@@ -137,29 +183,67 @@ def _only(*packages: str) -> frozenset[str]:
     return frozenset(packages)
 
 
-# The permitted build edges, plan §2.1. A repository missing a target here may
-# not depend on it, and gg is no repository's target: it is used only as a
-# pinned released binary.
+# The tools built on the model core, and the tools built on the audio core.
+_MODEL_TOOLS = ("tool-paint", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-particle")
+_AUDIO_TOOLS = ("tool-sfx-synth", "tool-sfx-sample", "tool-music")
+_CONTRACTS = Edge("contracts", True, None, "the contract types")
+
+# The permitted build edges, the Repositories page's "The edges". A
+# repository missing a target here may not depend on it, and gg is no
+# repository's target: it is used only as a pinned released binary. `ui-common`
+# carries no crate another repository builds on, so an edge to it admits its
+# packages alone.
 BUILD_EDGES: Mapping[str, tuple[Edge, ...]] = {
     "contracts": (),
     "engines": (Edge("contracts", True, _only("@clockwyrks/asset-contract"), "the catalog types; never run-record"),),
-    "gg": (Edge("contracts", True, None, "the gg contract types"),),
-    "platform": (
+    "ui-common": (
+        Edge("contracts", True, None, "run-record and backend-api"),
+        Edge("engines", False, None, "the voxel and particle runtimes"),
+    ),
+    "tool-model-core": (Edge("contracts", True, None, "the asset-contract types"),),
+    "tool-sprite": (_CONTRACTS,),
+    **{tool: (_CONTRACTS, Edge("tool-model-core", True, None, "the model core")) for tool in _MODEL_TOOLS},
+    "tool-audio-core": (_CONTRACTS,),
+    **{tool: (_CONTRACTS, Edge("tool-audio-core", True, None, "the audio core")) for tool in _AUDIO_TOOLS},
+    "microservice-backend": (
         Edge("contracts", True, None, "the contract types and the suite runtime"),
-        Edge("engines", True, None, "the engine catalog and the seeded packages"),
+        Edge("engines", True, None, "the built-in catalog, for ingest"),
     ),
-    "web": (
-        Edge("contracts", True, None, "run-record"),
-        Edge("engines", True, None, "the voxel and particle runtimes"),
-        Edge("platform", False, _only("@clockwyrks/backend-api"), "the console's wire types, as a published package"),
+    "microservice-dispatcher": (_CONTRACTS,),
+    "microservice-driver": (
+        Edge("contracts", True, None, "the contract types, the suite runtime and the backend's client"),
+        Edge("engines", True, None, "seeding, the match runner and the engine catalog"),
+        Edge("tool-sprite", True, None, "previews"),
+        Edge("tool-voxel", True, None, "previews"),
+        Edge("tool-model-core", True, None, "previews and validation"),
+        Edge("tool-audio-core", True, None, "audio staging"),
     ),
+    "microservice-artifacts": (_CONTRACTS,),
+    "microservice-repos": (_CONTRACTS,),
+    "microservice-publisher": (_CONTRACTS,),
+    "microservice-arena": (
+        Edge("contracts", True, None, "the contract types and the backend's client"),
+        Edge("engines", True, None, "the match runner"),
+    ),
+    "gg": (Edge("contracts", True, None, "the gg contract types"),),
     "the-spec-cabinet": (
         Edge("contracts", True, None, "the contract types and the suite runtime"),
         Edge("engines", True, None, "the engine catalog and docs"),
-        Edge("web", False, _only("@clockwyrks/ui"), "the UI library, an explicit exception"),
+        Edge("ui-common", False, None, "the UI library"),
     ),
-    "test-suites": (Edge("engines", False, None, "the validators import the engine packages"),),
+    "testcabinet.ai": (
+        Edge("contracts", False, None, "run-record"),
+        Edge("engines", False, None, "the playback runtimes"),
+        Edge("ui-common", False, None, "the UI library"),
+    ),
+    "console.testcabinet.ai": (
+        Edge("contracts", False, None, "run-record and backend-api"),
+        Edge("engines", False, None, "the playback runtimes"),
+        Edge("ui-common", False, None, "the UI library"),
+    ),
     "gg.rocks": (),
+    "client-tauri": (),
+    "test-suites": (Edge("engines", False, None, "the validators and the designer import the engine packages"),),
 }
 
 
@@ -172,11 +256,19 @@ class DataEdge(NamedTuple):
 
 
 DATA_EDGES: tuple[DataEdge, ...] = (
-    DataEdge("platform", "test-suites", "ingest, containers/performance's lattice training data, integration tests"),
-    DataEdge("platform", "gg", "the pinned released gg binary and toolchains image (deployments/pins.toml)"),
-    DataEdge("test-suites", "platform", "audio-packs reads containers/sample-packs/; the lattice replay wasm"),
-    DataEdge("web", "test-suites", "the vendored foray and lattice replay assets"),
-    DataEdge("the-spec-cabinet", "test-suites", "the authoring checkout"),
+    DataEdge("microservice-backend", "test-suites", "ingest"),
+    DataEdge("microservice-driver", "gg", "the pinned released binary"),
+    *(DataEdge("microservice-driver", tool, "the tool images") for tool in TOOL_IMAGES),
+    DataEdge("test-suites", "microservice-backend", "the sample packs"),
+    DataEdge("console.testcabinet.ai", "test-suites", "the vendored sprite atlas and reference scenarios"),
+    DataEdge("the-spec-cabinet", "test-suites", "the suite being authored"),
+    DataEdge("client-tauri", "console.testcabinet.ai", "the URL it loads"),
+    DataEdge("microservice-driver", "microservice-artifacts", "HTTP, the run tree uploads"),
+    DataEdge("microservice-driver", "microservice-repos", "HTTP, the bundle uploads"),
+    DataEdge("microservice-backend", "microservice-artifacts", "HTTP, the dataset writes"),
+    DataEdge("microservice-backend", "microservice-repos", "HTTP, the bundle reads it serves"),
+    DataEdge("microservice-publisher", "microservice-artifacts", "HTTP, during a publish"),
+    DataEdge("microservice-publisher", "microservice-repos", "HTTP, during a publish"),
 )
 
 # The sections of a manifest that declare dependencies. A target-specific

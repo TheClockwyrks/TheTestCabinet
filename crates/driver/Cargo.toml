@@ -18,24 +18,24 @@ path = "src/lib.rs"
 # engine contracts, execution, the job API, the layout constants. The library
 # re-exports the modules it uses whole at its root (`gg`, `metrics`, `toolchain`,
 # `code_analysis`, `review`, `job_api`, ...).
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 # The test-suite runtime and the manifest loaders: the `test_case`,
 # `test_case_group` and `test_suite` catalogs, the resolver, `prompt`, the validator
 # runners and the browser plumbing they use, the engine catalog and the content
 # digests.
-test-cabinet-suites = { path = "../../contracts/crates/suites" }
+test-cabinet-suites = { workspace = true }
 # The backend's HTTP client, re-exported as `backend_client` beside the run engine's
 # extensions of it (`materialize_version` and the renderer of the backend's rendered
 # references).
-test-cabinet-backend-client = { path = "../../contracts/crates/backend-client" }
+test-cabinet-backend-client = { workspace = true }
 # Secret scrubbing, re-exported as `redact`.
-test-cabinet-redact = { path = "../../contracts/crates/redact" }
+test-cabinet-redact = { workspace = true }
 # The built-in engine catalog (`built_in_catalog`), re-exported as `engine::built_in_catalog`.
 test-cabinet-engines = { path = "../engines" }
 # The driver is a binary: it owns telemetry init, so it pulls the heavy `otlp`
 # feature. The library itself only injects/extracts trace context through the
 # process global propagator the binary installs.
-test-cabinet-telemetry = { path = "../../contracts/crates/telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -160,7 +160,7 @@ tokio-util = { workspace = true }
 # without waiting out a real wall-clock timeout.
 tokio = { workspace = true, features = ["full", "test-util"] }
 # `test_browser`, what a test driving a real browser needs (`crate::test_browser`).
-test-cabinet-suites = { path = "../../contracts/crates/suites", features = ["test-support"] }
+test-cabinet-suites = { workspace = true, features = ["test-support"] }
 # The same audio contract crate the library links, with its `cli` feature: the audio
 # staging test reads the tree the engine wrote back through the exact reader the
 # in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the

@@ -16,13 +16,13 @@ path = "src/lib.rs"
 [dependencies]
 # The run record and the run-tree layout the playable resolvers read
 # (`find_build_output`, `serve_build_file`, the proof naming rules).
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 # The content labels a served file is sent under (`content_labels`).
-test-cabinet-suites = { path = "../../contracts/crates/suites" }
+test-cabinet-suites = { workspace = true }
 # A binary: it owns telemetry init, so it pulls the heavy `otlp` feature (the
 # propagation-only default is for libraries), exactly as the other
 # services' mains do.
-test-cabinet-telemetry = { path = "../../contracts/crates/telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

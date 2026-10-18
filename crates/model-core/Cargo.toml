@@ -54,7 +54,7 @@ png = { workspace = true, optional = true }
 [dev-dependencies]
 # The manifest check a case's preview `background` is refused by, held to this
 # crate's parser (`color.suites.test.rs`).
-test-cabinet-suites = { path = "../../contracts/crates/suites" }
+test-cabinet-suites = { workspace = true }
 
 [lints]
 workspace = true

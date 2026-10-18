@@ -95,21 +95,97 @@ test-cabinet-telemetry = { path = "contracts/crates/telemetry" }
 #   [patch."https://github.com/TheClockwyrks/engines"]
 #   test-cabinet-engines = { path = "engines/crates/engines" }
 
+# ui-common is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/ui-common"]
+#   test-cabinet-ui-common = { path = "ui-common/crates/ui-common" }
+
+# tool-model-core is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-model-core"]
+#   test-cabinet-model-core = { path = "tool-model-core/crates/model-core" }
+
+# tool-sprite is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-sprite"]
+#   test-cabinet-draw = { path = "tool-sprite/crates/draw" }
+
+# tool-paint is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-paint"]
+#   test-cabinet-paint = { path = "tool-paint/crates/paint" }
+
+# tool-voxel is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-voxel"]
+#   test-cabinet-voxel = { path = "tool-voxel/crates/voxel" }
+
+# tool-mc is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-mc"]
+#   test-cabinet-mc = { path = "tool-mc/crates/mc" }
+
+# tool-sn is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-sn"]
+#   test-cabinet-sn = { path = "tool-sn/crates/sn" }
+
+# tool-dc is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-dc"]
+#   test-cabinet-dc = { path = "tool-dc/crates/dc" }
+
+# tool-particle is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-particle"]
+#   test-cabinet-particle-core = { path = "tool-particle/crates/particle-core" }
+
+# tool-audio-core is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-audio-core"]
+#   test-cabinet-audio-core = { path = "tool-audio-core/crates/audio-core" }
+
+# tool-sfx-synth is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-sfx-synth"]
+#   test-cabinet-sfx-synth = { path = "tool-sfx-synth/crates/sfx-synth" }
+
+# tool-sfx-sample is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-sfx-sample"]
+#   test-cabinet-sfx-sample = { path = "tool-sfx-sample/crates/sfx-sample" }
+
+# tool-music is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/tool-music"]
+#   test-cabinet-music = { path = "tool-music/crates/music" }
+
+# microservice-backend is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-backend"]
+#   test-cabinet-backend = { path = "microservice-backend/crates/backend" }
+
+# microservice-dispatcher is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-dispatcher"]
+#   test-cabinet-dispatcher = { path = "microservice-dispatcher/crates/dispatcher" }
+
+# microservice-driver is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-driver"]
+#   test-cabinet-driver = { path = "microservice-driver/crates/driver" }
+
+# microservice-artifacts is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-artifacts"]
+#   test-cabinet-artifacts = { path = "microservice-artifacts/crates/artifacts" }
+
+# microservice-repos is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-repos"]
+#   test-cabinet-repos = { path = "microservice-repos/crates/repos" }
+
+# microservice-publisher is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-publisher"]
+#   tcab-publisher = { path = "microservice-publisher/crates/publisher" }
+
+# microservice-arena is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/microservice-arena"]
+#   test-cabinet-arena = { path = "microservice-arena/crates/arena" }
+
 # gg is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/gg"]
 #   test-cabinet-gg = { path = "gg/crates/gg" }
 
-# platform is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/platform"]
-#   test-cabinet-cli = { path = "platform/crates/cli" }
-
-# web is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/web"]
-#   test-cabinet-console-app = { path = "web/crates/console-app" }
-
 # the-spec-cabinet is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/the-spec-cabinet"]
 #   test-cabinet-spec-cabinet = { path = "the-spec-cabinet/crates/spec-cabinet" }
+
+# client-tauri is not checked out; the table joins once it is bootstrapped:
+#   [patch."https://github.com/TheClockwyrks/client-tauri"]
+#   test-cabinet-client-tauri = { path = "client-tauri/crates/client-tauri" }
 
 # Cargo still fetches a patched git source to resolve the lock file, so the
 # source has to be reachable even though nothing is built from it. While the

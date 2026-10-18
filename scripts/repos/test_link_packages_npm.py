@@ -4,7 +4,7 @@ The table test beside the script drives it through stubs; this test runs it
 with the npm the devcontainer and the web CI image carry, and with the real
 derivation of the table and the plan from `sources.py`, pointed at a
 temporary superrepo holding two workspaces: contracts', producing a model
-package whose build copies its reducer into `dist/`, and web's, whose
+package whose build copies its reducer into `dist/`, and the console's, whose
 package names the model at the version the feed would hold and whose lock
 resolves it from the feed. Every npm call is offline against a registry that
 does not exist, with its own cache and home, so a step that fetched or
@@ -30,7 +30,7 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parent
 MODEL = "@clockwyrks/run-record"
 PRODUCER = "contracts"
-CONSUMER = "web"
+CONSUMER = "console.testcabinet.ai"
 REGISTRY = "https://registry.invalid/"
 
 # The interpreter link-packages.sh runs `sources.py` with. It runs the real

@@ -16,13 +16,13 @@ path = "src/lib.rs"
 [dependencies]
 # The API wire types the backend serves, generated into `@clockwyrks/backend-api`,
 # and the run record, run-tree layout and harness contract it stores and serves.
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 # The suite runtime and manifest loaders, whose error the catalogs return.
-test-cabinet-suites = { path = "../../contracts/crates/suites" }
+test-cabinet-suites = { workspace = true }
 # The built-in engine catalog ingest resolves a version's engines against.
 test-cabinet-engines = { path = "../engines" }
 # Secret scrubbing of the documents the snapshot publishes.
-test-cabinet-redact = { path = "../../contracts/crates/redact" }
+test-cabinet-redact = { workspace = true }
 # The R2 client the snapshot refresh and ingest write and list the public bucket
 # with. An interim edge onto the artifacts service's crate: the dataset writes move
 # behind the artifacts service's API, after which the backend reaches it over HTTP.
@@ -32,7 +32,7 @@ test-cabinet-artifacts = { path = "../artifacts" }
 # Engaged only when `TCAB_BACKEND_DB_AZURE_AD` is truthy; the default password /
 # SQLite path never touches it.
 test-cabinet-db-auth = { path = "../db-auth" }
-test-cabinet-telemetry = { path = "../../contracts/crates/telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 test-cabinet-entities = { workspace = true }
 test-cabinet-migration = { workspace = true }
 

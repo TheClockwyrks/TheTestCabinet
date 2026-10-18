@@ -86,8 +86,8 @@ is_pipeline() { # path
 # out is what no Rust job opens: the sites, the board, the manifests, the
 # run-container definitions, the gates' sources, prose, every shell test, and
 # the scripts only the image, deploy and release jobs run. Of the submodule
-# pins, contracts' reaches them: the workspace depends on its crates by path,
-# and every Rust job initializes it with scripts/ci/submodules.sh.
+# pins, contracts' reaches them: the patch table builds its crates from the
+# checkout, and every Rust job initializes it with scripts/ci/submodules.sh.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in

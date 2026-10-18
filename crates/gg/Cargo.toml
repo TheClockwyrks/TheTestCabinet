@@ -43,7 +43,7 @@ test = false
 # session record and journal, the metrics) is the contracts crate's, so the binary
 # consumes those types from there rather than redefining them; the driver builds
 # the invocation config this binary reads from the same types.
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 
 # THE PROGRAM-LANGUAGE ARTIFACT CRATES. Not libraries — every one of them is an empty `lib.rs` — but
 # build steps: each runs one arm's `packages/gg-sandbox*/build.sh` into its own `OUT_DIR` and

@@ -20,7 +20,14 @@ from conftest import commit, git
 EDGES = render.edge_table()
 KINDS = sorted(EDGES.KINDS)
 # One repository of each kind, the one each test renders.
-ONE_OF_EACH = {"library": "contracts", "application": "platform", "site": "gg.rocks", "content": "test-suites"}
+ONE_OF_EACH = {
+    "library": "contracts",
+    "tool": "tool-sprite",
+    "application": "microservice-arena",
+    "shell": "client-tauri",
+    "site": "gg.rocks",
+    "content": "test-suites",
+}
 
 
 def test_one_repository_of_each_kind_is_rendered_here() -> None:
@@ -41,8 +48,9 @@ def test_every_repository_carrying_a_crate_names_one() -> None:
     assert sorted(render.CRATES) == sorted(rust)
     for directory, crate in render.CRATES.values():
         assert re.fullmatch(r"[a-z0-9-]+", directory)
-        assert crate.startswith("test-cabinet-")
-    assert render.crate_of("platform") == ("cli", "test-cabinet-cli")
+        # The publisher's crate kept the binary's name when it was scaffolded.
+        assert crate.startswith(("test-cabinet-", "tcab-"))
+    assert render.crate_of("microservice-driver") == ("driver", "test-cabinet-driver")
 
 
 def test_the_rust_tracks_are_images_the_superrepo_builds() -> None:
@@ -61,7 +69,7 @@ def test_an_image_is_pinned_at_the_commit_the_superrepo_pins() -> None:
 
 def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
     """`contracts` has cut a tag, which its dependents pin; `engines` has none, so they follow its `master`."""
-    assert render.workspace_dependencies("platform").splitlines() == [
+    assert render.workspace_dependencies("microservice-arena").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }',
         'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", branch = "master" }',
     ]
@@ -69,7 +77,7 @@ def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
 
 
 def test_a_pipeline_declares_the_closure_of_its_rust_edges() -> None:
-    resources = render.ci_resources("web", "application")
+    resources = render.ci_resources("microservice-arena", "application")
     assert re.findall(r"name: (\S+)", resources) == ["the-test-cabinet/contracts", "the-test-cabinet/engines"]
     assert "repositories:" not in render.ci_resources("contracts", "library")
 
@@ -78,9 +86,9 @@ def test_a_repository_without_edges_says_so_once() -> None:
     alone = render.edges_rule("contracts")
     assert alone.count("no other repository of the project") == 1, alone
     assert alone.startswith("- It depends on no other repository of the project; the")
-    platform = " ".join(render.edges_rule("platform").split())
-    assert platform.startswith("- It depends on contracts (crates and packages); engines (")
-    assert "and on no other repository of the project; the `dependency-edges` gate" in platform
+    arena = " ".join(render.edges_rule("microservice-arena").split())
+    assert arena.startswith("- It depends on contracts (crates and packages); engines (")
+    assert "and on no other repository of the project; the `dependency-edges` gate" in arena
 
 
 def test_a_browser_track_carries_an_npm_workspace() -> None:
@@ -89,7 +97,7 @@ def test_a_browser_track_carries_an_npm_workspace() -> None:
         if track in render.BROWSER_TRACKS:
             assert EDGES.KINDS[EDGES.REPOSITORIES[name]].typescript, name
             assert render.ci_rust_npm(name, EDGES.REPOSITORIES[name])
-    assert render.ci_rust_npm("platform", "application") == ""
+    assert render.ci_rust_npm("microservice-arena", "application") == ""
 
 
 def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() -> None:
@@ -180,10 +188,10 @@ def test_a_browser_track_installs_its_workspace_and_checks_its_playwright(render
     assert feed < install < rust.index("gate run")
     assert "gate run playwright-image\n" in rust
     assert (rendered("contracts") / "ci" / "gates" / "playwright-image.py").is_file()
-    platform = rendered("platform")
-    assert "- script: npm ci\n" not in _job((platform / "azure-pipelines.yml").read_text(encoding="utf-8"), "rust")
-    assert not (platform / "ci" / "gates" / "playwright-image.py").exists()
-    assert not (platform / "ci" / "tests" / "test_playwright_image_gate.py").exists()
+    arena = rendered("microservice-arena")
+    assert "- script: npm ci\n" not in _job((arena / "azure-pipelines.yml").read_text(encoding="utf-8"), "rust")
+    assert not (arena / "ci" / "gates" / "playwright-image.py").exists()
+    assert not (arena / "ci" / "tests" / "test_playwright_image_gate.py").exists()
 
 
 def test_a_windows_repository_is_rendered_its_windows_job(rendered: Callable[[str], Path]) -> None:
@@ -193,8 +201,8 @@ def test_a_windows_repository_is_rendered_its_windows_job(rendered: Callable[[st
     assert f"- bash: {render.NEXTEST_SCRIPT}\n" in windows
     assert "- bash: cargo nextest run --workspace --no-tests=pass --profile ci\n" in windows
     assert "gate run" not in windows
-    platform = (rendered("platform") / "azure-pipelines.yml").read_text(encoding="utf-8")
-    assert "- job: windows" not in platform
+    arena = (rendered("microservice-arena") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "- job: windows" not in arena
 
 
 def test_an_extra_gate_is_given_a_step_in_its_job(rendered: Callable[[str], Path]) -> None:

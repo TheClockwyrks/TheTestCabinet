@@ -20,7 +20,7 @@ path = "src/lib.rs"
 # The shapes a match and a tournament are recorded in (`match_play`), the resolved
 # test case a match is configured from (`test_case`), and the recorded outcome and
 # per-case result shapes (`validation`).
-test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+test-cabinet-contracts = { workspace = true }
 # The adversarial simulation (rules, board, replay) and its wasm host; the wasmtime
 # dependency lives entirely in `foray-host`.
 foray-core = { path = "../foray-core" }
